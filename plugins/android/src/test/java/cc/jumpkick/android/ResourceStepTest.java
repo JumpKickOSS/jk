@@ -59,6 +59,7 @@ class ResourceStepTest {
     /**
      * {@code android-res} compiles the module's own resources alone and links the archive {@code
      * android-res-deps} left, so an edit that reruns it leaves the dependency resources compiled.
+     * The module's compiled archive is an output, for the unit-test link to reuse.
      */
     @Test
     void android_res_links_the_dependency_archive_and_compiles_only_the_modules_resources(@TempDir Path tmp)
@@ -86,6 +87,12 @@ class ResourceStepTest {
         assertThat(Files.readAllLines(tmp.resolve("aapt2-compile.txt")))
                 .containsExactly(res.moduleDir().resolve("res").toAbsolutePath().toString());
         assertThat(Files.readAllLines(tmp.resolve("aapt2-link.txt")))
+                .containsSubsequence(
+                        "-R",
+                        res.scratch()
+                                .resolve("packaged/res-compiled.zip")
+                                .toAbsolutePath()
+                                .toString())
                 .contains(deps.scratch()
                         .resolve(ResourceStep.DEPS_OUT)
                         .resolve("deps-compiled.zip")

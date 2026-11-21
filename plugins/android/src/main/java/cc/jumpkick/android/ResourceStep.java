@@ -17,8 +17,9 @@ import org.jspecify.annotations.Nullable;
  * R.java}, {@code raw-res/}. The AAR resources are merged ({@link ResourceMerger}) and compiled by
  * {@code android-res-deps} ({@link #compileDeps(TaskExec)}), a step keyed by the dependency set alone;
  * module resources overlay them. Non-transitive R: apps regenerate each AAR's R with final ids;
- * libraries ship {@code R.txt}. The link's resource ids land in {@code packaged/ids.txt} so {@link
- * #linkUnitTestApk} keeps them.
+ * libraries ship {@code R.txt}. The link's resource ids land in {@code packaged/ids.txt} and the
+ * module's compiled resources in {@code packaged/res-compiled.zip}, so {@link #linkUnitTestApk}
+ * keeps the ids and compiles nothing of the module's again.
  */
 final class ResourceStep {
 
@@ -36,6 +37,9 @@ final class ResourceStep {
 
     /** The main link's {@code --emit-ids} file under {@code packaged/}: one {@code name = id} per line. */
     private static final String IDS = "ids.txt";
+
+    /** The module's own compiled resources under {@code packaged/}; absent when it has no {@code res/}. */
+    private static final String OWN_FLATS = "res-compiled.zip";
 
     private ResourceStep() {}
 
@@ -69,13 +73,12 @@ final class ResourceStep {
         Path gen = exec.outputDir("gen");
         Path packaged = exec.outputDir("packaged");
         Path rawRes = exec.outputDir("raw-res");
-        Path work = exec.privateDir("work");
 
         Path depFlats = depsFlats(exec.requireStepOutput(DEPS_STEP));
         Path ownFlats = null;
         if (Files.isDirectory(res)) {
             exec.label("aapt2 compile");
-            ownFlats = compileRes(exec, aapt2, res, work.resolve("res-compiled.zip"));
+            ownFlats = compileRes(exec, aapt2, res, packaged.resolve(OWN_FLATS));
             copyTree(res, rawRes);
         }
 
@@ -153,7 +156,8 @@ final class ResourceStep {
     /**
      * Link the unit-test resource package into {@code out}: the resources of every AAR on this
      * step's runtime closure plus the module's own, against {@code manifest}. {@code android-res}'s
-     * ids stay stable, so the module's compiled {@code R} matches the package. The AAR resources
+     * ids stay stable, so the module's compiled {@code R} matches the package, and the module's
+     * resources are the archive {@code android-res} compiled. The AAR resources
      * are {@link #DEPS_STEP}'s when this closure merges the same {@code res/} dirs in the same order,
      * and compiled here only when it does not. Runs in a step that has the {@code aapt2} and {@code
      * android-jar} tools.
@@ -161,18 +165,14 @@ final class ResourceStep {
     static void linkUnitTestApk(TaskExec exec, Path manifest, Path out) throws Exception {
         Path aapt2 = extractAapt2(exec);
         Path res = exec.requireStepOutput("android-res");
-        Path rawRes = res.resolve("raw-res");
         Path ids = res.resolve("packaged").resolve(IDS);
+        Path ownFlats = res.resolve("packaged").resolve(OWN_FLATS);
         Path work = exec.privateDir("work");
         List<AndroidDeps.Aar> aars = AndroidDeps.aars(exec.runtimeEntries());
         Path deps = exec.requireStepOutput(DEPS_STEP);
         Path depFlats = sameDirs(resDirs(aars), deps.resolve(DEPS_OUT).resolve(DEPS_DIRS))
                 ? depsFlats(deps)
                 : compileMergedDeps(exec, aapt2, aars, work, work.resolve(DEPS_FLATS));
-        Path ownFlats = null;
-        if (Files.isDirectory(rawRes)) {
-            ownFlats = compileRes(exec, aapt2, rawRes, work.resolve("res-compiled.zip"));
-        }
         Files.createDirectories(out.getParent());
         TaskExec.ToolRun link = link(
                 exec,
@@ -184,7 +184,7 @@ final class ResourceStep {
                 exec.config().intValue("min-sdk", 0),
                 exec.config().bool("library", false),
                 depFlats,
-                ownFlats,
+                Files.isRegularFile(ownFlats) ? ownFlats : null,
                 out,
                 null,
                 null,

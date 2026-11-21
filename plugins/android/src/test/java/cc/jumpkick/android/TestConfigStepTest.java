@@ -192,6 +192,7 @@ class TestConfigStepTest {
         Path ids = Files.writeString(
                 Files.createDirectories(resStep.resolve("packaged")).resolve("ids.txt"),
                 "com.example.app:string/app = 0x7f010000\n");
+        Path ownFlats = Files.writeString(resStep.resolve("packaged/res-compiled.zip"), "");
         Path testAar = exec.container("androidx-test-core");
         Files.writeString(testAar.resolve("AndroidManifest.xml"), """
                 <manifest package="androidx.test.core">
@@ -215,13 +216,10 @@ class TestConfigStepTest {
         }
         List<String> compiled = Files.readAllLines(tmp.resolve("aapt2-compile.txt"));
         assertThat(compiled)
-                .hasSize(2)
-                .contains(resStep.resolve("raw-res").toAbsolutePath().toString());
-        Path mergedDeps = compiled.stream()
-                .map(Path::of)
-                .filter(dir -> !dir.equals(resStep.resolve("raw-res").toAbsolutePath()))
-                .findFirst()
-                .orElseThrow();
+                .as("the module's resources are android-res's compiled archive, not compiled again")
+                .hasSize(1)
+                .doesNotContain(resStep.resolve("raw-res").toAbsolutePath().toString());
+        Path mergedDeps = Path.of(compiled.getFirst());
         try (var files = Files.walk(mergedDeps)) {
             assertThat(files.filter(Files::isRegularFile).map(f -> {
                         try {
@@ -237,7 +235,7 @@ class TestConfigStepTest {
         assertThat(argv)
                 .containsSubsequence("--manifest", props.getProperty("android_merged_manifest"))
                 .containsSubsequence("--stable-ids", ids.toAbsolutePath().toString())
-                .contains("-R")
+                .containsSubsequence("-R", ownFlats.toAbsolutePath().toString())
                 .as("the main link's R.java and symbols stay android-res's")
                 .doesNotContain("--java", "--output-text-symbols", "--proguard");
         assertThat(exec.labels()).contains("aapt2 link (unit test)");
@@ -245,7 +243,8 @@ class TestConfigStepTest {
 
     /**
      * A test closure that merges the same AAR {@code res/} dirs as the production closure links the
-     * archive {@code android-res-deps} compiled: the step compiles the module's resources alone.
+     * archive {@code android-res-deps} compiled and the module's archive {@code android-res}
+     * compiled: the step compiles nothing.
      */
     @Test
     void a_test_closure_with_the_production_closures_resources_links_the_dependency_steps_archive(@TempDir Path tmp)
@@ -255,6 +254,8 @@ class TestConfigStepTest {
         Files.writeString(
                 Files.createDirectories(resStep.resolve("raw-res/values")).resolve("strings.xml"),
                 "<resources><string name=\"app\">x</string></resources>");
+        Path ownFlats = Files.writeString(
+                Files.createDirectories(resStep.resolve("packaged")).resolve("res-compiled.zip"), "");
         Path aar = exec.container("androidx-core");
         Files.writeString(
                 Files.createDirectories(aar.resolve("res/values")).resolve("values.xml"),
@@ -268,9 +269,9 @@ class TestConfigStepTest {
 
         TestConfigStep.run(exec);
 
-        assertThat(Files.readAllLines(tmp.resolve("aapt2-compile.txt")))
-                .containsExactly(resStep.resolve("raw-res").toAbsolutePath().toString());
+        assertThat(tmp.resolve("aapt2-compile.txt")).doesNotExist();
         assertThat(Files.readAllLines(tmp.resolve("aapt2-link.txt")))
+                .containsSubsequence("-R", ownFlats.toAbsolutePath().toString())
                 .contains(deps.scratch()
                         .resolve(ResourceStep.DEPS_OUT)
                         .resolve("deps-compiled.zip")
