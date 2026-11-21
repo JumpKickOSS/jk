@@ -92,6 +92,66 @@ class ManifestLocationTest {
     }
 
     @Test
+    void a_plugin_string_of_the_wrong_type_is_located_at_its_key(@TempDir Path dir) throws Exception {
+        Path file = write(dir, HEAD + "java = 25\n\n[android]\nnamespace = 7\ncompile-sdk = 28\nmin-sdk = 24\n");
+        JkBuildParseException e = refusal(file);
+        assertThat(e).hasMessageContaining("[android].namespace must be a string");
+        assertThat(e.location()).isEqualTo(new SourceLocation(file.toString(), 7, 1));
+    }
+
+    @Test
+    void a_plugin_boolean_of_the_wrong_type_is_located_at_its_key(@TempDir Path dir) throws Exception {
+        Path file = write(dir, HEAD + "java = 25\n\n" + ANDROID + "library = \"yes\"\n");
+        JkBuildParseException e = refusal(file);
+        assertThat(e).hasMessageContaining("[android].library must be a boolean");
+        assertThat(e.location()).isEqualTo(new SourceLocation(file.toString(), 10, 1));
+    }
+
+    @Test
+    void a_plugin_array_holding_a_non_string_is_located_at_its_key(@TempDir Path dir) throws Exception {
+        Path file = write(dir, HEAD + "java = 25\n\n" + ANDROID + "proguard-files = [\"a.pro\", 2]\n");
+        JkBuildParseException e = refusal(file);
+        assertThat(e).hasMessageContaining("[android].proguard-files must be an array of strings");
+        assertThat(e.location()).isEqualTo(new SourceLocation(file.toString(), 10, 1));
+    }
+
+    @Test
+    void a_plugin_map_value_that_is_not_a_string_is_located_at_its_key(@TempDir Path dir) throws Exception {
+        Path file = write(
+                dir, HEAD + "java = 25\n\n[protobuf]\nversion = \"4.33.1\"\nreplace = { \"a\" = \"b\", \"c\" = 1 }\n");
+        JkBuildParseException e = refusal(file);
+        assertThat(e).hasMessageContaining("[protobuf].replace.c must be a string");
+        assertThat(e.location()).isEqualTo(new SourceLocation(file.toString(), 8, 24));
+    }
+
+    @Test
+    void a_malformed_plugin_coordinate_is_located_at_its_key(@TempDir Path dir) throws Exception {
+        Path file = write(
+                dir,
+                HEAD + "java = 25\n\n[protobuf]\nversion = \"4.33.1\"\n\n[protobuf.grpc-java]\nplugin = \"io.grpc\"\n");
+        JkBuildParseException e = refusal(file);
+        assertThat(e)
+                .hasMessageContaining("[protobuf.grpc-java].plugin = \"io.grpc\" must be a group:artifact:version");
+        assertThat(e.location()).isEqualTo(new SourceLocation(file.toString(), 10, 1));
+    }
+
+    @Test
+    void a_plugin_value_outside_its_one_of_is_located_at_its_key(@TempDir Path dir) throws Exception {
+        Path file = write(dir, HEAD + "java = 27\n\n[helidon]\nversion = \"27.0.1\"\nlayout = \"war\"\n");
+        JkBuildParseException e = refusal(file);
+        assertThat(e).hasMessageContaining("[helidon].layout = \"war\" must be one of \"libs\", \"jar\"");
+        assertThat(e.location()).isEqualTo(new SourceLocation(file.toString(), 8, 1));
+    }
+
+    @Test
+    void a_plugin_version_under_its_floor_is_located_at_its_key(@TempDir Path dir) throws Exception {
+        Path file = write(dir, HEAD + "java = 27\n\n[helidon]\nversion = \"4.3.0\"\n");
+        JkBuildParseException e = refusal(file);
+        assertThat(e).hasMessageContaining("[helidon].version = \"4.3.0\" is older than 27");
+        assertThat(e.location()).isEqualTo(new SourceLocation(file.toString(), 7, 1));
+    }
+
+    @Test
     void a_plugin_group_entry_that_is_not_a_table_is_located_at_the_entry(@TempDir Path dir) throws Exception {
         Path file = write(dir, HEAD + "java = 25\n\n" + ANDROID + "\n[android.signing]\nrelease = \"x\"\n");
         JkBuildParseException e = refusal(file);
