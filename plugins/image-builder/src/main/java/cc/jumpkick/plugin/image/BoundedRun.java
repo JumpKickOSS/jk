@@ -21,17 +21,22 @@ final class BoundedRun {
     /** What a child that finished in time said, and how it exited. */
     record Outcome(int exit, String output) {}
 
+    /** How much of a child's output is kept, in chars: its last lines, where a failure says why. */
+    static final int KEPT_CHARS = 64 * 1024;
+
     private BoundedRun() {}
 
     /**
      * Wait up to {@code timeout} for {@code process} (stderr already merged by the fork owner),
-     * collecting its output; empty when it ran out of time, in which case it has been destroyed.
+     * collecting the last {@link #KEPT_CHARS} of its output; empty when it ran out of time, in which
+     * case it has been destroyed. The child is read to the end however much it says.
      */
     static Optional<Outcome> await(Process process, Duration timeout) throws InterruptedException {
-        StringBuffer captured = new StringBuffer();
+        Tail captured = new Tail(KEPT_CHARS);
         Thread reader = Thread.ofPlatform().daemon().start(() -> {
             try (var in = process.inputReader(StandardCharsets.UTF_8)) {
-                in.lines().forEach(line -> captured.append(line).append('\n'));
+                char[] buffer = new char[8192];
+                for (int n; (n = in.read(buffer)) >= 0; ) captured.add(buffer, n);
             } catch (IOException ignored) {
                 // The pipe went away with the child; whatever arrived before is kept.
             }
@@ -42,6 +47,42 @@ final class BoundedRun {
             return Optional.empty();
         }
         reader.join(5_000);
-        return Optional.of(new Outcome(process.exitValue(), captured.toString()));
+        return Optional.of(new Outcome(process.exitValue(), captured.text()));
+    }
+
+    /**
+     * The last {@code budget} chars a child wrote. Reads are appended and the front trimmed in
+     * batches, so a child that never ends a line is bounded too.
+     */
+    static final class Tail {
+
+        private final int budget;
+        private final StringBuilder kept = new StringBuilder();
+        private boolean trimmed;
+
+        Tail(int budget) {
+            this.budget = budget;
+        }
+
+        synchronized void add(char[] chars, int count) {
+            kept.append(chars, 0, count);
+            if (kept.length() > 2 * budget) trim();
+        }
+
+        /**
+         * What was kept. A trimmed tail starts at its first whole line, after a line saying that
+         * earlier output is gone.
+         */
+        synchronized String text() {
+            if (kept.length() > budget) trim();
+            if (!trimmed) return kept.toString();
+            int lineStart = kept.indexOf("\n") + 1;
+            return "… earlier output not kept\n" + kept.substring(lineStart);
+        }
+
+        private void trim() {
+            kept.delete(0, kept.length() - budget);
+            trimmed = true;
+        }
     }
 }
