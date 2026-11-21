@@ -51,10 +51,18 @@ gate stays red. `scripts/gate/flaky.sh` keeps that history:
 | `flaky.sh review` | Quarantines a class with two re-run passes in 30 days (`FLAKY_THRESHOLD`, `FLAKY_WINDOW_DAYS`), opening a `flake` ticket that carries its history; releases a class whose ticket is done or canceled, and counts only its passes after that |
 | `flaky.sh list` | The quarantine: `<module> <class> <ticket>` |
 | `flaky.sh excused <details.jsonl>` | Exit 0 when every error of the run is a test failure in a quarantined class |
+| `flaky.sh failed <details.jsonl>` | The run's failed classes, `<module> <class>`; exit 0 when it failed only in test classes, so a re-run can turn it green |
 
 Every gate ends with `review`. The Full tier runs every class and judges each, quarantined or not;
 the Queue tier runs them too, but a run red only in quarantined classes passes (`excused`). A class
 that cannot get a ticket is not quarantined.
+
+The Queue tier does not stay red on a flake. Its install and each of its integration runs, red only
+in test classes, run once more under the same inputs, so only the failed classes run again; the
+classes that pass now are recorded as above, and the step passes when the re-run does. A class
+still red is a `FAILED <module> <class>` line of the gate's log, and its failure's message and stack
+go to `g<n>-failures.txt` beside it. A run red outside a class (a compile error, a dead test JVM) is
+not run again.
 
 ## The merge queue
 
@@ -79,11 +87,24 @@ merge commit, is ejected. It gates the result with the Queue tier of `scripts/ga
 (`QUEUE_TIER=full` gates with the Full tier instead) and, on `GREEN`, pushes it to `origin/main` as
 a fast-forward. It never forces: when `origin/main` moved while the batch
 gated, the push is refused and the next batch applies the same branches to the new `origin/main`.
-A red batch of one branch ejects it with the gate's failing lines; a red batch of several gates
-each branch alone, one batch each. The next batch starts as soon as one ends.
+Since the gate already ran its failed classes once more, a red batch is red for a cause. A red
+batch of one branch ejects it with the gate's failing lines. A red batch of several is split in two
+groups, gated one after the other before anything else that waits: the branches that changed a
+module one of the failed classes is in (the module whose `name` the class's artifact carries), or a
+root build file, go second, and the rest first, so the rest lands while the suspects are split
+again; when no branch or every branch changed one, the batch is split in halves in submission
+order. One bad branch of many costs three gates when the failed class is in a module it changed:
+the batch, the rest, and the bad branch alone. The next batch starts as soon as one ends.
+
+An ejected branch's ticket is told why, with `ka comment` (`QUEUE_KA`): the conflicting files, or
+the failing classes with the gate's failing lines and the failures' stacks. Its ticket is the one
+the branch is named for (`w/JK-XXXXX`), else each ticket its commit subjects start with; the
+branch's record says which tickets were told and which could not be. A branch never leaves the
+queue unsaid: after every batch, each branch the batch saw is still waiting, landed or ejected, or
+it is recorded as `dropped` and the batch log gets a `DROPPED` line.
 
 Where each branch stands is `queue-state/<branch>` in the queue's repository, and every batch is a
-line of `queue-batches.log` beside it: number, base, tip, `LANDED`, `MOVED`, `RED-SPLIT`,
+line of `queue-batches.log` beside it: number, base, tip, the group it gated, `LANDED`, `MOVED`, `RED-SPLIT` and how,
 `RED-EJECTED` or `NOT-GATED`, and its branches. A batch that could not gate at all (a dirty
 checkout, a failed fetch, no verdict) puts its branches back to waiting and stops the loop. On
 bocabox it runs as

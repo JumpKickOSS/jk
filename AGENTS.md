@@ -277,8 +277,9 @@ A branch that touches a framework or language plugin passes `jk test -s slow` be
 submitted. The queue applies everything waiting on top of `origin/main`, runs the Queue tier on
 that commit and fast-forwards `origin/main` to it; it never force-pushes, and when `origin/main`
 moved under a gate it applies the batch again to the new one. A branch that conflicts, or that is
-red alone, is ejected with the reason and the failing classes: fix it, run the Branch tier again and
-resubmit, and note the regression on its ticket. Closing the ticket stays with whoever reviewed it.
+red alone, is ejected with the reason and the failing classes, which the queue also writes on its
+ticket (the one the branch is named for, `w/<ticket>`): fix it, run the Branch tier again and
+resubmit. A flake does not eject: the Queue tier runs failed classes once more and records them. Closing the ticket stays with whoever reviewed it.
 Never `git push` to `main` yourself, not even after a green gate of your own
 ([self-host](docs/contributors/self-host.md#the-merge-queue)).
 

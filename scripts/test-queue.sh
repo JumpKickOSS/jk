@@ -3,9 +3,11 @@
 # and a stand-in gate. Submitting refuses a branch whose tip has not passed the Branch tier; a
 # batch applies every waiting branch onto origin/main once (a branch cut from another one does not
 # carry its commits twice), ejects the branch that conflicts, gates the batch and fast-forwards
-# origin/main to it; a red batch is split and each branch gated alone, so the good one lands and the
-# bad one is ejected with the failing class; when origin/main moves during a gate the queue does
-# not force its push, and lands the batch on the new origin/main next time.
+# origin/main to it; a red batch is split, apart from the branches that changed the module its failed
+# class is in when there is one and in halves when there is not, so the good branches land and the
+# bad one is ejected with the failing class, which its ticket is told along with the failure; a
+# branch that leaves the queue any other way is recorded as dropped; when origin/main moves during a
+# gate the queue does not force its push, and lands the batch on the new origin/main next time.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -18,8 +20,10 @@ fail() {
   exit 1
 }
 
-# The stand-in jk passes every Branch-tier step; the stand-in gate is red for a tip carrying
-# red.txt and, when MOVE_ORIGIN is set, pushes to origin/main itself before it says GREEN.
+# The stand-in jk passes every Branch-tier step. The stand-in gate is red for a tip carrying a
+# red.txt, naming its failed class as in the module red.txt holds, and with the failure beside the
+# log; when MOVE_ORIGIN is set it pushes to origin/main itself before it says GREEN, and when
+# DROP_REF is set it deletes that branch's submission. The stand-in ka logs each comment.
 mkdir -p "$WORK/bin"
 printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$WORK/bin/jk"
 chmod +x "$WORK/bin/jk"
@@ -34,8 +38,12 @@ cat >"$WORK/gate.sh" <<'GATE'
 n="$1" tip="$2"
 L="$GATE_LOG_DIR/integ-gate-$n.log"
 cd "$GATE_CHECKOUT" && git checkout -q --detach "$tip"
-if git ls-tree -r --name-only HEAD | grep -qx red.txt; then
-  { echo "FAIL cc.example.RedTest"; echo "RED"; } >"$L"
+[ -z "${DROP_REF:-}" ] || git --git-dir="$DROP_IN" update-ref -d "refs/queue/$DROP_REF"
+red="$(git ls-tree -r --name-only HEAD | grep -E '(^|/)red\.txt$' | head -1)"
+if [ -n "$red" ]; then
+  { echo "FAIL cc.example.RedTest"; echo "FAILED cc.example:$(cat "$red") cc.example.RedTest"; echo "RED"; } >"$L"
+  printf '%s\n' "cc.example.RedTest#fails() (cc.example:$(cat "$red"))" "    at cc.example.RedTest.fails(RedTest.java:7)" \
+    >"$GATE_LOG_DIR/g$n-failures.txt"
 else
   if [ -n "${MOVE_ORIGIN:-}" ]; then
     git -C "$MOVE_ORIGIN" fetch -q origin && git -C "$MOVE_ORIGIN" reset -q --hard origin/main
@@ -46,12 +54,20 @@ else
 fi
 echo "GATE$n DONE" >>"$L"
 GATE
+cat >"$WORK/bin/ka" <<'KA'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >>"$KA_LOG"
+KA
+chmod +x "$WORK/bin/ka"
+export KA_LOG="$WORK/ka.log"
+: >"$KA_LOG"
 
 export GIT_AUTHOR_NAME=dev GIT_AUTHOR_EMAIL=dev@example.invalid
 export GIT_COMMITTER_NAME=dev GIT_COMMITTER_EMAIL=dev@example.invalid
 when=1700000000
 commit() { # <repo> <file> <content>: one commit, a second later than the one before
   when=$((when + 1))
+  mkdir -p "$(dirname "$1/$2")"
   echo "$3" >"$1/$2"
   git -C "$1" add "$2"
   GIT_COMMITTER_DATE="@$when +0000" GIT_AUTHOR_DATE="@$when +0000" git -C "$1" commit -qm "$2: $3"
@@ -59,6 +75,13 @@ commit() { # <repo> <file> <content>: one commit, a second later than the one be
 
 git init -q --bare -b main "$WORK/origin.git"
 git clone -q "$WORK/origin.git" "$WORK/seed" 2>/dev/null
+# A workspace of two members, jk-a and jk-b, and the script that maps a change onto them.
+mkdir -p "$WORK/seed/mod/a" "$WORK/seed/mod/b" "$WORK/seed/scripts/gate"
+printf '%s\n' '[workspace]' 'modules = ["mod/a", "mod/b"]' >"$WORK/seed/jk.toml"
+echo 'name = "jk-a"' >"$WORK/seed/mod/a/jk.toml"
+echo 'name = "jk-b"' >"$WORK/seed/mod/b/jk.toml"
+cp "$ROOT/scripts/gate/changed-modules.sh" "$WORK/seed/scripts/gate/"
+git -C "$WORK/seed" add -A
 commit "$WORK/seed" base.txt base
 git -C "$WORK/seed" push -q origin HEAD:main
 first_main="$(git -C "$WORK/seed" rev-parse HEAD)"
@@ -77,7 +100,7 @@ submit() { (cd "$dev" && bash "$Q/submit.sh" "$1" >/dev/null 2>"$WORK/submit.err
 status() { (cd "$dev" && bash "$Q/status.sh" "$1"); }
 queue() {
   env QUEUE_REPO="$WORK/queue.git" QUEUE_CHECKOUT="$WORK/co" QUEUE_GATE="$WORK/gate.sh" \
-    QUEUE_LOG_DIR="$WORK/logs" GATE_LOCK="$WORK/gate.lock" "$@" bash "$Q/loop.sh" --once
+    QUEUE_LOG_DIR="$WORK/logs" GATE_LOCK="$WORK/gate.lock" DROP_IN="$WORK/queue.git" "$@" bash "$Q/loop.sh" --once
 }
 origin_main() { git -C "$WORK/origin.git" rev-parse main; }
 holds() { git -C "$WORK/origin.git" cat-file -e "main:$1" 2>/dev/null; }
@@ -107,23 +130,54 @@ git -C "$WORK/origin.git" merge-base --is-ancestor "$first_main" main || fail "o
 [[ "$(status a)" == "a: landed "* && "$(status b)" == "b: landed "* ]] || fail "a and b do not show as landed: $(status a) / $(status b)"
 status c | grep -q '^c: ejected .*conflicts' || fail "c does not show as ejected: $(status c)"
 status c | grep -q 'conflicts: base.txt' || fail "c's ejection does not name the file: $(status c)"
+status c | grep -q 'tickets told: none' || fail "c's ejection does not say no ticket was told: $(status c)"
 
-# --- a red batch is split: the good branch lands, the bad one is ejected with the failing class ---
+# --- a red batch whose failed class names no branch's module is split in halves ---
 git -C "$dev" fetch -q
-branch d origin/main d.txt d
-branch e origin/main red.txt e
+branch d origin/main docs/d.txt d
+branch e origin/main docs/red.txt nomodule
 for x in d e; do submit "$x" || fail "submitting $x failed"; done
 queue || fail "the red batch did not run"
-status d | grep -q '^d: waiting .* alone' || fail "d was not split out of the red batch: $(status d)"
+status d | grep -q '^d: waiting .* group [0-9.]*: .* split in halves' || fail "d was not split out of the red batch: $(status d)"
 for _ in 1 2; do queue || fail "the split batches did not run"; done
-holds d.txt || fail "d did not land after the split"
-if holds red.txt; then fail "the red branch landed"; fi
+holds docs/d.txt || fail "d did not land after the split"
+if holds docs/red.txt; then fail "the red branch landed"; fi
 status e | grep -q 'FAIL cc.example.RedTest' || fail "e's ejection does not name the failing class: $(status e)"
-grep -c RED-SPLIT "$WORK/queue.git/queue-batches.log" >/dev/null || fail "the batch log does not record the split"
+grep -q 'RED-SPLIT in halves' "$WORK/queue.git/queue-batches.log" || fail "the batch log does not record the split"
+
+# --- one bad branch of three: the rest lands, the bad one alone is ejected and its ticket told ---
+git -C "$dev" fetch -q
+branch g origin/main mod/a/A.java g
+branch w/JK-BAD01 origin/main mod/b/red.txt jk-b
+branch i origin/main docs/i.txt i
+for x in g w/JK-BAD01 i; do submit "$x" || fail "submitting $x failed"; done
+batches="$(wc -l <"$WORK/queue.git/queue-batches.log")"
+queue || fail "the red batch of three did not run"
+status w/JK-BAD01 | grep -q 'waiting .* group [0-9.]*: .* split by the modules' ||
+  fail "the branch that changed the failing module was not split out: $(status w/JK-BAD01)"
+# j, submitted after the split, waits for the groups; its submission is lost while it waits, and
+# the queue records that rather than forget it.
+branch j origin/main docs/j.txt j
+submit j || fail "submitting j failed"
+queue DROP_REF=j || fail "the rest of the red batch did not run"
+holds mod/a/A.java || fail "g did not land with the rest: $(status g)"
+holds docs/i.txt || fail "i did not land with the rest: $(status i)"
+if holds docs/j.txt; then fail "a branch submitted after the split was gated with the rest"; fi
+status j | grep -q '^j: dropped ' || fail "a lost branch is not recorded as dropped: $(status j || true)"
+grep -q 'DROPPED j@' "$WORK/queue.git/queue-batches.log" || fail "the batch log does not record the drop"
+queue || fail "the suspect alone did not run"
+if holds mod/b/red.txt; then fail "the bad branch landed"; fi
+[[ "$(grep -c '^batch [0-9]* [0-9T:-]*Z ' <(tail -n +$((batches + 1)) "$WORK/queue.git/queue-batches.log"))" -eq 3 ]] ||
+  fail "one bad branch of three took other than three batches: $(tail -4 "$WORK/queue.git/queue-batches.log")"
+status w/JK-BAD01 | grep -q '^w/JK-BAD01: ejected ' || fail "the bad branch was not ejected: $(status w/JK-BAD01)"
+status w/JK-BAD01 | grep -qx 'tickets told: JK-BAD01' || fail "the ticket was not told: $(status w/JK-BAD01)"
+grep -q '^comment JK-BAD01 -m The merge queue ejected .w/JK-BAD01.' "$KA_LOG" || fail "no comment on the ticket: $(cat "$KA_LOG")"
+grep -qx '    FAILED cc.example:jk-b cc.example.RedTest' "$KA_LOG" || fail "the ticket was not told the failing class: $(cat "$KA_LOG")"
+grep -q 'at cc.example.RedTest.fails(RedTest.java:7)' "$KA_LOG" || fail "the ticket was not told the failure: $(cat "$KA_LOG")"
 
 # --- origin/main moves during the gate: no forced push; the batch lands on the new main ---
 git -C "$dev" fetch -q
-branch f origin/main f.txt f
+branch f origin/main docs/f.txt f
 submit f || fail "submitting f failed"
 queue MOVE_ORIGIN="$WORK/other" 2>/dev/null || fail "the batch with a moving origin did not run"
 moved="$(git -C "$WORK/other" rev-parse HEAD)"
@@ -131,7 +185,7 @@ moved="$(git -C "$WORK/other" rev-parse HEAD)"
 status f | grep -q '^f: waiting .*moved' || fail "f is not waiting again: $(status f)"
 grep -q ' MOVED f@' "$WORK/queue.git/queue-batches.log" || fail "the batch log does not record the move"
 queue || fail "the batch after the move did not run"
-holds f.txt || fail "f did not land after origin/main moved"
+holds docs/f.txt || fail "f did not land after origin/main moved"
 git -C "$WORK/origin.git" merge-base --is-ancestor "$moved" main || fail "the landing dropped the commit that moved origin/main"
 
 # --- nothing waits: no batch ---

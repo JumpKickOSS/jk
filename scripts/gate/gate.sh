@@ -11,7 +11,10 @@
 # that runs every module's fast tier (`jk install -c`), then, under a freshly started engine, the
 # integration suite of each module changed since GATE_BASE (scripts/gate/changed-modules.sh; every
 # module when a root build file changed) and the curated lane's classes (curated-integration.txt)
-# in the other modules. A run red only in quarantined classes (`flaky.sh excused`) passes.
+# in the other modules. A run red only in quarantined classes (`flaky.sh excused`) passes; a run red
+# in other classes runs them once more under the same inputs, and passes when they pass there,
+# recorded as flaky. Each class still red is a `FAILED <module> <class>` line of the log, its
+# failure in g<n>-failures.txt.
 #
 # Its log is $GATE_LOG_DIR/integ-gate-<n>.log: one line per step, the verdict `GREEN <sha>`
 # or a line starting `RED` (or the checkout's refusal), and `GATE<n> DONE` last. Per-step output
@@ -47,6 +50,7 @@
   L="$D/integ-gate-$n.log"
   : >"$L"
   : >"$D/g$n-pre.log"
+  : >"$D/g$n-failures.txt"
 
   noansi() { sed 's/\x1b\[[0-9;]*m//g' "$@"; }
   done_gate() { echo "GATE$n DONE" >>"$L"; exit 0; }
@@ -104,34 +108,63 @@
 
   m=0 s=0 r=0 rn=0
   if [ "$tier" = queue ]; then
+    # tested <label> <excusable> <jk args...>: one jk run that runs tests, its exit in $e. A red run
+    # is excused when <excusable> is set and it failed only in quarantined classes. Otherwise a run
+    # red only in test classes runs once more under the same stamp, which runs only those classes:
+    # the classes that pass now are recorded as flaky and the second run's verdict counts. A run
+    # still red names each failed class in the log as `FAILED <module> <class>`, and the failures'
+    # messages and stacks go to g<n>-failures.txt, for the merge queue to tell the branch's ticket.
+    tested() {
+      local label="$1" excusable="$2" out="$D/g$n-$1"
+      shift 2
+      jk "$@" >"$out.log" 2>&1 </dev/null
+      e=$?
+      [ "$e" -eq 0 ] && return
+      jk results -O jsonl >"$out.jsonl" 2>/dev/null </dev/null
+      if [ -n "$excusable" ] && excused "$label" "$out.jsonl"; then
+        e=0
+        return
+      fi
+      if bash scripts/gate/flaky.sh failed "$out.jsonl" >/dev/null 2>&1; then
+        out="$D/g$n-$label-rerun"
+        jk "$@" >"$out.log" 2>&1 </dev/null
+        e=$?
+        echo "RERUN $label: its failed classes once more under the same inputs, EXIT=$e $(date +%H:%M:%S)" >>"$L"
+        jk results -O jsonl >"$out.jsonl" 2>/dev/null </dev/null
+        GATE_LOG_DIR="$D" bash scripts/gate/flaky.sh record "$out.jsonl" "$(git rev-parse HEAD)" >>"$L" 2>&1
+        [ "$e" -eq 0 ] && return
+        if [ -n "$excusable" ] && excused "$label" "$out.jsonl"; then
+          e=0
+          return
+        fi
+      fi
+      noansi "$out.log" | grep -aE "^(FAIL|T |E )|FAILED " | tail -20 >>"$L"
+      bash scripts/gate/flaky.sh failed "$out.jsonl" 2>/dev/null | sed 's/^/FAILED /' >>"$L"
+      jq -rR 'fromjson? // empty | select(.type == "error" and .code == "test-failure")
+        | "\(.testClass)#\(.method // "?") (\(.module))", ((.stack // .message // "") | split("\n")[:12][] | "    " + .)' \
+        "$out.jsonl" >>"$D/g$n-failures.txt" 2>/dev/null
+    }
+    # excused <label> <details.jsonl>: the run failed only in quarantined classes.
+    excused() {
+      GATE_LOG_DIR="$D" bash scripts/gate/flaky.sh excused "$2" >>"$L" 2>&1 || return 1
+      echo "EXCUSED $1: red only in quarantined classes" >>"$L"
+    }
+
     # The one install: every module's fast tier, then the reinstall. Nothing after it runs the fast
     # tier again, so the reinstall's new engine stamp re-runs nothing.
-    jk install -c >"$D/g$n-install.log" 2>&1
-    m=$?
+    tested install "" install -c
+    m=$e
     echo "INSTALL_EXIT=$m $(date +%H:%M:%S)" >>"$L"
-    if [ "$m" -ne 0 ]; then
-      noansi "$D/g$n-install.log" | grep -aE "^(FAIL|T |E )|FAILED " | tail -20 >>"$L"
-      red "RED (install)"
-    fi
+    [ "$m" -eq 0 ] || red "RED (install)"
     # The integration runs below start a fresh engine from the jar just installed.
     jk engine stop >/dev/null 2>&1
 
     # integ <label> <jk test args...>: one integration run, red unless each failure is in a
-    # quarantined class.
+    # quarantined class or passes when run once more.
     integ() {
       local label="$1" e
       shift
-      jk test "$@" >"$D/g$n-$label.log" 2>&1 </dev/null
-      e=$?
-      if [ "$e" -ne 0 ]; then
-        jk results -O jsonl >"$D/g$n-$label.jsonl" 2>/dev/null </dev/null
-        if GATE_LOG_DIR="$D" bash scripts/gate/flaky.sh excused "$D/g$n-$label.jsonl" >>"$L" 2>&1; then
-          echo "EXCUSED $label: red only in quarantined classes" >>"$L"
-          e=0
-        else
-          noansi "$D/g$n-$label.log" | grep -aE "^(FAIL|T |E )|FAILED " | tail -8 >>"$L"
-        fi
-      fi
+      tested "$label" excusable test "$@"
       echo "INTEG $label EXIT=$e $(date +%H:%M:%S)" >>"$L"
       [ "$e" -eq 0 ] || s=1
     }

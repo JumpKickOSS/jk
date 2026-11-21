@@ -9,6 +9,8 @@
 #   scripts/gate/flaky.sh review                         quarantine past the threshold; release closed
 #   scripts/gate/flaky.sh list                           the quarantine: `<module> <class> <ticket>`
 #   scripts/gate/flaky.sh excused <details.jsonl>        exit 0 when the run failed only in quarantine
+#   scripts/gate/flaky.sh failed <details.jsonl>         `<module> <class>` of each failed class; exit
+#                                                        0 when the run failed only in test classes
 #
 #   FLAKY_HISTORY     the history (default ${GATE_LOG_DIR:-/var/tmp/jk-gate}/flaky-history.tsv), one
 #                     row per event: `<UTC time> <event> <module> <class> <tip or ticket>`, tab-separated;
@@ -138,10 +140,25 @@ excused() {
   return "$bad"
 }
 
+# The classes the run failed in, `<module> <class>` (a nested class as its outermost one). Exit 0
+# when there is one and every error of the run is a failure in a class: only then can running the
+# failed classes again turn the run green.
+failed() {
+  local details="${1:?usage: flaky.sh failed <details.jsonl>}" all
+  [[ -f "$details" ]] || die "no run transcript at $details"
+  all="$(rows "$details" | jq -r '
+    select(.type == "error")
+    | if .code == "test-failure" and .testClass then "\(.module // "-") \(.testClass | sub("\\$.*"; ""))" else "-" end' \
+    | sort -u)"
+  [[ -z "$all" ]] || grep -v '^-$' <<<"$all" || true
+  [[ -n "$all" ]] && ! grep -qx -- - <<<"$all"
+}
+
 case "${1:-}" in
   record) record "${@:2}" ;;
+  failed) failed "${@:2}" ;;
   review) review ;;
   list) quarantine ;;
   excused) excused "${@:2}" ;;
-  *) die "usage: flaky.sh record <details.jsonl> <tip> | review | list | excused <details.jsonl>" ;;
+  *) die "usage: flaky.sh record <details.jsonl> <tip> | review | list | excused <details.jsonl> | failed <details.jsonl>" ;;
 esac

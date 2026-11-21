@@ -17,7 +17,7 @@ set -euo pipefail
 # log directory, its checkout), and gate.sh and flaky.sh would read them in place of the defaults
 # each case here is written against. Neither the settings nor the stand-ins' switches carry in.
 unset "${!GATE_@}" "${!FLAKY_@}" "${!PRE_@}" POST_SCRIPTS FAIL_PUSHGATE FAIL_REINSTALL FAIL_INTEG \
-  RERUN_JSONL JK_CALLS KA_STATE
+  FAIL_INTEG_ONCE FAIL_INSTALL_ONCE RESULTS_FIRST RERUN_JSONL JK_CALLS KA_STATE
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/jk-gate.XXXXXX")"
@@ -45,6 +45,14 @@ EOF
 cat >"$WORK/red-other.jsonl" <<'EOF'
 {"schema":1,"type":"error","task":"run-tests","code":"test-failure","module":"cc.jumpkick:jk-engine","testClass":"a.FlakyTest"}
 {"schema":1,"type":"error","task":"compile-java","code":"compile","module":"cc.jumpkick:jk-engine","message":"cannot find symbol"}
+EOF
+# A class red, with its failure, and then passing on the re-run of it.
+cat >"$WORK/red-new.jsonl" <<'EOF'
+{"schema":1,"type":"error","task":"run-tests","code":"test-failure","message":"expected: 1","module":"cc.jumpkick:jk-engine","testClass":"b.NewTest","method":"adds()","stack":"org.opentest4j.AssertionFailedError: expected: 1\n\tat b.NewTest.adds(NewTest.java:9)\n"}
+{"schema":1,"type":"workspace-finish","success":false}
+EOF
+cat >"$WORK/rerun-new.jsonl" <<'EOF'
+{"schema":1,"type":"warn","task":"run-tests","code":"test-passed-on-rerun","message":"passed on a re-run with no input changed, so flaky or dependent on what ran before: b.NewTest","module":"cc.jumpkick:jk-engine"}
 EOF
 # A stand-in ka: `new` opens fake-<n> and logs its arguments, `show` answers the status written
 # in $KA_STATE/<id>. Each reads its stdin to the end, as a ka that prompts would.
@@ -126,9 +134,10 @@ flaky $((t0 + 43 * day)) review >/dev/null
 
 # --- the gate, against a stand-in jk ---
 # The stand-in logs each call, fails the push gate's first run when FAIL_PUSHGATE is set, the
-# reinstall without tests when FAIL_REINSTALL is set and an exclusive test run when FAIL_INTEG is
-# set, prints $RERUN_JSONL as the latest run's transcript, and reports the checkout's HEAD as the
-# engine's commit.
+# reinstall without tests when FAIL_REINSTALL is set, an exclusive test run when FAIL_INTEG is set
+# (the first one only under FAIL_INTEG_ONCE) and the first `install -c` under FAIL_INSTALL_ONCE,
+# prints $RESULTS_FIRST as the first run's transcript and $RERUN_JSONL as any later one's, and
+# reports the checkout's HEAD as the engine's commit.
 export HOME="$WORK/home"
 mkdir -p "$HOME/.jk/bin"
 cat >"$HOME/.jk/bin/jk" <<'EOF'
@@ -137,9 +146,24 @@ echo "$*" >>"$JK_CALLS"
 case "$1" in
   --version) echo "jk 0.0.0" ;;
   engine) [[ "${2:-}" == status ]] && echo "Version  0.0.0 (commit $(git rev-parse --short=12 HEAD))" ;;
-  results) cat "$RERUN_JSONL" ;;
-  test) [[ -n "${FAIL_INTEG:-}" && " $* " == *" -X "* ]] && { echo "FAIL a.FlakyTest"; exit 4; } ;;
+  results)
+    if [[ -n "${RESULTS_FIRST:-}" && "$(grep -c '^results' "$JK_CALLS")" -eq 1 ]]; then
+      cat "$RESULTS_FIRST"
+    else
+      cat "$RERUN_JSONL"
+    fi
+    ;;
+  test)
+    if [[ " $* " == *" -X "* ]]; then
+      [[ -n "${FAIL_INTEG:-}" ]] && { echo "FAIL a.FlakyTest"; exit 4; }
+      [[ -n "${FAIL_INTEG_ONCE:-}" && "$(grep -c -- ' -X ' "$JK_CALLS")" -eq 1 ]] && { echo "FAIL b.NewTest"; exit 4; }
+    fi
+    ;;
   install)
+    if [[ -n "${FAIL_INSTALL_ONCE:-}" && "$*" == "install -c" && "$(grep -cx 'install -c' "$JK_CALLS")" -eq 1 ]]; then
+      echo "FAIL b.NewTest"
+      exit 4
+    fi
     [[ -n "${FAIL_REINSTALL:-}" && " $* " == *" -S "* ]] && { echo "error: compile failed"; exit 1; }
     if [[ -n "${FAIL_PUSHGATE:-}" && " $* " == *" -g "* && "$(grep -c '^install -g' "$JK_CALLS")" -eq 1 ]]; then
       echo "FAIL a.FlakyTest"
@@ -272,6 +296,28 @@ grep -q '^EXCUSED changed' "$WORK/logs/integ-gate-6.log" || fail "the log does n
 gate 7 GATE_TIER=queue GATE_BASE="$qbase" FAIL_INTEG=1 RERUN_JSONL="$WORK/red-other.jsonl"
 [[ "$(verdict 7)" == "RED" ]] || fail "a run red outside the quarantine was not red: $(cat "$WORK/logs/integ-gate-7.log")"
 grep -q '^INTEG changed EXIT=4' "$WORK/logs/integ-gate-7.log" || fail "the log does not name the red run"
+[[ "$(grep -c -- ' -X ' "$WORK/calls-7")" -eq 1 ]] || fail "a run red with a compile error ran again: $(cat "$WORK/calls-7")"
+
+# Red in a class that passes when run once more: green, and the class is recorded as flaky.
+gate 10 GATE_TIER=queue GATE_BASE="$qbase" FAIL_INTEG_ONCE=1 RESULTS_FIRST="$WORK/red-new.jsonl" \
+  RERUN_JSONL="$WORK/rerun-new.jsonl"
+[[ "$(verdict 10)" == "GREEN $tip" ]] || fail "a run green on its re-run was not green: $(cat "$WORK/logs/integ-gate-10.log")"
+[[ "$(grep -c -- ' -X ' "$WORK/calls-10")" -eq 2 ]] || fail "the red run did not run once more: $(cat "$WORK/calls-10")"
+grep -q '^RERUN changed: .*EXIT=0' "$WORK/logs/integ-gate-10.log" || fail "the log does not say the run ran again"
+grep -q "rerun-pass.*b.NewTest.*$tip" "$WORK/logs/flaky-history.tsv" || fail "the flake was not recorded: $(cat "$WORK/logs/integ-gate-10.log")"
+
+# Red on the re-run too: red, naming the class and keeping its failure.
+gate 11 GATE_TIER=queue GATE_BASE="$qbase" FAIL_INTEG=1 RERUN_JSONL="$WORK/red-new.jsonl"
+[[ "$(verdict 11)" == "RED" ]] || fail "a run red on its re-run was not red: $(cat "$WORK/logs/integ-gate-11.log")"
+[[ "$(grep -c -- ' -X ' "$WORK/calls-11")" -eq 2 ]] || fail "the red run did not run exactly once more: $(cat "$WORK/calls-11")"
+grep -qx 'FAILED cc.jumpkick:jk-engine b.NewTest' "$WORK/logs/integ-gate-11.log" || fail "the log does not name the failed class: $(cat "$WORK/logs/integ-gate-11.log")"
+grep -q 'at b.NewTest.adds(NewTest.java:9)' "$WORK/logs/g11-failures.txt" || fail "the failure's stack was not kept: $(cat "$WORK/logs/g11-failures.txt")"
+
+# The install's fast tier red in a class that passes when run once more: the install goes on.
+gate 12 GATE_TIER=queue GATE_BASE="$qbase" FAIL_INSTALL_ONCE=1 RESULTS_FIRST="$WORK/red-new.jsonl" \
+  RERUN_JSONL="$WORK/rerun-new.jsonl"
+[[ "$(verdict 12)" == "GREEN $tip" ]] || fail "an install green on its re-run was not green: $(cat "$WORK/logs/integ-gate-12.log")"
+[[ "$(grep -cx 'install -c' "$WORK/calls-12")" -eq 2 ]] || fail "the red install did not run once more: $(cat "$WORK/calls-12")"
 
 # A root build file changed: the whole integration suite, and no curated lane beside it.
 tip="$qroot"
@@ -292,4 +338,4 @@ if [[ -z "${TEST_GATE_NESTED:-}" ]]; then
     fail "under a Queue-tier gate's environment: $(cat "$WORK/nested.log")"
 fi
 
-echo "test-gate: ok (flaky record and quarantine; 9 gate runs; again under a gate's environment)"
+echo "test-gate: ok (flaky record and quarantine; 12 gate runs; again under a gate's environment)"

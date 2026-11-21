@@ -105,8 +105,10 @@ selects them all, and the Queue tier runs the whole `integration` suite. The cha
 suites run with `--exclusive`: a module's dependents are not run, which is what the curated lane is
 for. In the other modules a curated class runs alone, so no class runs twice.
 
-**Quarantine.** A run of the Queue tier that is red only in classes `scripts/gate/flaky.sh`
-holds in quarantine passes; the Full tier judges every class
+**Quarantine and re-run.** A run of the Queue tier that is red only in classes
+`scripts/gate/flaky.sh` holds in quarantine passes. A run red in other classes, and in nothing but
+classes, runs once more under the same inputs, which runs only those classes: it passes when they
+pass there, and they are recorded as flaky. The Full tier judges every class
 ([flaky tests](self-host.md#flaky-tests)).
 
 ## The shared-cache proof
