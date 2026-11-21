@@ -3,6 +3,7 @@ package cc.jumpkick.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.jsonl.Jsonl;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -151,6 +152,20 @@ class SecretRedactorTest {
                         .isEqualTo("x " + SecretRedactor.MASK);
             }
         }
+    }
+
+    /**
+     * The engine log can carry wire JSON, where a secret with a quote, backslash or control
+     * character appears escaped; the known redactor masks that rendering without any caller having
+     * asked for an escaped view.
+     */
+    @Test
+    void the_known_redactor_masks_a_learned_secret_in_its_json_escaped_form() {
+        String secret = "known-esc\"pa\\ss\u0001wd";
+        SecretRedactor.of(List.of(secret));
+        assertThat(SecretRedactor.redactKnown("raw " + secret)).isEqualTo("raw " + SecretRedactor.MASK);
+        assertThat(SecretRedactor.redactKnown("{\"v\":" + Jsonl.quote(secret) + "}"))
+                .isEqualTo("{\"v\":\"" + SecretRedactor.MASK + "\"}");
     }
 
     /** Past the cap the engine log still learns every new secret, giving up the least recently used. */

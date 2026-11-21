@@ -129,13 +129,17 @@ public final class SecretRedactor {
     }
 
     /**
-     * Learn {@code values}, or mark them used when already known. Synchronized: two learners
-     * rebuilding at once would each assign a set missing the other's value.
+     * Learn {@code values} with their JSON-escaped renderings, or mark them used when already
+     * known: the engine log carries wire JSON, where a secret with a quote, backslash or control
+     * character appears escaped. Synchronized: two learners rebuilding at once would each assign a
+     * set missing the other's value.
      */
     private static synchronized void learn(List<String> values) {
         boolean changed = false;
         for (String v : values) {
             changed |= KNOWN.put(v, Boolean.TRUE) == null;
+            String esc = jsonEscape(v);
+            if (!esc.equals(v)) changed |= KNOWN.put(esc, Boolean.TRUE) == null;
         }
         if (changed) known = new SecretRedactor(sorted(KNOWN.keySet()));
     }
@@ -280,7 +284,8 @@ public final class SecretRedactor {
                 String esc = jsonEscape(s);
                 if (!esc.equals(s)) all.add(esc);
             }
-            v = all.size() == secrets.size() ? this : of(all);
+            // Every secret here was learned with its escaped rendering, so the view learns nothing.
+            v = all.size() == secrets.size() ? this : new SecretRedactor(sorted(all));
             escapedJsonView = v;
         }
         return v;
