@@ -8,10 +8,10 @@ import cc.jumpkick.host.Os;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.util.AppInstallConfig;
+import cc.jumpkick.util.FileLocks;
 import cc.jumpkick.version.Versions;
 import java.io.IOException;
 import java.nio.channels.FileChannel;
-import java.nio.channels.FileLock;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -277,13 +277,11 @@ public final class EngineInstall {
     public List<Path> gc(@Nullable Path binDir) {
         List<Path> removed = new ArrayList<>();
         Path home = engineHome();
-        if (Files.isDirectory(home)) {
-            try (FileChannel lockCh = FileChannel.open(
-                            home.resolve(LOCK_NAME), StandardOpenOption.CREATE, StandardOpenOption.WRITE);
-                    FileLock lock = lockCh.tryLock()) {
-                if (lock != null) sweepRetiredJars(removed);
-            } catch (IOException | RuntimeException busy) {
-                // an install in progress sweeps when it is done
+        if (Files.isDirectory(home) && FileLocks.tryHold(home.resolve(LOCK_NAME)) instanceof FileLocks.Hold hold) {
+            try (hold) {
+                sweepRetiredJars(removed);
+            } catch (IOException | RuntimeException failed) {
+                // best effort: what this sweep left, the next one takes
             }
         }
         sweepParkedClients(binDir, removed);
@@ -327,10 +325,7 @@ public final class EngineInstall {
             return existing.get();
         }
 
-        Files.createDirectories(engineHome());
-        Path lockPath = engineHome().resolve(LOCK_NAME);
-        try (FileChannel lockCh = FileChannel.open(lockPath, StandardOpenOption.CREATE, StandardOpenOption.WRITE);
-                FileLock lock = lockCh.lock()) {
+        return locked(() -> {
             Optional<Materialized> raced = currentInstall();
             if (sameLive(raced, version, engineJarSha) && intact(raced.get(), cas, engineJarSha)) {
                 Materialized live = confirmLive(raced.get(), version, engineJarSha);
@@ -339,7 +334,22 @@ public final class EngineInstall {
             }
             refuseOlder(raced, version, downgrade);
             return materializeLocked(version, cas, engineJarSha, client);
-        }
+        });
+    }
+
+    /**
+     * Run {@code body} holding the install dir's lock, which every change to the pointer, the engine
+     * jars and the shelf manifests beside them is made under. Re-entrant within this process.
+     */
+    private <T> T locked(FileLocks.Body<T> body) throws IOException {
+        Files.createDirectories(engineHome());
+        return FileLocks.withLock(engineHome().resolve(LOCK_NAME), body);
+    }
+
+    /** As {@link #locked(FileLocks.Body)}, with nothing to return. */
+    private void locked(FileLocks.Action action) throws IOException {
+        Files.createDirectories(engineHome());
+        FileLocks.withLock(engineHome().resolve(LOCK_NAME), action);
     }
 
     /**
@@ -359,22 +369,24 @@ public final class EngineInstall {
             @Nullable InstalledClient client,
             ClientPlacer placer)
             throws IOException {
-        requireAccepts(version, downgrade);
-        if (client == null || !Files.isRegularFile(cas.pathFor(client.sha256()))) {
-            return new Installed(materialize(version, cas, engineJarSha, downgrade, null), null);
-        }
-        Path blob = cas.pathFor(client.sha256());
-        boolean older = currentInstall()
-                .map(live -> Versions.compare(live.version(), version) > 0)
-                .orElse(false);
-        if (older) {
-            Materialized engine = materialize(version, cas, engineJarSha, downgrade, null);
+        return locked(() -> {
+            requireAccepts(version, downgrade);
+            if (client == null || !Files.isRegularFile(cas.pathFor(client.sha256()))) {
+                return new Installed(materialize(version, cas, engineJarSha, downgrade, null), null);
+            }
+            Path blob = cas.pathFor(client.sha256());
+            boolean older = currentInstall()
+                    .map(live -> Versions.compare(live.version(), version) > 0)
+                    .orElse(false);
+            if (older) {
+                Materialized engine = materialize(version, cas, engineJarSha, downgrade, null);
+                Path placed = placer.place(client, blob, version);
+                recordClient(client);
+                return new Installed(engine, placed);
+            }
             Path placed = placer.place(client, blob, version);
-            recordClient(client);
-            return new Installed(engine, placed);
-        }
-        Path placed = placer.place(client, blob, version);
-        return new Installed(materialize(version, cas, engineJarSha, downgrade, client), placed);
+            return new Installed(materialize(version, cas, engineJarSha, downgrade, client), placed);
+        });
     }
 
     /** What {@link #install} put in place: the engine, and the client's path when it placed one. */
@@ -599,10 +611,11 @@ public final class EngineInstall {
         String jkxName = windows ? "jkx.exe" : "jkx";
         Path jk = binDir.resolve(jkName);
         Path jkx = binDir.resolve(jkxName);
-        Path stagedJk = jk.resolveSibling("." + jkName + "-new");
-        Path stagedJkx = jkx.resolveSibling("." + jkxName + "-new");
-        Files.deleteIfExists(stagedJk);
-        Files.deleteIfExists(stagedJkx);
+        // Names of this install's own: two installs into one bin never write or delete each other's.
+        String prefix = "." + jkName + "-new-";
+        Path stagedJk = Files.createTempFile(binDir, prefix, "");
+        String nonce = stagedJk.getFileName().toString().substring(prefix.length());
+        Path stagedJkx = binDir.resolve("." + jkxName + "-new-" + nonce);
         try {
             // A copy, never a link: the source is a CAS blob whose bytes its digest vouches for, and a
             // linked bin/jk would share its inode — the chmod below, or any later rewrite of the PATH
@@ -796,16 +809,19 @@ public final class EngineInstall {
      * missing (nothing to pair the client with).
      */
     public void recordClient(InstalledClient client) throws IOException {
-        Map<String, String> keys = new LinkedHashMap<>(pointerKeys());
-        if (keys.isEmpty()) return;
-        Map<String, String> before = Map.copyOf(keys);
-        InstalledClient next = withKnownCommit(client, liveClient(keys));
-        keys.remove(CLIENT_SHA);
-        keys.remove(CLIENT_KIND);
-        keys.remove(CLIENT_COMMIT);
-        next.write(keys, CLIENT_SHA, CLIENT_KIND, CLIENT_COMMIT);
-        if (keys.equals(before)) return;
-        AtomicWrites.replaceDurably(configFile(), AppInstallConfig.render(keys));
+        if (!Files.isRegularFile(configFile())) return;
+        locked(() -> {
+            Map<String, String> keys = new LinkedHashMap<>(pointerKeys());
+            if (keys.isEmpty()) return;
+            Map<String, String> before = Map.copyOf(keys);
+            InstalledClient next = withKnownCommit(client, liveClient(keys));
+            keys.remove(CLIENT_SHA);
+            keys.remove(CLIENT_KIND);
+            keys.remove(CLIENT_COMMIT);
+            next.write(keys, CLIENT_SHA, CLIENT_KIND, CLIENT_COMMIT);
+            if (keys.equals(before)) return;
+            AtomicWrites.replaceDurably(configFile(), AppInstallConfig.render(keys));
+        });
     }
 
     /**
@@ -815,12 +831,15 @@ public final class EngineInstall {
      * records it. Returns whether the pointer changed.
      */
     public boolean recordPathClient(String version, Path client, ClientKind kind, Cas cas) throws IOException {
-        Optional<Materialized> live = currentInstall();
-        if (live.isEmpty() || !live.get().version().equals(version)) return false;
-        String sha = Hashing.sha256Hex(client);
-        if (liveClient().filter(c -> c.sha256().equalsIgnoreCase(sha)).isPresent()) return false;
-        recordClient(new InstalledClient(cas.putFile(client).sha256(), kind, null));
-        return true;
+        if (!Files.isRegularFile(configFile())) return false;
+        return locked(() -> {
+            Optional<Materialized> live = currentInstall();
+            if (live.isEmpty() || !live.get().version().equals(version)) return false;
+            String sha = Hashing.sha256Hex(client);
+            if (liveClient().filter(c -> c.sha256().equalsIgnoreCase(sha)).isPresent()) return false;
+            recordClient(new InstalledClient(cas.putFile(client).sha256(), kind, null));
+            return true;
+        });
     }
 
     /** The PATH client the pointer pairs with the live engine, when it names one. */
@@ -850,18 +869,21 @@ public final class EngineInstall {
      * gone. The live install is untouched.
      */
     public void forgetPrevious() throws IOException {
-        Files.deleteIfExists(previousShelfFile());
-        Map<String, String> keys = new LinkedHashMap<>(pointerKeys());
-        boolean changed = false;
-        for (String key : List.of(
-                PREVIOUS_ENGINE_SHA,
-                PREVIOUS_VERSION,
-                PREVIOUS_CLIENT_SHA,
-                PREVIOUS_CLIENT_KIND,
-                PREVIOUS_CLIENT_COMMIT)) {
-            changed |= keys.remove(key) != null;
-        }
-        if (changed) AtomicWrites.replaceDurably(configFile(), AppInstallConfig.render(keys));
+        if (!Files.isDirectory(engineHome())) return;
+        locked(() -> {
+            Files.deleteIfExists(previousShelfFile());
+            Map<String, String> keys = new LinkedHashMap<>(pointerKeys());
+            boolean changed = false;
+            for (String key : List.of(
+                    PREVIOUS_ENGINE_SHA,
+                    PREVIOUS_VERSION,
+                    PREVIOUS_CLIENT_SHA,
+                    PREVIOUS_CLIENT_KIND,
+                    PREVIOUS_CLIENT_COMMIT)) {
+                changed |= keys.remove(key) != null;
+            }
+            if (changed) AtomicWrites.replaceDurably(configFile(), AppInstallConfig.render(keys));
+        });
     }
 
     /**
@@ -888,16 +910,20 @@ public final class EngineInstall {
      * holds it.
      */
     public RolledBack rollback(Cas cas, ClientPlacer placer) throws IOException {
-        Install previous = previousInstall()
-                .orElseThrow(
-                        () -> new IOException("no previous engine to roll back to: " + configFile() + " names none"));
-        if (!Files.isRegularFile(cas.pathFor(previous.engineSha()))) {
-            throw new IOException("the previous engine " + previous.engineSha() + " is no longer in the store");
-        }
-        Installed back = install(previous.version(), cas, previous.engineSha(), true, previous.client(), placer);
-        // The engine put back launches its workers by the shelf it was installed with.
-        ShelfManifest.restorePrevious(shelfFile(), previous.engineSha());
-        return new RolledBack(back.engine().version(), back.engine().engineJar(), back.client());
+        // One hold from reading the record to restoring the shelf: an install in between would
+        // move the record this rollback is putting back.
+        return locked(() -> {
+            Install previous = previousInstall()
+                    .orElseThrow(() ->
+                            new IOException("no previous engine to roll back to: " + configFile() + " names none"));
+            if (!Files.isRegularFile(cas.pathFor(previous.engineSha()))) {
+                throw new IOException("the previous engine " + previous.engineSha() + " is no longer in the store");
+            }
+            Installed back = install(previous.version(), cas, previous.engineSha(), true, previous.client(), placer);
+            // The engine put back launches its workers by the shelf it was installed with.
+            ShelfManifest.restorePrevious(shelfFile(), previous.engineSha());
+            return new RolledBack(back.engine().version(), back.engine().engineJar(), back.client());
+        });
     }
 
     private Optional<Materialized> readLive() {

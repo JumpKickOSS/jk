@@ -9,6 +9,7 @@ import cc.jumpkick.host.Hashing;
 import cc.jumpkick.testing.FakeClock;
 import cc.jumpkick.testing.RepoRoot;
 import cc.jumpkick.util.AppInstallConfig;
+import cc.jumpkick.util.FileLocks;
 import cc.jumpkick.version.Versions;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -18,6 +19,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
@@ -292,6 +295,60 @@ class EngineInstallTest {
         assertThat(ShelfManifest.read(store.shelfFile())).isPresent();
         assertThatThrownBy(() -> store.rollback(cas, EngineInstall.nativeClients(home.resolve("bin"))))
                 .hasMessageContaining("no previous engine");
+    }
+
+    /**
+     * Recording a client and forgetting the previous install rewrite the pointer, so each waits
+     * for whoever holds the install dir's lock, as an install does.
+     */
+    @Test
+    void pointer_edits_wait_for_the_install_lock(@TempDir Path tmp) throws Exception {
+        Path home = Files.createDirectories(tmp.resolve("home"));
+        Cas cas = new Cas(Files.createDirectories(home.resolve("cache")));
+        EngineInstall store = install(home);
+        Path a = Files.writeString(Files.createDirectories(tmp.resolve("a")).resolve("e.jar"), "engine-a");
+        Path b = Files.writeString(Files.createDirectories(tmp.resolve("b")).resolve("e.jar"), "engine-b");
+        store.materializeFromFiles("1.0.0", cas, a);
+        store.materializeFromFiles("1.1.0", cas, b);
+        CountDownLatch held = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        Thread holder = Thread.ofPlatform().start(() -> {
+            try {
+                FileLocks.withLock(store.engineHome().resolve(EngineInstall.LOCK_NAME), () -> {
+                    held.countDown();
+                    try {
+                        release.await();
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    }
+                });
+            } catch (IOException e) {
+                throw new IllegalStateException(e);
+            }
+        });
+        held.await();
+        CountDownLatch recorded = new CountDownLatch(1);
+        CountDownLatch forgot = new CountDownLatch(1);
+        Thread recorder = Thread.ofPlatform().start(() -> {
+            try {
+                store.recordClient(nativeClient("c1", "aaaa"));
+                recorded.countDown();
+                store.forgetPrevious();
+                forgot.countDown();
+            } catch (IOException e) {
+                throw new IllegalStateException(e);
+            }
+        });
+
+        assertThat(recorded.await(300, TimeUnit.MILLISECONDS))
+                .as("the client is not recorded while another holds the lock")
+                .isFalse();
+        release.countDown();
+        assertThat(forgot.await(10, TimeUnit.SECONDS)).isTrue();
+        holder.join();
+        recorder.join();
+        assertThat(store.liveClient().orElseThrow().sha256()).isEqualTo("c1");
+        assertThat(store.previousInstall()).isEmpty();
     }
 
     @Test
@@ -750,6 +807,22 @@ class EngineInstallTest {
             assertThat(entries.map(p -> p.getFileName().toString()))
                     .as("nothing parked, nothing staged")
                     .containsExactlyInAnyOrder("jk", "jkx");
+        }
+    }
+
+    /** An install stages under names of its own, so it never deletes the client another install is staging. */
+    @Test
+    void install_binaries_leaves_another_installs_staged_client_alone(@TempDir Path tmp) throws Exception {
+        Path bin = Files.createDirectories(tmp.resolve("bin"));
+        Path theirs = Files.writeString(bin.resolve(".jk-new"), "their-jk");
+        Path src = Files.writeString(tmp.resolve("new-jk"), "new-jk");
+
+        EngineInstall.installBinaries(src, bin, false);
+
+        assertThat(theirs).hasContent("their-jk");
+        assertThat(bin.resolve("jk")).hasContent("new-jk");
+        try (var entries = Files.list(bin)) {
+            assertThat(entries.map(p -> p.getFileName().toString())).containsExactlyInAnyOrder("jk", "jkx", ".jk-new");
         }
     }
 
