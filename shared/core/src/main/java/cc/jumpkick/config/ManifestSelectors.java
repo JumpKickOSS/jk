@@ -5,8 +5,8 @@ import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.version.VersionRanges;
 import org.tomlj.TomlTable;
 
-/** A version selector as {@code jk.toml} writes it, checked where it is written. */
-final class ManifestSelectors {
+/** A version selector as {@code jk.toml} or a plugin table writes it, checked where it is written. */
+public final class ManifestSelectors {
 
     private ManifestSelectors() {}
 
@@ -15,7 +15,7 @@ final class ManifestSelectors {
      * read, such as {@code (1.0)} or {@code [2.0,1.0]}, is refused here, located at the key, rather
      * than at the next resolve with no line to point at.
      */
-    static VersionSelector checked(VersionSelector selector, TomlTable table, String key, String where) {
+    public static VersionSelector checked(VersionSelector selector, TomlTable table, String key, String where) {
         if (!(selector instanceof VersionSelector.Range range)) return selector;
         try {
             VersionRanges.check(range.raw());

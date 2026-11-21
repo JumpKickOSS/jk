@@ -2,6 +2,7 @@
 package cc.jumpkick.plugin.manifest;
 
 import cc.jumpkick.config.JkBuildParseException;
+import cc.jumpkick.config.ManifestSelectors;
 import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.lock.ManifestPaths;
@@ -507,6 +508,7 @@ public final class PluginTableRegistry {
                 String v = getOr(() -> table.getString(key.name()), where + " must be a string");
                 if (v == null || v.isBlank()) yield null;
                 checkOneOf(where, key, v);
+                if (key.selector()) ManifestSelectors.checked(VersionSelector.parse(v), table, key.name(), where);
                 checkMinVersion(tableName, key, v);
                 yield v;
             }

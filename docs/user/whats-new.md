@@ -60,7 +60,9 @@ JumpKick shows you this page's new entries after it updates itself.
   dropped clients, jobs that waited for memory and waits on the shared worker leases.
 - **A malformed version range in `jk.toml` fails when the file is read.** A range that names no
   version, such as `(1.0)`, `[]` or `[2.0,1.0]`, is refused naming the file, line and key, instead of
-  failing the next `jk lock` with no place to look.
+  failing the next `jk lock` with no place to look. So is a comparator with no version (`>=`) or a
+  space where the comma goes (`>=1.0 <2.0`), which used to pass and then match the wrong versions,
+  and a malformed range in a plugin table's version key, such as `[spring-boot] version = "(4)"`.
 
 
 - **`jk explain` names the classpath entry that moved.** A suite, native image or plugin step

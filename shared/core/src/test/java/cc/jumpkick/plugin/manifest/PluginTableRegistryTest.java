@@ -188,6 +188,74 @@ class PluginTableRegistryTest {
         assertThat(ok.entries().get("js")).containsEntry("plugin", "com.acme:protoc-gen-js:^2.1:linux-x86_64!exe");
     }
 
+    /**
+     * A key whose value a coordinate's version carries is a version selector: a malformed range
+     * there is refused at parse, located at the key, rather than at the next resolve with no line.
+     */
+    @Test
+    void a_malformed_range_in_a_version_key_is_refused_at_the_key() {
+        var manifest = PluginTableRegistry.byTable("spring-boot").orElseThrow();
+        assertThat(Objects.requireNonNull(manifest.schema().get("version")).selector())
+                .isTrue();
+
+        for (String bad : List.of("(4)", ">=4.0 <5", "[5,4]", ">=")) {
+            assertThatThrownBy(() -> PluginTableRegistry.validate(
+                            manifest, Toml.parse("platform = true\nversion = \"" + bad + "\"\n")))
+                    .isInstanceOf(JkBuildParseException.class)
+                    .hasMessageContaining("[spring-boot].version")
+                    .hasMessageContaining("malformed version range")
+                    .satisfies(e -> assertThat(Objects.requireNonNull(((JkBuildParseException) e).location())
+                                    .line())
+                            .isEqualTo(2));
+        }
+        assertThat(PluginTableRegistry.validate(manifest, Toml.parse("version = \"[4.0,5.0)\""))
+                        .string("version"))
+                .isEqualTo("[4.0,5.0)");
+    }
+
+    @Test
+    void a_key_is_a_version_selector_only_where_a_coordinate_carries_it_as_the_version() {
+        PluginDescriptor manifest = PluginDescriptors.parse("""
+                [plugin]
+                id = "selector-fixture"
+                table = "selector-fixture"
+
+                [schema]
+                release = { type = "string", default = "1.0" }
+                label   = { type = "string" }
+                artifact = { type = "string", default = "tool" }
+
+                [sub-schema.gen]
+                tool-release = { type = "string" }
+
+                [entries]
+                schema = "gen"
+
+                [[contribute.step-dependency]]
+                artifact = "tool"
+                coordinate = "com.acme:${config.artifact}:^${config.release}"
+
+                [[contribute.step-dependency]]
+                artifact = "gen-tool"
+                per-entry = true
+                coordinate = "com.acme:gen:${entry.tool-release}"
+                """, "fixture.toml");
+
+        assertThat(Objects.requireNonNull(manifest.schema().get("release")).selector())
+                .isTrue();
+        assertThat(Objects.requireNonNull(manifest.schema().get("label")).selector())
+                .isFalse();
+        assertThat(Objects.requireNonNull(manifest.schema().get("artifact")).selector())
+                .isFalse();
+        assertThatThrownBy(() -> PluginTableRegistry.validate(manifest, Toml.parse("release = \"(1)\"")))
+                .hasMessageContaining("[selector-fixture].release");
+        assertThatThrownBy(() -> PluginTableRegistry.validate(manifest, Toml.parse("[one]\ntool-release = \"(1)\"")))
+                .hasMessageContaining("[selector-fixture.one].tool-release");
+        assertThat(PluginTableRegistry.validate(manifest, Toml.parse("label = \"(not, a version)\""))
+                        .string("label"))
+                .isEqualTo("(not, a version)");
+    }
+
     @Test
     void manifest_parser_rejects_bad_manifests() {
         assertThatThrownBy(() -> PluginDescriptors.parse("[schema]\nx = { type = \"string\" }", "p.toml"))

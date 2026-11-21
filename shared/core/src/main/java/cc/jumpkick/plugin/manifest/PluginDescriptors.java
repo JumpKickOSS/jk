@@ -10,6 +10,7 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
 import org.tomlj.Toml;
@@ -129,6 +130,14 @@ public final class PluginDescriptors {
 
         PluginDescriptor.Contributions contributions =
                 parseContributions(result, schema.keySet(), entryKeys, displayPath);
+        schema = markSelectors(schema, contributions.versionVariables("config."));
+        if (entrySchema != null) {
+            subSchemas.put(
+                    entrySchema,
+                    markSelectors(
+                            Objects.requireNonNull(subSchemas.get(entrySchema)),
+                            contributions.versionVariables("entry.")));
+        }
         PluginDescriptor.Code code = parseCode(result, displayPath);
         PluginDescriptor.Packaging packaging = parsePackaging(result, displayPath);
         List<PluginDescriptor.GradleImport> gradleImports = GradleImports.parse(result, displayPath);
@@ -147,6 +156,18 @@ public final class PluginDescriptors {
                 subTables,
                 entrySchema,
                 ManifestDefaults.minJava(plugin, displayPath));
+    }
+
+    /** {@code schema} with every string key {@code versionKeys} names marked a version selector. */
+    private static Map<String, PluginDescriptor.SchemaKey> markSelectors(
+            Map<String, PluginDescriptor.SchemaKey> schema, Set<String> versionKeys) {
+        Map<String, PluginDescriptor.SchemaKey> out = new LinkedHashMap<>();
+        schema.forEach((name, key) -> out.put(
+                name,
+                versionKeys.contains(name) && key.type() == PluginDescriptor.SchemaKey.Type.STRING
+                        ? key.asSelector()
+                        : key));
+        return out;
     }
 
     /** Typed schema keys from one table of {@code key = { type = "…", … }} specs. */
@@ -188,7 +209,8 @@ public final class PluginDescriptors {
                             secret,
                             Boolean.TRUE.equals(spec.getBoolean("inherit")),
                             oneOf,
-                            minVersion));
+                            minVersion,
+                            minVersion != null));
         }
         return schema;
     }

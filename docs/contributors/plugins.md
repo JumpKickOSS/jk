@@ -132,7 +132,10 @@ aot     = { type = "bool" }   # no default = tri-state
 
 A string key may carry `one-of = ["libs", "jar"]`, the only values it accepts, and `min-version =
 "27"`, the oldest release its value may name: a selector anchored below it (`4.3.0`, `^4`) is
-refused at parse naming the key and the `example`; `latest` passes. A string key marked `secret =
+refused at parse naming the key and the `example`; `latest` passes. A string key with a
+`min-version`, or one a contributed coordinate carries as its version
+(`group:artifact:${config.version}`, `^${config.version}` too), is a version selector: a malformed
+range in it (`(4)`, `>=4.0 <5`) is refused at parse, located at the key. A string key marked `secret =
 true` (a password, a signing credential) is the plugin's secret: the user writes it as is or as
 `env:NAME`, which resolves through the caller's shell and the module's `.env`, and the engine moves
 it off the config before anything reads it, so it is in no describe request, config token or log

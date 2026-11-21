@@ -3,10 +3,13 @@ package cc.jumpkick.plugin.manifest;
 
 import cc.jumpkick.model.PluginConfig;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
+import java.util.stream.Stream;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -223,6 +226,25 @@ public record PluginDescriptor(
             testSystemProperties = testSystemProperties == null || testSystemProperties.isEmpty()
                     ? Map.of()
                     : Collections.unmodifiableMap(new LinkedHashMap<>(testSystemProperties));
+        }
+
+        /**
+         * The keys of {@code scope} ({@code config.} or {@code entry.}) a contributed coordinate
+         * carries as its version: {@code version} for {@code group:artifact:^${config.version}}.
+         */
+        public Set<String> versionVariables(String scope) {
+            Set<String> out = new HashSet<>();
+            Stream.of(
+                            platformDependencies.stream().map(PlatformDependency::coordinate),
+                            kotlinPlugins.stream().map(KotlinPlugin::coordinate),
+                            processorDependencies.stream().map(ProcessorDependency::coordinate),
+                            packagerDependencies.stream().map(PackagerDependency::coordinate),
+                            stepDependencies.stream().map(StepDependency::coordinate),
+                            commandDependencies.stream().map(StepDependency::coordinate))
+                    .flatMap(s -> s)
+                    .filter(Objects::nonNull)
+                    .forEach(coordinate -> out.addAll(Interpolation.versionVariables(coordinate, scope)));
+            return out;
         }
 
         public boolean isEmpty() {
@@ -514,7 +536,9 @@ public record PluginDescriptor(
      * is an entry-schema key's: an entry that leaves it unset reads the table's value of the
      * same key wherever a per-entry tool names it as {@code ${entry.<key>}}. A string key may
      * carry {@code oneOf}, the only values it accepts, and {@code minVersion}, the lowest version
-     * its value (a version selector) may be anchored on.
+     * its value (a version selector) may be anchored on. {@code selector} marks a string key whose
+     * value is a version selector: one with a {@code minVersion}, or one a contributed coordinate
+     * carries as its version ({@code group:artifact:${config.version}}).
      */
     public record SchemaKey(
             String name,
@@ -526,10 +550,29 @@ public record PluginDescriptor(
             boolean secret,
             boolean inherit,
             List<String> oneOf,
-            @Nullable String minVersion) {
+            @Nullable String minVersion,
+            boolean selector) {
 
         public SchemaKey {
             oneOf = oneOf == null ? List.of() : List.copyOf(oneOf);
+        }
+
+        /** This key, its value a version selector. */
+        public SchemaKey asSelector() {
+            return selector
+                    ? this
+                    : new SchemaKey(
+                            name,
+                            type,
+                            required,
+                            defaultValue,
+                            example,
+                            hint,
+                            secret,
+                            inherit,
+                            oneOf,
+                            minVersion,
+                            true);
         }
 
         public enum Type {

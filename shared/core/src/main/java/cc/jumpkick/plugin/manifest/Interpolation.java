@@ -6,6 +6,7 @@ import cc.jumpkick.host.Os;
 import cc.jumpkick.model.PluginConfig;
 import cc.jumpkick.model.Project;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -31,6 +32,25 @@ public final class Interpolation {
 
     /** One {@code [entries]} sub-table as a template scope: its name and its validated values. */
     public record Entry(String name, Map<String, Object> values) {}
+
+    /**
+     * The keys of {@code scope} ({@code config.} or {@code entry.}) a coordinate template names in
+     * its version, the third {@code :} segment up to a {@code !type}: {@code version} for {@code
+     * g:a:^${config.version}:linux!exe}, and none for a template that is one variable.
+     */
+    static Set<String> versionVariables(String coordinate, String scope) {
+        String[] segments = coordinate.split(":", -1);
+        if (segments.length < 3) return Set.of();
+        String version = segments[2];
+        int bang = version.indexOf('!');
+        if (bang >= 0) version = version.substring(0, bang);
+        Set<String> out = new HashSet<>();
+        Matcher m = VAR.matcher(version);
+        while (m.find()) {
+            if (m.group(1).startsWith(scope)) out.add(m.group(1).substring(scope.length()));
+        }
+        return out;
+    }
 
     /** As {@link #validate(String, Set, Set, String)} outside a per-entry declaration. */
     static void validate(String template, Set<String> schemaKeys, String where) {
