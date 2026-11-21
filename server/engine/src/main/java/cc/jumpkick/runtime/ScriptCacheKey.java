@@ -18,8 +18,9 @@ import java.util.Objects;
 /**
  * What a {@code jk tool run} script's compiled classes are keyed by: the script's bytes, the
  * content of every {@code //SOURCES} file it compiles with, the {@code --with} dependencies joined
- * to its own, and the identity of the JDK that compiles it. A change to any of them compiles anew
- * instead of running classes built from the old one.
+ * to its own, the identity of the JDK that compiles it, and the script language's toolchain (its
+ * Kotlin or Groovy version and jk's launcher for it). A change to any of them compiles anew instead
+ * of running classes built from the old one.
  */
 final class ScriptCacheKey {
 
@@ -28,8 +29,12 @@ final class ScriptCacheKey {
 
     private ScriptCacheKey() {}
 
-    /** The key of {@code script} (whose bytes are {@code bytes}) under {@code header} and {@code extraDeps}. */
-    static String of(Path script, byte[] bytes, ScriptHeader header, List<Dependency> extraDeps) throws IOException {
+    /**
+     * The key of {@code script} (whose bytes are {@code bytes}) under {@code header}, {@code
+     * extraDeps} and {@code toolchain}, which is empty for Java.
+     */
+    static String of(Path script, byte[] bytes, ScriptHeader header, List<Dependency> extraDeps, String toolchain)
+            throws IOException {
         Path dir = Objects.requireNonNull(script.toAbsolutePath().getParent(), "script dir");
         StringBuilder key =
                 new StringBuilder("script:").append(Hashing.sha256Hex(bytes)).append('\n');
@@ -51,6 +56,7 @@ final class ScriptCacheKey {
                 .append(JdkToolchain.token(JavaHomes.resolveJavaHome(dir)))
                 .append('\n');
         key.append("release:").append(release(header)).append('\n');
+        key.append("toolchain:").append(toolchain).append('\n');
         return Hashing.sha256Hex(key.toString().getBytes(StandardCharsets.UTF_8));
     }
 

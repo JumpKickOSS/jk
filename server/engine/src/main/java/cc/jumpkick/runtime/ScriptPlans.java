@@ -9,13 +9,19 @@ import cc.jumpkick.compile.JavacRunner;
 import cc.jumpkick.compile.KotlincRequest;
 import cc.jumpkick.compile.WorkerCompileDriver;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.host.ActionTree;
+import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.CacheTree;
+import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.Errors;
-import cc.jumpkick.host.Os;
+import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.Processes;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.jdk.JavaHomes;
+import cc.jumpkick.jdk.JdkFingerprint;
+import cc.jumpkick.kotlin.KotlinResolver;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.Scope;
@@ -32,20 +38,27 @@ import cc.jumpkick.run.BuildStage;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
+import cc.jumpkick.runtime.base.BuildLogicGroovyHost;
 import cc.jumpkick.runtime.base.CompileSupport;
 import cc.jumpkick.runtime.base.CompileToolchain;
+import cc.jumpkick.runtime.base.GroovyHostJar;
 import cc.jumpkick.runtime.base.KotlinPluginSetup;
+import cc.jumpkick.runtime.base.ResourceToolJar;
 import cc.jumpkick.script.ScriptHeader;
 import cc.jumpkick.script.ScriptHeaderParser;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.KeyOwner;
 import cc.jumpkick.tool.JarManifest;
 import java.io.IOException;
+import java.lang.classfile.Attributes;
+import java.lang.classfile.ClassFile;
+import java.lang.classfile.ClassModel;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.LinkedHashSet;
@@ -72,7 +85,6 @@ public final class ScriptPlans {
     private static final BuildPlanKey<List<Path>> WORKER_CP = BuildPlanKey.list("kotlin-worker-cp", Path.class);
 
     public static final BuildPlanKey<Path> KT_STDLIB = BuildPlanKey.scalar("kotlin-stdlib", Path.class);
-    public static final BuildPlanKey<Path> KOTLINC_BIN = BuildPlanKey.scalar("kotlinc-bin", Path.class);
     public static final BuildPlanKey<String> MAIN_CLASS = BuildPlanKey.scalar("main-class", String.class);
 
     public static final BuildPlanKey<List<Path>> CLASSPATH = BuildPlanKey.list("classpath", Path.class);
@@ -108,22 +120,8 @@ public final class ScriptPlans {
         byte[] bytes = Files.readAllBytes(script);
         ScriptHeader header =
                 withExtras(ScriptHeaderParser.parse(new String(bytes, StandardCharsets.UTF_8)), extraDeps);
-        Path classesDir = classesDirFor(cacheDir, ScriptCacheKey.of(script, bytes, header, extraDeps));
+        Path classesDir = classesDirFor(cacheDir, ScriptCacheKey.of(script, bytes, header, extraDeps, ""));
         String mainClass = header.main() != null ? header.main() : simpleMainClassName(script, ".java");
-
-        Task parseHeader = Task.builder(TaskNames.PARSE_SCRIPT)
-                .stage(BuildStage.RESOLVE)
-                .ticks(1)
-                .execute(ctx -> {
-                    ctx.label("parse " + script.getFileName());
-                    ctx.put(HEADER, header);
-                    ctx.put(MAIN_CLASS, mainClass);
-                    ctx.put(CLASSES_DIR, classesDir);
-                    Files.createDirectories(cacheDir);
-                    ScriptCacheKey.stampUse(classesDir);
-                    ctx.progress(1);
-                })
-                .build();
 
         Task resolveDeps = Task.builder(TaskNames.RESOLVE_DEPS)
                 .stage(BuildStage.RESOLVE)
@@ -185,7 +183,7 @@ public final class ScriptPlans {
 
         return BuildPlan.builder("run-java")
                 .stateKeys(HEADER, MAIN_CLASS, CLASSES_DIR, CLASSPATH)
-                .addTask(parseHeader)
+                .addTask(parseScriptStep(script, header, mainClass, classesDir, cacheDir))
                 .addTask(resolveDeps)
                 .addTask(compile)
                 .build();
@@ -224,26 +222,13 @@ public final class ScriptPlans {
         // parseKotlin: // directives + @file:DependsOn/@file:Repository annotations.
         ScriptHeader header =
                 withExtras(ScriptHeaderParser.parseKotlin(new String(bytes, StandardCharsets.UTF_8)), extraDeps);
-        Path classesDir = classesDirFor(cacheDir, ScriptCacheKey.of(script, bytes, header, extraDeps));
+        Path classesDir = classesDirFor(
+                cacheDir, ScriptCacheKey.of(script, bytes, header, extraDeps, "kotlin:" + kotlinVersion(header)));
         String mainClass = header.main() != null ? header.main() : kotlinMainClassName(script);
-
-        Task parseHeader = Task.builder(TaskNames.PARSE_SCRIPT)
-                .stage(BuildStage.RESOLVE)
-                .ticks(1)
-                .execute(ctx -> {
-                    ctx.label("parse " + script.getFileName());
-                    ctx.put(HEADER, header);
-                    ctx.put(MAIN_CLASS, mainClass);
-                    ctx.put(CLASSES_DIR, classesDir);
-                    Files.createDirectories(cacheDir);
-                    ScriptCacheKey.stampUse(classesDir);
-                    ctx.progress(1);
-                })
-                .build();
 
         return BuildPlan.builder("run-kt")
                 .stateKeys(HEADER, MAIN_CLASS, CLASSES_DIR, CLASSPATH, WORKER_CP, KT_STDLIB)
-                .addTask(parseHeader)
+                .addTask(parseScriptStep(script, header, mainClass, classesDir, cacheDir))
                 .addTask(resolveScriptDepsStep(header, repoUrl))
                 .addTask(resolveKotlincStep(header, repoUrl))
                 .addTask(
@@ -333,43 +318,16 @@ public final class ScriptPlans {
                     }
                     ctx.label("kotlinc " + script.getFileName());
                     Files.createDirectories(classesDir);
-                    List<Path> depsClasspath = ctx.require(CLASSPATH);
-                    int jvmTarget = header.release() != null
-                            ? header.release()
-                            : Runtime.version().feature();
-                    // Compilation classpath: script deps + the version-matched
-                    // stdlib (the in-process plugin has no kotlin-home to auto-add
-                    // it; paired with -no-stdlib).
-                    List<Path> compileCp = new ArrayList<>(depsClasspath);
+                    List<Path> compileCp = new ArrayList<>(ctx.require(CLASSPATH));
                     compileCp.add(ctx.require(KT_STDLIB));
-                    Path workingDir = ActionKey.stateDir(
-                            ActionTree.INCREMENTAL_KOTLIN.under(CacheTree.ACTIONS.under(cacheDir)),
-                            "script",
-                            classesDir);
-                    List<Path> workerCp = ctx.require(WORKER_CP);
-                    // @file:DependsOn/@file:Repository were resolved by jk (parseKotlin);
-                    // kotlinc can't compile them — feed it a line-preserving neutralized copy.
-                    List<Path> ktSources = withDeclaredSources(script, header);
-                    String neutralized =
-                            ScriptHeaderParser.neutralizeKotlinAnnotations(new String(bytes, StandardCharsets.UTF_8));
-                    if (neutralized != null) {
-                        Path srcDir = classesDir.resolveSibling("src");
-                        Files.createDirectories(srcDir);
-                        Path copy = srcDir.resolve(script.getFileName().toString());
-                        Files.writeString(copy, neutralized, StandardCharsets.UTF_8);
-                        ktSources.set(0, copy);
-                    }
-                    KotlincRequest req = KotlincRequest.builder()
-                            .sources(ktSources)
-                            .classpath(compileCp)
-                            .outputDir(classesDir)
-                            .jvmTarget(CompileSupport.kotlinJvmTarget(
-                                    jvmTarget, Runtime.version().feature()))
-                            .workerClasspath(workerCp)
-                            .javaHome(JavaHomes.resolveJavaHome(scriptDir(script)))
-                            .workingDir(workingDir)
-                            .extraArgs(List.of("-no-stdlib"))
-                            .build();
+                    KotlincRequest req = kotlincRequest(
+                            script,
+                            header,
+                            kotlinSources(script, bytes, header, classesDir),
+                            compileCp,
+                            classesDir,
+                            cacheDir,
+                            ctx.require(WORKER_CP));
                     CompileResult result = WorkerCompileDriver.compile(req, WorkerEnv.strict());
                     if (!result.success()) {
                         ctx.error("kotlinc", result.output());
@@ -383,33 +341,71 @@ public final class ScriptPlans {
 
     // --- .kts ------------------------------------------------------------
 
+    /** The launcher a compiled {@code .kts} runs through; it depends on nothing. */
+    static final ResourceToolJar KTS_LAUNCHER =
+            new ResourceToolJar("kts-launcher", "jk-kts-launcher.jar", List.of("JkKtsMain.java"));
+
+    /** {@link #KTS_LAUNCHER}'s main class. */
+    static final String KTS_MAIN = "JkKtsMain";
+
+    /** The superclass kotlinc gives a {@code .kts} compiled with the standard script definition. */
+    private static final String KTS_SCRIPT_BASE = "kotlin/script/templates/standard/ScriptTemplateWithArgs";
+
+    /** Version slot of {@link #KTS_LAUNCHER}'s tools directory: it compiles against nothing but the JDK. */
+    private static final String JDK_ONLY = "jdk";
+
+    /** The Kotlin distribution a {@code .kts} compiles with. */
+    private static final BuildPlanKey<Path> KOTLIN_HOME = BuildPlanKey.scalar("kotlin-home", Path.class);
+
+    /** How long compiling one script may take. */
+    private static final Duration SCRIPT_COMPILE_TIMEOUT = Duration.ofMinutes(10);
+
     /**
-     * {@code parse-script → (resolve-deps ∥ resolve-kotlinc)} for a {@code .kts} script. The exec
-     * is delegated to {@code kotlinc -script} client-side; the script's declared deps ({@code
-     * @file:DependsOn} / {@code //DEPS} / {@code //jk dep}) resolve here and reach kotlinc via
-     * {@code -classpath} — jk's own CAS-first resolution, not kotlin-main-kts's embedded Ivy.
+     * {@code parse-script → (resolve-deps ∥ resolve-kotlinc) → compile-kotlin} for a {@code .kts}
+     * script: compiled once into {@code tool-scripts/} and run by {@link #KTS_MAIN}. The compile is
+     * the Kotlin distribution's own {@code K2JVMCompiler -d}, which compiles a script with the
+     * standard definition ({@code args}) and never evaluates it. The script's declared deps
+     * ({@code @file:DependsOn} / {@code //DEPS} / {@code //jk dep}) resolve through jk; the compiler
+     * sees a copy with those annotations commented out.
      */
-    public static BuildPlan ktsScriptBuildPlan(Path script, Path cacheDir, URI repoUrl) throws IOException {
-        return ktsScriptBuildPlan(script, cacheDir, repoUrl, List.of());
-    }
-
-    /** As above with {@code extraDeps} — alias/{@code --with} injections joining the header's deps. */
     public static BuildPlan ktsScriptBuildPlan(
-            Path script, Path cacheDir, @Nullable URI repoUrl, List<Dependency> extraDeps) throws IOException {
-        ScriptHeader header = withExtras(
-                ScriptHeaderParser.parseKotlin(new String(Files.readAllBytes(script), StandardCharsets.UTF_8)),
-                extraDeps);
+            Path script, Path cacheDir, @Nullable URI repoUrl, boolean forceRecompile, List<Dependency> extraDeps)
+            throws IOException {
+        byte[] bytes = Files.readAllBytes(script);
+        ScriptHeader header =
+                withExtras(ScriptHeaderParser.parseKotlin(new String(bytes, StandardCharsets.UTF_8)), extraDeps);
+        String toolchain = "kotlin:" + kotlinVersion(header) + "|launcher:" + KTS_LAUNCHER.hash(JDK_ONLY);
+        Path classesDir = classesDirFor(cacheDir, ScriptCacheKey.of(script, bytes, header, extraDeps, toolchain));
 
+        Task resolveKotlin = Task.builder(TaskNames.RESOLVE_KOTLINC)
+                .stage(BuildStage.RESOLVE)
+                .kind(TaskKind.IO)
+                .requires(TaskNames.PARSE_SCRIPT)
+                .ticks(1)
+                .execute(ctx -> {
+                    ctx.label("provision kotlinc");
+                    Path home = CompileToolchain.resolveKotlinHome(
+                            cacheDir, header.kotlinVersion(), ctx::output, new ToolPlanProgress(ctx));
+                    ctx.put(KOTLIN_HOME, home);
+                    ctx.put(KT_STDLIB, home.resolve("lib/kotlin-stdlib.jar"));
+                    ctx.progress(1);
+                })
+                .build();
+
+        // After the Kotlin step: the run classpath carries the distribution's own script runtime.
         Task resolveDeps = Task.builder(TaskNames.RESOLVE_DEPS)
                 .stage(BuildStage.RESOLVE)
                 .kind(TaskKind.IO)
+                .requires(TaskNames.RESOLVE_KOTLINC)
                 .ticks(1)
                 .execute(ctx -> {
                     ctx.label("resolve script dependencies");
-                    Cas cas = JkStores.storeCas();
-                    RepoGroup repos = buildRepos(header, repoUrl, new Http(), cas);
+                    RepoGroup repos = buildRepos(header, repoUrl, new Http(), JkStores.storeCas());
                     try {
-                        ctx.put(CLASSPATH, resolveClasspath(header.deps(), repos));
+                        List<Path> classpath = new ArrayList<>(resolveClasspath(header.deps(), repos));
+                        classpath.add(ctx.require(KOTLIN_HOME).resolve("lib/kotlin-script-runtime.jar"));
+                        classpath.add(KTS_LAUNCHER.ensure(List.of(), JDK_ONLY));
+                        ctx.put(CLASSPATH, classpath);
                     } catch (RuntimeException e) {
                         ctx.error("resolve", Errors.text(e));
                         throw e;
@@ -418,28 +414,236 @@ public final class ScriptPlans {
                 })
                 .build();
 
-        Task resolveKotlinc = Task.builder(TaskNames.RESOLVE_KOTLINC)
-                .stage(BuildStage.RESOLVE)
-                .kind(TaskKind.IO)
+        return BuildPlan.builder("run-kts")
+                .stateKeys(HEADER, MAIN_CLASS, CLASSES_DIR, CLASSPATH, KOTLIN_HOME, KT_STDLIB)
+                .addTask(parseScriptStep(script, header, KTS_MAIN, classesDir, cacheDir))
+                .addTask(resolveKotlin)
+                .addTask(resolveDeps)
+                .addTask(compileKtsStep(script, bytes, header, classesDir, forceRecompile))
+                .build();
+    }
+
+    /** kotlinc over the script, then the marker naming its class; a cache hit only re-materializes the files. */
+    @KeyOwner(
+            step = TaskNames.COMPILE_KOTLIN,
+            unpaired = "a script's compile, planned outside any module: nothing forecasts it")
+    private static Task compileKtsStep(
+            Path script, byte[] bytes, ScriptHeader header, Path classesDir, boolean forceRecompile) {
+        return Task.builder(TaskNames.COMPILE_KOTLIN)
+                .stage(BuildStage.COMPILE)
+                .kind(TaskKind.CPU)
+                .requires(TaskNames.RESOLVE_DEPS, TaskNames.RESOLVE_KOTLINC)
                 .ticks(1)
                 .execute(ctx -> {
-                    ctx.label("provision kotlinc");
-                    Path kotlinHome =
-                            CompileToolchain.resolveKotlinHome(cacheDir, null, ctx::output, new ToolPlanProgress(ctx));
-                    Path kotlinc = kotlinHome.resolve("bin").resolve(Os.isWindows() ? "kotlinc.bat" : "kotlinc");
-                    if (!Files.exists(kotlinc)) {
-                        ctx.error("kotlinc-missing", "kotlinc not found at " + kotlinc);
-                        throw new RuntimeException("kotlinc missing");
+                    if (cacheHit(forceRecompile, classesDir)) {
+                        ctx.label("cache hit (" + script.getFileName() + ")");
+                        materializeFiles(script, header, classesDir);
+                    } else {
+                        ctx.label("kotlinc " + script.getFileName());
+                        PathUtil.deleteRecursively(classesDir);
+                        Files.createDirectories(classesDir);
+                        List<Path> compileCp = new ArrayList<>(ctx.require(CLASSPATH));
+                        compileCp.add(ctx.require(KT_STDLIB));
+                        int jvmTarget = header.release() != null
+                                ? header.release()
+                                : Runtime.version().feature();
+                        Path javaHome = JavaHomes.runningJavaHome();
+                        List<String> cmd = new ArrayList<>(List.of(
+                                JdkFingerprint.java(javaHome).toString(),
+                                "--sun-misc-unsafe-memory-access=allow",
+                                "-cp",
+                                ctx.require(KOTLIN_HOME)
+                                        .resolve("lib/kotlin-compiler.jar")
+                                        .toString(),
+                                "org.jetbrains.kotlin.cli.jvm.K2JVMCompiler",
+                                "-nowarn",
+                                "-no-stdlib",
+                                "-no-reflect",
+                                "-jvm-target",
+                                String.valueOf(CompileSupport.kotlinJvmTarget(
+                                        jvmTarget, Runtime.version().feature())),
+                                "-cp",
+                                Classpaths.join(compileCp),
+                                "-d",
+                                classesDir.toString()));
+                        for (Path source : kotlinSources(script, bytes, header, classesDir)) cmd.add(source.toString());
+                        ProcessBuilder pb = JavaHomes.underJdk(new ProcessBuilder(cmd), javaHome);
+                        pb.redirectErrorStream(true);
+                        Processes.Captured compiled = Processes.capture(JobWorkers.start(pb), SCRIPT_COMPILE_TIMEOUT);
+                        if (compiled.timedOut() || compiled.exit() != 0) {
+                            String out = compiled.output().strip();
+                            ctx.error(
+                                    "kotlinc",
+                                    compiled.timedOut() ? "kotlinc timed out" : out.isEmpty() ? "kotlinc failed" : out);
+                            throw new RuntimeException("kotlinc failed");
+                        }
+                        String scriptClass = ktsScriptClass(classesDir, script);
+                        if (scriptClass == null) {
+                            ctx.error("kotlinc", "kotlinc produced no script class for " + script.getFileName());
+                            throw new RuntimeException("no script class");
+                        }
+                        materializeFiles(script, header, classesDir);
+                        writeScriptMarker(classesDir, scriptClass);
                     }
-                    ctx.put(KOTLINC_BIN, kotlinc);
                     ctx.progress(1);
                 })
                 .build();
-        return BuildPlan.builder("run-kts")
-                .stateKeys(CLASSPATH, KOTLINC_BIN)
-                .addTask(resolveDeps)
-                .addTask(resolveKotlinc)
+    }
+
+    /**
+     * The class kotlinc compiled {@code script} into: the top-level class in {@code classesDir} whose
+     * superclass is the standard script base and whose source file is the script. Read from the class
+     * files rather than re-deriving kotlinc's naming rule, so an odd file name cannot drift from it.
+     */
+    static @Nullable String ktsScriptClass(Path classesDir, Path script) throws IOException {
+        String sourceName = script.getFileName().toString();
+        List<String> found = new ArrayList<>();
+        PathUtil.forEachRegularFile(classesDir, (file, attrs) -> {
+            String name = classesDir.relativize(file).toString().replace('\\', '/');
+            if (!name.endsWith(".class") || name.contains("$") || name.startsWith("META-INF/")) return;
+            ClassModel model = ClassFile.of().parse(file);
+            boolean isScript = model.superclass()
+                    .map(c -> c.asInternalName().equals(KTS_SCRIPT_BASE))
+                    .orElse(false);
+            boolean fromIt = model.findAttribute(Attributes.sourceFile())
+                    .map(a -> a.sourceFile().stringValue().equals(sourceName))
+                    .orElse(false);
+            if (isScript && fromIt) found.add(model.thisClass().asInternalName().replace('/', '.'));
+        });
+        return found.size() == 1 ? found.getFirst() : null;
+    }
+
+    // --- .groovy ---------------------------------------------------------
+
+    /**
+     * {@code parse-script → resolve-deps → compile-groovy} for a {@code .groovy} script: compiled once
+     * into {@code tool-scripts/<key>/classes/script.jar} with its deps on the compiler's classpath,
+     * and run by {@link GroovyHostJar#MAIN}. Groovy is the pinned build-logic Groovy unless a
+     * {@code //GROOVY} line names a version.
+     */
+    public static BuildPlan groovyScriptBuildPlan(
+            Path script, Path cacheDir, @Nullable URI repoUrl, boolean forceRecompile, List<Dependency> extraDeps)
+            throws IOException {
+        byte[] bytes = Files.readAllBytes(script);
+        ScriptHeader header =
+                withExtras(ScriptHeaderParser.parse(new String(bytes, StandardCharsets.UTF_8)), extraDeps);
+        String groovyVersion =
+                header.groovyVersion() != null ? header.groovyVersion() : BuildLogicGroovyHost.GROOVY_VER;
+        String toolchain = "groovy:" + groovyVersion + "|host:" + GroovyHostJar.JAR.hash(groovyVersion);
+        Path classesDir = classesDirFor(cacheDir, ScriptCacheKey.of(script, bytes, header, extraDeps, toolchain));
+
+        Task resolveDeps = Task.builder(TaskNames.RESOLVE_DEPS)
+                .stage(BuildStage.RESOLVE)
+                .kind(TaskKind.IO)
+                .requires(TaskNames.PARSE_SCRIPT)
+                .ticks(1)
+                .execute(ctx -> {
+                    ctx.label("resolve script dependencies");
+                    Cas cas = JkStores.storeCas();
+                    RepoGroup repos = buildRepos(header, repoUrl, new Http(), cas);
+                    try {
+                        List<Path> groovy = groovyRuntime(groovyVersion, repos);
+                        List<Path> classpath = new ArrayList<>(groovy);
+                        for (Path dep : resolveClasspath(header.deps(), repos)) {
+                            if (!classpath.contains(dep)) classpath.add(dep);
+                        }
+                        classpath.add(GroovyHostJar.ensure(groovy.getFirst(), groovyVersion));
+                        ctx.put(CLASSPATH, classpath);
+                    } catch (RuntimeException e) {
+                        ctx.error("resolve", Errors.text(e));
+                        throw e;
+                    }
+                    ctx.progress(1);
+                })
                 .build();
+
+        return BuildPlan.builder("run-groovy")
+                .stateKeys(HEADER, MAIN_CLASS, CLASSES_DIR, CLASSPATH)
+                .addTask(parseScriptStep(script, header, GroovyHostJar.MAIN, classesDir, cacheDir))
+                .addTask(resolveDeps)
+                .addTask(compileGroovyStep(script, header, classesDir, forceRecompile))
+                .build();
+    }
+
+    /**
+     * Groovy's own jars for {@code version}, groovy.jar first: the pinned, digest-verified set (with
+     * Ant and Ivy, so {@code @Grab} works) at jk's version, else {@code groovy} at the version asked.
+     */
+    private static List<Path> groovyRuntime(String version, RepoGroup repos) throws IOException, InterruptedException {
+        if (version.equals(BuildLogicGroovyHost.GROOVY_VER))
+            return List.of(BuildLogicGroovyHost.ensureJars(() -> repos));
+        // Groovy moved from org.codehaus.groovy to org.apache.groovy with 4.0.
+        String group = Character.isDigit(version.charAt(0)) && version.charAt(0) < '4' && version.indexOf('.') == 1
+                ? "org.codehaus.groovy"
+                : "org.apache.groovy";
+        return resolveClasspath(List.of(ScriptHeaderParser.parseDependency(group + ":groovy:" + version)), repos);
+    }
+
+    /** The runner's {@code compile} into {@code classes/script.jar}, then the marker; a hit re-materializes. */
+    @KeyOwner(
+            step = TaskNames.COMPILE_GROOVY,
+            unpaired = "a script's compile, planned outside any module: nothing forecasts it")
+    private static Task compileGroovyStep(Path script, ScriptHeader header, Path classesDir, boolean forceRecompile) {
+        return Task.builder(TaskNames.COMPILE_GROOVY)
+                .stage(BuildStage.COMPILE)
+                .kind(TaskKind.CPU)
+                .requires(TaskNames.RESOLVE_DEPS)
+                .ticks(1)
+                .execute(ctx -> {
+                    if (cacheHit(forceRecompile, classesDir)) {
+                        ctx.label("cache hit (" + script.getFileName() + ")");
+                        materializeFiles(script, header, classesDir);
+                        ctx.progress(1);
+                        return;
+                    }
+                    ctx.label("groovyc " + script.getFileName());
+                    PathUtil.deleteRecursively(classesDir);
+                    Files.createDirectories(classesDir);
+                    Path jar = classesDir.resolve(GROOVY_SCRIPT_JAR);
+                    Path javaHome = JavaHomes.runningJavaHome();
+                    ProcessBuilder pb = JavaHomes.underJdk(
+                            new ProcessBuilder(
+                                    JdkFingerprint.java(javaHome).toString(),
+                                    "-cp",
+                                    Classpaths.join(ctx.require(CLASSPATH)),
+                                    GroovyHostJar.HOST,
+                                    "compile",
+                                    script.toAbsolutePath().toString(),
+                                    jar.toString()),
+                            javaHome);
+                    pb.redirectErrorStream(true);
+                    Processes.Captured compiled = Processes.capture(JobWorkers.start(pb), SCRIPT_COMPILE_TIMEOUT);
+                    if (compiled.timedOut() || compiled.exit() != 0 || !Files.isRegularFile(jar)) {
+                        String out = compiled.output().strip();
+                        ctx.error(
+                                "groovyc",
+                                compiled.timedOut() ? "groovyc timed out" : out.isEmpty() ? "groovyc failed" : out);
+                        throw new RuntimeException("groovyc failed");
+                    }
+                    String scriptClass =
+                            JarManifest.mainClass(jar).orElseThrow(() -> new IOException(jar + " names no Main-Class"));
+                    materializeFiles(script, header, classesDir);
+                    writeScriptMarker(classesDir, scriptClass);
+                    ctx.progress(1);
+                })
+                .build();
+    }
+
+    /** Where a compiled Groovy tool script's classes live inside its classes directory; the launcher reads it there. */
+    static final String GROOVY_SCRIPT_JAR = "script.jar";
+
+    /** The marker a launcher reads to find the script class: one line, its binary name. */
+    static final String SCRIPT_MARKER = "META-INF/jk-script";
+
+    /** Write {@link #SCRIPT_MARKER} last, so its presence means the compile finished. */
+    private static void writeScriptMarker(Path classesDir, String scriptClass) throws IOException {
+        AtomicWrites.replace(classesDir.resolve(SCRIPT_MARKER), scriptClass + "\n");
+    }
+
+    /** Whether a launcher-run script's compiled classes can be used as they are. */
+    private static boolean cacheHit(boolean forceRecompile, Path classesDir) {
+        boolean rerun = forceRecompile || SessionContext.current().config().rebuildOr(false);
+        return !rerun && Files.isRegularFile(classesDir.resolve(SCRIPT_MARKER));
     }
 
     // --- .jar ------------------------------------------------------------
@@ -521,6 +725,78 @@ public final class ScriptPlans {
                 .build();
     }
 
+    /** {@code parse-script}: the header, the main class and the classes directory, and the entry stamped as used. */
+    private static Task parseScriptStep(
+            Path script, ScriptHeader header, String mainClass, Path classesDir, Path cacheDir) {
+        return Task.builder(TaskNames.PARSE_SCRIPT)
+                .stage(BuildStage.RESOLVE)
+                .ticks(1)
+                .execute(ctx -> {
+                    ctx.label("parse " + script.getFileName());
+                    ctx.put(HEADER, header);
+                    ctx.put(MAIN_CLASS, mainClass);
+                    ctx.put(CLASSES_DIR, classesDir);
+                    Files.createDirectories(cacheDir);
+                    ScriptCacheKey.stampUse(classesDir);
+                    ctx.progress(1);
+                })
+                .build();
+    }
+
+    /**
+     * The script and its {@code //SOURCES}, the script replaced by a line-preserving copy with its
+     * {@code @file:DependsOn}/{@code @file:Repository} commented out when it has any: jk resolved
+     * them, and kotlinc cannot compile them. The copy keeps the file name, which names a script's class.
+     */
+    private static List<Path> kotlinSources(Path script, byte[] bytes, ScriptHeader header, Path classesDir)
+            throws IOException {
+        List<Path> sources = withDeclaredSources(script, header);
+        String neutralized = ScriptHeaderParser.neutralizeKotlinAnnotations(new String(bytes, StandardCharsets.UTF_8));
+        if (neutralized != null) {
+            Path copy = Files.createDirectories(classesDir.resolveSibling("src"))
+                    .resolve(script.getFileName().toString());
+            Files.writeString(copy, neutralized, StandardCharsets.UTF_8);
+            sources.set(0, copy);
+        }
+        return sources;
+    }
+
+    /** The Kotlin a script compiles with: its {@code //KOTLIN} line's, else jk's default. */
+    private static String kotlinVersion(ScriptHeader header) {
+        String v = header.kotlinVersion();
+        return v == null || v.isBlank() ? KotlinResolver.DEFAULT_VERSION : v;
+    }
+
+    /**
+     * The worker compile of a Kotlin script's {@code sources} onto {@code compileCp} (its deps and the
+     * version-matched stdlib, paired with {@code -no-stdlib}: the in-process compiler has no Kotlin
+     * home to add one).
+     */
+    private static KotlincRequest kotlincRequest(
+            Path script,
+            ScriptHeader header,
+            List<Path> sources,
+            List<Path> compileCp,
+            Path classesDir,
+            Path cacheDir,
+            List<Path> workerCp) {
+        int jvmTarget =
+                header.release() != null ? header.release() : Runtime.version().feature();
+        Path workingDir = ActionKey.stateDir(
+                ActionTree.INCREMENTAL_KOTLIN.under(CacheTree.ACTIONS.under(cacheDir)), "script", classesDir);
+        return KotlincRequest.builder()
+                .sources(sources)
+                .classpath(compileCp)
+                .outputDir(classesDir)
+                .jvmTarget(CompileSupport.kotlinJvmTarget(
+                        jvmTarget, Runtime.version().feature()))
+                .workerClasspath(workerCp)
+                .javaHome(JavaHomes.resolveJavaHome(scriptDir(script)))
+                .workingDir(workingDir)
+                .extraArgs(List.of("-no-stdlib"))
+                .build();
+    }
+
     // --- shared helpers --------------------------------------------------
 
     /** The header with {@code extraDeps} appended to its dependency list. */
@@ -540,7 +816,8 @@ public final class ScriptPlans {
                 header.main(),
                 header.gav(),
                 header.description(),
-                header.kotlinVersion());
+                header.kotlinVersion(),
+                header.groovyVersion());
     }
 
     /** The script plus its {@code //SOURCES} declarations, resolved against the script's dir. */

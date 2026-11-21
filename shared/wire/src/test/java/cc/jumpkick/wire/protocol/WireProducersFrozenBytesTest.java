@@ -199,10 +199,10 @@ class WireProducersFrozenBytesTest {
                 .isEqualTo(
                         "{\"type\":\"buildplan-finish\",\"kind\":\"tool\",\"dir\":\"d\",\"success\":true,\"toolCoord\":null,"
                                 + "\"toolMainClass\":\"M\",\"toolClasspath\":[\"a.jar\"]}");
-        assertThat(ProtoSession.planFinishScript("d", false, "S", List.of(), "/c", null, "/std.jar"))
+        assertThat(ProtoSession.planFinishScript("d", false, "S", List.of(), "/c", "/std.jar"))
                 .isEqualTo("{\"type\":\"buildplan-finish\",\"kind\":\"script\",\"dir\":\"d\",\"success\":false,"
                         + "\"scriptMainClass\":\"S\",\"scriptClasspath\":[],\"scriptClassesDir\":\"/c\","
-                        + "\"scriptKotlincBin\":null,\"scriptStdlib\":\"/std.jar\"}");
+                        + "\"scriptStdlib\":\"/std.jar\"}");
         assertThat(ProtoSession.pruneWait(2, true))
                 .isEqualTo("{\"type\":\"prune-wait\",\"plans\":2,\"external\":true}");
         assertThat(ProtoSession.planFinishCache("d", false, 3, 4))

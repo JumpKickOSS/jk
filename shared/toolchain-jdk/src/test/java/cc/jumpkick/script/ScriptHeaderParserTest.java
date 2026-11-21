@@ -181,6 +181,16 @@ class ScriptHeaderParserTest {
     }
 
     @Test
+    void groovy_directive_records_version() {
+        ScriptHeader h = ScriptHeaderParser.parse("""
+                //GROOVY 4.0.27
+                println 'hi'
+                """);
+        assertThat(h.groovyVersion()).isEqualTo("4.0.27");
+        assertThat(h.kotlinVersion()).isNull();
+    }
+
+    @Test
     void jk_kotlin_directive_also_recognized() {
         ScriptHeader h = ScriptHeaderParser.parse("""
                 //jk kotlin 2.2.0

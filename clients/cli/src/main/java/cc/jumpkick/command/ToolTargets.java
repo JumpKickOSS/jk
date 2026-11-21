@@ -45,7 +45,7 @@ public final class ToolTargets {
             case ToolTarget.Directory d ->
                 throw new TargetException("directory targets aren't supported yet; `cd` there and use `jk run`");
             case ToolTarget.UnsupportedFile f ->
-                throw new TargetException("" + f.path() + " is not a .java, .kt, .kts or .jar file");
+                throw new TargetException("" + f.path() + " is not a .java, .kt, .kts, .groovy or .jar file");
         };
     }
 

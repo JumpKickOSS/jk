@@ -114,6 +114,7 @@ class SidePathMirrorsTest {
                 null,
                 null,
                 null,
+                null,
                 null);
 
         RepoGroup repos = ScriptPlans.buildRepos(header, null, new Http(), cas());

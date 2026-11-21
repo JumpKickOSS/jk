@@ -9,7 +9,8 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * Parsed single-file script header from jk ({@code //jk …}), JBang, or Kotlin
- * {@code @file:DependsOn}/{@code @file:Repository} directives.
+ * {@code @file:DependsOn}/{@code @file:Repository} directives. {@code kotlinVersion} and
+ * {@code groovyVersion} are a {@code //KOTLIN} / {@code //GROOVY} line's, or null for jk's default.
  */
 public record ScriptHeader(
         List<Dependency> deps,
@@ -23,7 +24,8 @@ public record ScriptHeader(
         @Nullable String main,
         @Nullable String gav,
         @Nullable String description,
-        @Nullable String kotlinVersion) {
+        @Nullable String kotlinVersion,
+        @Nullable String groovyVersion) {
 
     public ScriptHeader {
         deps = List.copyOf(Objects.requireNonNull(deps, "deps"));
@@ -38,6 +40,6 @@ public record ScriptHeader(
     public static ScriptHeader empty() {
         return new ScriptHeader(
                 List.of(), null, List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), null, null, null,
-                null);
+                null, null);
     }
 }

@@ -18,6 +18,18 @@ class ToolTargetTest {
         assertThat(ToolTarget.classify("script.kts")).isInstanceOf(ToolTarget.RunnableFile.class);
         assertThat(ToolTarget.classify("lib.kt")).isInstanceOf(ToolTarget.RunnableFile.class);
         assertThat(ToolTarget.classify("/nowhere/app.jar")).isInstanceOf(ToolTarget.RunnableFile.class);
+        assertThat(ToolTarget.classify("tool.groovy")).isInstanceOf(ToolTarget.RunnableFile.class);
+    }
+
+    @Test
+    void each_script_extension_names_its_prepare_mode() {
+        assertThat(ToolTarget.scriptMode("a.java")).isEqualTo("java");
+        assertThat(ToolTarget.scriptMode("a.kt")).isEqualTo("kt");
+        assertThat(ToolTarget.scriptMode("a.kts")).isEqualTo("kts");
+        assertThat(ToolTarget.scriptMode("a.groovy")).isEqualTo("groovy");
+        assertThat(ToolTarget.scriptMode("a.jar")).isNull();
+        assertThat(ToolTarget.runnable("a.jar")).isTrue();
+        assertThat(ToolTarget.runnable("a.txt")).isFalse();
     }
 
     @Test

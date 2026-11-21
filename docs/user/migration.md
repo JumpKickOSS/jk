@@ -728,7 +728,7 @@ plugin, a `classifier` or `kind = "tests"` as the coordinate's fourth part, an `
 …)` block per exclusion (`*:*` as `isTransitive = false`) and `testAnnotationProcessor` for the
 test processors; a Gradle constraint carries no exclusions, so a managed entry's are a report row.
 
-Single-file scripts: `jk tool run script.java` / `jkx` — [Tools](tools.md).
+Single-file scripts (`.java`, `.kt`, `.kts`, `.groovy`): `jk tool run script.java` / `jkx` — [Tools](tools.md).
 
 MCP: `import` auto-detects the build file; `export` writes maven/gradle/bom; `ide`
 writes the IDE project files.

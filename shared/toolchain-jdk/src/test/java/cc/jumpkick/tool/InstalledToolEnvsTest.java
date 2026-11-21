@@ -72,12 +72,6 @@ class InstalledToolEnvsTest {
     }
 
     @Test
-    void a_kotlin_script_tool_is_the_launchers_business_not_this_paths(@TempDir Path tmp) throws Exception {
-        Path envsRoot = installed(tmp, "greet", "kotlin-script");
-        assertThat(InstalledToolEnvs.read(envsRoot, "greet")).isNull();
-    }
-
-    @Test
     void a_corrupt_env_json_is_null_not_an_error(@TempDir Path tmp) throws Exception {
         Path envDir = Files.createDirectories(tmp.resolve("envs/broken"));
         Files.writeString(envDir.resolve("env.json"), "{not json");

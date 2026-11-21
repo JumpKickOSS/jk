@@ -5,14 +5,13 @@ import cc.jumpkick.jsonl.Jsonl;
 import java.util.List;
 import org.jspecify.annotations.Nullable;
 
-/** Terminal of a {@code jk script} prepare: the compiled script's main class, classpath, classes dir and the kotlinc it used (kind {@code script}). */
+/** Terminal of a {@code jk script} prepare: the compiled script's main class, classpath, classes dir and Kotlin stdlib (kind {@code script}). */
 public record PlanFinishScriptEvent(
         String dir,
         boolean success,
         @Nullable String scriptMainClass,
         List<String> scriptClasspath,
         @Nullable String scriptClassesDir,
-        @Nullable String scriptKotlincBin,
         @Nullable String scriptStdlib) {
     public String encode() {
         return RequestJson.request(EngineProtocol.BUILDPLAN_FINISH)
@@ -22,7 +21,6 @@ public record PlanFinishScriptEvent(
                 .string("scriptMainClass", scriptMainClass)
                 .array("scriptClasspath", scriptClasspath)
                 .string("scriptClassesDir", scriptClassesDir)
-                .string("scriptKotlincBin", scriptKotlincBin)
                 .string("scriptStdlib", scriptStdlib)
                 .finish();
     }
@@ -34,7 +32,6 @@ public record PlanFinishScriptEvent(
                 Jsonl.str(json, "scriptMainClass"),
                 Jsonl.strArray(json, "scriptClasspath"),
                 Jsonl.str(json, "scriptClassesDir"),
-                Jsonl.str(json, "scriptKotlincBin"),
                 Jsonl.str(json, "scriptStdlib"));
     }
 }

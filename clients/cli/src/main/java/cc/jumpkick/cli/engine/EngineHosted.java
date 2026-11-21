@@ -294,14 +294,12 @@ final class EngineHosted {
                 (type, line) -> {});
         PlanFinishScriptEvent e = PlanFinishScriptEvent.decode(finish.finishLine());
         String classesDir = e.scriptClassesDir();
-        String kotlincBin = e.scriptKotlincBin();
         String stdlib = e.scriptStdlib();
         return new EngineRequests.ScriptPrepareOutcome(
                 finish.result(),
                 e.scriptMainClass(),
                 e.scriptClasspath().stream().map(Path::of).toList(),
                 classesDir != null ? Path.of(classesDir) : null,
-                kotlincBin != null ? Path.of(kotlincBin) : null,
                 stdlib != null ? Path.of(stdlib) : null);
     }
 

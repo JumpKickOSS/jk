@@ -60,7 +60,7 @@ import org.jspecify.annotations.Nullable;
 public final class BuildLogicGroovyHost {
 
     /** Match product catalog pin ({@code libs.versions.groovy}); scripts get Groovy 5. */
-    static final String GROOVY_VER = "5.0.4";
+    public static final String GROOVY_VER = "5.0.4";
 
     private static final String ANT_VER = "1.10.14";
     /** Ant's optional tasks (regexpmapper, …), which Netty's codegen.groovy still uses. */
@@ -98,7 +98,7 @@ public final class BuildLogicGroovyHost {
                 classpath,
                 List.of(),
                 (aotOut, scratch) -> trainerCommand(javaBin, classpath, aotOut, scratch)));
-        cmd.addAll(List.of("-cp", classpath, GroovyHostJar.MAIN, "run"));
+        cmd.addAll(List.of("-cp", classpath, GroovyHostJar.HOST, "run"));
         cmd.add(script.toAbsolutePath().normalize().toString());
         cmd.add(compiled.toString());
         cmd.add(projectDir.toAbsolutePath().normalize().toString());
@@ -209,7 +209,7 @@ public final class BuildLogicGroovyHost {
         Files.writeString(script, TRAINING_SCRIPT, StandardCharsets.UTF_8);
         Path jar = scratch.resolve("train.jar");
         Processes.Captured compiled = Processes.capture(
-                List.of(javaBin, "-cp", classpath, GroovyHostJar.MAIN, "compile", script.toString(), jar.toString()),
+                List.of(javaBin, "-cp", classpath, GroovyHostJar.HOST, "compile", script.toString(), jar.toString()),
                 TRAINING_COMPILE_TIMEOUT);
         if (compiled.timedOut() || compiled.exit() != 0) {
             throw new IOException("compiling the Groovy training script failed: "
@@ -220,7 +220,7 @@ public final class BuildLogicGroovyHost {
                 "-XX:AOTCacheOutput=" + aotOut,
                 "-cp",
                 classpath,
-                GroovyHostJar.MAIN,
+                GroovyHostJar.HOST,
                 "run",
                 script.toString(),
                 jar.toString(),
@@ -315,7 +315,7 @@ public final class BuildLogicGroovyHost {
     }
 
     /** Verified jars under the tool cache; anything absent or off-pin is re-fetched from {@code repos}. */
-    static Path[] ensureJars(Supplier<RepoGroup> repos) throws IOException {
+    public static Path[] ensureJars(Supplier<RepoGroup> repos) throws IOException {
         return ensureJars(toolCache(), PINNED_JARS, jar -> fetchVerified(jar, repos.get()));
     }
 

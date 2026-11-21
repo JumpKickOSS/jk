@@ -10,7 +10,6 @@ import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.watch.ProcessTrees;
 import cc.jumpkick.config.EnvLookup;
 import cc.jumpkick.host.Classpaths;
-import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.jdk.JavaHomes;
@@ -19,6 +18,7 @@ import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.script.ScriptHeader;
 import cc.jumpkick.script.ScriptHeaderParser;
+import cc.jumpkick.tool.ToolTarget;
 import cc.jumpkick.wire.EnginePaths;
 import java.io.IOException;
 import java.net.URI;
@@ -32,7 +32,7 @@ import java.util.Objects;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Runs a standalone {@code .java}/{@code .kt}/{@code .kts}/{@code .jar} for {@code jk tool run
+ * Runs a standalone {@code .java}/{@code .kt}/{@code .kts}/{@code .groovy}/{@code .jar} for {@code jk tool run
  * <file>}. Preparation (resolve/compile) is engine-hosted; the user process execs client-side after
  * the progress widget clears so it owns the TTY.
  */
@@ -40,33 +40,25 @@ final class ScriptRunner {
 
     private final GlobalOptions global;
     private final @Nullable Path cacheDirOverride;
-    private final @Nullable Path stateDirOverride;
     private final @Nullable URI repoUrl;
     private final boolean forceRecompile;
     private final List<String> extraDeps;
     private final List<String> extraJavaOptions;
 
-    ScriptRunner(
-            GlobalOptions global,
-            @Nullable Path cacheDirOverride,
-            @Nullable Path stateDirOverride,
-            @Nullable URI repoUrl,
-            boolean forceRecompile) {
-        this(global, cacheDirOverride, stateDirOverride, repoUrl, forceRecompile, List.of(), List.of());
+    ScriptRunner(GlobalOptions global, @Nullable Path cacheDirOverride, @Nullable URI repoUrl, boolean forceRecompile) {
+        this(global, cacheDirOverride, repoUrl, forceRecompile, List.of(), List.of());
     }
 
     /** As above with {@code --with}/alias dep injections and extra JVM options for the exec. */
     ScriptRunner(
             GlobalOptions global,
             @Nullable Path cacheDirOverride,
-            @Nullable Path stateDirOverride,
             @Nullable URI repoUrl,
             boolean forceRecompile,
             List<String> extraDeps,
             List<String> extraJavaOptions) {
         this.global = global;
         this.cacheDirOverride = cacheDirOverride;
-        this.stateDirOverride = stateDirOverride;
         this.repoUrl = repoUrl;
         this.forceRecompile = forceRecompile;
         this.extraDeps = extraDeps;
@@ -79,110 +71,33 @@ final class ScriptRunner {
      */
     int run(Path file, List<String> args) throws IOException, InterruptedException {
         String name = file.getFileName().toString().toLowerCase(Locale.ROOT);
-        if (name.endsWith(".java")) return runJavaScript(file, args);
-        if (name.endsWith(".kts")) return runKtsScript(file, args);
-        if (name.endsWith(".kt")) return runKotlinScript(file, args);
         if (name.endsWith(".jar")) return runJar(file, args);
-        throw new IllegalArgumentException("unsupported file type: " + file);
+        String mode = ToolTarget.scriptMode(name);
+        if (mode == null) throw new IllegalArgumentException("unsupported file type: " + file);
+        return runScript(mode, file, args);
     }
 
-    // --- .java -----------------------------------------------------------
-
-    private int runJavaScript(Path script, List<String> args) throws IOException, InterruptedException {
+    /**
+     * A {@code .java}, {@code .kt}, {@code .kts} or {@code .groovy} script: the engine compiles it once
+     * into jk's cache, then a plain {@code java} runs its classes. The Kotlin stdlib rides along when
+     * the prepare names one.
+     */
+    private int runScript(String mode, Path script, List<String> args) throws IOException, InterruptedException {
         if (!Files.isRegularFile(script)) {
             CommandWedge.printFail("Tool", "script not found: " + script);
             return Exit.NO_INPUT;
         }
         ScriptHeader header = readHeader(script);
-        EngineRequests.ScriptPrepareOutcome prep = prepare("java", script);
+        EngineRequests.ScriptPrepareOutcome prep = prepare(mode, script);
         if (!prep.result().success()) return failureExitCode(prep.result());
-        return execJava(
-                prep.classesDir(),
-                prep.classpath(),
-                header.javaOptions(),
-                Objects.requireNonNull(prep.mainClass(), "script-prepare terminal carried no main class"),
-                args);
-    }
-
-    // --- .kt -------------------------------------------------------------
-
-    private int runKotlinScript(Path script, List<String> args) throws IOException, InterruptedException {
-        if (!Files.isRegularFile(script)) {
-            CommandWedge.printFail("Tool", "script not found: " + script);
-            return Exit.NO_INPUT;
-        }
-        ScriptHeader header = readHeader(script);
-        EngineRequests.ScriptPrepareOutcome prep = prepare("kt", script);
-        if (!prep.result().success()) return failureExitCode(prep.result());
-
-        // At runtime, the Kotlin stdlib must be on the classpath.
         List<Path> runtime = new ArrayList<>(prep.classpath());
         if (prep.stdlib() != null) runtime.add(prep.stdlib());
-
         return execJava(
                 prep.classesDir(),
                 runtime,
                 header.javaOptions(),
                 Objects.requireNonNull(prep.mainClass(), "script-prepare terminal carried no main class"),
                 args);
-    }
-
-    // --- .kts ------------------------------------------------------------
-
-    private int runKtsScript(Path script, List<String> args) throws IOException, InterruptedException {
-        if (!Files.isRegularFile(script)) {
-            CommandWedge.printFail("Tool", "script not found: " + script);
-            return Exit.NO_INPUT;
-        }
-        EngineRequests.ScriptPrepareOutcome prep = prepare("kts", script);
-        if (!prep.result().success() || prep.kotlincBin() == null) {
-            // "kotlinc-missing" is an EX_SOFTWARE (70) shape; everything
-            // else collapses to the generic resolver error code.
-            for (BuildPlanResult.Diagnostic d : prep.result().errors()) {
-                if ("kotlinc-missing".equals(d.code())) return Exit.SOFTWARE;
-            }
-            return failureExitCode(prep.result());
-        }
-
-        // jk resolved any @file:DependsOn/@file:Repository annotations itself (engine-side);
-        // plain kotlinc can't compile them (they're main-kts constructs), so exec a
-        // line-preserving copy with those annotations commented out.
-        String source = new String(Files.readAllBytes(script), StandardCharsets.UTF_8);
-        Path execScript = WorkingDirectory.resolve(script);
-        String neutralized = ScriptHeaderParser.neutralizeKotlinAnnotations(source);
-        if (neutralized != null) {
-            Path srcDir = stateDir()
-                    .resolve("script-cache")
-                    .resolve(Hashing.sha256Hex(source.getBytes(StandardCharsets.UTF_8)))
-                    .resolve("src");
-            Files.createDirectories(srcDir);
-            execScript = srcDir.resolve(script.getFileName().toString());
-            Files.writeString(execScript, neutralized, StandardCharsets.UTF_8);
-        }
-
-        List<String> command = new ArrayList<>();
-        command.add(prep.kotlincBin().toString());
-        // kotlinc -script runs the script in kotlinc's own JVM; -J passes options to it.
-        for (String opt : extraJavaOptions) {
-            command.add("-J" + opt);
-        }
-        command.add("-script");
-        // The script's declared deps (@file:DependsOn / //DEPS / //jk dep) — resolved
-        // engine-side through jk's CAS, handed to kotlinc instead of main-kts's Ivy.
-        if (!prep.classpath().isEmpty()) {
-            command.add("-classpath");
-            command.add(Classpaths.join(prep.classpath()));
-        }
-        command.add(execScript.toString());
-        if (!args.isEmpty()) {
-            command.add("--");
-            command.addAll(args);
-        }
-        Process p = CliOutput.handOffTerminal(processFor(command));
-        // Skip the gap only once the exec actually started — a failed start() still owns
-        // the terminal, and its error wedge has earned the envelope's trailing blank.
-        CliOutput.skipTrailingBlank();
-        return ProcessTrees.awaitExit(p);
     }
 
     // --- .jar ------------------------------------------------------------
@@ -255,10 +170,6 @@ final class ScriptRunner {
 
     private Path cacheDir() {
         return cacheDirOverride != null ? cacheDirOverride : JkDirs.cache();
-    }
-
-    private Path stateDir() {
-        return stateDirOverride != null ? stateDirOverride : JkDirs.state();
     }
 
     private int execJava(

@@ -37,12 +37,14 @@ class BuildLogicGroovyHostTest {
         assertThat(BuildLogicGroovyHost.compiledJar(one)).isEqualTo(BuildLogicGroovyHost.compiledJar(two));
     }
 
-    /** The runner's child classpath is Groovy and Ant alone: its source names nothing of jk's. */
+    /** The runners' child classpath is Groovy, Ant and a script's deps: their sources name nothing of jk's. */
     @Test
-    void the_runner_names_nothing_the_child_cannot_resolve() throws Exception {
-        String source = GroovyHostJar.source();
-        assertThat(source).doesNotContain("cc.jumpkick").doesNotContain("Log.");
-        assertThat(source).contains("catch (Throwable noAnt)");
+    void the_runners_name_nothing_the_child_cannot_resolve() throws Exception {
+        for (String name : GroovyHostJar.JAR.sources()) {
+            String source = GroovyHostJar.JAR.source(name);
+            assertThat(source).as(name).doesNotContain("cc.jumpkick").doesNotContain("Log.");
+        }
+        assertThat(GroovyHostJar.JAR.source("JkGroovyHost.java")).contains("catch (Throwable noAnt)");
     }
 
     // The child classpath jars are code the user's script runs under, so bytes are trusted only

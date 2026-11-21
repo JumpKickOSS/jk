@@ -98,7 +98,7 @@ class BuildLogicGroovyCacheTest {
                         "-Xlog:class+load=info",
                         "-cp",
                         classpath,
-                        GroovyHostJar.MAIN,
+                        GroovyHostJar.HOST,
                         "run",
                         script.toString(),
                         jar.toString(),

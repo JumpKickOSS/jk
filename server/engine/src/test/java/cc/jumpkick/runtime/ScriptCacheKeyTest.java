@@ -25,7 +25,7 @@ class ScriptCacheKeyTest {
     private static String key(Path script, List<Dependency> with) throws Exception {
         byte[] bytes = Files.readAllBytes(script);
         ScriptHeader header = ScriptHeaderParser.parse(new String(bytes, StandardCharsets.UTF_8));
-        return ScriptCacheKey.of(script, bytes, header, with);
+        return ScriptCacheKey.of(script, bytes, header, with, "");
     }
 
     @Test

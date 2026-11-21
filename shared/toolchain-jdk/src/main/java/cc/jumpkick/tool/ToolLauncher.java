@@ -87,53 +87,6 @@ public final class ToolLauncher {
         return launcher;
     }
 
-    /**
-     * Materialise a Kotlin-script tool ({@code jk tool install foo.kts}): same {@code env.json} +
-     * launcher layout, but the launcher execs {@code kotlinc -script} over the env's snapshot copy
-     * of the script instead of {@code java -cp}. {@code env.classpath()} carries the script's
-     * resolved deps (and keeps them GC-reachable via env.json); {@code env.mainClass()} is the
-     * {@code "kotlin-script"} sentinel.
-     */
-    public static Path installKotlinScript(
-            Path envsRoot,
-            Path binDir,
-            Path javaHome,
-            Path kotlincBin,
-            Path script,
-            ToolEnv env,
-            @Nullable ToolProvenance provenance)
-            throws IOException {
-        Path envDir = LauncherName.resolveChild(envsRoot, env.binName());
-        Files.createDirectories(binDir);
-        AtomicWrites.replace(envDir.resolve("env.json"), renderEnvJson(env, javaHome, provenance, List.of()));
-
-        Path launcher = LauncherName.resolveChild(binDir, env.binName() + (Os.isWindows() ? ".cmd" : ""));
-        String cp = env.classpath().isEmpty() ? null : Classpaths.join(env.classpath());
-        String scriptBody;
-        if (Os.isWindows()) {
-            scriptBody = "@echo off\r\nREM " + JkOwnership.GENERATED_BY + " install -- do not edit.\r\n"
-                    + WINDOWS_DOT_ENV + "\""
-                    + kotlincBin + "\" -script \"" + script
-                    + (cp != null ? "\" -classpath \"" + cp : "")
-                    + "\" -- %*\r\n";
-        } else {
-            scriptBody = "#!/usr/bin/env bash\n# " + JkOwnership.GENERATED_BY + " install — do not edit.\n"
-                    + POSIX_DOT_ENV + "exec "
-                    + shellQuote(kotlincBin.toString()) + " -script " + shellQuote(script.toString())
-                    + (cp != null ? " -classpath " + shellQuote(cp) : "")
-                    + " -- \"$@\"\n";
-        }
-        Files.writeString(
-                launcher,
-                scriptBody,
-                StandardCharsets.UTF_8,
-                StandardOpenOption.CREATE,
-                StandardOpenOption.TRUNCATE_EXISTING);
-        markExecutable(launcher);
-        noteInstall(env, launcher);
-        return launcher;
-    }
-
     private static void noteInstall(ToolEnv env, Path launcher) {
         ChangeJournal.note(
                 "tool " + env.binName(),
@@ -257,9 +210,8 @@ public final class ToolLauncher {
         return Jsonl.quote(s);
     }
 
-    /** A Java binary name, or the kotlin-script sentinel this launcher does not exec as a class. */
+    /** A Java binary name, which the launcher execs as its main class. */
     private static String mainClass(String mainClass) {
-        if ("kotlin-script".equals(mainClass)) return mainClass;
         return JavaMain.require(mainClass);
     }
 

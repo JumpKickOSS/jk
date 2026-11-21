@@ -109,9 +109,8 @@ public final class ProtoSession {
             @Nullable String mainClass,
             List<String> classpath,
             @Nullable String classesDir,
-            @Nullable String kotlincBin,
             @Nullable String stdlib) {
-        return new PlanFinishScriptEvent(dir, success, mainClass, classpath, classesDir, kotlincBin, stdlib).encode();
+        return new PlanFinishScriptEvent(dir, success, mainClass, classpath, classesDir, stdlib).encode();
     }
 
     /** The maintenance job is waiting for the cache to quiesce (see {@link EngineProtocol#PRUNE_WAIT}). */

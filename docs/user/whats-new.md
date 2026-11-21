@@ -180,6 +180,12 @@ JumpKick shows you this page's new entries after it updates itself.
   and again when the engine reads the plugin's declarations, so no plugin can put a directory from
   elsewhere on disk into a module's classes, resources, sources or test classpath, or point test JVM
   arguments at a file outside it.
+- **`jkx` runs `.groovy` scripts, and `.kts` scripts start about 12× faster.** `jk tool run`
+  compiled a `.kts` with `kotlinc -script` on every run, about 2.6 s each time. A `.kts` now
+  compiles once into `$JK_CACHE_DIR/tool-scripts/`, as `.java` and `.kt` already did, and a later
+  run starts a plain `java`: about 0.2 s. `.groovy` scripts run the same way (about 0.5 s from the
+  cache), with `//DEPS`, `@Grab` and `//GROOVY <version>`. `jk tool install` of either writes a
+  launcher over the cached classes ([Tools](tools.md)).
 - **Groovy build-logic scripts compile once.** A `.groovy` script under `.jk/scripts/` was
   compiled on every run that executed it. Its classes are now cached under
   `$JK_CACHE_DIR/groovy-scripts/` by the script's content, and a run from the cache never loads the

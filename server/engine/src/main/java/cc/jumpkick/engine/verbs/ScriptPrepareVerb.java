@@ -73,14 +73,16 @@ public final class ScriptPrepareVerb implements HostedVerb {
                                 ScriptPlans.javaScriptBuildPlan(script, cache, repoUrl, forceRecompile, extraDeps);
                             case "kt" ->
                                 ScriptPlans.kotlinScriptBuildPlan(script, cache, repoUrl, forceRecompile, extraDeps);
-                            case "kts" -> ScriptPlans.ktsScriptBuildPlan(script, cache, repoUrl, extraDeps);
+                            case "kts" ->
+                                ScriptPlans.ktsScriptBuildPlan(script, cache, repoUrl, forceRecompile, extraDeps);
+                            case "groovy" ->
+                                ScriptPlans.groovyScriptBuildPlan(script, cache, repoUrl, forceRecompile, extraDeps);
                             case "jar" -> ScriptPlans.jarBuildPlan(script, cache, repoUrl);
                             default -> throw new IllegalArgumentException("unknown script mode: " + mode);
                         };
                 String dir = EngineProtocol.SINGLE_PLAN_DIR;
                 return host.streamSinglePlan(plan, session, writer, result -> {
                     Path classesDir = plan.get(ScriptPlans.CLASSES_DIR).orElse(null);
-                    Path kotlincBin = plan.get(ScriptPlans.KOTLINC_BIN).orElse(null);
                     Path stdlib = plan.get(ScriptPlans.KT_STDLIB).orElse(null);
                     return ProtoSession.planFinishScript(
                             dir,
@@ -90,7 +92,6 @@ public final class ScriptPrepareVerb implements HostedVerb {
                                     .map(Path::toString)
                                     .toList(),
                             classesDir != null ? classesDir.toString() : null,
-                            kotlincBin != null ? kotlincBin.toString() : null,
                             stdlib != null ? stdlib.toString() : null);
                 });
             } catch (Exception e) {

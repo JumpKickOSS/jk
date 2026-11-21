@@ -38,6 +38,7 @@ public final class ScriptHeaderParser {
         String gav = null;
         String description = null;
         String kotlinVersion = null;
+        String groovyVersion = null;
 
         for (String rawLine : script.split("\\R", -1)) {
             String line = rawLine.strip();
@@ -80,6 +81,10 @@ public final class ScriptHeaderParser {
                             String v = d.value.trim();
                             if (!v.isEmpty()) kotlinVersion = v;
                         }
+                        case "groovy" -> {
+                            String v = d.value.trim();
+                            if (!v.isEmpty()) groovyVersion = v;
+                        }
                         default -> {
                             /* unknown directive (//MODULE, //MANIFEST, //JAVAAGENT,
                              * //NATIVE_OPTIONS, //CDS, …) — ignored for forward-compat;
@@ -105,7 +110,8 @@ public final class ScriptHeaderParser {
                 main,
                 gav,
                 description,
-                kotlinVersion);
+                kotlinVersion,
+                groovyVersion);
     }
 
     /**
@@ -137,7 +143,8 @@ public final class ScriptHeaderParser {
                 base.main(),
                 base.gav(),
                 base.description(),
-                base.kotlinVersion());
+                base.kotlinVersion(),
+                base.groovyVersion());
     }
 
     private static @Nullable ParsedDirective parseDirective(String line) {

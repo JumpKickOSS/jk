@@ -111,7 +111,7 @@ public final class ToolRunCommand implements CliCommand {
                         "target",
                         Arity.ZERO_OR_ONE,
                         "Catalog name, Maven coordinate (g:a[:version|@selector]),\n"
-                                + ".java/.kt/.kts/.jar file, directory, git URL, web URL, or\n"
+                                + ".java/.kt/.kts/.groovy/.jar file, directory, git URL, web URL, or\n"
                                 + "alias@catalog. Omit to run the current jk.toml project\n"
                                 + "(pass its args via `jk run . <args>`)."),
                 Param.of("args", Arity.ZERO_OR_MORE, "Arguments forwarded to the program."));
@@ -162,10 +162,7 @@ public final class ToolRunCommand implements CliCommand {
         }
         // Obvious non-module targets.
         String lower = name.toLowerCase(Locale.ROOT);
-        if (lower.endsWith(".java")
-                || lower.endsWith(".kt")
-                || lower.endsWith(".kts")
-                || lower.endsWith(".jar")
+        if (ToolTarget.runnable(lower)
                 || lower.startsWith("http://")
                 || lower.startsWith("https://")
                 || lower.startsWith("git+")) {
@@ -327,7 +324,7 @@ public final class ToolRunCommand implements CliCommand {
             CommandWedge.printFail("Tool", dir + " is a JBang catalog; `alias@…` references aren't supported yet");
             return Exit.USAGE;
         }
-        ScriptRunner runner = new ScriptRunner(global, cacheDirOverride, stateDirOverride, repoUrl, forceRecompile);
+        ScriptRunner runner = new ScriptRunner(global, cacheDirOverride, repoUrl, forceRecompile);
         Path mainJava = dir.resolve("main.java");
         if (Files.isRegularFile(mainJava)) return runner.run(mainJava, args);
         List<Path> scripts;
@@ -335,14 +332,13 @@ public final class ToolRunCommand implements CliCommand {
             scripts = listing.filter(Files::isRegularFile)
                     .filter(p -> {
                         String n = p.getFileName().toString().toLowerCase(Locale.ROOT);
-                        return n.endsWith(".java") || n.endsWith(".kt") || n.endsWith(".kts");
+                        return ToolTarget.scriptMode(n) != null;
                     })
                     .sorted()
                     .toList();
         }
         if (scripts.size() == 1) return runner.run(scripts.get(0), args);
-        CommandWedge.printFail(
-                "Tool", "nothing to run in " + dir + ": no jk.toml, main.java or single .java/.kt/.kts file");
+        CommandWedge.printFail("Tool", "nothing to run in " + dir + ": no jk.toml, main.java or single script file");
         return Exit.USAGE;
     }
 
@@ -431,13 +427,7 @@ public final class ToolRunCommand implements CliCommand {
             if (urlGate != null) return urlGate;
             Path fetched = UrlToolSource.fetch(ref, cacheDir, forceRecompile);
             return new ScriptRunner(
-                            global,
-                            cacheDirOverride,
-                            stateDirOverride,
-                            repoUrl,
-                            forceRecompile,
-                            r.dependencies(),
-                            r.javaOptions())
+                            global, cacheDirOverride, repoUrl, forceRecompile, r.dependencies(), r.javaOptions())
                     .run(fetched, merged);
         }
         if (ref.contains(":")) {
@@ -449,14 +439,7 @@ public final class ToolRunCommand implements CliCommand {
             return null;
         }
         Path fetched = UrlToolSource.fetch(r.rawBase().resolve(ref).toString(), cacheDir, forceRecompile);
-        return new ScriptRunner(
-                        global,
-                        cacheDirOverride,
-                        stateDirOverride,
-                        repoUrl,
-                        forceRecompile,
-                        r.dependencies(),
-                        r.javaOptions())
+        return new ScriptRunner(global, cacheDirOverride, repoUrl, forceRecompile, r.dependencies(), r.javaOptions())
                 .run(fetched, merged);
     }
 
@@ -529,8 +512,7 @@ public final class ToolRunCommand implements CliCommand {
                 CommandWedge.printFail("Tool", e.getMessage());
                 return Exit.USAGE;
             }
-            return new ScriptRunner(
-                            global, cacheDirOverride, stateDirOverride, repoUrl, forceRecompile, fileWith, List.of())
+            return new ScriptRunner(global, cacheDirOverride, repoUrl, forceRecompile, fileWith, List.of())
                     .run(WorkingDirectory.resolve(file.path()), toolArgs);
         }
         if (classified instanceof ToolTarget.Directory dir) {
@@ -551,8 +533,7 @@ public final class ToolRunCommand implements CliCommand {
                 CommandWedge.printFail("Tool", e.getMessage());
                 return Exit.SOFTWARE;
             }
-            return new ScriptRunner(global, cacheDirOverride, stateDirOverride, repoUrl, forceRecompile)
-                    .run(fetched, toolArgs);
+            return new ScriptRunner(global, cacheDirOverride, repoUrl, forceRecompile).run(fetched, toolArgs);
         }
 
         if (classified instanceof ToolTarget.JBangAlias) {

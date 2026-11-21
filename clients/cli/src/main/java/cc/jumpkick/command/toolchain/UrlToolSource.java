@@ -11,6 +11,7 @@ import cc.jumpkick.http.Http;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.script.ScriptHeader;
 import cc.jumpkick.script.ScriptHeaderParser;
+import cc.jumpkick.tool.ToolTarget;
 import cc.jumpkick.tool.TrustedSources;
 import cc.jumpkick.tool.UrlRewriter;
 import java.io.IOException;
@@ -95,7 +96,7 @@ final class UrlToolSource {
         // A source script's //SOURCES and //FILES are relative to the script — mirror them
         // from the raw URL's base so compilation sees the layout the remote had.
         String lower = name.toLowerCase(Locale.ROOT);
-        if (lower.endsWith(".java") || lower.endsWith(".kt") || lower.endsWith(".kts")) {
+        if (ToolTarget.scriptMode(lower) != null) {
             String text = new String(body, StandardCharsets.UTF_8);
             ScriptHeader header =
                     lower.endsWith(".java") ? ScriptHeaderParser.parse(text) : ScriptHeaderParser.parseKotlin(text);
@@ -185,7 +186,7 @@ final class UrlToolSource {
         }
         if (count == 0) throw new IOException("gist " + id + " has no files (or the API response was unreadable)");
         Path entry = pickGistEntry(dir);
-        if (entry == null) throw new IOException("gist " + id + " has no runnable file (.java/.kt/.kts/.jar)");
+        if (entry == null) throw new IOException("gist " + id + " has no runnable file (.java/.kt/.kts/.groovy/.jar)");
         return markComplete(dir, entry);
     }
 
@@ -234,8 +235,7 @@ final class UrlToolSource {
     }
 
     private static boolean isRunnable(String name) {
-        String n = name.toLowerCase(Locale.ROOT);
-        return n.endsWith(".java") || n.endsWith(".kt") || n.endsWith(".kts") || n.endsWith(".jar");
+        return ToolTarget.runnable(name.toLowerCase(Locale.ROOT));
     }
 
     private static List<Path> topLevelFiles(Path dir) throws IOException {

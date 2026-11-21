@@ -21,6 +21,7 @@ jk tool list
 jk tool uninstall checkstyle
 jk tool dir
 jk tool run script.java                                 # JBang-compatible headers
+jk tool run script.groovy a b                           # also .kt and .kts
 ```
 
 `--bin <name>` names the launcher instead of the artifact id: `flyway-commandline` installs as
@@ -45,10 +46,20 @@ force the catalog's. Asking for a version (`name@selector`), or passing `--with`
 is a request the install did not record, so those resolve fresh instead of using the
 installed pin.
 
-A `.java` or `.kt` script compiles once and runs from its cached classes under
+A `.java`, `.kt`, `.kts` or `.groovy` script compiles once and runs from its cached classes under
 `$JK_CACHE_DIR/tool-scripts/` until the script, a `//SOURCES` file it names, its `--with`
-dependencies or the JDK that compiles it changes; `--force` compiles it again. Classes no run has
-used for 30 days are removed.
+dependencies, its Kotlin or Groovy version or the JDK that compiles it changes; `--force` compiles
+it again. A run from the cache starts a plain `java` with no compiler in it, so a small `.kts` or
+`.groovy` script starts in well under a second. Classes no run has used for 30 days are removed.
+
+- **`.kts`** sees its command line as `args`. `@file:DependsOn`, `@file:Repository`, `//DEPS` and
+  `//jk dep` resolve through JumpKick, and `//KOTLIN <version>` picks the Kotlin it compiles with.
+- **`.groovy`** sees its command line as `args`. `//DEPS` resolves through JumpKick, `@Grab`
+  works too, and `//GROOVY <version>` picks the Groovy it runs on (default: the Groovy JumpKick
+  uses for build logic).
+
+`jk tool install` takes the same files and writes a launcher that runs the cached classes, so
+an installed script starts as fast as a cached run.
 
 `jk install g:a:v` outside a project is the same jkx-style install (coordinate on PATH).
 Trust gates stay on the CLI — MCP `install action=list` shows installed tools but does

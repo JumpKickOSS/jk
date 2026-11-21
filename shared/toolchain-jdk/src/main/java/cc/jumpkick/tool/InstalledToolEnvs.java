@@ -55,7 +55,7 @@ public final class InstalledToolEnvs {
             Object root = MiniJson.parse(Files.readString(envJson));
             String primary = MiniJson.str(root, "primary");
             String mainClass = MiniJson.str(root, "mainClass");
-            if (primary == null || mainClass == null || "kotlin-script".equals(mainClass)) return null;
+            if (primary == null || mainClass == null) return null;
             List<Path> classpath = new ArrayList<>();
             for (Object entry : MiniJson.list(root, "classpath")) {
                 if (!(entry instanceof String s)) return null;

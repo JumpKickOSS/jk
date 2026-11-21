@@ -34,7 +34,6 @@ import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.MachineOutput;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
-import cc.jumpkick.script.ScriptHeaderParser;
 import cc.jumpkick.tool.LauncherName;
 import cc.jumpkick.tool.ToolEnv;
 import cc.jumpkick.tool.ToolLauncher;
@@ -48,7 +47,6 @@ import cc.jumpkick.wire.runtime.HostedEvents;
 import cc.jumpkick.wire.runtime.WorkspaceTarget;
 import java.io.IOException;
 import java.net.URI;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -426,7 +424,7 @@ public final class ToolInstallCommand implements CliCommand {
     }
 
     /**
-     * Install a local {@code .java}/{@code .kt}/{@code .jar}: engine script-prepare, then snapshot
+     * Install a local script or jar: engine script-prepare, then snapshot
      * into the env dir and write a launcher (independent of the source path).
      */
     private int installFile(Path file, ToolProvenance provenance) throws IOException, InterruptedException {
@@ -441,8 +439,8 @@ public final class ToolInstallCommand implements CliCommand {
             CommandWedge.printFail("Tool", "file not found: " + file);
             return Exit.NO_INPUT;
         }
-        String mode =
-                lower.endsWith(".jar") ? "jar" : lower.endsWith(".kts") ? "kts" : lower.endsWith(".kt") ? "kt" : "java";
+        String scriptMode = ToolTarget.scriptMode(lower);
+        String mode = scriptMode != null ? scriptMode : "jar";
         String bin = binName != null && !binName.isBlank()
                 ? binName
                 : name.substring(0, name.lastIndexOf('.')).toLowerCase(Locale.ROOT);
@@ -468,29 +466,11 @@ public final class ToolInstallCommand implements CliCommand {
             return Exit.SOFTWARE;
         }
 
-        if (!prep.result().success() || (prep.mainClass() == null && !"kts".equals(mode))) return 1;
+        if (!prep.result().success() || prep.mainClass() == null) return 1;
 
         // Snapshot into the env dir so the launcher survives the source moving/vanishing.
         Path envDir = LauncherName.resolveChild(envsRoot, bin);
         List<Path> classpath = new ArrayList<>();
-        if ("kts".equals(mode)) {
-            // Kotlin script: snapshot a neutralized copy (jk resolved its @file:DependsOn) and
-            // write a kotlinc -script launcher over it + the resolved dep classpath.
-            if (prep.kotlincBin() == null) return 1;
-            String source = Files.readString(file, StandardCharsets.UTF_8);
-            String neutralized = ScriptHeaderParser.neutralizeKotlinAnnotations(source);
-            Path scriptCopy = envDir.resolve(name);
-            AtomicWrites.replace(scriptCopy, neutralized != null ? neutralized : source);
-            ToolEnv ktsEnv = new ToolEnv(bin, Coordinate.of("script", bin, "local"), "kotlin-script", prep.classpath());
-            Path ktsLauncher = ToolLauncher.installKotlinScript(
-                    envsRoot, binDir, JavaHomes.runningJavaHome(), prep.kotlincBin(), scriptCopy, ktsEnv, provenance);
-            if (!global.outputIsJson()) {
-                CommandWedge.printOk("Tool", "Installed " + file.getFileName() + " → " + ktsLauncher);
-                CliOutput.out("Add to PATH if needed:");
-                CliOutput.out("  export PATH=\"" + binDir + ":$PATH\"");
-            }
-            return 0;
-        }
         if ("jar".equals(mode)) {
             Path jarCopy = envDir.resolve(name);
             AtomicWrites.replace(jarCopy, Files.readAllBytes(file));

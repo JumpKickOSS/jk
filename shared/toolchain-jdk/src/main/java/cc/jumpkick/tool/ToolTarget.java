@@ -20,7 +20,7 @@ public sealed interface ToolTarget {
     /** The original target text. */
     String raw();
 
-    /** A {@code .java/.kt/.kts/.jar} target (existing or not — extension is the signal). */
+    /** A {@code .java/.kt/.kts/.groovy/.jar} target (existing or not — extension is the signal). */
     record RunnableFile(Path path, String raw) implements ToolTarget {}
 
     /** An existing directory (jk project / JBang folder — step 2). */
@@ -44,6 +44,23 @@ public sealed interface ToolTarget {
     /** Catalog name, optional {@code @suffix} (floating version selector for the consumer). */
     record CatalogName(String name, @Nullable String suffix, String raw) implements ToolTarget {}
 
+    /**
+     * The script-prepare mode of a lower-cased file name, {@code java}, {@code kt}, {@code kts} or
+     * {@code groovy}, or null when it is not a script jk compiles.
+     */
+    static @Nullable String scriptMode(String lowerName) {
+        if (lowerName.endsWith(".java")) return "java";
+        if (lowerName.endsWith(".kts")) return "kts";
+        if (lowerName.endsWith(".kt")) return "kt";
+        if (lowerName.endsWith(".groovy")) return "groovy";
+        return null;
+    }
+
+    /** Whether a lower-cased file name is one {@code jk tool run} runs: a script or a jar. */
+    static boolean runnable(String lowerName) {
+        return scriptMode(lowerName) != null || lowerName.endsWith(".jar");
+    }
+
     static ToolTarget classify(String raw) {
         Objects.requireNonNull(raw, "raw");
         String s = raw.trim();
@@ -57,11 +74,7 @@ public sealed interface ToolTarget {
                 || s.startsWith("gl:")
                 || s.startsWith("bb:")
                 || s.startsWith("sr:");
-        if (!remote
-                && (lower.endsWith(".java")
-                        || lower.endsWith(".kt")
-                        || lower.endsWith(".kts")
-                        || lower.endsWith(".jar"))) {
+        if (!remote && runnable(lower)) {
             return new RunnableFile(Path.of(s), raw);
         }
 

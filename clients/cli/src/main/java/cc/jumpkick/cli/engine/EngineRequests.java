@@ -406,7 +406,6 @@ public final class EngineRequests {
             @Nullable String mainClass,
             List<Path> classpath,
             @Nullable Path classesDir,
-            @Nullable Path kotlincBin,
             @Nullable Path stdlib) {}
 
     /**
