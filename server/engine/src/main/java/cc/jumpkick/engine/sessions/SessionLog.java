@@ -108,6 +108,8 @@ public final class SessionLog {
      */
     private final ProjectIdMemo projectIds;
 
+    private final Overlaps overlaps = new Overlaps();
+
     /** Whether {@link #adopt} has run. */
     private boolean adopted;
 
@@ -603,7 +605,8 @@ public final class SessionLog {
                             fact.ok(),
                             fact.failingTests(),
                             fact.target(),
-                            fact.count());
+                            fact.count(),
+                            fact.edited());
             List<EpisodeInference.Change> changes = new ArrayList<>(p.changes());
             changes.addAll(live.episodes.fold(p.episode(), placed));
             touch(live, project, fact.end(), p.episode());
@@ -688,6 +691,28 @@ public final class SessionLog {
         if (live == null) return Optional.empty();
         Episode current = live.episodes.current();
         return Optional.of(new Place(live.record.id(), current == null ? null : current.id()));
+    }
+
+    /**
+     * The line episode {@code episode}'s verdict carries when another live session's open episode, in
+     * the same project or another checkout of it, edited a file this one edited too; null when there
+     * is nothing it was not told already.
+     */
+    public @Nullable String overlap(@Nullable String episode) {
+        if (episode == null || episode.isBlank()) return null;
+        List<Overlaps.Open> open = new ArrayList<>();
+        synchronized (this) {
+            adopt();
+            long now = clock.getAsLong();
+            for (Live l : byId.values()) {
+                if (SessionRecord.ENDED.equals(stateOf(l, now))) continue;
+                Episode cur = l.episodes.current();
+                String id = episode.startsWith(l.record.id() + ".") ? episode : cur == null ? "" : cur.id();
+                Overlaps.Open o = l.episodes.open(id, Overlaps.who(l.record));
+                if (o != null) open.add(o);
+            }
+        }
+        return overlaps.line(episode, open, dir -> Objects.requireNonNullElse(projectIds.known(dir), dir));
     }
 
     // ---- reads ---------------------------------------------------------------------------------
@@ -1002,7 +1027,8 @@ public final class SessionLog {
                             b.episode(),
                             a.started() || b.started(),
                             a.titleChanged() || b.titleChanged(),
-                            a.outcomeChanged() || b.outcomeChanged()));
+                            a.outcomeChanged() || b.outcomeChanged(),
+                            a.modulesChanged() || b.modulesChanged()));
         }
         boolean started = false;
         for (EpisodeInference.Change c : folded.values()) {
@@ -1013,6 +1039,8 @@ public final class SessionLog {
             }
             if (c.titleChanged()) publishEpisode(c.episode(), "title");
             if (c.outcomeChanged()) publishEpisode(c.episode(), "outcome");
+            // Every frame carries the whole episode, so its modules ride on a title or outcome frame.
+            if (c.modulesChanged() && !c.titleChanged() && !c.outcomeChanged()) publishEpisode(c.episode(), "modules");
         }
         if (started) publishSession(live, "episode");
     }

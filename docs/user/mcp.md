@@ -159,6 +159,17 @@ A failure with no failed step, test or source error carries its reason on the he
 FAIL test jk · 9.5s — --class named 1 class the tag filter excluded: com.example.FormatThreadsBenchTest [bench]; drop --exclude-tags bench to run it
 ```
 
+When another live session, in this checkout or another checkout of the same project, has an open
+[episode](web.md#sessions-and-episodes) whose runs saw a file changed that this run's episode
+changed too, the verdict ends with one line naming that session and the types (or, for a file
+that is not JVM source, the files) both are editing. Each session hears of one shared file once,
+in its next verdict; a verdict with no overlap carries nothing more.
+
+```
+OK test core · 41 tests · 3.2s
+W codex 91be is also editing Pricing, QuoteTest
+```
+
 Paths are relative to the project directory. A quoted source row is its line number, `|`, a
 tab, then the line exactly as the file has it, indentation included: everything after the first
 tab is an Edit's `old_string`. When that line occurs more than once in the file, the rows on

@@ -2,7 +2,9 @@
 package cc.jumpkick.engine.sessions;
 
 import cc.jumpkick.jsonl.MiniJson;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.Nullable;
 
@@ -23,6 +25,7 @@ import org.jspecify.annotations.Nullable;
  * @param lastAt when its last fact finished
  * @param runs the runs placed in it
  * @param actions the non-run actions placed in it
+ * @param modules the modules its runs saw edited, by name, in first-edited order
  */
 public record Episode(
         String id,
@@ -36,7 +39,8 @@ public record Episode(
         long startedAt,
         long lastAt,
         int runs,
-        int actions) {
+        int actions,
+        List<String> modules) {
 
     public static final String WORKING = "working";
     public static final String GREEN = "green";
@@ -47,10 +51,26 @@ public record Episode(
     public static final String GOAL = "goal";
     public static final String LAST_GOAL = "lastGoal";
 
+    public Episode {
+        modules = List.copyOf(modules);
+    }
+
     /** This episode with its project id. */
     public Episode withProjectId(@Nullable String projectId) {
         return new Episode(
-                id, session, number, project, projectId, title, titleSource, outcome, startedAt, lastAt, runs, actions);
+                id,
+                session,
+                number,
+                project,
+                projectId,
+                title,
+                titleSource,
+                outcome,
+                startedAt,
+                lastAt,
+                runs,
+                actions,
+                modules);
     }
 
     public Map<String, Object> toMap() {
@@ -67,6 +87,7 @@ public record Episode(
         m.put("lastAt", lastAt);
         m.put("runs", runs);
         m.put("actions", actions);
+        m.put("modules", modules);
         return m;
     }
 
@@ -84,7 +105,14 @@ public record Episode(
                 num(m, "startedAt"),
                 num(m, "lastAt"),
                 (int) num(m, "runs"),
-                (int) num(m, "actions"));
+                (int) num(m, "actions"),
+                texts(m, "modules"));
+    }
+
+    static List<String> texts(Map<?, ?> m, String key) {
+        List<String> out = new ArrayList<>();
+        if (m.get(key) instanceof List<?> l) for (Object o : l) if (o != null) out.add(o.toString());
+        return out;
     }
 
     static String text(Map<?, ?> m, String key) {

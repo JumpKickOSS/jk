@@ -320,7 +320,8 @@ class EngineTakeoverTest {
                     false,
                     "app",
                     List.of("QuoteTest#weekend"),
-                    null));
+                    null,
+                    List.of()));
             old.releasePlanSlotForTests();
             assertThat(oldRun.done().await(20, TimeUnit.SECONDS)).isTrue();
             // The successor folds the run when the final drain-status reaches its connection

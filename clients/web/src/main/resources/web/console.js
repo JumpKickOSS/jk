@@ -99,10 +99,23 @@ export function sessionRail(sessions, { cards = [], waiting = new Set(), now = D
       startedAt: s.startedAt || null,
       lastActiveAt: s.lastActiveAt || null,
       episodeNumber: ep ? ep.number : 0,
+      modules: s.state === 'ended' ? '' : railModules(ep && ep.modules),
     });
   }
   rows.sort((a, b) => RAIL_ORDER[a.state] - RAIL_ORDER[b.state] || (b.lastActiveAt || 0) - (a.lastActiveAt || 0));
   return rows;
+}
+
+/** Modules a rail card names: the episode's first three it edited, then how many more. */
+export const RAIL_MODULES = 3;
+
+/** `in engine, web (+2 more)` for the modules an episode's runs edited; empty for none. */
+export function railModules(modules) {
+  const names = (modules || []).filter(Boolean);
+  if (!names.length) return '';
+  const shown = names.slice(0, RAIL_MODULES).join(', ');
+  const more = names.length - RAIL_MODULES;
+  return 'in ' + shown + (more > 0 ? ` (+${more} more)` : '');
 }
 
 // ---- the session log's SSE frames, folded into the rail rows and the selected session's page ----

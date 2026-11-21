@@ -235,6 +235,7 @@
               <span class="spacer"></span><span class="chip" :class="'chip-' + s.state">{{ railStateLabel(s.state) }}</span></span>
             <span class="sess-title">{{ s.title }}</span>
             <span class="sess-src">{{ s.source }}</span>
+            <span v-if="s.modules" class="sess-mods">{{ s.modules }}</span>
             <span class="sess-meta"><template v-if="s.project">{{ s.project }} · </template><template v-if="s.episodeNumber">episode {{ s.episodeNumber }} · </template>{{ ago(s.startedAt) }}</span>
           </button>
         </aside>

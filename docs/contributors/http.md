@@ -727,7 +727,8 @@ dashboard shows), `label` the run records' `session` (`claude-code 3f9a`, `termi
 absent for the dashboard), `state` `live`, `idle` (quiet for the idle gap, ten
 minutes, with none of its builds in flight on this engine) or `ended`, `episode` the current episode's id and `current` that episode. An episode is
 `{ id, session, number, project, projectId?, title, titleSource, outcome, startedAt, lastAt, runs,
-actions }`: `id` is `<session>.<number>`, `titleSource` `goal` (the agent's `goal` argument),
+actions, modules }`: `id` is `<session>.<number>`, `modules` the names of the modules its runs saw
+edited (a file under a module's `src/`, in the order first edited), `titleSource` `goal` (the agent's `goal` argument),
 `lastGoal` (the session's last goal, for an episode no call named one for) or `inferred`, and
 `title` masked like an action's summary; `outcome` `working`,
 `green`, `red` or `abandoned`. What starts an episode and how its title is chosen:
@@ -1219,7 +1220,8 @@ its own session through the tools it calls, not as a stream. Neither the engine 
 JSONL carries them. Each is `{ schema, type, … }` under its own name: `session` is `{ change,
 session }` with `change` one of `started`, `idle`, `live`, `ended`, `episode` (the current
 episode changed) and `session` the row `GET /api/sessions` lists; `episode` is `{ change, episode
-}` with `change` one of `started`, `title`, `outcome`; `action` is `{ session, action }`, one action
+}` with `change` one of `started`, `title`, `outcome`, `modules` (its runs edited a module they had
+not); `action` is `{ session, action }`, one action
 as `GET /api/sessions/<id>` pages it. Runs are not `action` frames: `request-start` and
 `request-finish` already carry them, and the run's journal row names its `episode`. One step's
 changes to one episode are folded into one frame, so an episode a fact opens is announced once,

@@ -32,6 +32,7 @@ const {
   frameStamp,
   hostLabel,
   projectSessionRows,
+  railModules,
   runAttempt,
   sessionChanges,
   sessionOfCard,
@@ -168,6 +169,15 @@ test('the rail puts who waits on you first, then who is working, then the idle',
   assert.equal(row.host, 'claude-code (shell) 9b20e1');
   assert.equal(row.source, 'shell commands', "an agent's shell commands are not yours");
   assert.equal(rail[2].project, 'hotel');
+});
+
+test("a live session's card names the modules its episode edited; an ended one does not", () => {
+  const editing = claude({ current: ep({ modules: ['engine', 'web'] }) });
+  assert.equal(sessionRail([editing], { now: NOW })[0].modules, 'in engine, web');
+  assert.equal(sessionRail([claude()], { now: NOW })[0].modules, '', 'no modules yet: no line');
+  const ended = claude({ state: 'ended', endedAt: NOW - 60_000, current: ep({ modules: ['engine'] }) });
+  assert.equal(sessionRail([ended], { now: NOW })[0].modules, '');
+  assert.equal(railModules(['a', 'b', 'c', 'd', 'e']), 'in a, b, c (+2 more)');
 });
 
 test('a live run makes its session working, matched by origin and label', () => {

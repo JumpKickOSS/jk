@@ -7,6 +7,7 @@ import cc.jumpkick.engine.jobs.JobEnvelope;
 import cc.jumpkick.engine.jobs.JobOrigin;
 import cc.jumpkick.engine.jobs.JobRequests;
 import cc.jumpkick.engine.jobs.JobSpec;
+import cc.jumpkick.engine.sessions.SessionLog;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.host.time.Suspensions;
 import java.io.IOException;
@@ -101,7 +102,7 @@ public final class McpJobRuns {
         Map<String, Object> last = ctx.admissionYield().yielding(() -> finishedJob(ctx, jid, in.dir(), triggeredAt));
         String text = McpAgentText.of(ctx, last);
         if (text == null) text = "FAIL " + spec.kind() + " jid=" + jid + "\nno run record\n";
-        return in.text(text + AnchorsLeft.after(spec.dir(), text) + McpHolds.totalLine(jid));
+        return in.text(text + AnchorsLeft.after(spec.dir(), text) + overlap(ctx, last) + McpHolds.totalLine(jid));
     }
 
     /**
@@ -126,8 +127,21 @@ public final class McpJobRuns {
                 ? in.dir()
                 : McpHistoryViews.str(last, "dir");
         String left = text == null || dir == null || dir.isEmpty() ? "" : AnchorsLeft.after(dir, text);
-        return in.text(
-                (text != null ? text : "FAIL run jid=" + jid + "\nno run record\n") + left + McpHolds.totalLine(jid));
+        return in.text((text != null ? text : "FAIL run jid=" + jid + "\nno run record\n")
+                + left
+                + overlap(ctx, last)
+                + McpHolds.totalLine(jid));
+    }
+
+    /**
+     * One line when another live session is editing a file the run's episode edited too, the first
+     * verdict after the overlap appears; empty otherwise.
+     */
+    static String overlap(McpContext ctx, @Nullable Map<String, Object> record) {
+        SessionLog sessions = ctx.sessions();
+        if (sessions == null || record == null) return "";
+        String line = sessions.overlap(McpHistoryViews.str(record, "episode"));
+        return line == null ? "" : line + "\n";
     }
 
     /**

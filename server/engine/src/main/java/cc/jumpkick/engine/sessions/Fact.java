@@ -15,6 +15,7 @@ import java.util.List;
  * @param failingTests a red run's failing tests as {@code SimpleClass#method}, in report order
  * @param target the coordinate a dependency change named, or the address a rename moved
  * @param count the coordinates a dependency change named, or the pins an update moved
+ * @param edited the project-relative files a run saw changed since the session's run before it
  */
 public record Fact(
         long at,
@@ -25,7 +26,8 @@ public record Fact(
         boolean ok,
         List<String> failingTests,
         String target,
-        int count) {
+        int count,
+        List<String> edited) {
 
     /** The fact kinds inference tells apart. */
     public enum Kind {
@@ -49,17 +51,30 @@ public record Fact(
         module = module == null ? "" : module;
         failingTests = failingTests == null ? List.of() : List.copyOf(failingTests);
         target = target == null ? "" : target;
+        edited = edited == null ? List.of() : List.copyOf(edited);
         millis = Math.max(0, millis);
     }
 
     /** A finished run. */
     public static Fact run(long at, long millis, String project, String module, boolean ok, List<String> failingTests) {
-        return new Fact(at, millis, project, module, Kind.RUN, ok, failingTests, "", 0);
+        return run(at, millis, project, module, ok, failingTests, List.of());
+    }
+
+    /** A finished run that saw {@code edited} changed. */
+    public static Fact run(
+            long at,
+            long millis,
+            String project,
+            String module,
+            boolean ok,
+            List<String> failingTests,
+            List<String> edited) {
+        return new Fact(at, millis, project, module, Kind.RUN, ok, failingTests, "", 0, edited);
     }
 
     /** A non-run action. */
     public static Fact action(long at, long millis, String project, Kind kind, boolean ok, String target, int count) {
-        return new Fact(at, millis, project, "", kind, ok, List.of(), target, count);
+        return new Fact(at, millis, project, "", kind, ok, List.of(), target, count, List.of());
     }
 
     /** When it finished. */

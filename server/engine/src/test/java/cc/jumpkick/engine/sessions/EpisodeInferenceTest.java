@@ -192,9 +192,39 @@ class EpisodeInferenceTest {
     }
 
     @Test
+    void an_episode_keeps_its_edited_files_and_modules_across_a_hand_off() {
+        EpisodeInference before = new EpisodeInference("s", GAP);
+        String id = before.place(T, "/ws/app").episode();
+        List<String> edited = List.of("core/src/main/java/A.java", "web/src/main/java/B.java", "notes.md");
+        assertThat(before.fold(id, Fact.run(T, 100, "/ws/app", "core", true, List.of(), edited)))
+                .singleElement()
+                .satisfies(c -> assertThat(c.modulesChanged()).isTrue());
+        assertThat(before.fold(id, Fact.run(T + 200, 100, "/ws/app", "core", true, List.of(), edited)))
+                .as("no new module, no change")
+                .isEmpty();
+
+        EpisodeInference after = EpisodeInference.resume("s", GAP, before.stored(), before.state(), 0);
+
+        assertThat(after.edited(id)).containsExactlyInAnyOrderElementsOf(edited);
+        assertThat(Objects.requireNonNull(after.current()).modules()).containsExactly("core", "web");
+    }
+
+    @Test
     void an_episode_stored_with_no_state_keeps_its_outcome() {
         Episode closed = new Episode(
-                "s.1", "s", 1, "/ws/app", null, "Working in app", Episode.INFERRED, Episode.RED, T, T, 1, 0);
+                "s.1",
+                "s",
+                1,
+                "/ws/app",
+                null,
+                "Working in app",
+                Episode.INFERRED,
+                Episode.RED,
+                T,
+                T,
+                1,
+                0,
+                List.of("app"));
 
         EpisodeInference after =
                 EpisodeInference.resume("s", GAP, List.of(new EpisodeInference.Stored(closed, Map.of())), null, 0);

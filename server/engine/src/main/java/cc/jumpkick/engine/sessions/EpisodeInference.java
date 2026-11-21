@@ -9,6 +9,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -66,9 +67,15 @@ public final class EpisodeInference {
 
     /**
      * What one step did to an episode: its state after the step, and whether the step started it,
-     * changed its title, or changed its outcome.
+     * changed its title, changed its outcome, or edited a module it had not.
      */
-    public record Change(Episode episode, boolean started, boolean titleChanged, boolean outcomeChanged) {}
+    public record Change(
+            Episode episode, boolean started, boolean titleChanged, boolean outcomeChanged, boolean modulesChanged) {
+
+        public Change(Episode episode, boolean started, boolean titleChanged, boolean outcomeChanged) {
+            this(episode, started, titleChanged, outcomeChanged, false);
+        }
+    }
 
     /** The episode a fact belongs to, and every episode change placing it caused. */
     public record Placement(String episode, List<Change> changes) {}
@@ -78,6 +85,21 @@ public final class EpisodeInference {
         List<Episode> out = new ArrayList<>(episodes.size());
         for (Draft d : episodes) out.add(d.view());
         return out;
+    }
+
+    /**
+     * The project-relative files episode {@code id}'s runs saw edited, up to {@link EditedFiles#KEEP};
+     * empty for one this inference does not hold.
+     */
+    public Set<String> edited(String id) {
+        Draft d = find(id);
+        return d == null ? Set.of() : Set.copyOf(d.edited);
+    }
+
+    /** Episode {@code id} as an overlap reads it, for the session {@code who} names; null for one this inference does not hold. */
+    Overlaps.@Nullable Open open(String id, String who) {
+        Draft d = find(id);
+        return d == null ? null : new Overlaps.Open(id, who, d.project, d.closed == null, Set.copyOf(d.edited));
     }
 
     /** The episode the next fact joins unless a boundary falls, or null before the first fact. */
@@ -118,11 +140,15 @@ public final class EpisodeInference {
         if (d == null) return List.of();
         String title = d.title();
         String outcome = d.outcome();
+        int modules = d.modules.size();
         d.apply(fact);
         touch(d, fact.end());
         boolean retitled = !title.equals(d.title());
         boolean settled = !outcome.equals(d.outcome());
-        return retitled || settled ? List.of(new Change(d.view(), false, retitled, settled)) : List.of();
+        boolean moved = modules != d.modules.size();
+        return retitled || settled || moved
+                ? List.of(new Change(d.view(), false, retitled, settled, moved))
+                : List.of();
     }
 
     /**
@@ -225,6 +251,7 @@ public final class EpisodeInference {
             d.lastAt = e.lastAt();
             d.runs = e.runs();
             d.actions = e.actions();
+            d.modules.addAll(e.modules());
             d.restore(s.state().isEmpty() ? null : s.state(), e.outcome());
             inference.episodes.add(d);
             last = Math.max(last, e.lastAt());
@@ -321,6 +348,12 @@ public final class EpisodeInference {
         String renameTarget = "";
         String module;
 
+        /** Files its runs saw edited, oldest first. */
+        final Set<String> edited = new LinkedHashSet<>();
+
+        /** The modules those files sit in, by name. */
+        final Set<String> modules = new LinkedHashSet<>();
+
         Draft(String id, int number, String project, long startedAt, @Nullable String goal, String source) {
             this.id = id;
             this.number = number;
@@ -338,6 +371,7 @@ public final class EpisodeInference {
                 lastRunOk = f.ok();
                 onlyGraph = false;
                 if (!f.module().isBlank()) module = f.module();
+                edit(f.edited());
                 if (!f.ok()) {
                     redStreak++;
                     if (failing == null && !f.failingTests().isEmpty()) {
@@ -369,6 +403,16 @@ public final class EpisodeInference {
             }
         }
 
+        void edit(List<String> files) {
+            for (String file : files) {
+                edited.remove(file);
+                edited.add(file);
+            }
+            while (edited.size() > EditedFiles.KEEP)
+                edited.remove(edited.iterator().next());
+            modules.addAll(EditedFiles.modules(files, project));
+        }
+
         Map<String, Object> state() {
             Map<String, Object> m = new LinkedHashMap<>();
             if (closed != null) m.put("closed", closed.name());
@@ -383,6 +427,7 @@ public final class EpisodeInference {
             m.put("updatePins", updatePins);
             m.put("renameTarget", renameTarget);
             m.put("module", module);
+            if (!edited.isEmpty()) m.put("edited", List.copyOf(edited));
             return m;
         }
 
@@ -413,6 +458,7 @@ public final class EpisodeInference {
             renameTarget = Episode.text(m, "renameTarget");
             String stored = Episode.text(m, "module");
             if (!stored.isEmpty()) module = stored;
+            edited.addAll(Episode.texts(m, "edited"));
         }
 
         Change close(Closed why) {
@@ -441,7 +487,19 @@ public final class EpisodeInference {
 
         Episode view() {
             return new Episode(
-                    id, session, number, project, null, title(), source, outcome(), startedAt, lastAt, runs, actions);
+                    id,
+                    session,
+                    number,
+                    project,
+                    null,
+                    title(),
+                    source,
+                    outcome(),
+                    startedAt,
+                    lastAt,
+                    runs,
+                    actions,
+                    List.copyOf(modules));
         }
     }
 

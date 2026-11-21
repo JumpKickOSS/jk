@@ -2,6 +2,7 @@
 package cc.jumpkick.engine.sessions;
 
 import cc.jumpkick.engine.journal.BuildRecord;
+import cc.jumpkick.engine.journal.JobDelta;
 import java.util.ArrayList;
 import java.util.List;
 import org.jspecify.annotations.Nullable;
@@ -16,7 +17,14 @@ final class RunFacts {
 
     static Fact fact(FinishedRun r) {
         String dir = r.dir();
-        return Fact.run(r.startedAt(), r.millis(), dir == null ? "" : dir, r.module(), r.success(), r.failingTests());
+        return Fact.run(
+                r.startedAt(),
+                r.millis(),
+                dir == null ? "" : dir,
+                r.module(),
+                r.success(),
+                r.failingTests(),
+                r.edited());
     }
 
     static ActionRecord action(FinishedRun r) {
@@ -43,6 +51,18 @@ final class RunFacts {
             String id = testId(d);
             if (!id.isEmpty() && !out.contains(id)) out.add(id);
         }
+        return out;
+    }
+
+    /**
+     * The project-relative files a run saw changed since the session's run before it, as many as its
+     * delta keeps; none when it has no delta.
+     */
+    static List<String> edited(BuildRecord r) {
+        JobDelta delta = r.delta();
+        if (delta == null || delta.files() == null) return List.of();
+        List<String> out = new ArrayList<>();
+        for (String row : delta.files().shown()) out.add(JobDelta.path(row));
         return out;
     }
 

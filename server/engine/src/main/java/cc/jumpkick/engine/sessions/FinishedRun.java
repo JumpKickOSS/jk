@@ -18,6 +18,7 @@ import org.jspecify.annotations.Nullable;
  * @param module what {@code Working in <module>} names
  * @param failingTests its failing tests, {@code SimpleClass#method}, in report order
  * @param headline the first line of its answer, or null when it has none
+ * @param edited the project-relative files it saw changed since the session's run before it
  */
 public record FinishedRun(
         String episode,
@@ -31,10 +32,12 @@ public record FinishedRun(
         boolean cancelled,
         String module,
         List<String> failingTests,
-        @Nullable String headline) {
+        @Nullable String headline,
+        List<String> edited) {
 
     public FinishedRun {
         failingTests = List.copyOf(failingTests);
+        edited = List.copyOf(edited);
     }
 
     /** The run {@code r} records, or null when it is still running or no episode holds it. */
@@ -53,7 +56,8 @@ public record FinishedRun(
                 r.cancelled(),
                 RunFacts.module(r),
                 RunFacts.failingTests(r),
-                RunFacts.headline(r));
+                RunFacts.headline(r),
+                RunFacts.edited(r));
     }
 
     public Map<String, Object> toMap() {
@@ -70,6 +74,7 @@ public record FinishedRun(
         m.put("module", module);
         m.put("failingTests", failingTests);
         if (headline != null) m.put("headline", headline);
+        if (!edited.isEmpty()) m.put("edited", edited);
         return m;
     }
 
@@ -91,6 +96,7 @@ public record FinishedRun(
                 Boolean.TRUE.equals(m.get("cancelled")),
                 Episode.text(m, "module"),
                 failing,
-                MiniJson.str(m, "headline"));
+                MiniJson.str(m, "headline"),
+                Episode.texts(m, "edited"));
     }
 }

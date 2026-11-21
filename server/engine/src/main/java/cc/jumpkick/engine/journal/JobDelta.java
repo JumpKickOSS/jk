@@ -129,6 +129,9 @@ public record JobDelta(
                 dropped);
     }
 
+    private static final String NEW = " (new)";
+    private static final String GONE = " (gone)";
+
     /** Sorted project-relative paths whose hash differs, with {@code (new)} / {@code (gone)} marks. */
     static List<String> changedFiles(Map<String, String> before, Map<String, String> after) {
         Set<String> paths = new TreeSet<>(before.keySet());
@@ -137,11 +140,18 @@ public record JobDelta(
         for (String p : paths) {
             String was = before.get(p);
             String now = after.get(p);
-            if (was == null) out.add(p + " (new)");
-            else if (now == null) out.add(p + " (gone)");
+            if (was == null) out.add(p + NEW);
+            else if (now == null) out.add(p + GONE);
             else if (!was.equals(now)) out.add(p);
         }
         return out;
+    }
+
+    /** The path of one {@link #files} row, without its {@code (new)} / {@code (gone)} mark. */
+    public static String path(String fileRow) {
+        if (fileRow.endsWith(NEW)) return fileRow.substring(0, fileRow.length() - NEW.length());
+        if (fileRow.endsWith(GONE)) return fileRow.substring(0, fileRow.length() - GONE.length());
+        return fileRow;
     }
 
     /** The identity of a diagnostic across runs: everything but its stack and snippet. */

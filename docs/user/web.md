@@ -48,7 +48,8 @@ home, and removes them when it stops. An engine that has not paired is listed bu
 - **Sessions**: one card per live or idle session, and those that ended within the last hour. A
   card shows the host (`claude-code 3f9a`, `IntelliJ-BSP 7b2c`, `terminal 4c1e9a`), the current episode's
   title and where it came from (*goal from the agent*, *last goal*, *inferred*, *your own
-  commands* for a terminal, or *shell commands* for an agent's shell), the project, and the state:
+  commands* for a terminal, or *shell commands* for an agent's shell), the modules its runs saw
+  edited while the session is not ended (`in core, web`), the project, and the state:
   **waiting on you**, **working** (a run in flight or its episode open), **idle** or **ended**.
   Each terminal is a session like any other, so your `jk test` sits beside the agent's, and two
   terminals are two cards. Click a card to select it; the route carries the choice
