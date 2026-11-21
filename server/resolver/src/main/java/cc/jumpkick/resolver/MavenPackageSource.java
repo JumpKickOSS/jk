@@ -800,6 +800,11 @@ public final class MavenPackageSource implements PackageSource {
         String key = rawEdgesCacheKey(pkg, version);
         List<RawEdge> hit = rawDepsCache.get(key);
         if (hit != null) return hit;
+        // A relocation's one edge keeps the asking package's type and classifier, so it is cached
+        // per package rather than per POM.
+        String packageKey = Interned.of(pkg + "@" + version);
+        hit = rawDepsCache.get(packageKey);
+        if (hit != null) return hit;
 
         // The member stands in for this coordinate, and no repository publishes it at the
         // member's own version. It contributes no edges, so there is no POM to read.
@@ -823,10 +828,10 @@ public final class MavenPackageSource implements PackageSource {
         Pom.Relocation moved = pom.relocation();
         if (moved != null && moved.redirects(coord)) {
             Coordinate to = moved.applyTo(coord);
-            String toPkg = PackageId.ofGa(to.group() + ":" + to.artifact()).key();
+            String toPkg = relocatedPackage(pkg, to);
             List<RawEdge> redirect =
                     List.of(new RawEdge(toPkg, constraintForManagedEdge(toPkg, to.version()), Set.of(), to.version()));
-            rawDepsCache.put(key, redirect);
+            rawDepsCache.put(packageKey, redirect);
             return redirect;
         }
 
@@ -909,7 +914,7 @@ public final class MavenPackageSource implements PackageSource {
         for (String ga : declared.propagate(pkg, pom, children)) {
             versionCache.keySet().removeIf(k -> ga.equals(gaOf(k)));
             expandedVersionCache.keySet().removeIf(k -> ga.equals(gaOf(k)));
-            rawDepsCache.keySet().removeIf(k -> k.startsWith(ga + "@"));
+            rawDepsCache.keySet().removeIf(k -> k.startsWith(ga + "@") || k.startsWith(ga + ":"));
         }
     }
 
@@ -1326,6 +1331,16 @@ public final class MavenPackageSource implements PackageSource {
             }
         }
         if (interrupted) Thread.currentThread().interrupt();
+    }
+
+    /**
+     * The package a relocation of {@code pkg} leads to: {@code to}'s group and artifact with {@code
+     * pkg}'s own type and classifier, which Maven carries over a relocation.
+     */
+    static String relocatedPackage(String pkg, Coordinate to) {
+        PackageId from = PackageId.parse(pkg);
+        return PackageId.of(to.group(), to.artifact(), from.type(), from.classifier())
+                .key();
     }
 
     private static Coordinate withVersion(String pkg, String version) {

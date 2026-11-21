@@ -104,7 +104,8 @@ public final class Versions {
         String core = numericCore(version);
         int dot = core.indexOf('.');
         String major = dot < 0 ? core : core.substring(0, dot);
-        return major.isEmpty() || Long.parseLong(major) == 0;
+        // Read as digits, not parsed: a major of any length is zero only when every digit is.
+        return major.chars().allMatch(c -> Character.digit(c, 10) == 0);
     }
 
     /**

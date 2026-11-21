@@ -54,6 +54,27 @@ class VersionSelectorsTest {
         assertThat(set.contains("0.0.4-alpha")).isFalse();
     }
 
+    /** A snapshot of the next major's first pre-release sorts below it, and is out of the caret too. */
+    @Test
+    void caret_excludes_snapshots_of_the_next_majors_pre_releases() {
+        VersionSet set = VersionSelectors.caretRange("1.2.3");
+        assertThat(set.contains("2.0.0-alpha-SNAPSHOT")).isFalse();
+        assertThat(set.contains("2.0.0-alpha-1-SNAPSHOT")).isFalse();
+        assertThat(set.contains("1.9.9-SNAPSHOT")).isTrue();
+        VersionSet tilde = VersionSelectors.tildeRange("1.2.3");
+        assertThat(tilde.contains("1.3.0-alpha-SNAPSHOT")).isFalse();
+    }
+
+    /** One version between brackets is Maven's exact pin only as {@code [v]}; anything else is malformed. */
+    @Test
+    void a_single_version_range_must_be_inclusive_and_name_a_version() {
+        for (String spec : new String[] {"(1.0)", "[1.0)", "(1.0]", "[]", "()", "", " ", ",", ", ,"}) {
+            assertThatThrownBy(() -> VersionSelectors.parseRange(spec))
+                    .as(spec)
+                    .isInstanceOf(IllegalArgumentException.class);
+        }
+    }
+
     @Test
     void caret_excludes_the_next_majors_pre_releases() {
         // Maven orders 2.0.0-RC1 below 2.0.0, so an upper bound at the release alone lets a

@@ -78,9 +78,41 @@ class LockRelocationStubTest {
                 .isZero();
     }
 
+    /** A relocation carries the classifier the edge asked for: the target's classified jar is locked. */
+    @Test
+    void a_classified_edge_onto_a_relocation_stub_locks_the_targets_classified_jar(@TempDir Path dir) throws Exception {
+        upstream.metadata("com.foo", "old", "1.0");
+        upstream.pomOnly("com.foo", "old", "1.0", """
+                <project>
+                  <groupId>com.foo</groupId><artifactId>old</artifactId><version>1.0</version>
+                  <distributionManagement>
+                    <relocation><artifactId>new</artifactId></relocation>
+                  </distributionManagement>
+                </project>
+                """);
+        upstream.leaf("com.foo", "new", "1.0");
+        upstream.bytes(MavenStub.path("com.foo", "new", "1.0", "-natives.jar"), new byte[] {1, 2, 3});
+        RepoGroup repos =
+                RepoGroup.of(new MavenRepo("maven-stub", http.base(), new Http(), new Cas(dir.resolve("cache"))));
+
+        Lockfile lock = new LockOrchestrator(repos)
+                .lock(
+                        project(new Dependency("com.foo:old", VersionSelector.parse("=1.0")).withClassifier("natives")),
+                        "test");
+
+        assertThat(lock.artifacts())
+                .extracting(Lockfile.Artifact::name)
+                .contains("com.foo:new:jar:natives")
+                .doesNotContain("com.foo:new:jar:");
+    }
+
     private static JkBuild project(String ga, String selector) {
+        return project(new Dependency(ga, VersionSelector.parse(selector)));
+    }
+
+    private static JkBuild project(Dependency dep) {
         EnumMap<Scope, List<Dependency>> byScope = new EnumMap<>(Scope.class);
-        byScope.putAll(Map.of(Scope.MAIN, List.of(new Dependency(ga, VersionSelector.parse(selector)))));
+        byScope.putAll(Map.of(Scope.MAIN, List.of(dep)));
         return new JkBuild(new Project("com.example", "app", "1.0", 25), new JkBuild.Dependencies(byScope));
     }
 }

@@ -180,6 +180,13 @@ class VersionsTest {
         assertThat(Versions.isPreRelease("2.4.0.Final")).isFalse();
     }
 
+    /** A major too long for a long is read as digits: zero only when every digit is. */
+    @Test
+    void a_major_past_a_long_is_read_without_overflow() {
+        assertThat(Versions.isPreRelease("20260520123456789012.0")).isFalse();
+        assertThat(Versions.isPreRelease("00000000000000000000.1")).isTrue();
+    }
+
     @Test
     void a_move_crosses_a_minor_when_the_major_or_the_minor_changes() {
         assertThat(Versions.crossesMinor("2.18.0", "2.18.2")).isFalse();

@@ -15,6 +15,7 @@ import cc.jumpkick.lock.RepoStoreDirs;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.util.AccessLedger;
 import cc.jumpkick.util.FileLocks;
+import cc.jumpkick.util.MinimalToml;
 import cc.jumpkick.util.PoolUse;
 import java.io.IOException;
 import java.net.URI;
@@ -605,9 +606,13 @@ public final class RepoArtifactStore {
         if (Files.exists(marker)) return;
         try {
             Files.createDirectories(root);
-            String text = "origin = \"" + origin + "\"\n"
-                    + (label == null ? "" : "name = \"" + label + "\"\n")
-                    + (loopback ? "process = \"" + PROCESS_TOKEN + "\"\n" : "");
+            // Quoted as TOML basic strings: a repository name a POM declared may hold a quote or a
+            // line break, which written raw would add a line of its own to the marker.
+            Map<String, String> fields = new LinkedHashMap<>();
+            fields.put("origin", origin);
+            if (label != null) fields.put("name", label);
+            if (loopback) fields.put("process", PROCESS_TOKEN);
+            String text = MinimalToml.writeFlat(fields);
             Path tmp = Files.createTempFile(root, ".origin.", ".part");
             boolean moved = false;
             try {
@@ -650,18 +655,10 @@ public final class RepoArtifactStore {
         Path marker = dir.resolve(ORIGIN_FILE);
         if (Files.isRegularFile(marker)) {
             try {
-                for (String line : Files.readAllLines(marker)) {
-                    String[] kv = line.split("=", 2);
-                    if (kv.length != 2) continue;
-                    String key = kv[0].strip();
-                    String value = kv[1].strip();
-                    if (value.length() >= 2 && value.startsWith("\"") && value.endsWith("\"")) {
-                        value = value.substring(1, value.length() - 1);
-                    }
-                    if (key.equals("origin")) origin = value;
-                    else if (key.equals("name")) name = value;
-                    else if (key.equals("process")) process = value;
-                }
+                Map<String, String> fields = MinimalToml.readFlat(Files.readString(marker));
+                origin = fields.get("origin");
+                name = fields.get("name");
+                process = fields.get("process");
             } catch (IOException unreadable) {
                 // fall through to the reserved table
             }
@@ -1057,7 +1054,8 @@ public final class RepoArtifactStore {
     private boolean hasTrackedFile(Path versionDir) {
         if (!Files.isDirectory(versionDir)) return false;
         try (Stream<Path> entries = Files.list(versionDir)) {
-            return entries.anyMatch(Files::isRegularFile);
+            return entries.anyMatch(
+                    p -> Files.isRegularFile(p) && !isStaging(p.getFileName().toString()));
         } catch (IOException e) {
             return false;
         }
@@ -1148,8 +1146,19 @@ public final class RepoArtifactStore {
         }
     }
 
-    /** A jk-owned side file of the tree, not an artifact: the origin marker, a checksum sidecar, the shelf lock. */
+    /**
+     * A jk-owned side file of the tree, not an artifact: the origin marker, a checksum sidecar, the
+     * shelf lock, a write still staged.
+     */
     private static boolean isBookkeeping(String fileName) {
-        return ORIGIN_FILE.equals(fileName) || fileName.endsWith(".sha256") || SHELF_LOCK_NAME.equals(fileName);
+        return ORIGIN_FILE.equals(fileName)
+                || fileName.endsWith(".sha256")
+                || SHELF_LOCK_NAME.equals(fileName)
+                || isStaging(fileName);
+    }
+
+    /** A {@code .<name>.<random>.part} temp a write stages beside its target before the rename. */
+    private static boolean isStaging(String fileName) {
+        return fileName.startsWith(".") && fileName.endsWith(".part");
     }
 }

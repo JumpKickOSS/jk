@@ -56,7 +56,8 @@ public final class HostRateLimiter {
 
     /** Acquire a permit for {@code host}, run {@code work}, release on return or throw. */
     public <T, E extends Exception> T run(String host, ThrowingSupplier<T, E> work) throws E, InterruptedException {
-        Semaphore sem = semaphores.computeIfAbsent(host, h -> new Semaphore(permitsFor(h)));
+        // Host names are case-insensitive: two spellings of one host share its permits.
+        Semaphore sem = semaphores.computeIfAbsent(host.toLowerCase(Locale.ROOT), h -> new Semaphore(permitsFor(h)));
         sem.acquire();
         try {
             return work.get();

@@ -211,7 +211,8 @@ public final class Cas {
             try (OutputStream out = Files.newOutputStream(tmp)) {
                 byte[] buf = new byte[64 * 1024];
                 int n;
-                while ((n = in.read(buf)) > 0) {
+                // Until end of stream: a read of no bytes is not the end, though it ends a "> 0" loop.
+                while ((n = in.read(buf)) >= 0) {
                     digest.update(buf, 0, n);
                     out.write(buf, 0, n);
                     size += n;

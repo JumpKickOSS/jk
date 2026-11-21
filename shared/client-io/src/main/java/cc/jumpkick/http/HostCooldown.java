@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.http;
 
+import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.Log;
@@ -109,7 +110,7 @@ public final class HostCooldown {
         try {
             Path f = fileFor(host);
             if (!Files.isRegularFile(f)) return Optional.empty();
-            Instant expiry = Instant.parse(Files.readString(f).strip());
+            Instant expiry = Instant.parse(AtomicWrites.readString(f).strip());
             if (!expiry.isAfter(clock.get())) {
                 Files.deleteIfExists(f); // expired: forget it rather than re-read it forever
                 return Optional.empty();
@@ -140,7 +141,8 @@ public final class HostCooldown {
         Instant expiry = clock.get().plus(window);
         try {
             Files.createDirectories(dir);
-            Files.writeString(fileFor(host), expiry.toString());
+            // Renamed into place: a request reading the record meanwhile sees the old one or this one.
+            AtomicWrites.replace(fileFor(host), expiry.toString());
         } catch (IOException | RuntimeException e) {
             // best-effort
             Log.debug("noteRateLimited: best-effort", e);

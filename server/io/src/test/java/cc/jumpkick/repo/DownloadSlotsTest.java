@@ -12,6 +12,19 @@ class DownloadSlotsTest {
 
     private static final long MIB = 1L << 20;
 
+    /** Host names are case-insensitive: a leg taken under one spelling is gone from every spelling. */
+    @Test
+    void two_spellings_of_one_host_share_its_leg_slots() throws InterruptedException {
+        int free = DownloadSlots.legsAvailable("case-legs.example.org");
+        DownloadSlots.acquireLeg("Case-Legs.Example.ORG");
+        try {
+            assertThat(DownloadSlots.legsAvailable("case-legs.example.org")).isEqualTo(free - 1);
+        } finally {
+            DownloadSlots.releaseLeg("CASE-LEGS.example.org");
+        }
+        assertThat(DownloadSlots.legsAvailable("case-legs.example.org")).isEqualTo(free);
+    }
+
     @Test
     void four_slots_per_core_when_the_heap_allows_it() {
         assertThat(DownloadSlots.width(4, 1024 * MIB)).isEqualTo(16);

@@ -60,6 +60,37 @@ class RepoArtifactStoreTest {
                 .isTrue();
     }
 
+    /** A repository name holding a quote and a line break is read back as written, and adds no line of its own. */
+    @Test
+    void the_origin_marker_reads_back_a_name_with_a_quote_and_a_line_break(@TempDir Path cache) throws IOException {
+        URI remote = URI.create("https://repo.example/maven/");
+        String name = "corp\"\norigin = \"https://elsewhere.example/";
+        RepoArtifactStore store = RepoArtifactStore.forRepository(cache, name, remote);
+        Path source = cache.resolve("src.jar");
+        Files.writeString(source, "bytes");
+        store.materialize("com/example/lib/1.0/lib-1.0.jar", source, Hashing.sha256Hex(source));
+
+        RepoArtifactStore.Origin origin = Objects.requireNonNull(store.origin());
+
+        assertThat(origin.name()).isEqualTo(name);
+        assertThat(origin.origin()).isEqualTo(RepoIdentity.canonicalOrigin(remote));
+    }
+
+    /** A version directory holding only a staged write is not a version the store has. */
+    @Test
+    void a_version_holding_only_a_staged_write_is_not_listed(@TempDir Path cache) throws IOException {
+        URI remote = URI.create("https://repo.example/maven/");
+        RepoArtifactStore store = RepoArtifactStore.forRepository(cache, "remote", remote);
+        Path source = cache.resolve("src.jar");
+        Files.writeString(source, "bytes");
+        store.materialize("com/example/lib/1.0/lib-1.0.jar", source, Hashing.sha256Hex(source));
+        Path staged = Objects.requireNonNull(store.root()).resolve("com/example/lib/2.0/.lib-2.0.jar.123.part");
+        Files.createDirectories(staged.getParent());
+        Files.writeString(staged, "half");
+
+        assertThat(store.versions("com.example", "lib")).containsExactly("1.0");
+    }
+
     @Test
     void a_remote_tree_outlives_the_process_that_filled_it(@TempDir Path cache) throws IOException {
         URI remote = URI.create("https://repo.example/maven/");

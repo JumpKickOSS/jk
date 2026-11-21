@@ -304,7 +304,8 @@ under Gradle (a Maven build has to declare it by hand).
 **Ranges in dependency POMs and Gradle module metadata** read in Maven's spelling (`[1.0,2.0)`,
 `(,2.0]`, `[1.0]`) and in the ISO spelling Gradle publishes (`[1.0,2.0[` is exclusive above,
 `]1.0,2.0]` exclusive below). A bracket that points at the version includes it; one that points
-away excludes it. A range admits every version Maven's order puts inside it, pre-releases
+away excludes it. One version alone is an exact pin only as `[1.0]`: `(1.0)`, `[1.0)` and `[]`
+name no version and are refused as malformed ranges. A range admits every version Maven's order puts inside it, pre-releases
 included, as Maven does: `[1.1,)` admits `3.0-rc1`, and `[1.0,3.0)` admits `3.0-rc1` too, because
 it sorts below `3.0`. The solver prefers a stable version when the range allows one, but it
 still picks a pre-release when that is the only way to resolve the graph.

@@ -67,15 +67,18 @@ public final class VersionSelectors {
      */
     public static VersionSet parseRange(String spec) {
         String trimmed = spec.trim();
+        if (trimmed.isEmpty()) throw new IllegalArgumentException("malformed Maven range: empty");
         if (isRangeOpen(trimmed.charAt(0))) {
             return parseMavenBracketRanges(trimmed);
         }
-        VersionSet result = VersionSet.ALL;
+        VersionSet result = null;
         for (String part : trimmed.split(",")) {
             String token = part.trim();
             if (token.isEmpty()) continue;
-            result = result.intersect(parseComparator(token));
+            VersionSet one = parseComparator(token);
+            result = result == null ? one : result.intersect(one);
         }
+        if (result == null) throw new IllegalArgumentException("malformed Maven range: " + spec);
         return result;
     }
 
@@ -126,18 +129,20 @@ public final class VersionSelectors {
      * {@code b[}): Maven's and the ISO 31-11 spelling both read this way.
      */
     static VersionSet parseMavenBracketRange(String spec) {
-        char open = spec.charAt(0);
-        char close = spec.charAt(spec.length() - 1);
-        if (spec.length() < 2 || !isRangeOpen(open) || !isRangeClose(close)) {
+        if (spec.length() < 2 || !isRangeOpen(spec.charAt(0)) || !isRangeClose(spec.charAt(spec.length() - 1))) {
             throw new IllegalArgumentException("malformed Maven range: " + spec);
         }
-        boolean minInclusive = open == '[';
-        boolean maxInclusive = close == ']';
+        boolean minInclusive = spec.charAt(0) == '[';
+        boolean maxInclusive = spec.charAt(spec.length() - 1) == ']';
         String inner = spec.substring(1, spec.length() - 1);
         int comma = inner.indexOf(',');
         if (comma < 0) {
+            // One version is Maven's exact pin, [1.0]; with no version, or a bound that points
+            // away from it, the range names nothing.
             String only = inner.trim();
-            if (only.isEmpty()) return VersionSet.ALL;
+            if (only.isEmpty() || !minInclusive || !maxInclusive) {
+                throw new IllegalArgumentException("malformed Maven range: " + spec);
+            }
             return VersionSet.exact(only);
         }
         String minStr = inner.substring(0, comma).trim();
@@ -162,9 +167,9 @@ public final class VersionSelectors {
     /**
      * Cargo-style caret semantics: increment the leading non-zero segment, zero out everything after
      * it, exclusive upper below the next version's pre-releases ({@link #belowPreReleasesOf}).
-     * {@code 1.2.3 → [1.2.3, 2.0.0-alpha)}, {@code 0.2.3 → [0.2.3, 0.3.0-alpha)}, {@code 0.0.3 →
-     * [0.0.3, 0.0.4-alpha)}. Pre-release anchors use the numeric core for bound math and keep the
-     * full string as the inclusive lower bound ({@code ^1.2.3-RC1 → [1.2.3-RC1, 2.0.0-alpha)} —
+     * {@code 1.2.3 → [1.2.3, 2.0.0-alpha-SNAPSHOT)}, {@code 0.2.3 → [0.2.3, 0.3.0-alpha-SNAPSHOT)}, {@code 0.0.3 →
+     * [0.0.3, 0.0.4-alpha-SNAPSHOT)}. Pre-release anchors use the numeric core for bound math and keep the
+     * full string as the inclusive lower bound ({@code ^1.2.3-RC1 → [1.2.3-RC1, 2.0.0-alpha-SNAPSHOT)} —
      * includes RC1 itself). Non-numeric versions fall back to an exact match.
      */
     static VersionSet caretRange(String version) {
@@ -189,9 +194,9 @@ public final class VersionSelectors {
     /**
      * Cargo-style tilde semantics: lock the major (and minor, if present), allow patches; the
      * exclusive upper sits below the next version's pre-releases ({@link #belowPreReleasesOf}).
-     * {@code ~1.2.3 → [1.2.3, 1.3.0-alpha)}, {@code ~1.2 → [1.2, 1.3-alpha)}, {@code ~1 → [1,
-     * 2-alpha)}. Pre-release anchors use the numeric core for upper-bound segments ({@code
-     * ~1.2.3-RC1 → [1.2.3-RC1, 1.3.0-alpha)}).
+     * {@code ~1.2.3 → [1.2.3, 1.3.0-alpha-SNAPSHOT)}, {@code ~1.2 → [1.2, 1.3-alpha-SNAPSHOT)}, {@code ~1 →
+     * [1, 2-alpha-SNAPSHOT)}. Pre-release anchors use the numeric core for upper-bound segments ({@code
+     * ~1.2.3-RC1 → [1.2.3-RC1, 1.3.0-alpha-SNAPSHOT)}).
      */
     static VersionSet tildeRange(String version) {
         String core = Versions.numericCore(version);
@@ -214,10 +219,11 @@ public final class VersionSelectors {
     /**
      * The exclusive upper bound that keeps every pre-release of {@code next} out of a range. Maven
      * orders {@code alpha} below every other qualifier ({@code beta}, {@code M1}, {@code RC1},
-     * {@code SNAPSHOT}) and below the release itself, so {@code next-alpha} is the lowest version of
-     * {@code next}; {@code ^1.2.3} then stops short of {@code 2.0.0-RC1}, not only of {@code 2.0.0}.
+     * {@code SNAPSHOT}) and below the release itself, and a snapshot of it lower still, so {@code
+     * next-alpha-SNAPSHOT} is below every version of {@code next} anyone publishes; {@code ^1.2.3}
+     * then stops short of {@code 2.0.0-RC1}, not only of {@code 2.0.0}.
      */
     private static String belowPreReleasesOf(String next) {
-        return next + "-alpha";
+        return next + "-alpha-SNAPSHOT";
     }
 }

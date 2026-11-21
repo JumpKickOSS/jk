@@ -3,6 +3,7 @@ package cc.jumpkick.repo;
 
 import cc.jumpkick.config.AvailableCpus;
 import cc.jumpkick.http.HostRateLimiter;
+import java.util.Locale;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
@@ -84,7 +85,8 @@ public final class DownloadSlots {
     }
 
     private static Semaphore legs(@Nullable String host) {
-        String key = host == null ? "" : host;
+        // Host names are case-insensitive: two spellings of one host share its slots.
+        String key = host == null ? "" : host.toLowerCase(Locale.ROOT);
         return LEGS.computeIfAbsent(key, h -> new Semaphore(legWidth(h.isEmpty() ? null : h), true));
     }
 

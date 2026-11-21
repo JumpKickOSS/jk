@@ -229,8 +229,7 @@ public final class PubGrubResolver implements Resolver {
                 var moved = pom.relocation();
                 if (moved != null && moved.redirects(toCoord(e.getKey(), e.getValue()))) {
                     var to = moved.applyTo(toCoord(e.getKey(), e.getValue()));
-                    String toPkg =
-                            PackageId.ofGa(to.group() + ":" + to.artifact()).key();
+                    String toPkg = MavenPackageSource.relocatedPackage(e.getKey(), to);
                     if (decisions.containsKey(toPkg)) {
                         deps.add(toPkg + "@" + decisions.get(toPkg));
                     }

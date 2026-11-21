@@ -7,6 +7,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import cc.jumpkick.host.Hashing;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -35,6 +36,28 @@ class CasPutVerifiedTest {
         assertThat(stored.sha256()).isEqualTo(sha);
         assertThat(stored.size()).isEqualTo(BODY.length);
         assertThat(cas.read(sha)).isEqualTo(BODY);
+    }
+
+    /** A read that returns no bytes before the end of the stream does not cut the blob short. */
+    @Test
+    void a_read_of_no_bytes_mid_stream_is_not_the_end(@TempDir Path tmp) throws IOException {
+        Cas cas = new Cas(tmp.resolve("cas"));
+        InputStream hesitant = new ByteArrayInputStream(BODY) {
+            private boolean paused;
+
+            @Override
+            public synchronized int read(byte[] b, int off, int len) {
+                if (!paused && pos == 4) {
+                    paused = true;
+                    return 0;
+                }
+                return super.read(b, off, Math.min(len, 4));
+            }
+        };
+
+        Cas.Stored stored = cas.putVerified(hesitant, Hashing.sha256Hex(BODY));
+
+        assertThat(stored.size()).isEqualTo(BODY.length);
     }
 
     @Test
