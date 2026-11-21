@@ -226,7 +226,7 @@ The whole registry:
 | **`deps`** | Add, remove, or pin coordinates and relock, with a [`goal`](#goal). `preview=true` does not write; a version or coordinate the repositories do not serve is an error, preview or not. An edit whose lock trips the project's [deny policy](publish.md#deny-policy) fails naming each rule it trips, and `jk.toml` and `jk-lock.toml` are left as they were. A coordinate the action cannot use (`pin` without a version, `add` without a group) is refused. The same edit as `jk add`/`jk remove` and `POST /api/project/deps` |
 | **`workspace`** | Preview/apply workspace member add/remove |
 | **`manifest`** | Set whitelisted `jk.toml` keys (`java=N` is language level, not `jdk=`) |
-| **`config`** | Machine config get/set, or `apply_preset=ci` |
+| **`config`** | Machine config get/set, or `apply_preset=ci`. `set` takes `nerd-font` and `engine.max-heap-mb`, which is `0` (uncapped) or 128 to 65536 MiB |
 | **`disk`** | Cache/store usage; `clean`/`nuke`/`m2-clean` require `confirm=true`, and a host that can ask the user [asks](#decisions) |
 | **`jdk`** | List / install / uninstall (`confirm=true` for uninstall, and a host that can ask [asks](#decisions)) |
 | **`node`** | Node.js: `list` (installs, JumpKick's and other managers'), `list-remote` (`lts`, `major`), `install` (`spec`), `uninstall` (`spec` = exact version, `confirm=true`, and a host that can ask [asks](#decisions)), `which` (`dir`: the project's Node.js), `pin` (`dir`, optional `spec`: writes `jk.toml` and relocks) |
