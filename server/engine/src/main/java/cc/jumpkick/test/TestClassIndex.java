@@ -2,6 +2,7 @@
 package cc.jumpkick.test;
 
 import cc.jumpkick.config.StampedMemo;
+import cc.jumpkick.guard.extract.FactsExtractor;
 import cc.jumpkick.guard.extract.FactsIndexing;
 import cc.jumpkick.guard.facts.AnnotationFacts;
 import cc.jumpkick.guard.facts.ClassFacts;
@@ -40,8 +41,9 @@ import org.objectweb.asm.Type;
 
 /**
  * Compiled test classes as the affected-tests ranker and the suite filter see them: imported
- * production types, JUnit tags as JUnit resolves them (nested, composed, inherited), naming heuristic. Read from the guard lane's test facts index when it is current, else by
- * one ASM pass over the class files.
+ * production types, JUnit tags as JUnit resolves them (nested, composed, inherited), naming
+ * heuristic. Read from the guard lane's test facts index when it is current, else from the class
+ * files by the same extractor, so both name the same references.
  */
 public final class TestClassIndex {
 
@@ -101,8 +103,13 @@ public final class TestClassIndex {
 
     /** The entries as the class files would yield them, from the facts index. */
     static List<Entry> fromFacts(FactsIndex facts, Set<String> productionFqcs, List<Path> classpath) {
+        return fromClassFacts(facts.classList(), productionFqcs, classpath);
+    }
+
+    private static List<Entry> fromClassFacts(
+            List<ClassFacts> classes, Set<String> productionFqcs, List<Path> classpath) {
         List<Raw> raws = new ArrayList<>();
-        for (ClassFacts c : facts.classList()) {
+        for (ClassFacts c : classes) {
             if (c.isPackageInfo()) continue;
             Set<String> refs = new LinkedHashSet<>();
             for (String ref : c.typeRefs()) refs.add(Descriptors.binaryName(ref));
@@ -132,17 +139,13 @@ public final class TestClassIndex {
 
     private static List<Entry> readClassFiles(Path testClassesDir, Set<String> productionFqcs, List<Path> classpath)
             throws IOException {
-        List<Raw> raws = new ArrayList<>();
+        List<ClassFacts> classes = new ArrayList<>();
         PathUtil.forEachRegularFile(testClassesDir, (p, attrs) -> {
             if (!p.toString().endsWith(".class")) return;
-            if (p.getFileName().toString().equals("package-info.class")) return;
-            byte[] bytes = Files.readAllBytes(p);
-            Collector c = new Collector();
-            new ClassReader(bytes).accept(c, ClassReader.SKIP_DEBUG | ClassReader.SKIP_FRAMES);
-            if (c.className == null) return;
-            raws.add(c.raw(c.className, c.refs));
+            if (p.getFileName().toString().equals("module-info.class")) return;
+            classes.add(FactsExtractor.extract(Files.readAllBytes(p)));
         });
-        return resolve(raws, productionFqcs, classpath);
+        return fromClassFacts(classes, productionFqcs, classpath);
     }
 
     /**
@@ -375,7 +378,7 @@ public final class TestClassIndex {
         private static @Nullable Raw external(byte[] bytes) {
             Collector c = new Collector();
             new ClassReader(bytes).accept(c, ClassReader.SKIP_CODE | ClassReader.SKIP_DEBUG | ClassReader.SKIP_FRAMES);
-            return c.className == null ? null : c.raw(c.className, Set.of());
+            return c.className == null ? null : c.raw(c.className);
         }
 
         @Override
@@ -442,7 +445,6 @@ public final class TestClassIndex {
         /** Its superclass, then its interfaces, by binary name. */
         final List<String> supertypes = new ArrayList<>();
 
-        final Set<String> refs = new LinkedHashSet<>();
         /** The tags on the class itself. */
         final Set<String> classTags = new LinkedHashSet<>();
         /** The class's other annotations, by binary name. */
@@ -456,10 +458,16 @@ public final class TestClassIndex {
             super(Opcodes.ASM9);
         }
 
-        /** The class as read, named {@code name}, referring to {@code refs}. */
-        Raw raw(String name, Set<String> refs) {
+        /** The class as read, named {@code name}; its references are not read. */
+        Raw raw(String name) {
             return new Raw(
-                    name, List.copyOf(supertypes), classTags, classAnnotations, memberTags, memberAnnotations, refs);
+                    name,
+                    List.copyOf(supertypes),
+                    classTags,
+                    classAnnotations,
+                    memberTags,
+                    memberAnnotations,
+                    Set.of());
         }
 
         @Override
@@ -467,12 +475,8 @@ public final class TestClassIndex {
                 int version, int access, String name, String signature, String superName, String[] interfaces) {
             className = Type.getObjectType(name).getClassName();
             if (superName != null) supertypes.add(Type.getObjectType(superName).getClassName());
-            addInternal(superName);
             if (interfaces != null) {
-                for (String i : interfaces) {
-                    supertypes.add(Type.getObjectType(i).getClassName());
-                    addInternal(i);
-                }
+                for (String i : interfaces) supertypes.add(Type.getObjectType(i).getClassName());
             }
         }
 
@@ -483,7 +487,6 @@ public final class TestClassIndex {
 
         @Override
         public FieldVisitor visitField(int access, String name, String descriptor, String signature, Object value) {
-            addDesc(descriptor);
             return new FieldVisitor(Opcodes.ASM9) {
                 @Override
                 public @Nullable AnnotationVisitor visitAnnotation(String desc, boolean vis) {
@@ -495,35 +498,16 @@ public final class TestClassIndex {
         @Override
         public MethodVisitor visitMethod(
                 int access, String name, String descriptor, String signature, String[] exceptions) {
-            addDesc(descriptor);
             return new MethodVisitor(Opcodes.ASM9) {
                 @Override
                 public @Nullable AnnotationVisitor visitAnnotation(String desc, boolean vis) {
                     return annotation(desc, false);
-                }
-
-                @Override
-                public void visitTypeInsn(int opcode, String type) {
-                    addInternal(type);
-                }
-
-                @Override
-                public void visitFieldInsn(int opcode, String owner, String n, String desc) {
-                    addInternal(owner);
-                    addDesc(desc);
-                }
-
-                @Override
-                public void visitMethodInsn(int opcode, String owner, String n, String desc, boolean isInterface) {
-                    addInternal(owner);
-                    addDesc(desc);
                 }
             };
         }
 
         /** {@code classLevel}: the annotation sits on the class itself, so its tags are inherited by every test. */
         private @Nullable AnnotationVisitor annotation(String descriptor, boolean classLevel) {
-            addDesc(descriptor);
             Set<String> tags = classLevel ? classTags : memberTags;
             if (TAG.equals(descriptor)) {
                 return new AnnotationVisitor(Opcodes.ASM9) {
@@ -551,41 +535,6 @@ public final class TestClassIndex {
                         .add(Type.getType(descriptor).getClassName());
             }
             return null;
-        }
-
-        private void addInternal(String internal) {
-            if (internal == null || internal.isBlank() || internal.startsWith("[")) return;
-            refs.add(Type.getObjectType(internal).getClassName());
-        }
-
-        private void addDesc(String desc) {
-            if (desc == null) return;
-            if (desc.startsWith("(") || desc.contains(";")) {
-                for (Type t : typesOf(desc)) {
-                    if (t.getSort() == Type.OBJECT) refs.add(t.getClassName());
-                    else if (t.getSort() == Type.ARRAY && t.getElementType().getSort() == Type.OBJECT) {
-                        refs.add(t.getElementType().getClassName());
-                    }
-                }
-            } else if (desc.startsWith("L") && desc.endsWith(";")) {
-                refs.add(Type.getType(desc).getClassName());
-            }
-        }
-
-        private static Type[] typesOf(String desc) {
-            try {
-                if (desc.startsWith("(")) {
-                    Type mt = Type.getMethodType(desc);
-                    Type[] args = mt.getArgumentTypes();
-                    Type[] all = new Type[args.length + 1];
-                    System.arraycopy(args, 0, all, 0, args.length);
-                    all[args.length] = mt.getReturnType();
-                    return all;
-                }
-                return new Type[] {Type.getType(desc)};
-            } catch (IllegalArgumentException e) {
-                return new Type[0];
-            }
         }
     }
 }

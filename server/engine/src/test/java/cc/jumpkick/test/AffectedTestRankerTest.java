@@ -136,23 +136,46 @@ class AffectedTestRankerTest {
     }
 
     @Test
-    void dirty_test_source_ranks_without_compiled_index() {
-        AffectedTests r = AffectedTestRanker.rank(new AffectedTestRanker.Inputs(
-                Path.of("/ws/api"),
-                "com.acme:api",
-                Path.of("/ws"),
-                TestSelection.DEFAULT,
-                List.of("api/src/test/java/com/acme/FooTest.java"),
-                Map.of(),
-                Map.of(),
-                List.of(),
-                List.of(),
-                Set.of(),
-                List.of()));
+    void dirty_test_source_ranks_through_its_entry() {
+        TestClassIndex.Entry test = new TestClassIndex.Entry("com.acme.FooTest", Set.of(), Set.of(), Set.of(), "Foo");
+        AffectedTests r = rankDirtyTest(TestSelection.DEFAULT, List.of(test));
         assertThat(r.refused()).isFalse();
         assertThat(r.classNames()).containsExactly("com.acme.FooTest");
         assertThat(r.ranked().getFirst().reason()).isEqualTo("test-src");
         assertThat(r.ranked().getFirst().score()).isEqualTo(110);
+    }
+
+    /** The callers leave out what tags and {@code [test] exclude-classes} keep from the run. */
+    @Test
+    void dirty_test_source_without_an_entry_is_not_ranked() {
+        AffectedTests r = rankDirtyTest(TestSelection.DEFAULT, List.of());
+        assertThat(r.refused()).isFalse();
+        assertThat(r.ranked()).isEmpty();
+    }
+
+    @Test
+    void dirty_test_source_an_excluded_tag_drops_is_not_ranked() {
+        TestClassIndex.Entry slow = new TestClassIndex.Entry(
+                "com.acme.FooTest", Set.of(), Set.of("integration"), Set.of("integration"), "Foo");
+        AffectedTests r =
+                rankDirtyTest(TestSelection.of(List.of(), false, List.of(), List.of("integration")), List.of(slow));
+        assertThat(r.refused()).isFalse();
+        assertThat(r.ranked()).isEmpty();
+    }
+
+    private static AffectedTests rankDirtyTest(TestSelection selection, List<TestClassIndex.Entry> tests) {
+        return AffectedTestRanker.rank(new AffectedTestRanker.Inputs(
+                Path.of("/ws/api"),
+                "com.acme:api",
+                Path.of("/ws"),
+                selection,
+                List.of("api/src/test/java/com/acme/FooTest.java"),
+                Map.of(),
+                Map.of(),
+                List.of(),
+                tests,
+                Set.of(),
+                List.of()));
     }
 
     @Test

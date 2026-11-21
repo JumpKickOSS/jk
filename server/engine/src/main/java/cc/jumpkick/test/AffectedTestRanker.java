@@ -210,7 +210,11 @@ public final class AffectedTestRanker {
         return null;
     }
 
-    /** Every selected test that scores against the changed types, best first, ties by name. */
+    /**
+     * Every selected test that scores against the changed types, best first, ties by name. A dirty
+     * test source ranks only through its entry in {@code tests}: one the run's tags or {@code [test]
+     * exclude-classes} keep out has none, and stays out.
+     */
     private static List<Scored> score(Inputs in, Dirty dirty) {
         LinkedHashSet<String> dirtyTestClasses = dirty.dirtyTestClasses();
         List<String> include =
@@ -258,11 +262,6 @@ public final class AffectedTestRanker {
                 }
             }
             if (score > 0) scored.add(new Scored(t.className(), reason, score));
-        }
-        LinkedHashSet<String> already = new LinkedHashSet<>();
-        for (Scored s : scored) already.add(s.className());
-        for (String fqc : dirtyTestClasses) {
-            if (already.add(fqc)) scored.add(new Scored(fqc, "test-src", 110));
         }
         scored.sort(Comparator.comparingInt(Scored::score).reversed().thenComparing(Scored::className));
         return scored;

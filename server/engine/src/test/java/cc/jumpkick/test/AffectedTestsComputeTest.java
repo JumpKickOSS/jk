@@ -74,6 +74,25 @@ class AffectedTestsComputeTest {
                 .containsExactly("com.acme.FooIT");
     }
 
+    @Test
+    void tests_for_leaves_out_test_exclude_classes(@TempDir Path dir) throws Exception {
+        Path pkg = Files.createDirectories(dir.resolve("src/test/java/com/acme"));
+        Files.writeString(pkg.resolve("FooTest.java"), "package com.acme; class FooTest {}");
+        Files.writeString(pkg.resolve("FlakyTest.java"), "package com.acme; class FlakyTest {}");
+        JkBuild build = JkBuildParser.parse("""
+                group = "com.acme"
+                name = "m"
+                version = "1.0.0"
+
+                [test]
+                exclude-classes = ["*Flaky*"]
+                """);
+        assertThat(AffectedTestsCompute.testsFor(
+                        dir, build, dir.resolve("target/classes/test"), Set.of(), TestSelection.DEFAULT))
+                .extracting(TestClassIndex.Entry::className)
+                .containsExactly("com.acme.FooTest");
+    }
+
     private static final JkBuild PLAIN = JkBuildParser.parse("""
             group = "com.acme"
             name = "m"

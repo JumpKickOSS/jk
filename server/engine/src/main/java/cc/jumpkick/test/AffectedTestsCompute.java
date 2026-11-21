@@ -28,6 +28,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Predicate;
+import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 
 /** Rank tests from sources and on-disk classes. Does not compile or run. */
@@ -213,7 +214,8 @@ public final class AffectedTestsCompute {
     /**
      * Compiled test classes (imports + tags) plus every test source in the selection, so ranking
      * still works when {@code target/test-classes} has not been built yet; only the classes the
-     * selected suites run, by class and tag.
+     * selected suites run, by class and tag, less the classes {@code [test] exclude-classes} keeps
+     * out of every run.
      */
     static List<TestClassIndex.Entry> testsFor(
             Path moduleDir, JkBuild build, Path testClassesDir, Set<String> production, TestSelection sel)
@@ -236,6 +238,11 @@ public final class AffectedTestsCompute {
         List<String> roots = TestSuites.compiled(moduleDir, compact, suites, declared);
         for (TestClassIndex.Entry e : scanTestSources(moduleDir, compact, roots, tags)) {
             if (runs.test(e.className())) byName.putIfAbsent(e.className(), e);
+        }
+        String excluded = JUnitClassFilter.excludeBody(build.build().testExcludeClasses());
+        if (excluded != null) {
+            Pattern out = Pattern.compile(excluded);
+            byName.keySet().removeIf(name -> out.matcher(name).matches());
         }
         return List.copyOf(byName.values());
     }

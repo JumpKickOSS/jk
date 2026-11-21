@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.test;
 
+import cc.jumpkick.host.Hashing;
 import cc.jumpkick.task.ClassAbi;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -59,12 +60,12 @@ public record AffectedTests(
         return List.copyOf(out);
     }
 
-    /** Stamp extra; empty when refuse or empty ranking. */
+    /** Stamp extra: the SHA-256 of the sorted class names; empty when refused or nothing ranked. */
     public String identityToken() {
         if (refuse != null || ranked.isEmpty()) return "";
         List<String> names = new ArrayList<>(classNames());
         names.sort(String::compareTo);
-        return Integer.toHexString(String.join("\0", names).hashCode());
+        return Hashing.sha256Hex(String.join("\0", names));
     }
 
     public AffectedTests merge(AffectedTests other) {

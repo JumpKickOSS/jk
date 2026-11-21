@@ -419,7 +419,10 @@ It is **not** `--affected-since=HEAD` (that range is empty). The two flags canno
 Both flags print the ranking as a table (Score · Class · Reason) and write
 `target/jk-tests-affected.md`. They do **not** run tests and do not replace
 `target/jk-results.md`. `-m` intersects the ranked list exactly as it intersects the
-build cone (`jk test -f -m api`). Ranking refuse exits **2**. When the guess
+build cone (`jk test -f -m api`). An edited test ranks first, unless the run's tags or
+`[test] exclude-classes` keep it out; then it is not listed. A test counts as using a type
+however its bytecode names it: a call, a class literal, a method reference, a caught exception
+or an annotation's class value. Ranking refuse exits **2**. When the guess
 would be dishonest (`jk.toml` change, stale class files, too many types or modules, a
 dirty test outside the current suite), JumpKick prints `cannot rank affected tests` and tells
 you to run `jk test`.
