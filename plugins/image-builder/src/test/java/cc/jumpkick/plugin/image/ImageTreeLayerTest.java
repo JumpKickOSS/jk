@@ -21,6 +21,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
@@ -166,6 +167,47 @@ class ImageTreeLayerTest {
                 .isEqualTo("DEP-2");
     }
 
+    /**
+     * An AOT cache trained on the packager's tree accepts a classpath jar only at the path, size
+     * and modification time it was trained on, and the trainer stamps every staged file with {@link
+     * AotCacheTrainer#LAYER_TIME}. A {@code lib/} layer built from its kept copies after the packager
+     * laid the tree down again has to agree on all three.
+     */
+    @Test
+    void a_kept_lib_layer_ships_the_paths_bytes_and_time_an_aot_cache_is_trained_on(@TempDir Path tmp)
+            throws Exception {
+        Path app = tmp.resolve("quarkus-app");
+        layAppTree(app, "CODE-1");
+        Path cache = Files.createDirectories(tmp.resolve("cache"));
+        ImageBuilder.Plan plan = appTreePlan(tmp, app);
+        ImageBuilder.writeToTarball(plan, tmp.resolve("a.tar"), cache, anonymous());
+        Map<String, byte[]> first = untar(Files.readAllBytes(tmp.resolve("a.tar")));
+
+        PathUtil.deleteRecursively(app);
+        layAppTree(app, "CODE-2");
+        ImageBuilder.writeToTarball(plan, tmp.resolve("b.tar"), cache, anonymous());
+
+        Map<String, byte[]> second = untar(Files.readAllBytes(tmp.resolve("b.tar")));
+        assertThat(layerNames(second).get(0))
+                .as("the kept lib layer")
+                .isEqualTo(layerNames(first).get(0));
+        byte[] lib;
+        try (InputStream in = new GZIPInputStream(
+                new ByteArrayInputStream(second.get(layerNames(second).get(0))))) {
+            lib = in.readAllBytes();
+        }
+        Map<String, byte[]> files = untar(lib);
+        assertThat(files).containsOnlyKeys("app/lib/boot/boot.jar", "app/lib/main/dep.jar");
+        for (Map.Entry<String, byte[]> e : files.entrySet()) {
+            assertThat(e.getValue())
+                    .as(e.getKey())
+                    .isEqualTo(Files.readAllBytes(app.resolve(e.getKey().substring("app/".length()))));
+        }
+        assertThat(mtimes(lib))
+                .as("every entry at the trainer's stamp")
+                .containsOnly(AotCacheTrainer.LAYER_TIME.to(TimeUnit.SECONDS));
+    }
+
     /** A fast-jar tree: run jar, {@code lib/} and an application jar holding {@code code}. */
     private static void layAppTree(Path app, String code) throws IOException {
         Files.createDirectories(app.resolve("lib/main"));
@@ -297,6 +339,22 @@ class ImageTreeLayerTest {
             pos += (int) ((length + 511) / 512 * 512);
         }
         return files;
+    }
+
+    /** Each regular file's modification time in a ustar archive, in seconds. */
+    private static List<Long> mtimes(byte[] tar) {
+        List<Long> times = new ArrayList<>();
+        int pos = 0;
+        while (pos + 512 <= tar.length) {
+            if (field(tar, pos, 100).isEmpty()) break;
+            String size = field(tar, pos + 124, 12).trim();
+            long length = size.isEmpty() ? 0 : Long.parseLong(size, 8);
+            char type = (char) tar[pos + 156];
+            if (type == '0' || type == 0)
+                times.add(Long.parseLong(field(tar, pos + 136, 12).trim(), 8));
+            pos += 512 + (int) ((length + 511) / 512 * 512);
+        }
+        return times;
     }
 
     private static String field(byte[] tar, int at, int len) {
