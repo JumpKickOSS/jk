@@ -466,6 +466,30 @@ class BspServerProtocolTest {
 
     @Test
     @SuppressWarnings("unchecked")
+    void a_scala_main_class_carries_the_run_s_jvm_args_and_env_files(@TempDir Path dir) throws Exception {
+        Path app = module(dir, "app");
+        Files.writeString(dir.resolve("jk.toml"), "[workspace]\nmodules = [\"app\"]\n");
+        Files.writeString(app.resolve(".env"), "JK_BSP_MAIN_ENV=module\n");
+        IdeWireModel model = IdeWireModel.decode("{"
+                + array("moduleDirs", List.of(app.toString())) + ","
+                + array("names", List.of("app")) + ","
+                + array("mainClasses", List.of("t.Main")) + ","
+                + array("runJvmArgs", List.of("0|-Xmx1g", "0|--enable-preview")) + "}");
+
+        List<Map<String, Object>> frames =
+                serve(fake(dir, model), request(2, "buildTarget/scalaMainClasses", target(dir, "app")));
+
+        List<Map<String, Object>> classes =
+                (List<Map<String, Object>>) itemOf(result(frames, 2)).get("classes");
+        assertThat(classes).singleElement().satisfies(main -> {
+            assertThat(main).containsEntry("class", "t.Main");
+            assertThat((List<Object>) main.get("jvmOptions")).containsExactly("-Xmx1g", "--enable-preview");
+            assertThat((List<Object>) main.get("environmentVariables")).containsExactly("JK_BSP_MAIN_ENV=module");
+        });
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
     void the_test_environment_carries_the_module_s_test_jvm_settings_and_its_suite_s(@TempDir Path dir)
             throws Exception {
         Path app = module(dir, "app");

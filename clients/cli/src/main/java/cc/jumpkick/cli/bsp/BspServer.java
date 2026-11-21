@@ -181,7 +181,12 @@ public final class BspServer {
                 case "buildTarget/dependencySources" ->
                     frames.respond(id, perTargetItems(json, BspTargetOptions::dependencySourcesItem));
                 case "buildTarget/scalaMainClasses" ->
-                    frames.respond(id, perTargetItems(json, BspTargetOptions::scalaMainClassesItem));
+                    frames.respond(
+                            id,
+                            perTargetItems(
+                                    json,
+                                    (tid, m, i) -> BspTargetOptions.scalaMainClassesItem(
+                                            tid, m, i, BspTargetOptions.moduleDir(m, i, ide.projectDir()))));
                 case "buildTarget/scalaTestClasses" ->
                     frames.respond(id, perTargetItems(json, (tid, m, i) -> BspTargetOptions.scalaTestClassesItem(tid)));
                 case "buildTarget/compile" -> scheduleLong(id, json, "compile");

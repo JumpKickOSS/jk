@@ -9,8 +9,10 @@ import cc.jumpkick.wire.protocol.IdeWireModel;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
@@ -256,9 +258,7 @@ final class BspTargetOptions {
         if (test) {
             model.testEnvOf(i, BspTargets.suiteOf(tid)).forEach(env::string);
         } else {
-            EnvLookup.dotEnv(dir).forEach((name, value) -> {
-                if (ProcessEnv.get(name) == null) env.string(name, value);
-            });
+            runEnv(dir).forEach(env::string);
         }
         JsonFields item = BspServer.itemFor(tid)
                 .array("classpath", runtimeClasspath(model, i, test))
@@ -327,16 +327,30 @@ final class BspTargetOptions {
         if (i < dirs.size() && dirs.get(i) != null && !dirs.get(i).isBlank()) out.add(uri(Path.of(dirs.get(i))));
     }
 
-    /** {@code ScalaMainClassesItem}: the module's main class when it declares one. */
-    static String scalaMainClassesItem(String tid, IdeWireModel model, int i) {
+    /** The {@code .env} values of module directory {@code dir} that this server's environment, the IDE's, does not set. */
+    private static Map<String, String> runEnv(Path dir) {
+        Map<String, String> out = new LinkedHashMap<>();
+        EnvLookup.dotEnv(dir).forEach((name, value) -> {
+            if (ProcessEnv.get(name) == null) out.put(name, value);
+        });
+        return out;
+    }
+
+    /**
+     * {@code ScalaMainClassesItem}: the module's main class when it declares one, with the JVM
+     * options and {@code NAME=value} environment a run of it gets ({@link #jvmEnvironmentItem}).
+     */
+    static String scalaMainClassesItem(String tid, IdeWireModel model, int i, Path dir) {
         List<String> classes = new ArrayList<>();
         String main = i < model.mainClasses().size() ? model.mainClasses().get(i) : "";
         if (main != null && !main.isBlank()) {
+            List<String> env = new ArrayList<>();
+            runEnv(dir).forEach((name, value) -> env.add(name + "=" + value));
             classes.add(JsonFields.object()
                     .string("class", main)
                     .array("arguments", List.of())
-                    .array("jvmOptions", List.of())
-                    .array("environmentVariables", List.of())
+                    .array("jvmOptions", model.runJvmArgsOf(i))
+                    .array("environmentVariables", env)
                     .finish());
         }
         return BspServer.itemFor(tid)
