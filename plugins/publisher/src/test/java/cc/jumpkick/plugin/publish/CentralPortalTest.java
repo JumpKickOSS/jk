@@ -37,6 +37,13 @@ class CentralPortalTest {
     private static final class TestClock implements Clock {
         private long nanos;
 
+        TestClock() {}
+
+        /** A clock whose reading starts at {@code nanos}: a monotonic ticker has no fixed origin. */
+        TestClock(long nanos) {
+            this.nanos = nanos;
+        }
+
         @Override
         public long millis() {
             return nanos / 1_000_000;
@@ -186,6 +193,36 @@ class CentralPortalTest {
                 .isInstanceOf(IOException.class)
                 .hasMessageContaining("dep-1234")
                 .hasMessageContaining("VALIDATING");
+    }
+
+    @Test
+    void a_ticker_near_its_upper_bound_still_waits_out_the_timeout() throws Exception {
+        walk = List.of("PENDING", "VALIDATING", "VALIDATED");
+        CentralPortal portal = new CentralPortal(base, new RepoCredential.Bearer("tok"), new Http());
+        // The deadline is past Long.MAX_VALUE here and wraps: only a difference of two readings
+        // compares the way the time actually ran.
+        TestClock clock = new TestClock(Long.MAX_VALUE - Duration.ofSeconds(1).toNanos());
+        CentralPortal.Status status = portal.awaitTerminal(
+                "dep-1234",
+                CentralPortal.PublishingType.USER_MANAGED,
+                Duration.ofMinutes(1),
+                clock,
+                millis -> clock.advance(Duration.ofMillis(millis)));
+        assertThat(status.state()).isEqualTo("VALIDATED");
+        assertThat(polls.get()).isEqualTo(3);
+    }
+
+    @Test
+    void a_quote_or_line_break_in_the_name_cannot_end_the_filename_parameter() throws Exception {
+        CentralPortal portal = new CentralPortal(base, new RepoCredential.Bearer("tok"), new Http());
+        portal.upload(
+                "zip".getBytes(StandardCharsets.UTF_8),
+                "widget\"; name=\"x\r\nX-Injected: 1",
+                CentralPortal.PublishingType.AUTOMATIC);
+        String body = new String(uploaded, StandardCharsets.ISO_8859_1);
+        assertThat(body)
+                .contains("name=\"bundle\"; filename=\"widget%22; name=%22x%0D%0AX-Injected: 1.zip\"\r\n")
+                .doesNotContain("\r\nX-Injected");
     }
 
     @Test

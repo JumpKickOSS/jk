@@ -67,4 +67,30 @@ class SlsaProvenanceTest {
                 StandardCharsets.UTF_8);
         assertThat(json).contains("\"metadata\":{\"invocationId\":\"id-1\"}").doesNotContain("startedOn");
     }
+
+    @Test
+    void parameters_render_in_key_order_whatever_order_the_map_iterates() {
+        // Map.copyOf iterates in an order salted per JVM, so a re-publish from another JVM would
+        // render other bytes than the provenance it already uploaded unless the keys are sorted.
+        Map<String, String> internal = Map.of(
+                "version", "1.0.0",
+                "group", "com.example",
+                "jdk", "",
+                "artifact", "widget",
+                "zeta", "z",
+                "beta", "b",
+                "omega", "o",
+                "alpha", "a");
+        var ctx = new SlsaProvenance.BuildContext("x", "y", null, null, null, Map.of("b", "2", "a", "1"), internal);
+
+        String json = new String(
+                SlsaProvenance.generate(List.of(new SlsaProvenance.Subject("a.jar", "ab")), ctx),
+                StandardCharsets.UTF_8);
+
+        assertThat(json)
+                .contains("\"externalParameters\":{\"a\":\"1\",\"b\":\"2\"}")
+                .contains("\"internalParameters\":{\"alpha\":\"a\",\"artifact\":\"widget\",\"beta\":\"b\","
+                        + "\"group\":\"com.example\",\"jdk\":\"\",\"omega\":\"o\",\"version\":\"1.0.0\","
+                        + "\"zeta\":\"z\"}");
+    }
 }

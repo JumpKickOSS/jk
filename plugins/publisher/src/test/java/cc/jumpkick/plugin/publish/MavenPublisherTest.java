@@ -12,6 +12,7 @@ import cc.jumpkick.model.Project;
 import cc.jumpkick.plugin.publish.testkit.GpgTestFixture;
 import cc.jumpkick.repo.MavenMetadata;
 import com.sun.net.httpserver.HttpServer;
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.URI;
@@ -26,11 +27,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CopyOnWriteArrayList;
+import javax.xml.parsers.DocumentBuilderFactory;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.w3c.dom.Document;
 
 class MavenPublisherTest {
 
@@ -307,6 +310,49 @@ class MavenPublisherTest {
                 .contains("<value>1.0.1-20261025.201630-2</value>");
         assertThat(received).containsKey(dir + "maven-metadata.xml.sha1");
         assertThat(versionsOnServer()).contains("1.0.1-SNAPSHOT");
+    }
+
+    @Test
+    void a_snapshot_names_an_extension_by_everything_after_its_first_dot() throws Exception {
+        Project project = new Project("com.example", "widget", "1.0.1-SNAPSHOT", 21);
+        List<MavenPublisher.Artifact> artifacts = List.of(
+                new MavenPublisher.Artifact(".jar", "jar".getBytes(StandardCharsets.UTF_8)),
+                new MavenPublisher.Artifact(".intoto.json", "{}".getBytes(StandardCharsets.UTF_8)),
+                new MavenPublisher.Artifact("-cyclonedx.json", "{}".getBytes(StandardCharsets.UTF_8)));
+
+        new MavenPublisher(base, null, null)
+                .withClock(Clock.fixed(Instant.parse("2026-10-25T20:15:00Z"), ZoneOffset.UTC))
+                .publish(project, artifacts);
+
+        String dir = "/repo/com/example/widget/1.0.1-SNAPSHOT/";
+        assertThat(received).containsKey(dir + "widget-1.0.1-20261025.201500-1.intoto.json");
+        String metadata = new String(received.get(dir + "maven-metadata.xml"), StandardCharsets.UTF_8);
+        assertThat(metadata)
+                .contains("<extension>intoto.json</extension>")
+                .contains("<classifier>cyclonedx</classifier>\n        <extension>json</extension>");
+    }
+
+    @Test
+    void snapshot_metadata_escapes_the_coordinates() throws Exception {
+        Project project = new Project("com.example", "a&b", "1.0-SNAPSHOT", 21);
+
+        new MavenPublisher(base, null, null)
+                .publish(project, List.of(new MavenPublisher.Artifact(".jar", "jar".getBytes(StandardCharsets.UTF_8))));
+
+        byte[] metadata = requireNonNull(received.get("/repo/com/example/a&b/1.0-SNAPSHOT/maven-metadata.xml"));
+        Document document =
+                DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(new ByteArrayInputStream(metadata));
+        assertThat(document.getElementsByTagName("artifactId").item(0).getTextContent())
+                .isEqualTo("a&b");
+    }
+
+    @Test
+    void an_artifact_suffix_without_an_extension_is_refused() {
+        assertThatThrownBy(() -> new MavenPublisher.Artifact("-sources", new byte[0]))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("-<classifier>.<extension>");
+        assertThatThrownBy(() -> new MavenPublisher.Artifact("jar", new byte[0]))
+                .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test

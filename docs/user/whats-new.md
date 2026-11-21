@@ -6,6 +6,13 @@ JumpKick shows you this page's new entries after it updates itself.
 
 ## 0.54.0
 
+- **`jk publish --sign` works with a key file that holds only subkeys.** With a primary kept offline
+  (`gpg --export-secret-subkeys`), signing failed with `privateKey`; now the newest key flagged for
+  signing that carries its secret and is neither revoked nor expired signs, and a key file with none
+  names each key and why it was passed over. The SLSA provenance renders its parameters in key
+  order, so a re-run uploads the same `.intoto.json` it did the first time; a snapshot's
+  `maven-metadata.xml` lists `.intoto.json` with the extension `intoto.json` and escapes its
+  coordinates; and the Central Portal upload escapes the bundle's file name.
 - **On macOS the engine no longer leaks a Mach port reference on every memory reading.** The engine
   reads host memory several times a second, and each reading took a reference to the host's Mach
   port that was never given back. Its available-memory figure also counted speculative pages twice,

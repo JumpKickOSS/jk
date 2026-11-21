@@ -75,6 +75,11 @@ passphrases are secrets and do not belong in `jk.toml`: a `password`, `token` or
 in `[publish]` is refused, naming where the secret goes (`jk repo login`, `JK_REPO_<ID>_*`,
 `JK_GPG_PASSPHRASE`).
 
+The key file may hold the whole secret key or only its subkeys (`gpg --export-secret-subkeys`, the
+primary kept offline). The newest key in it that is flagged for signing, carries its secret and is
+neither revoked nor expired signs; when none does, the refusal names each key and why it was passed
+over.
+
 ### Publishing from a tag
 
 `[release] tag` is the template of the git tag a release carries, `{version}` standing for the

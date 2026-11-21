@@ -175,11 +175,12 @@ public final class CentralPortal {
     public Status awaitTerminal(
             String deploymentId, PublishingType type, Duration timeout, Clock clock, Sleeper sleeper)
             throws IOException, InterruptedException {
-        long deadline = clock.nanos() + timeout.toNanos();
+        long started = clock.nanos();
         long wait = FIRST_POLL_MILLIS;
         Status last = status(deploymentId);
         while (!last.terminal(type)) {
-            if (clock.nanos() >= deadline) {
+            // A difference of two readings: the ticker has no origin, so a sum can wrap.
+            if (clock.nanos() - started >= timeout.toNanos()) {
                 throw new IOException("Central Portal deployment " + deploymentId + " is still " + last.state()
                         + " after " + timeout.toMinutes() + " minutes; check it at " + base + "publishing/deployments");
             }
@@ -229,12 +230,20 @@ public final class CentralPortal {
 
     private static byte[] multipart(String boundary, String filename, byte[] content) throws IOException {
         ByteArrayOutputStream out = new ByteArrayOutputStream(content.length + 256);
-        out.write(("--" + boundary + "\r\n" + "Content-Disposition: form-data; name=\"bundle\"; filename=\"" + filename
-                        + "\"\r\n" + "Content-Type: application/octet-stream\r\n\r\n")
+        out.write(("--" + boundary + "\r\n" + "Content-Disposition: form-data; name=\"bundle\"; filename=\""
+                        + quotedParameter(filename) + "\"\r\n" + "Content-Type: application/octet-stream\r\n\r\n")
                 .getBytes(StandardCharsets.UTF_8));
         out.write(content);
         out.write(("\r\n--" + boundary + "--\r\n").getBytes(StandardCharsets.UTF_8));
         return out.toByteArray();
+    }
+
+    /**
+     * {@code value} safe inside a quoted header parameter, escaped as browsers escape a form's file
+     * name: a quote or a line break would otherwise end the parameter or the header.
+     */
+    private static String quotedParameter(String value) {
+        return value.replace("\"", "%22").replace("\r", "%0D").replace("\n", "%0A");
     }
 
     private static String encode(String s) {

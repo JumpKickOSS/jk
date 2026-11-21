@@ -5,6 +5,7 @@ import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.model.ObjectStoreConfig;
 import cc.jumpkick.model.Project;
+import cc.jumpkick.pom.PomXml;
 import cc.jumpkick.repo.MavenMetadata;
 import cc.jumpkick.repo.RepoTransport;
 import cc.jumpkick.repo.transport.RepoTransports;
@@ -73,10 +74,33 @@ public final class MavenPublisher {
         this.transport = RepoTransports.forUrl(this.repoBase, http, objectStore);
     }
 
+    /**
+     * One file of the publication, named by what follows {@code name-version}: {@code .<extension>}
+     * or {@code -<classifier>.<extension>}. The extension runs from the first dot, so {@code
+     * .intoto.json} is the extension {@code intoto.json}, not {@code json}.
+     */
     public record Artifact(String filenameSuffix, byte[] body) {
         public Artifact {
             Objects.requireNonNull(filenameSuffix, "filenameSuffix");
             Objects.requireNonNull(body, "body");
+            int dot = filenameSuffix.indexOf('.', 1);
+            boolean named = filenameSuffix.startsWith(".")
+                    ? filenameSuffix.length() > 1
+                    : filenameSuffix.startsWith("-") && dot > 1 && dot < filenameSuffix.length() - 1;
+            if (!named) {
+                throw new IllegalArgumentException(
+                        "filenameSuffix must be .<extension> or -<classifier>.<extension>, got: " + filenameSuffix);
+            }
+        }
+
+        /** The classifier, or empty for the main artifact of its extension. */
+        String classifier() {
+            return filenameSuffix.startsWith("-") ? filenameSuffix.substring(1, filenameSuffix.indexOf('.')) : "";
+        }
+
+        /** Everything after the first dot. */
+        String extension() {
+            return filenameSuffix.substring(filenameSuffix.indexOf('.') + 1);
         }
     }
 
@@ -209,23 +233,24 @@ public final class MavenPublisher {
                         results,
                         bytes);
             }
-            String suffix = a.filenameSuffix();
-            int dot = suffix.lastIndexOf('.');
-            String classifier = suffix.startsWith("-") ? suffix.substring(1, dot) : "";
+            String classifier = a.classifier();
             entries.append("      <snapshotVersion>\n");
             if (!classifier.isEmpty())
-                entries.append("        <classifier>").append(classifier).append("</classifier>\n");
+                entries.append("        <classifier>")
+                        .append(PomXml.escape(classifier))
+                        .append("</classifier>\n");
             entries.append("        <extension>")
-                    .append(suffix.substring(dot + 1))
+                    .append(PomXml.escape(a.extension()))
                     .append("</extension>\n        <value>")
-                    .append(stamped)
+                    .append(PomXml.escape(stamped))
                     .append("</value>\n        <updated>")
                     .append(timestamp.replace(".", ""))
                     .append("</updated>\n      </snapshotVersion>\n");
         }
         String metadata = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<metadata modelVersion=\"1.1.0\">\n  <groupId>"
-                + project.group() + "</groupId>\n  <artifactId>" + project.name() + "</artifactId>\n  <version>"
-                + project.version() + "</version>\n  <versioning>\n    <snapshot>\n      <timestamp>" + timestamp
+                + PomXml.escape(project.group()) + "</groupId>\n  <artifactId>" + PomXml.escape(project.name())
+                + "</artifactId>\n  <version>" + PomXml.escape(project.version())
+                + "</version>\n  <versioning>\n    <snapshot>\n      <timestamp>" + timestamp
                 + "</timestamp>\n      <buildNumber>" + build + "</buildNumber>\n    </snapshot>\n"
                 + "    <lastUpdated>" + timestamp.replace(".", "") + "</lastUpdated>\n    <snapshotVersions>\n"
                 + entries + "    </snapshotVersions>\n  </versioning>\n</metadata>\n";

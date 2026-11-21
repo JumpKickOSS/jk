@@ -5,10 +5,10 @@ import cc.jumpkick.jsonl.Jsonl;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.TreeMap;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -121,7 +121,9 @@ public final class SlsaProvenance {
 
     private static void renderStringMap(StringBuilder sb, Map<String, String> values) {
         sb.append('{');
-        Map<String, String> ordered = new LinkedHashMap<>(values);
+        // Sorted by key: the context holds a Map.copyOf, whose iteration order changes from one JVM
+        // to the next, and a re-run must render the bytes it uploaded the first time.
+        Map<String, String> ordered = new TreeMap<>(values);
         int i = 0;
         for (Map.Entry<String, String> e : ordered.entrySet()) {
             if (i++ > 0) sb.append(',');
