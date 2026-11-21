@@ -32,6 +32,7 @@ import cc.jumpkick.guard.rules.GuardsPresence;
 import cc.jumpkick.guard.rules.LoadResult;
 import cc.jumpkick.guard.rules.Rule;
 import cc.jumpkick.guard.rules.RuleSet;
+import cc.jumpkick.guard.schema.Kind;
 import cc.jumpkick.guard.schema.Lane;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Os;
@@ -359,16 +360,28 @@ final class GuardKeys {
      * The workspace lane's tokens ahead of its rules', for its run and its forecast alike: every
      * module's main index digest ({@link #workspaceTokens}), then {@code removed:<module>:<classes>}
      * for each module holding classes of sources that are gone, which the lane reads as not there.
+     * When {@code readsUnseen} ({@link #readsUnseenSources}), {@code unseen:<module>:<packages>} for
+     * each module with main sources no index shows, which a split-package allow is judged against.
      */
     @KeyOwner(step = TaskNames.GUARD_WORKSPACE)
-    static List<String> workspaceLaneTokens(Path root, List<Path> modules) throws IOException {
+    static List<String> workspaceLaneTokens(Path root, List<Path> modules, boolean readsUnseen) throws IOException {
         List<String> tokens = workspaceTokens(root, modules);
         for (Path m : modules) {
             Set<String> removed = WorkspaceFacts.removedClasses(root, m);
             if (!removed.isEmpty())
                 tokens.add("removed:" + WorkspaceModel.rel(root, m) + ":" + String.join(",", removed));
         }
+        if (readsUnseen) {
+            for (var e : WorkspaceFacts.unseenPackages(root, modules).entrySet())
+                tokens.add("unseen:" + WorkspaceModel.rel(root, e.getKey()) + ":" + String.join(",", e.getValue()));
+        }
         return tokens;
+    }
+
+    /** Whether a rule of {@code rules} reads sources no index shows: a split-package rule with an allow. */
+    static boolean readsUnseenSources(RuleSet rules) {
+        for (Rule r : rules.ofKind(Kind.SPLIT_PACKAGE)) if (!r.allow().isEmpty()) return true;
+        return false;
     }
 
     /** The forecast's {@code guard-workspace} step at the workspace root, or empty when it has nothing to judge. */
@@ -382,7 +395,7 @@ final class GuardKeys {
             if (load.hasErrors()) return Optional.of(workspace("guards · jk-guards.toml does not load"));
             if (!LaneRun.judges(Lane.WORKSPACE, LaneRun.rulesFor(Lane.WORKSPACE, load.rules(), "")))
                 return Optional.empty();
-            List<String> tokens = workspaceLaneTokens(root, modules);
+            List<String> tokens = workspaceLaneTokens(root, modules, readsUnseenSources(load.rules()));
             addRuleTokens(tokens, load);
             String key = laneKey(
                     ActionKey.qualifiedTaskId(TaskNames.GUARD_WORKSPACE, root),

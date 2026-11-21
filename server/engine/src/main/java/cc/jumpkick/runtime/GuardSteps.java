@@ -144,7 +144,7 @@ final class GuardSteps {
                 env,
                 Lane.WORKSPACE,
                 ectx,
-                () -> GuardKeys.workspaceLaneTokens(g.root(), modules),
+                () -> GuardKeys.workspaceLaneTokens(g.root(), modules, GuardKeys.readsUnseenSources(rules(g).rules())),
                 ActionKey.qualifiedTaskId(TaskNames.GUARD_WORKSPACE, g.root()),
                 false,
                 List.of(),

@@ -56,16 +56,60 @@ class PlannerGuardsTest {
                 classes.resolve(BuildStamps.JAVA),
                 "TASK compile-main\n" + BuildStamps.SOURCE_LINE + "none " + source + "\n");
 
-        List<String> gone = GuardKeys.workspaceLaneTokens(root, List.of(app));
+        List<String> gone = GuardKeys.workspaceLaneTokens(root, List.of(app), false);
         assertThat(gone).contains("removed:app:" + internal);
 
         Files.createDirectories(source.getParent());
         Files.writeString(source, "");
-        List<String> back = GuardKeys.workspaceLaneTokens(root, List.of(app));
+        List<String> back = GuardKeys.workspaceLaneTokens(root, List.of(app), false);
         assertThat(back)
                 .as("the class is the workspace's again, so a verdict cached without it does not answer")
                 .isNotEqualTo(gone)
                 .noneMatch(t -> t.startsWith("removed:"));
+    }
+
+    /**
+     * A split-package allow is judged against sources no index shows yet, so a source added since
+     * the last compile moves the key, as does one in a module with no index at all.
+     */
+    @Test
+    void the_workspace_lane_key_moves_when_a_source_no_index_shows_appears(@TempDir Path root) throws Exception {
+        Path app = root.resolve("app");
+        Path lib = root.resolve("lib");
+        String internal = PlannerGuardsTest.class.getName().replace('.', '/');
+        Path classes = BuildLayout.moduleTargetDir(app).resolve("classes");
+        Path target = classes.resolve(internal + ".class");
+        Files.createDirectories(target.getParent());
+        try (InputStream in = PlannerGuardsTest.class.getClassLoader().getResourceAsStream(internal + ".class")) {
+            Files.copy(in, target);
+        }
+        Path source = app.resolve("src/main/java").resolve(internal + ".java");
+        Files.createDirectories(source.getParent());
+        Files.writeString(source, "");
+        Files.writeString(
+                classes.resolve(BuildStamps.JAVA),
+                "TASK compile-main\n" + BuildStamps.SOURCE_LINE + "none " + source + "\n");
+        List<Path> modules = List.of(app, lib);
+
+        List<String> before = GuardKeys.workspaceLaneTokens(root, modules, true);
+        Path added = app.resolve("src/main/java/org/example/shared/Added.java");
+        Files.createDirectories(added.getParent());
+        Files.writeString(added, "package org.example.shared;\nclass Added {}\n");
+        List<String> unread = GuardKeys.workspaceLaneTokens(root, modules, true);
+        assertThat(unread)
+                .as("a source the last compile did not read may hold an allowed package")
+                .isNotEqualTo(before)
+                .contains("unseen:app:org.example.shared");
+
+        Path libSource = lib.resolve("src/main/java/org/example/other/Lib.java");
+        Files.createDirectories(libSource.getParent());
+        Files.writeString(libSource, "package org.example.other;\nclass Lib {}\n");
+        assertThat(GuardKeys.workspaceLaneTokens(root, modules, true))
+                .as("a module with no index shows none of its packages")
+                .contains("unseen:lib:org.example.other");
+        assertThat(GuardKeys.workspaceLaneTokens(root, modules, false))
+                .as("no allow to judge, no walk")
+                .noneMatch(t -> t.startsWith("unseen:"));
     }
 
     /**

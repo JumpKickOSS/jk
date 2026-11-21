@@ -9,13 +9,16 @@ import cc.jumpkick.guard.facts.FactsFormat;
 import cc.jumpkick.guard.facts.FactsIndex;
 import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.host.Log;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.layout.ModuleLayout;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -24,6 +27,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
+import java.util.function.Predicate;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -199,6 +203,75 @@ public final class WorkspaceFacts {
             }
         }
         return out;
+    }
+
+    /**
+     * Per module, the packages of its main sources that the workspace lane's indexes do not show:
+     * every one for a module no index gives a package ({@link #packageModuleDirs}), else those of
+     * compilable sources its last compile's stamps do not name, added or moved in since. A module
+     * with stamps that name nothing new, or with no source, is absent. The split-package kind reads
+     * these before it calls an allow stale.
+     */
+    public static Map<Path, Set<String>> unseenPackages(Path root, List<Path> modules) {
+        Set<Path> indexed = new HashSet<>();
+        for (Set<Path> dirs : packageModuleDirs(root, modules).values()) indexed.addAll(dirs);
+        return unseenPackages(modules, indexed);
+    }
+
+    /** {@link #unseenPackages(Path, List)} with the modules an index gives a package already known. */
+    public static Map<Path, Set<String>> unseenPackages(List<Path> modules, Set<Path> indexed) {
+        Map<Path, Set<String>> out = new LinkedHashMap<>();
+        for (Path module : modules) {
+            Set<String> packages = indexed.contains(module) ? unreadPackages(module) : sourcePackages(module);
+            if (!packages.isEmpty()) out.put(module, packages);
+        }
+        return out;
+    }
+
+    /** Every package with at least one file in a main source root of {@code module}. */
+    private static Set<String> sourcePackages(Path module) {
+        Set<String> out = new TreeSet<>();
+        packagesOf(module, file -> true, out);
+        return out;
+    }
+
+    /**
+     * Every package of a compilable source in a main root of {@code module} that the stamps of its
+     * last compile do not name. A module with no stamp names nothing it could be behind.
+     */
+    private static Set<String> unreadPackages(Path module) {
+        Set<String> out = new TreeSet<>();
+        List<Path> stamped =
+                BuildStamps.stampedSources(BuildLayout.moduleTargetDir(module).resolve("classes"));
+        if (stamped.isEmpty()) return out;
+        Set<Path> read = new HashSet<>();
+        for (Path source : stamped) read.add(source.toAbsolutePath().normalize());
+        packagesOf(
+                module,
+                file -> compilable(file) && !read.contains(file.toAbsolutePath().normalize()),
+                out);
+        return out;
+    }
+
+    private static boolean compilable(Path file) {
+        String name = String.valueOf(file.getFileName());
+        return name.endsWith(".java") || name.endsWith(".kt") || name.endsWith(".groovy");
+    }
+
+    /** Adds to {@code out} the package of each file {@code take} accepts in a main source root of {@code module}. */
+    private static void packagesOf(Path module, Predicate<Path> take, Set<String> out) {
+        for (Path root : SourceRoots.mainRoots(module, ModuleLayout.isCompact(module))) {
+            if (!Files.isDirectory(root)) continue;
+            try {
+                PathUtil.forEachReadableFile(root, (file, attrs) -> {
+                    Path dir = root.relativize(file).getParent();
+                    if (dir != null && take.test(file))
+                        out.add(dir.toString().replace(dir.getFileSystem().getSeparator(), "."));
+                });
+            } catch (IOException unreadable) {
+                // A tree the lane cannot list declares nothing it could defend an allow with.
+            }
+        }
     }
 
     /**
