@@ -40,7 +40,7 @@ final class RenameStore {
 
     /**
      * Writes {@code plan}'s files under {@code root}, each atomically, then deletes the files moved
-     * away; the files as they were go to {@code undo/} before anything is touched, and a failure part
+     * away or removed; the files as they were go to {@code undo/} before anything is touched, and a failure part
      * way puts them back.
      */
     static void write(Path root, Path out, RenamePlan plan) throws IOException {
@@ -70,12 +70,14 @@ final class RenameStore {
             for (String rel : plan.moves.keySet()) {
                 if (!plan.after.containsKey(rel)) Files.deleteIfExists(inside(root, rel));
             }
+            for (String rel : plan.removed) Files.deleteIfExists(inside(root, rel));
             for (Map.Entry<String, String> e : plan.rawMoves.entrySet()) {
                 Path to = inside(root, e.getValue());
                 Files.createDirectories(to.getParent());
                 Files.move(inside(root, e.getKey()), to);
             }
             Set<String> emptied = new TreeSet<>(plan.moves.keySet());
+            emptied.addAll(plan.removed);
             emptied.addAll(plan.rawMoves.keySet());
             pruneEmptyDirs(root, emptied);
         } catch (IOException | RuntimeException failed) {

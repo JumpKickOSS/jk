@@ -153,15 +153,15 @@ public final class GraphRunner {
             }
             Compiled compiled = req.noRefresh() || !compile ? Compiled.NOTHING : compileStale(root);
             Path cache = JkDirs.cache();
-            // A rename reads every class set's index, and -r maps every set again.
-            boolean index = "rename".equals(req.op()) || req.rebuild();
+            // A rename or a delete reads every class set's index, and -r maps every set again.
+            boolean index = RenameCheck.EDITS.contains(req.op()) || req.rebuild();
             ClassIndexes indexes = req.noRefresh() ? ClassIndexes.NONE : classIndexes(root, cache, index);
             List<String> modules = req.noRefresh() ? List.of() : moduleRows(root);
             GraphScripts.Tools scripts = req.noRefresh() ? null : GraphScripts.of(root);
-            boolean renames =
-                    "rename".equals(req.op()) && req.options().stream().noneMatch(o -> o.startsWith("phase="));
+            boolean edits = RenameCheck.EDITS.contains(req.op())
+                    && req.options().stream().noneMatch(o -> o.startsWith("phase="));
             boolean testsBroken = compiled.testTreeBroken();
-            if (renames) {
+            if (edits) {
                 Files.deleteIfExists(RenameCheck.proof(root));
                 // A rename reads every test source's index: an edited test is compiled first, else its
                 // uses would be matched by name and the rename's own compile would fail on them. Tests
@@ -171,8 +171,8 @@ public final class GraphRunner {
                 }
             }
             GraphAck ack = ask(root, req, cache, indexes, modules, prefixes, scripts, progress);
-            if (renames && ack.ok() && Files.isRegularFile(RenameCheck.proof(root))) {
-                String line = RenameCheck.prove(root, !testsBroken, compiler, phase -> {
+            if (edits && ack.ok() && Files.isRegularFile(RenameCheck.proof(root))) {
+                String line = RenameCheck.prove(root, String.valueOf(req.op()), !testsBroken, compiler, phase -> {
                     List<String> options = new ArrayList<>(req.options());
                     options.addAll(phase);
                     GraphRequest check = new GraphRequest(
@@ -739,7 +739,7 @@ public final class GraphRunner {
                 .configString("apiCache", apis ? JkStores.resolve("graph-api").toString() : null)
                 .configList("modulePrefixes", prefixes)
                 .configList("aliases", aliasRows(graphConfig(root)))
-                .configList("moduleEdges", "rename".equals(r.op()) ? GraphModuleEdges.rows(root) : List.of())
+                .configList("moduleEdges", RenameCheck.EDITS.contains(r.op()) ? GraphModuleEdges.rows(root) : List.of())
                 .writeTempSpec();
     }
 

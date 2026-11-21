@@ -99,6 +99,9 @@ final class RenamePlan {
     /** Files moved byte for byte, unedited (the resources under a renamed package's path): old path → new. */
     final Map<String, String> rawMoves = new TreeMap<>();
 
+    /** Files the edit removes, each read into {@link #before} first so an undo puts it back. */
+    final Set<String> removed = new TreeSet<>();
+
     /** Lines a bound edit inserted (an import), by the file's old path: each {@code {line, count}}. */
     final Map<String, List<int[]>> inserted = new TreeMap<>();
 

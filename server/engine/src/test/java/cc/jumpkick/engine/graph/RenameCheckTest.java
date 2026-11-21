@@ -45,6 +45,7 @@ class RenameCheckTest {
         List<List<String>> asked = new ArrayList<>();
         String line = RenameCheck.prove(
                 root,
+                "rename",
                 true,
                 (r, modules, tests) -> {
                     compiled.add(modules + " tests=" + tests);
@@ -64,7 +65,11 @@ class RenameCheckTest {
         Path root = workspace(dir);
         List<List<String>> asked = new ArrayList<>();
         RenameCheck.prove(
-                root, true, (r, modules, tests) -> "the code does not compile (A.java:3: cannot find symbol)", o -> {
+                root,
+                "rename",
+                true,
+                (r, modules, tests) -> "the code does not compile (A.java:3: cannot find symbol)",
+                o -> {
                     asked.add(o);
                     return "Rolled back";
                 });
@@ -75,11 +80,32 @@ class RenameCheckTest {
     @Test
     void aCompileThatCouldNotRunLeavesTheEditAndSaysSo(@TempDir Path dir) throws Exception {
         Path root = workspace(dir);
-        String line = RenameCheck.prove(root, true, (r, modules, tests) -> "a build of this checkout is running", o -> {
-            throw new AssertionError("no check without a compile");
-        });
+        String line = RenameCheck.prove(
+                root, "rename", true, (r, modules, tests) -> "a build of this checkout is running", o -> {
+                    throw new AssertionError("no check without a compile");
+                });
         assertThat(line)
                 .isEqualTo(
                         "Not proven: a build of this checkout is running. The edit stays; build and test to check it.");
+    }
+
+    @Test
+    void aDeleteWhoseTestsDidNotCompileBeforeCompilesMainAloneAndSaysTheTestsAreNotChecked(@TempDir Path dir)
+            throws Exception {
+        Path root = workspace(dir);
+        List<String> compiled = new ArrayList<>();
+        String line = RenameCheck.prove(
+                root,
+                "delete",
+                false,
+                (r, modules, tests) -> {
+                    compiled.add(modules + " tests=" + tests);
+                    return null;
+                },
+                options -> "Proven: it compiles.");
+        assertThat(compiled).containsExactly("[core] tests=false");
+        assertThat(line)
+                .isEqualTo("Proven: it compiles.\nNot checked: the tests did not compile before the delete, so their"
+                        + " uses of it are not known; not done until they compile.");
     }
 }

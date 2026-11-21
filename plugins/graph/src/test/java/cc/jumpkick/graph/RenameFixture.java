@@ -19,9 +19,9 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * A one-module workspace compiled the way jk compiles it: main and test classes, each with the
- * reference index javac writes, and the facts index the engine hands the graph worker. A rename
- * runs through {@link GraphService} as the engine asks for it; {@link #compile} after an edit is
- * the engine's compile step, so the proof ({@code phase=verify}) reads what javac resolved.
+ * reference index javac writes, and the facts index the engine hands the graph worker. A rename or
+ * a delete runs through {@link GraphService} as the engine asks for it; {@link #compile} after an
+ * edit is the engine's compile step, so the proof ({@code phase=verify}) reads what javac resolved.
  */
 final class RenameFixture {
 
@@ -122,24 +122,29 @@ final class RenameFixture {
 
     /** {@code rename address to} in a {@code budget} of tokens, as the engine asks for it (MCP's is 2,000). */
     String rename(int budget, String address, String to, String... options) throws IOException {
+        return ask("rename", List.of(address, to), budget, options);
+    }
+
+    /** {@code delete address} with {@code options} ({@code key=value}), as the engine asks for it. */
+    String delete(String address, String... options) throws IOException {
+        return ask("delete", List.of(address), 8000, options);
+    }
+
+    /** The engine's check after a delete: compile, then the proof, or the undo when the compile failed. */
+    String checkDelete() throws IOException {
+        String errors = compile();
+        if (errors != null) {
+            String line = errors.lines().findFirst().orElse("").strip();
+            return delete("-", "phase=undo", "why=the code does not compile (" + line + ")");
+        }
+        return delete("-", "phase=verify");
+    }
+
+    private String ask(String op, List<String> args, int budget, String... options) throws IOException {
         Map<String, String> opts = new LinkedHashMap<>();
         for (String o : options) opts.put(o.substring(0, o.indexOf('=')), o.substring(o.indexOf('=') + 1));
         GraphService.Request r = new GraphService.Request(
-                "rename",
-                List.of(address, to),
-                "bfs",
-                3,
-                budget,
-                List.of(),
-                false,
-                8,
-                null,
-                false,
-                false,
-                null,
-                List.of(),
-                null,
-                opts);
+                op, args, "bfs", 3, budget, List.of(), false, 8, null, false, false, null, List.of(), null, opts);
         return GraphService.run(workspace(), r, GraphBuild.Progress.NONE).text();
     }
 

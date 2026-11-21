@@ -13,11 +13,11 @@ import java.util.Map;
 import org.jspecify.annotations.Nullable;
 
 /**
- * A rename proves itself before it answers, for the CLI and MCP alike: the engine compiles the
- * modules the rename wrote in (main and tests, as a job), then the graph worker checks that every
- * renamed symbol's new name has exactly the references the old one had, or undoes the rename whole
- * when the compile failed. The worker names the modules on the first line of its proof file; that
- * line is all the engine reads of it.
+ * A rename or a delete proves itself before it answers, for the CLI and MCP alike: the engine
+ * compiles the modules the edit wrote in (main and tests, as a job), then the graph worker checks
+ * that every renamed symbol's new name has exactly the references the old one had (a delete has
+ * only the compile to pass), or undoes the edit whole when the compile failed. The worker names the
+ * modules on the first line of its proof file; that line is all the engine reads of it.
  */
 final class RenameCheck {
 
@@ -28,18 +28,21 @@ final class RenameCheck {
         String ask(List<String> options) throws IOException, InterruptedException;
     }
 
-    /** Where the worker leaves a rename's proof. */
+    /** The graph operations that edit the tree and prove the edit. */
+    static final List<String> EDITS = List.of("rename", "delete");
+
+    /** Where the worker leaves a rename's or a delete's proof. */
     static Path proof(Path root) {
         return GraphLayout.dir(root).resolve("rename").resolve("proof");
     }
 
     /**
-     * The line the rename's answer ends with: proven, rolled back, or why the check did not run.
-     * With {@code tests} false the tests did not compile before the rename either, so the check
-     * compiles the main sources alone: a failure the rename did not cause never undoes it, and the
+     * The line the answer of {@code op} ends with: proven, rolled back, or why the check did not run.
+     * With {@code tests} false the tests did not compile before the edit either, so the check
+     * compiles the main sources alone: a failure the edit did not cause never undoes it, and the
      * tests are named as not checked.
      */
-    static String prove(Path root, boolean tests, GraphRunner.@Nullable Compiler compiler, Ask ask)
+    static String prove(Path root, String op, boolean tests, GraphRunner.@Nullable Compiler compiler, Ask ask)
             throws IOException, InterruptedException {
         if (compiler == null) return "";
         List<String> prefixes = modules(proof(root));
@@ -58,12 +61,15 @@ final class RenameCheck {
         String why = compiler.compile(root, args, tests);
         String untested = tests
                 ? ""
-                : "\nNot checked: the tests did not compile before the rename, so their calls are neither renamed nor"
-                        + " proven; not done until they compile.";
+                : "delete".equals(op)
+                        ? "\nNot checked: the tests did not compile before the delete, so their uses of it are not"
+                                + " known; not done until they compile."
+                        : "\nNot checked: the tests did not compile before the rename, so their calls are neither"
+                                + " renamed nor proven; not done until they compile.";
         if (why == null) {
             String proven = ask.ask(List.of("phase=verify"));
             // The proof already names the tests when they have no classes; say it once.
-            return proven.contains("the rename is not done") ? proven : proven + untested;
+            return proven.contains(" is not done") ? proven : proven + untested;
         }
         if (why.startsWith("the code does not compile")) return ask.ask(List.of("phase=undo", "why=" + why));
         return "Not proven: " + why + ". The edit stays; build and test to check it.";

@@ -36,7 +36,7 @@ public final class GraphService {
 
     /** The operations {@link #run} answers. */
     public static final List<String> OPS =
-            List.of("build", "query", "path", "neighbors", "callers", "rename", "read", "find", "rules");
+            List.of("build", "query", "path", "neighbors", "callers", "rename", "delete", "read", "find", "rules");
 
     /**
      * One operation's arguments, as the CLI and MCP surfaces collect them. {@code modulePrefixes} are
@@ -104,7 +104,7 @@ public final class GraphService {
      * the engine matched to the file (one JSON object each), for {@code read} and {@code find} the
      * locked jars and where their API indexes are kept, the modules and test suites with sources
      * the engine has no compiled classes of ({@code uncompiled}), whose calls no answer holds, and
-     * for a rename or callers which modules see which ({@code reach}).
+     * for a rename, a delete or callers which modules see which ({@code reach}).
      */
     public record Workspace(
             Path root,
@@ -212,6 +212,7 @@ public final class GraphService {
 
     static Reply text(Workspace w, GraphBuild.Result build, Request r) throws IOException {
         if ("rename".equals(r.op())) return RenameOp.run(w, build.graph(), r);
+        if ("delete".equals(r.op())) return SafeDelete.run(w, build.graph(), r);
         if ("callers".equals(r.op())) {
             CodeGraph g = build.graph();
             Scope scope = Scope.of(r.scope(), r.modulePrefixes(), r.sourceSet(), g.modules());
@@ -267,7 +268,7 @@ public final class GraphService {
     }
 
     /** The read tools over {@code g}, quoting from the tree and seeing modules as the build does. */
-    private static GraphTools tools(Workspace w, CodeGraph g, Scope scope) {
+    static GraphTools tools(Workspace w, CodeGraph g, Scope scope) {
         Map<String, @Nullable Set<String>> reaching = new HashMap<>();
         BiPredicate<String, String> sees = (from, to) -> {
             Set<String> r = reaching.computeIfAbsent(

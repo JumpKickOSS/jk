@@ -28,6 +28,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
+import java.util.function.Predicate;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 
@@ -56,13 +57,13 @@ final class GraphUses {
     private static final int ANNOTATION_REACH = 8;
 
     /** What an address names: a type (an annotation is one), a field, or a type's constructors. */
-    private enum Kind {
+    enum Kind {
         TYPE,
         FIELD,
         CONSTRUCTOR
     }
 
-    private record Subject(
+    record Subject(
             Kind kind,
             GraphNode type,
             String qualified,
@@ -84,7 +85,27 @@ final class GraphUses {
      * {@code null} for a line outside every declaration), written there when {@code write}, a doc
      * link when {@code doc}, matched by name rather than resolved when {@code inferred}.
      */
-    private record Use(String file, int line, @Nullable String holder, boolean write, boolean doc, boolean inferred) {}
+    record Use(String file, int line, @Nullable String holder, boolean write, boolean doc, boolean inferred) {}
+
+    /**
+     * Every use of {@code subject}, and the sources javac has not indexed as they stand that were
+     * matched by name ({@code guessed}).
+     */
+    record Found(Subject subject, List<Use> uses, Set<String> guessed) {
+
+        Found {
+            uses = List.copyOf(uses);
+            guessed = Set.copyOf(guessed);
+        }
+
+        /** The same uses without those {@code dropped} names. */
+        Found without(Predicate<Use> dropped) {
+            List<Use> kept = uses.stream().filter(u -> !dropped.test(u)).toList();
+            Set<String> files = new TreeSet<>();
+            for (Use u : kept) if (u.inferred()) files.add(u.file());
+            return new Found(subject, kept, files);
+        }
+    }
 
     /**
      * The answer for {@code address} when it names a type, an annotation, a field or a constructor,
@@ -127,13 +148,13 @@ final class GraphUses {
         return new GraphService.Reply(uses(w, g, scope, tools, subject, budget), List.of());
     }
 
-    private static Subject subject(Kind kind, GraphNode type, @Nullable String member, boolean annotation) {
+    static Subject subject(Kind kind, GraphNode type, @Nullable String member, boolean annotation) {
         boolean isAnnotation = annotation || "annotation".equals(Decl.kind(type));
         return new Subject(kind, type, qualified(type), member, isAnnotation);
     }
 
     /** The workspace types {@code name} names: a simple, nested ({@code Outer.Inner}) or qualified name. */
-    private static List<GraphNode> types(CodeGraph g, Scope scope, String name) {
+    static List<GraphNode> types(CodeGraph g, Scope scope, String name) {
         String dotted = name.replace('$', '.');
         List<GraphNode> out = new ArrayList<>();
         for (GraphNode n : g.nodes()) {
@@ -167,7 +188,7 @@ final class GraphUses {
      * Whether {@code owner} declares field {@code name}: its source's index says so, or, for a source
      * the index does not describe, the source spells the name.
      */
-    private static boolean declaresField(GraphService.Workspace w, CodeGraph g, GraphNode owner, String name) {
+    static boolean declaresField(GraphService.Workspace w, CodeGraph g, GraphNode owner, String name) {
         String rel = owner.sourceFile();
         String text = read(w.root(), rel);
         if (text == null) return false;
@@ -181,6 +202,14 @@ final class GraphUses {
     /** The uses of a type, an annotation or a field, from the index where it holds them, else by name. */
     private static String uses(
             GraphService.Workspace w, CodeGraph g, Scope scope, GraphTools tools, Subject s, int budget) {
+        return Budget.lines(
+                render(g, w.root(), tools, find(w, g, scope, s)),
+                budget,
+                "Raise the budget, or narrow with scope, modules or source_set");
+    }
+
+    /** Every use of {@code s} in {@code scope}: from the index where it holds them, else by name. */
+    static Found find(GraphService.Workspace w, CodeGraph g, Scope scope, Subject s) {
         Modules modules = g.modules();
         String home = prefix(modules, s.type().sourceFile());
         Set<String> reaching = w.reach().reaching(List.of(home), modules);
@@ -232,10 +261,7 @@ final class GraphUses {
             inferred(text, word, rel, holders.getOrDefault(rel, List.of()), s, uses);
             if (uses.size() > before) guessed.add(rel);
         }
-        return Budget.lines(
-                render(g, w.root(), tools, s, uses, guessed),
-                budget,
-                "Raise the budget, or narrow with scope, modules or source_set");
+        return new Found(s, uses, guessed);
     }
 
     /** {@code symbol}'s uses in an indexed file; an import is kept only when the file has no other use. */
@@ -378,8 +404,11 @@ final class GraphUses {
         return null;
     }
 
-    private static List<String> render(
-            CodeGraph g, Path root, GraphTools tools, Subject s, List<Use> uses, Set<String> guessed) {
+    /** The answer {@code callers} gives for {@code found}'s uses. */
+    static List<String> render(CodeGraph g, Path root, GraphTools tools, Found found) {
+        Subject s = found.subject();
+        List<Use> uses = found.uses();
+        Set<String> guessed = found.guessed();
         String subject = display(g, s);
         boolean field = s.kind() == Kind.FIELD;
         List<Use> code = uses.stream().filter(u -> !u.doc()).toList();
@@ -496,7 +525,7 @@ final class GraphUses {
         return shown.substring(1);
     }
 
-    private static String display(CodeGraph g, Subject s) {
+    static String display(CodeGraph g, Subject s) {
         String type = GraphQuery.clean(g.display(s.type().id()));
         return switch (s.kind()) {
             case FIELD -> type + "." + s.member() + " (field)";
