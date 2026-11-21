@@ -70,6 +70,34 @@ class KmpRedirectsModuleSourceTest {
                 .isZero();
     }
 
+    @Test
+    void a_module_file_already_in_the_store_is_read_without_asking_the_repository(@TempDir Path tmp) throws Exception {
+        MavenStub stub = new MavenStub(home);
+        stub.text(
+                POM,
+                "<?xml version=\"1.0\"?>\n" + GradleModuleMetadata.POM_MARKER + "\n"
+                        + MavenStub.emptyPom(GROUP, "widget", "1.0.0"));
+        stub.text(MODULE, module());
+        Cas cas = new Cas(tmp);
+        assertThat(new KmpRedirects(RepoGroup.of(homeRepo(cas)), "standard-jvm", 25)
+                        .selectionFor(GROUP + ":widget", "1.0.0"))
+                .isPresent();
+        clear();
+        home.clearRequests();
+
+        var selection = new KmpRedirects(RepoGroup.of(homeRepo(cas)), "standard-jvm", 25)
+                .selectionFor(GROUP + ":widget", "1.0.0");
+
+        assertThat(selection).isPresent();
+        assertThat(home.requested())
+                .as("a stored .module is the resolver's input, as a stored POM is: no file and no checksum")
+                .isEmpty();
+    }
+
+    private MavenRepo homeRepo(Cas cas) {
+        return new MavenRepo("home", home.base(), new Http(), cas, RepoCredential.ANONYMOUS, false);
+    }
+
     private static String module() {
         return """
                 {

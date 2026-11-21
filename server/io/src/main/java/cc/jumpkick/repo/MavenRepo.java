@@ -584,6 +584,14 @@ public final class MavenRepo {
         return fetch(coord, MavenLayout.pomPath(coord), true, Leg.RESOLVE);
     }
 
+    /**
+     * {@code coord}'s Gradle module metadata ({@code .module}), read as a POM is: the resolver's
+     * input, which no lock row pins, so a copy jk stored answers as stored, with no checksum read.
+     */
+    public Fetched fetchModuleMetadata(Coordinate coord) throws IOException, InterruptedException {
+        return fetch(coord, MavenLayout.artifactPath(coord), true, Leg.RESOLVE);
+    }
+
     public Fetched fetchArtifact(Coordinate coord) throws IOException, InterruptedException {
         return fetchArtifact(coord, NO_ABORT);
     }

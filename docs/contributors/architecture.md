@@ -714,7 +714,8 @@ the artifact and skips only the download, so a slot holding the wrong bytes for 
 killed write, a jar copied in by hand, a republished artifact) is evicted and fetched again, with a
 line in the lock output. A pinned build trusts the lock's digest instead, an offline resolve serves
 the store as it stands, and a repository that publishes no checksum follows the `allow-unverified`
-rule a download does. Action-cache restore stays copy-not-link so compilers cannot mutate cached
+rule a download does. A POM or Gradle `.module` the store holds is the resolver's input, not a file
+the lock pins, so it is read as stored, with no sidecar read. Action-cache restore stays copy-not-link so compilers cannot mutate cached
 outputs. `jk storage nuke` does not delete `~/.m2`.
 
 **Installed slots.** `jk install` writes a project's thin jar and POM to one place:

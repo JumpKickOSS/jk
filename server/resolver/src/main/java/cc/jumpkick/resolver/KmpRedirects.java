@@ -240,7 +240,7 @@ public final class KmpRedirects {
             Coordinate moduleCoord = new Coordinate(coord.group(), coord.artifact(), coord.version(), null, "module");
             MavenRepo.Fetched moduleFile;
             try {
-                moduleFile = pomHit.get().repo().fetchArtifact(moduleCoord);
+                moduleFile = pomHit.get().repo().fetchModuleMetadata(moduleCoord);
             } catch (MavenRepo.ArtifactNotFoundException absent) {
                 return Answer.NONE;
             }
