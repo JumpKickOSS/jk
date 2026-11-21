@@ -112,6 +112,7 @@ final class StackWatchLoop {
             apps.add(new Member(name, dir, plan));
         }
 
+        loop.attachKeys();
         Map<String, String> urls = new LinkedHashMap<>(DevUrls.of(List.copyOf(sidecars.values())));
         for (Member m : apps) urls.put(m.name, m.plan.appReady().ready());
         Map<String, String> exports = DevUrls.exports(urls);
@@ -147,6 +148,7 @@ final class StackWatchLoop {
                 }
             }
             ready(supervisor, apps, wanted);
+            loop.hintKeys();
             return watch(supervisor, cache, apps, appArgs, exports);
         } finally {
             for (Member m : apps) {
@@ -157,9 +159,10 @@ final class StackWatchLoop {
     }
 
     /**
-     * Poll every member's sources in turn; restart the one that changed, end when one exits. A stack
-     * of node members alone has nothing to poll: it waits on the supervisor until every process is
-     * gone for good, or Ctrl-C stops them.
+     * Poll every member's sources in turn; restart the one that changed, end when one exits. A key
+     * is read between polls: {@code r} rebuilds and restarts every member, {@code q} ends the
+     * session. A stack of node members alone has nothing to poll: it waits on the supervisor until
+     * every process is gone for good, or Ctrl-C stops them.
      */
     private int watch(
             Sidecars supervisor, Path cache, List<Member> apps, List<String> appArgs, Map<String, String> exports)
@@ -180,39 +183,72 @@ final class StackWatchLoop {
                     return exit;
                 }
                 Optional<SourceWatch.Changes> maybe = m.watch().pollChange(slice, TimeUnit.MILLISECONDS);
-                if (maybe.isEmpty()) continue;
-                SourceWatch.Changes changes = maybe.get();
-                if (ClientUpdate.updatedBetweenPasses()) return Exit.SUCCESS;
-                AppWatchLoop.Pass pass = AppWatchLoop.Pass.of(changes);
-                if (!loop.pass(pass, m.dir, cache)) {
-                    CliOutput.err(
-                            loop.logPrefix() + ": " + m.name + ": build failed; it keeps running the last good code");
-                    continue;
-                }
-                if (changes.manifest()) {
-                    ExecPlan plan = loop.devPlan(m.dir, cache);
-                    if (plan.error() != null) {
-                        CliOutput.err(loop.logPrefix() + ": " + m.name + ": " + plan.error());
-                        return Exit.SOFTWARE;
+                DevKeys.Action key = loop.key();
+                if (key == DevKeys.Action.QUIT) return loop.quit();
+                if (key == DevKeys.Action.RESTART) {
+                    CliOutput.err(loop.logPrefix() + ": rebuilding and restarting " + String.join(", ", names(apps)));
+                    for (Member each : apps) {
+                        Integer exit = change(supervisor, cache, each, REBUILD, appArgs, exports);
+                        if (exit != null) return exit;
                     }
-                    m.plan = plan;
-                }
-                if (m.plan.hotReload() && !changes.manifest()) {
-                    CliOutput.err(
-                            loop.logPrefix() + ": " + m.name + ": " + pass.done + "; DevTools restarts the context");
                     continue;
                 }
-                ProcessTrees.stop(List.of(process.toHandle()), Clock.SYSTEM);
-                exited(m);
-                CliOutput.err(loop.logPrefix() + ": restarting " + m.name);
-                start(supervisor, m, appArgs, exports);
-                String failure = m.run().probe().await();
-                if (failure != null) {
-                    CliOutput.err(loop.logPrefix() + ": " + m.name + ": " + failure);
-                    return Exit.SOFTWARE;
-                }
+                if (maybe.isEmpty()) continue;
+                if (ClientUpdate.updatedBetweenPasses()) return Exit.SUCCESS;
+                Integer exit = change(supervisor, cache, m, maybe.get(), appArgs, exports);
+                if (exit != null) return exit;
             }
         }
+    }
+
+    /** What {@code r} asks of every member: the pass a {@code jk.toml} edit runs. */
+    private static final SourceWatch.Changes REBUILD = new SourceWatch.Changes(false, false, true);
+
+    /**
+     * Run the pass {@code changes} asks of {@code m}, then restart it unless DevTools restarts its
+     * context. The code the session ends with, or null when it runs on.
+     */
+    private @Nullable Integer change(
+            Sidecars supervisor,
+            Path cache,
+            Member m,
+            SourceWatch.Changes changes,
+            List<String> appArgs,
+            Map<String, String> exports)
+            throws IOException, InterruptedException {
+        AppWatchLoop.Pass pass = AppWatchLoop.Pass.of(changes);
+        if (!loop.pass(pass, m.dir, cache)) {
+            CliOutput.err(loop.logPrefix() + ": " + m.name + ": build failed; it keeps running the last good code");
+            return null;
+        }
+        if (changes.manifest()) {
+            ExecPlan plan = loop.devPlan(m.dir, cache);
+            if (plan.error() != null) {
+                CliOutput.err(loop.logPrefix() + ": " + m.name + ": " + plan.error());
+                return Exit.SOFTWARE;
+            }
+            m.plan = plan;
+        }
+        if (m.plan.hotReload() && !changes.manifest()) {
+            CliOutput.err(loop.logPrefix() + ": " + m.name + ": " + pass.done + "; DevTools restarts the context");
+            return null;
+        }
+        ProcessTrees.stop(List.of(m.run().process().toHandle()), Clock.SYSTEM);
+        exited(m);
+        CliOutput.err(loop.logPrefix() + ": restarting " + m.name);
+        start(supervisor, m, appArgs, exports);
+        String failure = m.run().probe().await();
+        if (failure != null) {
+            CliOutput.err(loop.logPrefix() + ": " + m.name + ": " + failure);
+            return Exit.SOFTWARE;
+        }
+        return null;
+    }
+
+    private static List<String> names(List<Member> apps) {
+        List<String> out = new ArrayList<>();
+        for (Member m : apps) out.add(m.name);
+        return out;
     }
 
     private void start(Sidecars supervisor, Member m, List<String> appArgs, Map<String, String> exports)

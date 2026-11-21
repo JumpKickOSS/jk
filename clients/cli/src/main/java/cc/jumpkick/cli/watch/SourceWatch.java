@@ -2,6 +2,7 @@
 package cc.jumpkick.cli.watch;
 
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.host.time.Clock;
@@ -35,7 +36,8 @@ import org.jspecify.annotations.Nullable;
  * implementation for all verbs.
  *
  * <p>By default only the module's source and resource trees are watched ({@link #defaultRoots}),
- * plus {@code jk.toml} at the project root. In the simple layout a test suite made while the loop
+ * plus {@code jk.toml} at the project root, at the workspace root that lists it, and in every module
+ * a root outside the project lies in ({@link #outerManifests}). In the simple layout a test suite made while the loop
  * runs is taken up once it holds sources ({@link #openDefault}). Build outputs ({@code target/},
  * {@code out/}, {@code build/}), {@code node_modules}, VCS dirs, editor junk and the {@code
  * skipped} trees a caller names are not registered — so they never wake the loop. A node module watches its whole directory, its root
@@ -71,9 +73,16 @@ public final class SourceWatch implements AutoCloseable {
 
     /**
      * Directories between the project and a root, watched so a root deleted and made again (a
-     * checkout, a {@code rm -rf} and restore) is seen to appear and is watched anew.
+     * checkout, a {@code rm -rf} and restore) is seen to appear and is watched anew; and those
+     * holding one of the {@link #manifests}.
      */
     private final Set<Path> rootParents = new HashSet<>();
+
+    /**
+     * The {@code jk.toml} files beyond the project's own whose edit is a manifest change, as
+     * absolute paths. Their directories are watched for them alone.
+     */
+    private final Set<Path> manifests = new HashSet<>();
 
     /** The project directory is itself a root: its own files are sources, not only {@code jk.toml}. */
     private boolean wholeDir;
@@ -124,7 +133,35 @@ public final class SourceWatch implements AutoCloseable {
             sw.anchor(root.toAbsolutePath().normalize());
         }
         sw.registerDir(projectDir);
+        for (Path manifest : outerManifests(projectDir, roots)) {
+            Path dir = Objects.requireNonNull(manifest.getParent());
+            sw.manifests.add(manifest);
+            sw.registerDir(dir);
+            sw.rootParents.add(dir);
+        }
         return sw;
+    }
+
+    /**
+     * The {@code jk.toml} files beyond the project's own that its build reads: the workspace root's
+     * that lists the project, and that of each module a root outside the project lies in.
+     */
+    static Set<Path> outerManifests(Path projectDir, List<Path> roots) {
+        Path project = WorkingDirectory.resolve(projectDir).normalize();
+        Set<Path> out = new LinkedHashSet<>();
+        WorkspaceScan.findRoot(project).ifPresent(r -> out.add(ManifestPaths.manifestIn(r.normalize())));
+        for (Path root : roots) {
+            Path abs = WorkingDirectory.resolve(root).normalize();
+            if (abs.startsWith(project)) continue;
+            for (Path at = abs.getParent(); at != null && !project.startsWith(at); at = at.getParent()) {
+                Path manifest = ManifestPaths.manifestIn(at);
+                if (Files.isRegularFile(manifest)) {
+                    out.add(manifest);
+                    break;
+                }
+            }
+        }
+        return out;
     }
 
     /**
@@ -242,6 +279,7 @@ public final class SourceWatch implements AutoCloseable {
      */
     @Nullable
     Changes event(Path dir, WatchEvent.Kind<?> kind, Path changed) throws IOException {
+        if (manifests.contains(changed.toAbsolutePath().normalize())) return new Changes(false, false, true);
         Path maybeSuite = maybeSuiteOf(dir);
         if (maybeSuite != null) return maybeSuiteEvent(maybeSuite, kind, changed);
         boolean created = kind == StandardWatchEventKinds.ENTRY_CREATE && Files.isDirectory(changed);
@@ -249,7 +287,10 @@ public final class SourceWatch implements AutoCloseable {
         return anchorOnly(dir) ? null : classify(dir, changed);
     }
 
-    /** True when {@code dir} is watched only because a root lies below it, not because it is in one. */
+    /**
+     * True when {@code dir} is watched only because a root lies below it or a manifest is in it,
+     * not because it is in a root.
+     */
     private boolean anchorOnly(Path dir) {
         Path abs = dir.toAbsolutePath().normalize();
         return rootParents.contains(abs) && roots.stream().noneMatch(abs::startsWith);

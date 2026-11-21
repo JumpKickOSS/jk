@@ -92,6 +92,9 @@ public final class AppWatchLoop {
     /** Set once the session is finished: an app or pump thread that outlives it emits nothing. */
     private boolean over;
 
+    /** The session's keys on a terminal ({@link DevKeys}); null when none are read. */
+    private volatile @Nullable DevKeys keys;
+
     /**
      * Where every event goes: the session transcript always, stdout under {@code -O jsonl}.
      * Nothing after the session finishes, so stdout never carries an event its transcript lacks.
@@ -126,6 +129,9 @@ public final class AppWatchLoop {
         synchronized (eventsLock) {
             over = true;
         }
+        // Here, not in a finally: Ctrl-C halts the process, and finish is what its handler runs.
+        DevKeys open = keys;
+        if (open != null) open.close();
         return CliSessionTranscript.finish(session, exit, verbose);
     }
 
@@ -174,6 +180,7 @@ public final class AppWatchLoop {
         List<Path> watchRoots = rootsFromPlan(plan);
         logWatching(projectDir, watchRoots, devtools ? "DevTools hot-restart" : "process restart on change");
 
+        attachKeys();
         // Sidecars start once and outlive every app restart below; they go down with the session.
         List<ExecPlan.Sidecar> sidecarSpecs = plan.sidecars();
         appName = String.valueOf(projectDir.getFileName());
@@ -220,21 +227,23 @@ public final class AppWatchLoop {
             }
             if (!appReady(app)) return Exit.SOFTWARE;
             ready(sidecars, plan);
+            hintKeys();
             while (true) {
-                Optional<SourceWatch.Changes> maybe = watch.pollChange(500, TimeUnit.MILLISECONDS);
-                if (maybe.isEmpty()) {
-                    if (!app.process().isAlive()) {
-                        int exit = app.process().exitValue();
-                        appExited(app.process());
-                        CliOutput.err(logPrefix + ": app exited with code " + exit + "; stopping");
-                        return exit;
-                    }
+                Optional<SourceWatch.Changes> maybe = watch.pollChange(keys == null ? 500 : 100, TimeUnit.MILLISECONDS);
+                DevKeys.Action key = key();
+                if (key == DevKeys.Action.QUIT) return quit();
+                boolean restart = key == DevKeys.Action.RESTART;
+                if (maybe.isEmpty() && !restart) {
+                    if (!app.process().isAlive()) return stopped(app);
                     continue;
                 }
-                SourceWatch.Changes changes = maybe.get();
-                if (ClientUpdate.updatedBetweenPasses()) return Exit.SUCCESS;
-                if (changes.manifest()) {
-                    CliOutput.err(logPrefix + ": jk.toml changed; rebuilding and restarting");
+                SourceWatch.Changes changes = maybe.orElse(new SourceWatch.Changes(false, false, false));
+                if (maybe.isPresent() && ClientUpdate.updatedBetweenPasses()) return Exit.SUCCESS;
+                if (restart || changes.manifest()) {
+                    CliOutput.err(logPrefix
+                            + (restart
+                                    ? ": rebuilding and restarting"
+                                    : ": jk.toml changed; rebuilding and restarting"));
                     if (build(projectDir, cache)) {
                         plan = devPlan(projectDir, cache);
                         if (plan.error() != null) {
@@ -370,7 +379,52 @@ public final class AppWatchLoop {
     }
 
     boolean build(Path projectDir, Path cache) throws IOException, InterruptedException {
-        return builder.compile(projectDir, cache);
+        return paused(() -> builder.compile(projectDir, cache));
+    }
+
+    /** Read the session's keys from here on, when there is a terminal to read them from. */
+    void attachKeys() {
+        keys = DevKeys.attach(json());
+    }
+
+    /** The line that tells the keys, once the stack is first up; nothing when none are read. */
+    void hintKeys() {
+        if (keys != null) CliOutput.err(logPrefix + ": " + DevKeys.HINT);
+    }
+
+    /**
+     * The oldest key pressed since the last call, a clear already done; null when none is waiting
+     * or none are read.
+     */
+    DevKeys.@Nullable Action key() {
+        DevKeys open = keys;
+        if (open == null) return null;
+        DevKeys.Action action = open.next();
+        if (action == DevKeys.Action.CLEAR) open.clearScreen();
+        return action;
+    }
+
+    /** {@code q}: the session ends as asked, every process stopped on the way out. */
+    int quit() {
+        CliOutput.err(logPrefix + ": stopping");
+        return Exit.SUCCESS;
+    }
+
+    /** A build of the loop's: the keys are held back, so its live view can read the terminal. */
+    private boolean paused(Build build) throws IOException, InterruptedException {
+        DevKeys open = keys;
+        if (open == null) return build.run();
+        open.pause();
+        try {
+            return build.run();
+        } finally {
+            open.resume();
+        }
+    }
+
+    @FunctionalInterface
+    private interface Build {
+        boolean run() throws IOException, InterruptedException;
     }
 
     /**
@@ -397,11 +451,11 @@ public final class AppWatchLoop {
     }
 
     boolean pass(Pass pass, Path projectDir, Path cache) throws IOException, InterruptedException {
-        return switch (pass) {
+        return paused(() -> switch (pass) {
             case REBUILD -> builder.compile(projectDir, cache);
             case RECOMPILE -> compiler.compile(projectDir, cache);
             case COPY_RESOURCES -> resourceCopier.compile(projectDir, cache);
-        };
+        });
     }
 
     ExecPlan devPlan(Path projectDir, Path cache) throws IOException {
@@ -448,9 +502,19 @@ public final class AppWatchLoop {
         // the app on a terminal too — a probe cannot read a terminal the app owns — and relays each
         // line as it arrives. Otherwise the app owns the terminal — no skipTrailingBlank: watch
         // keeps printing after the app starts, so the envelope's closing blank is still jk's to emit.
+        // While jk reads its keys the terminal's input is jk's: the app's stdin is a pipe nothing
+        // writes, and the terminal keeps jk's mode rather than being handed off.
         boolean piped = json() || !plan.appReady().readyPattern().isEmpty();
-        Process process = sidecars.startCompanion(() ->
-                piped ? pb.redirectInput(ProcessBuilder.Redirect.INHERIT).start() : CliOutput.handOffTerminal(pb));
+        boolean keysRead = keys != null;
+        Process process = sidecars.startCompanion(() -> {
+            if (piped) return (keysRead ? pb : pb.redirectInput(ProcessBuilder.Redirect.INHERIT)).start();
+            if (keysRead) {
+                return pb.redirectOutput(ProcessBuilder.Redirect.INHERIT)
+                        .redirectError(ProcessBuilder.Redirect.INHERIT)
+                        .start();
+            }
+            return CliOutput.handOffTerminal(pb);
+        });
         ReadyProbe probe = new ReadyProbe("app", plan.appReady(), 0, process, Clock.SYSTEM);
         events.accept(SidecarOutput.appStarted(Clock.SYSTEM, "", process.pid()));
         if (piped) {
@@ -489,6 +553,14 @@ public final class AppWatchLoop {
      */
     private void appExited(Process app) {
         events.accept(SidecarOutput.appExited(Clock.SYSTEM, "", app.pid(), ProcessTrees.exitCode(app)));
+    }
+
+    /** The app exited on its own: the session ends with its exit code. */
+    private int stopped(App app) {
+        int exit = app.process().exitValue();
+        appExited(app.process());
+        CliOutput.err(logPrefix + ": app exited with code " + exit + "; stopping");
+        return exit;
     }
 
     private App restartApp(Sidecars sidecars, App app, ExecPlan plan, List<String> appArgs)

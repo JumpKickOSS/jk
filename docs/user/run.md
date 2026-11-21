@@ -66,8 +66,8 @@ One mechanism: re-run a verb when sources change. **`jk dev` is only an alias fo
 
 Watches the module's sources and resources — **`src/`**, **`resources/`**, **`test/src/`**,
 **`test/resources/`** and each named suite's `src/` and `resources/` in the simple layout,
-**`src/`** in the traditional one — and project-root **`jk.toml`**; `jk dev` watches the main
-trees of the app and of every workspace member it runs on. Not `target/`, `out/`, `build/`, or
+**`src/`** in the traditional one — and project-root **`jk.toml`**, with the workspace root's;
+`jk dev` watches the main trees and the `jk.toml` of the app and of every workspace member it runs on. Not `target/`, `out/`, `build/`, or
 VCS trees. A tree that does not exist when the loop starts (a first `resources/`) is watched
 once it is made, and one deleted and made again (a branch switch) is watched again; so is a
 workspace member `jk dev` runs on. In the simple layout `jk watch` also takes up a test suite
@@ -97,6 +97,15 @@ app; a source edit runs `jk compile`; an edit to resources alone (any file in a 
 other non-source file under a watched tree) runs the same compile goal, which copies resources
 into the classes the app runs from, runs any generator that reads the edited file, and writes no
 jar (`Resources copied` in the loop's output).
+
+### Keys
+
+On a terminal `jk dev` (and `jk watch run`) answers three keys, except when it redeploys to an
+Android device: **`r`** rebuilds and restarts the app (every member at
+a workspace root), as a `jk.toml` edit does; **`c`** clears the screen; **`q`** stops the session
+and every process in it, exit code 0. Ctrl-C still stops it too. While the keys are read the
+terminal's input is JumpKick's, so the app's stdin is not the terminal; under `-O jsonl`, or with
+no terminal, there are no keys and the app reads the stdin `jk dev` was given.
 
 ## Sidecars (`[dev.sidecars]`)
 

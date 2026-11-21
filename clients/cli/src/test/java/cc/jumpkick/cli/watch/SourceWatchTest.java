@@ -368,6 +368,49 @@ class SourceWatchTest {
         }
     }
 
+    /** An edit to the workspace root's or a sibling member's {@code jk.toml} re-plans like the project's own. */
+    @Test
+    void the_workspace_roots_and_a_sibling_members_manifests_are_manifest_changes(@TempDir Path tmp) throws Exception {
+        Path workspace = Files.createDirectories(tmp.resolve("ws"));
+        Path rootManifest =
+                Files.writeString(workspace.resolve("jk.toml"), "[workspace]\nmodules = [\"app\", \"lib\"]\n");
+        Path project = Files.createDirectories(workspace.resolve("app"));
+        Files.writeString(project.resolve("jk.toml"), "name = \"app\"\n");
+        Path lib = workspace.resolve("lib");
+        Path libSrc = Files.createDirectories(lib.resolve("src/main/java"));
+        Path libManifest = Files.writeString(lib.resolve("jk.toml"), "name = \"lib\"\n");
+        SourceWatch.Changes manifest = new SourceWatch.Changes(false, false, true);
+
+        try (SourceWatch watch = SourceWatch.open(project, List.of(project.resolve("src"), lib.resolve("src")), 0)) {
+            assertThat(watch.watches(workspace)).isTrue();
+            assertThat(watch.watches(lib)).isTrue();
+            assertThat(watch.event(workspace, StandardWatchEventKinds.ENTRY_MODIFY, rootManifest))
+                    .as("the workspace root's jk.toml")
+                    .isEqualTo(manifest);
+            assertThat(watch.event(lib, StandardWatchEventKinds.ENTRY_MODIFY, libManifest))
+                    .as("the sibling's jk.toml")
+                    .isEqualTo(manifest);
+            assertThat(watch.event(
+                            workspace,
+                            StandardWatchEventKinds.ENTRY_MODIFY,
+                            Files.writeString(workspace.resolve("notes.txt"), "x\n")))
+                    .as("a file beside the root's jk.toml")
+                    .isNull();
+            assertThat(watch.event(
+                            lib,
+                            StandardWatchEventKinds.ENTRY_MODIFY,
+                            Files.writeString(lib.resolve("README.md"), "x\n")))
+                    .as("a file beside the sibling's jk.toml")
+                    .isNull();
+            assertThat(watch.event(
+                            libSrc,
+                            StandardWatchEventKinds.ENTRY_MODIFY,
+                            Files.writeString(libSrc.resolve("Lib.java"), "class Lib {}\n")))
+                    .as("the sibling's sources stay sources")
+                    .isEqualTo(new SourceWatch.Changes(true, false, false));
+        }
+    }
+
     /** A sibling member missing at open is watched for from the workspace root. */
     @Test
     void a_sibling_member_missing_at_open_is_watched_for(@TempDir Path tmp) throws Exception {
