@@ -226,8 +226,8 @@ public final class WorkerLeases {
         private final OverbookSignals.Source signals;
         private final WorkerRss.Source rss;
         private final Object lock = new Object();
-        private final ArrayDeque<Waiter> queue = new ArrayDeque<>();
-        private final LinkedHashSet<Waiter> held = new LinkedHashSet<>();
+        private final ArrayDeque<LeaseWaiter> queue = new ArrayDeque<>();
+        private final LinkedHashSet<LeaseWaiter> held = new LinkedHashSet<>();
         private final Set<TaskContext> warnedSteps = Collections.newSetFromMap(new WeakHashMap<>());
         private long leased;
         /** When this ledger last granted a lease: a waiter gives up only once the line stood still. */
@@ -245,6 +245,15 @@ public final class WorkerLeases {
         private @Nullable Duration sampleEvery;
         private boolean sampling;
         private @Nullable HostLeases host;
+
+        /** Changes to this ledger's line for the other engines, counted; each line is recorded with its number. */
+        private long version;
+
+        /** The number of the newest line the shared file is known to hold. */
+        private long written = -1;
+
+        /** A thread is recording this ledger's line ({@link #publishPending}). */
+        private boolean publishing;
 
         /**
          * {@code ended} is true once that request has been shut down. A lease waiting for it is
@@ -293,9 +302,17 @@ public final class WorkerLeases {
 
         /** Count the other engines {@code share} records in every grant, and record this ledger's line there. */
         Ledger shareHost(HostLeases share) {
+            Objects.requireNonNull(share, "share");
+            long seq;
+            HostLeases.Line line;
             synchronized (lock) {
-                this.host = Objects.requireNonNull(share, "share");
-                share.publish(line(null));
+                this.host = share;
+                seq = ++version;
+                line = line();
+            }
+            share.publish(seq, line);
+            synchronized (lock) {
+                written = Math.max(written, seq);
             }
             return this;
         }
@@ -337,48 +354,93 @@ public final class WorkerLeases {
             return (int) Math.min(Integer.MAX_VALUE, (long) jvmRunning + others().jvms());
         }
 
-        /** What other engines of this host hold, as last read; nothing when shared with none. */
+        /**
+         * Under the lock: what other engines of this host hold, as last read, without touching the
+         * shared file; nothing when shared with none. {@link #refresh} reads it again, off the lock.
+         */
         private HostLeases.Reading others() {
+            HostLeases h = host;
+            return h == null ? HostLeases.Reading.NONE : h.cached();
+        }
+
+        /** Off the lock: read the other engines again when the last reading is more than 250 ms old. */
+        private HostLeases.Reading refresh() {
             HostLeases h = host;
             return h == null ? HostLeases.Reading.NONE : h.recent();
         }
 
         /** Bytes the other engines of this host hold, read at most 250 ms ago; {@code 0} when shared with none. */
         public long otherEnginesBytes() {
-            return others().bytes();
+            return refresh().bytes();
         }
 
         /** JVMs the other engines of this host run, read at most 250 ms ago; {@code 0} when shared with none. */
         public int otherEnginesJvms() {
-            return others().jvms();
+            return refresh().jvms();
         }
 
         /** Leases the other engines of this host have queued, read at most 250 ms ago; {@code 0} when shared with none. */
         public int otherEnginesWaiting() {
-            return others().waiting();
-        }
-
-        /** Under the lock: record this ledger's line for the other engines. */
-        private void publish() {
-            HostLeases h = host;
-            if (h != null) h.publish(line(null));
+            return refresh().waiting();
         }
 
         /**
-         * Under the lock: what this ledger records for the other engines, with {@code granting}'s
-         * lease and slot counted, and its place in the queue not, when it is about to be taken.
+         * Under the lock: this ledger's line changed. It is recorded for the other engines once the
+         * lock is let go, on a thread of its own, so no lease, release or cancel waits on the shared
+         * file for it.
          */
-        private HostLeases.Line line(@Nullable Waiter granting) {
+        private void changed() {
+            version++;
+            if (host == null || publishing) return;
+            publishing = true;
+            SessionContext.startVirtual("jk-lease-publish", this::publishPending);
+        }
+
+        /**
+         * Record this ledger's newest line until the shared file holds it. Each line carries its
+         * number, so one made before a grant's confirmed line never replaces it.
+         */
+        private void publishPending() {
+            while (true) {
+                HostLeases h;
+                long seq;
+                HostLeases.Line line;
+                synchronized (lock) {
+                    h = host;
+                    if (h == null || written >= version) {
+                        publishing = false;
+                        return;
+                    }
+                    seq = version;
+                    line = line();
+                }
+                try {
+                    h.publish(seq, line);
+                } catch (RuntimeException e) {
+                    Log.warn("jk engine: worker leases not recorded for the other engines: " + e.getMessage());
+                }
+                synchronized (lock) {
+                    written = Math.max(written, seq);
+                }
+            }
+        }
+
+        /** Test seam: no line of this ledger waits to be recorded for the other engines. */
+        boolean recorded() {
+            synchronized (lock) {
+                return !publishing;
+            }
+        }
+
+        /** Under the lock: what this ledger records for the other engines. */
+        private HostLeases.Line line() {
+            // The excess is rounded up for the other engines, so page-sized movement of a resident
+            // set does not rewrite the shared file; this ledger still charges exact bytes.
             long bytes = leased + WorkerRss.published(excess);
             int jvms = jvmRunning;
             int waiting = queue.size();
-            if (granting != null) {
-                bytes += granting.demand.bytes;
-                if (granting.demand.cpuSlot) jvms++;
-                if (queue.peekFirst() == granting) waiting--;
-            }
             List<HostLeases.Worker> workers = new ArrayList<>();
-            for (Waiter w : held) {
+            for (LeaseWaiter w : held) {
                 if (w.pid > 0) workers.add(new HostLeases.Worker(w.pid, w.startedAtMillis));
             }
             return new HostLeases.Line(ownCapacityBytes(), ownCpuCap(), bytes, jvms, waiting, workers);
@@ -486,8 +548,8 @@ public final class WorkerLeases {
          */
         public Grant acquireResident(List<String> command, JvmOptions.HeapChoice choice, LeaseResident resident)
                 throws InterruptedException {
-            return acquire(
-                    new Waiter(demand(command, choice).resident(), null, Objects.requireNonNull(resident, "resident")));
+            return acquire(new LeaseWaiter(
+                    demand(command, choice).resident(), null, Objects.requireNonNull(resident, "resident")));
         }
 
         /** As {@link #acquire(List, Long)} for a lease already measured in bytes. */
@@ -495,7 +557,7 @@ public final class WorkerLeases {
             long cap = capacityBytes();
             long leasedBytes = Math.min(Math.max(1, bytes), Math.max(1, cap));
             boolean clamped = leasedBytes < bytes;
-            return acquire(new Demand(leasedBytes, 0, jvm, clamped, false, false), requestId);
+            return acquire(new LeaseDemand(leasedBytes, 0, jvm, clamped, false, false), requestId);
         }
 
         /**
@@ -505,8 +567,8 @@ public final class WorkerLeases {
          */
         public Grant acquireResidentBytes(long bytes, LeaseResident resident) throws InterruptedException {
             long leasedBytes = Math.min(Math.max(1, bytes), Math.max(1, capacityBytes()));
-            Demand demand = new Demand(leasedBytes, 0, true, leasedBytes < bytes, false, false).resident();
-            return acquire(new Waiter(demand, null, Objects.requireNonNull(resident, "resident")));
+            LeaseDemand demand = new LeaseDemand(leasedBytes, 0, true, leasedBytes < bytes, false, false).resident();
+            return acquire(new LeaseWaiter(demand, null, Objects.requireNonNull(resident, "resident")));
         }
 
         /**
@@ -515,33 +577,34 @@ public final class WorkerLeases {
          */
         public void cancelRequest(long requestId) {
             synchronized (lock) {
-                for (Waiter waiter : queue) {
+                for (LeaseWaiter waiter : queue) {
                     if (waiter.requestId != null && waiter.requestId == requestId) waiter.cancelled = true;
                 }
                 lock.notifyAll();
             }
         }
 
-        private Grant acquire(Demand demand, @Nullable Long requestId) throws InterruptedException {
-            return acquire(new Waiter(demand, requestId, null));
+        private Grant acquire(LeaseDemand demand, @Nullable Long requestId) throws InterruptedException {
+            return acquire(new LeaseWaiter(demand, requestId, null));
         }
 
-        private Grant acquire(Waiter waiter) throws InterruptedException {
+        private Grant acquire(LeaseWaiter waiter) throws InterruptedException {
             @Nullable Long requestId = waiter.requestId;
             waiter.scope = waiter.resident == null ? StepScope.current() : null;
             long arrived = Clock.SYSTEM.nanos();
             long deadlineNanos;
             boolean head;
+            refresh();
             synchronized (lock) {
                 refuseIfItNeverFits(waiter);
                 head = grantIfHead(waiter);
                 if (!head) {
                     queue.addLast(waiter);
-                    publish();
+                    changed();
                 }
                 deadlineNanos = waitAtMost.toNanos();
             }
-            if (head) return finish(waiter, 0, 0, 0);
+            if (head && confirm(waiter)) return finish(waiter, 0, 0, 0);
             ForkWait wait = new ForkWait(waiter, requestId, waiter.scope, waiter.resident != null, arrived);
             try {
                 while (true) {
@@ -549,11 +612,12 @@ public final class WorkerLeases {
                     long need;
                     long free;
                     @Nullable WaitReason reason;
+                    refresh();
                     synchronized (lock) {
                         if (waiter.cancelled || requestEnded(requestId)) {
                             queue.remove(waiter);
                             grantQueued();
-                            publish();
+                            changed();
                             lock.notifyAll();
                             throw new InterruptedException("cancelled while waiting for a worker lease");
                         }
@@ -571,10 +635,11 @@ public final class WorkerLeases {
                         }
                         // Every waiter waits on what refused the head; grantQueued dropped a cancelled one.
                         reason = granted ? null : queue.isEmpty() ? waiter.reason : queue.peekFirst().reason;
-                        need = waiter.demand.bytes;
+                        need = waiter.demand.bytes();
                         free = Math.max(0, capacityBytes() - hostCharged());
                     }
                     if (granted) {
+                        if (!confirm(waiter)) continue;
                         wait.granted(Clock.SYSTEM.nanos());
                         break;
                     }
@@ -585,7 +650,7 @@ public final class WorkerLeases {
                     queue.remove(waiter);
                     if (waiter.granted) release(waiter);
                     grantQueued();
-                    publish();
+                    changed();
                     lock.notifyAll();
                 }
                 throw e;
@@ -600,7 +665,7 @@ public final class WorkerLeases {
          * of {@code waitedNanos} were spent waiting for memory, {@code heldNanos} of them with the build
          * on hold.
          */
-        private Grant finish(Waiter waiter, long waitedNanos, long memoryNanos, long heldNanos) {
+        private Grant finish(LeaseWaiter waiter, long waitedNanos, long memoryNanos, long heldNanos) {
             boolean run;
             synchronized (lock) {
                 run = waiter.counted = waiter.resident == null && !waiter.released;
@@ -614,13 +679,13 @@ public final class WorkerLeases {
          * Under the lock: refuse a lease whose worst case is past {@link #OVERBOOK_CAP_FACTOR} times
          * the budget. No state of this ledger can grant it, so waiting would never end.
          */
-        private void refuseIfItNeverFits(Waiter waiter) {
+        private void refuseIfItNeverFits(LeaseWaiter waiter) {
             long cap = capacityBytes();
             long most = ceiling(cap);
-            if (waiter.demand.worstBytes <= most) return;
-            String what = waiter.demand.pin.isEmpty()
-                    ? ownerOf(waiter) + " needs " + format(waiter.demand.worstBytes)
-                    : "the pinned " + waiter.demand.pin + " needs " + format(waiter.demand.worstBytes)
+            if (waiter.demand.worstBytes() <= most) return;
+            String what = waiter.demand.pin().isEmpty()
+                    ? waiter.owner() + " needs " + format(waiter.demand.worstBytes())
+                    : "the pinned " + waiter.demand.pin() + " needs " + format(waiter.demand.worstBytes())
                             + " with its overhead";
             throw new LeaseRefused(what + ", over the " + format(most) + " a " + format(cap)
                     + " worker budget allows; lower the heap, or raise " + WorkerContainment.BUDGET_ENV);
@@ -633,23 +698,23 @@ public final class WorkerLeases {
          * waiter came, so a wait past the limit says the limit counts from the last grant; else
          * negative.
          */
-        private void giveUp(Waiter waiter, long waitedNanos, long stillNanos) {
+        private void giveUp(LeaseWaiter waiter, long waitedNanos, long stillNanos) {
             long budget = capacityBytes();
-            boolean slot = waiter.demand.cpuSlot && hostJvms() >= cpuCap();
+            boolean slot = waiter.demand.cpuSlot() && hostJvms() >= cpuCap();
             String phrase = MemoryNotes.waitedPhrase(waitedNanos);
             if (slot) phrase = phrase.replace("for memory", "for a JVM slot");
             if (stillNanos >= 0)
                 phrase += ", the last " + MemoryNotes.seconds(stillNanos) + " with no lease granted to anyone,";
-            Waiter first = queue.peekFirst();
+            LeaseWaiter first = queue.peekFirst();
             String line = first == null || first == waiter
                     ? waitLine(waiter, budget, true)
-                    : "needs " + format(waiter.demand.bytes) + " behind " + ownerOf(first) + ", first in line, which "
+                    : "needs " + format(waiter.demand.bytes()) + " behind " + first.owner() + ", first in line, which "
                             + waitLine(first, budget, true);
-            throw new LeaseRefused(ownerOf(waiter) + " " + phrase + " and gave up: " + line);
+            throw new LeaseRefused(waiter.owner() + " " + phrase + " and gave up: " + line);
         }
 
         /** Under the lock: grant {@code candidate} when it is the only waiter and it fits. */
-        private boolean grantIfHead(Waiter candidate) {
+        private boolean grantIfHead(LeaseWaiter candidate) {
             if (!queue.isEmpty() || !admit(candidate)) return false;
             take(candidate);
             return true;
@@ -658,10 +723,10 @@ public final class WorkerLeases {
         /** Under the lock: grant the front of the queue while it fits. */
         private void grantQueued() {
             while (!queue.isEmpty()) {
-                Waiter head = queue.peekFirst();
+                LeaseWaiter head = queue.peekFirst();
                 if (head.cancelled) {
                     queue.pollFirst();
-                    publish();
+                    changed();
                     continue;
                 }
                 if (!admit(head)) {
@@ -679,37 +744,37 @@ public final class WorkerLeases {
          * is asked once; its grant closes when its process is gone. While forks that are working still
          * hold what the head needs, residents are left alone.
          */
-        private void reclaimFor(Waiter head) {
-            if (head.demand.cpuSlot && hostJvms() >= cpuCap()) return;
+        private void reclaimFor(LeaseWaiter head) {
+            if (head.demand.cpuSlot() && hostJvms() >= cpuCap()) return;
             long cap = capacityBytes();
-            long bytesShort = head.demand.bytes - (cap - hostCharged());
-            long heapsShort = heaps() + head.demand.worstBytes - ceiling(cap);
+            long bytesShort = head.demand.bytes() - (cap - hostCharged());
+            long heapsShort = heaps() + head.demand.worstBytes() - ceiling(cap);
             long bytesLeft = 0;
             long heapsLeft = 0;
-            for (Waiter w : held) {
+            for (LeaseWaiter w : held) {
                 if (w.resident == null) continue;
                 long heap = heapOf(w);
-                bytesShort -= w.yieldAsked ? w.demand.bytes : 0;
+                bytesShort -= w.yieldAsked ? w.demand.bytes() : 0;
                 heapsShort -= w.yieldAsked ? heap : 0;
-                bytesLeft += w.yieldAsked ? 0 : w.demand.bytes;
+                bytesLeft += w.yieldAsked ? 0 : w.demand.bytes();
                 heapsLeft += w.yieldAsked ? 0 : heap;
             }
             if (bytesShort > bytesLeft || heapsShort > heapsLeft) return;
-            List<Waiter> ask = new ArrayList<>();
-            for (Waiter w : held) {
+            List<LeaseWaiter> ask = new ArrayList<>();
+            for (LeaseWaiter w : held) {
                 if (bytesShort <= 0 && heapsShort <= 0) break;
                 long heap = heapOf(w);
                 // Asking helps only with what it gives back: an idle resident holds no room under the bound.
                 if (w.resident == null || w.yieldAsked || (bytesShort <= 0 && heap == 0)) continue;
                 w.yieldAsked = true;
-                bytesShort -= w.demand.bytes;
+                bytesShort -= w.demand.bytes();
                 heapsShort -= heap;
                 ask.add(w);
             }
-            for (Waiter w : ask) {
+            for (LeaseWaiter w : ask) {
                 LeaseResident r = Objects.requireNonNull(w.resident);
-                Log.info("jk engine: asking the " + r.name() + " to exit: " + ownerOf(head) + " needs "
-                        + format(head.demand.bytes) + " and the " + r.name() + " holds " + format(w.demand.bytes));
+                Log.info("jk engine: asking the " + r.name() + " to exit: " + head.owner() + " needs "
+                        + format(head.demand.bytes()) + " and the " + r.name() + " holds " + format(w.demand.bytes()));
                 SessionContext.startVirtual("jk-lease-yield", () -> {
                     try {
                         r.yield().run();
@@ -725,24 +790,24 @@ public final class WorkerLeases {
          * forks, build-script host 608 MiB (asked to exit)}. Empty when nothing is queued.
          */
         private String waitingLine(long budget) {
-            Waiter head = null;
-            for (Waiter w : queue) {
+            LeaseWaiter head = null;
+            for (LeaseWaiter w : queue) {
                 if (!w.cancelled) {
                     head = w;
                     break;
                 }
             }
             if (head == null) return "";
-            return ownerOf(head) + " " + waitLine(head, budget, false);
+            return head.owner() + " " + waitLine(head, budget, false);
         }
 
         /**
          * Under the lock: {@code needs 2.0 GiB (1.0 GiB free); held by job #3 3.0 GiB}. {@code
          * nameBudget} writes {@code free of the 4.0 GiB worker budget}.
          */
-        private String waitLine(Waiter head, long budget, boolean nameBudget) {
+        private String waitLine(LeaseWaiter head, long budget, boolean nameBudget) {
             StringBuilder line = new StringBuilder("needs ");
-            if (head.demand.cpuSlot && hostJvms() >= cpuCap()) {
+            if (head.demand.cpuSlot() && hostJvms() >= cpuCap()) {
                 line.append("a JVM slot (")
                         .append(hostJvms())
                         .append('/')
@@ -750,8 +815,8 @@ public final class WorkerLeases {
                         .append(" running)");
             } else {
                 boolean heaps = ceilingBlocks(head, budget);
-                line.append(format(head.demand.bytes))
-                        .append(heaps ? " with a " + format(head.demand.worstBytes) + " heap ceiling" : "")
+                line.append(format(head.demand.bytes()))
+                        .append(heaps ? " with a " + format(head.demand.worstBytes()) + " heap ceiling" : "")
                         .append(" (")
                         .append(format(Math.max(0, budget - hostCharged())))
                         .append(" free")
@@ -762,7 +827,7 @@ public final class WorkerLeases {
                 line.append(')');
             }
             LeaseHolders holders = new LeaseHolders();
-            for (Waiter w : held) holders.add(ownerOf(w), w.demand.bytes + w.excess(), w.yieldAsked);
+            for (LeaseWaiter w : held) holders.add(w.owner(), w.demand.bytes() + w.excess(), w.yieldAsked);
             return line.append(holders.line(others().bytes(), HOLDERS_SHOWN)).toString();
         }
 
@@ -775,30 +840,57 @@ public final class WorkerLeases {
          * re-charged here: the sample's free bytes are their real usage.
          *
          * <p>With a {@link HostLeases} share the bytes, the cap and the JVM slots include the other
-         * engines. A recent reading of them may refuse; a grant is decided on a fresh one, under the
-         * share's file lock, and the new line is recorded before the lock is let go.
+         * engines as last read. A grant made on that reading is tentative until {@link #confirm}
+         * judges it again on a fresh one.
          */
-        private boolean admit(Waiter waiter) {
-            HostLeases h = host;
-            if (h == null) return admit(waiter, HostLeases.Reading.NONE);
-            if (!admit(waiter, h.recent())) return false;
-            boolean[] granted = {false};
-            h.exchange(others -> {
-                granted[0] = admit(waiter, others);
-                return line(granted[0] ? waiter : null);
-            });
-            return granted[0];
+        private boolean admit(LeaseWaiter waiter) {
+            return admit(waiter, others());
         }
 
-        /** Under the lock: {@link #admit(Waiter)} with {@code others} held by other engines. */
-        private boolean admit(Waiter waiter, HostLeases.Reading others) {
-            if (waiter.demand.cpuSlot && (long) jvmRunning + others.jvms() >= cpuCap())
+        /**
+         * Off the lock: let {@code waiter}'s tentative grant stand only when a fresh reading of the
+         * other engines, taken under the shared file's lock, still admits it, and record the line
+         * that counts it before that lock is let go. That is what keeps two engines from both
+         * granting the last room. A grant the fresh reading refuses is undone and goes back to the
+         * front of the queue. True when the grant stands; always, when shared with no other engine.
+         */
+        private boolean confirm(LeaseWaiter waiter) {
+            HostLeases h = host;
+            if (h == null) {
+                synchronized (lock) {
+                    if (waiter.overbooked) logOverbook(waiter);
+                }
+                return true;
+            }
+            boolean[] stands = {false};
+            long[] seq = {-1};
+            h.exchange(others -> {
+                synchronized (lock) {
+                    untake(waiter);
+                    stands[0] = admit(waiter, others);
+                    if (stands[0]) take(waiter);
+                    else queue.addFirst(waiter);
+                    seq[0] = ++version;
+                    return new HostLeases.Publication(seq[0], line());
+                }
+            });
+            synchronized (lock) {
+                written = Math.max(written, seq[0]);
+                if (stands[0] && waiter.overbooked) logOverbook(waiter);
+                if (!stands[0]) lock.notifyAll();
+            }
+            return stands[0];
+        }
+
+        /** Under the lock: {@link #admit(LeaseWaiter)} with {@code others} held by other engines. */
+        private boolean admit(LeaseWaiter waiter, HostLeases.Reading others) {
+            if (waiter.demand.cpuSlot() && (long) jvmRunning + others.jvms() >= cpuCap())
                 return refused(waiter, WaitReason.SLOT);
             long cap = capacityBytes();
             if (ceilingBlocks(waiter, cap)) return refused(waiter, WaitReason.MEMORY);
             long charged = charged() + Math.max(0, others.bytes());
             if (charged < 0) charged = Long.MAX_VALUE;
-            if (charged <= cap && waiter.demand.bytes <= cap - charged) {
+            if (charged <= cap && waiter.demand.bytes() <= cap - charged) {
                 waiter.overbooked = false;
                 return true;
             }
@@ -810,8 +902,8 @@ public final class WorkerLeases {
          * leases, would pass {@link OverbookSignals#ceiling} of {@code cap}, however much of the
          * budget is free.
          */
-        private boolean ceilingBlocks(Waiter waiter, long cap) {
-            return heaps() > ceiling(cap) - waiter.demand.worstBytes;
+        private boolean ceilingBlocks(LeaseWaiter waiter, long cap) {
+            return heaps() > ceiling(cap) - waiter.demand.worstBytes();
         }
 
         /** Under the lock: what the held forks may grow to, each its {@code -Xmx} lease; idle residents count none. */
@@ -820,25 +912,25 @@ public final class WorkerLeases {
         }
 
         /** Under the lock: {@code w}'s {@code -Xmx} lease, or none while it is a resident between requests. */
-        private static long heapOf(Waiter w) {
+        private static long heapOf(LeaseWaiter w) {
             LeaseResident r = w.resident;
-            return r != null && r.idle().getAsBoolean() ? 0 : w.demand.worstBytes;
+            return r != null && r.idle().getAsBoolean() ? 0 : w.demand.worstBytes();
         }
 
-        private static boolean refused(Waiter waiter, WaitReason reason) {
+        private static boolean refused(LeaseWaiter waiter, WaitReason reason) {
             waiter.reason = reason;
             return false;
         }
 
-        private boolean overbook(Waiter waiter, long cap, long charged) {
+        private boolean overbook(LeaseWaiter waiter, long cap, long charged) {
             if (cap <= 0) return false;
-            long bytes = waiter.demand.bytes;
+            long bytes = waiter.demand.bytes();
             long ceiling = ceiling(cap);
             if (overLeaseCount > 0) return false;
             if (bytes > ceiling || charged > ceiling - bytes) return false;
             OverbookSignals.Reading reading = readSignals();
             if (!reading.enabled() || !reading.pressureLow()) return false;
-            if (!reading.covers(waiter.demand.worstBytes, OverbookSignals.headroom(cap, cautious))) return false;
+            if (!reading.covers(waiter.demand.worstBytes(), OverbookSignals.headroom(cap, cautious))) return false;
             waiter.overbooked = true;
             waiter.sample = reading;
             return true;
@@ -853,33 +945,41 @@ public final class WorkerLeases {
             }
         }
 
-        private void take(Waiter waiter) {
+        /** Under the lock: grant {@code waiter}; {@link #confirm} decides whether the grant stands. */
+        private void take(LeaseWaiter waiter) {
             held.add(waiter);
-            leased += waiter.demand.bytes;
+            leased += waiter.demand.bytes();
             lastGrant = Clock.SYSTEM.nanos();
-            if (waiter.demand.cpuSlot) jvmRunning++;
+            if (waiter.demand.cpuSlot()) jvmRunning++;
             waiter.granted = true;
-            if (waiter.overbooked) logOverbook(waiter);
         }
 
-        private void logOverbook(Waiter waiter) {
+        /** Under the lock: undo {@link #take} of a grant not yet confirmed, before it is judged again. */
+        private void untake(LeaseWaiter waiter) {
+            held.remove(waiter);
+            leased = Math.max(0, leased - waiter.demand.bytes());
+            if (waiter.demand.cpuSlot()) jvmRunning = Math.max(0, jvmRunning - 1);
+            waiter.granted = false;
+        }
+
+        private void logOverbook(LeaseWaiter waiter) {
             Log.info("jk engine: "
                     + OverbookSignals.overbookedLine(
-                            waiter.demand.bytes, hostCharged(), capacityBytes(), waiter.sample));
+                            waiter.demand.bytes(), hostCharged(), capacityBytes(), waiter.sample));
         }
 
-        private void release(Waiter waiter) {
+        private void release(LeaseWaiter waiter) {
             if (waiter.released) return;
             waiter.released = true;
             held.remove(waiter);
-            leased = Math.max(0, leased - waiter.demand.bytes);
+            leased = Math.max(0, leased - waiter.demand.bytes());
             excess = Math.max(0, excess - waiter.excess());
             if (waiter.overLease) overLeaseCount = Math.max(0, overLeaseCount - 1);
-            if (waiter.demand.cpuSlot) jvmRunning = Math.max(0, jvmRunning - 1);
-            publish();
+            if (waiter.demand.cpuSlot()) jvmRunning = Math.max(0, jvmRunning - 1);
+            changed();
             if (waiter.named) {
                 Log.info("jk engine: " + waiter.label() + " exited; resident set peaked at " + format(waiter.peakRss)
-                        + ", leased " + format(waiter.demand.bytes));
+                        + ", leased " + format(waiter.demand.bytes()));
             }
         }
 
@@ -889,9 +989,9 @@ public final class WorkerLeases {
          * warning on the step that forked it, once per step. Reads happen off the lock.
          */
         public void sample() {
-            List<Waiter> watched = new ArrayList<>();
+            List<LeaseWaiter> watched = new ArrayList<>();
             synchronized (lock) {
-                for (Waiter w : held) if (w.pid > 0) watched.add(w);
+                for (LeaseWaiter w : held) if (w.pid > 0) watched.add(w);
             }
             if (watched.isEmpty()) return;
             long[] readings = new long[watched.size()];
@@ -902,17 +1002,17 @@ public final class WorkerLeases {
                     readings[i] = -1;
                 }
             }
-            List<Waiter> crossed = new ArrayList<>();
+            List<LeaseWaiter> crossed = new ArrayList<>();
             List<TaskContext> warnOn = new ArrayList<>();
             synchronized (lock) {
                 for (int i = 0; i < readings.length; i++) {
-                    Waiter w = watched.get(i);
+                    LeaseWaiter w = watched.get(i);
                     if (w.released || readings[i] < 0) continue;
                     excess -= w.excess();
                     w.rss = readings[i];
                     w.peakRss = Math.max(w.peakRss, w.rss);
                     excess += w.excess();
-                    boolean over = WorkerRss.farOverLease(w.demand.bytes, w.rss);
+                    boolean over = WorkerRss.farOverLease(w.demand.bytes(), w.rss);
                     if (over != w.overLease) overLeaseCount += over ? 1 : -1;
                     w.overLease = over;
                     if (over && !w.named) {
@@ -922,14 +1022,14 @@ public final class WorkerLeases {
                         warnOn.add(step != null && warnedSteps.add(step) ? step : null);
                     }
                 }
-                publish();
+                changed();
                 grantQueued();
                 lock.notifyAll();
             }
             for (int i = 0; i < crossed.size(); i++) {
-                Waiter w = crossed.get(i);
-                String phrase = WorkerRss.overLeasePhrase(w.what, w.rss, w.demand.bytes);
-                Log.warn("jk engine: " + WorkerRss.overLeasePhrase(w.label(), w.rss, w.demand.bytes)
+                LeaseWaiter w = crossed.get(i);
+                String phrase = WorkerRss.overLeasePhrase(w.what, w.rss, w.demand.bytes());
+                Log.warn("jk engine: " + WorkerRss.overLeasePhrase(w.label(), w.rss, w.demand.bytes())
                         + "; charged at its resident set, nothing overbooked while it holds that");
                 TaskContext step = warnOn.get(i);
                 if (step != null) step.warn(WorkerRss.OVER_LEASE_CODE, phrase);
@@ -942,22 +1042,22 @@ public final class WorkerLeases {
          */
         private String overLeaseLine() {
             if (overLeaseCount == 0) return "";
-            List<Waiter> over = new ArrayList<>();
-            for (Waiter w : held) if (w.overLease) over.add(w);
+            List<LeaseWaiter> over = new ArrayList<>();
+            for (LeaseWaiter w : held) if (w.overLease) over.add(w);
             over.sort((a, b) -> Long.compare(b.rss, a.rss));
             StringBuilder line = new StringBuilder();
             int shown = Math.min(HOLDERS_SHOWN, over.size());
             for (int i = 0; i < shown; i++) {
-                Waiter w = over.get(i);
+                LeaseWaiter w = over.get(i);
                 if (i > 0) line.append("; ");
-                line.append(WorkerRss.overLeasePhrase(w.label(), w.rss, w.demand.bytes));
+                line.append(WorkerRss.overLeasePhrase(w.label(), w.rss, w.demand.bytes()));
             }
             if (over.size() > shown)
                 line.append("; ").append(over.size() - shown).append(" more");
             return line.toString();
         }
 
-        private void watch(Waiter waiter, long pid, String what, @Nullable TaskContext step) {
+        private void watch(LeaseWaiter waiter, long pid, String what, @Nullable TaskContext step) {
             long started = ProcessHandle.of(pid)
                     .map(p -> HostLeases.Owner.of(p).startedAtMillis())
                     .orElse(0L);
@@ -968,7 +1068,7 @@ public final class WorkerLeases {
                 waiter.startedAtMillis = started;
                 waiter.what = what;
                 waiter.step = step;
-                publish();
+                changed();
                 if (sampleEvery != null && !sampling) {
                     sampling = true;
                     every = sampleEvery;
@@ -989,25 +1089,25 @@ public final class WorkerLeases {
          * grows past what is free is not refused: the process already holds the memory, and charging
          * it is what makes the next fork wait. A lease that shrinks lets queued forks in at once.
          */
-        private void resize(Waiter waiter, long bytes) {
+        private void resize(LeaseWaiter waiter, long bytes) {
             synchronized (lock) {
                 if (waiter.released || !waiter.granted) return;
                 long next = Math.max(1, Math.min(bytes, Math.max(1, capacityBytes())));
-                if (next == waiter.demand.bytes) return;
+                if (next == waiter.demand.bytes()) return;
                 excess = Math.max(0, excess - waiter.excess());
-                leased = Math.max(0, leased + next - waiter.demand.bytes);
+                leased = Math.max(0, leased + next - waiter.demand.bytes());
                 waiter.demand = waiter.demand.withBytes(next);
                 excess += waiter.excess();
                 boolean over = WorkerRss.farOverLease(next, waiter.rss);
                 if (over != waiter.overLease) overLeaseCount = Math.max(0, overLeaseCount + (over ? 1 : -1));
                 waiter.overLease = over;
-                publish();
+                changed();
                 grantQueued();
                 lock.notifyAll();
             }
         }
 
-        private void close(Waiter waiter) {
+        private void close(LeaseWaiter waiter) {
             boolean counted;
             synchronized (lock) {
                 counted = waiter.counted;
@@ -1023,137 +1123,28 @@ public final class WorkerLeases {
             return requestId != null && ended.test(requestId);
         }
 
-        private Demand demand(List<String> command, JvmOptions.HeapChoice choice) {
+        private LeaseDemand demand(List<String> command, JvmOptions.HeapChoice choice) {
             long cap = Math.max(1, capacityBytes());
             long requested = HeapFlags.parseXmx(command);
             if (requested <= 0 && choice.xmxBytes() > 0) requested = choice.xmxBytes();
             boolean jvm = requested > 0 || HeapFlags.jvmCommand(command);
             if (!jvm) {
                 long bytes = Math.min(TOOL_BYTES, cap);
-                return new Demand(bytes, 0, false, bytes < TOOL_BYTES, false, false);
+                return new LeaseDemand(bytes, 0, false, bytes < TOOL_BYTES, false, false);
             }
             long xmx = requested > 0 ? requested : UnsizedHeap.lease(command, cap);
             if (choice.userPinned()) {
                 long natural = jvmLease(xmx);
                 long bytes = Math.min(cap, natural);
                 String pin = choice.label().isEmpty() ? "heap" : choice.label();
-                return new Demand(
+                return new LeaseDemand(
                         bytes, requested > 0 ? requested : 0, true, false, true, natural > cap, true, natural, pin);
             }
             long fitted = clampXmx(xmx, cap);
             long ceiling = Math.min(cap, jvmLease(fitted));
             long bytes = choice.priceBytes() > 0 ? Math.min(ceiling, choice.priceBytes()) : ceiling;
-            return new Demand(
+            return new LeaseDemand(
                     bytes, fitted, true, fitted < xmx || ceiling < jvmLease(xmx), false, false, true, ceiling, "");
-        }
-    }
-
-    /**
-     * {@code cpuSlot}: counts against the running-JVM cap; a resident helper between requests does
-     * not. {@code worstBytes} is what the process may use: its {@code -Xmx} lease when {@code bytes} is
-     * the lower price it is expected to hold or the budget a pin was cut to, else {@code bytes}. {@code pin} names that pin, {@code ""} otherwise.
-     */
-    private record Demand(
-            long bytes,
-            long xmxBytes,
-            boolean jvm,
-            boolean clamped,
-            boolean userPinned,
-            boolean overBudget,
-            boolean cpuSlot,
-            long worstBytes,
-            String pin) {
-        Demand(long bytes, long xmxBytes, boolean jvm, boolean clamped, boolean userPinned, boolean overBudget) {
-            this(bytes, xmxBytes, jvm, clamped, userPinned, overBudget, jvm, bytes, "");
-        }
-
-        Demand resident() {
-            return new Demand(bytes, xmxBytes, jvm, clamped, userPinned, overBudget, false, worstBytes, pin);
-        }
-
-        /** The same demand leasing {@code next} bytes. */
-        Demand withBytes(long next) {
-            return new Demand(next, xmxBytes, jvm, clamped, userPinned, overBudget, cpuSlot, next, pin);
-        }
-    }
-
-    /** {@code job #7}, the resident's name, or {@code the engine} for a fork outside any job. */
-    private static String ownerOf(Waiter waiter) {
-        if (waiter.resident != null) return waiter.resident.name();
-        if (waiter.requestId != null) return "job #" + waiter.requestId;
-        return "the engine";
-    }
-
-    private static final class Waiter {
-        /** What is leased; only {@link Ledger#resize} replaces it, under the ledger's lock. */
-        Demand demand;
-
-        final @Nullable Long requestId;
-        final @Nullable LeaseResident resident;
-        /** The resident has been asked to exit for the head of the queue. */
-        boolean yieldAsked;
-
-        boolean cancelled;
-        boolean granted;
-        boolean released;
-        /** Counted as a running fork of its build and step, until its grant closes. */
-        boolean counted;
-
-        /** Why its last {@code admit} refused it; null before the first refusal. */
-        @Nullable
-        WaitReason reason;
-
-        /** The step that asked for it, outside a resident; null outside a step. */
-        @Nullable
-        TaskContext scope;
-
-        boolean overbooked;
-        /** The host sample an overbooked grant was allowed on. */
-        OverbookSignals.Reading sample = OverbookSignals.Reading.closed();
-
-        /** The forked process, once {@link Grant#watch} names it; {@code -1} before. */
-        long pid = -1;
-
-        /** When {@link #pid} started, in epoch milliseconds; {@code 0} when the OS did not say. */
-        long startedAtMillis;
-
-        String what = "worker";
-
-        @Nullable
-        TaskContext step;
-        /** Last resident set read, {@code -1} before the first. */
-        long rss = -1;
-
-        long peakRss;
-        /** The last reading was {@linkplain WorkerRss#farOverLease far over} the lease. */
-        boolean overLease;
-
-        /** Named in the engine log, and on its step, for going far over its lease. */
-        boolean named;
-
-        /** The startup caches its process was started with ({@link Grant#maps}). */
-        volatile Set<Path> maps = Set.of();
-
-        Waiter(Demand demand, @Nullable Long requestId, @Nullable LeaseResident resident) {
-            this.demand = demand;
-            this.requestId = requestId;
-            this.resident = resident;
-        }
-
-        /** Resident bytes above the lease, charged on top of it. */
-        long excess() {
-            return Math.max(0, rss - demand.bytes);
-        }
-
-        /** {@code test JVM pid 4242 (job #7)}. */
-        String label() {
-            String owner = ownerOf(this);
-            String base = resident != null ? owner : what;
-            StringBuilder out = new StringBuilder(base);
-            if (pid > 0) out.append(" pid ").append(pid);
-            if (resident == null && requestId != null)
-                out.append(" (").append(owner).append(')');
-            return out.toString();
         }
     }
 
@@ -1167,38 +1158,38 @@ public final class WorkerLeases {
     /** A held lease. Closing returns the bytes; a second close does nothing. */
     public static final class Grant implements AutoCloseable {
         private final Ledger ledger;
-        private final Waiter waiter;
+        private final LeaseWaiter waiter;
 
-        private Grant(Ledger ledger, Waiter waiter) {
+        private Grant(Ledger ledger, LeaseWaiter waiter) {
             this.ledger = ledger;
             this.waiter = waiter;
         }
 
         public long bytes() {
-            return waiter.demand.bytes;
+            return waiter.demand.bytes();
         }
 
         /** The {@code -Xmx} to launch with, or {@code 0} for a tool. */
         public long xmxBytes() {
-            return waiter.demand.xmxBytes;
+            return waiter.demand.xmxBytes();
         }
 
         public boolean clamped() {
-            return waiter.demand.clamped;
+            return waiter.demand.clamped();
         }
 
         public boolean jvm() {
-            return waiter.demand.jvm;
+            return waiter.demand.jvm();
         }
 
         /** The user wrote this heap. The command is launched with their flags. */
         public boolean userPinned() {
-            return waiter.demand.userPinned;
+            return waiter.demand.userPinned();
         }
 
         /** The pin's natural lease was larger than the budget, so the grant is the whole budget. */
         public boolean overBudget() {
-            return waiter.demand.overBudget;
+            return waiter.demand.overBudget();
         }
 
         /** Granted past the reservation budget, on a host sample that said it was safe. */

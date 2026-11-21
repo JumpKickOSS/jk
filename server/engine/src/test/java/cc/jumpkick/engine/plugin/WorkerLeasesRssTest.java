@@ -179,18 +179,30 @@ class WorkerLeasesRssTest {
             grant.watch(101, "test JVM", null);
             rss.put(101L, GIB + 100 * MIB);
             ledger.sample();
+            awaitRecorded(ledger);
             String before = Files.readString(file);
             for (int page = 1; page <= 16; page++) {
                 rss.put(101L, GIB + 100 * MIB + page * 4096L);
                 ledger.sample();
+                awaitRecorded(ledger);
                 assertThat(Files.readString(file)).as("after %d pages", page).isEqualTo(before);
             }
             rss.put(101L, GIB + 200 * MIB);
             ledger.sample();
+            awaitRecorded(ledger);
             assertThat(Files.readString(file)).isNotEqualTo(before);
             assertThat(ledger.snapshot().leasedBytes())
                     .as("charged exactly here")
                     .isEqualTo(GIB + 200 * MIB);
+        }
+    }
+
+    /** The ledger's line is recorded for the other engines on a thread of its own; wait for it. */
+    private static void awaitRecorded(WorkerLeases.Ledger ledger) throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+        while (!ledger.recorded()) {
+            if (System.nanoTime() > deadline) throw new AssertionError("the ledger's line was never recorded");
+            Thread.sleep(5);
         }
     }
 

@@ -62,7 +62,11 @@ How JumpKick is structured today. For day-to-day usage see [user documentation](
   cautious overbook: more headroom, a 1.5x cap, pressure required): an engine
   process joins `HostLeases`, one `<state>/engine/worker-leases` file under a file lock in which
   every engine of the state dir records its budget, JVM cap, charged bytes, running JVMs,
-  queued leases and worker pids, each grant is decided against the sums, the first live line's
+  queued leases and worker pids, each grant is decided against the sums (made under the ledger's
+  lock on the last reading, it stands only once a fresh reading taken under the file lock still
+  admits it, its line written before that lock is let go; any other change to the line is written
+  after the ledger's lock is let go, numbered so an older line never replaces a newer one, so no
+  release or cancel waits on the file), the first live line's
   budget and JVM cap are every engine's, and a reader drops the line of an engine whose pid is gone or was reused and kills the
   workers it names that still run (pid and start instant both match), so a draining engine and
   its successor share one set of limits and a crashed one blocks nobody; a test JVM's ledger

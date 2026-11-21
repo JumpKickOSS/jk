@@ -95,15 +95,31 @@ final class HostLeases {
         static final Reading NONE = new Reading(0, 0, 0, 0, 0);
     }
 
+    /**
+     * A line this engine records, numbered in the order its ledger made it. A line numbered below the
+     * one already recorded is older than what the file holds and is not written over it.
+     */
+    record Publication(long seq, Line line) {}
+
+    private static final Line NOTHING = new Line(0, 0, 0, 0, 0, List.of());
+
     private final Path file;
     private final Path lockFile;
     private final Owner self;
     private final Predicate<Owner> alive;
     private final ToIntFunction<List<Worker>> stop;
+
+    /**
+     * Guards the fields below, and is never held across the file lock or the file's I/O: a ledger
+     * reads the budget, the JVM cap and the last reading under its own lock.
+     */
     private final Object state = new Object();
 
-    /** Guarded by {@link #state}: the line this engine last wrote, or {@code null} before. */
+    /** The line this engine last wrote, or {@code null} before. */
     private @Nullable Line published;
+
+    /** The number of {@link #published}; {@code -1} before. */
+    private long publishedSeq = -1;
 
     private Reading last = Reading.NONE;
     private long readAtNanos;
@@ -132,46 +148,54 @@ final class HostLeases {
 
     /**
      * Under the file lock: hand the other engines' reading to {@code mine}, which answers this
-     * engine's line, and record it. Returns that reading.
+     * engine's line, or {@code null} to keep the one recorded, and record it. Returns that reading.
+     * {@code mine} runs with the file locked and may take a ledger's lock; nothing here holds a lock
+     * of this class while it runs.
      */
-    Reading exchange(Function<Reading, Line> mine) {
-        synchronized (state) {
-            try {
-                return FileLocks.withLock(lockFile, () -> exchangeLocked(mine));
-            } catch (IOException e) {
+    Reading exchange(Function<Reading, @Nullable Publication> mine) {
+        try {
+            return FileLocks.withLock(lockFile, () -> exchangeLocked(mine));
+        } catch (IOException e) {
+            Reading kept;
+            synchronized (state) {
                 if (!warned) {
                     warned = true;
                     Log.warn("jk engine: worker leases of other engines unreadable at " + file
                             + "; leasing against their last known total: " + e.getMessage());
                 }
-                Reading kept = last;
-                mine.apply(kept);
-                return kept;
+                kept = last;
             }
+            mine.apply(kept);
+            return kept;
         }
     }
 
-    /** Record this engine's line; no file access when it has not changed. */
-    void publish(Line line) {
+    /** Record {@code line}, number {@code seq}; no file access when it is unchanged or older than the recorded one. */
+    void publish(long seq, Line line) {
         synchronized (state) {
-            if (read && line.equals(published)) return;
+            if (read && (seq < publishedSeq || line.equals(published))) return;
         }
-        exchange(o -> line);
+        Publication p = new Publication(seq, line);
+        exchange(o -> p);
     }
 
     /** The other engines' reading, read now. */
     Reading fresh() {
-        synchronized (state) {
-            Line mine = published;
-            return exchange(o -> mine != null ? mine : new Line(0, 0, 0, 0, 0, List.of()));
-        }
+        return exchange(o -> null);
     }
 
     /** The other engines' reading, read again when the last one is more than 250 ms old. */
     Reading recent() {
         synchronized (state) {
             if (read && Clock.SYSTEM.nanos() - readAtNanos < FRESH_NANOS) return last;
-            return fresh();
+        }
+        return fresh();
+    }
+
+    /** The other engines' reading as last read, without touching the file; {@link Reading#NONE} before any. */
+    Reading cached() {
+        synchronized (state) {
+            return last;
         }
     }
 
@@ -191,7 +215,11 @@ final class HostLeases {
         }
     }
 
-    private Reading exchangeLocked(Function<Reading, Line> mine) throws IOException {
+    /**
+     * Holding the file lock, which also keeps every other thread of this process out: read the
+     * other lines, ask {@code mine} for this engine's, write the file when either changed.
+     */
+    private Reading exchangeLocked(Function<Reading, @Nullable Publication> mine) throws IOException {
         List<String> kept = new ArrayList<>();
         int selfAt = -1;
         boolean changed = false;
@@ -235,27 +263,48 @@ final class HostLeases {
         boolean firstIsSelf = selfAt == 0;
         Reading others =
                 firstIsSelf ? new Reading(bytes, jvms, waiting, 0, 0) : new Reading(bytes, jvms, waiting, budget, cpus);
-        last = others;
-        read = true;
-        Line line = mine.apply(others);
+        synchronized (state) {
+            last = others;
+            read = true;
+        }
+        Publication offered = mine.apply(others);
+        Line before;
+        Line line;
+        long seq;
+        synchronized (state) {
+            before = published;
+            if (offered != null && offered.seq() >= publishedSeq) {
+                line = offered.line();
+                seq = offered.seq();
+            } else {
+                line = before != null ? before : NOTHING;
+                seq = publishedSeq;
+            }
+        }
         if (firstIsSelf) {
             others = new Reading(bytes, jvms, waiting, line.budgetBytes(), line.cpuCap());
-            last = others;
         } else {
             noteRecorded(others, line, firstOwner);
         }
-        if (changed || !line.equals(published)) {
+        if (changed || !line.equals(before)) {
             kept.set(selfAt, render(self, line));
             StringBuilder out = new StringBuilder();
             for (String l : kept) if (!l.isEmpty()) out.append(l).append('\n');
             AtomicWrites.replace(file, out.toString());
-            published = line;
         }
-        readAtNanos = Clock.SYSTEM.nanos();
+        synchronized (state) {
+            published = line;
+            publishedSeq = seq;
+            last = others;
+            readAtNanos = Clock.SYSTEM.nanos();
+        }
         return others;
     }
 
-    /** Once per engine and limit: say that another engine's budget or JVM cap is the one leased against. */
+    /**
+     * Under the file lock: once per engine and limit, say that another engine's budget or JVM cap is
+     * the one leased against.
+     */
     private void noteRecorded(Reading recorded, Line own, long owner) {
         if (!budgetNoted && recorded.budgetBytes() > 0 && recorded.budgetBytes() != own.budgetBytes()) {
             budgetNoted = true;
