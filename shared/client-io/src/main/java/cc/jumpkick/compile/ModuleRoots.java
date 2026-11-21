@@ -137,6 +137,21 @@ final class ModuleRoots {
     }
 
     /**
+     * The scopes of the lock rows a sibling's roots are walked through in a view over {@code
+     * scopes}: those {@link #inheritedScopes} names, and the test rows too in a test view. A sibling
+     * only the module's tests reach is in the module's test graph, so where the module has rows of
+     * its own for that sibling's dependencies they are test rows; where a main row of the same
+     * module is in the view, it is still the one read ({@link ClasspathResolver#selectPerModule}).
+     */
+    static Set<Scope> inheritedRowScopes(Set<Scope> scopes) {
+        Set<Scope> passed = inheritedScopes(scopes);
+        if (!scopes.contains(Scope.TEST) && !scopes.contains(Scope.TEST_DEV)) return passed;
+        Set<Scope> rows = EnumSet.copyOf(passed);
+        rows.addAll(TEST_SCOPES);
+        return rows;
+    }
+
+    /**
      * The lock row names a declaration stands for. A coordinate is its package key; a local jar
      * ({@code sha256 =}) is the row {@code jk lock} writes under the declaration's own name; a git
      * dependency is the row stamped with its repository and ref; a path dependency is the

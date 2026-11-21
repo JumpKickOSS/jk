@@ -65,15 +65,16 @@ public final class WorkspaceMerge {
 
         // First pass: resolve this module's own deps, strip sibling refs, and track which
         // siblings are direct dependencies (for export propagation) by their group:name — two
-        // siblings may share a name.
-        Set<String> dependedSiblings = new LinkedHashSet<>();
+        // siblings may share a name — apart by whether only the module's tests depend on them.
+        Set<String> mainSiblings = new LinkedHashSet<>();
+        Set<String> testSiblings = new LinkedHashSet<>();
         Map<Scope, List<Dependency>> resolvedByScope = new EnumMap<>(Scope.class);
         for (Scope scope : Scope.values()) {
             List<Dependency> resolved = new ArrayList<>();
             for (Dependency d : module.dependencies().of(scope)) {
                 Dependency r = resolve(d, siblingByArtifact, wsDeps);
                 if (internal.contains(r.module())) {
-                    dependedSiblings.add(r.module());
+                    (isTest(scope) ? testSiblings : mainSiblings).add(r.module());
                     continue;
                 }
                 resolved.add(r);
@@ -96,26 +97,35 @@ public final class WorkspaceMerge {
         for (List<Dependency> deps : resolvedByScope.values()) for (Dependency d : deps) own.add(d.module());
         Set<String> carried = new LinkedHashSet<>();
 
-        // Transitive MAIN+EXPORT externals from reachable siblings into this module's main scope.
-        Set<String> visited = new LinkedHashSet<>(dependedSiblings);
-        ArrayDeque<String> queue = new ArrayDeque<>(dependedSiblings);
-        while (!queue.isEmpty()) {
-            JkBuild sibling = siblingByArtifact.get(queue.poll());
-            if (sibling == null) continue;
-            addTable(platform, sibling.dependencies().of(Scope.PLATFORM), siblingByArtifact, wsDeps, internal);
-            addTable(managed, sibling.dependencies().of(Scope.MANAGED), siblingByArtifact, wsDeps, internal);
-            for (Scope scope : List.of(Scope.MAIN, Scope.EXPORT)) {
-                for (Dependency d : sibling.dependencies().of(scope)) {
-                    // A sibling's optional dependency is its own, as a POM's optional edge is.
-                    if (d.optional()) continue;
-                    Dependency r = resolve(d, siblingByArtifact, wsDeps);
-                    if (internal.contains(r.module())) {
-                        if (visited.add(r.module())) queue.add(r.module());
-                        continue;
-                    }
-                    List<Dependency> mainList = resolvedByScope.computeIfAbsent(Scope.MAIN, k -> new ArrayList<>());
-                    if (mainList.stream().noneMatch(e -> e.packageKey().equals(r.packageKey()))) {
-                        mainList.add(r);
+        // The non-optional main and export externals of every sibling the member reaches, transitively
+        // over the siblings' own main and export edges: into its test scope when only its test tables
+        // reach the sibling, else into its main scope. Main's walk runs first, so a sibling both reach
+        // is main's. A sibling a processor table names is main's too: a processor path reads a
+        // sibling's closure off the main rows.
+        Set<String> visited = new LinkedHashSet<>();
+        for (Scope into : List.of(Scope.MAIN, Scope.TEST)) {
+            ArrayDeque<String> queue = new ArrayDeque<>();
+            for (String start : into == Scope.MAIN ? mainSiblings : testSiblings) {
+                if (visited.add(start)) queue.add(start);
+            }
+            while (!queue.isEmpty()) {
+                JkBuild sibling = siblingByArtifact.get(queue.poll());
+                if (sibling == null) continue;
+                addTable(platform, sibling.dependencies().of(Scope.PLATFORM), siblingByArtifact, wsDeps, internal);
+                addTable(managed, sibling.dependencies().of(Scope.MANAGED), siblingByArtifact, wsDeps, internal);
+                for (Scope scope : List.of(Scope.MAIN, Scope.EXPORT)) {
+                    for (Dependency d : sibling.dependencies().of(scope)) {
+                        // A sibling's optional dependency is its own, as a POM's optional edge is.
+                        if (d.optional()) continue;
+                        Dependency r = resolve(d, siblingByArtifact, wsDeps);
+                        if (internal.contains(r.module())) {
+                            if (visited.add(r.module())) queue.add(r.module());
+                            continue;
+                        }
+                        if (holds(resolvedByScope, into == Scope.MAIN ? MAIN_ONLY : TEST_CLASSPATH, r)) continue;
+                        resolvedByScope
+                                .computeIfAbsent(into, k -> new ArrayList<>())
+                                .add(r);
                         if (!own.contains(r.module())) carried.add(r.module());
                     }
                 }
@@ -133,6 +143,27 @@ public final class WorkspaceMerge {
         }
 
         return new Applied(module.withDependencyScopes(resolvedByScope), carried);
+    }
+
+    private static final Set<Scope> MAIN_ONLY = Set.of(Scope.MAIN);
+
+    /** The member's scopes whose entries its test classpath already carries. */
+    private static final Set<Scope> TEST_CLASSPATH =
+            Set.of(Scope.EXPORT, Scope.MAIN, Scope.PROVIDED, Scope.RUNTIME, Scope.TEST, Scope.TEST_DEV);
+
+    /** The scopes whose sibling edges only a member's tests follow. */
+    private static boolean isTest(Scope scope) {
+        return scope == Scope.TEST || scope == Scope.TEST_DEV;
+    }
+
+    /** True when one of {@code scopes} of {@code byScope} already holds {@code d}'s package. */
+    private static boolean holds(Map<Scope, List<Dependency>> byScope, Set<Scope> scopes, Dependency d) {
+        for (Scope scope : scopes) {
+            for (Dependency e : byScope.getOrDefault(scope, List.of())) {
+                if (e.packageKey().equals(d.packageKey())) return true;
+            }
+        }
+        return false;
     }
 
     /** Add a BOM or managed entry to a member's table unless an earlier entry already manages that module. */
@@ -163,11 +194,11 @@ public final class WorkspaceMerge {
      *
      * <p>This is the counterpart to {@link #applyToModule}, which exists for lock orchestration and
      * therefore drops sibling edges (they are not resolvable Maven coordinates) after folding their
-     * externals into MAIN. That is right for locking and wrong for anything describing the module to
-     * the outside world: a published POM must still declare the sibling, just by its real
-     * coordinate. Emitting the raw placeholder produced {@code <groupId>workspace</groupId>} /
-     * {@code <version>LATEST</version>} POMs; dropping the edge instead would silently
-     * lose a real dependency, which is worse.
+     * externals into MAIN, or TEST for a sibling only the module's tests depend on. That is right
+     * for locking and wrong for anything describing the module to the outside world: a published
+     * POM must still declare the sibling, just by its real coordinate. Emitting the raw placeholder
+     * produced {@code <groupId>workspace</groupId>} / {@code <version>LATEST</version>} POMs;
+     * dropping the edge instead would silently lose a real dependency, which is worse.
      *
      * <p>Unresolvable placeholders are left untouched rather than throwing — the caller is usually
      * rendering, and a partial answer beats an exception at that point.

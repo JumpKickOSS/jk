@@ -62,7 +62,7 @@ name     = "com.eed3si9n:shaded-jawn-parser_3:jar:"
 version  = "1.3.2"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:5b815a3b05960149a8310a288c2f5f3662fc833c1474079e76b31b2c4dc6d4b3"
-scopes   = ["main"]
+scopes   = ["main", "test"]
 licenses = ["MIT"]
 members  = ["plugins/graph", "plugins/java-compiler"]
 deps = [
@@ -96,7 +96,7 @@ name     = "com.eed3si9n:sjson-new-core_3:jar:"
 version  = "0.15.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:b51f27ada484f6aedfcf15ac86d27029e23422a4ebf50eef0e0a93e93a8b2fdf"
-scopes   = ["main"]
+scopes   = ["main", "test"]
 licenses = ["Apache-2.0"]
 members  = ["plugins/graph", "plugins/java-compiler"]
 deps = [
@@ -1028,15 +1028,6 @@ source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:df90bba0fe3cb586b7f164e78fe8f8f4da3f2dd5c27fa645f888100ccc25dd72"
 scopes   = ["main", "provided"]
 licenses = ["Apache-2.0"]
-
-[[artifact]]
-name     = "commons-io:commons-io:jar:"
-version  = "2.20.0"
-source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:df90bba0fe3cb586b7f164e78fe8f8f4da3f2dd5c27fa645f888100ccc25dd72"
-scopes   = ["test"]
-licenses = ["Apache-2.0"]
-members  = ["plugins/avro"]
 
 [[artifact]]
 name     = "commons-io:commons-io:jar:"
@@ -2134,15 +2125,6 @@ checksum = "sha256:69e5c9fa35da7a51a5fd2099dfe56a2d8d32cf233e2f6d770e79614644026
 pinned-by = "io.quarkus:quarkus-bootstrap-bom:3.40.1.1"
 scopes   = ["main", "provided"]
 licenses = ["Apache-2.0"]
-
-[[artifact]]
-name     = "org.apache.commons:commons-lang3:jar:"
-version  = "3.20.0"
-source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:69e5c9fa35da7a51a5fd2099dfe56a2d8d32cf233e2f6d770e796146440263f4"
-scopes   = ["test"]
-licenses = ["Apache-2.0"]
-members  = ["plugins/asyncapi", "plugins/avro", "plugins/json-schema"]
 
 [[artifact]]
 name     = "org.apache.commons:commons-lang3:jar:"

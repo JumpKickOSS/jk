@@ -6,6 +6,11 @@ JumpKick shows you this page's new entries after it updates itself.
 
 ## 0.54.0
 
+- **A sibling a workspace member uses only from its tests no longer weighs on its main classpath.**
+  A member that depends on a sibling only from its tests now resolves that sibling's dependencies in
+  its test graph, so they can no longer move a version on its main classpath, and `jk outdated`
+  shows them with scope `test`. A member's tests read a workspace main row at the version they need
+  without a row of their own, so the lock carries fewer `members` rows.
 - **A build plugin's manifest cannot point packaging outside the build.** A `[packaging]`
   `native-image-sources`, `app-dir` or `app-jar` that is absolute, empty, `.` or climbs out with
   `..` is refused when the plugin's manifest is read. A plugin can no longer ship a directory from

@@ -135,7 +135,7 @@ final class MemberPartitions {
         for (Lockfile.Artifact row : merged.artifacts()) {
             UnionRow union = unionRows.computeIfAbsent(
                     row.packageKey() + "@" + row.version(), k -> new UnionRow(new HashSet<>(), new HashSet<>()));
-            union.groups().addAll(groupsOf(row));
+            union.groups().addAll(readOn(row));
             union.depKeys().addAll(depKeys(row));
         }
 
@@ -525,12 +525,25 @@ final class MemberPartitions {
 
     /**
      * The graphs a row's scopes belong to. A member row agrees with the workspace only where a merged
-     * row at that version carries each of them: a version the workspace holds as a test-only dual is
-     * not on a member's main classpath, so a member whose main graph wants it reads a row of its own.
+     * row at that version is read on each of them ({@link #readOn}): a version the workspace holds
+     * as a test-only dual is not on a member's main classpath, so a member whose main graph wants it
+     * reads a row of its own.
      */
     private static Set<LockRoots.GraphGroup> groupsOf(Lockfile.Artifact row) {
         Set<LockRoots.GraphGroup> groups = EnumSet.noneOf(LockRoots.GraphGroup.class);
         for (Scope scope : row.scopes()) groups.add(LockRoots.graphGroup(scope));
+        return groups;
+    }
+
+    /**
+     * The graphs whose classpaths read a merged row: its own, and the test graph's as well when it is
+     * a main row, since the test classpath is the main classpath plus the test rows and a main row
+     * wins there over a test row of the same module. A member whose test graph alone wants the
+     * version a merged main row carries reads that row.
+     */
+    private static Set<LockRoots.GraphGroup> readOn(Lockfile.Artifact row) {
+        Set<LockRoots.GraphGroup> groups = groupsOf(row);
+        if (groups.contains(LockRoots.GraphGroup.MAIN)) groups.add(LockRoots.GraphGroup.TEST);
         return groups;
     }
 

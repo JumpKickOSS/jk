@@ -542,6 +542,98 @@ class WorkspaceMergeTest {
                 .containsExactly("org.example:the-bom");
     }
 
+    /**
+     * A sibling only the member's tests depend on folds into the member's test scope, and so does a
+     * sibling that one exports or depends on: none of it is on the member's main graph.
+     */
+    @Test
+    void a_sibling_only_tests_reach_folds_into_the_test_scope_down_its_export_chain() {
+        JkBuild root = workspaceRoot("ws", List.of("base", "fixtures", "app"));
+        JkBuild base = newProject("base", Map.of(Scope.MAIN, List.of(dep("xz", "org.tukaani:xz", "1.12"))));
+        JkBuild fixtures = newProject(
+                "fixtures",
+                Map.of(
+                        Scope.EXPORT, List.of(workspacePlaceholder("base")),
+                        Scope.MAIN, List.of(dep("jgit", "org.eclipse.jgit:org.eclipse.jgit", "7.8.0"))));
+        JkBuild app = newProject(
+                "app",
+                Map.of(
+                        Scope.MAIN, List.of(dep("guava", "com.google.guava:guava", "33.0")),
+                        Scope.TEST, List.of(workspacePlaceholder("fixtures"))));
+
+        JkBuild scope = WorkspaceMerge.applyToModule(root, app, List.of(base, fixtures, app));
+
+        assertThat(scope.dependencies().of(Scope.MAIN))
+                .extracting(Dependency::module)
+                .containsExactly("com.google.guava:guava");
+        assertThat(scope.dependencies().of(Scope.TEST))
+                .extracting(Dependency::module)
+                .containsExactly("org.eclipse.jgit:org.eclipse.jgit", "org.tukaani:xz");
+    }
+
+    /**
+     * A sibling the tests name directly that main code also reaches, through another sibling, is
+     * main's: its dependencies fold into main and nowhere else.
+     */
+    @Test
+    void a_sibling_main_reaches_through_another_sibling_folds_into_main_though_tests_name_it() {
+        JkBuild root = workspaceRoot("ws", List.of("util", "core", "app"));
+        JkBuild util = newProject("util", Map.of(Scope.MAIN, List.of(dep("xz", "org.tukaani:xz", "1.12"))));
+        JkBuild core = newProject("core", Map.of(Scope.MAIN, List.of(workspacePlaceholder("util"))));
+        JkBuild app = newProject(
+                "app",
+                Map.of(
+                        Scope.MAIN, List.of(workspacePlaceholder("core")),
+                        Scope.TEST, List.of(workspacePlaceholder("util"))));
+
+        JkBuild scope = WorkspaceMerge.applyToModule(root, app, List.of(util, core, app));
+
+        assertThat(scope.dependencies().of(Scope.MAIN))
+                .extracting(Dependency::module)
+                .containsExactly("org.tukaani:xz");
+        assertThat(scope.dependencies().of(Scope.TEST)).isEmpty();
+    }
+
+    /**
+     * A test-only sibling's dependency the member already has on its test classpath is not folded
+     * again, and one the member declares only in a processor table still folds into test; a sibling
+     * a processor table names folds into main, as the processor path reads it off the main rows.
+     */
+    @Test
+    void a_test_only_siblings_dependency_already_on_the_test_classpath_is_not_folded_twice() {
+        JkBuild root = workspaceRoot("ws", List.of("fixtures", "proc", "app"));
+        JkBuild fixtures = newProject(
+                "fixtures",
+                Map.of(
+                        Scope.MAIN,
+                        List.of(
+                                dep("guava", "com.google.guava:guava", "33.0"),
+                                dep("junit", "org.junit.jupiter:junit-jupiter", "6.0"),
+                                dep("xz", "org.tukaani:xz", "1.12"))));
+        JkBuild proc =
+                newProject("proc", Map.of(Scope.MAIN, List.of(dep("javapoet", "com.squareup:javapoet", "1.13.0"))));
+        JkBuild app = newProject(
+                "app",
+                Map.of(
+                        Scope.PROVIDED,
+                        List.of(dep("guava", "com.google.guava:guava", "33.0")),
+                        Scope.TEST,
+                        List.of(
+                                workspacePlaceholder("fixtures"),
+                                dep("junit", "org.junit.jupiter:junit-jupiter", "6.0")),
+                        Scope.PROCESSOR,
+                        List.of(workspacePlaceholder("proc"), dep("xz", "org.tukaani:xz", "1.12"))));
+
+        JkBuild scope = WorkspaceMerge.applyToModule(root, app, List.of(fixtures, proc, app));
+
+        assertThat(scope.dependencies().of(Scope.TEST))
+                .extracting(Dependency::module)
+                .containsExactly("org.junit.jupiter:junit-jupiter", "org.tukaani:xz");
+        assertThat(scope.dependencies().of(Scope.MAIN))
+                .extracting(Dependency::module)
+                .containsExactly("com.squareup:javapoet");
+    }
+
     private static JkBuild newProject(String artifact, Map<Scope, List<Dependency>> depsByScope) {
         EnumMap<Scope, List<Dependency>> by = new EnumMap<>(Scope.class);
         depsByScope.forEach(by::put);

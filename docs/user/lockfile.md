@@ -727,8 +727,9 @@ that member holds excluded, listed under its `excluded-by`, so the member's clas
 reaches them where every other member's does. A member listed on no row of a coordinate reads the plain one; a coordinate only a member's
 own graph reaches has only its `members` row. A member's row is written with the member's own
 scopes, so a version the workspace holds only as a test row and a member wants on its main
-classpath is a `members` row with `scopes = ["main"]`, and it replaces the plain rows of its own
-classpath family alone — main, runtime and test are one family, since the test classpath carries
+classpath is a `members` row with `scopes = ["main"]`, while a version a plain main row carries
+and a member's test graph alone wants is that plain row, the test classpath carrying the main
+rows. A member row replaces the plain rows of its own classpath family alone — main, runtime and test are one family, since the test classpath carries
 the main rows — while a plain row of the same coordinate on the annotation processor path, a graph
 of its own — the Guava an Error Prone processor path reads beside a main classpath a member pins to
 another Guava — is still the member's to read, and so is the processor part of a plain row that

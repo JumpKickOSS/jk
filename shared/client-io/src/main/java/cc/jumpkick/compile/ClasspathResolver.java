@@ -194,7 +194,8 @@ public final class ClasspathResolver {
     /**
      * The rows of a module's classpath over {@code scopes}, one per module name: its own roots'
      * closure within the rows {@code scopes} select, then its siblings' closure within the rows of
-     * the scopes a sibling passes on ({@link ModuleRoots#inheritedScopes}).
+     * the scopes a sibling passes on, and of the test scopes in a test view ({@link
+     * ModuleRoots#inheritedRowScopes}).
      */
     public static List<Lockfile.Artifact> moduleRows(Lockfile lock, Set<Scope> scopes, JkBuild module, Path moduleDir) {
         Map<String, Lockfile.Artifact> rows = new LinkedHashMap<>();
@@ -204,7 +205,7 @@ public final class ClasspathResolver {
         }
         Set<String> inherited = ModuleRoots.inherited(module, moduleDir, scopes, lock.artifacts());
         if (!inherited.isEmpty()) {
-            List<Lockfile.Artifact> passed = selected(lock, ModuleRoots.inheritedScopes(scopes));
+            List<Lockfile.Artifact> passed = selected(lock, ModuleRoots.inheritedRowScopes(scopes));
             for (Lockfile.Artifact row : reachableArtifacts(passed, inherited)) rows.putIfAbsent(row.name(), row);
         }
         return new ArrayList<>(rows.values());

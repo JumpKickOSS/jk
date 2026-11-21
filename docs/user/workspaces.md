@@ -238,7 +238,11 @@ the reactor edges onto it as workspace edges.
 ## Members that disagree
 
 Each member resolves on its own graph, as each module of a Maven reactor does: its own roots, the
-siblings it depends on and what their POMs declare, under its own platform table. The highest
+siblings it depends on and what their POMs declare, under its own platform table. A sibling only
+the member's `[test-dependencies]` or `[test-dev-dependencies]` reach, directly or through the
+siblings that one depends on, is in its test graph, as a test-scoped module's dependencies are
+under Maven, and never moves a version on its main classpath; a sibling its main code also
+reaches, through any other, is in its main graph. The highest
 declared version mediates *within* that graph — two of the member's dependencies that ask for `1.0` and `2.0` give it
 `2.0` — and nothing outside it reaches the member: another member's pin, or a version another
 member's dependencies ask for, never raises or lowers it. The lock is still one file. Its plain rows
@@ -262,7 +266,8 @@ parent's `<dependencyManagement>` supplies as `x.workspace = true` with the root
 `[workspace.dependencies]` entry, and a module's own `<version>` as that member's pin.
 
 A member's graph is its main and test graphs. The annotation processor path keeps its own rules: a
-processor pin is never a sibling's main version, and a member that reads rows of its own only
+sibling named in a processor table runs with its runtime closure read off the main rows, so its
+dependencies are in the member's main graph; a processor pin is never a sibling's main version, and a member that reads rows of its own only
 because its graph differs keeps the workspace's processor rows — `error_prone_core` keeps the
 `-jre` Guava its POM asks for even where the member's main classpath reads `-android`.
 
@@ -345,7 +350,9 @@ member agrees on stays a plain row; where the member's own BOM manages such a ro
 workspace's version, the plain row carries that BOM as `pinned-by`, as the member's own row would,
 and `jk why` names it for every member that reads the row. Agreement is per scope: a version the workspace carries only as
 a test row is not on any member's main classpath, so a member whose main graph wants that version
-gets a main-scoped row of its own rather than reading the workspace's main row. A workspace whose members all agree has no `members` key
+gets a main-scoped row of its own rather than reading the workspace's main row. The other way
+round needs no row: the test classpath carries the main rows, so a member whose test graph alone
+wants the version a workspace main row carries reads that row. A workspace whose members all agree has no `members` key
 anywhere, and nothing about it changes.
 
 A sibling's version is no floor for a member: where a versionless root under a sibling's Boot BOM
