@@ -21,9 +21,11 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * Line scanner for a handful of flat TOML scalars on hot, engine-free paths — not a full parser.
- * Tracks {@code [section]} headers and reads a flat one-line inline table's keys as {@code
- * key.sub}; exotic TOML for a wanted key reads as absent, never a wrong
- * value. Stops early once every requested key is found.
+ * Tracks {@code [section]} headers (quoted parts unquoted), reads an inline table's keys as {@code
+ * key.sub}, and steps over a value that runs over lines (a multi-line string or array) whole, so
+ * none of its lines reads as a key or a header. Exotic TOML for a wanted key (a multi-line string,
+ * a nested array) reads as absent, never a wrong value. Stops early once every requested key is
+ * found.
  */
 @RequiredArgsConstructor(access = AccessLevel.PRIVATE)
 public final class TomlScan {
@@ -186,71 +188,55 @@ public final class TomlScan {
         Set<String> sections = new HashSet<>();
         Set<String> wanted = Set.of(keys);
         List<String> body = lines(file, stopAtArrayTable);
-        if (body.isEmpty()) return new TomlScan(values, arrays, sections);
-        {
-            String section = "";
-            boolean inArrayTable = false;
-            String arrayKey = null; // a wanted key whose `[ … ]` array spans lines
-            for (String raw : body) {
-                String line = raw.strip();
-                if (line.isEmpty() || line.startsWith("#")) continue;
-                if (arrayKey != null) {
-                    // Inside a multi-line string array: collect quoted elements until the
-                    // `]` outside quotes that closes it (IPv6-style values carry `]` inside).
-                    List<String> open = arrays.computeIfAbsent(arrayKey, k -> new ArrayList<>());
-                    if (collectArrayLine(line, open)) {
-                        arrayKey = null;
-                        if (values.size() + arrays.size() == wanted.size()) break;
-                    }
-                    continue;
-                }
-                if (line.startsWith("[")) {
-                    int close = line.indexOf(']');
-                    if (close > 1) {
-                        boolean arrayTable = line.startsWith("[[");
-                        section = line.substring(arrayTable ? 2 : 1, close)
-                                .replace("]", "")
-                                .strip();
-                        sections.add(section);
-                        if (arrayTable && stopAtArrayTable) break;
-                        inArrayTable = arrayTable;
-                    }
-                    continue;
-                }
-                // Keys inside an [[…]] body are per-element values, not the flat scalars this
-                // scanner serves — a same-named key there must not satisfy a wanted lookup.
-                if (inArrayTable) continue;
-                int eq = line.indexOf('=');
-                if (eq <= 0) continue;
-                String key = line.substring(0, eq).strip();
-                String qualified = section.isEmpty() ? key : section + "." + key;
-                String rest = line.substring(eq + 1).strip();
-                // A one-line inline table (jdk = { vendor = "corretto", required = true }): each of
-                // its keys reads as "key.sub", the way the same keys under a [key] header do.
-                if (rest.startsWith("{") && wantsUnder(wanted, qualified)) {
-                    for (Map.Entry<String, String> e : inlineTable(rest).entrySet()) {
-                        String sub = qualified + "." + e.getKey();
-                        if (wanted.contains(sub) && !values.containsKey(sub)) values.put(sub, e.getValue());
-                    }
-                    if (values.size() + arrays.size() == wanted.size()) break;
-                    continue;
-                }
-                if (!wanted.contains(qualified)) continue;
-                if (rest.startsWith("[")) {
-                    if (arrays.containsKey(qualified)) continue;
-                    List<String> elements = new ArrayList<>();
-                    arrays.put(qualified, elements);
-                    if (collectArrayLine(rest.substring(1), elements)) {
-                        if (values.size() + arrays.size() == wanted.size()) break;
-                    } else {
-                        arrayKey = qualified;
-                    }
-                    continue;
-                }
-                if (values.containsKey(qualified)) continue;
-                values.put(qualified, scalar(rest));
-                if (values.size() + arrays.size() == wanted.size()) break; // all found — stop reading
+        // Null under a header this scanner cannot spell: its keys are read past, never as another table's.
+        @Nullable String section = "";
+        boolean inArrayTable = false;
+        for (int n = 0; n < body.size(); n++) {
+            String line = body.get(n).strip();
+            if (line.isEmpty() || line.startsWith("#")) continue;
+            if (line.startsWith("[")) {
+                boolean arrayTable = line.startsWith("[[");
+                section = header(line, arrayTable);
+                if (section != null) sections.add(section);
+                if (arrayTable && stopAtArrayTable) break;
+                inArrayTable = arrayTable;
+                continue;
             }
+            int eq = equalsOutsideQuotes(line);
+            if (eq <= 0) continue;
+            // A value may run over lines (a multi-line string, array or table): take all of it, so
+            // none of its lines is read as a key or a header.
+            String rest = line.substring(eq + 1).strip();
+            StringBuilder value = new StringBuilder(rest);
+            ValueExtent extent = new ValueExtent();
+            boolean ended = extent.feed(rest);
+            while (!ended && n + 1 < body.size()) {
+                String next = body.get(++n);
+                value.append('\n').append(next);
+                ended = extent.feed(next);
+            }
+            // Keys inside an [[…]] body are per-element values, not the flat scalars this
+            // scanner serves — a same-named key there must not satisfy a wanted lookup.
+            String key = dottedKey(line.substring(0, eq));
+            if (inArrayTable || section == null || key == null) continue;
+            String qualified = section.isEmpty() ? key : section + "." + key;
+            String text = value.toString();
+            // An inline table (jdk = { vendor = "corretto", required = true }): each of its keys
+            // reads as "key.sub", the way the same keys under a [key] header do.
+            if (text.startsWith("{") && wantsUnder(wanted, qualified)) {
+                for (Map.Entry<String, String> e : inlineTable(text).entrySet()) {
+                    String sub = qualified + "." + e.getKey();
+                    if (wanted.contains(sub) && !values.containsKey(sub)) values.put(sub, e.getValue());
+                }
+            } else if (!wanted.contains(qualified) || values.containsKey(qualified) || arrays.containsKey(qualified)) {
+                continue;
+            } else if (text.startsWith("[")) {
+                List<String> elements = arrayElements(text);
+                if (elements != null) arrays.put(qualified, elements);
+            } else if (!multilineString(text)) {
+                values.put(qualified, scalar(text));
+            }
+            if (values.size() + arrays.size() == wanted.size()) break; // all found — stop reading
         }
         return new TomlScan(values, arrays, sections);
     }
@@ -261,29 +247,167 @@ public final class TomlScan {
     }
 
     /**
-     * The scalar entries of a one-line inline table {@code { a = "x", b = 2, c = true }}, values as
-     * {@link #scalar} reads them; empty for one that does not close on its line or nests a table or
-     * an array (exotic, so absent).
+     * The dotted table name of a {@code [header]} or {@code [[header]]} line, quoted parts unquoted;
+     * null for a header this scanner cannot spell.
+     */
+    private static @Nullable String header(String line, boolean arrayTable) {
+        int open = arrayTable ? 2 : 1;
+        int i = open;
+        while (i < line.length() && line.charAt(i) != ']') {
+            char c = line.charAt(i);
+            i = c == '"' || c == '\'' ? afterQuoted(line, i) : i + 1;
+            if (i < 0) return null;
+        }
+        if (i >= line.length() || arrayTable && !line.startsWith("]]", i)) return null;
+        return dottedKey(line.substring(open, i));
+    }
+
+    /**
+     * A key as written ({@code a}, {@code a.b}, {@code "a".'b'}) in its dotted bare spelling; null
+     * when it is empty, malformed, or a quoted part holds a {@code .} and would read as two parts.
+     */
+    static @Nullable String dottedKey(String raw) {
+        List<String> parts = new ArrayList<>();
+        int i = 0;
+        while (true) {
+            while (i < raw.length() && isBlank(raw.charAt(i))) i++;
+            if (i >= raw.length()) return null;
+            char c = raw.charAt(i);
+            String part;
+            if (c == '"' || c == '\'') {
+                int end = afterQuoted(raw, i);
+                if (end < 0) return null;
+                part = scalar(raw.substring(i, end));
+                if (part.isEmpty() || part.indexOf('.') >= 0) return null;
+                i = end;
+            } else {
+                int start = i;
+                while (i < raw.length() && isBareKeyChar(raw.charAt(i))) i++;
+                if (i == start) return null;
+                part = raw.substring(start, i);
+            }
+            parts.add(part);
+            while (i < raw.length() && isBlank(raw.charAt(i))) i++;
+            if (i == raw.length()) return String.join(".", parts);
+            if (raw.charAt(i) != '.') return null;
+            i++;
+        }
+    }
+
+    private static boolean isBlank(char c) {
+        return c == ' ' || c == '\t';
+    }
+
+    private static boolean isBareKeyChar(char c) {
+        return c >= 'A' && c <= 'Z' || c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '_' || c == '-';
+    }
+
+    /** The index just past the one-line string opening at {@code at}; -1 when it does not close on the line. */
+    private static int afterQuoted(String s, int at) {
+        char quote = s.charAt(at);
+        for (int i = at + 1; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (c == '\\' && quote == '"') i++;
+            else if (c == quote) return i + 1;
+        }
+        return -1;
+    }
+
+    /** The index of the first {@code =} outside a quoted key part; -1 when there is none. */
+    private static int equalsOutsideQuotes(String line) {
+        for (int i = 0; i < line.length(); ) {
+            char c = line.charAt(i);
+            if (c == '=') return i;
+            if (c == '"' || c == '\'') {
+                i = afterQuoted(line, i);
+                if (i < 0) return -1;
+            } else {
+                i++;
+            }
+        }
+        return -1;
+    }
+
+    private static boolean multilineString(String value) {
+        return value.startsWith("\"\"\"") || value.startsWith("'''");
+    }
+
+    /**
+     * Where a value ends, fed one line at a time: open brackets and braces, and a multi-line
+     * string, carry over to the next line; one-line strings and comments do not.
+     */
+    private static final class ValueExtent {
+        private int depth;
+        private @Nullable String multiline;
+
+        /** True when the value is complete at the end of {@code line}. */
+        boolean feed(String line) {
+            int i = 0;
+            while (i < line.length()) {
+                if (multiline != null) {
+                    int close = closingDelimiter(line, i, multiline);
+                    if (close < 0) return false;
+                    i = close + 3;
+                    while (i < line.length() && line.charAt(i) == multiline.charAt(0)) i++;
+                    multiline = null;
+                    continue;
+                }
+                char c = line.charAt(i);
+                if (c == '#') break;
+                if (line.startsWith("\"\"\"", i) || line.startsWith("'''", i)) {
+                    multiline = line.substring(i, i + 3);
+                    i += 3;
+                } else if (c == '"' || c == '\'') {
+                    int end = afterQuoted(line, i);
+                    i = end < 0 ? line.length() : end;
+                } else {
+                    if (c == '[' || c == '{') depth++;
+                    else if ((c == ']' || c == '}') && depth > 0) depth--;
+                    i++;
+                }
+            }
+            return depth == 0 && multiline == null;
+        }
+
+        private static int closingDelimiter(String line, int from, String delimiter) {
+            if (delimiter.charAt(0) == '\'') return line.indexOf(delimiter, from);
+            for (int i = from; i < line.length(); i++) {
+                if (line.charAt(i) == '\\') i++;
+                else if (line.startsWith(delimiter, i)) return i;
+            }
+            return -1;
+        }
+    }
+
+    /**
+     * The scalar entries of an inline table {@code { a = "x", b = 2, c = true }}, values as {@link
+     * #scalar} reads them, up to its own closing brace; empty for one that does not close or nests
+     * a table or an array (exotic, so absent).
      */
     static Map<String, String> inlineTable(String text) {
         Map<String, String> out = new HashMap<>();
-        int close = text.lastIndexOf('}');
-        if (!text.startsWith("{") || close < 0) return out;
-        String body = text.substring(1, close);
+        if (!text.startsWith("{")) return out;
         List<String> parts = new ArrayList<>();
         StringBuilder cur = new StringBuilder();
-        char quote = 0;
-        for (int i = 0; i < body.length(); i++) {
-            char c = body.charAt(i);
-            if (quote != 0) {
-                cur.append(c);
-                if (c == '\\' && quote == '"' && i + 1 < body.length()) cur.append(body.charAt(++i));
-                else if (c == quote) quote = 0;
-            } else if (c == '"' || c == '\'') {
-                quote = c;
-                cur.append(c);
+        for (int i = 1; i < text.length(); i++) {
+            char c = text.charAt(i);
+            if (c == '"' || c == '\'') {
+                int end = afterQuoted(text, i);
+                if (end < 0) return out;
+                cur.append(text, i, end);
+                i = end - 1;
+            } else if (c == '}') {
+                parts.add(cur.toString());
+                for (String part : parts) {
+                    int eq = equalsOutsideQuotes(part);
+                    if (eq <= 0) continue;
+                    String key = dottedKey(part.substring(0, eq));
+                    String value = part.substring(eq + 1).strip();
+                    if (key != null && !multilineString(value)) out.put(key, scalar(value));
+                }
+                return out;
             } else if (c == '{' || c == '[' || c == '#') {
-                return new HashMap<>(); // nested or commented: exotic, reads as absent
+                return out; // nested or commented: exotic, reads as absent
             } else if (c == ',') {
                 parts.add(cur.toString());
                 cur.setLength(0);
@@ -291,44 +415,36 @@ public final class TomlScan {
                 cur.append(c);
             }
         }
-        parts.add(cur.toString());
-        for (String part : parts) {
-            int eq = part.indexOf('=');
-            if (eq <= 0) continue;
-            out.put(part.substring(0, eq).strip(), scalar(part.substring(eq + 1).strip()));
-        }
         return out;
     }
 
     /**
-     * Collect the string elements of one array line, basic ({@code "…"}) and literal ({@code '…'}); true when
-     * the closing {@code ]} was seen. An unquoted {@code #} starts a comment that runs to the end of the line.
+     * The elements of a string array, basic ({@code "…"}) and literal ({@code '…'}), over as many
+     * lines as it runs; other scalars are skipped and an unquoted {@code #} starts a comment that
+     * runs to the end of its line. Null for an array that does not close or holds an array, a table
+     * or a multi-line string (exotic, so absent).
      */
-    private static boolean collectArrayLine(String line, List<String> elements) {
-        int i = 0;
-        while (i < line.length()) {
-            char c = line.charAt(i);
-            if (c == ']') return true;
-            if (c == '#') return false;
-            if (c == '"') {
-                int end = i + 1;
-                while (end < line.length() && line.charAt(end) != '"') {
-                    if (line.charAt(end) == '\\') end++;
-                    end++;
-                }
-                if (end >= line.length()) return false;
-                elements.add(MinimalToml.unquote(line.substring(i, end + 1)));
-                i = end + 1;
-            } else if (c == '\'') {
-                int end = line.indexOf('\'', i + 1);
-                if (end < 0) return false;
-                elements.add(line.substring(i + 1, end));
-                i = end + 1;
+    private static @Nullable List<String> arrayElements(String text) {
+        List<String> elements = new ArrayList<>();
+        int i = 1;
+        while (i < text.length()) {
+            char c = text.charAt(i);
+            if (c == ']') return elements;
+            if (c == '[' || c == '{' || text.startsWith("\"\"\"", i) || text.startsWith("'''", i)) return null;
+            if (c == '#') {
+                int eol = text.indexOf('\n', i);
+                if (eol < 0) return null;
+                i = eol + 1;
+            } else if (c == '"' || c == '\'') {
+                int end = afterQuoted(text, i);
+                if (end < 0) return null;
+                elements.add(scalar(text.substring(i, end)));
+                i = end;
             } else {
                 i++;
             }
         }
-        return false;
+        return null;
     }
 
     /** The scanned value for {@code "section.key"} / {@code "key"}, or {@code null} when absent. */

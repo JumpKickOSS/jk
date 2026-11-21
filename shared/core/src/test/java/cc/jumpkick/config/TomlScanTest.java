@@ -137,4 +137,92 @@ class TomlScanTest {
         assertThat(scan.stringArray("multi")).containsExactly("x", "z");
         assertThat(scan.get("native.graal")).isEqualTo("yes");
     }
+
+    @Test
+    void lines_inside_a_multiline_string_are_text_not_keys_or_headers(@TempDir Path tmp) throws Exception {
+        Path toml = tmp.resolve("jk.toml");
+        Files.writeString(toml, """
+                description = \"""
+                name = "decoy"
+                [native]
+                \"""
+                name = "widget"
+                notes = '''
+                java = 8
+                '''
+                java = 25
+                banner = \"""one line\"""
+                """);
+        TomlScan scan = TomlScan.scan(toml, "name", "java", "banner", "native.graal");
+        assertThat(scan.get("name")).isEqualTo("widget");
+        assertThat(scan.getInt("java", 0)).isEqualTo(25);
+        assertThat(scan.get("banner")).isNull();
+        assertThat(scan.hasSection("native")).isFalse();
+    }
+
+    @Test
+    void an_inline_table_ends_at_its_own_closing_brace(@TempDir Path tmp) throws Exception {
+        Path toml = tmp.resolve("jk.toml");
+        Files.writeString(toml, """
+                jdk = { vendor = "corretto", version = "25" }  # pinned {for now}
+                """);
+        TomlScan scan = TomlScan.scan(toml, "jdk.vendor", "jdk.version");
+        assertThat(scan.get("jdk.vendor")).isEqualTo("corretto");
+        assertThat(scan.get("jdk.version")).isEqualTo("25");
+        assertThat(TomlScan.inlineTable("{ a = \"}\" } # }")).containsEntry("a", "}");
+        assertThat(TomlScan.inlineTable("{ a = 1, b = { c = 2 } }")).isEmpty();
+    }
+
+    @Test
+    void quoted_keys_and_headers_read_as_their_bare_spelling(@TempDir Path tmp) throws Exception {
+        Path toml = tmp.resolve("jk.toml");
+        Files.writeString(toml, """
+                "name" = "widget"
+                "a.b" = "dotted inside quotes"
+                jdk = { 'vendor' = "temurin" }
+
+                [ "native" ]
+                'graal' = "yes"
+
+                [cache."remote"]
+                url = "https://cache.example"
+                """);
+        TomlScan scan = TomlScan.scan(toml, "name", "a.b", "jdk.vendor", "native.graal", "cache.remote.url");
+        assertThat(scan.get("name")).isEqualTo("widget");
+        assertThat(scan.get("a.b")).isNull();
+        assertThat(scan.get("jdk.vendor")).isEqualTo("temurin");
+        assertThat(scan.get("native.graal")).isEqualTo("yes");
+        assertThat(scan.get("cache.remote.url")).isEqualTo("https://cache.example");
+        assertThat(scan.hasSection("native")).isTrue();
+    }
+
+    @Test
+    void a_nested_array_reads_as_absent_and_opens_no_section(@TempDir Path tmp) throws Exception {
+        Path toml = tmp.resolve("jk.toml");
+        Files.writeString(toml, """
+                matrix = [
+                  ["a", "b"],
+                  ["c"],
+                ]
+                pairs = [["x"]]
+                name = "widget"
+                """);
+        TomlScan scan = TomlScan.scan(toml, "matrix", "pairs", "name");
+        assertThat(scan.hasKey("matrix")).isFalse();
+        assertThat(scan.hasKey("pairs")).isFalse();
+        assertThat(scan.get("name")).isEqualTo("widget");
+        assertThat(scan.hasSection("\"c\"")).isFalse();
+    }
+
+    @Test
+    void an_unwanted_multiline_array_is_skipped_whole(@TempDir Path tmp) throws Exception {
+        Path toml = tmp.resolve("jk.toml");
+        Files.writeString(toml, """
+                matrix = [
+                  ["name"],
+                ]
+                name = "widget"
+                """);
+        assertThat(TomlScan.scan(toml, "name").get("name")).isEqualTo("widget");
+    }
 }
