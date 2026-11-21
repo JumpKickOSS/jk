@@ -48,6 +48,9 @@ final class HostLeases {
     /** A cached reading of the other engines is reused for this long to refuse a lease. */
     private static final long FRESH_NANOS = 250_000_000L;
 
+    /** Waiting this long or more for the file lock counts as contention in {@link SharedLeaseCounts#lockWaits}. */
+    static final long CONTENDED_NANOS = 10_000_000L;
+
     /**
      * What this engine records: its own budget and JVM cap, its charged bytes, its running JVMs, its
      * queued leases, its workers.
@@ -128,6 +131,12 @@ final class HostLeases {
     private boolean budgetNoted;
     private boolean cpuCapNoted;
 
+    /** Exchanges that waited {@link #CONTENDED_NANOS} or more for the file lock. */
+    private long lockWaits;
+
+    /** Lines of engines that were gone, whose leases or workers this engine reclaimed. */
+    private long reclaims;
+
     /**
      * {@code self}'s line in {@code engineDir}'s file. {@code alive} decides which other lines still
      * count; {@code stop} is handed the workers of a line that does not and answers how many it
@@ -141,9 +150,20 @@ final class HostLeases {
         this.stop = Objects.requireNonNull(stop, "stop");
     }
 
+    /** The share {@link #forThisProcess} made last: in the engine, its own; null before. */
+    private static volatile @Nullable HostLeases thisProcess;
+
     /** This process's line in {@code engineDir}'s file, judging the others by {@link Owner#alive}. */
     static HostLeases forThisProcess(Path engineDir) {
-        return new HostLeases(engineDir, Owner.current(), Owner::alive, HostLeases::stopAll);
+        HostLeases made = new HostLeases(engineDir, Owner.current(), Owner::alive, HostLeases::stopAll);
+        thisProcess = made;
+        return made;
+    }
+
+    /** What this process's share has met; {@link SharedLeaseCounts#NONE} before it shares the file. */
+    static SharedLeaseCounts thisProcessCounts() {
+        HostLeases h = thisProcess;
+        return h == null ? SharedLeaseCounts.NONE : h.counts();
     }
 
     /**
@@ -153,8 +173,16 @@ final class HostLeases {
      * of this class while it runs.
      */
     Reading exchange(Function<Reading, @Nullable Publication> mine) {
+        long asked = Clock.SYSTEM.nanos();
         try {
-            return FileLocks.withLock(lockFile, () -> exchangeLocked(mine));
+            return FileLocks.withLock(lockFile, () -> {
+                if (Clock.SYSTEM.nanos() - asked >= CONTENDED_NANOS) {
+                    synchronized (state) {
+                        lockWaits++;
+                    }
+                }
+                return exchangeLocked(mine);
+            });
         } catch (IOException e) {
             Reading kept;
             synchronized (state) {
@@ -190,6 +218,13 @@ final class HostLeases {
             if (read && Clock.SYSTEM.nanos() - readAtNanos < FRESH_NANOS) return last;
         }
         return fresh();
+    }
+
+    /** What this engine's exchanges have met so far. */
+    SharedLeaseCounts counts() {
+        synchronized (state) {
+            return new SharedLeaseCounts(lockWaits, reclaims);
+        }
     }
 
     /** The other engines' reading as last read, without touching the file; {@link Reading#NONE} before any. */
@@ -324,6 +359,9 @@ final class HostLeases {
     private void reclaim(Entry e) {
         int stopped = e.line.workers().isEmpty() ? 0 : stop.applyAsInt(e.line.workers());
         if (e.line.bytes() <= 0 && stopped == 0) return;
+        synchronized (state) {
+            reclaims++;
+        }
         String line = "jk engine: reclaimed " + WorkerLeases.format(e.line.bytes())
                 + " of worker leases held by engine pid " + e.owner.pid() + ", which is gone";
         if (stopped > 0) line += "; stopped " + stopped + (stopped == 1 ? " worker" : " workers") + " it left running";

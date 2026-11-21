@@ -113,6 +113,9 @@ class MemoryAdmissionTest {
                 .hasValue(1);
         assertThat(gate.queued()).isZero();
         assertThat(gate.admittedCount()).isEqualTo(2);
+        assertThat(gate.counts())
+                .as("status counts the one job that waited and the one collection")
+                .isEqualTo(new MemoryAdmission.Counts(1, 1));
     }
 
     @Test

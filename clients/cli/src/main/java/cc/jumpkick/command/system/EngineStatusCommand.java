@@ -22,6 +22,7 @@ import cc.jumpkick.cli.tui.JkWedge;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jsonl.JsonFields;
+import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
@@ -166,6 +167,8 @@ public final class EngineStatusCommand implements CliCommand {
         if (workers != null) detail("Workers", workers);
         if (s.workerWaiting() != null && !s.workerWaiting().isEmpty()) detail("Waiting", s.workerWaiting());
         if (s.workerOverLease() != null && !s.workerOverLease().isEmpty()) detail("Over lease", s.workerOverLease());
+        String backpressure = describeBackpressure(s.backpressureJson());
+        if (backpressure != null) detail("Backpressure", backpressure);
         heapDumpRow(paths);
         String memory = formatMemory(s);
         if (memory != null) {
@@ -201,6 +204,33 @@ public final class EngineStatusCommand implements CliCommand {
             case DESKTOP -> "desktop";
             case NO_DESKTOP -> "ssh or service: no Windows credential vault";
         };
+    }
+
+    /**
+     * {@code 12 lines spilled to disk, 3 jobs waited for memory, 2 collections to measure memory}: what held
+     * work back since the engine started, the counts that are not zero. Null when every count is
+     * zero or the engine did not report them.
+     */
+    static @Nullable String describeBackpressure(@Nullable String json) {
+        if (json == null) return null;
+        List<String> parts = new ArrayList<>();
+        long spilled = Jsonl.longValue(json, "wireSpilledLines", 0);
+        long dropped = Jsonl.longValue(json, "wireDroppedClients", 0);
+        long waits = Jsonl.longValue(json, "admissionWaits", 0);
+        long collections = Jsonl.longValue(json, "admissionCollections", 0);
+        long lockWaits = Jsonl.longValue(json, "leaseLockWaits", 0);
+        long reclaims = Jsonl.longValue(json, "leaseReclaims", 0);
+        if (spilled > 0) parts.add(count(spilled, "line", "lines") + " spilled to disk");
+        if (dropped > 0) parts.add(count(dropped, "client", "clients") + " dropped for not reading");
+        if (waits > 0) parts.add(count(waits, "job", "jobs") + " waited for memory");
+        if (collections > 0) parts.add(count(collections, "collection", "collections") + " to measure memory");
+        if (lockWaits > 0) parts.add(count(lockWaits, "wait", "waits") + " on the shared leases file");
+        if (reclaims > 0) parts.add("leases of " + count(reclaims, "gone engine", "gone engines") + " reclaimed");
+        return parts.isEmpty() ? null : String.join(", ", parts);
+    }
+
+    private static String count(long n, String one, String many) {
+        return n + " " + (n == 1 ? one : many);
     }
 
     /** {@code 3 loaded of 256, 1 active}: how close the MCP connection table is to {@code [mcp] max-sessions}. */
@@ -451,6 +481,7 @@ public final class EngineStatusCommand implements CliCommand {
                 .number("mcpLoadedConnections", s.mcpLoadedConnections())
                 .number("mcpActiveConnections", s.mcpActiveConnections());
         if (s.vfsJson() != null) json.token("vfs", s.vfsJson());
+        if (s.backpressureJson() != null) json.token("backpressure", s.backpressureJson());
         if (!installLock.isEmpty()) json.token("installLock", installLockJson(installLock));
         return json.token("engines", enginesJson(fleet)).finish();
     }

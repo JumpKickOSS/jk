@@ -1,12 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine;
 
+import cc.jumpkick.engine.api.WireWriter;
 import cc.jumpkick.engine.http.EngineIdentity;
 import cc.jumpkick.engine.http.HttpEngineServer;
 import cc.jumpkick.engine.http.StatusSnapshot;
 import cc.jumpkick.engine.http.mcp.McpConnections;
+import cc.jumpkick.engine.jobs.MemoryAdmission;
 import cc.jumpkick.engine.plugin.MemoryProbe;
 import cc.jumpkick.engine.plugin.OverbookSignals;
+import cc.jumpkick.engine.plugin.SharedLeaseCounts;
 import cc.jumpkick.engine.plugin.WorkerContainment;
 import cc.jumpkick.engine.plugin.WorkerLeases;
 import com.sun.management.OperatingSystemMXBean;
@@ -40,6 +43,7 @@ public final class EngineVitals {
     private final IntSupplier queuedBuildPlans;
     private final Supplier<String> installSource;
     private final Supplier<List<Map<String, Object>>> jobs;
+    private final Supplier<MemoryAdmission.Counts> admission;
 
     /** Which engine this is, read once: its inputs do not change while the process lives. */
     private volatile @Nullable Map<String, Object> identity;
@@ -108,7 +112,21 @@ public final class EngineVitals {
                 mcp.loaded(),
                 mcp.active(),
                 jobs.get(),
-                identity());
+                identity(),
+                backpressure());
+    }
+
+    private StatusSnapshot.Backpressure backpressure() {
+        WireWriter.Counts wire = WireWriter.counts();
+        MemoryAdmission.Counts gate = admission.get();
+        SharedLeaseCounts shared = SharedLeaseCounts.current();
+        return new StatusSnapshot.Backpressure(
+                wire.spilledLines(),
+                wire.droppedClients(),
+                gate.waits(),
+                gate.collections(),
+                shared.lockWaits(),
+                shared.reclaims());
     }
 
     public int liveConnectionCount() {

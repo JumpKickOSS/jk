@@ -445,7 +445,8 @@ refusal to write the score is a debug log line, not a failed build.
 Where cgroup v2 is mounted and this process's own cgroup can take a child with the memory
 controller, the engine also creates `engine` and `workers` under that cgroup, moves itself
 into `engine`, and runs workers in `workers`. `memory.max` is host `MemTotal`, or the
-enclosing cgroup's `memory.max` when that is lower, minus a reserve of the larger of 2 GiB
+tightest `memory.max` on the engine's cgroup and the groups above it (a systemd unit's or
+slice's `MemoryMax=`, say) when that is lower, minus a reserve of the larger of 2 GiB
 and 10%. `memory.swap.max` is 0 where that file exists, so the cap is not absorbed by swap.
 A worker the kernel kills there — it exits by SIGKILL while the group's `oom_kill` count
 rose, or while the group is at the hard cap — is reported as killed for memory. The move
@@ -610,9 +611,11 @@ and `off` count too; anything else, including leaving it unset, leaves overbooki
 engine started with `CI` set overbooks cautiously, since a kill on an unattended runner costs a
 retry or the job: the headroom is the larger of 2 GiB and 20% of the budget, the cap is one and
 a half times the budget, and on Linux a pressure reading is required. On Linux the free memory
-is host `MemAvailable`, which sees every engine's workers; inside a container it is no more
-than the container's own `memory.max` minus what it uses, and in cgroup mode no more than the
-workers group's. What a cgroup uses is its `memory.current` less its inactive file cache
+is host `MemAvailable`, which sees every engine's workers; it is no more than any limited
+cgroup the engine runs in has left, its own group and every group above it as
+`/proc/self/cgroup` names them (a container's, a systemd unit's or slice's), and in cgroup mode
+no more than the workers group's. Pressure is the worst of `/proc/pressure/memory` and those
+groups' `memory.pressure`. What a cgroup uses is its `memory.current` less its inactive file cache
 (`inactive_file` in `memory.stat`), which the kernel drops before it kills anything: the
 working set Kubernetes acts on. Without a cgroup, `/proc/pressure/memory` has to be readable
 as well. On
@@ -854,6 +857,17 @@ A client that connects and never sends a request is closed after 10 seconds; one
 a request is held to the same `JK_STREAM_IDLE_MS` bound the client applies to the engine (off
 while a build owns the connection). `jk engine status` prints the count as a `Dropped` row;
 `-O jsonl` and `GET /api/status` carry it as `idleDropped`.
+
+### Backpressure counts
+
+`jk engine status` prints a `Backpressure` row with what has held work back since the engine
+started, each count that is not zero: lines spilled to disk for a slow client, clients dropped
+for not reading, jobs that waited for engine memory, full collections the engine ran to measure
+its memory for them, waits on the host's shared worker-leases file while another engine held
+it (10 ms or more), and gone engines whose worker leases it reclaimed. `-O jsonl` and
+`GET /api/status` carry them as the `backpressure` object: `wireSpilledLines`,
+`wireDroppedClients`, `admissionWaits`, `admissionCollections`, `leaseLockWaits`,
+`leaseReclaims`.
 
 A client that stops reading — a pipe nobody drains, a process stopped without Ctrl-Z — costs the
 other clients nothing. Each connection is served on its own thread and its lines are written by

@@ -152,7 +152,12 @@ public final class EngineProbe {
             /** The engine's stable instance id; null when not reported. */
             @Nullable String engineId,
             /** The commit stamp the engine jar was built from; null or empty when not stamped or not reported. */
-            @Nullable String engineCommit) {
+            @Nullable String engineCommit,
+            /**
+             * The engine's {@code backpressure} counts as JSON (spilled lines, dropped clients, memory
+             * waits, collections, lease-lock waits, reclaims); null when the engine did not report them.
+             */
+            @Nullable String backpressureJson) {
 
         public Status {
             jobs = jobs == null ? List.of() : List.copyOf(jobs);
@@ -233,6 +238,7 @@ public final class EngineProbe {
                     0,
                     -1L,
                     jobs,
+                    null,
                     null,
                     null,
                     null);
@@ -432,7 +438,8 @@ public final class EngineProbe {
                     Job.decodeAll(ack),
                     Jsonl.str(Jsonl.nested(ack, "identity"), "label"),
                     Jsonl.str(Jsonl.nested(ack, "identity"), "id"),
-                    Jsonl.str(Jsonl.nested(ack, "identity"), "commit")));
+                    Jsonl.str(Jsonl.nested(ack, "identity"), "commit"),
+                    Jsonl.nested(ack, "backpressure")));
         } catch (IOException e) {
             return Optional.empty();
         }

@@ -704,7 +704,8 @@ public final class EngineServer implements AutoCloseable {
                 TerminalSignals::ignoredSignals,
                 jobs::queued,
                 ShelfPins::source,
-                jobs::jobsJson);
+                jobs::jobsJson,
+                jobs::admissionCounts);
     }
 
     private long logRolledAtMillis() {

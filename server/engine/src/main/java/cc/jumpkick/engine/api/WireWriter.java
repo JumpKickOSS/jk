@@ -74,7 +74,21 @@ public final class WireWriter {
     private static final Clock CLOCK = Clock.SYSTEM;
     private static final AtomicLong WRITER_SEQ = new AtomicLong();
 
+    /** Lines any stream of this process put on disk, since the engine started. */
+    private static final AtomicLong SPILLED_LINES = new AtomicLong();
+
+    /** Clients this process dropped for not reading their stream, since the engine started. */
+    private static final AtomicLong DROPPED_CLIENTS = new AtomicLong();
+
     private WireWriter() {}
+
+    /** What every stream of this process has done since it started: lines spilled to disk, clients dropped. */
+    public record Counts(long spilledLines, long droppedClients) {}
+
+    /** {@link Counts} as of now, for {@code jk engine status}. */
+    public static Counts counts() {
+        return new Counts(SPILLED_LINES.get(), DROPPED_CLIENTS.get());
+    }
 
     /**
      * Give {@code writer}'s stream its idle bound, in milliseconds ({@code 0} = never drop). A
@@ -358,6 +372,7 @@ public final class WireWriter {
             CompletableFuture<Void> landed = p.landed();
             if (landed != null) spillWaiters.addLast(new SpillWaiter(spilledLines, landed));
             spilledLines++;
+            SPILLED_LINES.incrementAndGet();
             spilledBytes += p.bytes();
             spilledSinceCheck += p.bytes();
             return true;
@@ -538,6 +553,7 @@ public final class WireWriter {
             dead = cause;
             String message = cause.getMessage();
             if (message != null && message.startsWith(NOT_READING)) {
+                DROPPED_CLIENTS.incrementAndGet();
                 Log.warn(
                         "jk engine: dropped a client that stopped reading its stream",
                         "idleBoundMs",

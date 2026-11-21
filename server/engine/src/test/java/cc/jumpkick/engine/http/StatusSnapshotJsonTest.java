@@ -19,7 +19,7 @@ import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 
 /**
- * {@link StatusSnapshot#vitals} and {@link StatusSnapshot#toJson} emit every one of the record's 41
+ * {@link StatusSnapshot#vitals} and {@link StatusSnapshot#toJson} emit every one of the record's 43
  * components with the snapshot's own values, and no engine source renders the vitals as JSON
  * without going through them.
  */
@@ -68,7 +68,7 @@ class StatusSnapshotJsonTest {
 
         assertThat(StatusSnapshot.class.getRecordComponents())
                 .as("the record's components — an empty reflection result would pass the loop above")
-                .hasSize(42);
+                .hasSize(43);
         assertThat(missing)
                 .as("StatusSnapshot components that toJson() does not emit: %s", body)
                 .isEmpty();
@@ -114,6 +114,60 @@ class StatusSnapshotJsonTest {
                 .contains("\"systemCpuLoad\":0.18")
                 .contains("\"systemLoadAverage\":1.2")
                 .contains("\"engineEpoch\":\"9.9.9-test@1000\"");
+    }
+
+    /** The backpressure counts render as one object, each under its own name. */
+    @Test
+    void backpressure_renders_its_counts_as_one_object() {
+        StatusSnapshot.Backpressure counts = new StatusSnapshot.Backpressure(1, 2, 3, 4, 5, 6);
+        StatusSnapshot s = new StatusSnapshot(
+                SNAPSHOT.version(),
+                SNAPSHOT.pid(),
+                SNAPSHOT.startedAtMillis(),
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                1,
+                0,
+                0,
+                -1,
+                -1,
+                "e",
+                0,
+                0,
+                0,
+                -1,
+                -1,
+                "",
+                0,
+                "",
+                "none",
+                "",
+                -1,
+                -1,
+                -1,
+                -1,
+                0,
+                0,
+                "",
+                -1,
+                -1,
+                false,
+                "",
+                "",
+                0,
+                0,
+                0,
+                List.of(),
+                Map.of(),
+                counts);
+        assertThat(s.toJson().toString())
+                .contains("\"backpressure\":{\"wireSpilledLines\":1,\"wireDroppedClients\":2,\"admissionWaits\":3,"
+                        + "\"admissionCollections\":4,\"leaseLockWaits\":5,\"leaseReclaims\":6}");
+        assertThat(SNAPSHOT.toJson().toString()).contains("\"backpressure\":{\"wireSpilledLines\":0,");
     }
 
     /**

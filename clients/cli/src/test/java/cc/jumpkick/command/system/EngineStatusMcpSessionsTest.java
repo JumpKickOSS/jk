@@ -61,6 +61,7 @@ class EngineStatusMcpSessionsTest {
                 List.of(),
                 null,
                 null,
+                null,
                 null);
     }
 

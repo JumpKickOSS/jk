@@ -116,6 +116,7 @@ class BuildStampsTest {
                 List.of(),
                 null,
                 null,
-                commit);
+                commit,
+                null);
     }
 }

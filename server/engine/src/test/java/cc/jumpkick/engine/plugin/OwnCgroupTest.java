@@ -28,8 +28,7 @@ class OwnCgroupTest {
         Path mount = root.resolve("sys/fs/cgroup");
         assertThat(OwnCgroup.own(root)).isEqualTo(scope);
         assertThat(OwnCgroup.chain(root))
-                .containsExactly(
-                        scope, mount.resolve("user.slice/app.slice"), mount.resolve("user.slice"), mount);
+                .containsExactly(scope, mount.resolve("user.slice/app.slice"), mount.resolve("user.slice"), mount);
     }
 
     @Test
@@ -65,8 +64,7 @@ class OwnCgroupTest {
     }
 
     @Test
-    void memory_probe_reads_a_slice_limit_above_the_engine_and_the_least_room_under_any_limit()
-            throws Exception {
+    void memory_probe_reads_a_slice_limit_above_the_engine_and_the_least_room_under_any_limit() throws Exception {
         Path scope = group("user.slice/jk.scope");
         Path slice = root.resolve("sys/fs/cgroup/user.slice");
         self("0::/user.slice/jk.scope\n");
@@ -97,7 +95,8 @@ class OwnCgroupTest {
         assertThat(MemoryProbe.cgroupV1Room(-1, 5)).isNull();
         MemoryProbe.CgroupRoom v1 = Objects.requireNonNull(MemoryProbe.cgroupV1Room(1000, 300));
         assertThat(v1.availableBytes()).isEqualTo(700);
-        assertThat(Objects.requireNonNull(MemoryProbe.cgroupV1Room(1000, -1)).measured()).isFalse();
+        assertThat(Objects.requireNonNull(MemoryProbe.cgroupV1Room(1000, -1)).measured())
+                .isFalse();
     }
 
     @Test
@@ -120,11 +119,14 @@ class OwnCgroupTest {
         Files.writeString(slice.resolve("memory.max"), "max\n");
         Files.delete(slice.resolve("memory.pressure"));
         assertThat(OverbookSignals.ownFree(chain)).isEqualTo(-1);
-        assertThat(Objects.requireNonNull(OverbookSignals.ownPressure(chain)).some()).isEqualTo(0.5);
+        assertThat(Objects.requireNonNull(OverbookSignals.ownPressure(chain)).some())
+                .isEqualTo(0.5);
     }
 
     private Path group(String rel) throws Exception {
-        Path dir = rel.isEmpty() ? root.resolve("sys/fs/cgroup") : root.resolve("sys/fs/cgroup").resolve(rel);
+        Path dir = rel.isEmpty()
+                ? root.resolve("sys/fs/cgroup")
+                : root.resolve("sys/fs/cgroup").resolve(rel);
         Files.createDirectories(dir);
         return dir;
     }

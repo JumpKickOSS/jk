@@ -43,6 +43,12 @@ JumpKick shows you this page's new entries after it updates itself.
   image that misses the cache, it names `[cache] heavy-ttl = 0` (the default on CI) or `[build]
   cache-heavy-outputs = false` when either keeps the output out of the cache, as it already named a
   nearly full disk. It now forecasts the jlink image at all, with the reason it relinks.
+
+- **The engine sees a memory limit set on its systemd unit or slice.** Worker memory, the
+  overbooking check and the memory the engine reports now follow the tightest cgroup limit on the
+  engine's own group and the groups above it, and that group's memory pressure, not only the
+  container root's. `jk engine status` also gains a `Backpressure` row counting spilled lines,
+  dropped clients, jobs that waited for memory and waits on the shared worker leases.
 - **A malformed version range in `jk.toml` fails when the file is read.** A range that names no
   version, such as `(1.0)`, `[]` or `[2.0,1.0]`, is refused naming the file, line and key, instead of
   failing the next `jk lock` with no place to look.

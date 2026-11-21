@@ -174,6 +174,31 @@ class HostLeasesTest {
     }
 
     @Test
+    void status_counts_a_reclaimed_engine_and_a_read_that_waited_for_the_lock() throws Exception {
+        long gonePid = 2_000_000_000L;
+        Files.writeString(engineDir.resolve(HostLeases.FILE), gonePid + " 0 " + BUDGET + " 8 " + BUDGET + " 1 0\n");
+        HostLeases share = HostLeases.forThisProcess(engineDir);
+        WorkerLeases.Ledger ledger = track(
+                new WorkerLeases.Ledger(() -> BUDGET, () -> 8, id -> false, OverbookSignals.off()).shareHost(share));
+        ledger.snapshot();
+        assertThat(share.counts()).isEqualTo(new SharedLeaseCounts(0, 1));
+
+        CountDownLatch holding = new CountDownLatch(1);
+        CountDownLatch letGo = new CountDownLatch(1);
+        Thread holder = holdTheFile(holding, letGo);
+        assertThat(holding.await(60, TimeUnit.SECONDS)).isTrue();
+        Thread status = Thread.ofPlatform().start(ledger::snapshot);
+        Thread.sleep(2 * HostLeases.CONTENDED_NANOS / 1_000_000);
+        letGo.countDown();
+        assertThat(status.join(Duration.ofSeconds(10))).isTrue();
+        holder.join(Duration.ofSeconds(10));
+        ledger.snapshot();
+        assertThat(share.counts())
+                .as("one read waited for the lock; a line is reclaimed once")
+                .isEqualTo(new SharedLeaseCounts(1, 1));
+    }
+
+    @Test
     void a_reused_pid_does_not_keep_the_dead_engines_leases() throws Exception {
         long parent = ProcessHandle.current().parent().orElseThrow().pid();
         Files.writeString(engineDir.resolve(HostLeases.FILE), parent + " 1 " + BUDGET + " 8 " + BUDGET + " 1 0\n");

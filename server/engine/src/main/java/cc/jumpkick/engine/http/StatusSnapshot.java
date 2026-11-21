@@ -132,11 +132,45 @@ public record StatusSnapshot(
          */
         List<Map<String, Object>> jobs,
         /** Which engine this is ({@code EngineIdentity#toMap}); empty where a caller has none to give. */
-        Map<String, Object> identity) {
+        Map<String, Object> identity,
+        /** What held work back since the engine started; all zero where a caller has none to give. */
+        Backpressure backpressure) {
 
     public StatusSnapshot {
         jobs = jobs == null ? List.of() : List.copyOf(jobs);
         identity = identity == null ? Map.of() : Map.copyOf(identity);
+        backpressure = backpressure == null ? Backpressure.NONE : backpressure;
+    }
+
+    /**
+     * Counts since the engine started of what held work back, rendered as the {@code backpressure}
+     * object. {@code wireSpilledLines}: lines a client read too slowly for, put on disk; {@code
+     * wireDroppedClients}: clients dropped for reading nothing within the stream-idle bound; {@code
+     * admissionWaits}: jobs that waited for coordinator memory; {@code admissionCollections}: full
+     * collections the memory gate ran to measure the live set; {@code leaseLockWaits}: reads of the
+     * host's shared worker-leases file that waited 10 ms or more for another engine's lock; {@code
+     * leaseReclaims}: engines that were gone whose worker leases or workers this one reclaimed.
+     */
+    public record Backpressure(
+            long wireSpilledLines,
+            long wireDroppedClients,
+            long admissionWaits,
+            long admissionCollections,
+            long leaseLockWaits,
+            long leaseReclaims) {
+
+        public static final Backpressure NONE = new Backpressure(0, 0, 0, 0, 0, 0);
+
+        Map<String, Object> toMap() {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("wireSpilledLines", wireSpilledLines);
+            m.put("wireDroppedClients", wireDroppedClients);
+            m.put("admissionWaits", admissionWaits);
+            m.put("admissionCollections", admissionCollections);
+            m.put("leaseLockWaits", leaseLockWaits);
+            m.put("leaseReclaims", leaseReclaims);
+            return m;
+        }
     }
 
     /**
@@ -211,7 +245,8 @@ public record StatusSnapshot(
                 0,
                 0,
                 jobs,
-                Map.of());
+                Map.of(),
+                Backpressure.NONE);
     }
 
     /** Compact constructor for tests that omit the job listing. */
@@ -280,7 +315,8 @@ public record StatusSnapshot(
                 0,
                 0,
                 List.of(),
-                Map.of());
+                Map.of(),
+                Backpressure.NONE);
     }
 
     /** Compact constructor for tests that omit memory headroom / load / epoch / peaks. */
@@ -388,6 +424,7 @@ public record StatusSnapshot(
         m.put("mcpActiveConnections", mcpActiveConnections);
         m.put("jobs", jobs);
         m.put("identity", identity);
+        m.put("backpressure", backpressure.toMap());
         return m;
     }
 }

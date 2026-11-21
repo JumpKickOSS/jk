@@ -161,6 +161,7 @@ class WireWriterTest {
         String line = failureSizedLine();
         // Twice the byte bound: whatever the pipe's own buffer swallows, the queue crosses it.
         long lines = 2 * WireWriter.MAX_QUEUED_BYTES / (line.length() + 1);
+        long droppedBefore = WireWriter.counts().droppedClients();
 
         long started = System.nanoTime();
         Thread producer = Thread.ofPlatform().start(() -> {
@@ -178,6 +179,9 @@ class WireWriterTest {
                 .isInstanceOf(IOException.class)
                 .hasMessageContaining("stopped reading");
         Await.until(Duration.ofSeconds(5), () -> !pipe.sink().isOpen());
+        assertThat(WireWriter.counts().droppedClients())
+                .as("engine status counts the drop")
+                .isGreaterThan(droppedBefore);
     }
 
     /**
@@ -304,9 +308,13 @@ class WireWriterTest {
         WireWriter.bind(writer, 0, spillDir, WireWriter.MAX_SPILL_BYTES, bytes -> true);
         String pad = "x".repeat(38_000);
         int lines = (int) (3 * WireWriter.MAX_QUEUED_BYTES / (pad.length() + 16));
+        long spilledBefore = WireWriter.counts().spilledLines();
 
         long started = System.nanoTime();
         for (int i = 0; i < lines; i++) WireWriter.sendQuiet(writer, i + ":" + pad);
+        assertThat(WireWriter.counts().spilledLines())
+                .as("engine status counts the spilled lines")
+                .isGreaterThan(spilledBefore);
         assertThat((System.nanoTime() - started) / 1_000_000)
                 .as("the producer never waited for the client")
                 .isLessThan(20_000);

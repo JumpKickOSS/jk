@@ -119,7 +119,8 @@ class LiveVitalsTest {
                 loaded,
                 active,
                 b.jobs(),
-                b.identity());
+                b.identity(),
+                b.backpressure());
     }
 
     private static StatusSnapshot withJobs(StatusSnapshot base, List<JobRow> rows) {

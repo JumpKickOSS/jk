@@ -916,6 +916,11 @@ public final class JobEnvelope {
         return admission.queued();
     }
 
+    /** Jobs that waited for coordinator memory and collections the gate ran, since the engine started. */
+    public MemoryAdmission.Counts admissionCounts() {
+        return admission.counts();
+    }
+
     /** Every live job, oldest first, then every queued job in arrival order. */
     public List<JobRow> jobs() {
         List<JobRow> out = new ArrayList<>(liveRows());

@@ -256,6 +256,15 @@ public final class MemoryAdmission {
     /** Under the lock: whether a collection measuring the live set is running, outside the lock. */
     private boolean measuring;
 
+    /** Under the lock: jobs that had to wait for memory, since the gate was made. */
+    private long waits;
+
+    /** Under the lock: full collections the gate ran to measure the live set, since it was made. */
+    private long collections;
+
+    /** What the gate has done since it was made: jobs that waited for memory, collections it ran. */
+    public record Counts(long waits, long collections) {}
+
     /** Write every admission and release to {@code file} ({@link LiveJobsFile}). */
     public MemoryAdmission withLiveJobs(@Nullable LiveJobsFile file) {
         synchronized (lock) {
@@ -361,6 +370,7 @@ public final class MemoryAdmission {
                 }
                 if (!queue.isEmpty() || !claimMeasure(estimate)) {
                     queue.put(jid, new Waiting(kind, dir, arrived));
+                    waits++;
                     ahead = queue.size() - 1;
                     break;
                 }
@@ -461,6 +471,7 @@ public final class MemoryAdmission {
             long committed = heap.committedBytes();
             synchronized (lock) {
                 measuring = false;
+                collections++;
                 if (used >= 0) liveBytes = used;
                 if (admitted.isEmpty()) idleCommittedBytes = Math.min(idleCommittedBytes, committed);
                 lock.notifyAll();
@@ -515,6 +526,13 @@ public final class MemoryAdmission {
     public int queued() {
         synchronized (lock) {
             return queue.size();
+        }
+    }
+
+    /** {@link Counts} as of now, for {@code jk engine status}. */
+    public Counts counts() {
+        synchronized (lock) {
+            return new Counts(waits, collections);
         }
     }
 
