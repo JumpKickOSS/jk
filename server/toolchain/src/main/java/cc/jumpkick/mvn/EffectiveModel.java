@@ -81,6 +81,7 @@ final class EffectiveModel {
     private final Model raw;
     private final List<Ancestor> ancestors;
     private final List<Profile> activeProfiles;
+    private final Properties userProperties;
     private final @Nullable String failure;
 
     private EffectiveModel(
@@ -89,8 +90,10 @@ final class EffectiveModel {
             Model raw,
             List<Ancestor> ancestors,
             List<Profile> activeProfiles,
+            Properties userProperties,
             @Nullable String failure) {
-        this.model = model;
+        this.model = withUserProperties(model, userProperties);
+        this.userProperties = userProperties;
         this.assembledManagement = List.copyOf(assembledManagement);
         this.raw = raw;
         this.ancestors = List.copyOf(ancestors);
@@ -147,11 +150,24 @@ final class EffectiveModel {
                     result.getRawModel(),
                     ancestors(result, reactor),
                     result.getActivePomProfiles(childId),
+                    userProperties,
                     null);
         } catch (ModelBuildingException e) {
             Model own = rawModel(xml);
-            return new EffectiveModel(own, managed(own), own, List.of(), List.of(), describe(e.getProblems()));
+            return new EffectiveModel(
+                    own.clone(), managed(own), own, List.of(), List.of(), userProperties, describe(e.getProblems()));
         }
+    }
+
+    /**
+     * {@code model} with the build's {@code -D} options set over its own properties: Maven's plugins
+     * read a property from the command line before the POM, so every mapper that reads one does too.
+     */
+    private static Model withUserProperties(Model model, Properties userProperties) {
+        for (String name : userProperties.stringPropertyNames()) {
+            model.getProperties().setProperty(name, userProperties.getProperty(name));
+        }
+        return model;
     }
 
     /**
@@ -213,6 +229,12 @@ final class EffectiveModel {
      */
     List<Dependency> assembledManagement() {
         return assembledManagement;
+    }
+
+    /** The build's {@code -D} option {@code name} ({@link MavenConfig}), or null when none sets it. */
+    @Nullable
+    String userProperty(String name) {
+        return userProperties.getProperty(name);
     }
 
     /** The POM's own declarations, uninterpolated. */

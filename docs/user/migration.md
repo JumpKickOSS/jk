@@ -211,7 +211,9 @@ entry is pinned like the profile would be under `-P`. CI-friendly versions —
 `${revision}`, `${changelist}`, `${sha1}` — take their values from the `-D` options of
 `.mvn/maven.config` (in the `.mvn` directory nearest the POM, as Maven finds it), else from the POM
 chain's `<properties>`; a placeholder neither defines is written as `0.0.0-SNAPSHOT` with a row
-naming the property. A module list that lives only in
+naming the property. Every other `-D` option there is read the same way, ahead of the POM's
+`<properties>`: `-DskipTests`, `-Dmaven.test.failure.ignore=true`, `-DargLine=…` or
+`-Dmaven.compiler.release=21` imports as it would from the POM. A module list that lives only in
 profiles Maven would not activate here is a Tier-3 row naming them, and `jk import pom.xml -P
 <id>` activates a profile by name, as Maven's `-P` does — comma-separated or repeated — so a
 reactor whose profiles carry no `<activation>` at all (Baeldung's tutorials list every module

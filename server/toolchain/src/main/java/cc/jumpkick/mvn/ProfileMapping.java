@@ -220,12 +220,14 @@ final class ProfileMapping {
     }
 
     /**
-     * A value of the profile with its {@code ${...}} placeholders filled from the profile's own
-     * {@code <properties>} first, then the POM's: an inactive profile's properties are not in the
+     * A value of the profile with its {@code ${...}} placeholders filled from the build's {@code -D}
+     * options, then the profile's own {@code <properties>}, then the POM's: an inactive profile's properties are not in the
      * effective model, and its BOM versions and dependency versions are written with them.
      */
     private String expand(String value, Profile profile) {
         return CiFriendlyVersions.interpolate(value, name -> {
+            String user = em.userProperty(name);
+            if (user != null) return user;
             String own = profile.getProperties().getProperty(name);
             return own != null ? own : em.model().getProperties().getProperty(name);
         });
