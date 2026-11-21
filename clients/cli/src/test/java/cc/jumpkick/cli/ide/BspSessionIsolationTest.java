@@ -4,6 +4,7 @@ package cc.jumpkick.cli.ide;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.bsp.BspServer;
+import cc.jumpkick.wire.protocol.IdeWireModel;
 import cc.jumpkick.wire.protocol.ProjectInfo;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -29,6 +30,11 @@ class BspSessionIsolationTest {
                 """);
         Path cache = Files.createDirectories(dir.resolve("cache"));
         IdeEngineClient failing = new IdeEngineClient(dir, cache, null) {
+            @Override
+            public IdeWireModel ideModel() throws IOException {
+                throw new IOException("engine died mid-session");
+            }
+
             @Override
             public ProjectInfo projectInfo() throws IOException {
                 throw new IOException("engine died mid-session");

@@ -94,6 +94,62 @@ class BspServerProtocolTest {
 
     @Test
     @SuppressWarnings("unchecked")
+    void a_target_s_dependency_modules_and_sources_are_its_own_libraries(@TempDir Path dir) throws Exception {
+        module(dir, "app");
+        module(dir, "core");
+        String model = "{"
+                + array(
+                        "moduleDirs",
+                        List.of(
+                                dir.resolve("app").toString(),
+                                dir.resolve("core").toString()))
+                + "," + array("names", List.of("app", "core"))
+                + "," + array("libNames", List.of("g:a:jar::1", "g:b:jar::1"))
+                + "," + array("libJars", List.of("/cache/a.jar", "/cache/b.jar"))
+                + "," + array("libSources", List.of("/cache/a-sources.jar", "/cache/b-sources.jar"))
+                + "," + array("libEntries", List.of("0|g:a:jar::1|MAIN", "1|g:b:jar::1|MAIN")) + "}";
+        IdeEngineClient ide = fake(dir, IdeWireModel.decode(model));
+
+        List<Map<String, Object>> frames = serve(
+                ide,
+                request(2, "buildTarget/dependencyModules", target(dir, "core")),
+                request(3, "buildTarget/dependencySources", target(dir, "core")));
+
+        List<Map<String, Object>> modules = (List<Map<String, Object>>)
+                requireNonNull(itemOf(result(frames, 2)).get("modules"));
+        assertThat(modules).extracting(m -> m.get("name")).containsExactly("g:b:jar::1");
+        assertThat((List<Object>) itemOf(result(frames, 3)).get("sources"))
+                .containsExactly(BspServer.pathUri(Path.of("/cache/b-sources.jar")));
+    }
+
+    @Test
+    void a_workspace_s_build_targets_come_from_the_model_alone(@TempDir Path dir) throws Exception {
+        module(dir, "app");
+        IdeWireModel model = model(dir, List.of("app"), List.of());
+        AtomicInteger summaries = new AtomicInteger();
+        IdeEngineClient ide = new IdeEngineClient(dir, dir.resolve("cache"), null) {
+            @Override
+            public IdeWireModel ideModel() {
+                return model;
+            }
+
+            @Override
+            public ProjectInfo projectInfo() {
+                summaries.incrementAndGet();
+                return ProjectInfo.decode("{}");
+            }
+        };
+
+        List<Map<String, Object>> frames = serve(ide, request(2, "workspace/buildTargets", "{}"));
+
+        assertThat(result(frames, 2).get("targets")).asList().hasSize(1);
+        assertThat(summaries)
+                .as("the model names every module; no project summary is asked for")
+                .hasValue(0);
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
     void every_diagnostics_notification_resets_and_a_fixed_file_is_cleared(@TempDir Path dir) throws Exception {
         module(dir, "app");
         Path source = Files.createDirectories(dir.resolve("app/src/main/java")).resolve("App.java");

@@ -159,15 +159,15 @@ public final class BspServer {
                     frames.respond(id, "null");
                 }
                 case "buildTarget/sources" -> frames.respond(id, sourcesJson(json));
-                case "buildTarget/dependencyModules" -> frames.respond(id, dependencyModulesJson(json));
+                case "buildTarget/dependencyModules" ->
+                    frames.respond(id, perTargetItems(json, BspServer::dependencyModulesItem));
                 case "buildTarget/outputPaths" -> frames.respond(id, outputPathsJson(json));
                 case "buildTarget/scalacOptions" ->
                     frames.respond(id, perTargetItems(json, BspTargetOptions::scalacOptionsItem));
                 case "buildTarget/javacOptions" ->
                     frames.respond(id, perTargetItems(json, BspTargetOptions::javacOptionsItem));
                 case "buildTarget/dependencySources" ->
-                    frames.respond(
-                            id, perTargetItems(json, (tid, m, i) -> BspTargetOptions.dependencySourcesItem(tid, m)));
+                    frames.respond(id, perTargetItems(json, BspTargetOptions::dependencySourcesItem));
                 case "buildTarget/scalaMainClasses" ->
                     frames.respond(id, perTargetItems(json, BspTargetOptions::scalaMainClassesItem));
                 case "buildTarget/scalaTestClasses" ->
@@ -352,7 +352,6 @@ public final class BspServer {
     }
 
     private String buildTargetsJson() throws IOException {
-        ProjectInfo info = info();
         IdeWireModel model = model();
         String rootUri = pathUri(ide.projectDir());
         List<String> targets = new ArrayList<>();
@@ -372,6 +371,7 @@ public final class BspServer {
                 addSuiteTargets(targets, id, name, Path.of(dirs.get(i)));
             }
         } else {
+            ProjectInfo info = info();
             String display = info.coord() != null && !info.coord().isBlank() ? info.coord() : "root";
             boolean canRun = model != null
                     && model.mainClasses() != null
@@ -637,62 +637,21 @@ public final class BspServer {
         srcs.add(sourceItemJson(pathUri(p), true));
     }
 
-    private String dependencyModulesJson(String requestJson) throws IOException {
-        IdeWireModel model = model();
-        List<String> requested = extractTargetUris(requestJson);
-        String rootUri = pathUri(ide.projectDir());
-        List<String> depMods = libJarModules(model);
-        List<String> items = new ArrayList<>();
-        if (model != null && model.moduleDirs() != null && !model.moduleDirs().isEmpty()) {
-            List<String> dirs = model.moduleDirs();
-            List<String> names = model.names() != null ? model.names() : List.of();
-            for (int i = 0; i < dirs.size(); i++) {
-                String name = i < names.size()
-                        ? names.get(i)
-                        : Path.of(dirs.get(i)).getFileName().toString();
-                String tid = rootUri + "#" + name;
-                if (!requested.isEmpty() && !requested.contains(tid)) continue;
-                // Per-target: same resolved jars for v1 (engine model is workspace-wide).
-                items.add(JsonFields.object()
-                        .token("target", uriJson(tid))
-                        .token("modules", arrayOf(depMods))
-                        .finish());
-            }
-        } else {
-            String tid = rootUri + "#root";
-            if (requested.isEmpty() || requested.contains(tid)) {
-                items.add(JsonFields.object()
-                        .token("target", uriJson(tid))
-                        .token("modules", arrayOf(depMods))
-                        .finish());
-            }
-        }
-        return JsonFields.object().token("items", arrayOf(items)).finish();
-    }
-
-    private static List<String> libJarModules(IdeWireModel model) {
-        List<String> modules = new ArrayList<>();
-        if (model == null || model.libJars() == null) return modules;
-        List<String> jars = model.libJars();
+    /** {@code DependencyModulesItem}: module {@code i}'s own libraries, each with its sources jar when the model holds one. */
+    static String dependencyModulesItem(String tid, IdeWireModel model, int i) {
         List<String> names = model.libNames() != null ? model.libNames() : List.of();
         List<String> sources = model.libSources() != null ? model.libSources() : List.of();
-        for (int i = 0; i < jars.size(); i++) {
-            String jar = jars.get(i);
-            if (jar == null || jar.isBlank()) continue;
-            String path = jar.contains("|") ? jar.substring(jar.lastIndexOf('|') + 1) : jar;
-            Path p = Path.of(path);
+        List<String> modules = new ArrayList<>();
+        for (int j : BspTargetOptions.libraries(model, i)) {
+            Path p = BspTargetOptions.libraryJar(model, j);
             String name =
-                    i < names.size() && names.get(i) != null && !names.get(i).isBlank()
-                            ? names.get(i)
+                    j < names.size() && names.get(j) != null && !names.get(j).isBlank()
+                            ? names.get(j)
                             : p.getFileName().toString();
             List<String> artifacts = new ArrayList<>();
             artifacts.add(artifactJson(pathUri(p), ""));
-            if (i < sources.size()) {
-                String src = sources.get(i);
-                if (src != null && !src.isBlank()) {
-                    artifacts.add(artifactJson(pathUri(Path.of(src)), "sources"));
-                }
-            }
+            String src = j < sources.size() ? sources.get(j) : null;
+            if (src != null && !src.isBlank()) artifacts.add(artifactJson(pathUri(Path.of(src)), "sources"));
             modules.add(JsonFields.object()
                     .string("name", name)
                     .string("version", "")
@@ -704,7 +663,7 @@ public final class BspServer {
                                     .finish())
                     .finish());
         }
-        return modules;
+        return itemFor(tid).token("modules", arrayOf(modules)).finish();
     }
 
     private static String artifactJson(String uri, String classifier) {

@@ -6,6 +6,7 @@ import cc.jumpkick.jsonl.JsonFields;
 import cc.jumpkick.wire.protocol.IdeWireModel;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -109,7 +110,7 @@ final class BspTargetOptions {
     }
 
     /**
-     * The module's compile classpath as URIs: every resolved library jar, the Scala library jars
+     * The module's compile classpath as URIs: its own library jars, the Scala library jars
      * of its compiler closure, and the main classes of the siblings it depends on.
      */
     static List<String> classpath(IdeWireModel model, int i) {
@@ -126,35 +127,50 @@ final class BspTargetOptions {
                 out.add(uri(Path.of(model.classesDirs().get(sibling))));
             }
         }
-        Set<String> moduleLibs = null;
-        if (model.libEntries() != null && !model.libEntries().isEmpty() && model.libNames() != null) {
-            moduleLibs = new LinkedHashSet<>();
-            for (String row : model.libEntries()) {
-                String[] parts = row.split("\\|", 3);
-                if (parts.length >= 2 && Integer.parseInt(parts[0]) == i) {
-                    moduleLibs.add(parts[1]);
-                }
-            }
-        }
-        List<String> libJars = model.libJars();
-        List<String> libNames = model.libNames();
-        for (int j = 0; j < libJars.size(); j++) {
-            String jar = libJars.get(j);
-            if (jar == null || jar.isBlank()) continue;
-            if (moduleLibs != null && j < libNames.size() && !moduleLibs.contains(libNames.get(j))) continue;
-            String path = jar.contains("|") ? jar.substring(jar.lastIndexOf('|') + 1) : jar;
-            out.add(uri(Path.of(path)));
-        }
+        for (int j : libraries(model, i)) out.add(uri(libraryJar(model, j)));
         return new ArrayList<>(out);
     }
 
-    /** {@code DependencySourcesItem}: the sources jars the model holds for the resolved libraries. */
-    static String dependencySourcesItem(String tid, IdeWireModel model) {
+    /** {@code DependencySourcesItem}: the sources jars the model holds for module {@code i}'s libraries. */
+    static String dependencySourcesItem(String tid, IdeWireModel model, int i) {
         List<String> sources = new ArrayList<>();
-        for (String src : model.libSources()) {
+        List<String> libSources = model.libSources() != null ? model.libSources() : List.of();
+        for (int j : libraries(model, i)) {
+            String src = j < libSources.size() ? libSources.get(j) : null;
             if (src != null && !src.isBlank()) sources.add(uri(Path.of(src)));
         }
         return BspServer.itemFor(tid).array("sources", sources).finish();
+    }
+
+    /**
+     * The libraries module {@code i} declares, as indices into the model's parallel library lists,
+     * in the model's order; every library with a jar when the model carries no per-module rows.
+     */
+    static List<Integer> libraries(IdeWireModel model, int i) {
+        Set<String> declared = null;
+        if (model.libEntries() != null && !model.libEntries().isEmpty() && model.libNames() != null) {
+            declared = new HashSet<>();
+            for (String row : model.libEntries()) {
+                String[] parts = row.split("\\|", 3);
+                if (parts.length >= 2 && Integer.parseInt(parts[0]) == i) declared.add(parts[1]);
+            }
+        }
+        List<String> jars = model.libJars() != null ? model.libJars() : List.of();
+        List<String> names = model.libNames() != null ? model.libNames() : List.of();
+        List<Integer> out = new ArrayList<>();
+        for (int j = 0; j < jars.size(); j++) {
+            String jar = jars.get(j);
+            if (jar == null || jar.isBlank()) continue;
+            if (declared != null && j < names.size() && !declared.contains(names.get(j))) continue;
+            out.add(j);
+        }
+        return out;
+    }
+
+    /** The jar of library {@code j}; a {@code libJars} entry may carry a prefix up to its last {@code |}. */
+    static Path libraryJar(IdeWireModel model, int j) {
+        String jar = model.libJars().get(j);
+        return Path.of(jar.contains("|") ? jar.substring(jar.lastIndexOf('|') + 1) : jar);
     }
 
     /** {@code ScalaMainClassesItem}: the module's main class when it declares one. */

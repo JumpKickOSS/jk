@@ -56,8 +56,8 @@ pinned jar is verified against it.
 
 | Capability | Status |
 |------------|--------|
-| `workspace/buildTargets`, sources, dependency modules | yes; a module's target lists the workspace modules it depends on (main or test scope) as its `dependencies`, and every source item is a directory (`kind` 2) |
-| Dependency **sources** jars | yes (classifier `sources` when present) |
+| `workspace/buildTargets`, sources, dependency modules | yes; a module's target lists the workspace modules it depends on (main or test scope) as its `dependencies`, its dependency modules are the libraries that module declares, not the whole workspace's, and every source item is a directory (`kind` 2) |
+| Dependency **sources** jars | yes (classifier `sources` when present), for the target's own libraries |
 | `buildTarget/outputPaths` | yes (main + test classes dirs, `kind` 2) |
 | `buildTarget/scalacOptions`, `buildTarget/javacOptions` | yes: `-java-output-version N` / `--release N` for the module's Java level, the compile classpath (library jars, the Scala library, sibling classes) and the class directory |
 | Scala targets | a module that compiles Scala is a `scala` build target (`scalaVersion`, `scalaBinaryVersion`, the compiler jars a build fetched, the JDK); every other module carries `jvm` data naming its JDK |
