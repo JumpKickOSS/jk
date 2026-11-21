@@ -486,8 +486,12 @@ Ship layout (`jk build`, under `target/dist/`; `<version>` carries `-SNAPSHOT` o
   under the same window (`StallWatch`, counting completed POM reads) and fails the same way. A
   thousand-dependency reactor on a busy engine takes as long as it takes. A repository that accepts
   a request and never answers costs one request timeout (60 s), not one per retry attempt: `Http`
-  names the URL and stops, after reissuing a Central-bound request once against the mirror. Conflict **watermarks** fingerprint decision maps that already
-  failed so the solver cannot re-enter them (cleared when a universe expands).
+  names the URL and stops, after reissuing a Central-bound request once against the mirror.
+- **Universes grow mid-solve:** a package's candidate list widens past its compact window, and a
+  POM read admits a version the catalog omits. A clause learned while a range held no candidate
+  (a "no versions" clause, or a residual resolution dropped as vacuous) is true only while it
+  still holds none, so when a universe grows into such a range `PubGrubSolver` restarts from the
+  root, keeping the dependency and unavailability clauses and the grown universes.
 - **Effective-POM tables are shared objects:** `EffectivePomBuilder` values a BOM's managed table
   once, in the BOM's own merge, and every POM that imports or inherits it carries the same
   `Pom.Dep` objects — a row is copied only where a `${...}` it spells values differently in the

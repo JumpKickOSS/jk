@@ -34,16 +34,16 @@ import org.jspecify.annotations.Nullable;
  * PackageSource#versions}. Expand to the full advertised list only when that seed cannot produce a
  * viable candidate.
  *
- * <p><strong>Anti-loop:</strong> correct PubGrub learning should never re-enter a decision
- * assignment that already conflicted. Large AndroidX/BOM graphs can still thrash (broken POM
- * floors, incomplete universes, prefer-pin churn). Watermarks and step budgets make that fail
- * closed instead of spinning for minutes:
+ * <p><strong>Universe growth:</strong> a universe grows during a solve, when it widens or when a
+ * POM read names a version the catalog omits. A learned clause holds only for the universes it was
+ * judged over where it took a range to hold no version ({@link Incompatibility.Cause.NoVersions},
+ * or a residual resolution dropped as vacuous). When a universe grows into such a range, the solve
+ * restarts from the root with its dependency and unavailability facts and the grown universes,
+ * and learns again. Universes only grow, so restarts are bounded.
  *
- * <ul>
- *   <li>every budget check counts a <em>step</em> (propagation storms included, not only decides)
- *   <li>re-entering a decision map fingerprint that previously conflicted (cleared on universe
- *       expand, which can invalidate premature conflicts)
- * </ul>
+ * <p><strong>Anti-loop:</strong> large AndroidX/BOM graphs can still thrash (broken POM floors,
+ * prefer-pin churn). Every budget check counts a <em>step</em>, propagation storms included, so
+ * that fails closed instead of spinning for minutes.
  */
 public class PubGrubSolver {
 
@@ -109,6 +109,12 @@ public class PubGrubSolver {
      * Without this, each propagation round rescans the full list (quadratic on large BOM graphs).
      */
     private final Map<String, List<Incompatibility>> incompatibilitiesByPackage = new LinkedHashMap<>();
+
+    /**
+     * Per package, the version ranges a learned clause took to hold no version of it. A universe
+     * that grows into one of them restarts the solve; see the class comment.
+     */
+    private final Map<String, List<VersionSet>> assumedEmpty = new HashMap<>();
 
     protected @Nullable String rootPkg;
 
@@ -242,6 +248,7 @@ public class PubGrubSolver {
         floatingRoots.clear();
         dependenciesRecorded.clear();
         declaredOnlyUniverses.clear();
+        assumedEmpty.clear();
         for (Term dep : rootDeps) {
             addIncompatibility(new Incompatibility(
                     List.of(rootTerm, dep.invert()), new Incompatibility.Cause.Dependency(rootTerm, dep)));
@@ -250,9 +257,7 @@ public class PubGrubSolver {
 
         // Root is not fetched from the package source — seed a singleton universe for bit space.
         universes.put(rootPkg, VersionUniverse.of(rootPkg, List.of(rootVersion)));
-        solution.bindUniverse(rootPkg);
-        solution.decide(rootPkg, rootVersion);
-        decisionCount++;
+        decideRoot(rootVersion);
 
         String next = rootPkg;
         StallWatch stalls = new StallWatch(
@@ -266,9 +271,14 @@ public class PubGrubSolver {
         stalls.start(Thread.currentThread());
         try {
             while (next != null) {
-                checkBudget();
-                propagate(next);
-                next = makeDecision();
+                try {
+                    checkBudget();
+                    propagate(next);
+                    next = makeDecision();
+                } catch (UniverseGrew grew) {
+                    restart(rootVersion);
+                    next = rootPkg;
+                }
             }
         } catch (UnsatisfiableException e) {
             throw e;
@@ -287,6 +297,58 @@ public class PubGrubSolver {
             ResolveProfile.solve(System.nanoTime() - solveT0);
         }
         return solution.decisions();
+    }
+
+    private void decideRoot(String rootVersion) {
+        solution.bindUniverse(root());
+        solution.decide(root(), rootVersion);
+        decisionCount++;
+    }
+
+    /**
+     * Start over from the root, keeping the clauses that state facts about the packages (their
+     * dependencies, versions found unavailable) and every universe as it has grown. Budgets carry on.
+     */
+    private void restart(String rootVersion) {
+        solution.backtrack(0);
+        List<Incompatibility> facts = new ArrayList<>();
+        for (Incompatibility inco : incompatibilities) {
+            if (inco.cause() instanceof Incompatibility.Cause.Dependency
+                    || inco.cause() instanceof Incompatibility.Cause.Unavailable) {
+                facts.add(inco);
+            }
+        }
+        incompatibilities.clear();
+        recorded.clear();
+        incompatibilitiesByPackage.clear();
+        for (Incompatibility fact : facts) addIncompatibility(fact);
+        assumedEmpty.clear();
+        lastBackjump = null;
+        decideRoot(rootVersion);
+    }
+
+    /** Thrown when a universe grows into a range a learned clause assumed empty. */
+    private static final class UniverseGrew extends RuntimeException {
+        UniverseGrew() {
+            super(null, null, false, false);
+        }
+    }
+
+    private void assumeEmpty(String pkg, VersionSet versions) {
+        if (!versions.isEmpty())
+            assumedEmpty.computeIfAbsent(pkg, k -> new ArrayList<>()).add(versions);
+    }
+
+    /** Restart when {@code pkg}'s universe, grown from {@code before}, now holds a version assumed absent. */
+    private void checkGrowth(String pkg, @Nullable VersionUniverse before) {
+        List<VersionSet> ranges = assumedEmpty.get(pkg);
+        if (ranges == null) return;
+        for (String v : Objects.requireNonNull(universes.get(pkg)).versions()) {
+            if (before != null && before.indexOf(v) >= 0) continue;
+            for (VersionSet range : ranges) {
+                if (range.contains(v)) throw new UniverseGrew();
+            }
+        }
     }
 
     private void checkBudget() {
@@ -535,6 +597,13 @@ public class PubGrubSolver {
         if (!coversInUniverse(satisfier, pivot)) {
             Term residual = satisfier.intersect(pivot.invert()).invert();
             merged.merge(pivot.pkg(), residual, Term::intersect);
+        } else {
+            // Dropped because the universe holds none of these versions; only true while it does not.
+            assumeEmpty(
+                    pivot.pkg(),
+                    satisfier
+                            .effectiveVersions()
+                            .intersect(pivot.effectiveVersions().complement()));
         }
         List<Term> survivors = new ArrayList<>();
         for (Term t : merged.values()) {
@@ -611,6 +680,7 @@ public class PubGrubSolver {
             if (asked.isPresent() && solution.choosePreferred(pkg, declared) != null) {
                 notes.add("pinned " + pinFloor(pkg).orElse("") + ": no version the graph asks for fits");
             }
+            assumeEmpty(pkg, allowed);
             addIncompatibility(new Incompatibility(
                     List.of(Term.positive(pkg, allowed)),
                     new Incompatibility.Cause.NoVersions(pkg, allowed, unknownPackage, available, notes)));
@@ -638,6 +708,7 @@ public class PubGrubSolver {
                     boolean unknownPackage = known == null || known.size() == 0;
                     VersionSet allowed = solution.positiveSet(pkg);
                     if (allowed.isEmpty()) allowed = VersionSet.ALL;
+                    assumeEmpty(pkg, allowed);
                     addIncompatibility(new Incompatibility(
                             List.of(Term.positive(pkg, allowed)),
                             new Incompatibility.Cause.NoVersions(
@@ -842,6 +913,7 @@ public class PubGrubSolver {
         }
         universes.put(pkg, VersionUniverse.of(pkg, merged));
         solution.rebindAfterUniverseExpand(pkg);
+        checkGrowth(pkg, u);
     }
 
     private List<String> sampleAvailable(String pkg) {
@@ -901,8 +973,10 @@ public class PubGrubSolver {
         // Cap long metadata histories. Do not filter against the continuous positive set
         // here: after a failed soft-prefer pin the discrete rebind must still see every advertised
         // candidate the pin was chosen from, or Unavailable(pin) can empty the domain incorrectly.
+        VersionUniverse before = universes.get(pkg);
         universes.put(pkg, VersionUniverse.of(pkg, capExpanded(pkg, source.expandedVersions(pkg))));
         solution.rebindAfterUniverseExpand(pkg);
+        checkGrowth(pkg, before);
     }
 
     /** Expand every lazy singleton and capped universe; true when any changed. */
