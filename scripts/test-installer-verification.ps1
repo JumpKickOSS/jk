@@ -1,6 +1,7 @@
-# Network-free PowerShell 5.1 exercise of install.ps1: release authentication, the host-to-artifact
-# mapping, downloads (against loopback servers) and the execution-policy default. Uses an ephemeral
-# RSA-3072 key and never installs or executes the fixture artifact.
+# Network-free exercise of install.ps1 under Windows PowerShell 5.1 or PowerShell 7: release
+# authentication, the host-to-artifact mapping, downloads (against loopback servers) and the
+# execution-policy default. Uses an ephemeral RSA-3072 key and never installs or executes the
+# fixture artifact.
 #Requires -Version 5.1
 $ErrorActionPreference = "Stop"
 
@@ -551,11 +552,15 @@ try {
         Import-InstallerFunction "Install-NativeClient"
         $fixtures = Join-Path $work "fixture-exes"
         New-Item -ItemType Directory -Force -Path $fixtures | Out-Null
+        # The .NET Framework compiler ships with Windows; Add-Type cannot emit an executable on PowerShell 7.
+        $csc = @("Framework64", "Framework") | ForEach-Object { Join-Path $env:WINDIR "Microsoft.NET\$_\v4.0.30319\csc.exe" } |
+            Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1
+        if (-not $csc) { throw "no .NET Framework csc.exe under $env:WINDIR\Microsoft.NET" }
         function New-FixtureExe([string] $Name, [string] $Says, [int] $Code) {
             $path = Join-Path $fixtures "$Name.exe"
-            $class = "JkFixture" + [guid]::NewGuid().ToString("N")
-            Add-Type -OutputType ConsoleApplication -OutputAssembly $path -TypeDefinition @"
-public static class $class {
+            $source = Join-Path $fixtures "$Name.cs"
+            [IO.File]::WriteAllText($source, @"
+public static class JkFixture {
     public static int Main(string[] args) {
         if (args.Length > 1 && args[0] == "--hold") {
             System.IO.File.WriteAllText(args[1], "up");
@@ -566,7 +571,9 @@ public static class $class {
         return $Code;
     }
 }
-"@
+"@)
+            $compiled = (& $csc /nologo /target:exe "/out:$path" $source 2>&1 | Out-String)
+            if ($LASTEXITCODE -ne 0) { throw "the fixture $Name did not compile: $compiled" }
             return $path
         }
         $goodExe = New-FixtureExe "good" "jk-good" 0
@@ -579,9 +586,10 @@ public static class $class {
             return $bin
         }
         # A held client is running (its image mapped and its runtime up) once it writes its ready file.
+        # Start-Process joins its arguments with spaces, so a path is quoted for the child to see it whole.
         function Start-Held([string] $Exe) {
             $ready = Join-Path $work ("ready-" + [guid]::NewGuid().ToString("N"))
-            $p = Start-Process -FilePath $Exe -ArgumentList @("--hold", $ready) -PassThru -WindowStyle Hidden
+            $p = Start-Process -FilePath $Exe -ArgumentList @("--hold", "`"$ready`"") -PassThru -WindowStyle Hidden
             $deadline = [DateTime]::UtcNow.AddSeconds(30)
             while (-not (Test-Path -LiteralPath $ready)) {
                 if ([DateTime]::UtcNow -gt $deadline) { throw "the held client $Exe never started" }
