@@ -3,8 +3,7 @@ package cc.jumpkick.engine;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.model.JkVersion;
-import cc.jumpkick.version.Versions;
+import cc.jumpkick.engine.plugin.StartupCaches;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
@@ -62,18 +61,35 @@ class EngineMaintenanceTest {
      * build one unmapped for 12 hours too. On the base only an engine start swept.
      */
     @Test
-    void the_maintenance_cycle_sweeps_the_startup_caches(@TempDir Path dir) throws Exception {
+    void on_a_snapshot_the_maintenance_cycle_sweeps_other_versions_and_unused_caches(@TempDir Path dir)
+            throws Exception {
+        Swept s = cycle(dir, "9.9.9-SNAPSHOT");
+        assertThat(s.otherVersion()).doesNotExist();
+        assertThat(s.unused()).as("a snapshot's cache unmapped for 12 h").doesNotExist();
+    }
+
+    @Test
+    void on_a_release_the_maintenance_cycle_sweeps_only_other_versions(@TempDir Path dir) throws Exception {
+        Swept s = cycle(dir, "9.9.9");
+        assertThat(s.otherVersion()).doesNotExist();
+        assertThat(s.unused()).as("a release deletes nothing by age").exists();
+    }
+
+    /** Another version's cache and one of {@code version} unmapped for 13 h, after one tick under {@code version}. */
+    private record Swept(Path otherVersion, Path unused) {}
+
+    private static Swept cycle(Path dir, String version) throws Exception {
         Path state = Files.createDirectories(dir.resolve("state"));
         Path aot = Files.createDirectories(state.resolve("aot"));
         Path otherVersion = Files.writeString(aot.resolve("graph-0.1.0-aaaaaaaa-0123456789abcdef.aot"), "x");
-        Path unused =
-                Files.writeString(aot.resolve("graph-" + JkVersion.VERSION + "-aaaaaaaa-0123456789abcdef.aot"), "x");
+        Path unused = Files.writeString(aot.resolve("graph-" + version + "-aaaaaaaa-0123456789abcdef.aot"), "x");
         Files.setLastModifiedTime(
                 unused,
                 FileTime.fromMillis(
                         System.currentTimeMillis() - Duration.ofHours(13).toMillis()));
         List<String> due = new ArrayList<>();
         System.setProperty("jk.env.JK_STATE_DIR", state.toString());
+        StartupCaches.pinVersionForTests(version);
         try (EngineMaintenance m = new EngineMaintenance(
                 s -> {},
                 () -> due.add("fetches"),
@@ -82,14 +98,10 @@ class EngineMaintenanceTest {
                 dir.resolve("config.toml"))) {
             m.tickQuietly();
         } finally {
+            StartupCaches.pinVersionForTests(null);
             System.clearProperty("jk.env.JK_STATE_DIR");
         }
         assertThat(due).containsExactly("fetches", "due");
-        assertThat(otherVersion).doesNotExist();
-        if (Versions.isSnapshot(JkVersion.VERSION)) {
-            assertThat(unused).doesNotExist();
-        } else {
-            assertThat(unused).as("a release deletes nothing by age").exists();
-        }
+        return new Swept(otherVersion, unused);
     }
 }

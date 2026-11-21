@@ -178,7 +178,7 @@ public final class StartupCaches {
     }
 
     /** Test seam: name and sweep caches as jk {@code version} would; null goes back to this build's. */
-    static void pinVersionForTests(@Nullable String version) {
+    public static void pinVersionForTests(@Nullable String version) {
         pinnedVersion = version;
     }
 
