@@ -210,7 +210,7 @@ the newest release not newer than the running JumpKick, and `jk update` moves th
 need a newer JumpKick; a plugin's `jk-compat` floor below the new `sdk` rises with it. JumpKick removes
 older releases from its repository, so a pin behind the running JumpKick resolves today and fails later:
 every build names such pins in one warning before the lock (`warning: Lock in app: JumpKick's own
-pins are behind this jk (0.53.0): library 0.50.2 (jk-guards.toml), …; … run jk update`; code
+pins are behind this jk (0.54.0): library 0.50.2 (jk-guards.toml), …; … run jk update`; code
 `pins-behind-jk` under `-O jsonl`, a line of the agent report), and `jk doctor` names them on
 its `pins` row.
 
@@ -622,7 +622,7 @@ Kotlin compiler plugin, a rule pack — also names its `source`, the repository 
 ```toml
 [[plugin]]
 coordinate = "cc.jumpkick.guards:library"
-version    = "0.53.0"
+version    = "0.54.0"
 source     = "jumpkick+https://jumpkick.build/repo/"
 checksum   = "sha256:c1347a67…"
 ```

@@ -132,7 +132,7 @@ $ReleaseRsaExponent = "AQAB"
 # The release this installer ships with. A signed latest-release pointer naming anything older is
 # a rollback — a bucket writer or a mirror re-serving an old, validly signed release — and is
 # refused; JK_VERSION remains the deliberate way to install a specific release.
-$ReleaseFloor = "0.53.1"
+$ReleaseFloor = "0.54.0"
 
 # irm|iex cannot pass positional args; allow JK_LOCAL_PATH as the local-dist seam.
 if (-not $LocalPath -and $env:JK_LOCAL_PATH) {
@@ -398,7 +398,7 @@ function Get-ReleasePointerVersion {
     } finally {
         Remove-Item -LiteralPath $signatureFile -Force -ErrorAction SilentlyContinue
     }
-    # Numeric cores compare first; on equal cores a pre-release (0.53.1-rc1) is below its release.
+    # Numeric cores compare first; on equal cores a pre-release (0.54.0-rc1) is below its release.
     $core = $version -replace '^([0-9]+\.[0-9]+\.[0-9]+).*', '$1'
     $floorCore = $Floor -replace '^([0-9]+\.[0-9]+\.[0-9]+).*', '$1'
     $preRelease = '^[0-9]+\.[0-9]+\.[0-9]+-'

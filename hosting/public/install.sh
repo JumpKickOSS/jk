@@ -135,7 +135,7 @@ main() {
   # The release this installer ships with. A signed pointer naming anything older is a
   # rollback — a bucket writer or a mirror re-serving an old, validly signed release — and is
   # refused; JK_VERSION remains the deliberate way to install a specific release.
-  RELEASE_FLOOR="0.53.1"
+  RELEASE_FLOOR="0.54.0"
 
   # Verify the release key's RSA/SHA-256 signature in <sig-file> over the exact bytes of
   # <signed-file>, or die naming <what>. Every remote input that steers the install — the
@@ -201,7 +201,7 @@ main() {
   }
 
   # True when $1 >= $2 as dotted versions. Numeric cores compare first; on equal cores a
-  # pre-release (0.53.1-rc1) is below its release (0.53.1), as in semver.
+  # pre-release (0.54.0-rc1) is below its release (0.54.0), as in semver.
   ver_ge() {
     local a="${1%%-*}" b="${2%%-*}" hi
     hi="$(printf '%s\n%s\n' "$a" "$b" | sort -t. -k1,1n -k2,2n -k3,3n | tail -1)"
