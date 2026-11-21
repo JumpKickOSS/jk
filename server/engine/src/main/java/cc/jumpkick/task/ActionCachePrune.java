@@ -12,7 +12,6 @@ import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.util.FileLocks;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
@@ -29,7 +28,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.util.stream.Stream;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -688,22 +686,19 @@ public final class ActionCachePrune {
     private static @Nullable Set<String> livePointers(Path tasksDir) throws IOException {
         Set<String> live = new HashSet<>();
         if (!Files.isDirectory(tasksDir)) return live;
-        try (DirectoryStream<Path> stream = Files.newDirectoryStream(tasksDir)) {
-            for (Path file : stream) {
-                if (!Files.isRegularFile(file)) continue;
-                List<String> lines;
-                try {
-                    lines = Files.readAllLines(file, StandardCharsets.UTF_8);
-                } catch (IOException unreadable) {
-                    // Supersession is unprovable without the pointers, and guessing "superseded"
-                    // would move the whole cache to the front of the eviction queue.
-                    return null;
-                }
-                // A pointer is one key; a generation-list line is `<checkout> <key>`.
-                for (String line : lines) {
-                    String l = line.strip();
-                    if (!l.isEmpty()) live.add(l.substring(l.lastIndexOf(' ') + 1));
-                }
+        for (Path file : PathUtil.childFiles(tasksDir)) {
+            List<String> lines;
+            try {
+                lines = Files.readAllLines(file, StandardCharsets.UTF_8);
+            } catch (IOException unreadable) {
+                // Supersession is unprovable without the pointers, and guessing "superseded"
+                // would move the whole cache to the front of the eviction queue.
+                return null;
+            }
+            // A pointer is one key; a generation-list line is `<checkout> <key>`.
+            for (String line : lines) {
+                String l = line.strip();
+                if (!l.isEmpty()) live.add(l.substring(l.lastIndexOf(' ') + 1));
             }
         }
         return live;
@@ -783,11 +778,9 @@ public final class ActionCachePrune {
     }
 
     private static int countFiles(Path dir) throws IOException {
-        try (Stream<Path> walk = Files.walk(dir)) {
-            return (int) walk.filter(Files::isRegularFile).count();
-        } catch (NoSuchFileException vanished) {
-            return 0;
-        }
+        int[] files = {0};
+        PathUtil.forEachReadableFile(dir, (file, attrs) -> files[0]++);
+        return files[0];
     }
 
     /** Depth-first delete of one task's analysis directory; returns the regular files unlinked. */

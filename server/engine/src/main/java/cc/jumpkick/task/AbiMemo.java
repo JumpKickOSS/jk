@@ -6,7 +6,6 @@ import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.PathUtil;
 import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -16,7 +15,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.stream.Stream;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -159,11 +157,10 @@ public final class AbiMemo {
         }
 
         private static void sweepResidue(Path dir, Path keep) {
-            try (Stream<Path> children = Files.list(dir)) {
-                for (Path p : (Iterable<Path>) children::iterator) {
-                    if (p.equals(keep)) continue;
-                    PathUtil.deleteRecursively(p);
-                }
+            try {
+                List<Path> children = new ArrayList<>();
+                PathUtil.forEachChild(dir, (p, attrs) -> p.equals(keep) || children.add(p));
+                children.forEach(PathUtil::deleteRecursively);
             } catch (IOException | RuntimeException e) {
                 // Housekeeping.
                 Log.debug("sweepResidue: Housekeeping", e);

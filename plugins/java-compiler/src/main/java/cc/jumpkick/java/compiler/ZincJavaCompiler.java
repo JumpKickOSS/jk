@@ -614,11 +614,9 @@ public final class ZincJavaCompiler {
     /** Remove every {@code .class} file under {@code dir} (used before an analysis-less full compile). */
     static void deleteClassFiles(Path dir) throws IOException {
         if (!Files.isDirectory(dir)) return;
-        try (var walk = Files.walk(dir)) {
-            for (Path p : (Iterable<Path>) walk::iterator) {
-                if (p.toString().endsWith(".class")) Files.deleteIfExists(p);
-            }
-        }
+        PathUtil.forEachRegularFile(dir, (p, attrs) -> {
+            if (p.toString().endsWith(".class")) Files.deleteIfExists(p);
+        });
     }
 
     private static Plan plan(JavaCompileJob job, ProducerAnalysisCache producerAnalyses) {

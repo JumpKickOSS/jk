@@ -2,11 +2,13 @@
 package cc.jumpkick.java.compiler;
 
 import cc.jumpkick.host.AtomicWrites;
+import cc.jumpkick.host.PathUtil;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -204,13 +206,13 @@ final class GeneratedProvenance {
         Path pkgDir = classRoot.resolve(rel).getParent();
         if (pkgDir == null || !Files.isDirectory(pkgDir)) return;
         String stem = name.substring(0, name.length() - ".java".length());
-        try (var s = Files.list(pkgDir)) {
-            for (Path c : (Iterable<Path>) s::iterator) {
-                String cn = c.getFileName().toString();
-                // <stem>.class plus nested/anonymous <stem>$Inner.class
-                if (cn.equals(stem + ".class") || cn.startsWith(stem + "$")) Files.deleteIfExists(c);
-            }
-        }
+        List<Path> outputs = new ArrayList<>();
+        PathUtil.forEachChild(pkgDir, (c, attrs) -> {
+            String cn = c.getFileName().toString();
+            // <stem>.class plus nested/anonymous <stem>$Inner.class
+            return !(cn.equals(stem + ".class") || cn.startsWith(stem + "$")) || outputs.add(c);
+        });
+        for (Path c : outputs) Files.deleteIfExists(c);
     }
 
     /**

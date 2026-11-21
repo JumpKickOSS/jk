@@ -1287,10 +1287,6 @@ instead  = "cc.jumpkick.host.PathUtil.deleteRecursively / deleteRecursivelyOrThr
 why      = "a hand-rolled tree delete decides the follow-links question again, and one FOLLOW_LINKS is data loss"
 
 [[guards.one-recursive-delete.allow]]
-in     = "server/engine/src/main/java/cc/jumpkick/runtime/BuildLogicSupport.java"
-reason = "deleteContents keeps the directory and removes only what is under it"
-
-[[guards.one-recursive-delete.allow]]
 in     = "server/engine/src/main/java/cc/jumpkick/task/CacheRetention.java"
 reason = "pruneEmptyDirs deletes a directory only when it is already empty"
 

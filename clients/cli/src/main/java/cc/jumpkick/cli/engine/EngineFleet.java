@@ -3,6 +3,7 @@ package cc.jumpkick.cli.engine;
 
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.Os;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.util.TestHomes;
@@ -205,8 +206,10 @@ public final class EngineFleet {
     private static void addGenerationPids(Path stateDir, Set<Long> known, List<Member> out) {
         Path dir = stateDir.resolve("engine");
         if (!Files.isDirectory(dir)) return;
-        try (var listing = Files.list(dir)) {
-            listing.filter(f -> f.getFileName().toString().endsWith(".pid")).forEach(pidFile -> {
+        try {
+            List<Path> pidFiles = new ArrayList<>();
+            PathUtil.forEachChild(dir, (f, attrs) -> !f.getFileName().toString().endsWith(".pid") || pidFiles.add(f));
+            pidFiles.forEach(pidFile -> {
                 long pid = EngineProcessControl.readPidFile(pidFile);
                 if (pid <= 0 || known.contains(pid) || !alive(pid) || !isEnginePid(pid)) return;
                 String stem = pidFile.getFileName().toString();

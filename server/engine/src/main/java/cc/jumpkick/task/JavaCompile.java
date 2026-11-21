@@ -799,10 +799,8 @@ public final class JavaCompile {
 
     private static void deleteClasses(Path out) throws IOException {
         if (!Files.isDirectory(out)) return;
-        try (var walk = Files.walk(out)) {
-            for (Path p : (Iterable<Path>) walk::iterator) {
-                if (p.toString().endsWith(".class")) Files.deleteIfExists(p);
-            }
-        }
+        PathUtil.forEachRegularFile(out, (p, attrs) -> {
+            if (p.toString().endsWith(".class")) Files.deleteIfExists(p);
+        });
     }
 }

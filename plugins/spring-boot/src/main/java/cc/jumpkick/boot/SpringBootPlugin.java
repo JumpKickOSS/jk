@@ -24,7 +24,6 @@ import java.util.Map;
 import java.util.jar.Attributes;
 import java.util.jar.JarFile;
 import java.util.jar.Manifest;
-import java.util.stream.Stream;
 
 /**
  * Spring Boot build plugin: optional {@code spring-aot} step and {@code boot-jar} packager.
@@ -131,9 +130,9 @@ public final class SpringBootPlugin implements Plugin, BuildExtension, PackageEx
         // Compile the generated sources into the generated-classes dir (alongside the
         // processor-emitted proxy classes), against app classes + the same classpath.
         List<Path> aotSources = new ArrayList<>();
-        try (Stream<Path> stream = Files.walk(sources)) {
-            stream.filter(p -> p.getFileName().toString().endsWith(".java")).forEach(aotSources::add);
-        }
+        PathUtil.forEachRegularFile(sources, (p, attrs) -> {
+            if (p.getFileName().toString().endsWith(".java")) aotSources.add(p);
+        });
         if (!aotSources.isEmpty()) {
             List<Path> compileCp = new ArrayList<>(classpath);
             compileCp.add(classes);

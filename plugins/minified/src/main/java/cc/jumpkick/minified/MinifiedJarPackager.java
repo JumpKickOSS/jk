@@ -35,7 +35,6 @@ import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 import java.util.jar.JarOutputStream;
 import java.util.jar.Manifest;
-import java.util.stream.Stream;
 import java.util.zip.ZipEntry;
 import org.jspecify.annotations.Nullable;
 
@@ -356,21 +355,17 @@ final class MinifiedJarPackager {
             return;
         }
         int kept = 0;
-        try (Stream<Path> walk = Files.walk(classesDir)) {
-            // Free test first: the walk already paid for this entry, and isRegularFile re-resolves
-            // the path for a fresh stat even for entries the name test discards.
-            List<Path> classes = walk.filter(p -> p.getFileName().toString().endsWith(".class"))
-                    .filter(p -> !p.getFileName().toString().equals("module-info.class"))
-                    .filter(Files::isRegularFile)
-                    .sorted(Comparator.naturalOrder())
-                    .toList();
-            for (Path file : classes) {
-                String name = classesDir.relativize(file).toString().replace('\\', '/');
-                String fqcn =
-                        name.substring(0, name.length() - ".class".length()).replace('/', '.');
-                pro.append("-keep class ").append(fqcn).append(" { *; }\n");
-                kept++;
-            }
+        List<Path> classes = new ArrayList<>();
+        PathUtil.forEachRegularFile(classesDir, (p, attrs) -> {
+            String fileName = p.getFileName().toString();
+            if (fileName.endsWith(".class") && !fileName.equals("module-info.class")) classes.add(p);
+        });
+        classes.sort(Comparator.naturalOrder());
+        for (Path file : classes) {
+            String name = classesDir.relativize(file).toString().replace('\\', '/');
+            String fqcn = name.substring(0, name.length() - ".class".length()).replace('/', '.');
+            pro.append("-keep class ").append(fqcn).append(" { *; }\n");
+            kept++;
         }
         if (kept == 0) pro.append("-dontshrink\n");
     }
@@ -391,12 +386,11 @@ final class MinifiedJarPackager {
      */
     // Package-private for MinifiedJarPackagerTest.
     static void zipClasses(Path classesDir, Path jar) throws IOException {
+        List<Path> files = new ArrayList<>();
+        PathUtil.forEachRegularFile(classesDir, (file, attrs) -> files.add(file));
+        files.sort(Comparator.naturalOrder());
         try (OutputStream out = DeterministicZip.archiveStream(jar);
-                JarOutputStream jos = new JarOutputStream(out);
-                Stream<Path> walk = Files.walk(classesDir)) {
-            List<Path> files = walk.filter(Files::isRegularFile)
-                    .sorted(Comparator.naturalOrder())
-                    .toList();
+                JarOutputStream jos = new JarOutputStream(out)) {
             for (Path file : files) {
                 String name = classesDir.relativize(file).toString().replace('\\', '/');
                 if (!TreeContent.isContent(name)) continue;

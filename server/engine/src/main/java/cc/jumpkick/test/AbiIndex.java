@@ -12,6 +12,7 @@ import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.SortedMap;
 import java.util.TreeMap;
@@ -78,16 +79,15 @@ public final class AbiIndex {
     private static ClassAbi.Fingerprint fingerprintWithNested(Path classFile, String fqc) throws IOException {
         String simple = fqc.substring(fqc.lastIndexOf('.') + 1);
         SortedMap<String, byte[]> nested = new TreeMap<>();
-        try (Stream<Path> siblings = Files.list(classFile.getParent())) {
-            for (Path p : siblings.toList()) {
-                String name = p.getFileName().toString();
-                if (!name.startsWith(simple + "$") || !name.endsWith(".class")) continue;
-                String stem = name.substring(0, name.length() - ".class".length());
-                String suffix = stem.substring(simple.length());
-                if (!isNamedNested(suffix)) continue;
+        PathUtil.forEachChild(Objects.requireNonNull(classFile.getParent()), (p, attrs) -> {
+            String name = p.getFileName().toString();
+            if (!name.startsWith(simple + "$") || !name.endsWith(".class")) return true;
+            String stem = name.substring(0, name.length() - ".class".length());
+            if (isNamedNested(stem.substring(simple.length()))) {
                 nested.put(stem.substring(simple.length() + 1), Files.readAllBytes(p));
             }
-        }
+            return true;
+        });
         byte[] owner = Files.readAllBytes(classFile);
         return nested.isEmpty() ? ClassAbi.of(owner) : ClassAbi.of(owner, nested);
     }

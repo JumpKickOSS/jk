@@ -48,7 +48,6 @@ import cc.jumpkick.wire.protocol.CacheInventoryAck;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
@@ -124,44 +123,34 @@ public final class CacheInventoryOps {
         Set<String> seenShas = new HashSet<>();
         Path keysDir = ActionTree.KEYS.under(CacheTree.ACTIONS.under(cacheRoot));
         if (Files.isDirectory(keysDir)) {
-            try (DirectoryStream<Path> stream = Files.newDirectoryStream(keysDir)) {
-                for (Path keyFile : stream) {
-                    if (!Files.isRegularFile(keyFile)) continue;
-                    String body;
+            for (Path keyFile : PathUtil.childFiles(keysDir)) {
+                String body;
+                try {
+                    body = Files.readString(keyFile, StandardCharsets.UTF_8);
+                } catch (IOException unreadable) {
+                    continue;
+                }
+                String taskName = taskNameFromKeyBody(body);
+                long[] bucket = bucketCounters(
+                        taskName, classFiles, testResults, normalJars, shadowJars, minifiedJars, nativeBins, ociImages);
+                // Unbucketed keys must not consume seenShas: a blob shared with a bucketed
+                // key would then count (or not) by directory-stream order.
+                if (bucket == null) continue;
+                if (bucket == testResults) {
+                    testResults[0]++;
                     try {
-                        body = Files.readString(keyFile, StandardCharsets.UTF_8);
-                    } catch (IOException unreadable) {
-                        continue;
+                        testResults[1] += Files.size(keyFile);
+                    } catch (IOException ignored) {
                     }
-                    String taskName = taskNameFromKeyBody(body);
-                    long[] bucket = bucketCounters(
-                            taskName,
-                            classFiles,
-                            testResults,
-                            normalJars,
-                            shadowJars,
-                            minifiedJars,
-                            nativeBins,
-                            ociImages);
-                    // Unbucketed keys must not consume seenShas: a blob shared with a bucketed
-                    // key would then count (or not) by directory-stream order.
-                    if (bucket == null) continue;
-                    if (bucket == testResults) {
-                        testResults[0]++;
-                        try {
-                            testResults[1] += Files.size(keyFile);
-                        } catch (IOException ignored) {
-                        }
-                    }
-                    for (String sha : outputShasFromKeyBody(body)) {
-                        if (!seenShas.add(sha)) continue;
-                        Path blob = cas.pathFor(sha);
-                        if (!Files.isRegularFile(blob)) continue;
-                        bucket[0]++;
-                        try {
-                            bucket[1] += Files.size(blob);
-                        } catch (IOException ignored) {
-                        }
+                }
+                for (String sha : outputShasFromKeyBody(body)) {
+                    if (!seenShas.add(sha)) continue;
+                    Path blob = cas.pathFor(sha);
+                    if (!Files.isRegularFile(blob)) continue;
+                    bucket[0]++;
+                    try {
+                        bucket[1] += Files.size(blob);
+                    } catch (IOException ignored) {
                     }
                 }
             }

@@ -4,6 +4,7 @@ package cc.jumpkick.runtime.base;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.AtomicWrites;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.VersionSelector;
@@ -150,13 +151,12 @@ public final class ScalaToolResolver {
     /** Delete any {@code .jar} in {@code libDir} that is not part of the freshly resolved closure. */
     private static void pruneOrphanJars(Path libDir, List<Path> keep) throws IOException {
         Set<Path> wanted = new HashSet<>(keep);
-        try (var stream = Files.list(libDir)) {
-            for (Path p : (Iterable<Path>) stream::iterator) {
-                if (p.getFileName().toString().endsWith(".jar") && !wanted.contains(p)) {
-                    Files.deleteIfExists(p);
-                }
-            }
-        }
+        List<Path> orphans = new ArrayList<>();
+        PathUtil.forEachChild(libDir, (p, attrs) -> {
+            if (p.getFileName().toString().endsWith(".jar") && !wanted.contains(p)) orphans.add(p);
+            return true;
+        });
+        for (Path p : orphans) Files.deleteIfExists(p);
     }
 
     /** Path of the version-matched {@code scala3-sbt-bridge} jar (named copy under {@code tools/scala/}). */
@@ -231,11 +231,8 @@ public final class ScalaToolResolver {
     private static @Nullable List<Path> listLibJars(Path libDir) throws IOException {
         if (!Files.isDirectory(libDir)) return null;
         List<Path> jars = new ArrayList<>();
-        try (var stream = Files.list(libDir)) {
-            stream.filter(p -> p.getFileName().toString().endsWith(".jar"))
-                    .sorted()
-                    .forEach(jars::add);
-        }
+        PathUtil.forEachChild(libDir, (p, attrs) -> !p.getFileName().toString().endsWith(".jar") || jars.add(p));
+        jars.sort(null);
         return jars.isEmpty() ? null : jars;
     }
 

@@ -23,7 +23,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.stream.Stream;
 import org.jspecify.annotations.Nullable;
 import org.w3c.dom.Element;
 
@@ -247,17 +246,15 @@ final class SourceProjectBuilder {
             throw new IOException(projectDir + ": no output directory " + libsDir + " after build");
         }
         List<Path> candidates = new ArrayList<>();
-        try (Stream<Path> entries = Files.list(libsDir)) {
-            entries.filter(Files::isRegularFile).forEach(p -> {
-                String n = p.getFileName().toString();
-                if (n.endsWith(".jar")
-                        && !n.endsWith("-sources.jar")
-                        && !n.endsWith("-javadoc.jar")
-                        && !n.endsWith("-plain.jar")) {
-                    candidates.add(p);
-                }
-            });
-        }
+        PathUtil.childFiles(libsDir).forEach(p -> {
+            String n = p.getFileName().toString();
+            if (n.endsWith(".jar")
+                    && !n.endsWith("-sources.jar")
+                    && !n.endsWith("-javadoc.jar")
+                    && !n.endsWith("-plain.jar")) {
+                candidates.add(p);
+            }
+        });
         if (candidates.isEmpty()) {
             throw new IOException(projectDir + ": no jar produced in " + libsDir);
         }

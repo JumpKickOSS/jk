@@ -3,15 +3,14 @@ package cc.jumpkick.command.system;
 
 import cc.jumpkick.config.BuildLogicStems;
 import cc.jumpkick.config.BuildLogicToml;
+import cc.jumpkick.host.PathUtil;
 import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
-import java.util.stream.Stream;
 
 /**
  * Offline discovery of project build-logic task names for {@code jk tasks}. Scans the directory
@@ -28,8 +27,8 @@ final class BuildLogicTaskScan {
         if (logic.isEmpty()) return List.of();
         Path logicDir = logic.get().dir();
         Set<String> names = new LinkedHashSet<>();
-        try (Stream<Path> top = Files.list(logicDir)) {
-            List<Path> files = top.filter(Files::isRegularFile).toList();
+        try {
+            List<Path> files = PathUtil.childFiles(logicDir);
             // .kts wins the same stem: collect kts names first, then groovy that isn't claimed.
             Set<String> kts = new LinkedHashSet<>();
             for (Path p : files) {

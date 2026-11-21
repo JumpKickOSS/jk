@@ -328,11 +328,11 @@ public final class CachePlans {
     public static void purgeActionCache(Path root) throws IOException {
         if (!Files.isDirectory(root)) return;
         Path held = CacheTree.PRUNE_LOCK.under(root);
-        try (var entries = Files.list(root)) {
-            for (Path entry : entries.toList()) {
-                if (entry.equals(held)) continue;
-                PathUtil.deleteRecursivelyOrThrow(entry);
-            }
+        List<Path> entries = new ArrayList<>();
+        PathUtil.forEachChild(root, (entry, attrs) -> entries.add(entry));
+        for (Path entry : entries) {
+            if (entry.equals(held)) continue;
+            PathUtil.deleteRecursivelyOrThrow(entry);
         }
     }
 
@@ -518,13 +518,12 @@ public final class CachePlans {
                                 m.resolve(BuildLayout.TARGET).resolve(".jk").resolve("preflight"),
                                 PreflightMemo.durablePreflightDir(m))) {
                             if (!Files.isDirectory(preflight)) continue;
-                            try (var files = Files.list(preflight)) {
-                                for (Path f : (Iterable<Path>) files::iterator) {
-                                    if (!Files.isRegularFile(f)) continue;
-                                    acc.file(Files.size(f));
-                                    if (!dryRun) Files.deleteIfExists(f);
-                                }
-                            }
+                            PathUtil.forEachChild(preflight, (f, attrs) -> {
+                                if (!attrs.isRegularFile()) return true;
+                                acc.file(attrs.size());
+                                if (!dryRun) Files.deleteIfExists(f);
+                                return true;
+                            });
                         }
                     }
                     ctx.put(FILES, acc.files.sum());

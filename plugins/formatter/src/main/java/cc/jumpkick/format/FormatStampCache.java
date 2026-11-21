@@ -235,14 +235,14 @@ final class FormatStampCache {
      * workspace formats with, so two workers sweeping concurrently cannot delete each other's.
      */
     private static void sweepResidue(Path root) {
-        try (var children = Files.list(root)) {
-            for (Path p : (Iterable<Path>) children::iterator) {
+        try {
+            List<Path> residue = new ArrayList<>();
+            PathUtil.forEachChild(root, (p, attrs) -> {
                 String name = p.getFileName().toString();
-                if (Files.isRegularFile(p) && (name.endsWith(INDEX_SUFFIX) || name.endsWith(TIMEOUT_SUFFIX))) {
-                    continue;
-                }
-                PathUtil.deleteRecursively(p);
-            }
+                boolean index = name.endsWith(INDEX_SUFFIX) || name.endsWith(TIMEOUT_SUFFIX);
+                return attrs.isRegularFile() && index || residue.add(p);
+            });
+            residue.forEach(PathUtil::deleteRecursively);
         } catch (IOException | RuntimeException ignored) {
             // Housekeeping, never load-bearing.
         }

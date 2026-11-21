@@ -35,7 +35,6 @@ import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Locale;
@@ -44,7 +43,6 @@ import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
-import java.util.stream.Stream;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -418,21 +416,18 @@ public final class BuildLogicSupport {
      */
     static void rejectCompiledSources(Path logicDir) throws IOException {
         if (!Files.isDirectory(logicDir)) return;
-        try (Stream<Path> walk = Files.walk(logicDir)) {
-            List<Path> banned = walk.filter(Files::isRegularFile)
-                    .filter(p -> {
-                        String n = p.getFileName().toString();
-                        return n.endsWith(".java") || (n.endsWith(".kt") && !n.endsWith(".kts"));
-                    })
-                    .sorted()
-                    .toList();
-            if (!banned.isEmpty()) {
-                throw new IllegalStateException("[build] logic takes only .groovy and .kts stem scripts, not "
-                        + logicDir.relativize(banned.getFirst())
-                        + " under "
-                        + BuildLogicToml.shown(logicDir)
-                        + "/");
-            }
+        List<Path> banned = new ArrayList<>();
+        PathUtil.forEachRegularFile(logicDir, (p, attrs) -> {
+            String n = p.getFileName().toString();
+            if (n.endsWith(".java") || (n.endsWith(".kt") && !n.endsWith(".kts"))) banned.add(p);
+        });
+        banned.sort(null);
+        if (!banned.isEmpty()) {
+            throw new IllegalStateException("[build] logic takes only .groovy and .kts stem scripts, not "
+                    + logicDir.relativize(banned.getFirst())
+                    + " under "
+                    + BuildLogicToml.shown(logicDir)
+                    + "/");
         }
     }
 
@@ -613,11 +608,9 @@ public final class BuildLogicSupport {
 
     private static void deleteContents(Path dir) throws IOException {
         if (!Files.isDirectory(dir)) return;
-        try (Stream<Path> s = Files.walk(dir)) {
-            for (Path p : s.sorted(Comparator.reverseOrder()).toList()) {
-                if (!p.equals(dir)) Files.deleteIfExists(p);
-            }
-        }
+        List<Path> children = new ArrayList<>();
+        PathUtil.forEachChild(dir, (p, attrs) -> children.add(p));
+        for (Path p : children) PathUtil.deleteRecursivelyOrThrow(p);
     }
 
     /** A relative path as key material: forward slashes on every OS, so a key is the same everywhere. */

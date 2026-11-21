@@ -30,7 +30,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.Stream;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -520,9 +519,8 @@ final class HardwareProbe {
             Path artDir = root.resolve(groupPath).resolve(artifact);
             if (!Files.isDirectory(artDir)) continue;
             Path best = null;
-            try (Stream<Path> vers = Files.list(artDir)) {
-                for (Path verDir : (Iterable<Path>) vers::iterator) {
-                    if (!Files.isDirectory(verDir)) continue;
+            try {
+                for (Path verDir : PathUtil.childDirectories(artDir)) {
                     Path jar = verDir.resolve(artifact + "-" + verDir.getFileName() + ".jar");
                     if (!Files.isRegularFile(jar)) continue;
                     // Prefer highest path name lexicographically (rough newest for dotted versions).
@@ -693,8 +691,8 @@ final class HardwareProbe {
 
     private static void deleteContents(Path dir) throws IOException {
         if (!Files.isDirectory(dir)) return;
-        try (var stream = Files.list(dir)) {
-            for (Path p : (Iterable<Path>) stream::iterator) PathUtil.deleteRecursively(p);
-        }
+        List<Path> children = new ArrayList<>();
+        PathUtil.forEachChild(dir, (p, attrs) -> children.add(p));
+        for (Path p : children) PathUtil.deleteRecursively(p);
     }
 }

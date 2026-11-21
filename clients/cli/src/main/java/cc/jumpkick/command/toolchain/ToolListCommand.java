@@ -10,6 +10,7 @@ import cc.jumpkick.compat.BuildTool;
 import cc.jumpkick.compat.InstalledTool;
 import cc.jumpkick.compat.ToolRegistry;
 import cc.jumpkick.host.JkDirs;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Invocation;
@@ -60,9 +61,7 @@ public final class ToolListCommand implements CliCommand {
         List<List<String>> buildTools = buildToolRows();
         List<Path> envs = new ArrayList<>();
         if (Files.isDirectory(envsRoot)) {
-            try (var stream = Files.list(envsRoot)) {
-                stream.filter(Files::isDirectory).forEach(envs::add);
-            }
+            envs.addAll(PathUtil.childDirectories(envsRoot));
         }
         if (CliOutput.jsonMode()) {
             emitJson(buildTools, envs, binDir);

@@ -2,6 +2,7 @@
 package cc.jumpkick.testrunner;
 
 import cc.jumpkick.host.Errors;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.testrunner.env.EnvLookups;
@@ -508,11 +509,13 @@ final class LauncherPath {
     /** Top-level class files under {@code root}; a nested or anonymous class is part of its outer one. */
     private static long countClassFiles(Path root) {
         if (root == null || !Files.isDirectory(root)) return 0;
-        try (var stream = Files.walk(root)) {
-            return stream.filter(p -> p.getFileName() != null
-                            && p.getFileName().toString().endsWith(".class")
-                            && !p.getFileName().toString().contains("$"))
-                    .count();
+        try {
+            long[] count = {0};
+            PathUtil.forEachRegularFile(root, (p, attrs) -> {
+                String name = p.getFileName().toString();
+                if (name.endsWith(".class") && !name.contains("$")) count[0]++;
+            });
+            return count[0];
         } catch (Exception e) {
             return 0;
         }

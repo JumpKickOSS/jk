@@ -674,9 +674,9 @@ public final class TaskForecaster {
         Path catalog = classesDir.resolve(Path.of("cc", "jumpkick", "plugin", "manifest"));
         if (!Files.isDirectory(catalog)) return false;
         var builtIn = PluginTableRegistry.builtInManifestNames();
-        try (var stream = Files.list(catalog)) {
-            return stream.anyMatch(p ->
-                    Files.isRegularFile(p) && builtIn.contains(p.getFileName().toString()));
+        try {
+            return PathUtil.childFiles(catalog).stream()
+                    .anyMatch(p -> builtIn.contains(p.getFileName().toString()));
         } catch (IOException e) {
             return true;
         }

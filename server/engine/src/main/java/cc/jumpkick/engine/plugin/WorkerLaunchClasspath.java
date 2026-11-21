@@ -7,13 +7,13 @@ import cc.jumpkick.cache.ShelfManifest;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Log;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.repo.ArtifactMemo;
 import cc.jumpkick.repo.PomRuntimeClasspath;
 import cc.jumpkick.repo.RepoArtifactResolver;
 import cc.jumpkick.repo.RepoArtifactStore;
 import java.io.IOException;
-import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -247,11 +247,13 @@ public final class WorkerLaunchClasspath {
             out.add(classes);
             return;
         }
-        try (DirectoryStream<Path> stream = Files.newDirectoryStream(moduleTarget, "*.jar")) {
-            for (Path jar : stream) {
+        try {
+            PathUtil.forEachChild(moduleTarget, (jar, attrs) -> {
                 String n = jar.getFileName().toString();
-                if (n.startsWith(jarPrefix)) out.add(jar.toAbsolutePath().normalize());
-            }
+                if (n.startsWith(jarPrefix) && n.endsWith(".jar"))
+                    out.add(jar.toAbsolutePath().normalize());
+                return true;
+            });
         } catch (IOException ignored) {
             // Launch still fails clearly if PluginMain is missing.
         }

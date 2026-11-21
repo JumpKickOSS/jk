@@ -428,13 +428,8 @@ public final class VerifyBuildCommand implements CliCommand {
      */
     private static void touchLockfiles(Path root) throws IOException {
         FileTime now = FileTime.fromMillis(Clock.SYSTEM.millis());
-        try (var stream = Files.walk(root)) {
-            for (Path p : (Iterable<Path>) stream::iterator) {
-                if (p.getFileName() != null
-                        && ManifestPaths.LOCK.equals(p.getFileName().toString())) {
-                    Files.setLastModifiedTime(p, now);
-                }
-            }
-        }
+        PathUtil.forEachRegularFile(root, (p, attrs) -> {
+            if (ManifestPaths.LOCK.equals(p.getFileName().toString())) Files.setLastModifiedTime(p, now);
+        });
     }
 }

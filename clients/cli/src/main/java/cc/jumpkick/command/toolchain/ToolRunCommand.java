@@ -24,6 +24,7 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.WorkspaceModules;
 import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.host.JkDirs;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.jdk.JavaHomes;
@@ -328,15 +329,13 @@ public final class ToolRunCommand implements CliCommand {
         Path mainJava = dir.resolve("main.java");
         if (Files.isRegularFile(mainJava)) return runner.run(mainJava, args);
         List<Path> scripts;
-        try (var listing = Files.list(dir)) {
-            scripts = listing.filter(Files::isRegularFile)
-                    .filter(p -> {
-                        String n = p.getFileName().toString().toLowerCase(Locale.ROOT);
-                        return ToolTarget.scriptMode(n) != null;
-                    })
-                    .sorted()
-                    .toList();
-        }
+        scripts = PathUtil.childFiles(dir).stream()
+                .filter(p -> {
+                    String n = p.getFileName().toString().toLowerCase(Locale.ROOT);
+                    return ToolTarget.scriptMode(n) != null;
+                })
+                .sorted()
+                .toList();
         if (scripts.size() == 1) return runner.run(scripts.get(0), args);
         CommandWedge.printFail("Tool", "nothing to run in " + dir + ": no jk.toml, main.java or single script file");
         return Exit.USAGE;

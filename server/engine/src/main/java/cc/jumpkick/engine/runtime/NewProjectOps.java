@@ -217,11 +217,9 @@ public final class NewProjectOps {
     private static void cleanupFailedTarget(Path target, boolean existedBefore) {
         try {
             if (!Files.isDirectory(target)) return;
-            try (var children = Files.list(target)) {
-                for (Path child : children.toList()) {
-                    PathUtil.deleteRecursivelyOrThrow(child);
-                }
-            }
+            List<Path> children = new ArrayList<>();
+            PathUtil.forEachChild(target, (child, attrs) -> children.add(child));
+            for (Path child : children) PathUtil.deleteRecursivelyOrThrow(child);
             if (!existedBefore) Files.deleteIfExists(target);
         } catch (IOException ignored) {
             // cleanup is best-effort; don't mask the scaffold error
@@ -247,15 +245,15 @@ public final class NewProjectOps {
             // best-effort — see javadoc
             Log.debug("createWithIdentity: best-effort", e);
         }
-        int files = 0;
-        try (var walk = Files.walk(result.path())) {
-            files = (int) walk.filter(Files::isRegularFile).count();
+        int[] files = {0};
+        try {
+            PathUtil.forEachRegularFile(result.path(), (f, attrs) -> files[0]++);
         } catch (IOException ignored) {
             // count is advisory
         }
         AgentSetup.Report agents =
                 req.wired() ? NewProjectAgents.wire(result.path(), Objects.requireNonNull(req.agents())) : NO_AGENTS;
-        return new Created(result.path(), projectId, files, agents);
+        return new Created(result.path(), projectId, files[0], agents);
     }
 
     /**
@@ -274,12 +272,10 @@ public final class NewProjectOps {
             scaffoldInto(prep, probe);
             if (req.wired()) NewProjectAgents.wire(probe, Objects.requireNonNull(req.agents()));
             List<String> files = new ArrayList<>();
-            try (var walk = Files.walk(probe)) {
-                walk.filter(Files::isRegularFile)
-                        .map(f -> probe.relativize(f).toString().replace('\\', '/'))
-                        .sorted()
-                        .forEach(files::add);
-            }
+            PathUtil.forEachRegularFile(
+                    probe,
+                    (f, attrs) -> files.add(probe.relativize(f).toString().replace('\\', '/')));
+            files.sort(null);
             String manifest = Files.readString(probe.resolve(ManifestPaths.MANIFEST));
             return new Preview(prep.target().toString(), prep.template(), List.copyOf(files), manifest);
         } finally {
@@ -398,10 +394,8 @@ public final class NewProjectOps {
             throw new IllegalStateException("project already exists: " + target);
         }
         if (Files.isDirectory(target)) {
-            try (var stream = Files.list(target)) {
-                if (stream.findAny().isPresent()) {
-                    throw new IllegalStateException("target directory is not empty: " + target);
-                }
+            if (PathUtil.hasChild(target)) {
+                throw new IllegalStateException("target directory is not empty: " + target);
             }
         }
 
@@ -683,12 +677,10 @@ public final class NewProjectOps {
             }
         }
         if (isTemplateRoot(dest)) return dest.toAbsolutePath().normalize();
-        try (var stream = Files.list(dest)) {
-            Optional<Path> nested = stream.filter(Files::isDirectory)
-                    .filter(NewProjectOps::isTemplateRoot)
-                    .findFirst();
-            if (nested.isPresent()) return nested.get().toAbsolutePath().normalize();
-        }
+        Optional<Path> nested = PathUtil.childDirectories(dest).stream()
+                .filter(NewProjectOps::isTemplateRoot)
+                .findFirst();
+        if (nested.isPresent()) return nested.get().toAbsolutePath().normalize();
         throw new IOException("git clone succeeded but no Giter8 layout under " + dest);
     }
 
@@ -738,9 +730,7 @@ public final class NewProjectOps {
     }
 
     private static boolean isEmptyDir(Path dir) throws IOException {
-        try (var s = Files.list(dir)) {
-            return s.findAny().isEmpty();
-        }
+        return !PathUtil.hasChild(dir);
     }
 
     /** A template's directory: it holds a {@code .jk-template.toml}, a {@code default.properties} or {@code src/main/g8}. */

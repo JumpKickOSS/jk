@@ -5,6 +5,7 @@ import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.UserConfigParseException;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.Log;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.ManifestPaths;
@@ -173,14 +174,13 @@ public final class NativeEffort {
 
     private static long directorySize(Path dir, int depth) throws IOException {
         if (depth > 12) return 0;
-        long sum = 0;
-        try (var s = Files.list(dir)) {
-            for (Path c : s.toList()) {
-                if (Files.isRegularFile(c)) sum += Files.size(c);
-                else if (Files.isDirectory(c)) sum += directorySize(c, depth + 1);
-            }
-        }
-        return sum;
+        long[] sum = {0};
+        PathUtil.forEachChild(dir, (c, attrs) -> {
+            if (attrs.isRegularFile()) sum[0] += attrs.size();
+            else if (attrs.isDirectory()) sum[0] += directorySize(c, depth + 1);
+            return true;
+        });
+        return sum[0];
     }
 
     /**

@@ -6,6 +6,7 @@ import cc.jumpkick.cli.tui.Confirm;
 import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.model.command.Exit;
@@ -239,8 +240,6 @@ final class UrlToolSource {
     }
 
     private static List<Path> topLevelFiles(Path dir) throws IOException {
-        try (var listing = Files.list(dir)) {
-            return listing.filter(Files::isRegularFile).sorted().toList();
-        }
+        return PathUtil.childFiles(dir).stream().sorted().toList();
     }
 }
