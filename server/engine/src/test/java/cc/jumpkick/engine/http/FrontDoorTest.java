@@ -351,7 +351,9 @@ class FrontDoorTest {
         assertThat(FrontDoor.Kind.of("GET", "/api/status")).isEqualTo(FrontDoor.Kind.API);
         assertThat(FrontDoor.Kind.of("GET", "/api")).isEqualTo(FrontDoor.Kind.API);
         assertThat(FrontDoor.Kind.of("GET", "/mcp")).isEqualTo(FrontDoor.Kind.MCP);
-        assertThat(FrontDoor.Kind.of("GET", "/report/t/r1/index.html")).isEqualTo(FrontDoor.Kind.REPORT);
+        assertThat(FrontDoor.Kind.of("GET", "/report/t/r1/index.html"))
+                .as("the report token in its path is the engine's to check")
+                .isEqualTo(FrontDoor.Kind.OPEN);
         assertThat(FrontDoor.Kind.of("GET", "/apix")).isEqualTo(FrontDoor.Kind.OPEN);
         assertThat(FrontDoor.Kind.of("GET", "/index.html")).isEqualTo(FrontDoor.Kind.OPEN);
         assertThat(FrontDoor.Kind.of("GET", "/api/identity"))
@@ -362,28 +364,22 @@ class FrontDoorTest {
     }
 
     @Test
-    void an_engines_location_is_put_back_under_its_prefix_with_the_browsers_token() {
-        URI sent = URI.create("http://127.0.0.1:8911/report/g/r1/");
+    void an_engines_location_is_put_back_under_its_prefix() {
+        URI sent = URI.create("http://127.0.0.1:8911/report/rt/r1/");
         String id = "caf4beecf11d";
-        assertThat(FrontDoor.location("/report/g/r1/a/index.html?x=1#top", sent, id, "f", "g"))
-                .isEqualTo("/engines/caf4beecf11d/report/f/r1/a/index.html?x=1#top");
-        assertThat(FrontDoor.location("http://127.0.0.1:8911/report/g/r1/a.html", sent, id, "f", "g"))
-                .isEqualTo("/engines/caf4beecf11d/report/f/r1/a.html");
-        assertThat(FrontDoor.location("./a/b%20c.html", sent, id, "f", "g"))
-                .isEqualTo("/engines/caf4beecf11d/report/f/r1/a/b%20c.html");
-        assertThat(FrontDoor.location("/#settings", sent, id, null, "g")).isEqualTo("/engines/caf4beecf11d/#settings");
-        assertThat(FrontDoor.location("/report/g/r1/", sent, id, null, "g"))
-                .as("no browser token to put in its place")
-                .isNull();
-        assertThat(FrontDoor.location("https://127.0.0.1:8911/x", sent, id, "f", "g"))
-                .isNull();
-        assertThat(FrontDoor.location("http://localhost:8911/x", sent, id, "f", "g"))
-                .isNull();
-        assertThat(FrontDoor.location("http://u@127.0.0.1:8911/x", sent, id, "f", "g"))
-                .isNull();
-        assertThat(FrontDoor.location("/../../x", sent, id, "f", "g")).isNull();
-        assertThat(FrontDoor.location("/a%2Fb", sent, id, "f", "g")).isNull();
-        assertThat(FrontDoor.location("not a uri", sent, id, "f", "g")).isNull();
+        assertThat(FrontDoor.location("/report/rt/r1/a/index.html?x=1#top", sent, id))
+                .isEqualTo("/engines/caf4beecf11d/report/rt/r1/a/index.html?x=1#top");
+        assertThat(FrontDoor.location("http://127.0.0.1:8911/report/rt/r1/a.html", sent, id))
+                .isEqualTo("/engines/caf4beecf11d/report/rt/r1/a.html");
+        assertThat(FrontDoor.location("./a/b%20c.html", sent, id))
+                .isEqualTo("/engines/caf4beecf11d/report/rt/r1/a/b%20c.html");
+        assertThat(FrontDoor.location("/#settings", sent, id)).isEqualTo("/engines/caf4beecf11d/#settings");
+        assertThat(FrontDoor.location("https://127.0.0.1:8911/x", sent, id)).isNull();
+        assertThat(FrontDoor.location("http://localhost:8911/x", sent, id)).isNull();
+        assertThat(FrontDoor.location("http://u@127.0.0.1:8911/x", sent, id)).isNull();
+        assertThat(FrontDoor.location("/../../x", sent, id)).isNull();
+        assertThat(FrontDoor.location("/a%2Fb", sent, id)).isNull();
+        assertThat(FrontDoor.location("not a uri", sent, id)).isNull();
         assertThat(FrontDoor.carries("/x?t=%67%2d%74", "g-t")).isTrue();
         assertThat(FrontDoor.carries("/x?t=a+b", "a b")).isFalse();
     }
@@ -399,11 +395,6 @@ class FrontDoorTest {
                 .as("no token asked for")
                 .isEqualTo("lastEventId=7");
         assertThat(FrontDoor.forwardedQuery(null, "g")).isNull();
-
-        assertThat(FrontDoor.reportPath("/report/front/r1/index.html", "g")).isEqualTo("/report/g/r1/index.html");
-        assertThat(FrontDoor.reportPath("/report/front/r1/index.html", null)).isNull();
-        assertThat(FrontDoor.reportToken("/report/front/r1/")).isEqualTo("front");
-        assertThat(FrontDoor.reportToken("/report/front")).isNull();
     }
 
     @Test

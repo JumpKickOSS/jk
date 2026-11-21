@@ -46,9 +46,10 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>The browser's token is checked here and never forwarded: a request that presented it reaches
  * the engine with that engine's token instead ({@code Authorization}, the event stream's
- * {@code ?access_token=}, a coverage report's path segment); one that did not, a page or an asset,
- * reaches it with no token at all. The path is forwarded as the browser sent it, so the engine sees
- * the path the front door gated.
+ * {@code ?access_token=}); one that did not, a page, an asset or a coverage report, reaches it with
+ * no token at all. The path is forwarded as the browser sent it, so the engine sees the path the
+ * front door gated, and a coverage report's path carries the report token the engine itself handed
+ * out ({@link HttpCoverageReport}), which the engine checks.
  */
 public final class FrontDoor {
 
@@ -387,9 +388,10 @@ public final class FrontDoor {
         API,
         /** The MCP endpoint: a bearer token, or the query's on its event-stream GET. */
         MCP,
-        /** {@code /report/<token>/…}: a coverage report, the token in the path; reads only. */
-        REPORT,
-        /** Pages, assets and the engine's identity: no token; reads only. */
+        /**
+         * Pages, assets, coverage reports (their report token in the path, which the engine checks)
+         * and the engine's identity: no token; reads only.
+         */
         OPEN;
 
         static Kind of(String method, String path) {
@@ -397,7 +399,6 @@ public final class FrontDoor {
             if (path.equals("/api/events")) return EVENTS;
             if (path.equals("/api") || path.startsWith("/api/")) return API;
             if (HttpAdmission.isMcpPath(path)) return MCP;
-            if (path.startsWith(HttpCoverageReport.PREFIX)) return REPORT;
             return OPEN;
         }
     }
@@ -422,7 +423,7 @@ public final class FrontDoor {
         }
         String method = exchange.getRequestMethod();
         boolean read = method.equals("GET") || method.equals("HEAD");
-        if (!read && (kind == Kind.OPEN || kind == Kind.REPORT)) {
+        if (!read && kind == Kind.OPEN) {
             exchange.getResponseHeaders().set("Allow", READS);
             HttpResponses.sendText(exchange, 405, "method not allowed\n");
             return;
@@ -440,11 +441,6 @@ public final class FrontDoor {
             return;
         }
         String path = target.rawPath();
-        if (kind == Kind.REPORT) path = reportPath(path, authorized ? pair.token() : null);
-        if (path == null) {
-            HttpResponses.sendText(exchange, 404, "not found\n");
-            return;
-        }
         boolean queryToken = authorized && (kind == Kind.EVENTS || kind == Kind.MCP);
         String query = forwardedQuery(exchange.getRequestURI().getRawQuery(), queryToken ? pair.token() : null);
         URI uri = URI.create("http://127.0.0.1:" + pair.port() + path + (query == null ? "" : "?" + query));
@@ -514,7 +510,6 @@ public final class FrontDoor {
                     "engine " + target.id() + " refused the token it paired with; it pairs again when it restarts\n");
             return;
         }
-        String browserToken = kind == Kind.REPORT ? reportToken(target.rawPath()) : null;
         Map<String, List<String>> headers = new LinkedHashMap<>();
         for (Map.Entry<String, List<String>> h : resp.headers().map().entrySet()) {
             String name = h.getKey();
@@ -522,7 +517,7 @@ public final class FrontDoor {
             if (RESPONSE_DROPPED.contains(lower) || name.startsWith(":")) continue;
             List<String> values = new ArrayList<>();
             for (String v : h.getValue()) {
-                String value = lower.equals("location") ? location(v, uri, target.id(), browserToken, pair.token()) : v;
+                String value = lower.equals("location") ? location(v, uri, target.id()) : v;
                 if (value == null || carries(value, pair.token())) {
                     resp.body().close();
                     HttpResponses.sendText(
@@ -672,12 +667,10 @@ public final class FrontDoor {
 
     /**
      * Upstream {@code location}, resolved against {@code upstream}, the request the proxy sent, as a
-     * path under engine {@code id}'s prefix, with a coverage report's token segment replaced by {@code
-     * browserToken}, the one the browser presented. Null when it leads off the engine's address, to a
-     * path the front door would refuse, or to the engine's token with no browser token to put in its place.
+     * path under engine {@code id}'s prefix. Null when it leads off the engine's address or to a path
+     * the front door would refuse.
      */
-    static @Nullable String location(
-            String location, URI upstream, String id, @Nullable String browserToken, String engineToken) {
+    static @Nullable String location(String location, URI upstream, String id) {
         URI to;
         try {
             to = upstream.resolve(new URI(location)).normalize();
@@ -692,12 +685,6 @@ public final class FrontDoor {
         }
         String path = to.getRawPath();
         if (path == null || !path.startsWith("/")) return null;
-        if (engineToken.equals(reportToken(path))) {
-            if (browserToken == null) return null;
-            path = HttpCoverageReport.PREFIX
-                    + browserToken
-                    + path.substring(HttpCoverageReport.PREFIX.length() + engineToken.length());
-        }
         String mapped = PREFIX + id + path;
         if (target(mapped) == null) return null;
         if (to.getRawQuery() != null) mapped += "?" + to.getRawQuery();
@@ -714,26 +701,6 @@ public final class FrontDoor {
         } catch (IllegalArgumentException malformed) {
             return false;
         }
-    }
-
-    /**
-     * {@code rawPath}, a coverage report's {@code /report/<token>/…}, with the token segment replaced
-     * by {@code token}; null when there is no token segment or the browser's did not authorize it.
-     */
-    static @Nullable String reportPath(String rawPath, @Nullable String token) {
-        if (token == null) return null;
-        String rest = rawPath.substring(HttpCoverageReport.PREFIX.length());
-        int slash = rest.indexOf('/');
-        if (slash <= 0) return null;
-        return HttpCoverageReport.PREFIX + URLEncoder.encode(token, StandardCharsets.UTF_8) + rest.substring(slash);
-    }
-
-    /** The token segment of a coverage report's path; null when there is none. */
-    static @Nullable String reportToken(String path) {
-        if (!path.startsWith(HttpCoverageReport.PREFIX)) return null;
-        String rest = path.substring(HttpCoverageReport.PREFIX.length());
-        int slash = rest.indexOf('/');
-        return slash <= 0 ? null : rest.substring(0, slash);
     }
 
     /**

@@ -50,6 +50,9 @@ class FrontDoorProxyTest extends HttpEngineServerHarness {
     private static final String GUEST_ID = "caf4beecf11d";
     private static final String GUEST_TOKEN = "guest-token-7f3a";
 
+    /** A report token the guest handed out; the guest checks it, never the front door. */
+    private static final String REPORT_TOKEN = "kq2z1c.guests-own-mac";
+
     @TempDir
     Path guests;
 
@@ -71,7 +74,7 @@ class FrontDoorProxyTest extends HttpEngineServerHarness {
     /** The {@code Authorization} of each identity request that reached the guest. */
     private final List<String> identityAsked = new CopyOnWriteArrayList<>();
 
-    /** Where the guest redirects a request for its report directory {@code /report/<token>/r1[/]}. */
+    /** Where the guest redirects a request for its report directory {@code /report/<report token>/r1[/]}. */
     private volatile String reportRedirect = "";
 
     /** Counted down when the guest's endless answer to {@code /api/flood} is cut off. */
@@ -113,7 +116,7 @@ class FrontDoorProxyTest extends HttpEngineServerHarness {
                     + " referer=" + ex.getRequestHeaders().getFirst("Referer")
                     + " cookie=" + ex.getRequestHeaders().getFirst("Cookie"));
             String path = ex.getRequestURI().getPath();
-            String dir = "/report/" + GUEST_TOKEN + "/r1";
+            String dir = "/report/" + REPORT_TOKEN + "/r1";
             if (path.equals(dir) || path.equals(dir + "/")) {
                 ex.getResponseHeaders().set("Location", reportRedirect.replace("<port>", "" + guestPort));
                 ex.sendResponseHeaders(302, -1);
@@ -273,7 +276,6 @@ class FrontDoorProxyTest extends HttpEngineServerHarness {
                 .as("a query token is taken for the event stream only")
                 .isEqualTo(401);
         assertThat(send(prefix() + "/mcp").statusCode()).isEqualTo(401);
-        assertThat(send(prefix() + "/report/wrong/r1/index.html").statusCode()).isEqualTo(401);
         assertThat(send(prefix() + "/api%3F/x").statusCode())
                 .as("a path the engine would route otherwise")
                 .isEqualTo(404);
@@ -295,13 +297,13 @@ class FrontDoorProxyTest extends HttpEngineServerHarness {
     }
 
     @Test
-    void a_coverage_report_takes_the_front_doors_token_in_its_path_and_reaches_the_engine_with_its_own()
-            throws Exception {
-        assertThat(send(prefix() + "/report/" + token() + "/r1/index.html").statusCode())
+    void a_coverage_report_reaches_the_engine_as_the_browser_sent_it_with_no_token_of_either_engine() throws Exception {
+        assertThat(send(prefix() + "/report/" + REPORT_TOKEN + "/r1/index.html", "Authorization", "Bearer " + token())
+                        .statusCode())
                 .isEqualTo(200);
         assertThat(reached)
                 .containsExactly(
-                        "GET /report/" + GUEST_TOKEN + "/r1/index.html q=null auth=null referer=null cookie=null");
+                        "GET /report/" + REPORT_TOKEN + "/r1/index.html q=null auth=null referer=null cookie=null");
     }
 
     @Test
@@ -412,20 +414,20 @@ class FrontDoorProxyTest extends HttpEngineServerHarness {
     }
 
     @Test
-    void a_report_redirect_lands_under_the_front_door_with_its_token_never_the_engines() throws Exception {
-        String entry = prefix() + "/report/" + token() + "/r1/lib/index.html";
+    void a_report_redirect_lands_under_the_front_door_with_its_report_token() throws Exception {
+        String entry = prefix() + "/report/" + REPORT_TOKEN + "/r1/lib/index.html";
         Map<String, String> forms = new LinkedHashMap<>();
-        forms.put("/report/" + GUEST_TOKEN + "/r1/lib/index.html", "/r1/");
-        forms.put("http://127.0.0.1:<port>/report/" + GUEST_TOKEN + "/r1/lib/index.html", "/r1/");
+        forms.put("/report/" + REPORT_TOKEN + "/r1/lib/index.html", "/r1/");
+        forms.put("http://127.0.0.1:<port>/report/" + REPORT_TOKEN + "/r1/lib/index.html", "/r1/");
         forms.put("./lib/index.html", "/r1/");
         forms.put("r1/lib/index.html", "/r1");
         for (Map.Entry<String, String> form : forms.entrySet()) {
             reportRedirect = form.getKey();
-            HttpResponse<String> r = send(prefix() + "/report/" + token() + form.getValue());
+            HttpResponse<String> r = send(prefix() + "/report/" + REPORT_TOKEN + form.getValue());
             assertThat(r.statusCode()).as(form.getKey()).isEqualTo(302);
             assertThat(r.headers().map().toString()).as(form.getKey()).doesNotContain(GUEST_TOKEN);
             String location = r.headers().firstValue("Location").orElseThrow();
-            assertThat(URI.create(baseUrl + prefix().substring(1) + "/report/" + token() + form.getValue())
+            assertThat(URI.create(baseUrl + prefix().substring(1) + "/report/" + REPORT_TOKEN + form.getValue())
                             .resolve(location)
                             .getRawPath())
                     .as(form.getKey())
@@ -435,7 +437,7 @@ class FrontDoorProxyTest extends HttpEngineServerHarness {
         assertThat(landed.statusCode())
                 .as("the front door takes the redirect's target")
                 .isEqualTo(200);
-        assertThat(reached).last().asString().startsWith("GET /report/" + GUEST_TOKEN + "/r1/lib/index.html ");
+        assertThat(reached).last().asString().startsWith("GET /report/" + REPORT_TOKEN + "/r1/lib/index.html ");
     }
 
     @Test
@@ -447,7 +449,7 @@ class FrontDoorProxyTest extends HttpEngineServerHarness {
                 "../../../../x",
                 "/report/" + GUEST_TOKEN)) {
             reportRedirect = off;
-            HttpResponse<String> r = send(prefix() + "/report/" + token() + "/r1/");
+            HttpResponse<String> r = send(prefix() + "/report/" + REPORT_TOKEN + "/r1/");
             assertThat(r.statusCode()).as(off).isEqualTo(502);
             assertThat(r.headers().firstValue("Location")).as(off).isEmpty();
             assertThat(r.body()).doesNotContain(GUEST_TOKEN);
@@ -460,7 +462,7 @@ class FrontDoorProxyTest extends HttpEngineServerHarness {
 
     @Test
     void a_page_or_report_takes_only_reads_and_is_refused_before_the_engine_is_asked() throws Exception {
-        for (String path : List.of(prefix() + "/index.html", prefix() + "/report/" + token() + "/r1/index.html")) {
+        for (String path : List.of(prefix() + "/index.html", prefix() + "/report/" + REPORT_TOKEN + "/r1/index.html")) {
             HttpResponse<String> r = client.send(
                     HttpRequest.newBuilder(URI.create(baseUrl + path.substring(1)))
                             .POST(HttpRequest.BodyPublishers.ofByteArray(new byte[1024]))

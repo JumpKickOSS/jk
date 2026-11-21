@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 
-import { at, token } from './api.js';
+import { at, get } from './api.js';
 
 // The Coverage block on a run: the record's `coverage[]` rows — one per module, the whole-report
 // LINE and BRANCH counters of its jacoco.xml — as the results file prints them under `## Coverage`:
 // a percentage with its counts, an `all` row for a workspace, and signed points against the
 // previous coverage run of the same project. The link opens the HTML report the engine serves
-// for this run (`/report/<token>/<id>/`), the token in the path so the report's own pages resolve.
+// for this run (`/report/<token>/<id>/`), the token in the path so the report's own pages resolve:
+// a report token the engine hands out for this run alone, which expires, never the bearer token.
 
 /** Covered as a percentage of covered + missed, one decimal: `85.2%`; `100.0%` of nothing. */
 export function pct(covered, missed) {
@@ -101,11 +102,19 @@ export function coverageChip(coverage) {
 }
 
 /**
- * The engine route for run `historyId`'s HTML report, the bearer `tok` in the path; under the front
- * door's prefix for another engine's run, where the front door puts that engine's token in its place.
+ * The engine route for run `historyId`'s HTML report, its report token `tok` in the path; under the
+ * front door's prefix for another engine's run, whose own token it is.
  */
 export function reportHref(historyId, tok) {
   return at('/report/') + encodeURIComponent(tok || '') + '/' + encodeURIComponent(historyId || '') + '/';
+}
+
+/** A report token this close to expiring is asked for again when the link is pointed at. */
+export const REPORT_TOKEN_SLACK_MS = 60 * 60 * 1000;
+
+/** Run `historyId`'s report token from the engine: `{ token, expiresAt }`, epoch millis. */
+export function reportToken(historyId, getImpl = get) {
+  return getImpl('/api/report-token?id=' + encodeURIComponent(historyId));
 }
 
 export const RunCoverage = {
@@ -114,7 +123,7 @@ export const RunCoverage = {
     previous: { type: Object, default: null },
     historyId: { type: String, default: null },
   },
-  data: () => ({ open: false }),
+  data: () => ({ open: false, link: null }),
   template: `
     <div v-if="summary" class="run-coverage" :class="{ open }">
       <div class="run-coverage-strip">
@@ -125,6 +134,7 @@ export const RunCoverage = {
           <span v-if="summary.since" class="run-coverage-since">{{ summary.since }}</span>
         </button>
         <a v-if="href" class="run-coverage-link" :href="href" target="_blank" rel="noopener"
+           @pointerenter="refreshLink()" @focus="refreshLink()"
            data-tip="the JaCoCo HTML report of this run">HTML report</a>
       </div>
       <table v-if="open" class="stats run-coverage-table">
@@ -150,7 +160,34 @@ export const RunCoverage = {
       return coverageSummary(this.coverage, this.previous);
     },
     href() {
-      return this.historyId && token() ? reportHref(this.historyId, token()) : null;
+      const link = this.link;
+      return link && link.id === this.historyId ? reportHref(link.id, link.token) : null;
+    },
+  },
+  watch: {
+    historyId: {
+      handler() {
+        this.refreshLink();
+      },
+      immediate: true,
+    },
+  },
+  methods: {
+    /** Asks for this run's report token unless the one in hand is for it and not close to expiring. */
+    async refreshLink(now = Date.now(), getImpl = get) {
+      const id = this.historyId;
+      if (!id) {
+        this.link = null;
+        return;
+      }
+      const link = this.link;
+      if (link && link.id === id && link.expiresAt - now > REPORT_TOKEN_SLACK_MS) return;
+      try {
+        const r = await reportToken(id, getImpl);
+        if (this.historyId === id) this.link = { id, token: r.token, expiresAt: r.expiresAt };
+      } catch {
+        // No report for this run (or the engine is gone): no link.
+      }
     },
   },
 };

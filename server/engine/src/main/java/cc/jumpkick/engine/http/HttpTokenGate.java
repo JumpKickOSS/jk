@@ -8,7 +8,12 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.GeneralSecurityException;
 import java.security.MessageDigest;
+import java.time.Duration;
+import java.util.Base64;
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -18,9 +23,13 @@ import org.jspecify.annotations.Nullable;
  * only for the {@code GET} shapes an {@code EventSource} can send, because it cannot set headers;
  * every other shape presents the {@code Bearer} header so tokens stay out of shell history and proxy
  * logs. Static assets are never gated: the dashboard shell has no secrets and must be able to show
- * the authorization dialog.
+ * the authorization dialog. A coverage report's path carries a {@linkplain #reportToken report token}
+ * instead: one run's report, read only, for {@link #REPORT_TOKEN_LIFETIME}.
  */
 final class HttpTokenGate {
+
+    /** How long a report token opens its run's report; an open report tab works a working day. */
+    static final Duration REPORT_TOKEN_LIFETIME = Duration.ofHours(8);
 
     private final Path tokenFile;
     private byte @Nullable [] token;
@@ -120,5 +129,46 @@ final class HttpTokenGate {
         if (presented == null || presented.isEmpty()) return false;
         // Constant-time, immune to length/prefix probing.
         return MessageDigest.isEqual(presented.getBytes(StandardCharsets.UTF_8), token);
+    }
+
+    /**
+     * A token that opens run {@code runId}'s coverage report, and nothing else, until {@code
+     * expiresAtSecond} (epoch seconds): {@code <expiry, base 36>.<MAC, base64url>}, the MAC an
+     * HMAC-SHA256 of the run and the expiry keyed by the bearer token, so nothing is stored and
+     * rotating the bearer token voids every one. Null before {@link #loadOrMint}.
+     */
+    @Nullable
+    String reportToken(String runId, long expiresAtSecond) {
+        byte[] key = token;
+        if (key == null) return null;
+        String expiry = Long.toString(expiresAtSecond, 36);
+        return expiry + "." + Base64.getUrlEncoder().withoutPadding().encodeToString(reportMac(key, runId, expiry));
+    }
+
+    /** Whether {@code presented} is a {@link #reportToken} for {@code runId} that has not expired at {@code nowMillis}. */
+    boolean reportTokenValid(@Nullable String presented, String runId, long nowMillis) {
+        byte[] key = token;
+        if (key == null || presented == null) return false;
+        int dot = presented.indexOf('.');
+        if (dot <= 0) return false;
+        String expiry = presented.substring(0, dot);
+        byte[] mac;
+        try {
+            if (Long.parseLong(expiry, 36) <= nowMillis / 1000) return false;
+            mac = Base64.getUrlDecoder().decode(presented.substring(dot + 1));
+        } catch (IllegalArgumentException malformed) {
+            return false;
+        }
+        return MessageDigest.isEqual(mac, reportMac(key, runId, expiry));
+    }
+
+    private static byte[] reportMac(byte[] key, String runId, String expiry) {
+        try {
+            Mac mac = Mac.getInstance("HmacSHA256");
+            mac.init(new SecretKeySpec(key, "HmacSHA256"));
+            return mac.doFinal(("jk coverage report\n" + runId + "\n" + expiry).getBytes(StandardCharsets.UTF_8));
+        } catch (GeneralSecurityException e) {
+            throw new IllegalStateException("HmacSHA256 is unavailable", e);
+        }
     }
 }

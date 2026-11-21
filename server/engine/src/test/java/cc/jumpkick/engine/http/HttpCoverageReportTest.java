@@ -18,10 +18,11 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 /**
- * The run's coverage HTML is reachable from the dashboard: the tokenized entry link redirects to
- * the report's page, the report's own relative links resolve under the same route, anything
- * outside the report directories is refused (by real path, so a planted symlink does not leak its
- * target), an oversized file is a 413, and a bad token is a 401.
+ * The run's coverage HTML is reachable from the dashboard: the entry link, carrying the run's report
+ * token, redirects to the report's page, the report's own relative links resolve under the same
+ * route, anything outside the report directories is refused (by real path, so a planted symlink
+ * does not leak its target), an oversized file is a 413, and a bad token, the bearer token
+ * included, is a 403.
  */
 @Tag("integration")
 class HttpCoverageReportTest extends HttpEngineServerHarness {
@@ -35,19 +36,20 @@ class HttpCoverageReportTest extends HttpEngineServerHarness {
         Files.writeString(report.resolve("jacoco-resources/report.css"), "body{}");
         Files.writeString(ws.resolve("lib/target/secret.txt"), "not a report");
         String id = finished(testJournal(), ws, List.of(module(ws, "lib", 120, 30)));
+        String rt = reportToken(id);
 
-        HttpResponse<String> entry = fetch("/report/" + token() + "/" + id + "/");
+        HttpResponse<String> entry = fetch("/report/" + rt + "/" + id + "/");
         assertThat(entry.statusCode()).isEqualTo(302);
         assertThat(entry.headers().firstValue("Location"))
                 .as("relative, so the token never rides in a header")
                 .contains("./lib/target/site/jacoco/index.html");
-        HttpResponse<String> bare = fetch("/report/" + token() + "/" + id);
+        HttpResponse<String> bare = fetch("/report/" + rt + "/" + id);
         assertThat(bare.statusCode()).isEqualTo(302);
-        assertThat(landing("/report/" + token() + "/" + id, bare))
-                .isEqualTo("/report/" + token() + "/" + id + "/lib/target/site/jacoco/index.html");
-        assertThat(bare.headers().map().toString()).doesNotContain(token());
+        assertThat(landing("/report/" + rt + "/" + id, bare))
+                .isEqualTo("/report/" + rt + "/" + id + "/lib/target/site/jacoco/index.html");
+        assertThat(bare.headers().map().toString()).doesNotContain(rt);
 
-        HttpResponse<String> page = fetch("/report/" + token() + "/" + id + "/lib/target/site/jacoco/index.html");
+        HttpResponse<String> page = fetch("/report/" + rt + "/" + id + "/lib/target/site/jacoco/index.html");
         assertThat(page.statusCode()).isEqualTo(200);
         assertThat(page.headers().firstValue("Content-Type")).contains("text/html; charset=utf-8");
         assertThat(page.headers().firstValue("Content-Security-Policy")).contains("sandbox");
@@ -55,18 +57,41 @@ class HttpCoverageReportTest extends HttpEngineServerHarness {
         assertThat(page.body()).contains("jacoco-resources/report.css");
 
         HttpResponse<String> css =
-                fetch("/report/" + token() + "/" + id + "/lib/target/site/jacoco/jacoco-resources/report.css");
+                fetch("/report/" + rt + "/" + id + "/lib/target/site/jacoco/jacoco-resources/report.css");
         assertThat(css.statusCode()).isEqualTo(200);
         assertThat(css.headers().firstValue("Content-Type")).contains("text/css; charset=utf-8");
 
-        assertThat(fetch("/report/" + token() + "/" + id + "/lib/target/secret.txt")
+        assertThat(fetch("/report/" + rt + "/" + id + "/lib/target/secret.txt").statusCode())
+                .isEqualTo(404);
+        assertThat(fetch("/report/" + rt + "/" + id + "/lib/target/site/jacoco/../secret.txt")
                         .statusCode())
                 .isEqualTo(404);
-        assertThat(fetch("/report/" + token() + "/" + id + "/lib/target/site/jacoco/../secret.txt")
+        assertThat(fetch("/report/nope/" + id + "/").statusCode()).isEqualTo(403);
+        assertThat(fetch("/report/" + rt + "/no-such-run/").statusCode())
+                .as("a report token opens its own run alone")
+                .isEqualTo(403);
+    }
+
+    @Test
+    void the_bearer_token_opens_no_report_and_a_report_token_is_handed_out_only_for_a_run_with_one() throws Exception {
+        Path ws = Files.createDirectories(stateDir.resolve("ws5"));
+        Path report = Files.createDirectories(ws.resolve("lib/target/site/jacoco"));
+        Files.writeString(report.resolve("index.html"), "<html>lib</html>");
+        String id = finished(testJournal(), ws, List.of(module(ws, "lib", 1, 1)));
+
+        assertThat(fetch("/report/" + token() + "/" + id + "/lib/target/site/jacoco/index.html")
                         .statusCode())
+                .as("a URL in the browser's history is no credential for the engine")
+                .isEqualTo(403);
+        HttpResponse<String> minted = get(HttpCoverageReport.TOKEN + "?id=" + id);
+        assertThat(minted.statusCode()).isEqualTo(200);
+        assertThat(minted.body()).contains("\"expiresAt\":").doesNotContain(token());
+        assertThat(get(HttpCoverageReport.TOKEN + "?id=" + id, "Authorization", "Bearer wrong")
+                        .statusCode())
+                .isEqualTo(401);
+        assertThat(get(HttpCoverageReport.TOKEN + "?id=no-such-run").statusCode())
                 .isEqualTo(404);
-        assertThat(fetch("/report/nope/" + id + "/").statusCode()).isEqualTo(401);
-        assertThat(fetch("/report/" + token() + "/no-such-run/").statusCode()).isEqualTo(404);
+        assertThat(get(HttpCoverageReport.TOKEN).statusCode()).isEqualTo(400);
     }
 
     @Test
@@ -79,14 +104,15 @@ class HttpCoverageReportTest extends HttpEngineServerHarness {
         Path rollup = Files.createDirectories(ws.resolve("target/site/jacoco"));
         Files.writeString(rollup.resolve("index.html"), "<html>roll-up</html>");
         String id = finished(testJournal(), ws, List.of(module(ws, "core", 10, 10), module(ws, "app", 5, 5)));
+        String rt = reportToken(id);
 
-        HttpResponse<String> entry = fetch("/report/" + token() + "/" + id + "/");
-        assertThat(landing("/report/" + token() + "/" + id + "/", entry))
-                .isEqualTo("/report/" + token() + "/" + id + "/target/site/jacoco/index.html");
-        assertThat(fetch("/report/" + token() + "/" + id + "/target/site/jacoco/index.html")
+        HttpResponse<String> entry = fetch("/report/" + rt + "/" + id + "/");
+        assertThat(landing("/report/" + rt + "/" + id + "/", entry))
+                .isEqualTo("/report/" + rt + "/" + id + "/target/site/jacoco/index.html");
+        assertThat(fetch("/report/" + rt + "/" + id + "/target/site/jacoco/index.html")
                         .body())
                 .contains("roll-up");
-        assertThat(fetch("/report/" + token() + "/" + id + "/app/target/site/jacoco/index.html")
+        assertThat(fetch("/report/" + rt + "/" + id + "/app/target/site/jacoco/index.html")
                         .body())
                 .contains("app");
     }
@@ -99,11 +125,12 @@ class HttpCoverageReportTest extends HttpEngineServerHarness {
         Path secret = Files.writeString(ws.resolve("lib/target/secret.txt"), "not a report");
         Symlinks.create(report.resolve("leak.txt"), secret);
         String id = finished(testJournal(), ws, List.of(module(ws, "lib", 1, 1)));
+        String rt = reportToken(id);
 
-        assertThat(fetch("/report/" + token() + "/" + id + "/lib/target/site/jacoco/leak.txt")
+        assertThat(fetch("/report/" + rt + "/" + id + "/lib/target/site/jacoco/leak.txt")
                         .statusCode())
                 .isEqualTo(404);
-        assertThat(fetch("/report/" + token() + "/" + id + "/lib/target/site/jacoco/index.html")
+        assertThat(fetch("/report/" + rt + "/" + id + "/lib/target/site/jacoco/index.html")
                         .statusCode())
                 .isEqualTo(200);
     }
@@ -115,8 +142,9 @@ class HttpCoverageReportTest extends HttpEngineServerHarness {
         Files.writeString(report.resolve("index.html"), "<html>lib</html>");
         Files.write(report.resolve("huge.html"), new byte[(int) HttpCoverageReport.MAX_FILE_BYTES + 1]);
         String id = finished(testJournal(), ws, List.of(module(ws, "lib", 1, 1)));
+        String rt = reportToken(id);
 
-        assertThat(fetch("/report/" + token() + "/" + id + "/lib/target/site/jacoco/huge.html")
+        assertThat(fetch("/report/" + rt + "/" + id + "/lib/target/site/jacoco/huge.html")
                         .statusCode())
                 .isEqualTo(413);
     }

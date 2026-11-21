@@ -65,7 +65,7 @@ class HttpNoSniffTest extends HttpEngineServerHarness {
                 .followRedirects(HttpClient.Redirect.NEVER)
                 .build()
                 .send(
-                        HttpRequest.newBuilder(URI.create(baseUrl + "report/" + token() + "/" + id + "/"))
+                        HttpRequest.newBuilder(URI.create(baseUrl + "report/" + reportToken(id) + "/" + id + "/"))
                                 .build(),
                         HttpResponse.BodyHandlers.ofString());
         assertThat(redirect.statusCode()).isEqualTo(302);

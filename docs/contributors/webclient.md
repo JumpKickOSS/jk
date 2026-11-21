@@ -31,7 +31,7 @@ stopped providing.
 | `strip.js` | A run as one line: what it is doing, one cell per module, and which modules the run page opens (failed, slow) |
 | `status.js` | The Status view: the `/api/{status,cache,metrics,log,config}` reads and its meters |
 | `projects.js` | The Projects tab and Project page: history records grouped per project, and the run the page follows or pins |
-| `coverage.js` | `<run-coverage>`: the Coverage block on the focused run — the record's `coverage[]` rows, deltas against the previous coverage run, the tokenized `/report/<token>/<id>/` link |
+| `coverage.js` | `<run-coverage>`: the Coverage block on the focused run — the record's `coverage[]` rows, deltas against the previous coverage run, the `/report/<report token>/<id>/` link |
 | `delta.js` | `<run-delta>`: the iteration strip — a record's `delta` as chips with the rows behind them |
 | `sessions.js` | Who asked: origin labels, the followed-or-pinned run, the pin route |
 | `wizard.js` | New Project and the directory browser its path fields open |
@@ -331,9 +331,11 @@ Under the header the panel shows the iteration strip (`delta.js`) and, for a run
 coverage, the Coverage block (`coverage.js`): `historyCard` carries the record's `coverage[]` onto
 the card (`seedFromHistory` copies it onto a live card on reconcile, as it does `delta`), and
 `projectRun` supplies `previousCoverage` — the nearest older record of the project with non-empty
-coverage — as the baseline. The **HTML report** link is `/report/<token>/<id>/`, the bearer token
-in the path: a report is a tree of pages the browser follows by relative link, and a link carries
-neither a header nor a query string into the next page. The engine redirects the bare run URL to the
+coverage — as the baseline. The **HTML report** link is `/report/<report token>/<id>/`, a token in
+the path because a report is a tree of pages the browser follows by relative link, and a link carries
+neither a header nor a query string into the next page. It is never the bearer token: the component
+asks `GET /api/report-token?id=<id>` for one that opens that run's report alone and expires, and asks
+again when the link is pointed at or focused within an hour of its expiry. The engine redirects the bare run URL to the
 report's entry page and serves only files under the report directories the record names, each
 under `Content-Security-Policy: sandbox` ([HTTP](http.md#get-reporttokenidpath)).
 

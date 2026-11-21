@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.http;
 
+import cc.jumpkick.engine.api.JsonOut;
 import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.engine.journal.BuildRecord;
 import cc.jumpkick.engine.journal.CoverageRollup;
+import cc.jumpkick.host.time.Clock;
 import com.sun.net.httpserver.HttpExchange;
 import java.io.IOException;
 import java.net.URI;
@@ -22,17 +24,23 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * {@code GET /report/<token>/<run id>/<path>} — a run's coverage HTML report, served from the
- * checkout the run measured. The bearer token rides in the path because a report is a tree of
- * pages the browser follows by relative link, and a link can carry neither a header nor a query
- * string into the next page. An empty path redirects to the report's entry page: the one module's
- * {@code index.html}, or the workspace roll-up. Only files whose real path lies under a report
- * directory the record names are served, streamed under {@link #MAX_FILE_BYTES}, each in a
- * sandboxed opaque origin so a report cannot script the dashboard.
+ * checkout the run measured. A token rides in the path because a report is a tree of pages the
+ * browser follows by relative link, and a link can carry neither a header nor a query string into
+ * the next page; so that a URL in the browser's history is no credential for the engine, it is a
+ * {@linkplain HttpTokenGate#reportToken report token}, which opens that run's report alone and
+ * expires, never the bearer token. {@code GET /api/report-token?id=<run id>} hands one out. An empty
+ * path redirects to the report's entry page: the one module's {@code index.html}, or the workspace
+ * roll-up. Only files whose real path lies under a report directory the record names are served,
+ * streamed under {@link #MAX_FILE_BYTES}, each in a sandboxed opaque origin so a report cannot script
+ * the dashboard.
  */
 @NullMarked
 final class HttpCoverageReport {
 
     static final String PREFIX = "/report/";
+
+    /** Where the dashboard, holding the bearer token, asks for a run's report token. */
+    static final String TOKEN = "/api/report-token";
 
     /** A source page for a very long class runs past the editor's 1 MiB; 16 MiB covers any report. */
     static final long MAX_FILE_BYTES = 16L * WorkspaceFileAccess.MAX_FILE_BYTES;
@@ -50,10 +58,46 @@ final class HttpCoverageReport {
 
     private final BuildJournal journal;
     private final HttpTokenGate tokens;
+    private final Clock clock;
 
-    HttpCoverageReport(BuildJournal journal, HttpTokenGate tokens) {
+    HttpCoverageReport(BuildJournal journal, HttpTokenGate tokens, Clock clock) {
         this.journal = journal;
         this.tokens = tokens;
+        this.clock = clock;
+    }
+
+    /**
+     * {@code GET /api/report-token?id=<run id>}: {@code {"token", "expiresAt"}} (epoch millis), the
+     * token that opens that run's report under that same id; a 404 for a run with no coverage report.
+     */
+    void handleToken(HttpExchange exchange) throws IOException {
+        String id = HttpQuery.queryParamLenient(exchange.getRequestURI().getRawQuery(), "id");
+        if (id == null || id.isEmpty() || id.contains("/")) {
+            HttpResponses.sendJson(
+                    exchange,
+                    400,
+                    JsonOut.object().put("error", "expected ?id=<run id>").toString());
+            return;
+        }
+        if (journal.get(id).map(r -> r.coverage().isEmpty()).orElse(true)) {
+            HttpResponses.sendJson(
+                    exchange,
+                    404,
+                    JsonOut.object()
+                            .put("error", "no coverage report for this run")
+                            .toString());
+            return;
+        }
+        long expiresAt = clock.millis() / 1000 + HttpTokenGate.REPORT_TOKEN_LIFETIME.toSeconds();
+        String token = tokens.reportToken(id, expiresAt);
+        if (token == null) throw new IllegalStateException("the engine has no token yet");
+        HttpResponses.sendJson(
+                exchange,
+                200,
+                JsonOut.object()
+                        .put("token", token)
+                        .put("expiresAt", expiresAt * 1000)
+                        .toString());
     }
 
     void handle(HttpExchange exchange) throws IOException {
@@ -64,8 +108,9 @@ final class HttpCoverageReport {
         }
         String[] parts =
                 exchange.getRequestURI().getPath().substring(PREFIX.length()).split("/", 3);
-        if (parts.length < 2 || !tokens.tokenValid(parts[0])) {
-            tokens.challenge(exchange);
+        if (parts.length < 2 || !tokens.reportTokenValid(parts[0], parts[1], clock.millis())) {
+            HttpResponses.sendText(
+                    exchange, 403, "report link expired or not valid: open the report again from the dashboard\n");
             return;
         }
         BuildRecord record = journal.get(parts[1]).orElse(null);

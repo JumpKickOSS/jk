@@ -225,8 +225,11 @@ module, `85.2% (1204/1413)`, signed points against the baseline (`+1.3`, `−0.5
 for a module the baseline did not have), an **all** row for a workspace. **HTML report** opens the
 JaCoCo report of that run in a new tab: the one module's `index.html`, or the workspace roll-up
 that links each module's report. The engine serves the report from the checkout the run measured,
-under a per-run route that carries the dashboard token in its path (so the report's own pages and
-stylesheets resolve) and in a sandboxed origin, so a report cannot script the dashboard. The
+under a per-run route that carries a report token in its path (so the report's own pages and
+stylesheets resolve) and in a sandboxed origin, so a report cannot script the dashboard. The report
+token opens that run's report and nothing else, for 8 hours, so the address in your browser's
+history is not the dashboard token; a report link that has expired answers "report link expired or
+not valid", and the dashboard's link takes a fresh one. The
 figures are the record's `coverage[]` rows — the same facts as `target/jk-results.md` and MCP
 `run`; the baseline is the nearest earlier record of the project whose coverage is not
 empty, as the results file chooses it.

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.http;
 
+import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.io.IOException;
@@ -45,6 +46,41 @@ class HttpTokenGateTest {
 
         assertThat(gate.tokenText()).as("the token survives the restart").isEqualTo("kept-token");
         assertOwnerOnly(file);
+    }
+
+    @Test
+    void a_report_token_opens_its_own_run_until_it_expires_and_never_stands_for_the_bearer(@TempDir Path tmp)
+            throws IOException {
+        Path file = Files.writeString(tmp.resolve("engine.http-token"), "bearer\n");
+        HttpTokenGate gate = new HttpTokenGate(file);
+        gate.loadOrMint();
+        long expires = 1_000_000;
+        String token = requireNonNull(gate.reportToken("r14", expires));
+
+        assertThat(token).doesNotContain("bearer").matches("[0-9a-z]+\\.[A-Za-z0-9_-]+");
+        assertThat(gate.reportTokenValid(token, "r14", expires * 1000 - 1)).isTrue();
+        assertThat(gate.reportTokenValid(token, "r14", expires * 1000))
+                .as("expired")
+                .isFalse();
+        assertThat(gate.reportTokenValid(token, "r15", 0)).as("another run").isFalse();
+        assertThat(gate.tokenValid(token)).as("not a bearer token").isFalse();
+        assertThat(gate.reportTokenValid("bearer", "r14", 0))
+                .as("the bearer is not a report token")
+                .isFalse();
+        String later = Long.toString(expires * 2, 36) + token.substring(token.indexOf('.'));
+        assertThat(gate.reportTokenValid(later, "r14", expires * 1000))
+                .as("an expiry moved by hand")
+                .isFalse();
+        for (String bad : new String[] {"", ".", "x.", ".abc", "zzzzzzzzzzzzzzzzzz.abc", "1.not base64!"}) {
+            assertThat(gate.reportTokenValid(bad, "r14", 0)).as(bad).isFalse();
+        }
+
+        Files.writeString(file, "rotated\n");
+        HttpTokenGate rotated = new HttpTokenGate(file);
+        rotated.loadOrMint();
+        assertThat(rotated.reportTokenValid(token, "r14", 0))
+                .as("rotating the bearer voids it")
+                .isFalse();
     }
 
     private static boolean posix(Path path) {

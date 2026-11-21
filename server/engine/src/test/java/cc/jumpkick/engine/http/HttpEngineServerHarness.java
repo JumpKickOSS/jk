@@ -8,6 +8,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.config.JkHttpConfig;
 import cc.jumpkick.engine.jobs.JobSpec;
 import cc.jumpkick.engine.journal.BuildJournal;
+import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.runtime.base.BuildMetrics;
 import java.io.IOException;
 import java.net.Socket;
@@ -21,6 +22,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
@@ -198,6 +200,14 @@ abstract class HttpEngineServerHarness {
             builder.header("X-Jk-Engine-Epoch", SNAPSHOT.engineEpoch());
         }
         return client.send(builder.build(), HttpResponse.BodyHandlers.ofString());
+    }
+
+    /** The report token the dashboard is handed for run {@code id}. */
+    String reportToken(String id) throws Exception {
+        HttpResponse<String> r = get(HttpCoverageReport.TOKEN + "?id=" + id);
+        assertThat(r.statusCode()).as(r.body()).isEqualTo(200);
+        Map<?, ?> answer = (Map<?, ?>) requireNonNull(MiniJson.parse(r.body()));
+        return requireNonNull((String) answer.get("token"));
     }
 
     /** A raw HTTP/1.1 exchange, for requests {@link HttpClient} refuses to send. */

@@ -18,6 +18,7 @@ import cc.jumpkick.engine.machine.MachineEnvironments;
 import cc.jumpkick.engine.notices.Notices;
 import cc.jumpkick.engine.sessions.SessionLog;
 import cc.jumpkick.host.Log;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.runtime.base.BuildMetrics;
 import cc.jumpkick.wire.protocol.EventCatalog;
 import com.sun.net.httpserver.HttpExchange;
@@ -403,7 +404,7 @@ public final class HttpEngineServer implements AutoCloseable {
         this.sse = new SseEndpoint(events, dashboards, liveVitals, progressTokens, this.log);
         this.mcpFront = this.mcp == null ? null : new McpFront(this.mcp, sse, version);
         this.historyApi = new HttpHistoryApi(journal, () -> this.liveRuns.get());
-        this.coverageReport = new HttpCoverageReport(journal, tokens);
+        this.coverageReport = new HttpCoverageReport(journal, tokens, Clock.SYSTEM);
         this.projectApi = new HttpProjectApi();
         NewProjectWizard wizard = new NewProjectWizard(this::url);
         if (this.mcp != null) this.mcp.wizard(wizard);
@@ -429,6 +430,7 @@ public final class HttpEngineServer implements AutoCloseable {
         api.register("GET", "/api/history", historyApi::handleHistory);
         api.register("GET", "/api/history/artifact", historyApi::handleHistoryArtifact);
         api.register("DELETE", "/api/history", historyApi::handleHistoryDelete);
+        api.register("GET", HttpCoverageReport.TOKEN, coverageReport::handleToken);
         api.register("GET", "/api/metrics", readApi::handleMetrics);
         api.register("GET", "/api/cache", readApi::handleCache);
         api.register("GET", "/api/host", new HttpHostApi()::handle);
@@ -705,16 +707,17 @@ public final class HttpEngineServer implements AutoCloseable {
             return;
         }
         if (path.startsWith(HttpCoverageReport.PREFIX)) {
-            coverageReport.handle(exchange); // token in the path; sandboxed, per-run report tree
+            coverageReport.handle(exchange); // report token in the path; sandboxed, per-run report tree
             return;
         }
         staticContent.serve(exchange); // static is never token-gated — the dashboard shell has no secrets
     }
 
     /**
-     * A request under {@link FrontDoor#PREFIX}: its API, event-stream, MCP and coverage-report paths
-     * take this engine's token in the shape they take it here, and only a request that presented it
-     * reaches the engine with that engine's token; its pages are open, as here.
+     * A request under {@link FrontDoor#PREFIX}: its API, event-stream and MCP paths take this
+     * engine's token in the shape they take it here, and only a request that presented it reaches
+     * the engine with that engine's token; its pages are open, as here, and a coverage report's path
+     * carries the report token that engine handed out, which that engine checks.
      */
     private void proxy(HttpExchange exchange) throws IOException {
         FrontDoor door = frontDoor;
@@ -728,7 +731,6 @@ public final class HttpEngineServer implements AutoCloseable {
                 switch (kind) {
                     case EVENTS, API -> tokens.authorizesApi(exchange, target.path());
                     case MCP -> tokens.authorizesMcp(exchange);
-                    case REPORT -> tokens.tokenValid(FrontDoor.reportToken(target.path()));
                     case OPEN -> false;
                 };
         if (kind != FrontDoor.Kind.OPEN && !authorized) {

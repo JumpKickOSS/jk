@@ -8,7 +8,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const spa = (name) => import(pathToFileURL(path.join(process.env.JK_APP_DIR, name)));
-const { coverageSummary, coverageChip, previousCoverage, reportHref, signed, pct, RunCoverage } =
+const { coverageSummary, coverageChip, previousCoverage, reportHref, reportToken, REPORT_TOKEN_SLACK_MS, signed, pct, RunCoverage } =
   await spa('coverage.js');
 const { historyCard, seedFromHistory } = await spa('fold.js');
 
@@ -89,7 +89,7 @@ test('the run card carries the rows, and a live card picks them up on reconcile'
   assert.deepEqual(live.coverage, [lib, app]);
 });
 
-test('the report link is the engine route for this run, tokenized in the path so its pages resolve', () => {
+test('the report link is the engine route for this run, its report token in the path so its pages resolve', () => {
   assert.equal(reportHref('r14', 'tok-1'), '/report/tok-1/r14/');
   const chip = coverageChip([lib, app]);
   assert.equal(chip.text, '81.3% lines');
@@ -102,4 +102,34 @@ test('the component renders the headline, the table and the link', () => {
   assert.equal(summary.rows.length, 2);
   assert.equal(RunCoverage.template.includes('run-coverage-row'), true);
   assert.equal(RunCoverage.template.includes('href'), true);
+});
+
+test('the link carries the report token the engine hands out for this run, never the bearer token', async () => {
+  const asked = [];
+  const getImpl = async (path) => {
+    asked.push(path);
+    return { token: 'rt-' + asked.length, expiresAt: 10 * REPORT_TOKEN_SLACK_MS };
+  };
+  assert.deepEqual(await reportToken('r 14', getImpl), { token: 'rt-1', expiresAt: 10 * REPORT_TOKEN_SLACK_MS });
+  assert.deepEqual(asked, ['/api/report-token?id=r%2014']);
+
+  const card = { historyId: 'r14', link: null };
+  const refresh = (now) => RunCoverage.methods.refreshLink.call(card, now, getImpl);
+  await refresh(0);
+  assert.equal(RunCoverage.computed.href.call(card), '/report/rt-2/r14/');
+  await refresh(5 * REPORT_TOKEN_SLACK_MS);
+  assert.equal(asked.length, 2, 'a token far from expiring is kept');
+  await refresh(9.5 * REPORT_TOKEN_SLACK_MS);
+  assert.equal(RunCoverage.computed.href.call(card), '/report/rt-3/r14/', 'one close to expiring is asked for again');
+
+  card.historyId = 'r15';
+  assert.equal(RunCoverage.computed.href.call(card), null, "another run's token is not this run's link");
+  await refresh(0);
+  assert.equal(RunCoverage.computed.href.call(card), '/report/rt-4/r15/');
+
+  const failing = { historyId: 'r16', link: null };
+  await RunCoverage.methods.refreshLink.call(failing, 0, async () => {
+    throw { status: 404 };
+  });
+  assert.equal(RunCoverage.computed.href.call(failing), null);
 });

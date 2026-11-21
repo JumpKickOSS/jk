@@ -6,6 +6,11 @@ JumpKick shows you this page's new entries after it updates itself.
 
 ## 0.54.0
 
+- **Another web page cannot drive your engine, and a report link is not your dashboard token.** A
+  request that would build, write a file, answer a decision or call MCP is refused when it comes from
+  another page's origin, whatever token it carries. The coverage **HTML report** link carries a token
+  that opens that run's report alone for 8 hours, so the address in your browser's history no longer
+  holds the dashboard token.
 - **A dependency's POM cannot send the resolve into your network.** A repository a POM declares
   whose host resolves to a private, link-local, unique-local or loopback address is not used, and
   `jk lock` notes it, unless the project already resolves through that host. Declare it under

@@ -103,17 +103,19 @@ holds another engine's epoch.
 A paired engine's dashboard, API, event stream, MCP endpoint and coverage reports are served under
 `/engines/<id>/` (`FrontDoor`). The front door checks the browser's token in the shape the path
 takes it here: `Authorization` for `/api` and `/mcp`, `?access_token=` for the event stream and the
-MCP event-stream GET, the path segment for `/report/<token>/`. A request that presented it reaches
+MCP event-stream GET. A request that presented it reaches
 `127.0.0.1:<port>`, never through a proxy, with the paired engine's token in that same shape, and the
 browser's token in none: `Authorization`, `Cookie` and `Referer` are dropped, as is any
-`access_token` in the query. `Origin` is dropped too: the front door's own gate has checked it, and it
+`access_token` in the query. A coverage report's path is forwarded as sent, with no token added: the
+report token in it is one the engine handed out (through the proxied `GET /api/report-token`), and the
+engine checks it. `Origin` is dropped too: the front door's own gate has checked it, and it
 names the front door, not the engine. A page, an asset and `GET /api/identity` reach the engine with no token;
 a page or a report takes `GET` and `HEAD` only, anything else is a 405 before the body is read. A
 body is read under the cap the engine puts on that path (64 KiB, the file save's larger one for `PUT
 /api/project/file`), and past it is a 413, before the engine is asked anything. A `Location` in the
-engine's answer is resolved against the request sent and put back under `/engines/<id>/`, a report's
-token segment replaced by the browser's; one that leads off the engine's address or to a path the
-front door refuses, and any response header carrying the engine's token, is a 502. A 401 from the
+engine's answer is resolved against the request sent and put back under `/engines/<id>/`; one that
+leads off the engine's address or to a path the front door refuses, and any response header carrying
+the engine's token, is a 502. A 401 from the
 engine becomes a 502, so a stale pairing never makes the dashboard drop the front door's token. The
 path is forwarded as the browser sent it, and one that could route otherwise at the engine (a dot or
 empty segment, an escaped `/`, `\`, `?`, `#` or `%`, a control character) is a 404. The response
@@ -872,11 +874,18 @@ over.
 
 ### `GET /report/<token>/<id>/<path>`
 
-A run's coverage HTML report, served from the checkout the run measured. The bearer token is a
-path segment — the one place a credential can ride into every page a report links to relatively
-— and is checked with the same constant-time comparison as the header. `<id>` is the journal
-record's id (or its build number / job directory, as `GET /api/history?id=` accepts); a run whose
-record has no `coverage[]` is a 404. An empty `<path>` is a `302` to the report's entry page, with a
+A run's coverage HTML report, served from the checkout the run measured. A token is a path segment —
+the one place a credential can ride into every page a report links to relatively — so it is not the
+bearer token, which would then sit in the browser's history and in any copied link: it is a **report
+token** for that `<id>` alone, `<expiry>.<mac>` (the expiry in epoch seconds, base 36; the MAC an
+HMAC-SHA256 of the id and the expiry keyed by the bearer token, base64url, compared in constant
+time), good for 8 hours and void once `jk engine rotate-token` replaces the bearer token. Nothing is
+stored, so a restart keeps an open report working. The dashboard gets one from `GET
+/api/report-token?id=<id>` (the bearer token, like any `/api` read): `{"token", "expiresAt"}`, epoch
+millis; a run with no coverage report is a 404, no `id` a 400. A missing, expired or other run's
+token, the bearer token included, is a **403** `report link expired or not valid`. `<id>` is the
+journal record's id (or its build number / job directory, as `GET /api/history?id=` accepts), and
+the token names it as written; a run whose record has no `coverage[]` is a 404. An empty `<path>` is a `302` to the report's entry page, with a
 `Location` relative to the request so the token is never echoed into a header: the
 one module's `index.html`, or the workspace roll-up (`target/site/jacoco/index.html`, or
 `workspace.html` beside it when a module's own report owns `index.html`). Any other `<path>`
