@@ -18,7 +18,7 @@ import cc.jumpkick.model.Project;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
-import cc.jumpkick.mvn.PomImporter;
+import cc.jumpkick.mvn.PomDependencies;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -242,7 +242,7 @@ public final class GradleImporter {
 
         Map<Scope, List<Dependency>> deps =
                 GradleDependencies.parse(stripped, catalog, properties, refreshVersions, report);
-        PomImporter.uniquifyHandles(deps, report);
+        PomDependencies.uniquifyHandles(deps, report);
         PluginConfig javafx = JavafxGradle.map(applied.keySet(), stripped, deps, report);
         if (javafx != null) pluginConfigs.add(javafx);
         List<RepositorySpec> repos = parseRepositories(stripped, report);

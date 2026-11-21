@@ -146,7 +146,7 @@ final class SiblingEdges {
         }
         if (!carried.isEmpty()) {
             ImportReport.Builder handles = ImportReport.builder();
-            PomImporter.uniquifyHandles(byScope, handles);
+            PomDependencies.uniquifyHandles(byScope, handles);
             rows.addAll(moduleKey, handles.build());
         }
         for (List<Dependency> deps : byScope.values()) for (Dependency d : deps) dropped.remove(d.library());
