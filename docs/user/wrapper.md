@@ -26,6 +26,9 @@ client when the release's `SHA256SUMS` lists one for this OS and architecture, o
 Unix wrappers require OpenSSL; Windows wrappers use the RSA implementation built into
 PowerShell 5.1.
 
+The Windows wrapper downloads over HTTPS only: it refuses a `JK_RELEASES_URL` that is not
+`https://`, and follows a redirect only to another HTTPS URL, at most ten.
+
 Team version alignment belongs to the installer / CI images, never to a lock row.
 `jk update` bumps **dependency** pins; `jk self update` updates **the tool** — two
 deliberate steps.

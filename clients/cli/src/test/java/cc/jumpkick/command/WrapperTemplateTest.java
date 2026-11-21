@@ -7,6 +7,7 @@ import cc.jumpkick.command.toolchain.WrapperCommand;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.Processes;
 import cc.jumpkick.repo.ReleaseVerifier;
+import cc.jumpkick.testing.DeadEndpoint;
 import cc.jumpkick.testing.Sleepers;
 import cc.jumpkick.testing.Symlinks;
 import java.io.ByteArrayOutputStream;
@@ -39,6 +40,7 @@ import java.util.jar.JarOutputStream;
 import java.util.jar.Manifest;
 import java.util.regex.Pattern;
 import javax.tools.ToolProvider;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -52,6 +54,14 @@ import org.junit.jupiter.params.provider.CsvSource;
  * from the lock, no daemon awareness.
  */
 class WrapperTemplateTest {
+
+    /** Release hosts a test started, stopped after it. */
+    private final List<AutoCloseable> hosts = new ArrayList<>();
+
+    @AfterEach
+    void stopHosts() throws Exception {
+        for (AutoCloseable host : hosts) host.close();
+    }
 
     private static String template(String name) throws Exception {
         try (InputStream in = WrapperCommand.class.getResourceAsStream("wrapper/" + name)) {
@@ -108,7 +118,10 @@ class WrapperTemplateTest {
     @Test
     void windows_wrapper_bootstraps_and_touches_only_the_frozen_surfaces() throws Exception {
         String bat = template("jk.bat");
-        assertThat(bat).contains("'/latest/'").contains("'LATEST'").contains("SHA256SUMS.sig");
+        assertThat(bat)
+                .contains("set \"JK_WRAPPER_BASE=!JK_RELEASES_URL!/latest/\"")
+                .contains("call :fetch_https JK_WRAPPER_PTMP LATEST")
+                .contains("call :fetch_https JK_WRAPPER_TMP SHA256SUMS.sig");
         assertThat(bat).doesNotContain("'LATEST.sig'");
         assertThat(bat).contains("^version ([0-9]+").contains("if not defined VERSION");
         assertThat(bat).doesNotContain("latest/VERSION");
@@ -116,7 +129,7 @@ class WrapperTemplateTest {
         // One :verify_signature subroutine checks both remote inputs, each before it is read.
         assertThat(occurrences(bat, "VerifyData(")).isEqualTo(1);
         assertThat(bat.indexOf("call :verify_signature JK_WRAPPER_PTMP LATEST.body"))
-                .isGreaterThan(bat.indexOf("'/latest/'"))
+                .isGreaterThan(bat.indexOf("call :fetch_https JK_WRAPPER_PTMP LATEST"))
                 .isLessThan(bat.indexOf("Write-Output $Matches[1]"));
         assertThat(bat.indexOf("call :verify_signature JK_WRAPPER_TMP SHA256SUMS"))
                 .isGreaterThan(0)
@@ -145,11 +158,20 @@ class WrapperTemplateTest {
         // One download per home: the lock is taken before the pointer is read, and the install is
         // checked again once it is held.
         assertThat(bat).contains("set \"JK_WRAPPER_LOCK=%BIN_DIR%\\.jk-wrapper.lock\"");
-        assertThat(bat.indexOf(":lock_acquired")).isLessThan(bat.indexOf("'/latest/'"));
+        assertThat(bat.indexOf(":lock_acquired")).isLessThan(bat.indexOf("call :fetch_https JK_WRAPPER_PTMP LATEST"));
         assertThat(bat).contains("call :installed_client && goto unlock_and_run");
         assertThat(bat).contains("JK_HOME must be an absolute path");
         assertThat(bat).doesNotContain(".exe.zip").doesNotContain(".xz");
         assertThat(bat).doesNotContain(".sock").doesNotContain("endpoint");
+        // Every download is one :fetch_https call: HTTPS only, each redirect hop checked, and a
+        // JK_RELEASES_URL that is not https refused before the lock is taken.
+        assertThat(bat).doesNotContain("Invoke-WebRequest").doesNotContain("DownloadFile");
+        assertThat(occurrences(bat, "[Net.HttpWebRequest]::Create(")).isEqualTo(1);
+        assertThat(occurrences(bat, "call :fetch_https ")).isEqualTo(4);
+        assertThat(bat).contains("$q.AllowAutoRedirect=$false").contains("$n.Scheme -cne 'https'");
+        assertThat(bat.indexOf("goto releases_url_refused"))
+                .isGreaterThan(bat.indexOf(":bootstrap"))
+                .isLessThan(bat.indexOf(":take_lock"));
     }
 
     /**
@@ -176,6 +198,7 @@ class WrapperTemplateTest {
         assertThat(bat).contains("call :is_version_token INSTALLED || exit /b 1");
         assertThat(bat.indexOf("call :require_version_token VERSION"))
                 .as("VERSION is checked before it names a download")
+                .isLessThan(bat.indexOf("set \"JK_WRAPPER_BASE=!JK_RELEASES_URL!/!VERSION!/\""))
                 .isLessThan(bat.indexOf("$env:JK_WRAPPER_VERSION"));
         assertThat(bat.indexOf("call :require_version_token FLOOR"))
                 .as("FLOOR is checked before the first version compare")
@@ -368,6 +391,66 @@ class WrapperTemplateTest {
         assertThat(belowFloor.stdout()).contains("real jk: --version").doesNotContain("installed jk");
     }
 
+    /** A release host that is not HTTPS is refused before anything is requested from it. */
+    @Test
+    void windows_wrapper_refuses_a_releases_url_that_is_not_https(@TempDir Path tmp) throws Exception {
+        if (!Os.isWindows()) return;
+        Path releases = Files.createDirectories(tmp.resolve("releases"));
+        ReleaseHost host = serve(releases, tmp);
+        Path repo = materializeBat(tmp.resolve("repo"), Keys.RELEASE, host);
+        Path empty = Files.createDirectories(tmp.resolve("empty-path"));
+
+        for (String url : List.of(host.plainUrl("/files"), releases.toUri().toString())) {
+            Path home = Files.createTempDirectory(tmp, "home");
+            Run run = finish(startBat(repo, tmp, empty.toString(), home, Map.of("JK_RELEASES_URL", url)));
+            assertThat(host.plainRequests).as(run.stderr()).hasValue(0);
+            assertThat(run.exit()).as(url).isEqualTo(1);
+            assertThat(run.stderr()).contains("JK_RELEASES_URL must be an https:// URL, not " + url);
+            assertThat(home.resolve("bin/.jk-wrapper.lock")).doesNotExist();
+        }
+    }
+
+    /**
+     * Windows PowerShell 5.1's Invoke-WebRequest follows a redirect from https to http. The
+     * wrapper checks every hop itself: a redirect to http, after an https one or at a later
+     * download, is refused without being requested and installs nothing.
+     */
+    @Test
+    void windows_wrapper_refuses_a_redirect_off_https(@TempDir Path tmp) throws Exception {
+        if (!Os.isWindows()) return;
+        Path releases = Files.createDirectories(tmp.resolve("releases"));
+        ReleaseHost host = serve(releases, tmp);
+        Path repo = materializeBat(tmp.resolve("repo"), Keys.RELEASE, host);
+        Path empty = Files.createDirectories(tmp.resolve("empty-path"));
+        Map<String, String> env = Map.of("JK_RELEASES_URL", host.url("/files"), "JK_CLIENT", "jvm");
+
+        host.redirect("/files/latest/LATEST", "/hop/latest/LATEST");
+        host.redirect("/hop/latest/LATEST", host.plainUrl("/files/latest/LATEST"));
+        Path pointerHome = Files.createTempDirectory(tmp, "home");
+        Run pointer = finish(startBat(repo, tmp, empty.toString(), pointerHome, env));
+        assertThat(host.plainRequests).as(pointer.stderr()).hasValue(0);
+        assertThat(pointer.exit()).as(pointer.stderr()).isEqualTo(1);
+        assertThat(pointer.stderr())
+                .contains(host.url("/hop/latest/LATEST") + " redirects to " + host.plainUrl("/files/latest/LATEST")
+                        + ", which is not HTTPS")
+                .contains("could not read " + host.url("/files") + "/latest/LATEST");
+        assertThat(pointerHome.resolve("bin/.jk-wrapper.lock")).doesNotExist();
+
+        host.redirects.clear();
+        signedPointer(Files.createDirectories(releases.resolve("latest")), "version 1.0.0\nissued 1\n", Keys.RELEASE);
+        host.redirect("/files/1.0.0/SHA256SUMS", host.plainUrl("/files/1.0.0/SHA256SUMS"));
+        Path sumsHome = Files.createTempDirectory(tmp, "home");
+        Run sums = finish(startBat(repo, tmp, empty.toString(), sumsHome, env));
+        assertThat(host.plainRequests).as(sums.stderr()).hasValue(0);
+        assertThat(sums.exit()).as(sums.stderr()).isEqualTo(1);
+        assertThat(sums.stderr())
+                .contains("fetching jk 1.0.0")
+                .contains("which is not HTTPS")
+                .contains("could not read SHA256SUMS");
+        assertThat(sumsHome.resolve("lib")).doesNotExist();
+        assertThat(sumsHome.resolve("bin/.jk-wrapper.lock")).doesNotExist();
+    }
+
     /**
      * An installed {@code VERSION} file that is not a version proves nothing about the floor: the
      * wrapper moves on to a fresh client instead of stopping, and the value never runs as a command.
@@ -504,8 +587,10 @@ class WrapperTemplateTest {
             String processorArchitecture, String arch, @TempDir Path tmp) throws Exception {
         if (!Os.isWindows()) return;
         KeyPair key = Keys.RELEASE;
-        Path repo = materializeBat(tmp.resolve("repo"), key);
-        String releases = jvmClientRelease(tmp.resolve("releases"), "1.0.0", key, tmp);
+        jvmClientRelease(tmp.resolve("releases"), "1.0.0", key, tmp);
+        ReleaseHost host = serve(tmp.resolve("releases"), tmp);
+        Path repo = materializeBat(tmp.resolve("repo"), key, host);
+        String releases = host.url("/files");
         Path empty = Files.createDirectories(tmp.resolve("empty-path"));
         Path home = Files.createDirectories(tmp.resolve("home"));
         Map<String, String> env = Map.of(
@@ -532,14 +617,53 @@ class WrapperTemplateTest {
         assertThat(home.resolve("launchers-written")).content().isEqualTo("x");
     }
 
+    /**
+     * HTTPS redirects are followed whichever form their Location takes: relative, absolute-path,
+     * absolute and network-path, each resolved against the URL that answered.
+     */
+    @Test
+    @Tag("integration") // compiles the fake client, then runs the wrapper: near 20s on a busy Windows host
+    void windows_wrapper_follows_https_redirects_in_every_location_form(@TempDir Path tmp) throws Exception {
+        if (!Os.isWindows()) return;
+        KeyPair key = Keys.RELEASE;
+        jvmClientRelease(tmp.resolve("releases"), "1.0.0", key, tmp);
+        ReleaseHost host = serve(tmp.resolve("releases"), tmp);
+        Path repo = materializeBat(tmp.resolve("repo"), key, host);
+        String authority = host.url("").substring("https:".length());
+        host.redirect("/moved/latest/LATEST", "../../files/latest/LATEST");
+        host.redirect("/moved/1.0.0/SHA256SUMS", "/files/1.0.0/SHA256SUMS");
+        host.redirect("/moved/1.0.0/SHA256SUMS.sig", host.url("/files/1.0.0/SHA256SUMS.sig"));
+        host.redirect("/moved/1.0.0/jk-1.0.0.jar", authority + "/files/1.0.0/jk-1.0.0.jar");
+        Path home = Files.createDirectories(tmp.resolve("home"));
+
+        Run run = finish(startBat(
+                repo,
+                tmp,
+                tmp.resolve("empty-path").toString(),
+                home,
+                Map.of(
+                        "JK_RELEASES_URL",
+                        host.url("/moved"),
+                        "JK_CLIENT",
+                        "jvm",
+                        "JK_JAVA_HOME",
+                        System.getProperty("java.home"))));
+        assertThat(run.exit()).as(run.stderr()).isZero();
+        assertThat(run.stdout()).contains("jvm jk: --version");
+        assertThat(home.resolve("lib/jk/jk-1.0.0.jar")).isRegularFile();
+        assertThat(host.plainRequests).hasValue(0);
+    }
+
     /** {@code JK_CLIENT=native} refuses the JVM client and installs nothing. */
     @Test
     @Tag("integration") // compiles the fake client, then runs the wrapper: near 20s on a busy Windows host
     void windows_wrapper_refuses_the_jvm_client_when_JK_CLIENT_is_native(@TempDir Path tmp) throws Exception {
         if (!Os.isWindows()) return;
         KeyPair key = Keys.RELEASE;
-        Path repo = materializeBat(tmp.resolve("repo"), key);
-        String releases = jvmClientRelease(tmp.resolve("releases"), "1.0.0", key, tmp);
+        jvmClientRelease(tmp.resolve("releases"), "1.0.0", key, tmp);
+        ReleaseHost host = serve(tmp.resolve("releases"), tmp);
+        Path repo = materializeBat(tmp.resolve("repo"), key, host);
+        String releases = host.url("/files");
         Path empty = Files.createDirectories(tmp.resolve("empty-path"));
         Path refusedHome = Files.createDirectories(tmp.resolve("home-native"));
         Run refused = finish(startBat(
@@ -564,8 +688,10 @@ class WrapperTemplateTest {
     void windows_wrappers_started_together_download_once(@TempDir Path tmp) throws Exception {
         if (!Os.isWindows()) return;
         KeyPair key = Keys.RELEASE;
-        Path repo = materializeBat(tmp.resolve("repo"), key);
-        String releases = jvmClientRelease(tmp.resolve("releases"), "1.0.0", key, tmp);
+        jvmClientRelease(tmp.resolve("releases"), "1.0.0", key, tmp);
+        ReleaseHost host = serve(tmp.resolve("releases"), tmp);
+        Path repo = materializeBat(tmp.resolve("repo"), key, host);
+        String releases = host.url("/files");
         Path home = Files.createDirectories(tmp.resolve("home"));
         Path empty = Files.createDirectories(tmp.resolve("empty-path"));
         Map<String, String> jvm = Map.of(
@@ -593,8 +719,10 @@ class WrapperTemplateTest {
     void windows_wrapper_breaks_a_lock_whose_owner_is_gone(@TempDir Path tmp) throws Exception {
         if (!Os.isWindows()) return;
         KeyPair key = Keys.RELEASE;
-        Path repo = materializeBat(tmp.resolve("repo"), key);
-        String releases = jvmClientRelease(tmp.resolve("releases"), "1.0.0", key, tmp);
+        jvmClientRelease(tmp.resolve("releases"), "1.0.0", key, tmp);
+        ReleaseHost host = serve(tmp.resolve("releases"), tmp);
+        Path repo = materializeBat(tmp.resolve("repo"), key, host);
+        String releases = host.url("/files");
         Path home = Files.createDirectories(tmp.resolve("home"));
         Path lock = home.resolve("bin/.jk-wrapper.lock");
         Files.createDirectories(lock.resolve("fetch"));
@@ -725,16 +853,15 @@ class WrapperTemplateTest {
         return runBat(dir, tmp, onPath.toString(), home);
     }
 
-    /** Run the Windows wrapper as {@link #startBat} starts it, against an unreachable release host. */
+    /**
+     * Run the Windows wrapper as {@link #startBat} starts it, against a release host that drops
+     * every connection.
+     */
     private static Run runBat(Path dir, Path tmp, String onPath, Path home) throws Exception {
-        return finish(startBat(
-                dir,
-                tmp,
-                onPath,
-                home,
-                Map.of(
-                        "JK_RELEASES_URL",
-                        tmp.resolve("no-such-releases").toUri().toString())));
+        try (DeadEndpoint dead = DeadEndpoint.open()) {
+            String releases = dead.uri("/releases").toString().replaceFirst("^http:", "https:");
+            return finish(startBat(dir, tmp, onPath, home, Map.of("JK_RELEASES_URL", releases)));
+        }
     }
 
     /**
@@ -850,6 +977,32 @@ class WrapperTemplateTest {
                         .replace(ReleaseVerifier.BUILT_IN_RSA_MODULUS, unsignedBase64(rsa.getModulus()))
                         .replace(ReleaseVerifier.BUILT_IN_RSA_EXPONENT, unsignedBase64(rsa.getPublicExponent())));
         return dir;
+    }
+
+    /**
+     * The Windows wrapper trusting {@code key} as the release key and {@code host}'s self-signed
+     * certificate, by its SHA-1 thumbprint, in every PowerShell it starts; nothing else changes.
+     */
+    private static Path materializeBat(Path dir, KeyPair key, ReleaseHost host) throws Exception {
+        materializeBat(dir, key);
+        Path bat = dir.resolve("jk.bat");
+        String command = "powershell -NoProfile -Command \"";
+        String text = Files.readString(bat);
+        assertThat(text).contains(command);
+        Files.writeString(
+                bat,
+                text.replace(
+                        command,
+                        command + "[Net.ServicePointManager]::ServerCertificateValidationCallback="
+                                + "{param($a,$c,$h,$e) $c.GetCertHashString() -eq '" + host.thumbprint + "'}; "));
+        return dir;
+    }
+
+    /** Serve {@code root} from a {@link ReleaseHost}, stopped after the test. */
+    private ReleaseHost serve(Path root, Path tmp) throws Exception {
+        ReleaseHost host = ReleaseHost.start(root, tmp);
+        hosts.add(host);
+        return host;
     }
 
     /** Base64 of {@code n}'s big-endian magnitude, without the sign byte RSAParameters does not take. */
