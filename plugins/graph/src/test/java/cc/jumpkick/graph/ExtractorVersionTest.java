@@ -28,6 +28,9 @@ class ExtractorVersionTest {
     /** Relative to this module, where its tests run. */
     private static final List<Path> SOURCES = List.of(
             Path.of("../../shared/code-graph/src/main/java/cc/jumpkick/codegraph/extract"),
+            // The ids every fragment's nodes and edges carry, and the builder that assigns them.
+            Path.of("../../shared/code-graph/src/main/java/cc/jumpkick/codegraph/GraphIds.java"),
+            Path.of("../../shared/code-graph/src/main/java/cc/jumpkick/codegraph/FragmentBuilder.java"),
             Path.of("src/main/java/cc/jumpkick/graph/JvmFacts.java"),
             Path.of("src/main/java/cc/jumpkick/graph/JvmRoutes.java"),
             Path.of("src/main/java/cc/jumpkick/graph/JvmSql.java"),
