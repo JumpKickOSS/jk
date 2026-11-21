@@ -133,12 +133,29 @@ class TomlTableReaderTest {
                 "[train]|bogus = 1; [train] unknown key `bogus`",
                 "node = true; node must be a string",
                 "[node]|bogus = 1; [node] unknown key `bogus`",
+                "jvm = 1; `jvm` must be a table",
+                "[jvm]|max-ram-precent = 50; [jvm] unknown key `max-ram-precent`",
+                "[jvm]|gc = 1; jvm.gc must be a string",
+                "[jvm]|gc = 'zgcc'; jvm.gc must be one of default, none, g1, zgc, parallel, serial",
+                "[jvm]|string-dedup = 'no'; jvm.string-dedup must be true or false",
+                "[jvm]|max-ram-percent = '50'; jvm.max-ram-percent must be a number above 0 and at most 100",
+                "[jvm]|max-ram-percent = 0; jvm.max-ram-percent must be a number above 0 and at most 100",
+                "[jvm]|max-ram-percent = 150; jvm.max-ram-percent must be a number above 0 and at most 100",
+                "[jvm]|args = '-Xmx2g'; `jvm.args` to be a list of strings",
+                "[jvm]|args = [1]; `jvm.args` to be a list of strings",
             })
     void a_table_another_command_reads_is_checked_by_every_parse(String body, String message) throws Exception {
         Path f = manifest(body.replace('\'', '"'));
         assertThatThrownBy(() -> JkBuildParser.parse(f))
                 .isInstanceOf(JkBuildParseException.class)
                 .hasMessageContaining(message);
+    }
+
+    @Test
+    void a_jvm_table_with_every_key_parses() throws Exception {
+        Path f = manifest("[jvm]\nmax-ram-percent = 12.5\ngc = \"ZGC\"\nstring-dedup = false\nargs = [\"-Xss2m\"]");
+        JkBuildParser.parse(f);
+        assertThat(JkBuildParser.jvmTuning(f)).isEqualTo(new PluginTuning(12.5, "ZGC", false, List.of("-Xss2m")));
     }
 
     @Test

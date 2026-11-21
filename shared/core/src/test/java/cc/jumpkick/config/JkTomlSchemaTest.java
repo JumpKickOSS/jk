@@ -248,6 +248,15 @@ class JkTomlSchemaTest {
     }
 
     @Test
+    void jvm_properties_are_exactly_the_parser_s_jvm_keys() throws Exception {
+        String jvm = topLevel("jvm");
+        assertThat(keysOf(table(jvm, "properties"))).containsExactlyInAnyOrderElementsOf(PluginTunings.KEYS);
+        assertThat(ownAdditionalProperties(jvm))
+                .as("an unknown key under [jvm] is what an editor should flag")
+                .isFalse();
+    }
+
+    @Test
     void the_schema_names_the_dependency_scope_tables_the_parser_reads() throws Exception {
         String schema = Files.readString(SCHEMA);
         for (Scope s : Scope.values()) {

@@ -42,7 +42,9 @@ JumpKick shows you this page's new entries after it updates itself.
   a value of the wrong type (`[build] lint = "no"`, a dependency's `version = 1`) is a parse error
   naming the key, where it failed with an internal error. `[workspace]` refuses an unknown key
   too, and every command now checks `[guards]`, `[graph]`, `[release]`, `[deny]` and `[train]`,
-  where only the command that reads one did. A key a plugin's own table (`[android]`) or a
+  where only the command that reads one did. `[jvm]` is checked by every command too: `jvm = 1`,
+  an unknown key, a collector it does not name (`gc = "zgcc"`) or a `max-ram-percent` outside 0
+  to 100 is refused, where it was dropped. A key a plugin's own table (`[android]`) or a
   variant overlay of it does not know is refused at its line and column, where only the file
   was named.
 - **A plugin's `[contribute.lib-dir]` reads `[native] enabled = false` as no native image**, as

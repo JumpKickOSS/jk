@@ -679,7 +679,29 @@
     },
     "jvm": {
       "type": "object",
-      "description": "[jvm] table; keys are documented in docs/user."
+      "description": "[jvm] table: the flags of the worker JVMs JumpKick forks (compilers, plugin workers, the formatter). --ram-percent, --jvm-arg and the JK_JVM_* variables win over it. See docs/user/engine.md#worker-jvm-flags.",
+      "properties": {
+        "max-ram-percent": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 100,
+          "description": "Per-JVM heap cap as a percentage of RAM, shared among the JVMs a step starts together; --ram-percent's table spelling."
+        },
+        "gc": {
+          "type": "string",
+          "description": "The workers' collector, in any case: g1, zgc, parallel or serial; default or none leaves it to the JVM."
+        },
+        "string-dedup": {
+          "type": "boolean",
+          "description": "String deduplication under g1 or zgc. Default true."
+        },
+        "args": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Extra flags for every worker JVM, before --jvm-arg and JK_JVM_ARGS."
+        }
+      },
+      "additionalProperties": false
     },
     "deny": {
       "type": "object",

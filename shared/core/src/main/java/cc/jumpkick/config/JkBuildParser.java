@@ -577,6 +577,7 @@ public final class JkBuildParser {
         ManifestTables.parseRelease(result);
         ManifestDeny.parse(result);
         ManifestTrain.parse(result, ManifestNames.MANIFEST);
+        PluginTunings.fromToml(result);
         // *.workspace = true is for members only — the root is the inheritance source.
         if (project.inheritsFromWorkspace() && workspace != null && !workspace.isEmpty()) {
             throw new JkBuildParseException("workspace root cannot use `workspace = true`; set the values");

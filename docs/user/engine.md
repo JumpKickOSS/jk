@@ -434,6 +434,24 @@ the previous engine (pid 4711) exited on OutOfMemoryError with these jobs live: 
 (jid 7, 72 MiB estimated); 2 queued; heap 230 MiB of 256 MiB at the last admission`. It removes the
 file either way; a running predecessor's file is its own.
 
+### Worker JVM flags
+
+`[jvm]` in a project's `jk.toml` sets the flags of the JVMs JumpKick forks for it: compilers,
+plugin workers, the formatter, and (for `args` only) test JVMs.
+
+```toml
+[jvm]
+max-ram-percent = 25   # heap cap as % of RAM, shared by the JVMs a step starts together
+gc = "zgc"             # g1, zgc, parallel or serial; default leaves it to the JVM
+string-dedup = false   # string deduplication under g1 or zgc; default true
+args = ["-Xss2m"]      # extra flags for every worker JVM
+```
+
+`--ram-percent` and `JK_MAX_RAM_PERCENT`, `JK_JVM_GC` and `JK_JVM_STRING_DEDUP` win over the
+table's values; `--jvm-arg` and `JK_JVM_ARGS` come after its `args`. Every command checks the
+table: a key it does not know, a value of the wrong type, a `max-ram-percent` outside 0 to 100 or
+a collector it does not name fails the parse at the key.
+
 ### Worker containment
 
 On Linux every worker the engine forks — the Java compiler, Kotlin and Groovy compiles, test
