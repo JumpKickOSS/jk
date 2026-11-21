@@ -10,7 +10,9 @@ import java.util.Set;
 /**
  * An event's wire record as an SSE frame: {@code schema}, {@code type} (the name SSE gives the
  * event) and {@code jid}, then the record's own fields as it spells them, its free text masked.
- * The dashboard and MCP read the fields the wire and {@code -O jsonl} carry, under the same names.
+ * The dashboard and MCP read the fields the wire and {@code -O jsonl} carry, under the same names;
+ * a {@code conflict}, a string on the wire, is masked and nested as the object it holds, as {@code
+ * -O jsonl} and the journal nest it.
  */
 public final class SseFrame {
 
@@ -32,10 +34,21 @@ public final class SseFrame {
                 Object value = e.getValue();
                 if (FREE_TEXT.contains(key) && value instanceof String text) {
                     value = EventRedaction.redactEnv(dir, text);
+                } else if ("conflict".equals(key) && value instanceof String text) {
+                    value = conflictValue(EventRedaction.redactText(dir, text));
                 }
                 fields.put(key, value);
             }
         }
         return JsonOut.rawObject(fields);
+    }
+
+    /** The object a {@code conflict} holds; the text itself when it is not one. */
+    private static Object conflictValue(String conflict) {
+        try {
+            return MiniJson.parse(conflict) instanceof Map<?, ?> object ? object : conflict;
+        } catch (RuntimeException notJson) {
+            return conflict;
+        }
     }
 }

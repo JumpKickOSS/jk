@@ -695,7 +695,8 @@ public final class SsePublisher implements SseEvents {
                                 d.snippet() == null ? List.of() : d.snippet(),
                                 orEmpty(d.stack()),
                                 0,
-                                0)
+                                0,
+                                d.conflict())
                         .encode());
     }
 
