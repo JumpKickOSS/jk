@@ -9,8 +9,11 @@ import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.guard.rules.GuardsPresence;
 import cc.jumpkick.guard.rules.LoadResult;
 import cc.jumpkick.guard.rules.RuleSet;
+import cc.jumpkick.host.BuildStamps;
+import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.GuardsConfig;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -36,6 +39,33 @@ class PlannerGuardsTest {
         assertThat(tokens)
                 .as("a key with an absolute path in it is a key no other machine can hit")
                 .containsExactly("facts::absent", "facts:app:absent", "facts:../sib:absent");
+    }
+
+    @Test
+    void the_workspace_lane_key_moves_when_a_gone_source_comes_back(@TempDir Path root) throws Exception {
+        Path app = root.resolve("app");
+        String internal = PlannerGuardsTest.class.getName().replace('.', '/');
+        Path classes = BuildLayout.moduleTargetDir(app).resolve("classes");
+        Path target = classes.resolve(internal + ".class");
+        Files.createDirectories(target.getParent());
+        try (InputStream in = PlannerGuardsTest.class.getClassLoader().getResourceAsStream(internal + ".class")) {
+            Files.copy(in, target);
+        }
+        Path source = app.resolve("src/main/java").resolve(internal + ".java");
+        Files.writeString(
+                classes.resolve(BuildStamps.JAVA),
+                "TASK compile-main\n" + BuildStamps.SOURCE_LINE + "none " + source + "\n");
+
+        List<String> gone = GuardKeys.workspaceLaneTokens(root, List.of(app));
+        assertThat(gone).contains("removed:app:" + internal);
+
+        Files.createDirectories(source.getParent());
+        Files.writeString(source, "");
+        List<String> back = GuardKeys.workspaceLaneTokens(root, List.of(app));
+        assertThat(back)
+                .as("the class is the workspace's again, so a verdict cached without it does not answer")
+                .isNotEqualTo(gone)
+                .noneMatch(t -> t.startsWith("removed:"));
     }
 
     /**

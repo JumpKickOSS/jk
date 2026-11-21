@@ -4,6 +4,7 @@ package cc.jumpkick.guard.extract;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.guard.facts.FactsIndex;
+import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.layout.BuildLayout;
 import java.io.InputStream;
 import java.nio.file.Files;
@@ -41,5 +42,36 @@ class WorkspaceFactsTest {
         Path web = root.resolve("web");
         Files.createDirectories(web);
         assertThat(WorkspaceFacts.merged(root, List.of(web)).classes()).isEmpty();
+    }
+
+    @Test
+    void a_class_whose_stamped_source_is_gone_is_not_in_the_workspace_view(@TempDir Path root) throws Exception {
+        Path module = root.resolve("app");
+        String internal = WorkspaceFactsTest.class.getName().replace('.', '/');
+        Path classes = BuildLayout.moduleTargetDir(module).resolve("classes");
+        Path target = classes.resolve(internal + ".class");
+        Files.createDirectories(target.getParent());
+        try (InputStream in = WorkspaceFactsTest.class.getClassLoader().getResourceAsStream(internal + ".class")) {
+            Files.copy(in, target);
+        }
+        String tail = internal + ".java";
+        Path source = module.resolve("src/main/java").resolve(tail);
+        Files.writeString(
+                classes.resolve(BuildStamps.JAVA),
+                "TASK compile-main\n" + BuildStamps.SOURCE_LINE + "none " + source + "\n");
+        String pkg = WorkspaceFactsTest.class.getPackageName();
+
+        assertThat(WorkspaceFacts.removedClasses(root, module)).containsExactly(internal);
+        assertThat(WorkspaceFacts.merged(root, List.of(module)).classes()).doesNotContainKey(internal);
+        assertThat(WorkspaceFacts.packageModuleDirs(root, List.of(module))).doesNotContainKey(pkg);
+
+        Path moved = module.resolve("src/main/kotlin").resolve(tail);
+        Files.createDirectories(moved.getParent());
+        Files.writeString(moved, "");
+        assertThat(WorkspaceFacts.removedClasses(root, module))
+                .as("another source root holds the file again: its class is the module's")
+                .isEmpty();
+        assertThat(WorkspaceFacts.merged(root, List.of(module)).classes()).containsKey(internal);
+        assertThat(WorkspaceFacts.packageModuleDirs(root, List.of(module))).containsKey(pkg);
     }
 }

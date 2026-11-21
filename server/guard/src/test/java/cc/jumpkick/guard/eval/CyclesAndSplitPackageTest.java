@@ -382,11 +382,61 @@ class CyclesAndSplitPackageTest {
                 .containsExactly("p.shared | a + b");
     }
 
-    /** A class file compiled from {@code sourceFile} in the module's classes tree. */
-    private static void writeClass(Path module, String internal, String sourceFile) throws IOException {
+    @Test
+    void a_cycle_only_through_a_class_whose_source_is_gone_is_no_cycle(@TempDir Path dir) throws Exception {
+        Path root = Files.createDirectories(dir.resolve("ws"));
+        Files.writeString(
+                root.resolve("jk.toml"),
+                "group = \"t\"\nname = \"ws\"\nversion = \"0.0.1\"\n\n[workspace]\nmodules = [\"a\", \"b\"]\n");
+        for (String m : List.of("a", "b")) {
+            Path module = Files.createDirectories(root.resolve(m));
+            Files.writeString(module.resolve("jk.toml"), "group = \"t\"\nname = \"" + m + "\"\nversion = \"0.0.1\"\n");
+        }
+        Path a = root.resolve("a");
+        Path b = root.resolve("b");
+        Files.writeString(
+                Files.createDirectories(a.resolve("src/main/java/p/a")).resolve("A.java"), "package p.a;\n");
+        writeClass(a, "p/a/A", "A.java", "p/b/B");
+        // b's last compile read B.java, which has gone since; its class still points back at p.a
+        Path gone = b.resolve("src/main/java/p/b/B.java");
+        writeClass(b, "p/b/B", "B.java", "p/a/A");
+        Files.writeString(
+                BuildLayout.moduleTargetDir(b).resolve("classes").resolve(BuildStamps.JAVA),
+                "TASK compile-main\nKEY k\n" + BuildStamps.SOURCE_LINE + "none " + gone + "\n");
+        List<Path> modules = List.of(a, b);
+        Rule cycles = rule(root, "cycles", "matching = \"p.(*)\"\nacross-modules = true\n");
+        assertThat(Evaluators.laneOf(cycles)).isEqualTo(Lane.WORKSPACE);
+        Supplier<FactsIndex> merged = EvalContext.lazy(() -> WorkspaceFacts.merged(root, modules));
+        EvalContext ws = new EvalContext(Lane.WORKSPACE, root, "", null, modules, merged, () -> null, List::of);
+
+        assertThat(Evaluators.forKind(cycles.kind()).evaluate(cycles, ws).outcome())
+                .as("B's source is gone, so the workspace no longer has the edge back to p.a")
+                .isEqualTo(Outcome.CLEAN);
+
+        Files.writeString(Files.createDirectories(gone.getParent()).resolve("B.java"), "package p.b;\n");
+        EvalContext again = new EvalContext(
+                Lane.WORKSPACE,
+                root,
+                "",
+                null,
+                modules,
+                EvalContext.lazy(() -> WorkspaceFacts.merged(root, modules)),
+                () -> null,
+                List::of);
+        assertThat(Evaluators.forKind(cycles.kind()).evaluate(cycles, again).observations())
+                .as("the source is back, so its class closes the cycle again")
+                .extracting(Observation::key)
+                .containsExactly("workspace:a");
+    }
+
+    /** A class file compiled from {@code sourceFile} in the module's classes tree, with a field of each type in {@code refs}. */
+    private static void writeClass(Path module, String internal, String sourceFile, String... refs) throws IOException {
         ClassWriter cw = new ClassWriter(0);
         cw.visit(Opcodes.V17, Opcodes.ACC_PUBLIC, internal, null, "java/lang/Object", null);
         cw.visitSource(sourceFile, null);
+        for (int i = 0; i < refs.length; i++)
+            cw.visitField(Opcodes.ACC_PUBLIC, "f" + i, "L" + refs[i] + ";", null, null)
+                    .visitEnd();
         cw.visitEnd();
         Path file = BuildLayout.moduleTargetDir(module).resolve("classes").resolve(internal + ".class");
         Files.createDirectories(file.getParent());

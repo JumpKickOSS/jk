@@ -3,6 +3,7 @@ package cc.jumpkick.guard.eval;
 
 import cc.jumpkick.guard.baseline.Observation;
 import cc.jumpkick.guard.extract.FactsIndexing;
+import cc.jumpkick.guard.extract.SourceRoots;
 import cc.jumpkick.guard.facts.AnnotationFacts;
 import cc.jumpkick.guard.facts.ClassFacts;
 import cc.jumpkick.guard.facts.FactsFormat;
@@ -434,7 +435,7 @@ public final class GuardSuites {
             String owner = WorkspaceModel.rel(owners.root(), ownerDir);
             return new Placed(SourcePaths.resolve(owner, ownerDir, reportedFile), owner, detail);
         }
-        if (moduleDir != null && SourcePaths.rootHolding(moduleDir, reportedFile) != null) {
+        if (moduleDir != null && SourceRoots.rootHolding(moduleDir, reportedFile) != null) {
             return new Placed(SourcePaths.resolve(module, moduleDir, reportedFile), module, detail);
         }
         return new Placed(

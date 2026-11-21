@@ -2,6 +2,7 @@
 package cc.jumpkick.guard.eval;
 
 import cc.jumpkick.guard.baseline.Observation;
+import cc.jumpkick.guard.extract.SourceRoots;
 import cc.jumpkick.guard.facts.ClassFacts;
 import cc.jumpkick.guard.facts.FactsIndex;
 import cc.jumpkick.guard.facts.TestClassFacts;
@@ -137,10 +138,10 @@ final class TiersEvaluator implements Evaluator {
 
     /** Where this class's source file lives across the module's suites; {@code null} when no root holds it. */
     static @Nullable Home homeOf(ClassFacts c, Path moduleDir, boolean compact, List<String> suites) {
-        String tail = SourcePaths.tail(c);
+        String tail = SourceRoots.tail(c);
         if (tail == null) return null;
         for (String s : suites) {
-            for (Path r : SourcePaths.suiteRoots(moduleDir, compact, s)) {
+            for (Path r : SourceRoots.suiteRoots(moduleDir, compact, s)) {
                 if (Files.isRegularFile(r.resolve(tail))) return new Home(s, r);
             }
         }
@@ -148,7 +149,7 @@ final class TiersEvaluator implements Evaluator {
     }
 
     private static @Nullable String source(EvalContext ctx, ClassFacts c, @Nullable Home home) {
-        String tail = SourcePaths.tail(c);
+        String tail = SourceRoots.tail(c);
         Path moduleDir = ctx.moduleDir();
         if (tail == null || home == null || moduleDir == null) return null;
         return SourcePaths.under(ctx.module(), moduleDir, home.root(), tail);

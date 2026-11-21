@@ -3,6 +3,7 @@ package cc.jumpkick.guard.eval;
 
 import cc.jumpkick.guard.baseline.Observation;
 import cc.jumpkick.guard.extract.FactsExtractor;
+import cc.jumpkick.guard.extract.SourceRoots;
 import cc.jumpkick.guard.extract.WorkspaceFacts;
 import cc.jumpkick.guard.facts.CallSite;
 import cc.jumpkick.guard.facts.ClassFacts;
@@ -297,9 +298,9 @@ final class VocabularyEvaluator implements BatchEvaluator {
 
     /** The owner's own source file inside module {@code moduleDir}, when it lives there: it is exempt. */
     private static @Nullable String ownerSourceRel(ClassFacts owner, Path moduleDir) {
-        String tail = SourcePaths.tail(owner);
+        String tail = SourceRoots.tail(owner);
         if (tail == null) return null;
-        String root = SourcePaths.rootHolding(moduleDir, tail);
+        String root = SourceRoots.rootHolding(moduleDir, tail);
         return root == null ? null : root + "/" + tail;
     }
 

@@ -26,6 +26,7 @@ import cc.jumpkick.guard.eval.WorkspaceModel;
 import cc.jumpkick.guard.eval.WorkspaceModules;
 import cc.jumpkick.guard.explain.RuleSummaries;
 import cc.jumpkick.guard.extract.FactsIndexing;
+import cc.jumpkick.guard.extract.WorkspaceFacts;
 import cc.jumpkick.guard.facts.FactsFormat;
 import cc.jumpkick.guard.rules.GuardsPresence;
 import cc.jumpkick.guard.rules.LoadResult;
@@ -60,6 +61,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.TreeMap;
 import org.jspecify.annotations.Nullable;
 
@@ -345,11 +347,18 @@ final class GuardKeys {
 
     /**
      * The workspace lane's tokens ahead of its rules', for its run and its forecast alike: every
-     * module's main index digest ({@link #workspaceTokens}).
+     * module's main index digest ({@link #workspaceTokens}), then {@code removed:<module>:<classes>}
+     * for each module holding classes of sources that are gone, which the lane reads as not there.
      */
     @KeyOwner(step = TaskNames.GUARD_WORKSPACE)
     static List<String> workspaceLaneTokens(Path root, List<Path> modules) throws IOException {
-        return workspaceTokens(root, modules);
+        List<String> tokens = workspaceTokens(root, modules);
+        for (Path m : modules) {
+            Set<String> removed = WorkspaceFacts.removedClasses(root, m);
+            if (!removed.isEmpty())
+                tokens.add("removed:" + WorkspaceModel.rel(root, m) + ":" + String.join(",", removed));
+        }
+        return tokens;
     }
 
     /** The forecast's {@code guard-workspace} step at the workspace root, or empty when it has nothing to judge. */

@@ -1,13 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.guard.eval;
 
+import cc.jumpkick.guard.extract.SourceRoots;
 import cc.jumpkick.guard.facts.ClassFacts;
 import cc.jumpkick.layout.ModuleLayout;
-import cc.jumpkick.layout.TestSuites;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -25,18 +23,7 @@ final class SourcePaths {
 
     static final String FALLBACK = "src/main/java";
 
-    private static final List<String> MAIN_ROOTS =
-            List.of("src/main/java", "src/main/kotlin", "src/main/groovy", "src/main/scala");
-
     private SourcePaths() {}
-
-    /** {@code pkg/SourceFile} for {@code c}, or {@code null} when the class file kept no source name. */
-    static @Nullable String tail(ClassFacts c) {
-        String file = c.sourceFile();
-        if (file == null) return null;
-        String pkgPath = c.packageName().replace('.', '/');
-        return (pkgPath.isEmpty() ? "" : pkgPath + "/") + file;
-    }
 
     /** Per lane run: the module's source roots listed once and each source tail resolved once. */
     private static final class Resolver {
@@ -56,10 +43,10 @@ final class SourcePaths {
                 String root = null;
                 if (dir != null) {
                     List<Path> listed = roots;
-                    if (listed == null) roots = listed = roots(dir, ModuleLayout.isCompact(dir));
+                    if (listed == null) roots = listed = SourceRoots.roots(dir, ModuleLayout.isCompact(dir));
                     for (Path r : listed) {
                         if (Files.isRegularFile(r.resolve(t))) {
-                            root = rel(dir, r);
+                            root = SourceRoots.rel(dir, r);
                             break;
                         }
                     }
@@ -71,7 +58,7 @@ final class SourcePaths {
 
     /** The workspace-relative source path of {@code c} in the context's module, or {@code null}. */
     static @Nullable String of(EvalContext ctx, ClassFacts c) {
-        String tail = tail(c);
+        String tail = SourceRoots.tail(c);
         if (tail == null) return null;
         return ctx.memo(Resolver.class, k -> new Resolver(k.module(), k.moduleDir()))
                 .resolve(tail);
@@ -82,59 +69,16 @@ final class SourcePaths {
      * workspace-relative path ({@code ""} at the root); under {@link #FALLBACK} when none does.
      */
     static String resolve(String module, @Nullable Path moduleDir, String tail) {
-        String root = moduleDir == null ? null : rootHolding(moduleDir, tail);
+        String root = moduleDir == null ? null : SourceRoots.rootHolding(moduleDir, tail);
         return prefix(module) + (root == null ? FALLBACK : root) + "/" + tail;
-    }
-
-    /** The module-relative root under which {@code tail} exists, main roots first, then every suite's; or null. */
-    static @Nullable String rootHolding(Path moduleDir, String tail) {
-        boolean compact = ModuleLayout.isCompact(moduleDir);
-        for (Path root : roots(moduleDir, compact)) {
-            if (Files.isRegularFile(root.resolve(tail))) return rel(moduleDir, root);
-        }
-        return null;
     }
 
     /** {@code tail} under a root already known to hold it, spelled from the workspace root. */
     static String under(String module, Path moduleDir, Path root, String tail) {
-        return prefix(module) + rel(moduleDir, root) + "/" + tail;
-    }
-
-    /** Main source roots, then each discovered suite's, whether or not they exist. */
-    static List<Path> roots(Path moduleDir, boolean compact) {
-        LinkedHashSet<Path> out = new LinkedHashSet<>(mainRoots(moduleDir, compact));
-        for (String suite : TestSuites.discover(moduleDir, compact)) out.addAll(suiteRoots(moduleDir, compact, suite));
-        return List.copyOf(out);
-    }
-
-    /** The main source set's roots, whether or not they exist: {@code src/} in a compact module. */
-    static List<Path> mainRoots(Path moduleDir, boolean compact) {
-        if (compact) return List.of(moduleDir.resolve("src"));
-        List<Path> out = new ArrayList<>(MAIN_ROOTS.size());
-        for (String r : MAIN_ROOTS) out.add(moduleDir.resolve(r));
-        return List.copyOf(out);
-    }
-
-    /** Every language's source root for one suite, deduplicated. */
-    static List<Path> suiteRoots(Path moduleDir, boolean compact, String suite) {
-        LinkedHashSet<Path> out = new LinkedHashSet<>();
-        out.addAll(TestSuites.javaRoots(moduleDir, compact, suite));
-        out.addAll(TestSuites.kotlinRoots(moduleDir, compact, suite));
-        out.addAll(TestSuites.groovyRoots(moduleDir, compact, suite));
-        out.addAll(TestSuites.scalaRoots(moduleDir, compact, suite));
-        return List.copyOf(out);
+        return prefix(module) + SourceRoots.rel(moduleDir, root) + "/" + tail;
     }
 
     private static String prefix(String module) {
         return module.isEmpty() ? "" : module + "/";
-    }
-
-    private static String rel(Path moduleDir, Path root) {
-        return moduleDir
-                .toAbsolutePath()
-                .normalize()
-                .relativize(root.toAbsolutePath().normalize())
-                .toString()
-                .replace('\\', '/');
     }
 }

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.guard.eval;
 
+import cc.jumpkick.guard.extract.SourceRoots;
 import cc.jumpkick.guard.facts.ClassFacts;
 import cc.jumpkick.guard.facts.FactsIndex;
 import cc.jumpkick.host.PathUtil;
@@ -60,7 +61,7 @@ final class ClassesView {
     static List<String> uncompiled(Path workspace, Path module, Set<String> compiled) {
         List<String> out = new ArrayList<>();
         String rel = WorkspaceModel.rel(workspace, module);
-        for (Path root : SourcePaths.mainRoots(module, ModuleLayout.isCompact(module))) {
+        for (Path root : SourceRoots.mainRoots(module, ModuleLayout.isCompact(module))) {
             if (!Files.isDirectory(root)) continue;
             try {
                 PathUtil.forEachReadableFile(root, (file, attrs) -> {
@@ -82,7 +83,7 @@ final class ClassesView {
     static Set<String> compiledTails(FactsIndex facts) {
         Set<String> out = new HashSet<>();
         for (ClassFacts c : facts.classes().values()) {
-            String tail = SourcePaths.tail(c);
+            String tail = SourceRoots.tail(c);
             if (tail != null) out.add(tail);
         }
         return out;

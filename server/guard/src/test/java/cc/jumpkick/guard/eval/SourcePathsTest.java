@@ -3,6 +3,7 @@ package cc.jumpkick.guard.eval;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.guard.extract.SourceRoots;
 import cc.jumpkick.testing.RepoRoot;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -43,8 +44,8 @@ class SourcePathsTest {
         file(c, "src/a/C.java");
         Files.writeString(c.resolve("jk.toml"), "name = \"c\"\nlayout = \"simple\"\n");
         assertThat(SourcePaths.resolve("c", c, "a/C.java")).isEqualTo("c/src/a/C.java");
-        assertThat(SourcePaths.rootHolding(c, "a/C.java")).isEqualTo("src");
-        assertThat(SourcePaths.rootHolding(c, "a/Nope.java")).isNull();
+        assertThat(SourceRoots.rootHolding(c, "a/C.java")).isEqualTo("src");
+        assertThat(SourceRoots.rootHolding(c, "a/Nope.java")).isNull();
     }
 
     /** The user page states the spelling an `allow` path must follow, with a Kotlin-root and a compact example. */

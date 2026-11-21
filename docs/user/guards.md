@@ -470,10 +470,13 @@ lanes and CI remain the enforcement.
   worktree, `jk test -m <one module>` before the first full build), or holds a source there
   that its last compile did not read (one added or moved in since), the allow is neither used
   nor stale; it is judged once every such module has been compiled.
-- **`split-package` ignores classes whose source has gone**: a module the run did not build
-  keeps the classes of a source moved or deleted since its last compile, and a package it holds
-  only through such classes is not its share of a split. A class counts as gone when its last
-  compile read its source at the class's package path and that file is no longer there.
+- **Workspace rules ignore classes whose source has gone**: a module the run did not build
+  keeps the classes of a source moved or deleted since its last compile. Every workspace-lane
+  rule (`cycles`, `layers`, `coupling`, `split-package`, …) reads the workspace without them, so
+  a package a module holds only through such classes is not its share of a split, and an edge
+  only such a class makes is no edge. A class counts as gone when its last compile read its
+  source at the class's package path and no source root of the module holds that file now; when
+  the file comes back, the lane judges again rather than replaying its cached verdict.
 
 ## Related
 

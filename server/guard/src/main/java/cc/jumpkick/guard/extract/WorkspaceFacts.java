@@ -7,12 +7,14 @@ import cc.jumpkick.guard.facts.ClassFacts;
 import cc.jumpkick.guard.facts.Descriptors;
 import cc.jumpkick.guard.facts.FactsFormat;
 import cc.jumpkick.guard.facts.FactsIndex;
+import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.layout.BuildLayout;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -21,6 +23,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.TreeSet;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -81,17 +84,61 @@ public final class WorkspaceFacts {
 
     /**
      * Every module's main index read together: the workspace lane's view. A module without an index
-     * contributes nothing (its compile failed or never ran); a class two modules both compile is
-     * kept once, under the module read later — the split-package kind reads the per-module indexes.
+     * contributes nothing (its compile failed or never ran), nor does a class of a source that is
+     * gone ({@link #removedClasses}); a class two modules both compile is kept once, under the module
+     * read later — the split-package kind reads the per-module indexes.
      */
     public static FactsIndex merged(Path root, List<Path> modules) throws IOException {
         Map<String, ClassFacts> classes = new LinkedHashMap<>();
         for (Path m : modules) {
             Path idx = indexOf(root, m);
             if (idx == null) continue;
-            classes.putAll(FactsFormat.read(idx).classes());
+            FactsIndex index = FactsFormat.read(idx);
+            Set<String> removed = removedClasses(root, m, index);
+            for (var c : index.classes().entrySet()) {
+                if (!removed.contains(c.getKey())) classes.put(c.getKey(), c.getValue());
+            }
         }
         return new FactsIndex(classes, Map.of(), "");
+    }
+
+    /**
+     * The classes {@code module}'s main index holds from a source its last compile read and that is
+     * gone since, with none of its source roots holding it again, by internal name. A module no step
+     * of this run compiled keeps such classes until it compiles again; the workspace lane reads them
+     * as not there. Empty when every source the stamps name is on disk.
+     */
+    public static Set<String> removedClasses(Path root, Path module) {
+        return removedClasses(root, module, null);
+    }
+
+    /** {@link #removedClasses(Path, Path)} with {@code index} already read; null reads it only when a source is gone. */
+    private static Set<String> removedClasses(Path root, Path module, @Nullable FactsIndex index) {
+        List<String> gone = goneSources(module);
+        if (gone.isEmpty()) return Set.of();
+        FactsIndex read = index != null ? index : module(root, module);
+        Set<String> out = new TreeSet<>();
+        for (var c : read.classes().entrySet()) {
+            String tail = SourceRoots.tail(c.getValue());
+            if (tail == null || !endsWithAny(gone, "/" + tail)) continue;
+            if (SourceRoots.rootHolding(module, tail) == null) out.add(c.getKey());
+        }
+        return out;
+    }
+
+    /** The sources the stamps of {@code module}'s classes tree name that are not on disk, {@code /}-separated. */
+    private static List<String> goneSources(Path module) {
+        List<String> out = new ArrayList<>();
+        Path classes = BuildLayout.moduleTargetDir(module).resolve("classes");
+        for (Path source : BuildStamps.stampedSources(classes)) {
+            if (!Files.exists(source)) out.add(source.toString().replace('\\', '/'));
+        }
+        return out;
+    }
+
+    private static boolean endsWithAny(List<String> paths, String suffix) {
+        for (String p : paths) if (p.endsWith(suffix)) return true;
+        return false;
     }
 
     /**
@@ -128,8 +175,9 @@ public final class WorkspaceFacts {
     }
 
     /**
-     * Every workspace package's module directories, from the index names alone: a module that
-     * compiles a class of the package, even one another module compiles too, is among them.
+     * Every workspace package's module directories, from the index names: a module that compiles a
+     * class of the package, even one another module compiles too, is among them; one that holds the
+     * package only through classes of sources that are gone ({@link #removedClasses}) is not.
      */
     public static Map<String, Set<Path>> packageModuleDirs(Path root, List<Path> modules) {
         Map<String, Set<Path>> out = new TreeMap<>();
@@ -139,9 +187,12 @@ public final class WorkspaceFacts {
             try {
                 FileStamp stamp = FileStamp.of(idx);
                 if (stamp == null) continue;
-                for (String c : names(idx, stamp))
+                Set<String> removed = removedClasses(root, m, null);
+                for (String c : names(idx, stamp)) {
+                    if (removed.contains(c)) continue;
                     out.computeIfAbsent(Descriptors.packageOf(c), k -> new LinkedHashSet<>())
                             .add(m);
+                }
             } catch (RuntimeException unreadable) {
                 // A module whose index cannot be read declares no package here.
                 Log.debug("packageModules: a module whose index cannot be read declares no package here", unreadable);

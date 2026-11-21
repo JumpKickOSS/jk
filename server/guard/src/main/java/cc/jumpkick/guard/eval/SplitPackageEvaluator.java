@@ -2,9 +2,8 @@
 package cc.jumpkick.guard.eval;
 
 import cc.jumpkick.guard.baseline.Observation;
+import cc.jumpkick.guard.extract.SourceRoots;
 import cc.jumpkick.guard.extract.WorkspaceFacts;
-import cc.jumpkick.guard.facts.ClassFacts;
-import cc.jumpkick.guard.facts.FactsIndex;
 import cc.jumpkick.guard.rules.Allow;
 import cc.jumpkick.guard.rules.Rule;
 import cc.jumpkick.host.BuildStamps;
@@ -15,7 +14,6 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -38,9 +36,8 @@ import org.jspecify.annotations.Nullable;
  * <p>A module whose share of a split package is generated code only — the package's directory sits
  * under a generated-sources tree ({@code target/generated-sources/*}, {@code target/ksp/*}) and
  * under none of its source roots — does not claim it: processors such as Hilt write one package
- * into every module by design. Nor does a module whose share is only classes of sources its last
- * compile read and that are gone since: a module this run did not build keeps the classes of a
- * source moved out of it until it compiles again.
+ * into every module by design. Nor does a module whose share is only classes of sources that are
+ * gone since its last compile ({@link WorkspaceFacts#removedClasses}).
  */
 final class SplitPackageEvaluator implements Evaluator {
 
@@ -58,13 +55,11 @@ final class SplitPackageEvaluator implements Evaluator {
             }
         }
         Map<String, Set<String>> modulesByPackage = new TreeMap<>();
-        RemovedSources removed = new RemovedSources(ctx.root());
         for (var e : dirsByPackage.entrySet()) {
             Set<String> owners = new TreeSet<>(e.getValue().keySet());
             if (owners.size() > 1) {
                 for (var m : e.getValue().entrySet()) {
-                    if (generatedOnly(m.getValue(), e.getKey()) || removed.only(m.getValue(), e.getKey()))
-                        owners.remove(m.getKey());
+                    if (generatedOnly(m.getValue(), e.getKey())) owners.remove(m.getKey());
                 }
             }
             modulesByPackage.put(e.getKey(), owners);
@@ -141,53 +136,6 @@ final class SplitPackageEvaluator implements Evaluator {
         }
     }
 
-    /**
-     * Each module's sources that its stamps name and that are gone: the sources of classes its
-     * classes tree still holds because nothing compiled the module since they moved or went.
-     */
-    private static final class RemovedSources {
-        private final Path root;
-        private final Map<Path, List<String>> gone = new HashMap<>();
-        private final Map<Path, FactsIndex> indexes = new HashMap<>();
-
-        RemovedSources(Path root) {
-            this.root = root;
-        }
-
-        /**
-         * Whether every class {@code moduleDir} holds in {@code pkg} was compiled from a source that
-         * is gone and that none of its source roots holds again.
-         */
-        boolean only(Path moduleDir, String pkg) {
-            List<String> sources = gone.computeIfAbsent(moduleDir, RemovedSources::goneSources);
-            if (sources.isEmpty()) return false;
-            FactsIndex index = indexes.computeIfAbsent(moduleDir, m -> WorkspaceFacts.module(root, m));
-            boolean any = false;
-            for (ClassFacts c : index.classes().values()) {
-                if (!c.packageName().equals(pkg)) continue;
-                String tail = SourcePaths.tail(c);
-                if (tail == null || !endsWithAny(sources, "/" + tail)) return false;
-                if (SourcePaths.rootHolding(moduleDir, tail) != null) return false;
-                any = true;
-            }
-            return any;
-        }
-
-        private static List<String> goneSources(Path moduleDir) {
-            List<String> out = new ArrayList<>();
-            Path classes = BuildLayout.moduleTargetDir(moduleDir).resolve("classes");
-            for (Path source : BuildStamps.stampedSources(classes)) {
-                if (!Files.exists(source)) out.add(source.toString().replace('\\', '/'));
-            }
-            return out;
-        }
-
-        private static boolean endsWithAny(List<String> paths, String suffix) {
-            for (String p : paths) if (p.endsWith(suffix)) return true;
-            return false;
-        }
-    }
-
     /** Every package with at least one file in a main source root of {@code modules}. */
     static Set<String> sourcePackages(List<Path> modules) {
         Set<String> out = new TreeSet<>();
@@ -224,7 +172,7 @@ final class SplitPackageEvaluator implements Evaluator {
 
     /** Adds to {@code out} the package of each file {@code take} accepts in a main source root of {@code module}. */
     private static void packagesOf(Path module, Predicate<Path> take, Set<String> out) {
-        for (Path root : SourcePaths.mainRoots(module, ModuleLayout.isCompact(module))) {
+        for (Path root : SourceRoots.mainRoots(module, ModuleLayout.isCompact(module))) {
             if (!Files.isDirectory(root)) continue;
             try {
                 PathUtil.forEachReadableFile(root, (file, attrs) -> {
@@ -242,7 +190,7 @@ final class SplitPackageEvaluator implements Evaluator {
     static boolean generatedOnly(Path moduleDir, String pkg) {
         String pkgPath = pkg.replace('.', '/');
         if (pkgPath.isEmpty()) return false;
-        for (Path root : SourcePaths.roots(moduleDir, ModuleLayout.isCompact(moduleDir))) {
+        for (Path root : SourceRoots.roots(moduleDir, ModuleLayout.isCompact(moduleDir))) {
             if (Files.isDirectory(root.resolve(pkgPath))) return false;
         }
         for (Path root : generatedRoots(moduleDir)) {
