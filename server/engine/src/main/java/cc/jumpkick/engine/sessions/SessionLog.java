@@ -1,17 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.sessions;
 
-import cc.jumpkick.builds.ProjectIds;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.journal.BuildRecord;
 import cc.jumpkick.engine.journal.SessionJournal;
 import cc.jumpkick.engine.listen.EventRedaction;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.jsonl.MiniJson;
-import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.wire.protocol.EventCatalog;
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -103,10 +100,19 @@ public final class SessionLog {
     private final Map<String, Live> byKey = new LinkedHashMap<>();
     private final Map<String, Live> byId = new LinkedHashMap<>();
     private final Map<String, Live> byConnection = new HashMap<>();
-    private final Map<String, @Nullable String> projectIds = new HashMap<>();
+    private final ProjectIdMemo projectIds = new ProjectIdMemo();
 
     /** Whether {@link #adopt} has run. */
     private boolean adopted;
+
+    /**
+     * What {@link #predecessorStopped} answered, or {@code null} while it has not: it is asked on a
+     * thread of its own, so the socket wait never holds this log's lock.
+     */
+    private @Nullable Boolean handingOver;
+
+    /** Whether {@link #predecessorStopped} has been asked. */
+    private boolean asked;
 
     /** Set once {@link #writes} fails or {@link #stopWriting} runs: the log writes nothing from then on. */
     private boolean retired;
@@ -265,11 +271,15 @@ public final class SessionLog {
      */
     public synchronized int adopt() {
         if (adopted) return 0;
-        adopted = true;
-        if (journal == null) return 0;
+        if (journal == null) {
+            adopted = true;
+            return 0;
+        }
         // A live predecessor may still be finishing a run of a session with no connection; the idle
         // sweep settles those once they go quiet. With none, nothing can come back to them.
-        boolean handingOver = predecessorStopped.getAsBoolean();
+        boolean handingOver = awaitPredecessor();
+        if (adopted) return 0;
+        adopted = true;
         int n = 0;
         for (Map<String, Object> doc : journal.list()) {
             if (!(doc.get("session") instanceof Map<?, ?> s)) continue;
@@ -313,6 +323,39 @@ public final class SessionLog {
             n++;
         }
         return n;
+    }
+
+    /**
+     * Under the lock: what {@link #predecessorStopped} answers, asked once on a virtual thread and
+     * waited for with the lock let go, so a {@link #stopWriting} or a status read is not held behind
+     * the predecessor's socket. Every entry point waits here until it is known.
+     */
+    private boolean awaitPredecessor() {
+        if (!asked) {
+            asked = true;
+            SessionContext.startVirtual("jk-sessions-predecessor", () -> {
+                boolean confirmed = false;
+                try {
+                    confirmed = predecessorStopped.getAsBoolean();
+                } finally {
+                    synchronized (this) {
+                        handingOver = confirmed;
+                        notifyAll();
+                    }
+                }
+            });
+        }
+        boolean interrupted = false;
+        Boolean answer;
+        while ((answer = handingOver) == null) {
+            try {
+                wait();
+            } catch (InterruptedException e) {
+                interrupted = true;
+            }
+        }
+        if (interrupted) Thread.currentThread().interrupt();
+        return answer;
     }
 
     /**
@@ -780,7 +823,7 @@ public final class SessionLog {
                 r.client(),
                 r.label(),
                 project,
-                project == null ? null : projectId(project),
+                project == null ? null : projectIds.idOf(project),
                 r.startedAt(),
                 last,
                 r.endedAt(),
@@ -795,7 +838,7 @@ public final class SessionLog {
                 r.client(),
                 r.label(),
                 project,
-                projectId(project),
+                projectIds.idOf(project),
                 r.startedAt(),
                 at,
                 r.endedAt(),
@@ -900,7 +943,7 @@ public final class SessionLog {
     private Map<String, Object> line(EpisodeInference.Stored e, boolean resolve) {
         Episode episode = e.episode();
         String dir = episode.project();
-        if (!dir.isBlank() && (resolve || projectIds.containsKey(dir))) episode = withProjectId(episode);
+        if (!dir.isBlank() && (resolve || projectIds.knows(dir))) episode = withProjectId(episode);
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("episode", episode.toMap());
         m.put("state", e.state());
@@ -1051,20 +1094,7 @@ public final class SessionLog {
     }
 
     private Episode withProjectId(Episode e) {
-        return e.projectId() != null || e.project().isBlank() ? e : e.withProjectId(projectId(e.project()));
-    }
-
-    private synchronized @Nullable String projectId(String dir) {
-        if (projectIds.containsKey(dir)) return projectIds.get(dir);
-        String id;
-        try {
-            // A directory with no jk manifest has no project identity; asking git costs a fork.
-            id = Files.isRegularFile(ManifestPaths.manifestIn(Path.of(dir))) ? ProjectIds.idOf(dir) : null;
-        } catch (RuntimeException e) {
-            id = null;
-        }
-        projectIds.put(dir, id);
-        return id;
+        return e.projectId() != null || e.project().isBlank() ? e : e.withProjectId(projectIds.idOf(e.project()));
     }
 
     private static String key(String origin, @Nullable String label) {

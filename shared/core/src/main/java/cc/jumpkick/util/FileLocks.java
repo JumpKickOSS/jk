@@ -18,6 +18,7 @@ import java.nio.file.NoSuchFileException;
 import java.nio.file.OpenOption;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
@@ -33,7 +34,8 @@ import org.jspecify.annotations.Nullable;
  * <p>One JVM opens one channel per lock file and never a second: POSIX releases every lock a
  * process holds on a file when any descriptor to it closes, so a probe that opened and closed its
  * own channel would silently unlock the holder. Threads queue on a JVM lock in front of the
- * channel, and a re-entrant or same-process taker is answered from the JVM's own bookkeeping. A
+ * channel, and a re-entrant or same-process taker is answered from the JVM's own bookkeeping; past
+ * {@link #ENTRIES_KEPT} spellings that bookkeeping drops the files nobody holds. A
  * filesystem that refuses the lock file or the lock degrades to the JVM lock rather than failing
  * the caller; an interrupt while waiting propagates, since a fold that ran unlocked would lose
  * rows. An interrupt inside a channel's I/O closes the channel and with it the lock, so the I/O on
@@ -48,6 +50,12 @@ import org.jspecify.annotations.Nullable;
 public final class FileLocks {
 
     private static final ConcurrentHashMap<Path, Entry> ENTRIES = new ConcurrentHashMap<>();
+
+    /**
+     * Spellings kept before the entries nobody holds are dropped: a resident engine locks a ledger
+     * per project and a directory per tool it ever touched.
+     */
+    static final int ENTRIES_KEPT = 1024;
 
     private static final long LOCK_POSITION = Long.MAX_VALUE - 1;
 
@@ -78,8 +86,7 @@ public final class FileLocks {
 
     /** Run {@code body} while holding {@code lockFile}, waiting for a holder to finish. */
     public static <T> T withLock(Path lockFile, Body<T> body) throws IOException {
-        Entry e = entry(lockFile);
-        e.jvm.lock();
+        Entry e = locked(lockFile);
         try {
             if (e.holders > 0) return body.run(); // re-entered, or under this JVM's open hold
             boolean locked = e.acquire(true);
@@ -109,8 +116,13 @@ public final class FileLocks {
      * Hold#write} puts a description of the holder in the file for whoever is refused.
      */
     public static Probe tryHold(Path lockFile) {
-        Entry e = entry(lockFile);
-        if (!e.jvm.tryLock()) return new Held();
+        Entry e;
+        while (true) {
+            e = entry(lockFile);
+            if (!e.jvm.tryLock()) return new Held();
+            if (!e.retired) break;
+            e.jvm.unlock();
+        }
         try {
             if (e.holders > 0) return new Held();
             FileChannel channel;
@@ -151,18 +163,23 @@ public final class FileLocks {
      */
     public static String describeHolder(Path lockFile) {
         if (!Files.exists(lockFile)) return "";
-        Entry e = entry(lockFile);
+        Entry e;
         try {
-            while (!e.jvm.tryLock(DESCRIBE_POLL_MILLIS, TimeUnit.MILLISECONDS)) {
-                FileChannel busy = e.channel;
-                if (busy == null) continue; // being opened or closed, or a body runs without an OS lock
-                try {
-                    return uninterruptibly(() -> readDescription(busy));
-                } catch (ClosedChannelException released) {
-                    // the hold ended under the read; ask again
-                } catch (IOException unreadable) {
-                    return "";
+            while (true) {
+                e = entry(lockFile);
+                while (!e.jvm.tryLock(DESCRIBE_POLL_MILLIS, TimeUnit.MILLISECONDS)) {
+                    FileChannel busy = e.channel;
+                    if (busy == null) continue; // being opened or closed, or a body runs without an OS lock
+                    try {
+                        return uninterruptibly(() -> readDescription(busy));
+                    } catch (ClosedChannelException released) {
+                        // the hold ended under the read; ask again
+                    } catch (IOException unreadable) {
+                        return "";
+                    }
                 }
+                if (!e.retired) break;
+                e.jvm.unlock();
             }
         } catch (InterruptedException interrupted) {
             Thread.currentThread().interrupt();
@@ -235,7 +252,8 @@ public final class FileLocks {
     private static Entry entry(Path lockFile) {
         Path spelling = lockFile.toAbsolutePath().normalize();
         Entry known = ENTRIES.get(spelling);
-        if (known != null) return known;
+        if (known != null && !known.retired) return known;
+        if (known != null) ENTRIES.remove(spelling, known);
         Path key = spelling;
         try {
             if (OwnerOnlyFiles.inState(key)) {
@@ -253,9 +271,46 @@ public final class FileLocks {
         } catch (IOException | UnsupportedOperationException noFile) {
             // keyed by spelling; open() reports the tree's refusal to the caller
         }
-        Entry e = ENTRIES.computeIfAbsent(key, Entry::new);
-        ENTRIES.putIfAbsent(spelling, e);
+        Entry e = ENTRIES.compute(key, (k, held) -> held == null || held.retired ? new Entry(k) : held);
+        e.keys.add(key);
+        e.keys.add(spelling);
+        ENTRIES.compute(spelling, (k, held) -> held == null || held.retired ? e : held);
+        if (ENTRIES.size() > ENTRIES_KEPT) dropIdle();
         return e;
+    }
+
+    /** {@code lockFile}'s entry with its JVM lock taken: one {@link #dropIdle} has not retired. */
+    private static Entry locked(Path lockFile) {
+        while (true) {
+            Entry e = entry(lockFile);
+            e.jvm.lock();
+            if (!e.retired) return e;
+            e.jvm.unlock();
+        }
+    }
+
+    /**
+     * Retire every entry no thread holds, waits for or has a channel open on, and forget its
+     * spellings. A thread that looked one up before it was retired finds it retired once it has the
+     * JVM lock and looks again, so one file never has two live entries, nor this JVM two channels.
+     */
+    private static void dropIdle() {
+        for (Entry e : ENTRIES.values()) {
+            if (e.retired || !e.jvm.tryLock()) continue;
+            try {
+                if (e.jvm.getHoldCount() == 1 && e.holders == 0 && e.channel == null && !e.jvm.hasQueuedThreads()) {
+                    e.retired = true;
+                    for (Path k : e.keys) ENTRIES.remove(k, e);
+                }
+            } finally {
+                e.jvm.unlock();
+            }
+        }
+    }
+
+    /** Spellings this JVM keeps an entry for right now. */
+    static int entries() {
+        return ENTRIES.size();
     }
 
     /** One lock file as this JVM sees it: the queue in front of it, the channel, the OS lock. */
@@ -274,6 +329,12 @@ public final class FileLocks {
 
         /** Holds and bodies in progress; the channel closes when it returns to zero. */
         int holders;
+
+        /** Set under {@link #jvm} by {@link #dropIdle}: this entry is no longer the file's. */
+        volatile boolean retired;
+
+        /** The spellings this entry is filed under. */
+        final Set<Path> keys = ConcurrentHashMap.newKeySet();
 
         Entry(Path file) {
             this.file = file;

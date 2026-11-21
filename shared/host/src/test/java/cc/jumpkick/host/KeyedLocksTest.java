@@ -79,4 +79,34 @@ class KeyedLocksTest {
         assertThat(interrupted.get()).isEqualTo(1);
         assertThat(locks.size()).isZero();
     }
+
+    @Test
+    void a_second_close_releases_nothing() throws Exception {
+        KeyedLocks<String> locks = new KeyedLocks<>();
+        try (KeyedLocks.Held outer = locks.hold("k")) {
+            KeyedLocks.Held inner = locks.hold("k");
+            inner.close();
+            inner.close();
+            assertThat(locks.heldByCurrentThread("k"))
+                    .as("the outer hold survives the inner one closed twice")
+                    .isTrue();
+
+            AtomicInteger entered = new AtomicInteger();
+            Thread other = new Thread(() -> {
+                try (KeyedLocks.Held held = locks.hold("k")) {
+                    entered.incrementAndGet();
+                }
+            });
+            other.start();
+            other.join(200);
+            assertThat(entered.get())
+                    .as("another thread waits while the key is held")
+                    .isZero();
+            outer.close();
+            outer.close();
+            other.join(30_000);
+            assertThat(entered.get()).isEqualTo(1);
+        }
+        assertThat(locks.size()).isZero();
+    }
 }

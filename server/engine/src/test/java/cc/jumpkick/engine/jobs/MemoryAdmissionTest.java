@@ -14,6 +14,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -39,7 +40,7 @@ class MemoryAdmissionTest {
     private static final long POLL_MS = 10;
 
     /** A heap whose committed size is whatever the test says it is. */
-    static final class FakeHeap implements MemoryAdmission.Heap {
+    static class FakeHeap implements MemoryAdmission.Heap {
         final long max;
         volatile long committed;
         /** What a collection leaves in use, the live set; negative: as much as is committed. */
@@ -212,6 +213,45 @@ class MemoryAdmissionTest {
         assertThat(byDir.get(HANG.toSeconds(), TimeUnit.SECONDS)).isEqualTo(Verdict.CANCELLED);
         assertThat(gate.queued()).isZero();
         assertThat(gate.admittedCount()).as("the running job is untouched").isEqualTo(1);
+    }
+
+    @Test
+    void the_queue_is_read_and_cancelled_while_a_collection_runs() throws Exception {
+        CountDownLatch collecting = new CountDownLatch(1);
+        CountDownLatch collected = new CountDownLatch(1);
+        FakeHeap heap = new FakeHeap(1000, 100) {
+            @Override
+            public void collect() {
+                collecting.countDown();
+                try {
+                    collected.await(HANG.toSeconds(), TimeUnit.SECONDS);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+                super.collect();
+            }
+        };
+        MemoryAdmission gate = gate(heap, (kind, dir) -> "/c".equals(dir) ? 700 * MIB : 350 * MIB);
+        assertThat(gate.admit(1, "build", "/a", NEVER_QUEUED, () -> false)).isEqualTo(Verdict.ADMITTED);
+        assertThat(gate.admit(2, "build", "/b", NEVER_QUEUED, () -> false)).isEqualTo(Verdict.ADMITTED);
+        CompletableFuture<Verdict> third =
+                async(() -> gate.admit(3, "build", "/c", (ahead, waited) -> {}, () -> false));
+        Await.until(HANG, () -> gate.queued() == 1);
+        CompletableFuture<Void> release =
+                CompletableFuture.runAsync(() -> gate.release(1), Executors.newVirtualThreadPerTaskExecutor());
+        assertThat(collecting.await(HANG.toSeconds(), TimeUnit.SECONDS)).isTrue();
+
+        CompletableFuture<Boolean> cancel =
+                CompletableFuture.supplyAsync(() -> gate.cancel(3), Executors.newVirtualThreadPerTaskExecutor());
+        assertThat(cancel.get(HANG.toSeconds(), TimeUnit.SECONDS))
+                .as("a cancel does not wait for the collection")
+                .isTrue();
+        assertThat(third.get(HANG.toSeconds(), TimeUnit.SECONDS)).isEqualTo(Verdict.CANCELLED);
+        assertThat(release).as("the collection still runs").isNotDone();
+
+        collected.countDown();
+        release.get(HANG.toSeconds(), TimeUnit.SECONDS);
+        assertThat(heap.collections).hasValue(1);
     }
 
     @Test

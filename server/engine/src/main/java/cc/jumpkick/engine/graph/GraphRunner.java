@@ -244,8 +244,13 @@ public final class GraphRunner {
     /** The engine's {@link GraphCompiles}; none in a process with no jobs to submit (a test, a trainer). */
     private static volatile @Nullable Compiler compiler;
 
-    public static void compiler(@Nullable Compiler c) {
+    public static synchronized void compiler(@Nullable Compiler c) {
         compiler = c;
+    }
+
+    /** Detach {@code c} when it is still the compiler; one another engine set since stays. */
+    public static synchronized void detachCompiler(Compiler c) {
+        if (compiler == c) compiler = null;
     }
 
     /**

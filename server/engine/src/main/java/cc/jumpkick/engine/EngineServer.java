@@ -155,6 +155,14 @@ public final class EngineServer implements AutoCloseable {
     private final EngineVitals vitals;
     private final SsePublisher sse;
     private final LiveRuns liveRuns;
+
+    /** The process-wide hooks this engine sets, detached again by {@link #cleanup}. */
+    private final MemoryHolds.Listener memoryHolds;
+
+    private final Suspensions.Listener suspensions;
+
+    private final GraphCompiles graphCompiles;
+
     private final JournalWriter journalWriter;
 
     /** Sessions, their episodes and actions: written beside the journal, served on /api/sessions. */
@@ -449,9 +457,9 @@ public final class EngineServer implements AutoCloseable {
                 journalWriter::accStepStart);
         this.liveRuns = new LiveRuns(inFlightBuilds, sessions, httpEvents, sseConnect, clockMillis);
         this.listeners = new EngineListeners(sessions, sse, journalWriter, inFlightBuilds, this::eventRequestId);
-        // A build whose forks wait for memory goes on hold on every surface (JK-VYJ4X).
+        // A build whose forks wait for memory goes on hold on every surface.
         SsePublisher holds = sse;
-        MemoryHolds.listen(new MemoryHolds.Listener() {
+        this.memoryHolds = new MemoryHolds.Listener() {
             @Override
             public void held(long requestId, long needBytes, long freeBytes) {
                 holds.holdStarted(requestId, needBytes, freeBytes);
@@ -461,25 +469,28 @@ public final class EngineServer implements AutoCloseable {
             public void resumed(long requestId, long heldMillis) {
                 holds.holdEnded(requestId, heldMillis);
             }
-        });
+        };
+        MemoryHolds.listen(memoryHolds);
         // A spell the engine did not run (a suspend, a stop) is recorded on every job that ran
         // across it, taints the steps in flight, and comes off every countdown.
         JournalWriter suspendedRuns = journalWriter;
         Suspensions.system().beatOn(beat -> JkThreads.platform().execute(beat));
         var say = this.log;
-        Suspensions.system().listen((gap, jobs) -> {
+        this.suspensions = (gap, jobs) -> {
             say.accept("jk engine: not running for " + gap.wallMs() + " ms (suspended or stopped; monotonic "
                     + gap.monoMs() + " ms); " + jobs.size() + " job(s) ran across it");
             for (long rid : jobs) {
                 suspendedRuns.accSuspended(rid, gap.startedAt(), gap.wallMs());
                 holds.suspended(rid, gap);
             }
-        });
+        };
+        Suspensions.system().listen(suspensions);
         this.jobs = newJobEnvelope();
         this.verbs = newVerbRegistry();
         // A graph question compiles stale modules as a job of this engine, like any other.
-        GraphRunner.compiler(new GraphCompiles(
-                this::submitJob, liveRuns::snapshot, journal::rawFinishedRecordByRequestId, Clock.SYSTEM));
+        this.graphCompiles = new GraphCompiles(
+                this::submitJob, liveRuns::snapshot, journal::rawFinishedRecordByRequestId, Clock.SYSTEM);
+        GraphRunner.compiler(graphCompiles);
         this.http = newHttpFront();
         http.selfUpdate(() -> {
             SelfUpdateScheduler scheduler = selfUpdate;
@@ -1128,6 +1139,10 @@ public final class EngineServer implements AutoCloseable {
     }
 
     private void cleanup() {
+        // The process-wide hooks this engine set go with it, unless another engine has set its own.
+        MemoryHolds.detach(memoryHolds);
+        Suspensions.system().detach(suspensions);
+        GraphRunner.detachCompiler(graphCompiles);
         if (selfUpdate != null) selfUpdate.close();
         changeNotices.close();
         if (engineMaintenance != null) {

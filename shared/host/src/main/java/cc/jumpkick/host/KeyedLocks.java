@@ -2,6 +2,7 @@
 package cc.jumpkick.host;
 
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.ReentrantLock;
 
 /**
@@ -28,7 +29,7 @@ public final class KeyedLocks<K> {
 
     private final ConcurrentHashMap<K, Entry> entries = new ConcurrentHashMap<>();
 
-    /** A held key; closing it releases the lock once. */
+    /** A held key; the first close releases the lock, and a second close does nothing. */
     public interface Held extends AutoCloseable {
         @Override
         void close();
@@ -38,7 +39,7 @@ public final class KeyedLocks<K> {
     public Held hold(K key) {
         Entry e = join(key);
         e.lock.lock();
-        return () -> release(key, e);
+        return held(key, e);
     }
 
     /** As {@link #hold}, giving up the wait when the thread is interrupted. */
@@ -50,7 +51,7 @@ public final class KeyedLocks<K> {
             leave(key);
             throw interrupted;
         }
-        return () -> release(key, e);
+        return held(key, e);
     }
 
     /** Whether this thread holds {@code key}'s lock: a reentrant caller already inside it. */
@@ -72,9 +73,17 @@ public final class KeyedLocks<K> {
         });
     }
 
-    private void release(K key, Entry e) {
-        e.lock.unlock();
-        leave(key);
+    /**
+     * A second release would unlock a hold this thread took again, or count a user out twice and
+     * drop the entry while another thread still waits on its lock.
+     */
+    private Held held(K key, Entry e) {
+        AtomicBoolean open = new AtomicBoolean(true);
+        return () -> {
+            if (!open.compareAndSet(true, false)) return;
+            e.lock.unlock();
+            leave(key);
+        };
     }
 
     private void leave(K key) {

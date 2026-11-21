@@ -143,8 +143,13 @@ public final class Suspensions {
     }
 
     /** The engine's listener, told of each gap; {@code null} detaches it. */
-    public void listen(@Nullable Listener l) {
+    public synchronized void listen(@Nullable Listener l) {
         listener = l;
+    }
+
+    /** Detach {@code l} when it is still the listener; one another engine set since stays. */
+    public synchronized void detach(Listener l) {
+        if (listener == l) listener = null;
     }
 
     /** A job started: the clocks are watched until the last job ends. */

@@ -414,10 +414,15 @@ public final class WorkerLeases {
             return h == null ? own : h.cpuCap(own);
         }
 
+        /**
+         * The ledger as a status line reads it. The other engines are read before this ledger's
+         * lock is taken: that read waits on the shared file's lock, and a lease or a cancel must
+         * not wait behind a status request for it.
+         */
         public Snapshot snapshot() {
+            HostLeases h = host;
+            HostLeases.Reading others = h == null ? HostLeases.Reading.NONE : h.fresh();
             synchronized (lock) {
-                HostLeases h = host;
-                HostLeases.Reading others = h == null ? HostLeases.Reading.NONE : h.fresh();
                 long budget = capacityBytes();
                 long charged = charged() + others.bytes();
                 if (charged < 0) charged = Long.MAX_VALUE;

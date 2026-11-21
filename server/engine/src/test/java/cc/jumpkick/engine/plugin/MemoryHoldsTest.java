@@ -23,7 +23,7 @@ class MemoryHoldsTest {
         MemoryHolds.settleWith(null);
     }
 
-    private void listen() {
+    private MemoryHolds.Listener listen() {
         MemoryHolds.settleWith(() -> {});
         MemoryHolds.useClock(new Clock() {
             @Override
@@ -36,7 +36,7 @@ class MemoryHoldsTest {
                 return nanos.get();
             }
         });
-        MemoryHolds.listen(new MemoryHolds.Listener() {
+        MemoryHolds.Listener l = new MemoryHolds.Listener() {
             @Override
             public void held(long requestId, long needBytes, long freeBytes) {
                 heard.add("held " + requestId + " " + needBytes + " " + freeBytes);
@@ -46,7 +46,9 @@ class MemoryHoldsTest {
             public void resumed(long requestId, long heldMillis) {
                 heard.add("resumed " + requestId + " " + heldMillis);
             }
-        });
+        };
+        MemoryHolds.listen(l);
+        return l;
     }
 
     @Test
@@ -71,6 +73,40 @@ class MemoryHoldsTest {
         assertThat(MemoryHolds.onHold(rid)).isFalse();
         assertThat(heard).containsExactly("held " + rid + " 512 128", "resumed " + rid + " 5000");
         assertThat(MemoryHolds.totalHeldMillis(rid)).isEqualTo(5_000);
+    }
+
+    @Test
+    void a_stopped_engine_detaches_its_listener_and_leaves_a_successors() {
+        List<String> stopped = new ArrayList<>();
+        MemoryHolds.Listener first = new MemoryHolds.Listener() {
+            @Override
+            public void held(long requestId, long needBytes, long freeBytes) {
+                stopped.add("held " + requestId);
+            }
+
+            @Override
+            public void resumed(long requestId, long heldMillis) {}
+        };
+        MemoryHolds.listen(first);
+        MemoryHolds.Listener successor = listen();
+        MemoryHolds.detach(first);
+        long rid = 9_100_009L;
+
+        MemoryHolds.waiting(rid, 512, 128);
+
+        assertThat(heard).as("the successor's listener stays").containsExactly("held " + rid + " 512 128");
+        MemoryHolds.done(rid);
+        nanos.addAndGet(MemoryHolds.MERGE_NANOS);
+        MemoryHolds.settle();
+        heard.clear();
+
+        MemoryHolds.detach(successor);
+        MemoryHolds.waiting(rid + 1, 512, 128);
+        assertThat(heard).as("the engine's own listener detached").isEmpty();
+        assertThat(stopped).isEmpty();
+        MemoryHolds.done(rid + 1);
+        nanos.addAndGet(MemoryHolds.MERGE_NANOS);
+        MemoryHolds.settle();
     }
 
     @Test

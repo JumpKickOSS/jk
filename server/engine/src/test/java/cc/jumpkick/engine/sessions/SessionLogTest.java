@@ -550,6 +550,28 @@ class SessionLogTest {
                 .containsExactly(1L, 2L);
     }
 
+    @Test
+    void the_predecessor_is_asked_without_holding_the_log() throws Exception {
+        CountDownLatch asking = new CountDownLatch(1);
+        CountDownLatch answer = new CountDownLatch(1);
+        log.adoptAfter(() -> {
+            asking.countDown();
+            await(answer);
+            return false;
+        });
+        Thread adopting = Thread.ofPlatform().start(log::adopt);
+        assertThat(asking.await(10, TimeUnit.SECONDS)).isTrue();
+
+        Thread stopping = Thread.ofPlatform().start(log::stopWriting);
+        assertThat(stopping.join(Duration.ofSeconds(5)))
+                .as("a successor's stop request is answered while the predecessor is still being asked")
+                .isTrue();
+        assertThat(adopting.isAlive()).as("adoption still waits for the answer").isTrue();
+
+        answer.countDown();
+        assertThat(adopting.join(Duration.ofSeconds(10))).isTrue();
+    }
+
     private static void await(CountDownLatch latch) {
         try {
             latch.await(10, TimeUnit.SECONDS);

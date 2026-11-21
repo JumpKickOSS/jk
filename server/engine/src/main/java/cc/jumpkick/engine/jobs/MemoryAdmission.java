@@ -244,6 +244,18 @@ public final class MemoryAdmission {
     /** Where admissions and releases are written for the next engine to read, or none. */
     private @Nullable LiveJobsFile liveJobs;
 
+    /** Under the lock: admissions and releases so far, so a write can tell whether it is the latest. */
+    private long changes;
+
+    /** Held while the live-jobs file is written, never with {@link #lock}: one write at a time. */
+    private final Object writing = new Object();
+
+    /** Under {@link #writing}: the {@link #changes} the live-jobs file says. */
+    private long written;
+
+    /** Under the lock: whether a collection measuring the live set is running, outside the lock. */
+    private boolean measuring;
+
     /** Write every admission and release to {@code file} ({@link LiveJobsFile}). */
     public MemoryAdmission withLiveJobs(@Nullable LiveJobsFile file) {
         synchronized (lock) {
@@ -252,13 +264,27 @@ public final class MemoryAdmission {
         return this;
     }
 
-    /** Under the lock: rewrite the live-jobs file, when there is one. */
+    /**
+     * Outside the lock: rewrite the live-jobs file as the gate stands now, when there is one and a
+     * write since the last change has not already done so. The disk write holds only {@link
+     * #writing}, so a status read or a cancel never waits on it.
+     */
     private void publish() {
-        LiveJobsFile file = liveJobs;
-        if (file == null) return;
-        List<LiveJobsFile.Job> waiting = new ArrayList<>();
-        queue.forEach((jid, w) -> waiting.add(new LiveJobsFile.Job(jid, w.kind, w.dir, 0)));
-        file.write(new ArrayList<>(live.values()), waiting, heap.committedBytes(), heap.maxBytes());
+        synchronized (writing) {
+            LiveJobsFile file;
+            long version;
+            List<LiveJobsFile.Job> admittedJobs;
+            List<LiveJobsFile.Job> waiting = new ArrayList<>();
+            synchronized (lock) {
+                file = liveJobs;
+                version = changes;
+                if (file == null || version == written) return;
+                admittedJobs = new ArrayList<>(live.values());
+                queue.forEach((jid, w) -> waiting.add(new LiveJobsFile.Job(jid, w.kind, w.dir, 0)));
+            }
+            file.write(admittedJobs, waiting, heap.committedBytes(), heap.maxBytes());
+            written = version;
+        }
     }
 
     private long admittedBytes;
@@ -316,18 +342,30 @@ public final class MemoryAdmission {
      * a drain ends the wait. An interrupt ends it as a cancel.
      */
     public Verdict admit(long jid, String kind, String dir, QueuedListener onQueued, BooleanSupplier draining) {
+        Verdict verdict = await(jid, kind, dir, onQueued, draining);
+        if (verdict == Verdict.ADMITTED) publish();
+        return verdict;
+    }
+
+    private Verdict await(long jid, String kind, String dir, QueuedListener onQueued, BooleanSupplier draining) {
         long estimate = Math.max(0, estimator.estimate(kind, dir));
         if (estimate > heap.maxBytes() - RESERVE_BYTES) return Verdict.TOO_LARGE;
         boolean brief = !BuildHistoryKinds.isBuildLike(kind);
         long arrived = nowMillis.getAsLong();
         int ahead;
-        synchronized (lock) {
-            if ((queue.isEmpty() && fits(estimate)) || (brief && fitsBeside(estimate))) {
-                take(jid, estimate, kind, dir);
-                return Verdict.ADMITTED;
+        while (true) {
+            synchronized (lock) {
+                if ((queue.isEmpty() && fits(estimate)) || (brief && fitsBeside(estimate))) {
+                    take(jid, estimate, kind, dir);
+                    return Verdict.ADMITTED;
+                }
+                if (!queue.isEmpty() || !claimMeasure(estimate)) {
+                    queue.put(jid, new Waiting(kind, dir, arrived));
+                    ahead = queue.size() - 1;
+                    break;
+                }
             }
-            queue.put(jid, new Waiting(kind, dir, arrived));
-            ahead = queue.size() - 1;
+            measure();
         }
         onQueued.queued(ahead, 0);
         long lastReport = arrived;
@@ -338,16 +376,22 @@ public final class MemoryAdmission {
                 long waited;
                 // One reading per round: the wait it reports is the one that made the report due.
                 long now;
+                boolean measure;
                 synchronized (lock) {
                     now = nowMillis.getAsLong();
                     waited = now - arrived;
                     verdict = judge(jid, estimate, brief, waited, draining);
                     if (verdict != null) return verdict;
                     position = positionOf(jid);
-                    if (now - lastReport < timing.reportMs()) {
+                    measure = isHead(jid) && claimMeasure(estimate);
+                    if (!measure && now - lastReport < timing.reportMs()) {
                         lock.wait(pollMs);
                         continue;
                     }
+                }
+                if (measure) {
+                    measure();
+                    continue;
                 }
                 lastReport = now;
                 onQueued.queued(position, waited);
@@ -384,19 +428,43 @@ public final class MemoryAdmission {
 
     /** Give back {@code jid}'s share; idempotent. Waiters are re-judged after a collection. */
     public void release(long jid) {
+        boolean measure;
         synchronized (lock) {
             Long estimate = admitted.remove(jid);
             if (estimate == null) return;
             admittedBytes -= estimate;
             live.remove(jid);
-            publish();
-            if (!queue.isEmpty()) {
-                heap.collect();
+            changes++;
+            measure = !queue.isEmpty() && !measuring;
+            if (measure) {
+                measuring = true;
                 lastCollectMillis = nowMillis.getAsLong();
-                liveBytes = heap.usedBytes();
             }
             if (admitted.isEmpty()) idleCommittedBytes = Math.min(idleCommittedBytes, heap.committedBytes());
             lock.notifyAll();
+        }
+        publish();
+        if (measure) measure();
+    }
+
+    /**
+     * Outside the lock: the full collection a caller {@linkplain #claimMeasure claimed}, then the
+     * live set it leaves recorded and the waiters re-judged. A collection can take seconds on a large
+     * heap, and nothing that reads or cancels the queue waits for it.
+     */
+    private void measure() {
+        long used = -1;
+        try {
+            heap.collect();
+            used = heap.usedBytes();
+        } finally {
+            long committed = heap.committedBytes();
+            synchronized (lock) {
+                measuring = false;
+                if (used >= 0) liveBytes = used;
+                if (admitted.isEmpty()) idleCommittedBytes = Math.min(idleCommittedBytes, committed);
+                lock.notifyAll();
+            }
         }
     }
 
@@ -485,13 +553,28 @@ public final class MemoryAdmission {
         long ledger = idleCommittedBytes + admittedBytes;
         if (estimate > room - ledger) return false;
         if (estimate <= room - heap.committedBytes()) return true;
-        long now = nowMillis.getAsLong();
-        if (lastCollectMillis == Long.MIN_VALUE || now - lastCollectMillis >= COLLECT_EVERY_MS) {
-            heap.collect();
-            lastCollectMillis = now;
-            liveBytes = heap.usedBytes();
-        }
+        if (measuring || measureDue()) return false;
         return estimate <= room - Math.max(ledger, liveBytes);
+    }
+
+    /**
+     * Under the lock: claim the collection {@link #fits} waits for before it judges {@code estimate}
+     * by the live set, when one is due and none runs. The caller runs {@link #measure} once it has
+     * let the lock go.
+     */
+    private boolean claimMeasure(long estimate) {
+        if (measuring || admitted.isEmpty() || !measureDue()) return false;
+        long room = heap.maxBytes() - RESERVE_BYTES;
+        if (estimate > room - (idleCommittedBytes + admittedBytes) || estimate <= room - heap.committedBytes())
+            return false;
+        measuring = true;
+        lastCollectMillis = nowMillis.getAsLong();
+        return true;
+    }
+
+    /** Under the lock: whether the live set was never measured, or last measured {@link #COLLECT_EVERY_MS} ago. */
+    private boolean measureDue() {
+        return lastCollectMillis == Long.MIN_VALUE || nowMillis.getAsLong() - lastCollectMillis >= COLLECT_EVERY_MS;
     }
 
     /** The least time between two collections admission asks for to measure the live set. */
@@ -533,7 +616,7 @@ public final class MemoryAdmission {
         admitted.put(jid, estimate);
         admittedBytes += estimate;
         live.put(jid, new LiveJobsFile.Job(jid, kind, dir, estimate));
-        publish();
+        changes++;
     }
 
     private boolean isHead(long jid) {

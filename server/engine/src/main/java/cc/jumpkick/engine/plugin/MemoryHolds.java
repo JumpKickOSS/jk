@@ -110,8 +110,13 @@ public final class MemoryHolds {
     private MemoryHolds() {}
 
     /** The engine's listener; {@code null} detaches it. */
-    public static void listen(@Nullable Listener l) {
+    public static synchronized void listen(@Nullable Listener l) {
         listener = l == null ? NONE : l;
+    }
+
+    /** Detach {@code l} when it is still the listener; one another engine set since stays. */
+    public static synchronized void detach(Listener l) {
+        if (listener == l) listener = NONE;
     }
 
     /** Test seam: the clock holds are timed on. */

@@ -4,6 +4,8 @@ package cc.jumpkick.engine.plugin;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.testing.Sleepers;
+import cc.jumpkick.util.FileLocks;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -333,6 +335,40 @@ class HostLeasesTest {
             orphan.destroyForcibly();
             stranger.destroyForcibly();
         }
+    }
+
+    @Test
+    void a_status_read_waiting_on_the_shared_file_holds_no_lease_back() throws Exception {
+        WorkerLeases.Ledger ledger = engine(1001, ROOMY);
+        CountDownLatch holding = new CountDownLatch(1);
+        CountDownLatch letGo = new CountDownLatch(1);
+        Thread holder = Thread.ofPlatform().start(() -> {
+            try {
+                FileLocks.withLock(engineDir.resolve(HostLeases.FILE + ".lock"), () -> {
+                    holding.countDown();
+                    try {
+                        letGo.await(60, TimeUnit.SECONDS);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    }
+                    return Boolean.TRUE;
+                });
+            } catch (IOException e) {
+                throw new IllegalStateException(e);
+            }
+        });
+        assertThat(holding.await(60, TimeUnit.SECONDS)).isTrue();
+        Thread status = Thread.ofPlatform().start(ledger::snapshot);
+        Thread.sleep(100);
+
+        Thread cancel = Thread.ofPlatform().start(() -> ledger.cancelRequest(7));
+        assertThat(cancel.join(Duration.ofSeconds(5)))
+                .as("a cancel does not wait behind a status read stuck on the shared file")
+                .isTrue();
+
+        letGo.countDown();
+        assertThat(status.join(Duration.ofSeconds(60))).isTrue();
+        assertThat(holder.join(Duration.ofSeconds(60))).isTrue();
     }
 
     /** One engine of {@link #engineDir} with a made-up pid; every engine of the test counts as alive. */

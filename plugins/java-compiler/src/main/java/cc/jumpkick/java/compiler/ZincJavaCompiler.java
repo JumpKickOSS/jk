@@ -4,6 +4,7 @@ package cc.jumpkick.java.compiler;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.JavacLevel;
+import cc.jumpkick.host.KeyedLocks;
 import cc.jumpkick.host.ModulePath;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.java.compiler.ScalaBridge.MixedScala;
@@ -30,7 +31,6 @@ import java.util.Optional;
 import java.util.ServiceConfigurationError;
 import java.util.ServiceLoader;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 import javax.annotation.processing.Processor;
 import javax.tools.ToolProvider;
 import org.jspecify.annotations.Nullable;
@@ -194,7 +194,7 @@ public final class ZincJavaCompiler {
     static Plan planJava(JavaCompileJob job, ProducerAnalysisCache producers) {
         Path workdir = job.workdir();
         if (workdir == null) return plan(job, producers);
-        synchronized (workdirLock(workdir)) {
+        try (KeyedLocks.Held held = holdWorkdir(workdir)) {
             return plan(job, producers);
         }
     }
@@ -387,7 +387,7 @@ public final class ZincJavaCompiler {
      * would read and rewrite the same analysis and ledgers. The engine's graph never schedules that,
      * but the worker is shared, so it does not rely on it.
      */
-    private static final ConcurrentHashMap<Path, Object> WORKDIR_LOCKS = new ConcurrentHashMap<>();
+    private static final KeyedLocks<Path> WORKDIR_LOCKS = new KeyedLocks<>();
 
     /**
      * Compile {@code job} under its workdir's lock, restoring the thread's context class loader after:
@@ -397,21 +397,18 @@ public final class ZincJavaCompiler {
     private static Result compile(
             JavaCompileJob job, @Nullable MixedScala mixed, ProducerAnalysisCache producerAnalyses) {
         Path workdir = job.workdir();
-        Object lock = workdir == null ? new Object() : workdirLock(workdir);
         Thread thread = Thread.currentThread();
         ClassLoader contextLoader = thread.getContextClassLoader();
-        synchronized (lock) {
-            try {
-                return compileHeld(job, mixed, producerAnalyses);
-            } finally {
-                thread.setContextClassLoader(contextLoader);
-            }
+        try (KeyedLocks.Held held = workdir == null ? () -> {} : holdWorkdir(workdir)) {
+            return compileHeld(job, mixed, producerAnalyses);
+        } finally {
+            thread.setContextClassLoader(contextLoader);
         }
     }
 
     /** The lock every compile and plan of {@code workdir} holds. */
-    private static Object workdirLock(Path workdir) {
-        return WORKDIR_LOCKS.computeIfAbsent(workdir.toAbsolutePath().normalize(), k -> new Object());
+    private static KeyedLocks.Held holdWorkdir(Path workdir) {
+        return WORKDIR_LOCKS.hold(workdir.toAbsolutePath().normalize());
     }
 
     private static Result compileHeld(

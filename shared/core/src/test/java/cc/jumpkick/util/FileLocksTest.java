@@ -20,6 +20,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.DisabledOnOs;
 import org.junit.jupiter.api.condition.EnabledOnOs;
@@ -43,6 +44,52 @@ class FileLocksTest {
         assertThat(second).isInstanceOf(FileLocks.Hold.class);
         ((FileLocks.Hold) second).close();
         assertThat(lock).as("the lock file stays for the next taker").exists();
+    }
+
+    @Test
+    void files_nobody_holds_are_forgotten_and_a_held_one_is_not(@TempDir Path dir) throws Exception {
+        Path kept = dir.resolve("kept.lock");
+        FileLocks.Hold hold = (FileLocks.Hold) FileLocks.tryHold(kept);
+        for (int i = 0; i < 2 * FileLocks.ENTRIES_KEPT; i++) {
+            FileLocks.withLock(dir.resolve("ledger-" + i + ".lock"), () -> {});
+        }
+
+        assertThat(FileLocks.entries())
+                .as("the entries stay bounded however many files were locked")
+                .isLessThanOrEqualTo(FileLocks.ENTRIES_KEPT + 2);
+        assertThat(FileLocks.tryHold(kept))
+                .as("the held file kept its entry: a second taker is refused")
+                .isInstanceOf(FileLocks.Held.class);
+        hold.close();
+    }
+
+    @Test
+    void a_file_stays_exclusive_while_entries_are_dropped_around_it(@TempDir Path dir) throws Exception {
+        Path hot = dir.resolve("hot.lock");
+        AtomicInteger inside = new AtomicInteger();
+        AtomicInteger most = new AtomicInteger();
+        List<Thread> takers = new ArrayList<>();
+        for (int t = 0; t < 4; t++) {
+            takers.add(Thread.ofPlatform().start(() -> {
+                for (int i = 0; i < 300; i++) {
+                    try {
+                        FileLocks.withLock(hot, () -> {
+                            most.accumulateAndGet(inside.incrementAndGet(), Math::max);
+                            Thread.yield();
+                            inside.decrementAndGet();
+                        });
+                    } catch (IOException e) {
+                        throw new IllegalStateException(e);
+                    }
+                }
+            }));
+        }
+        for (int i = 0; i < 3 * FileLocks.ENTRIES_KEPT; i++) {
+            FileLocks.withLock(dir.resolve("churn-" + i + ".lock"), () -> {});
+        }
+        for (Thread t : takers) assertThat(t.join(Duration.ofSeconds(60))).isTrue();
+
+        assertThat(most).as("never two bodies on one file at once").hasValue(1);
     }
 
     @Test

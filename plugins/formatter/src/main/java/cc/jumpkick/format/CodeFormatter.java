@@ -35,11 +35,11 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Deque;
-import java.util.HashMap;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
@@ -447,7 +447,7 @@ public final class CodeFormatter implements Plugin {
     }
 
     /**
-     * Spotless formatters, kept for the life of the worker. A {@link Formatter} owns its step chain
+     * Spotless formatters, kept across the worker's runs. A {@link Formatter} owns its step chain
      * — google-java-format, palantir, ktfmt and scalafmt behind their own classloaders — and is not
      * documented thread-safe, so a file borrows one for itself and gives it back. Built lazily per
      * language and per {@linkplain #shape shape}: a tree with no Scala never pays for a scalafmt
@@ -461,8 +461,15 @@ public final class CodeFormatter implements Plugin {
      */
     static final class Formatters {
 
-        /** Idle formatters by shape. Guarded by itself. */
-        private static final Map<String, Deque<Formatter>> IDLE = new HashMap<>();
+        /** Shapes whose idle formatters are kept: every language of two runs with different settings. */
+        static final int KEPT_SHAPES = 8;
+
+        /**
+         * Idle formatters by shape, least recently used first. Guarded by itself. A worker served by
+         * many workspaces keeps the chains of the {@link #KEPT_SHAPES} shapes used last and closes
+         * the rest, with the classloaders they hold.
+         */
+        private static final LinkedHashMap<String, Deque<Formatter>> IDLE = new LinkedHashMap<>(16, 0.75f, true);
 
         private final Spec spec;
 
@@ -484,8 +491,27 @@ public final class CodeFormatter implements Plugin {
         /** {@code f}, borrowed for {@code kind}, is free again. */
         void giveBack(Kind kind, Formatter f) {
             String shape = shape(spec, kind);
+            List<Formatter> dropped = new ArrayList<>();
             synchronized (IDLE) {
                 IDLE.computeIfAbsent(shape, k -> new ArrayDeque<>()).push(f);
+                for (Iterator<Deque<Formatter>> it = IDLE.values().iterator(); IDLE.size() > KEPT_SHAPES; ) {
+                    dropped.addAll(it.next());
+                    it.remove();
+                }
+            }
+            for (Formatter old : dropped) {
+                try {
+                    old.close();
+                } catch (RuntimeException ignored) {
+                    // a chain that will not close is garbage all the same
+                }
+            }
+        }
+
+        /** Shapes with idle formatters kept right now. */
+        static int keptShapes() {
+            synchronized (IDLE) {
+                return IDLE.size();
             }
         }
 

@@ -67,6 +67,7 @@ public final class JobAdmit {
                     return AdmitResult.reject(holder);
                 }
                 case BuildSlot.Unguarded unguarded -> {
+                    if (UNGUARDED_NOTED.size() >= NOTED_MOST) UNGUARDED_NOTED.clear();
                     if (UNGUARDED_NOTED.add(canonDir)) {
                         host.log("build slot: " + canonDir + " builds without the cross-process lock ("
                                 + unguarded.reason() + ")");
@@ -82,8 +83,13 @@ public final class JobAdmit {
         }
     }
 
-    /** Checkouts already noted as building unguarded, so the log says it once per engine. */
+    /**
+     * Checkouts already noted as building unguarded, so the log says it once per engine; past
+     * {@link #NOTED_MOST} the set starts over and a checkout may be noted again.
+     */
     private static final Set<String> UNGUARDED_NOTED = ConcurrentHashMap.newKeySet();
+
+    private static final int NOTED_MOST = 256;
 
     private static AdmitResult admitHolding(
             JobEnvelope.Host host,
