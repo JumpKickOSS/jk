@@ -629,8 +629,8 @@ with the jar of that version, fetched through the project's repositories, and li
 as removed, renamed (one new name takes its place) or signature changed (a member of the same name
 remains). A member moved up to a superclass in the jar is not gone. Under each change it lists the
 places this project's compiled classes call it, read it or extend it, at `file:line`, then the
-changes nothing here uses. The [update](mcp.md) preview counts these places for each move and names
-this address.
+changes nothing here uses. An answer cut to fit says how many changes and places it left out. The
+[update](mcp.md) preview counts these places for each move and names this address.
 
 ### What a change reaches
 

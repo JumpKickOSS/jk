@@ -121,7 +121,8 @@ public final class ApiBreaks {
 
         /**
          * The report as text, at most {@code rows} lines of changes and places: the changes this
-         * project uses first, each with its places, then the others.
+         * project uses first, each with its places, then the others. A list the limit cuts ends in
+         * a line saying how many it left out.
          */
         public String text(int rows) {
             List<String> out = new ArrayList<>();
@@ -139,11 +140,14 @@ public final class ApiBreaks {
                 }
                 out.add(line(c));
                 budget--;
+                int shown = 0;
                 for (Site s : at) {
                     if (budget <= 0) break;
                     out.add("    " + s.at() + "  " + s.from());
                     budget--;
+                    shown++;
                 }
+                if (shown < at.size()) out.add("    … " + count(at.size() - shown, "more place"));
             }
             for (Change c : changes) {
                 if (sites.containsKey(c)) continue;

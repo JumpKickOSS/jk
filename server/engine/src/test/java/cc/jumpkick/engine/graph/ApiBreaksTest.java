@@ -163,6 +163,28 @@ class ApiBreaksTest {
         assertThat(report.text(1)).endsWith("… 2 more changes");
     }
 
+    @Test
+    void a_list_of_places_cut_by_the_row_limit_says_how_many_it_left_out() {
+        ApiBreaks.Change gone = new ApiBreaks.Change(ApiBreaks.Kind.REMOVED, "lib/Gone", "", false, List.of());
+        ApiBreaks.Change kept = new ApiBreaks.Change(ApiBreaks.Kind.REMOVED, "lib/Kept", "", false, List.of());
+        List<ApiBreaks.Site> at = List.of(
+                new ApiBreaks.Site("src/A.java", 1, "A.a"),
+                new ApiBreaks.Site("src/B.java", 2, "B.b"),
+                new ApiBreaks.Site("src/C.java", 3, "C.c"));
+        ApiBreaks.Report report = new ApiBreaks.Report("acme:lib", "1.0", "2.0", List.of(gone, kept), Map.of(gone, at));
+
+        assertThat(report.text(2))
+                .isEqualTo(String.join(
+                        "\n",
+                        "acme:lib 1.0 → 2.0: 2 API changes, 1 used here at 3 places",
+                        "  removed  lib.Gone",
+                        "    src/A.java:1  A.a",
+                        "    … 2 more places",
+                        "… 1 more change"));
+        assertThat(report.text(1)).contains("  removed  lib.Gone\n    … 3 more places\n");
+        assertThat(report.text(5)).doesNotContain("more place").endsWith("  removed  lib.Kept");
+    }
+
     // ---- fixture ---------------------------------------------------------------
 
     private static FactsIndex index(ClassFacts... classes) {
