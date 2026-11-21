@@ -253,8 +253,12 @@ final class ResultAggregator {
             String throwable = Jsonl.nested(json, "throwable");
             String xmlName = xmlName(json, label);
             if ("ABORTED".equals(status)) {
-                if (xmlReport != null) xmlReport.recordSkipped(id, xmlName, "aborted");
-                if (mdReport != null) mdReport.recordSkipped(id, label, "aborted");
+                // An assumption that aborted the test says why in its message; keep it, or the
+                // report cannot tell a missing fixture from a busy machine.
+                String why = throwable != null ? Jsonl.str(throwable, "message") : null;
+                String reason = why == null || why.isBlank() ? "aborted" : why;
+                if (xmlReport != null) xmlReport.recordSkipped(id, xmlName, reason);
+                if (mdReport != null) mdReport.recordSkipped(id, label, reason);
             } else {
                 if (xmlReport != null) xmlReport.recordFinished(id, xmlName, duration, throwable);
                 if (mdReport != null) mdReport.recordFinished(id, label, duration, throwable);

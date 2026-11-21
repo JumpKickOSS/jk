@@ -78,6 +78,27 @@ class JUnitLauncherAggregatorTest {
     }
 
     @Test
+    void an_aborted_test_s_skip_names_the_assumption_that_aborted_it(@TempDir Path dir) throws Exception {
+        var xml = new XmlTestReport();
+        var md = new MarkdownTestReport();
+        var agg = new ResultAggregator(TestProgressListener.noop(), 0, xml, md);
+        agg.accept("{\"event\":\"finished\",\"uniqueId\":\"[engine:junit-jupiter]/[class:A]/[method:a()]\","
+                + "\"testClass\":\"A\",\"testMethod\":\"a()\",\"type\":\"TEST\",\"status\":\"ABORTED\","
+                + "\"throwable\":{\"class\":\"org.opentest4j.TestAbortedException\","
+                + "\"message\":\"Assumption failed: stale overlay: unknown key\",\"stack\":\"\"}}");
+        agg.accept("{\"event\":\"finished\",\"uniqueId\":\"[engine:junit-jupiter]/[class:A]/[method:b()]\","
+                + "\"testClass\":\"A\",\"testMethod\":\"b()\",\"type\":\"TEST\",\"status\":\"ABORTED\"}");
+        xml.writeAll(dir);
+
+        assertThat(Files.readString(dir.resolve("TEST-A.xml")))
+                .contains("<skipped message=\"Assumption failed: stale overlay: unknown key\"/>")
+                .contains("<skipped message=\"aborted\"/>");
+        assertThat(md.forget(List.of("A")).entries())
+                .extracting(MarkdownTestReport.Entry::skipReason)
+                .containsExactly("Assumption failed: stale overlay: unknown key", "aborted");
+    }
+
+    @Test
     void output_printed_while_a_class_runs_lands_in_that_class_s_system_out(@TempDir Path dir) throws Exception {
         var xml = new XmlTestReport();
         var agg = new ResultAggregator(xml);
