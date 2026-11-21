@@ -8,7 +8,7 @@ Guidance for anyone (human or agent) working in this repository.
 
 Product docs: [README.md](README.md), [docs/user/](docs/user/README.md) (end users + coding agents), [docs/contributors/](docs/contributors/README.md) (this codebase). Build/layout: [CONTRIBUTING.md](CONTRIBUTING.md). Internal design records live in the KanArtist `jk` store ([KanArtist/jk](https://github.com/KanArtist/jk)) under `projects/jk/docs/`, not here.
 
-**Out-of-tree black-box suite / adopter examples:** [JumpKickOSS/jk-examples](https://github.com/JumpKickOSS/jk-examples) (sibling checkout `../jk-examples`). Real multi-module and plugin scenarios used to validate and benchmark product changes and to show idiomatic JumpKick to early adopters. Not a substitute for `jk build` and `jk test -g` — re-run the scenarios that touch surfaces you change (workspaces, Boot, Kotlin, packaging, resolve, …).
+**Out-of-tree black-box suite / adopter examples:** [JumpKickOSS/jk-examples](https://github.com/JumpKickOSS/jk-examples) (sibling checkout `../jk-examples`). Real multi-module and plugin scenarios used to validate and benchmark product changes and to show idiomatic JumpKick to early adopters. Not a substitute for the merge and push gates (`jk install`, `jk install -g`) — re-run the scenarios that touch surfaces you change (workspaces, Boot, Kotlin, packaging, resolve, …).
 
 ## Pre-release (override your training)
 
@@ -136,7 +136,7 @@ one run per cell, fail fast.
 
 Build with the installed JumpKick (`jk build`; a GraalVM-capable JDK for the native client — see CONTRIBUTING). Use a **separate worktree** for parallel work; the resident engine serializes the builds of one workspace. **One heavy run per machine:** JumpKick's full integration tier and an uncached full `jk build` of this tree start nested engines with their own worker pools, so do not run two at once or alongside a benchmark (`bench/`, jk-examples `bench/`), which also needs an otherwise idle host. Editing and narrow `-m` / `--class` tests in parallel worktrees are fine ([details](docs/contributors/test-suite-tiers.md#one-heavy-run-per-machine)).
 
-**Several sessions on one host share one installed JumpKick and one resident engine.** JumpKick coordinates them itself with a host install lock ([engine](docs/user/engine.md#sessions-sharing-one-install)): `jk test`, `guard`, `build` and `explain` hold it shared, and an install of JumpKick itself (`jk install`), `jk self update` and `jk engine stop` hold it exclusively, each waiting for the other and naming the holder; `jk engine status` lists who holds or waits. The lock covers one command, so a gate that must run against the build it just installed (`jk install && jk test -g`) checks that `jk engine status`'s `Source` row still names its checkout before trusting the result.
+**Several sessions on one host share one installed JumpKick and one resident engine.** JumpKick coordinates them itself with a host install lock ([engine](docs/user/engine.md#sessions-sharing-one-install)): `jk test`, `guard`, `build` and `explain` hold it shared, and an install of JumpKick itself (`jk install`), `jk self update` and `jk engine stop` hold it exclusively, each waiting for the other and naming the holder; `jk engine status` lists who holds or waits. The lock covers one command, so a gate that must run against the build it just installed (`jk install`, then `jk install -g`) checks that `jk engine status`'s `Source` row still names its checkout before trusting the result.
 
 ## Reinstall from this checkout
 
@@ -216,6 +216,10 @@ work on something else and read answers with `ka inbox`. Stopping without finish
   worktrees merge on the fast gate and pay for integration once per push, not once per merge.
   A push whose commits since `origin/main` touch nothing JumpKick builds (Markdown, the website under
   `hosting/`, scripts and results under `bench/`) needs no push gate: `jk guard docs` is enough.
+  The fleet's gate hosts run it as `scripts/gate/run.sh <n> <sha>` from a checkout: the pre-run
+  classes in `scripts/gate/pre-classes.txt`, `jk guard`, `jk install`, `jk install -g`, the release
+  suite and the shell fixtures, under the host's gate lock
+  ([self-host](docs/contributors/self-host.md#the-gate)).
 - **Prove it cheaply first** — before any run that takes more than a few minutes, however it is
   spelled (a gate, a whole suite, an integration or slow tier, an uncached build of this tree),
   run the tests that can fail it, one module and one class at a time: every class an earlier run
@@ -255,6 +259,17 @@ local `main` being pushed, plus `jk test -s slow` when any merged change touches
 language plugin. Never push a red or un-run push gate. When it fails, `main` stops: fix forward on
 `main` (re-running the merge gate), re-run the push gate, then push, and note the regression on the
 ticket that caused it (back to `in-progress` if the fix is not trivial).
+
+**When `origin/main` moved** while the push gate ran (the push is refused as not a fast-forward),
+the green verdict is for a tree nobody will push. Never force the push, and never push a merge the
+gate did not see. Fetch, rebase local `main` onto `origin/main`, and:
+
+- If what came in touches nothing JumpKick builds (the docs-only list under **Two gates**), the
+  verdict still holds for the rebased tip: run `jk guard docs` and push.
+- Otherwise run the merge gate on the rebased tip, then the tests of what came in and of your own
+  changes, one module and one class at a time (**Prove it cheaply first**), then the push gate
+  again, and push only that tip. If `origin/main` moves again meanwhile, repeat; batch what is
+  waiting into the next gate rather than gating each branch alone.
 
 ## Comments and Javadoc
 
@@ -363,11 +378,11 @@ Java), and under CI it fails naming each file that is not formatted. There is no
   second; do not drop the second.
 - `jk format -F` rewrites the whole tree, for a formatter or style change; it is not part of the loop.
 
-## Git workflow (private repo)
+## Git workflow
 
 - **Trivial** fixes (typos, one-liner comment, obvious bug with no ticket): commit on `main` is fine.
 - **Everything else:** work on a **dedicated branch** (prefer a **git worktree** so `main` stays clean and other agents can coordinate). Name branches after the ticket when possible, e.g. `JK-1044-build-logic-spi` (legacy `ticket-NNNN-…` names are fine for older branches).
-- While the repo is private: **no pull requests**. Merge into local `main` when the work passes the merge gate (see **Done criteria** above; ticket acceptance met) and move the ticket on the board (`ka move`). Batch merges from several worktrees, then run the push gate once and **push `main`** so the code stays the shared truth. Push often enough that `origin` does not lag local `main` by more than a working session.
+- **No pull requests:** merge into local `main` when the work passes the merge gate (see **Done criteria** above; ticket acceptance met) and move the ticket on the board (`ka move`). Batch merges from several worktrees, then run the push gate once and **push `main`** so the code stays the shared truth. Push often enough that `origin` does not lag local `main` by more than a working session.
 - Do not leave half-finished tickets on `main`. Do not rewrite published history on `main` without an explicit human request.
 - Every commit compiles and passes on its own: a file rename lands in the same commit as the class rename it carries, and a signature change lands with its callers. `git bisect` must never stop on a tree that cannot build.
 - Author commits as a normal human contributor. No tool or model co-author trailers, no “generated by …” attribution, and no third-party AI product or model brand names in commits, comments, Javadoc, or user-facing docs. Local guard: `jk guard hooks install` writes the `commit-msg` hook that refuses such a trailer (the `no-agent-trailers` rule) and the `pre-commit` hook that protects the guard baseline.

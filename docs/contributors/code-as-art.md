@@ -762,7 +762,7 @@ lanes on every build that does work; the tree lane (text, metric, parity and
 generated rules) and the fixture proofs run on `jk guard`, `jk test -g` and
 `jk build -g`, so an inner `jk build` never pays a tree scan. CI's self-host
 job runs `jk guard` after the build (under CI it also fails on unformatted source), and `jk guard`
-is the first step of the local gate (`jk guard`, `jk build`, `jk test -g`).
+is the first step of the local gate (`jk guard`, `jk install`, `jk install -g`).
 The shell scripts have their lint in the same place: the `shellcheck` guard test
 (G100) runs `scripts/shellcheck.sh` under `jk guard`. Windows skips it.
 

@@ -11,9 +11,9 @@ over every subset of the tag vocabulary, that each is run by exactly one suite, 
 ([self-host](self-host.md#test-tiers)).
 
 `jk build` runs every module's fast tier (the default suite: what no suite claims); `jk install`,
-which is that same build plus the reinstall, gates every local merge into `main`; `jk test -g`
-(`[test] guard-suites = ["test", "integration", "e2e"]`) is the push gate, run on the local `main`
-before it is pushed. The house rules run under `jk build` and `jk guard`
+which is that same build plus the reinstall, gates every local merge into `main`; `jk install -g`,
+which runs `[test] guard-suites = ["test", "integration", "e2e"]` against the JumpKick it installs, is
+the push gate, run on the local `main` before it is pushed. The house rules run under `jk build` and `jk guard`
 ([self-host](self-host.md#house-rule-gate)).
 
 <!-- test-tiers:start -->

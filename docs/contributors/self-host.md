@@ -10,18 +10,26 @@ compares JumpKick against.
 
 ## The gate
 
-Run in this order, in your checkout, with the installed `jk`. The first three are the merge gate,
-green before a change merges into local `main`; `jk test -g` is the push gate, green on
+Run in this order, in your checkout, with the installed `jk`. The first two are the merge gate,
+green before a change merges into local `main`; `jk install -g` is the push gate, green on
 the local `main` before it is pushed to `origin`:
 
 ```bash
-jk format                        # formats; `jk format -c` is the same verdict without writing
-jk guard                         # every house-rule lane, the tree lane and the fixture proofs included
-jk build                         # every module compiled, packaged and its fast test tier run
-jk test -g                       # the push gate: engine, e2e and worker suites
+jk guard                         # formats what changed, then every house-rule lane, the tree lane and the fixture proofs
+jk install                       # every module compiled, packaged and its fast test tier run, then the reinstall
+jk install -g                    # the push gate: engine, e2e and worker suites against the JumpKick it installs
 ```
 
-`jk build` must not rewrite the committed `jk-lock.toml`: the manifests pin exactly, so a build
+The fleet's gate hosts run the whole gate from a checkout as `scripts/gate/run.sh <n> <sha>`. It
+takes the host's gate lock (`GATE_LOCK`, default `/var/tmp/fleet-gate.lock`), detaches the checkout
+at the tip, runs the classes listed in `scripts/gate/pre-classes.txt` first so a class that failed
+an earlier gate fails this one in a minute, then `jk guard`, `jk install`, `jk install -g` under a
+freshly started engine, a check that the engine which served it is the tip's, `jk test -s release`,
+the shell fixtures and the release notes, and writes `GREEN <sha>` or `RED` to
+`integ-gate-<n>.log` under `GATE_LOG_DIR`. It never pushes. The header of `scripts/gate/gate.sh`
+lists its settings; `scripts/test-gate.sh` holds the class list to classes that exist.
+
+`jk install` must not rewrite the committed `jk-lock.toml`: the manifests pin exactly, so a build
 that moves the lock means a pin drifted or the lock writer put something non-deterministic in the
 file. `jk test -s slow` is due before the push that carries a change to a framework or language plugin; the
 `network` and `bench` suites are nightly and gate nothing.
@@ -290,7 +298,7 @@ that claims a tag is one slow tier; members inherit them:
 
 ```bash
 jk test                          # fast tier: what no suite claims
-jk test -g                       # the push gate
+jk test -g                       # the guard suites, which the push gate (jk install -g) runs
 jk test -s slow                  # framework / language e2e (nightly)
 jk test -s network               # talks to a real remote (nightly)
 jk test -s release               # a real browser (CI on the release tag)

@@ -136,8 +136,10 @@ modules = [
 # Tags are cost, not place: a suite that claims a tag takes its tests from every test source of a
 # module (src/test, and src/e2e where there is one).
 #
-#   jk test                fast tier: the default suite, what no suite claims. The merge gate.
-#   jk test -g             test + integration + e2e (guard-suites). The push gate.
+#   jk test                fast tier: the default suite, what no suite claims. The merge gate
+#                          (`jk install`) runs it.
+#   jk test -g             test + integration + e2e (guard-suites). The push gate (`jk install -g`)
+#                          runs them.
 #   jk test -s slow        framework and language e2e. Nightly, never gating.
 #   jk test -s network     talks to a real remote. Nightly, never gating.
 #   jk test -s release     a real browser or other cost worth paying once per release. CI on the tag.

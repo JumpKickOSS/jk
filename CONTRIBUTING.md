@@ -145,17 +145,19 @@ The client never embeds the engine. Spawning uses
 
 ```bash
 jk guard                                     # before every commit: formats what changed, then every house-rule lane
-jk build                                     # every module, fast tier included
-jk test -g                                   # the push gate: before pushing main to origin
+jk install                                   # every module built, fast tier included, then the reinstall
+jk install -g                                # the push gate: before pushing main to origin
 ```
 
-The first three are the merge gate, run before every local merge into `main`. `jk test -g`
-(the default suite, `integration` and `e2e`) is the push gate: it runs once on the local `main` about to be pushed, covering every
-branch merged since the last push.
+The first two are the merge gate, run before every local merge into `main`. `jk install -g`
+(the default suite, `integration` and `e2e`, against the JumpKick it installs) is the push gate: it
+runs once on the local `main` about to be pushed, covering every branch merged since the last push.
+The fleet's gate hosts run the whole gate as `scripts/gate/run.sh <n> <sha>`
+([self-host](docs/contributors/self-host.md#the-gate)).
 
 On Windows the same gate is expected to pass, so a red test there is a finding, not the platform.
-The push gate is long; run it a module at a time (`-m jk-engine`, `-m jk-cli`, …,
-with `--continue` past a dependency's failure). A failure that only one checkout reproduces is
+The push gate is long; to chase a failure, run its suites a module at a time
+(`jk test -g -m jk-engine`, `-m jk-cli`, …, with `--continue` past a dependency's failure). A failure that only one checkout reproduces is
 usually its stale test sandbox under `~/.jk/test-homes/`: delete that slot and it is reseeded.
 Tests stay portable through `cc.jumpkick.testing`: `Sleepers` for stand-in processes (never a
 literal `sleep` or `bash`), `Symlinks.create` for links, `ShortTempDirs` for synthetic absolute
@@ -203,7 +205,7 @@ assembly the same step names (`-Djk.engine.jar`), in an isolated sandbox `JK_HOM
 dual path. The fast tier (`jk test`) is the pure unit tier (TUI/args/jsonl) with no engine spawn.
 
 Use `-m` and `--class` mid-ticket (`jk test -m clients/cli -S cc.jumpkick.cli.engine.EngineClientTest -s integration`);
-the push gate is the whole of `jk test -g`. Tier model:
+the push gate is the whole of `jk install -g`. Tier model:
 [docs/contributors/test-suite-tiers.md](docs/contributors/test-suite-tiers.md).
 
 Refresh locks after dependency changes: `jk lock` (commit the workspace-root `jk-lock.toml`).
