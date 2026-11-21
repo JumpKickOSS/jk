@@ -9,6 +9,7 @@ import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.TreeMap;
 import org.junit.jupiter.api.Test;
@@ -218,5 +219,36 @@ class MirroredOutputsTest {
                 .isEqualTo(kept);
         assertThat(classes.resolve("com/example/App.class")).isRegularFile();
         assertThat(classes.resolve("stale/Old.class")).doesNotExist();
+    }
+
+    /** A restore cut short by a corrupt blob takes its own files back out and leaves the mirror's and the merges'. */
+    @Test
+    void a_failed_restore_keeps_the_mirrored_resources_and_merged_classes(@TempDir Path tmp) throws Exception {
+        Path classes = Files.createDirectories(tmp.resolve("target/classes"));
+        Files.createDirectories(classes.resolve("com/example"));
+        Files.writeString(classes.resolve("com/example/App.class"), "class-app");
+        Files.writeString(classes.resolve("com/example/Util.class"), "class-util");
+        Path cache = tmp.resolve("cache");
+        Cas cas = new Cas(cache.resolve("cas"));
+        ActionCache ac = new ActionCache(cas, cache.resolve("actions"));
+        ActionCache.ActionRecord record = ac.store("compile-main", "key-1", Map.of(), classes);
+
+        Path incremental = Files.createDirectories(tmp.resolve("target/incremental"));
+        Files.writeString(incremental.resolve(MirroredOutputs.MAIN_LEDGER), "application.properties\n");
+        Files.writeString(incremental.resolve(MirroredOutputs.mergedLedger("kotlin")), "com/example/K.class\n");
+        Files.writeString(classes.resolve("application.properties"), "from-the-mirror");
+        Files.writeString(classes.resolve("com/example/K.class"), "kotlin");
+        Files.delete(classes.resolve("com/example/App.class"));
+        String util = Objects.requireNonNull(record.outputs().get("com/example/Util.class"));
+        Files.writeString(cas.pathFor(util), "corrupt");
+
+        assertThat(ac.restore(MirroredOutputs.omitting(classes, record), classes))
+                .isFalse();
+        assertThat(classes.resolve("application.properties")).hasContent("from-the-mirror");
+        assertThat(classes.resolve("com/example/K.class")).hasContent("kotlin");
+        assertThat(classes.resolve("com/example/App.class"))
+                .as("the record's own files do not outlive a failed restore")
+                .doesNotExist();
+        assertThat(classes.resolve("com/example/Util.class")).doesNotExist();
     }
 }

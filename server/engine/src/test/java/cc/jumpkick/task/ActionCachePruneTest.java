@@ -359,6 +359,29 @@ class ActionCachePruneTest {
         assertThat(report.deletedKeys()).isEqualTo(1);
     }
 
+    /** A key's variant index names no blob and is no record: it goes once no variant it lists is left. */
+    @Test
+    void a_variant_index_goes_with_the_last_variant_it_lists(@TempDir Path root) throws IOException {
+        Cas cas = new Cas(root);
+        LocalCacheBackend local = new LocalCacheBackend(cas, root.resolve("actions"), null);
+        String toolchain = "toolchain:jdk:eclipse-adoptium/25.0.5+11-LTS/aaaaaaaaaaaaaaaa";
+        for (String name : List.of("memo-gone", "memo-kept")) {
+            long age = name.equals("memo-gone") ? ANCIENT : OLD;
+            Path record = key(root, name, "run-tests@" + name, age);
+            local.putVariant(name, toolchain, Files.readString(record));
+            backdate(local.variantPath(name, toolchain), age);
+        }
+
+        ActionCachePrune.run(root, cas, windows(1024L * 1024 * 1024), Set.of(), false);
+
+        assertThat(local.variantPath("memo-gone", toolchain)).doesNotExist();
+        assertThat(local.variantIndex("memo-gone")).doesNotExist();
+        assertThat(local.variantPath("memo-kept", toolchain)).exists();
+        assertThat(local.variantIndex("memo-kept"))
+                .as("a variant it lists is still here")
+                .exists();
+    }
+
     @Test
     void the_memo_cap_trims_the_coldest_first(@TempDir Path root) throws IOException {
         Cas cas = new Cas(root);

@@ -38,22 +38,39 @@ final class ToolchainChoice {
         String best = expected.accepts(latestToolchain) ? latest : null;
         int bestCloseness = best == null ? Integer.MAX_VALUE : expected.closeness(latestToolchain);
         String offered = latestToolchain;
+        @Nullable String bestToolchain = null;
         for (String toolchain : local.variants(key)) {
             if (bestCloseness == 0) break;
             if (toolchain.equals(latestToolchain) || !expected.accepts(toolchain)) continue;
             int closeness = expected.closeness(toolchain);
             if (closeness >= bestCloseness) continue;
             Optional<String> text = local.variant(key, toolchain);
-            if (text.isEmpty()) continue;
+            if (text.isEmpty() || !whole(local, key, toolchain, text.get())) continue;
             best = text.get();
             bestCloseness = closeness;
+            bestToolchain = toolchain;
         }
         if (best == null) {
             mismatch(key, offered, expected);
             return Optional.empty();
         }
-        if (best != latest) ActionRecordText.markRead(local.variantPath(key, chosenToolchain(best, key)));
+        if (bestToolchain != null) ActionRecordText.markRead(local.variantPath(key, bestToolchain));
         return Optional.of(best);
+    }
+
+    /**
+     * Whether {@code text}, {@code key}'s variant made by {@code toolchain}, is a record this engine
+     * reads; one that is not (cut short, or refused) is a miss and goes, the latest record staying.
+     */
+    private static boolean whole(LocalCacheBackend local, String key, String toolchain, String text)
+            throws IOException {
+        try {
+            ActionRecordText.parse(text, key);
+            return true;
+        } catch (RuntimeException unreadable) {
+            local.discardVariant(key, toolchain);
+            return false;
+        }
     }
 
     /**
@@ -80,11 +97,6 @@ final class ToolchainChoice {
         if (expected == null || expected.accepts(offered)) return false;
         mismatch(key, offered, expected);
         return true;
-    }
-
-    private static String chosenToolchain(String text, String key) {
-        String t = ActionRecordText.parse(text, key).meta().toolchain();
-        return t == null ? "" : t;
     }
 
     /**

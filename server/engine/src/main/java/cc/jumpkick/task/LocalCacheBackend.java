@@ -9,6 +9,7 @@ import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.Os;
+import cc.jumpkick.util.FileLocks;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
@@ -190,6 +191,10 @@ public final class LocalCacheBackend implements CacheBackend {
      * the prune and the sweep.
      */
     Path variantPath(String key, String toolchain) {
+        return variantPath(root, key, toolchain);
+    }
+
+    private static Path variantPath(Path root, String key, String toolchain) {
         return ActionTree.KEYS
                 .under(root)
                 .resolve(key + VARIANT + Hashing.sha256Hex(toolchain).substring(0, 16));
@@ -197,40 +202,67 @@ public final class LocalCacheBackend implements CacheBackend {
 
     /** {@code keys/<key>~index}: one {@code <toolchain>} per line, the JDKs {@code key} has variants of. */
     Path variantIndex(String key) {
-        return ActionTree.KEYS.under(root).resolve(key + VARIANT + "index");
+        return ActionTree.KEYS.under(root).resolve(key + INDEX);
     }
 
     /** The separator between a key and its variant's suffix. */
     static final String VARIANT = "~";
 
+    /** The suffix of a key's variant index, {@link #variantIndex}. */
+    static final String INDEX = VARIANT + "index";
+
+    /** Under the records' root: held while a variant index is read and rewritten, or dropped. */
+    private static final String INDEX_LOCK = "variant-index.lock";
+
     /**
      * Keep {@code recordText} as {@code key}'s variant made by {@code toolchain}, and list it in the
      * index: a key naming the Java level keeps a record per JDK beside the latest. Nothing for a
-     * record that names no JDK.
+     * record that names no JDK. The index is read and rewritten under a lock every engine sharing
+     * the cache takes, so two storing one key's variants at once each keep their line.
      */
     void putVariant(String key, @Nullable String toolchain, String recordText) throws IOException {
         if (toolchain == null) return;
         Files.createDirectories(ActionTree.KEYS.under(root));
         AtomicWrites.replace(variantPath(key, toolchain), recordText);
-        List<String> known = variants(key);
-        if (!known.contains(toolchain)) {
+        FileLocks.withLock(root.resolve(INDEX_LOCK), () -> {
+            List<String> known = indexed(variantIndex(key));
+            if (known.contains(toolchain)) return;
             List<String> all = new ArrayList<>(known);
             all.add(toolchain);
             AtomicWrites.replace(variantIndex(key), String.join("\n", all) + "\n");
-        }
+        });
     }
 
     /** The toolchains {@code key} has variants of, as its index lists them; empty without one. */
     List<String> variants(String key) throws IOException {
-        Optional<String> text;
+        return indexed(variantIndex(key));
+    }
+
+    private static List<String> indexed(Path index) throws IOException {
+        String text;
         try {
-            text = Optional.of(AtomicWrites.readString(variantIndex(key)));
+            text = AtomicWrites.readString(index);
         } catch (NoSuchFileException absent) {
             return List.of();
         }
         List<String> out = new ArrayList<>();
-        for (String line : text.get().split("\n")) if (!line.isBlank()) out.add(line.strip());
+        for (String line : text.split("\n")) if (!line.isBlank()) out.add(line.strip());
         return out;
+    }
+
+    /**
+     * Delete {@code key}'s variant index under the records' {@code root} when no variant it lists is
+     * left, under the lock {@link #putVariant} takes; true when it went. The prune takes variants
+     * as it takes any record, and this is how their index goes after them.
+     */
+    static boolean dropIndexIfOrphaned(Path root, String key) throws IOException {
+        Path index = ActionTree.KEYS.under(root).resolve(key + INDEX);
+        return FileLocks.withLock(root.resolve(INDEX_LOCK), () -> {
+            for (String toolchain : indexed(index)) {
+                if (Files.exists(variantPath(root, key, toolchain))) return false;
+            }
+            return Files.deleteIfExists(index);
+        });
     }
 
     /** {@code key}'s variant made by {@code toolchain}, or empty. */
@@ -245,5 +277,10 @@ public final class LocalCacheBackend implements CacheBackend {
     /** Take record {@code key} off this disk: one this machine refused to trust, or found cut short. */
     void discard(String key) throws IOException {
         Files.deleteIfExists(recordPath(key));
+    }
+
+    /** Take {@code key}'s variant made by {@code toolchain} off this disk, as {@link #discard} takes a record. */
+    void discardVariant(String key, String toolchain) throws IOException {
+        Files.deleteIfExists(variantPath(key, toolchain));
     }
 }

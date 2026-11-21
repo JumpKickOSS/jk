@@ -275,6 +275,14 @@ public final class ActionCachePrune {
             }
         }
 
+        // A variant index is no record and names no blob: it goes once no variant it lists is left.
+        if (!dryRun) {
+            for (String key : scan.indexed()) {
+                yield.check();
+                LocalCacheBackend.dropIndexIfOrphaned(actionsDir, key);
+            }
+        }
+
         return new Report(
                 evictor.deletedKeys,
                 evictor.deletedBlobs,
@@ -563,7 +571,7 @@ public final class ActionCachePrune {
     }
 
     /** What one pass over {@code actions/} found, minus the incremental trees. */
-    private record Scan(long bytes, List<Entry> entries) {}
+    private record Scan(long bytes, List<Entry> entries, List<String> indexed) {}
 
     /** What the incremental pass reclaimed, and what it left. */
     private record Incremental(int deletedFiles, long freedBytes, long finalBytes) {}
@@ -598,11 +606,17 @@ public final class ActionCachePrune {
         // A null pointer set means "could not tell": every key then counts as current.
         Set<String> live = livePointers(tasksDir);
         List<Entry> entries = new ArrayList<>();
+        List<String> indexed = new ArrayList<>();
         long[] bytes = {0L};
         PathUtil.forEachRegularFile(actionsDir, dir -> underIncremental(actionsDir, dir), (file, attrs) -> {
             yield.check();
             bytes[0] += attrs.size();
             if (!keysDir.equals(file.getParent())) return;
+            String name = file.getFileName().toString();
+            if (name.endsWith(LocalCacheBackend.INDEX)) {
+                indexed.add(name.substring(0, name.length() - LocalCacheBackend.INDEX.length()));
+                return;
+            }
             String body;
             try {
                 body = Files.readString(file, StandardCharsets.UTF_8);
@@ -621,7 +635,7 @@ public final class ActionCachePrune {
             // counted above, which is what CacheRoots.collect does with the same text — the prune
             // must not unlink a blob the same pass's sweep considers rooted.
             if (!task.find()) return;
-            String actionKey = file.getFileName().toString();
+            String actionKey = name;
             boolean superseded = live != null && !live.contains(actionKey);
             entries.add(new Entry(
                     actionKey,
@@ -631,7 +645,7 @@ public final class ActionCachePrune {
                     named,
                     superseded));
         });
-        return new Scan(bytes[0], entries);
+        return new Scan(bytes[0], entries, indexed);
     }
 
     /** The distinct output shas one key record names, as {@link Blobs} indices. */

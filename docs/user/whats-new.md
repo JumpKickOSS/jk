@@ -6,6 +6,12 @@ JumpKick shows you this page's new entries after it updates itself.
 
 ## 0.54.0
 
+- **A failed cache restore keeps a module's resources, and a damaged cache record is a miss, not a
+  failed build.** The action cache keeps a module's copied resources and merged Kotlin/Groovy
+  classes when a restore fails on a bad blob. It no longer replaces a local record with a remote one
+  made for another platform or JDK, and a cache cleanup no longer deletes a blob another build
+  reused while the cleanup ran. A damaged per-JDK record copy or freshness stamp is treated as a
+  cache miss instead of failing the build, and leftover per-JDK index files are cleaned up.
 - **`jk audit` reports each advisory once per package version, and never offers a commit hash as the
   fix.** The classifier jars of one version (a native jar per platform) no longer repeat a finding,
   and the fixed version comes from OSV's version ranges only. An `--osv-vulns-url` written without a

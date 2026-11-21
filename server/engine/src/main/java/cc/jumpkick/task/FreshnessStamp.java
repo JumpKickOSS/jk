@@ -3,6 +3,7 @@ package cc.jumpkick.task;
 
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.StatIdentity;
@@ -394,13 +395,11 @@ public final class FreshnessStamp {
         // from the filesystem's coarse clock — and that clock can LAG currentTimeMillis by a
         // tick. Recording wall-clock millis let an input edited in the lag window carry
         // mtime < stampMillis and read as fresh (a silently stale build). Probe the fs clock
-        // through the stamp file itself, and take the producer's read clock when it is earlier:
-        // recording at-or-before the first input read only errs toward staleness, which the
-        // action cache resolves correctly.
+        // beside the stamp, and take the producer's read clock when it is earlier: recording
+        // at-or-before the first input read only errs toward staleness, which the action cache
+        // resolves correctly.
         Path stampFile = outputDir.resolve(stampName);
-        Files.writeString(stampFile, "", StandardCharsets.UTF_8);
-        long stampMillis =
-                Math.min(readClock, Files.getLastModifiedTime(stampFile).toMillis());
+        long stampMillis = Math.min(readClock, clockNow(outputDir));
         StringBuilder sb = new StringBuilder();
         sb.append("TASK ").append(taskId).append('\n');
         sb.append("KEY ").append(actionKey).append('\n');
@@ -420,13 +419,22 @@ public final class FreshnessStamp {
         for (String token : classpathTokens) {
             sb.append("TOKEN ").append(token).append('\n');
         }
-        Files.writeString(stampFile, sb.toString(), StandardCharsets.UTF_8);
+        // Whole or not at all: a reader in another engine never meets a stamp cut short.
+        AtomicWrites.replace(stampFile, sb.toString());
     }
 
+    /** The stamp {@code stampName} under {@code outputDir}; empty when there is none or it does not read as one. */
     static Optional<Stamp> read(Path outputDir, String stampName) throws IOException {
         Path file = outputDir.resolve(stampName);
         if (!Files.isRegularFile(file)) return Optional.empty();
-        String content = Files.readString(file, StandardCharsets.UTF_8);
+        try {
+            return parse(Files.readString(file, StandardCharsets.UTF_8));
+        } catch (RuntimeException malformed) {
+            return Optional.empty(); // a number or path that does not parse: no stamp, so the step runs
+        }
+    }
+
+    private static Optional<Stamp> parse(String content) {
         String taskId = null;
         String actionKey = null;
         long stampMillis = 0;

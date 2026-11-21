@@ -245,30 +245,40 @@ public final class ActionCache {
      * at once, so the next build finds it locally.
      */
     private Optional<ActionRecord> lookupRemote(String actionKey, @Nullable Expectation expected) throws IOException {
-        if (remote == null || actionKey.isBlank()) return Optional.empty();
+        Held held = heldRemotely(actionKey, expected);
+        if (held == null) return Optional.empty();
+        if (local.missing(held.record().outputs().values()).isEmpty()) adopt(held.record(), held.text());
+        if (expected != null) ToolchainChoice.madeOn(actionKey, held.record().meta(), expected);
+        return Optional.of(held.record());
+    }
+
+    /** A remote record this machine takes, and the text it was read from. */
+    private record Held(ActionRecord record, String text) {}
+
+    /** The remote record of {@code actionKey} when it parses and suits {@code expected} and the platform; else null. */
+    private @Nullable Held heldRemotely(String actionKey, @Nullable Expectation expected) {
+        if (remote == null || actionKey.isBlank()) return null;
         String text = remote.recordFor(actionKey, expected);
-        if (text == null) return Optional.empty();
+        if (text == null) return null;
         ActionRecord record;
         try {
             record = parse(text, actionKey);
         } catch (RuntimeException refused) {
             Log.warn("jk: remote action record refused", "key", actionKey, "cause", refused.getMessage());
             remote.forget(actionKey);
-            return Optional.empty();
+            return null;
         }
         if (ToolchainChoice.refuses(actionKey, record.meta().toolchain(), expected)) {
             remote.declined(actionKey, record.meta().toolchain()); // a miss here, kept for the readers it suits
-            return Optional.empty();
+            return null;
         }
         if (!forThisPlatform(record.meta().target(), remote.platform())) {
             // Outputs made for another platform: a miss here, and the store keeps them for readers
             // they are for. A record naming no target runs anywhere.
             remote.forget(actionKey);
-            return Optional.empty();
+            return null;
         }
-        if (local.missing(record.outputs().values()).isEmpty()) adopt(record, text);
-        if (expected != null) ToolchainChoice.madeOn(actionKey, record.meta(), expected);
-        return Optional.of(record);
+        return new Held(record, text);
     }
 
     /**
@@ -288,22 +298,28 @@ public final class ActionCache {
     private void adopt(ActionRecord record, String text) throws IOException {
         String key = Objects.requireNonNull(record.actionKey(), "actionKey");
         local.putRecord(key, text);
+        if (ToolchainPolicy.of(key) != null) local.putVariant(key, record.meta().toolchain(), text);
         if (record.taskId() != null && !Files.exists(tasksDir().resolve(record.taskId()))) pointAt(record);
         if (remote != null) remote.adopted(key);
     }
 
     /**
-     * Fetch the blobs of {@code record} this disk lacks from the remote tier, verified, and keep
-     * the record here. False when there is no tier, the tier does not hold the record whole, or a
-     * blob did not arrive: the restore is then the miss it would have been.
+     * When this disk lacks a blob of {@code record}, fetch the blobs of the record the remote tier
+     * holds for its key, verified, and keep that record here: read as {@link #lookupRemote} reads
+     * one, so a record another JDK or platform made never replaces this disk's. False when there is
+     * no tier, it holds no record this machine takes, or a blob did not arrive: the restore is then
+     * the miss it would have been.
      */
     private boolean fetchFromRemote(ActionRecord record) throws IOException {
-        if (remote == null || record.actionKey() == null) return false;
-        Set<String> missing = local.missing(record.outputs().values());
-        if (missing.isEmpty()) return false;
-        String text = remote.record(record.actionKey());
-        if (text == null || !remote.fetch(record, missing, cas)) return false;
-        adopt(record, text);
+        String key = record.actionKey();
+        if (remote == null
+                || key == null
+                || local.missing(record.outputs().values()).isEmpty()) return false;
+        Held held = heldRemotely(key, ToolchainPolicy.of(key));
+        if (held == null) return false;
+        Set<String> missing = local.missing(held.record().outputs().values());
+        if (!missing.isEmpty() && !remote.fetch(held.record(), missing, cas)) return false;
+        adopt(held.record(), held.text());
         return true;
     }
 
@@ -790,8 +806,9 @@ public final class ActionCache {
     /**
      * Clear the contents of {@code outputDir} and copy each cached output back from the CAS,
      * verifying every copied blob against its recorded digest. Stale files from a prior compile
-     * are removed before restoring. Returns {@code false} — with {@code outputDir} left empty —
-     * when a blob is missing or corrupt (the corrupt blob is dropped so the next store re-puts
+     * are removed before restoring. Returns {@code false} — with {@code outputDir} holding only
+     * the resource copies and merged classes {@link MirroredOutputs} records — when a blob is
+     * missing or corrupt (the corrupt blob is dropped so the next store re-puts
      * it), or an output cannot be written (a full disk), so the caller falls through to a real run
      * instead of building on a short or wrong tree.
      */
@@ -825,11 +842,12 @@ public final class ActionCache {
         // owned here so prune keeps them. Prune rather than wipe: FreshnessStamp compares
         // classpath entries by mtime, so re-copying an unchanged classes tree would invalidate
         // every downstream stamp on a cache hit.
-        Set<Path> owned = new HashSet<>();
-        for (String rel : outputs.keySet()) {
-            owned.add(outputDir.resolve(rel).normalize());
-        }
+        Set<Path> laidByOthers = new HashSet<>();
         for (String rel : mirrored) {
+            laidByOthers.add(outputDir.resolve(rel).normalize());
+        }
+        Set<Path> owned = new HashSet<>(laidByOthers);
+        for (String rel : outputs.keySet()) {
             owned.add(outputDir.resolve(rel).normalize());
         }
         for (String f : BuildStamps.ALL) {
@@ -856,9 +874,10 @@ public final class ActionCache {
                 laid = false;
             }
             if (!laid) {
-                // The contract is an empty outputDir on failure, so a partial restore is wiped
-                // rather than pruned.
-                deleteRecursively(outputDir);
+                // A partial restore goes, all but what the resource mirror and the merges laid
+                // there (less a half-written target): the compile that follows writes beside them.
+                laidByOthers.remove(target.normalize());
+                pruneUnowned(outputDir, laidByOthers);
                 Files.createDirectories(outputDir);
                 return false;
             }
@@ -1308,9 +1327,5 @@ public final class ActionCache {
 
     private Path tasksDir() {
         return ActionTree.TASKS.under(root);
-    }
-
-    private static void deleteRecursively(Path target) throws IOException {
-        PathUtil.deleteRecursivelyOrThrow(target);
     }
 }

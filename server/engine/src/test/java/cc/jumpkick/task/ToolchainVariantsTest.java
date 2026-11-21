@@ -18,7 +18,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * One key, a record per JDK (JK-74S9K): with compile and test keys naming the Java level, records
+ * One key, a record per JDK: with compile and test keys naming the Java level, records
  * two JDKs made under one key are variants, not a conflict; a lookup takes the closest one the
  * step's policy accepts, and none when no record is acceptable.
  */
@@ -86,6 +86,33 @@ class ToolchainVariantsTest {
         ac.storeVerdict("run-tests@x", key, Map.of());
         ToolchainPolicy.expectForTests(key, new Expectation(OPENJDK_27, 25, Match.LEVEL, null));
         assertThat(ac.lookup(key)).as("a JDK 21 record for a level-25 suite").isEmpty();
+    }
+
+    @Test
+    void a_variant_that_does_not_read_is_a_miss_and_goes_while_the_latest_record_stays(@TempDir Path tmp)
+            throws Exception {
+        inRequest(() -> tornVariant(tmp));
+    }
+
+    private static void tornVariant(Path tmp) throws Exception {
+        Path cache = Files.createDirectories(tmp.resolve("cache"));
+        SessionContext.install(Session.defaults().withCacheDir(cache));
+        Cas cas = new Cas(cache.resolve("cas"));
+        ActionCache ac = new ActionCache(cas, cache.resolve("actions"));
+        ToolchainPolicy.expectForTests(KEY, new Expectation(CORRETTO_25, 21, Match.MAJOR, null));
+        ac.storeVerdict("compile-main@x", KEY, Map.of("made", "corretto"));
+        ToolchainPolicy.expectForTests(KEY, new Expectation(OPENJDK_27, 21, Match.MAJOR, null));
+        ac.storeVerdict("compile-main@x", KEY, Map.of("made", "openjdk"));
+        LocalCacheBackend local = new LocalCacheBackend(cas, cache.resolve("actions"), null);
+        Path corretto = local.variantPath(KEY, CORRETTO_25);
+        Files.writeString(corretto, "TASK compile-main@x\nOUTPUT not-a-record");
+
+        ToolchainPolicy.expectForTests(KEY, new Expectation(TEMURIN_25_0_5, 21, Match.MAJOR, null));
+        assertThat(ac.lookup(KEY)).as("the only JDK 25 record does not read").isEmpty();
+        assertThat(corretto).doesNotExist();
+        assertThat(local.recordPath(KEY)).exists();
+        ToolchainPolicy.expectForTests(KEY, new Expectation(OPENJDK_27, 21, Match.MAJOR, null));
+        assertThat(ac.lookup(KEY).orElseThrow().meta().toolchain()).isEqualTo(OPENJDK_27);
     }
 
     /** Expectations live for a request, as the steps of one build state and read them. */

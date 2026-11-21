@@ -121,6 +121,18 @@ class FreshnessStampTest {
                 .isEmpty();
     }
 
+    /** A stamp whose numbers do not parse is no stamp: the step runs, the build does not fail. */
+    @Test
+    void a_stamp_that_does_not_parse_is_not_fresh(@TempDir Path tempDir) throws IOException {
+        Path classes = Files.createDirectories(tempDir.resolve("classes"));
+        Files.writeString(classes.resolve(BuildStamps.JAVA), "TASK compile-main\nKEY k\nSTAMP_MILLIS \nRELEASE 21\n");
+        assertThat(FreshnessStamp.isFresh(classes, BuildStamps.JAVA, List.of(), List.of(), RELEASE, DIGEST))
+                .isFalse();
+        Files.writeString(classes.resolve(BuildStamps.JAVA), "TASK compile-main\nKEY k\nRELEASE twenty-one\n");
+        assertThat(FreshnessStamp.looksFresh(classes, BuildStamps.JAVA, List.of()))
+                .isFalse();
+    }
+
     @Test
     void absent_stamp_is_not_fresh(@TempDir Path tempDir) throws IOException {
         Path classes = tempDir.resolve("classes");

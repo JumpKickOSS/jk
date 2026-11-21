@@ -86,6 +86,30 @@ class CasSweepTest {
         assertThat(report.deleted()).isEqualTo(0);
     }
 
+    /**
+     * Another engine stores a record over an unreferenced blob after the walk chose it: the reuse
+     * refreshes the blob's mtime, and the sweep reads it again before it deletes.
+     */
+    @Test
+    void a_blob_reused_after_the_walk_chose_it_survives(@TempDir Path tempDir) throws IOException {
+        Cas cas = new Cas(tempDir);
+        Path reused = cas.put("reused".getBytes());
+        backdate(reused);
+        String hex = cas.hashFromPath(reused).orElseThrow();
+        int[] checks = {0};
+        // The walk checks once per file; the second check is the one before the victim goes.
+        PruneYield reuseBeforeDelete = new PruneYield(() -> {
+            if (++checks[0] == 2) cas.reuse(hex);
+            return false;
+        });
+
+        var report = CasSweep.sweep(cas, Set.of(), false, reuseBeforeDelete);
+
+        assertThat(reused).exists();
+        assertThat(report.deleted()).isZero();
+        assertThat(report.deletedShas()).isEmpty();
+    }
+
     /** Bump mtime far enough into the past to clear MIN_AGE_FOR_SWEEP. */
     private static void backdate(Path file) throws IOException {
         long past = System.currentTimeMillis() - Cas.MIN_AGE_FOR_SWEEP.toMillis() - 60_000L;

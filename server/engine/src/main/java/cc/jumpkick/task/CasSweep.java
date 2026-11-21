@@ -6,6 +6,7 @@ import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.time.Clock;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -51,7 +52,7 @@ public final class CasSweep {
         record Victim(Path file, String hex, long size) {}
         ArrayList<Victim> victims = new ArrayList<>();
         Set<String> deletedShas = new HashSet<>();
-        // One walk: each entry already carries mtime and size, so the sweep does not re-stat.
+        // One walk: each entry already carries mtime and size; a victim is stat'ed once more before it goes.
         int[] keptCount = {0};
         PathUtil.forEachRegularFile(shaRoot, (file, attrs) -> {
             yield.check();
@@ -77,19 +78,26 @@ public final class CasSweep {
             if (sweepStartMillis - mtime < minAgeMillis) return; // grace period
 
             victims.add(new Victim(file, hex, attrs.size()));
-            deletedShas.add(hex);
         });
         kept = keptCount[0];
         long freedBytes = 0;
-        if (!dryRun) {
-            for (Victim v : victims) {
-                yield.check();
-                Files.deleteIfExists(v.file());
-            }
-        }
+        int deleted = 0;
         for (Victim v : victims) {
+            yield.check();
+            // Read again: a store that reused this blob since the walk refreshed its mtime
+            // (Cas.REUSE_REFRESH), and the record it wrote names it. One already gone is not ours.
+            long mtime;
+            try {
+                mtime = Files.getLastModifiedTime(v.file()).toMillis();
+            } catch (NoSuchFileException gone) {
+                continue;
+            }
+            if (sweepStartMillis - mtime < minAgeMillis) continue;
+            if (!dryRun) Files.deleteIfExists(v.file());
+            deleted++;
             freedBytes += v.size();
+            deletedShas.add(v.hex());
         }
-        return new Report(victims.size(), freedBytes, kept, deletedShas);
+        return new Report(deleted, freedBytes, kept, deletedShas);
     }
 }

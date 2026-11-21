@@ -176,6 +176,38 @@ class RemoteTierTest {
         assertThat(remote.records).containsKey("k9");
     }
 
+    /**
+     * A record here whose blobs were pruned is restored from the store only through a record of its
+     * own this machine takes: one made for another platform is a miss and never replaces this one.
+     */
+    @Test
+    void a_record_here_whose_blobs_went_is_not_replaced_by_one_made_for_another_platform(@TempDir Path tmp)
+            throws Exception {
+        Path out = Files.createDirectories(tmp.resolve("built"));
+        Files.writeString(out.resolve("A.class"), "class A");
+        ActionCache elsewhere = cache(tmp.resolve("elsewhere"));
+        elsewhere.store("compile-main@x", "k1", Map.of("target", "target:windows-x86_64"), out);
+        MemoryCacheBackend remote = new MemoryCacheBackend();
+        remote.seedFrom(elsewhere, "k1");
+        ActionCache here = cache(tmp.resolve("here"));
+        ActionCache.ActionRecord mine = here.store("compile-main@x", "k1", Map.of("src/A.java", "aaa"), out);
+        Path keyFile = tmp.resolve("here/actions/keys/k1");
+        String before = Files.readString(keyFile);
+        Files.delete(here.cas().pathFor(requireNonNull(mine.outputs().get("A.class"))));
+        RemoteTier tier = new RemoteTier(remote, "linux-x86_64");
+
+        boolean restored = RemoteCaches.where(tier, () -> {
+            ActionCache cache = cache(tmp.resolve("here"));
+            return cache.restore(cache.lookup("k1").orElseThrow(), tmp.resolve("out"));
+        });
+
+        assertThat(restored)
+                .as("the store holds only another platform's record")
+                .isFalse();
+        assertThat(Files.readString(keyFile)).as("this machine's record stays").isEqualTo(before);
+        assertThat(tier.hits()).isZero();
+    }
+
     @Test
     void a_record_with_no_blob_is_kept_here_on_its_first_lookup(@TempDir Path tmp) throws Exception {
         ActionCache elsewhere = cache(tmp.resolve("elsewhere"));
