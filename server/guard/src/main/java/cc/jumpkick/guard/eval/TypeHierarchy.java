@@ -303,6 +303,19 @@ public final class TypeHierarchy {
         return found;
     }
 
+    /**
+     * Whether {@code internalName} was compiled from the workspace's sources: the module's own facts or
+     * a class directory on the classpath (its own or a sibling module's classes), not a jar or the JDK.
+     */
+    public synchronized boolean fromSources(String internalName) {
+        if (facts.classNamed(internalName).isPresent()) return true;
+        if (inJdkPackage(internalName)) return false;
+        openClasspath();
+        String entry = internalName + ".class";
+        for (Path dir : dirs) if (Files.isRegularFile(dir.resolve(entry))) return true;
+        return false;
+    }
+
     /** Which of the module's classes are test classes, supertypes and annotations beyond it read by {@link #classFacts}. */
     public synchronized TestClassFacts testClasses() {
         TestClassFacts built = testClasses;

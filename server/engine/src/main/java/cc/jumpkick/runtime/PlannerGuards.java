@@ -27,6 +27,7 @@ import cc.jumpkick.guard.eval.LaneRun;
 import cc.jumpkick.guard.eval.Outcome;
 import cc.jumpkick.guard.eval.OutputArtifacts;
 import cc.jumpkick.guard.eval.RuleReport;
+import cc.jumpkick.guard.eval.TypeHierarchy;
 import cc.jumpkick.guard.eval.WorkspaceModules;
 import cc.jumpkick.guard.explain.BiteEvidence;
 import cc.jumpkick.guard.explain.RuleSummaries;
@@ -537,8 +538,9 @@ final class PlannerGuards {
         if (lane == Lane.MODEL) return EngineValidations.model(root);
         if (lane != Lane.MODULE) return List.of();
         try {
-            return EngineValidations.module(root, ectx.module(), ectx.testFacts(), n -> ectx.testHierarchy()
-                    .classFacts(n));
+            TypeHierarchy types = ectx.testHierarchy();
+            return EngineValidations.module(
+                    root, ectx.module(), ectx.testFacts(), types::classFacts, types::fromSources);
         } finally {
             ectx.closeHierarchy();
         }

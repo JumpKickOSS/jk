@@ -99,8 +99,8 @@ class TierPartitionTest {
         return FactsExtractor.extract(cw.toByteArray());
     }
 
-    /** An annotation type {@code p/<simple>} meta-annotated {@code @Tag(tag)}. */
-    private static ClassFacts tagAnnotation(String simple, String tag) {
+    /** An annotation type {@code p/<simple>} meta-annotated {@code @Tag(tag)} and with each {@code p/<meta>}. */
+    private static ClassFacts tagAnnotation(String simple, String tag, String... metas) {
         ClassWriter cw = new ClassWriter(0);
         cw.visit(
                 Opcodes.V17,
@@ -112,6 +112,7 @@ class TierPartitionTest {
         AnnotationVisitor av = cw.visitAnnotation("Lorg/junit/jupiter/api/Tag;", true);
         av.visit("value", tag);
         av.visitEnd();
+        for (String meta : metas) cw.visitAnnotation("Lp/" + meta + ";", true).visitEnd();
         cw.visitEnd();
         return FactsExtractor.extract(cw.toByteArray());
     }
@@ -120,9 +121,17 @@ class TierPartitionTest {
         return faults(t, tests, index(), module);
     }
 
-    /** {@code beyond} the classes outside the tests, a main source set's or a library's. */
+    /** {@code beyond} the project's classes outside the tests, a main source set's or a sibling module's. */
     private static List<Fault> faults(TierPartition.Table t, FactsIndex tests, FactsIndex beyond, String module) {
-        return TierPartition.tagFaults(t, tests, new TestClassFacts(List.of(tests, beyond)), module);
+        return faults(t, tests, beyond, index(), module);
+    }
+
+    /** {@code library} the jars the tests compile against, read only from outside the indexes. */
+    private static List<Fault> faults(
+            TierPartition.Table t, FactsIndex tests, FactsIndex beyond, FactsIndex library, String module) {
+        List<FactsIndex> project = List.of(tests, beyond);
+        return TierPartition.tagFaults(
+                t, tests, new TestClassFacts(project, library::classNamed), new TestClassFacts(project), module);
     }
 
     private static FactsIndex index(ClassFacts... classes) {
@@ -276,6 +285,38 @@ class TierPartitionTest {
                         .contains("p.SubNetworkTest#x @Tag[network, slow] — no tier runs it")
                         .doesNotContain("p.SubTest")
                         .doesNotContain("p.BaseTest"));
+    }
+
+    /**
+     * A framework's test annotation may carry a {@code @Tag} of its own, as Quarkus's
+     * {@code @QuarkusTest} does. That tag still routes, but it is not the project's word, so the
+     * ownership arm does not judge it; a tag the project's own composed annotation carries still is.
+     */
+    @Test
+    void a_tag_only_a_library_annotation_carries_is_not_judged(@TempDir Path root) throws Exception {
+        TierPartition.Table t = table(root, """
+                [test.suites.slow]
+                tags = ["slow"]
+                """);
+        FactsIndex library = index(tagAnnotation("FrameworkTest", "p.FrameworkTest"));
+        FactsIndex main = index(
+                tagAnnotation("Nightly", "nightly", "FrameworkTest"), tagAnnotation("Slow", "slow", "FrameworkTest"));
+
+        ClassFacts framework = composed("ResourceTest", null, new String[] {"FrameworkTest"}, null, new String[0]);
+        ClassFacts slow =
+                composed("SlowResourceTest", null, new String[] {"FrameworkTest"}, "x", new String[] {"Slow"});
+        ClassFacts base = composed("BaseResourceTest", null, new String[] {"FrameworkTest"}, null, new String[0]);
+        ClassFacts sub = composed("SubResourceTest", "BaseResourceTest", new String[0], null, new String[0]);
+        ClassFacts composedSlow = composed("ComposedSlowTest", null, new String[] {"Slow"}, null, new String[0]);
+        assertThat(faults(t, index(framework, slow, base, sub, composedSlow), main, library, "m"))
+                .as("a library's tag, directly or through a project annotation, is not judged")
+                .isEmpty();
+
+        ClassFacts nightly = composed("NightlyResourceTest", null, new String[] {"Nightly"}, null, new String[0]);
+        assertThat(faults(t, index(nightly), main, library, "m"))
+                .as("the project's own composed tag is still judged, and only it")
+                .singleElement()
+                .satisfies(f -> assertThat(f.observed()).endsWith("[nightly]"));
     }
 
     /**

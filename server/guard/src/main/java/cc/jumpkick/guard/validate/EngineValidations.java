@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
+import java.util.function.Predicate;
 import org.jspecify.annotations.Nullable;
 
 /** The validations each lane runs beside its rules, and how they present. */
@@ -21,7 +22,7 @@ public final class EngineValidations {
     public static final List<Info> ALL = List.of(new Info(
             TierPartition.CODE,
             "model, module",
-            "the root's tag suites ([test.suites.*]) partition the tag vocabulary, and every compiled @Tag is a tag a tier owns",
+            "the root's tag suites ([test.suites.*]) partition the tag vocabulary, and every @Tag the project wrote is a tag a tier owns",
             "a tag no tier runs is a test that never executes; a tag no tier owns runs in the fast tier by default"));
 
     /** Reserved codes: a user rule may not take one. */
@@ -40,13 +41,20 @@ public final class EngineValidations {
 
     /**
      * One module lane: its compiled tests' tags against the table, a supertype or composed annotation
-     * the tests do not hold read by {@code outside}, by internal name.
+     * the tests do not hold read by {@code outside}, by internal name; {@code fromSources} says which
+     * of those the workspace compiled, the only ones whose tags the ownership arm judges.
      */
     public static List<Fault> module(
-            Path root, String module, @Nullable FactsIndex tests, Function<String, Optional<ClassFacts>> outside) {
+            Path root,
+            String module,
+            @Nullable FactsIndex tests,
+            Function<String, Optional<ClassFacts>> outside,
+            Predicate<String> fromSources) {
         if (tests == null) return List.of();
+        TestClassFacts written =
+                new TestClassFacts(List.of(tests), n -> fromSources.test(n) ? outside.apply(n) : Optional.empty());
         return TierPartition.tagFaults(
-                TierPartition.table(root), tests, new TestClassFacts(List.of(tests), outside), module);
+                TierPartition.table(root), tests, new TestClassFacts(List.of(tests), outside), written, module);
     }
 
     public static String render(Fault f) {

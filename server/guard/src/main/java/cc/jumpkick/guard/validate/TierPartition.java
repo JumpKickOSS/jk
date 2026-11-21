@@ -157,24 +157,31 @@ public final class TierPartition {
 
     /**
      * Arms 2 and 3 over one module's compiled tests: each tagged element runs in exactly one tier, and
-     * every tag is owned. Tags are read as the engine reads them, by {@code testClasses}: a class's
-     * own and its supertypes', each directly or through a composed annotation.
+     * every tag the project wrote is owned. Tags route as the engine reads them, by {@code
+     * testClasses}: a class's own and its supertypes', each directly or through a composed
+     * annotation. Ownership judges only the tags {@code written} reads, the same walk through the
+     * types the project compiled; a tag a library's annotation carries, such as the one Quarkus puts
+     * on {@code @QuarkusTest}, is not the project's vocabulary.
      */
-    public static List<Fault> tagFaults(Table table, FactsIndex tests, TestClassFacts testClasses, String module) {
+    public static List<Fault> tagFaults(
+            Table table, FactsIndex tests, TestClassFacts testClasses, TestClassFacts written, String module) {
         List<Fault> faults = new ArrayList<>();
         if (table.vocabulary().isEmpty()) return faults;
         List<String> orphans = new ArrayList<>();
         Set<String> unowned = new TreeSet<>();
         for (ClassFacts c : tests.classList()) {
             Set<String> classTags = testClasses.classTags(c);
+            Set<String> writtenClassTags = written.classTags(c);
             String where = (module.isEmpty() ? "" : module + ": ") + c.binaryName();
-            if (!classTags.isEmpty()) element(table, classTags, where, orphans, unowned);
+            if (!classTags.isEmpty()) element(table, classTags, writtenClassTags, where, orphans, unowned);
             for (MethodFacts m : c.methods()) {
                 Set<String> own = testClasses.methodTags(m);
                 if (own.isEmpty()) continue;
                 Set<String> all = new TreeSet<>(classTags);
                 all.addAll(own);
-                element(table, all, where + "#" + m.name(), orphans, unowned);
+                Set<String> allWritten = new TreeSet<>(writtenClassTags);
+                allWritten.addAll(written.methodTags(m));
+                element(table, all, allWritten, where + "#" + m.name(), orphans, unowned);
             }
         }
         if (!orphans.isEmpty()) {
@@ -197,12 +204,17 @@ public final class TierPartition {
     }
 
     private static void element(
-            Table table, Set<String> tags, String where, List<String> orphans, Set<String> unowned) {
+            Table table,
+            Set<String> tags,
+            Set<String> written,
+            String where,
+            List<String> orphans,
+            Set<String> unowned) {
         Set<String> routing = new TreeSet<>();
         for (String t : tags) {
             if (FIXTURE_TAGS.containsKey(t) || table.scheduling().contains(t)) continue;
             routing.add(t);
-            if (!table.vocabulary().contains(t)) unowned.add(t);
+            if (written.contains(t) && !table.vocabulary().contains(t)) unowned.add(t);
         }
         if (routing.isEmpty()) return;
         List<String> run = table.tiersFor(routing);

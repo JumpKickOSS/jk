@@ -516,8 +516,11 @@ carries is a tag some suite owns. A test every claiming suite excludes is a test
 and never goes red; two suites claiming one tag charge one test to two budgets unless an
 `exclude-tags` settles it; a misspelt tag runs in the fast tier by default. A test's tags are counted
 where JUnit finds them: its own, its superclasses' and interfaces', and those a composed annotation
-stands for. The check is exhaustive over the vocabulary (up to sixteen tags) and
-reports under the code `tiers` — `jk guard explain tiers` describes it.
+stands for. Only a tag the workspace wrote must be owned, on a test or on an annotation or base
+class compiled from its sources; a tag that reaches a test only through a library's annotation,
+such as the one `@QuarkusTest` carries, still routes but is not judged. The check is exhaustive
+over the vocabulary (up to sixteen tags) and reports under the code `tiers` — `jk guard explain
+tiers` describes it.
 
 ## Workspace scope: suites and profiles come from the root
 

@@ -50,4 +50,29 @@ class TypeHierarchyTest {
             types.close();
         }
     }
+
+    @Test
+    void only_a_class_directory_holds_types_compiled_from_sources(@TempDir Path dir) throws Exception {
+        String tier = "cc/jumpkick/guard/extract/fixture/Tier";
+        Path jar = dir.resolve("tier.jar");
+        try (JarOutputStream out = new JarOutputStream(Files.newOutputStream(jar))) {
+            out.putNextEntry(new ZipEntry(tier + ".class"));
+            out.write(FixtureBytes.of(Tier.class));
+            out.closeEntry();
+        }
+        Path classes = dir.resolve("classes");
+        Files.createDirectories(classes.resolve(tier).getParent());
+        Files.write(classes.resolve(tier + ".class"), FixtureBytes.of(Tier.class));
+
+        TypeHierarchy fromJar = new TypeHierarchy(NO_FACTS, () -> List.of(jar));
+        TypeHierarchy fromDir = new TypeHierarchy(NO_FACTS, () -> List.of(classes));
+        try {
+            assertThat(fromJar.fromSources(tier)).as("a library jar's type").isFalse();
+            assertThat(fromDir.fromSources(tier)).as("a sibling's classes tree").isTrue();
+            assertThat(fromDir.fromSources("java/lang/String")).as("the JDK's").isFalse();
+        } finally {
+            fromJar.close();
+            fromDir.close();
+        }
+    }
 }
