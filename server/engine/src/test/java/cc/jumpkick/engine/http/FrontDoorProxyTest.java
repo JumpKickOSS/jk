@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.http;
 
+import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.host.Guest;
@@ -14,6 +15,7 @@ import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.net.Socket;
 import java.net.URI;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
@@ -67,6 +69,9 @@ class FrontDoorProxyTest extends HttpEngineServerHarness {
     /** Where the guest redirects a request for its report directory {@code /report/<token>/r1[/]}. */
     private volatile String reportRedirect = "";
 
+    /** Counted down when the guest's endless answer to {@code /api/flood} is cut off. */
+    private final CountDownLatch floodCutOff = new CountDownLatch(1);
+
     /** A header the guest adds to every answer, {@code name: value}; none when blank. */
     private volatile String extraHeader = "";
 
@@ -111,6 +116,16 @@ class FrontDoorProxyTest extends HttpEngineServerHarness {
                     out.flush();
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
+                }
+                return;
+            }
+            if (path.equals("/api/flood")) {
+                ex.sendResponseHeaders(200, 0);
+                byte[] chunk = new byte[64 * 1024];
+                try (OutputStream out = ex.getResponseBody()) {
+                    for (int i = 0; i < 4096; i++) out.write(chunk);
+                } catch (IOException cutOff) {
+                    floodCutOff.countDown();
                 }
                 return;
             }
@@ -441,5 +456,31 @@ class FrontDoorProxyTest extends HttpEngineServerHarness {
                         .method(method, HttpRequest.BodyPublishers.ofByteArray(new byte[size]))
                         .build(),
                 HttpResponse.BodyHandlers.ofString());
+    }
+
+    @Test
+    void a_browser_that_stops_reading_is_cut_off_and_the_engines_answer_closed() throws Exception {
+        requireNonNull(server.frontDoor()).writeLimit(Duration.ofMillis(300));
+        int free = server.admission().rpc().availablePermits();
+        try (Socket browser = new Socket()) {
+            browser.setReceiveBufferSize(4096);
+            browser.connect(new InetSocketAddress(InetAddress.getLoopbackAddress(), port));
+            OutputStream request = browser.getOutputStream();
+            request.write(("GET " + prefix() + "/api/flood HTTP/1.1\r\nHost: 127.0.0.1:" + port
+                            + "\r\nAuthorization: Bearer " + token() + "\r\n\r\n")
+                    .getBytes(StandardCharsets.US_ASCII));
+            request.flush();
+
+            assertThat(floodCutOff.await(10, TimeUnit.SECONDS))
+                    .as("the engine's answer was closed while the browser still held the connection")
+                    .isTrue();
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+            while (server.admission().rpc().availablePermits() != free && System.nanoTime() < deadline) {
+                Thread.sleep(10);
+            }
+            assertThat(server.admission().rpc().availablePermits())
+                    .as("the proxied request let go of its admission permit")
+                    .isEqualTo(free);
+        }
     }
 }

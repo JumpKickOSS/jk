@@ -274,6 +274,40 @@ class LiveVitalsTest {
         }
     }
 
+    /**
+     * Tab a leaves while tab b has joined but is not attached yet, and a sample fires before b
+     * attaches: the hub has no dashboard then, yet b's stream still needs the samplers.
+     */
+    @Test
+    void a_sample_in_a_connecting_tabs_window_leaves_the_samplers_running() throws Exception {
+        HttpEvents hub = new HttpEvents();
+        AtomicReference<StatusSnapshot> status = new AtomicReference<>(snap(1024L * 1024 * 1024, 0.2));
+        AtomicReference<CacheSnapshot> cache = new AtomicReference<>(
+                new CacheSnapshot(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1L << 30, 0, 0, 0, 0, 0, 0, 0));
+        try (LiveVitals live = new LiveVitals(hub, status::get, cache::get)) {
+            HttpEvents.Subscription a = hub.subscribe(HttpEvents.FrameStyle.DASHBOARD, null);
+            live.onSubscriberJoined();
+            HttpEvents.Subscription b = hub.subscribeDetached(HttpEvents.FrameStyle.DASHBOARD, null);
+            live.onSubscriberJoined();
+            a.close();
+            live.onSubscriberLeft();
+
+            assertThat(hub.hasDashboardSubscribers()).isFalse();
+            live.tickStatusSafe();
+            live.tickCacheSafe();
+            hub.attach(b);
+            assertThat(live.sampling())
+                    .as("tab b, still connecting at the sample, gets live status")
+                    .isTrue();
+
+            b.close();
+            live.onSubscriberLeft();
+            assertThat(live.sampling())
+                    .as("the last tab leaving stops both samplers")
+                    .isFalse();
+        }
+    }
+
     @Test
     void mcp_only_subscription_neither_sustains_samplers_nor_receives_chrome() throws Exception {
         // an MCP progress stream alone must not keep the vitals samplers alive, and

@@ -9,6 +9,7 @@ import cc.jumpkick.wire.protocol.EventCatalog;
 import com.sun.net.httpserver.HttpExchange;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -20,8 +21,9 @@ import org.jspecify.annotations.Nullable;
 /**
  * One long-lived SSE stream, dashboard or MCP framing: the connect-ordering contract that lets no
  * event fall between the hydrate snapshot and the live queue, then the heartbeat and batch drain.
- * Holds an SSE-budget slot (not an RPC admission permit) for the stream's life; a dead-client write
- * or the server's shutdown interrupt ends it.
+ * Holds an SSE-budget slot (not an RPC admission permit) for the stream's life; a dead-client write,
+ * a write still blocked after {@link WriteDeadline#PER_WRITE} (a client that stopped reading) or the
+ * server's shutdown interrupt ends it.
  *
  * <p>A dashboard stream is also how the engine knows the tab: it opens with a {@code presence}
  * frame naming the stream, repeats it every {@link Dashboards#PING_EVERY}, and the tab answers each
@@ -60,6 +62,7 @@ final class SseEndpoint {
 
     private long heartbeatMillis = DEFAULT_HEARTBEAT_MILLIS;
     private long pingMillis = Dashboards.PING_EVERY.toMillis();
+    private Duration writeLimit = WriteDeadline.PER_WRITE;
 
     SseEndpoint(
             HttpEvents events,
@@ -87,6 +90,11 @@ final class SseEndpoint {
     /** Test seam: shrink the presence ping. */
     void pingMillis(long millis) {
         this.pingMillis = millis;
+    }
+
+    /** Test seam: shrink how long one write may stay blocked on a client that stopped reading. */
+    void writeLimit(Duration limit) {
+        this.writeLimit = limit;
     }
 
     /**
@@ -130,7 +138,7 @@ final class SseEndpoint {
         exchange.getResponseHeaders().set("Content-Type", "text/event-stream; charset=utf-8");
         exchange.getResponseHeaders().set("Cache-Control", "no-store");
         exchange.sendResponseHeaders(200, 0);
-        var out = exchange.getResponseBody();
+        var out = new WriteDeadline(exchange.getResponseBody(), writeLimit);
         // Detached until hydrated: broadcasts don't reach the subscription while the connect
         // snapshot is captured, and the engine's rehydrate callback attaches it under its
         // connect ordering lock — so no event can fall between the snapshot and the queue.
@@ -236,7 +244,7 @@ final class SseEndpoint {
             exchange.getResponseHeaders().set("X-Jk-Jid", Long.toString(jid));
         }
         exchange.sendResponseHeaders(200, 0);
-        var out = exchange.getResponseBody();
+        var out = new WriteDeadline(exchange.getResponseBody(), writeLimit);
         String hello = jid == null ? ": mcp-events connected\n\n" : ": mcp-events connected jid=" + jid + "\n\n";
         try (HttpEvents.Subscription subscription = events.subscribeFollowing(HttpEvents.FrameStyle.MCP, filter)) {
             out.write(hello.getBytes(StandardCharsets.UTF_8));

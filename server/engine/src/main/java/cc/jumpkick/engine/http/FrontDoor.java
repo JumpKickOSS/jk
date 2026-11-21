@@ -133,6 +133,9 @@ public final class FrontDoor {
     /** Whether this front door raises the paired engines' notifications ({@link FrontDoorRelay}). */
     private volatile boolean relays;
 
+    /** How long one write to the browser may stay blocked before the proxied exchange is closed. */
+    private volatile Duration writeLimit = WriteDeadline.PER_WRITE;
+
     /**
      * @param guests the directory guests write their pairing to ({@link GuestPairing})
      * @param ports the band ports to look for engines on
@@ -327,10 +330,11 @@ public final class FrontDoor {
 
     /**
      * Forwards {@code exchange} to paired engine {@code target.id()}, streaming the answer back as it
-     * comes, so an event stream flows through. {@code authorized} says the browser presented this
-     * engine's token in the shape {@code kind} takes it; only then does the request carry the target
-     * engine's token, in that same shape. A body is read, under the cap the engine itself puts on that
-     * path, before the engine is asked anything. An answer's {@code Location} is put back under
+     * comes, so an event stream flows through; a browser that stops reading is cut off once one write
+     * waits past {@link WriteDeadline#PER_WRITE}, which closes the engine's answer too. {@code
+     * authorized} says the browser presented this engine's token in the shape {@code kind} takes it;
+     * only then does the request carry the target engine's token, in that same shape. A body is read,
+     * under the cap the engine itself puts on that path, before the engine is asked anything. An answer's {@code Location} is put back under
      * {@code /engines/<id>/}; one that leads elsewhere, or any header that carries the engine's token,
      * is a 502.
      */
@@ -434,14 +438,14 @@ public final class FrontDoor {
         boolean empty = resp.statusCode() == 204 || resp.statusCode() == 304 || method.equals("HEAD");
         exchange.sendResponseHeaders(resp.statusCode(), empty ? -1 : 0);
         try (InputStream in = resp.body();
-                OutputStream out = exchange.getResponseBody()) {
+                OutputStream out = new WriteDeadline(exchange.getResponseBody(), writeLimit)) {
             byte[] buf = new byte[8192];
             for (int n; (n = in.read(buf)) >= 0; ) {
                 out.write(buf, 0, n);
                 out.flush();
             }
         } catch (IOException closed) {
-            // The browser left, or the engine closed its stream; either ends the exchange.
+            // The browser left or stopped reading, or the engine closed its stream: the exchange ends.
         }
     }
 
@@ -515,6 +519,11 @@ public final class FrontDoor {
     /** Says in each heartbeat that this front door raises the paired engines' notifications. */
     public void relays(boolean relays) {
         this.relays = relays;
+    }
+
+    /** Test seam: shrink how long one write may stay blocked on a browser that stopped reading. */
+    void writeLimit(Duration limit) {
+        this.writeLimit = limit;
     }
 
     /** The pairings this front door proxies, by engine id; what {@link FrontDoorRelay} subscribes to. */

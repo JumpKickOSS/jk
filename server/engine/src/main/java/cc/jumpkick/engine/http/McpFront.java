@@ -11,6 +11,7 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.jspecify.annotations.Nullable;
@@ -96,7 +97,8 @@ final class McpFront {
             return;
         }
         String body = HttpRequests.body(exchange);
-        Stream stream = HttpAdmission.acceptsEventStream(exchange) ? new Stream(exchange) : null;
+        Stream stream =
+                HttpAdmission.acceptsEventStream(exchange) ? new Stream(exchange, WriteDeadline.PER_WRITE) : null;
         McpHandler.Reply reply;
         try {
             reply = mcp.handle(
@@ -140,15 +142,18 @@ final class McpFront {
     /**
      * A {@code POST /mcp} response that becomes an event stream on the first message the engine
      * sends the client while the request is outstanding. Until then nothing is committed, and a
-     * request that sends nothing answers plain JSON.
+     * request that sends nothing answers plain JSON. Each write is bounded by {@code writeLimit}, so a
+     * client that stops reading cannot hold the request's admission permit.
      */
-    private static final class Stream {
+    static final class Stream {
 
         private final HttpExchange exchange;
+        private final Duration writeLimit;
         private @Nullable OutputStream out;
 
-        Stream(HttpExchange exchange) {
+        Stream(HttpExchange exchange, Duration writeLimit) {
             this.exchange = exchange;
+            this.writeLimit = writeLimit;
         }
 
         synchronized boolean opened() {
@@ -165,7 +170,7 @@ final class McpFront {
                 exchange.getResponseHeaders().set("Content-Type", "text/event-stream; charset=utf-8");
                 exchange.getResponseHeaders().set("Cache-Control", "no-cache");
                 exchange.sendResponseHeaders(200, 0);
-                o = exchange.getResponseBody();
+                o = new WriteDeadline(exchange.getResponseBody(), writeLimit);
                 out = o;
             }
             o.write(("event: message\ndata: " + json + "\n\n").getBytes(StandardCharsets.UTF_8));

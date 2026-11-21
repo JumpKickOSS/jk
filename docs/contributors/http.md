@@ -1111,7 +1111,12 @@ progress/structure, and the freshest sample always survives); the engine skips w
 streams, so the engine learns that a page went away only when a write to its stream fails: a quiet
 stream writes a `: heartbeat` comment every second (`SseEndpoint`), and the second write after the
 page closes fails, which frees the stream's slot and its vitals subscriber within two seconds. A
-comment line wakes no handler in the page, so an idle tab costs a dozen bytes a second. The page
+client that keeps the connection but stops reading fills the socket, and a write blocks instead of
+failing: every write to a dashboard or MCP event stream, to an MCP call answered as an event stream
+and to a front-door proxied answer goes through `WriteDeadline`, so one blocked for 30 s closes the
+connection and ends the stream. Time between writes does not count, so a quiet stream lives on. The
+samplers run while a dashboard stream has joined and not left, attached or still connecting: a tick
+that finds no attached dashboard skips its sample and never stops them. A comment line wakes no handler in the page, so an idle tab costs a dozen bytes a second. The page
 closes its `EventSource` on `pagehide` and reopens it on a back/forward-cache `pageshow`, so a
 reload or a cached page never holds one of the browser's six connections to the engine.
 

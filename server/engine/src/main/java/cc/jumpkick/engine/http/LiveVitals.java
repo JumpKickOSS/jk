@@ -210,19 +210,18 @@ public final class LiveVitals implements AutoCloseable {
         nudgeCache();
     }
 
-    private void tickStatusSafe() {
-        if (!events.hasDashboardSubscribers()) {
-            onSubscriberLeft();
-            return;
-        }
+    /**
+     * One status sample. With no dashboard attached it skips the sample but leaves the schedule alone:
+     * a stream still connecting is not attached yet, and only the streams that joined stop the samplers.
+     */
+    void tickStatusSafe() {
+        if (!events.hasDashboardSubscribers()) return;
         publishStatus(false);
     }
 
-    private void tickCacheSafe() {
-        if (!events.hasDashboardSubscribers()) {
-            onSubscriberLeft();
-            return;
-        }
+    /** One cache sample, skipped the same way. */
+    void tickCacheSafe() {
+        if (!events.hasDashboardSubscribers()) return;
         publishCache(false);
     }
 
