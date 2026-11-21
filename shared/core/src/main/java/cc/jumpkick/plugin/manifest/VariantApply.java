@@ -28,8 +28,8 @@ import org.jspecify.annotations.Nullable;
  * declared value; undeclared dimension selections are ignored.
  *
  * <p>Signing sub-tables flatten to {@code signing.*}; {@code env:NAME} resolves client env then
- * process env. A {@code secret = true} key, top-level or in a group, is resolved the same way and
- * moved off the values onto the plugin's own {@link PluginConfig#secrets}.
+ * process env. A {@code secret = true} key, top-level, in a group or in an entry, is resolved the
+ * same way and moved off the values onto the plugin's own {@link PluginConfig#secrets}.
  */
 public final class VariantApply {
 
@@ -190,9 +190,34 @@ public final class VariantApply {
         }
 
         // A top-level secret, as written or as a variant overlays it, leaves the values.
-        for (PluginDescriptor.SchemaKey key : manifest.schema().values()) {
-            if (!key.secret() || !(values.remove(key.name()) instanceof String raw)) continue;
-            secrets.put(key.name(), resolveEnv(raw, clientEnv, moduleDir, manifest.table() + "." + key.name()));
+        divertSecrets(values, manifest.schema(), "", manifest.table() + ".", secrets, clientEnv, moduleDir);
+
+        // An entry's secrets ([generate.api] secret-env) leave it under <entry>.<key>.
+        Map<String, PluginDescriptor.SchemaKey> entrySchema = manifest.entrySchema() == null
+                ? Map.of()
+                : manifest.subSchemas().getOrDefault(manifest.entrySchema(), Map.of());
+        if (entrySchema.values().stream().anyMatch(PluginDescriptor.SchemaKey::secret)
+                && values.get(PluginConfig.ENTRIES) instanceof Map<?, ?> entries) {
+            Map<String, Object> diverted = new LinkedHashMap<>();
+            for (Map.Entry<?, ?> e : entries.entrySet()) {
+                String name = String.valueOf(e.getKey());
+                if (!(e.getValue() instanceof Map<?, ?> raw)) {
+                    diverted.put(name, e.getValue());
+                    continue;
+                }
+                Map<String, Object> entry = new LinkedHashMap<>();
+                raw.forEach((k, v) -> entry.put(String.valueOf(k), v));
+                divertSecrets(
+                        entry,
+                        entrySchema,
+                        name + ".",
+                        manifest.table() + "." + name + ".",
+                        secrets,
+                        clientEnv,
+                        moduleDir);
+                diverted.put(name, entry);
+            }
+            values.put(PluginConfig.ENTRIES, diverted);
         }
 
         // Named-group references (signing = "release" → [android.signing.release] flattens to
@@ -207,25 +232,70 @@ public final class VariantApply {
             }
             Map<String, PluginDescriptor.SchemaKey> subSchema =
                     manifest.subSchemas().getOrDefault(group.schema(), Map.of());
+            String where = manifest.table() + "." + group.table() + "." + name + ".";
             for (Map.Entry<String, Object> e : entry.entrySet()) {
                 Object value = e.getValue();
-                if (value instanceof String s) {
-                    value = resolveEnv(
-                            s,
-                            clientEnv,
-                            moduleDir,
-                            manifest.table() + "." + group.table() + "." + name + "." + e.getKey());
-                }
                 PluginDescriptor.SchemaKey schemaKey = subSchema.get(e.getKey());
                 String flatKey = group.table() + "." + e.getKey();
                 if (schemaKey != null && schemaKey.secret()) {
-                    secrets.put(flatKey, String.valueOf(value));
-                } else {
-                    values.put(flatKey, value);
+                    Object kept = divert(value, flatKey, where + e.getKey(), secrets, clientEnv, moduleDir);
+                    if (kept != null) values.put(flatKey, kept);
+                    continue;
                 }
+                if (value instanceof String s) value = resolveEnv(s, clientEnv, moduleDir, where + e.getKey());
+                values.put(flatKey, value);
             }
         }
         return new PluginConfig(config.id(), values, secrets);
+    }
+
+    /**
+     * Moves each {@code secret = true} key of {@code schema} that {@code values} sets onto {@code
+     * secrets} under {@code prefix + key}, as {@link #divert} does.
+     */
+    private static void divertSecrets(
+            Map<String, Object> values,
+            Map<String, PluginDescriptor.SchemaKey> schema,
+            String prefix,
+            String where,
+            Map<String, String> secrets,
+            @Nullable Map<String, String> clientEnv,
+            Path moduleDir) {
+        for (PluginDescriptor.SchemaKey key : schema.values()) {
+            Object value = key.secret() ? values.get(key.name()) : null;
+            if (value == null) continue;
+            Object kept = divert(value, prefix + key.name(), where + key.name(), secrets, clientEnv, moduleDir);
+            if (kept == null) values.remove(key.name());
+            else values.put(key.name(), kept);
+        }
+    }
+
+    /**
+     * Puts a secret's resolved value on {@code secrets} under {@code key} and returns what stays in
+     * the values: nothing for a string; for a string-map, each variable's value goes under {@code
+     * key.<variable>} and the map stays naming those keys, so a step knows which secret is which
+     * variable while no value reaches the config.
+     */
+    private static @Nullable Object divert(
+            Object value,
+            String key,
+            String where,
+            Map<String, String> secrets,
+            @Nullable Map<String, String> clientEnv,
+            Path moduleDir) {
+        if (!(value instanceof Map<?, ?> map)) {
+            secrets.put(key, resolveEnv(String.valueOf(value), clientEnv, moduleDir, where));
+            return null;
+        }
+        Map<String, String> keys = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> e : map.entrySet()) {
+            String variable = String.valueOf(e.getKey());
+            String secretKey = key + "." + variable;
+            secrets.put(
+                    secretKey, resolveEnv(String.valueOf(e.getValue()), clientEnv, moduleDir, where + "." + variable));
+            keys.put(variable, secretKey);
+        }
+        return keys;
     }
 
     /**

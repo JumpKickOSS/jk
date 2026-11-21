@@ -183,7 +183,11 @@ public record GeneratorEntry(
                 Map.of());
     }
 
-    /** The entry as its validated {@code [generate.<name>]} table reads; the tool artifact is the name. */
+    /**
+     * The entry as its validated {@code [generate.<name>]} table reads; the tool artifact is the
+     * name. Its {@code secret-env} arrives as variable to secret key, the engine having moved each
+     * value onto the plugin's secrets.
+     */
     @SuppressWarnings("unchecked")
     public static GeneratorEntry fromConfig(String name, Map<String, Object> values) {
         String where = "[generate." + name + "]";
@@ -203,7 +207,7 @@ public record GeneratorEntry(
                 null,
                 List.of(),
                 (Map<String, String>) values.getOrDefault("env", Map.of()),
-                Map.of());
+                (Map<String, String>) values.getOrDefault("secret-env", Map.of()));
     }
 
     /** The step's name on the plan: {@code generate-<name>}, the name a manifest's {@code for-step} uses. */

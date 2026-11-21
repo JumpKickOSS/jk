@@ -139,14 +139,14 @@ class GeneratorStepTest {
                 Map.of(
                         "tool", "com.example:stub-gen:1.0",
                         "inputs", List.of("api/a.yaml"),
-                        "args", List.of("-i", "${in}", "-o", "${out}", "--env", "DB_PASSWORD"),
-                        "env", Map.of("DB_PASSWORD", "s3cret")));
+                        "args", List.of("-i", "${in}", "-o", "${out}", "--env", "GEN_PROFILE"),
+                        "env", Map.of("GEN_PROFILE", "ci-profile")));
 
         GeneratorStep.run(io, entry);
 
         Path out = tmp.resolve("scratch/generated/api");
-        assertThat(out.resolve("env.txt")).hasContent("s3cret");
-        assertThat(Files.readString(out.resolve("argv.txt"))).doesNotContain("s3cret");
+        assertThat(out.resolve("env.txt")).hasContent("ci-profile");
+        assertThat(Files.readString(out.resolve("argv.txt"))).doesNotContain("ci-profile");
     }
 
     /**
@@ -176,6 +176,32 @@ class GeneratorStepTest {
                 Map.of(),
                 Map.of("DB_PASSWORD", "db-password"));
 
+        GeneratorStep.run(io, entry);
+
+        Path out = tmp.resolve("scratch/generated/api");
+        assertThat(out.resolve("env.txt")).hasContent("s3cret");
+        assertThat(Files.readString(out.resolve("argv.txt"))).doesNotContain("s3cret");
+    }
+
+    /**
+     * A {@code [generate.<name>]} entry's {@code secret-env} reaches the config as variable to secret
+     * key, and the step lays that secret on the tool's environment.
+     */
+    @Test
+    void a_secret_env_entry_reaches_the_tool_through_the_plugins_secrets(@TempDir Path tmp) throws Exception {
+        FakeBuildIo io = new FakeBuildIo(tmp, "generate");
+        FakeBuildIo.write(tmp.resolve("api/a.yaml"), "a");
+        io.extra("api", stubJar(tmp.resolve("tools/stub-gen-1.0.jar"), StubTool.class.getName()));
+        io.secret("api.secret-env.DB_PASSWORD", "s3cret");
+        GeneratorEntry entry = GeneratorEntry.fromConfig(
+                "api",
+                Map.of(
+                        "tool", "com.example:stub-gen:1.0",
+                        "inputs", List.of("api/a.yaml"),
+                        "args", List.of("-i", "${in}", "-o", "${out}", "--env", "DB_PASSWORD"),
+                        "secret-env", Map.of("DB_PASSWORD", "api.secret-env.DB_PASSWORD")));
+
+        assertThat(entry.secretEnv()).containsExactly(Map.entry("DB_PASSWORD", "api.secret-env.DB_PASSWORD"));
         GeneratorStep.run(io, entry);
 
         Path out = tmp.resolve("scratch/generated/api");

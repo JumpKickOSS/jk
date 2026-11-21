@@ -110,6 +110,49 @@ class VariantApplyTest {
         assertThat(release.secrets()).containsExactly(Map.entry("jdbc-password", "written-out"));
     }
 
+    /**
+     * An entry's secret string-map ({@code [generate.<name>] secret-env}) leaves each value for the
+     * plugin's secrets under {@code <entry>.<key>.<variable>}, resolved through {@code env:NAME} or
+     * as written; the entry keeps only each variable's secret key, so no token or describe sees it.
+     */
+    @Test
+    void an_entrys_secret_map_leaves_its_values_for_the_plugins_secrets(@TempDir Path dir) throws Exception {
+        Files.writeString(dir.resolve("jk.toml"), """
+                name    = "app"
+                group   = "com.example"
+                version = "1.0.0"
+                java    = 25
+
+                [generate.api]
+                tool       = "org.acme:gen:1.0"
+                inputs     = ["api/openapi.yaml"]
+                env        = { PROFILE = "ci" }
+                secret-env = { DB_PASSWORD = "env:TEST_DB_PASSWORD", API_TOKEN = "written-out" }
+                """);
+        JkBuild build = JkBuildParser.parse(dir.resolve("jk.toml"));
+
+        PluginConfig config = VariantApply.apply(
+                        build, dir, Variants.Selection.parse(""), Map.of("TEST_DB_PASSWORD", "s3cret"))
+                .pluginConfig("generator")
+                .orElseThrow();
+        Map<String, Object> api = config.entries().get("api");
+        assertThat(api)
+                .containsEntry("env", Map.of("PROFILE", "ci"))
+                .containsEntry(
+                        "secret-env",
+                        Map.of(
+                                "DB_PASSWORD", "api.secret-env.DB_PASSWORD",
+                                "API_TOKEN", "api.secret-env.API_TOKEN"));
+        assertThat(config.secrets())
+                .containsOnly(
+                        Map.entry("api.secret-env.DB_PASSWORD", "s3cret"),
+                        Map.entry("api.secret-env.API_TOKEN", "written-out"));
+        assertThat(config.toString()).doesNotContain("s3cret").doesNotContain("written-out");
+        assertThat(build.pluginConfig("generator").orElseThrow().entries().get("api"))
+                .as("the parsed manifest is not changed")
+                .containsEntry("secret-env", Map.of("DB_PASSWORD", "env:TEST_DB_PASSWORD", "API_TOKEN", "written-out"));
+    }
+
     @Test
     void custom_dimension_requires_a_selection_and_build_type_overlays_last(@TempDir Path dir) throws Exception {
         JkBuild build = parse(dir, """

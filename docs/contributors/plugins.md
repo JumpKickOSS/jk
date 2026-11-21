@@ -137,8 +137,12 @@ true` (a password, a signing credential) is the plugin's secret: the user writes
 `env:NAME`, which resolves through the caller's shell and the module's `.env`, and the engine moves
 it off the config before anything reads it, so it is in no describe request, config token or log
 line. A step reads it with `TaskExec.secret(key)` and a packager with `PackageIo.secret(key)` (a key
-in a named group is `<group>.<key>`, `signing.store-password`); no other plugin receives it, and it
+in a named group is `<group>.<key>`, `signing.store-password`; one in an `[entries]` sub-table is
+`<entry>.<key>`); no other plugin receives it, and it
 keys no step (a packager takes it sealed, since a signing credential is part of what it writes).
+A `string-map` key may be secret too: each value moves under `<key>.<variable>` and the map stays
+in the config naming those keys (`[generate.api] secret-env = { DB_PASSWORD = "env:DB_PASSWORD" }`
+reaches the step as `{ DB_PASSWORD = "api.secret-env.DB_PASSWORD" }`).
 `[plugin] min-java` refuses a
 module that declares the table and builds for a lower `java` (or names none), once workspace
 inheritance has made its level concrete, with the line that fixes it.
@@ -671,8 +675,8 @@ contributes = "sources"                                      # sources | resourc
   `${out}`; the step shows in `jk explain` and the results Deliverables table like any other.
 - **Isolation**: `java -cp <tool> <main> <args>` forks on the build JDK with `${out}` as its
   working directory and the entry's `env` (`GeneratorEntry.env`, a `[generate.x] env` table) and
-  `secretEnv` (`GeneratorEntry.secretEnv`, a preset's secret by key, such as the jOOQ password,
-  read with `TaskExec.secret`) laid on its environment, never on its command line. `${in}` expands to the first input, `${inputs}` to all, `${module.dir}` to
+  `secretEnv` (`GeneratorEntry.secretEnv`, a `[generate.x] secret-env` table or a preset's secret
+  by key, such as the jOOQ password, read with `TaskExec.secret`) laid on its environment, never on its command line. `${in}` expands to the first input, `${inputs}` to all, `${module.dir}` to
   the module root.
 - **Diagnostics**: the tool's output is captured; lines matching `path:line[:col]: message` go
   through `TaskExec.diagnostic` (an error when the tool failed or said so, else a warning), the

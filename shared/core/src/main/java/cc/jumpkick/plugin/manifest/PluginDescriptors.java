@@ -170,8 +170,11 @@ public final class PluginDescriptors {
             String minVersion = spec.getString("min-version");
             ManifestDefaults.checkStringConstraints(where + "." + key, type, defaultValue, oneOf, minVersion);
             boolean secret = Boolean.TRUE.equals(spec.getBoolean("secret"));
-            if (secret && type != PluginDescriptor.SchemaKey.Type.STRING) {
-                throw new JkBuildParseException(where + "." + key + ": secret = true needs type = \"string\"");
+            if (secret
+                    && type != PluginDescriptor.SchemaKey.Type.STRING
+                    && type != PluginDescriptor.SchemaKey.Type.STRING_MAP) {
+                throw new JkBuildParseException(
+                        where + "." + key + ": secret = true needs type = \"string\" or \"string-map\"");
             }
             schema.put(
                     key,
