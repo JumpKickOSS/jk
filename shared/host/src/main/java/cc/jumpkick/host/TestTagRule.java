@@ -44,20 +44,14 @@ public final class TestTagRule {
     /** The tags every test of {@code type} carries: those on it and its supertypes, composed ones followed. */
     public static Set<String> classTags(Type type, Types types) {
         Set<String> out = new LinkedHashSet<>();
-        for (Type at : hierarchy(type, types)) {
-            out.addAll(at.classTags());
-            for (String a : at.classAnnotations()) out.addAll(metaTags(a, types, new LinkedHashSet<>()));
-        }
+        for (Type at : hierarchy(type, types)) out.addAll(elementTags(at.classTags(), at.classAnnotations(), types));
         return out;
     }
 
     /** The tags on the members of {@code type} and its supertypes, composed ones followed. */
     public static Set<String> memberTags(Type type, Types types) {
         Set<String> out = new LinkedHashSet<>();
-        for (Type at : hierarchy(type, types)) {
-            out.addAll(at.memberTags());
-            for (String a : at.memberAnnotations()) out.addAll(metaTags(a, types, new LinkedHashSet<>()));
-        }
+        for (Type at : hierarchy(type, types)) out.addAll(elementTags(at.memberTags(), at.memberAnnotations(), types));
         return out;
     }
 
@@ -65,6 +59,16 @@ public final class TestTagRule {
     public static Set<String> tags(Type type, Types types) {
         Set<String> out = classTags(type, types);
         out.addAll(memberTags(type, types));
+        return out;
+    }
+
+    /**
+     * The tags one class, method or field carries: the {@code tags} written on it and those its other
+     * {@code annotations} stand for.
+     */
+    public static Set<String> elementTags(Collection<String> tags, Collection<String> annotations, Types types) {
+        Set<String> out = new LinkedHashSet<>(tags);
+        for (String a : annotations) out.addAll(metaTags(a, types, new LinkedHashSet<>()));
         return out;
     }
 

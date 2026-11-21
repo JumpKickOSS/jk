@@ -3,10 +3,10 @@ package cc.jumpkick.guard.validate;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.UserConfigParseException;
-import cc.jumpkick.guard.facts.AnnotationFacts;
 import cc.jumpkick.guard.facts.ClassFacts;
 import cc.jumpkick.guard.facts.FactsIndex;
 import cc.jumpkick.guard.facts.MethodFacts;
+import cc.jumpkick.guard.facts.TestClassFacts;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.DeclaredSuite;
 import cc.jumpkick.model.JkBuild;
@@ -35,7 +35,6 @@ public final class TierPartition {
 
     public static final String CODE = "tiers";
     static final int MAX_VOCABULARY = 16;
-    static final String TAG = "org.junit.jupiter.api.Tag";
     static final String FAST_TIER = "jk test";
     static final String SUITE_TIER = "jk test -s ";
 
@@ -156,18 +155,22 @@ public final class TierPartition {
         return faults;
     }
 
-    /** Arms 2 and 3 over one module's compiled tests: each tagged element runs in exactly one tier, and every tag is owned. */
-    public static List<Fault> tagFaults(Table table, FactsIndex tests, String module) {
+    /**
+     * Arms 2 and 3 over one module's compiled tests: each tagged element runs in exactly one tier, and
+     * every tag is owned. Tags are read as the engine reads them, by {@code testClasses}: a class's
+     * own and its supertypes', each directly or through a composed annotation.
+     */
+    public static List<Fault> tagFaults(Table table, FactsIndex tests, TestClassFacts testClasses, String module) {
         List<Fault> faults = new ArrayList<>();
         if (table.vocabulary().isEmpty()) return faults;
         List<String> orphans = new ArrayList<>();
         Set<String> unowned = new TreeSet<>();
         for (ClassFacts c : tests.classList()) {
-            Set<String> classTags = tags(c.annotations());
+            Set<String> classTags = testClasses.classTags(c);
             String where = (module.isEmpty() ? "" : module + ": ") + c.binaryName();
             if (!classTags.isEmpty()) element(table, classTags, where, orphans, unowned);
             for (MethodFacts m : c.methods()) {
-                Set<String> own = tags(m.annotations());
+                Set<String> own = testClasses.methodTags(m);
                 if (own.isEmpty()) continue;
                 Set<String> all = new TreeSet<>(classTags);
                 all.addAll(own);
@@ -206,11 +209,5 @@ public final class TierPartition {
         if (run.size() != 1) {
             orphans.add(where + " @Tag" + routing + " — " + (run.isEmpty() ? "no tier runs it" : "run by " + run));
         }
-    }
-
-    static Set<String> tags(List<AnnotationFacts> annotations) {
-        Set<String> out = new LinkedHashSet<>();
-        for (AnnotationFacts a : annotations) if (a.typeName().equals(TAG)) out.addAll(a.value());
-        return out;
     }
 }

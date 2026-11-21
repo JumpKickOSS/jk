@@ -68,8 +68,24 @@ public final class TestClassFacts {
      * its supertypes, directly or through a composed annotation.
      */
     public Set<String> tags(ClassFacts c) {
-        return TestTagRule.tags(
-                tagged(c), name -> classNamed(name).map(TestClassFacts::tagged).orElse(null));
+        return TestTagRule.tags(tagged(c), this::taggedNamed);
+    }
+
+    /** The JUnit tags every test of {@code c} carries: on it and its supertypes, directly or through a composed annotation. */
+    public Set<String> classTags(ClassFacts c) {
+        return TestTagRule.classTags(tagged(c), this::taggedNamed);
+    }
+
+    /** The JUnit tags on method {@code m} itself, directly or through a composed annotation. */
+    public Set<String> methodTags(MethodFacts m) {
+        Set<String> tags = new LinkedHashSet<>();
+        Set<String> others = new LinkedHashSet<>();
+        annotationsOf(m.annotations(), tags, others);
+        return TestTagRule.elementTags(tags, others, this::taggedNamed);
+    }
+
+    private TestTagRule.@Nullable Type taggedNamed(String binaryName) {
+        return classNamed(binaryName).map(TestClassFacts::tagged).orElse(null);
     }
 
     private TestClassRule.@Nullable Type type(String binaryName) {

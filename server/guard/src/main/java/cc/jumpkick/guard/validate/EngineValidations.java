@@ -1,11 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.guard.validate;
 
+import cc.jumpkick.guard.facts.ClassFacts;
 import cc.jumpkick.guard.facts.FactsIndex;
+import cc.jumpkick.guard.facts.TestClassFacts;
 import cc.jumpkick.guard.schema.Lane;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
+import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 
 /** The validations each lane runs beside its rules, and how they present. */
@@ -34,10 +38,15 @@ public final class EngineValidations {
         return TierPartition.partitionFaults(TierPartition.table(root));
     }
 
-    /** One module lane: its compiled tests' tags against the table. */
-    public static List<Fault> module(Path root, String module, @Nullable FactsIndex tests) {
+    /**
+     * One module lane: its compiled tests' tags against the table, a supertype or composed annotation
+     * the tests do not hold read by {@code outside}, by internal name.
+     */
+    public static List<Fault> module(
+            Path root, String module, @Nullable FactsIndex tests, Function<String, Optional<ClassFacts>> outside) {
         if (tests == null) return List.of();
-        return TierPartition.tagFaults(TierPartition.table(root), tests, module);
+        return TierPartition.tagFaults(
+                TierPartition.table(root), tests, new TestClassFacts(List.of(tests), outside), module);
     }
 
     public static String render(Fault f) {

@@ -53,6 +53,14 @@ class TestTagRuleTest {
     }
 
     @Test
+    void one_element_carries_its_own_tags_and_those_its_annotations_stand_for() {
+        var slow = type("p.Slow", List.of(), Set.of("slow"), Set.of());
+
+        assertThat(TestTagRule.elementTags(Set.of("network"), Set.of("p.Slow", "p.Unknown"), types(slow)))
+                .containsExactlyInAnyOrder("network", "slow");
+    }
+
+    @Test
     void an_annotation_cycle_ends() {
         var a = type("p.A", List.of(), Set.of("a"), Set.of("p.B"));
         var b = type("p.B", List.of(), Set.of("b"), Set.of("p.A"));

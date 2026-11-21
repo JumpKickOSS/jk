@@ -510,7 +510,9 @@ the engine holds it to one invariant when guards are on (`jk-guards.toml` presen
 combination of tags in the vocabulary is run by exactly one suite, and every `@Tag` a compiled test
 carries is a tag some suite owns. A test every claiming suite excludes is a test that never executes
 and never goes red; two suites claiming one tag charge one test to two budgets unless an
-`exclude-tags` settles it; a misspelt tag runs in the fast tier by default. The check is exhaustive over the vocabulary (up to sixteen tags) and
+`exclude-tags` settles it; a misspelt tag runs in the fast tier by default. A test's tags are counted
+where JUnit finds them: its own, its superclasses' and interfaces', and those a composed annotation
+stands for. The check is exhaustive over the vocabulary (up to sixteen tags) and
 reports under the code `tiers` — `jk guard explain tiers` describes it.
 
 ## Workspace scope: suites and profiles come from the root

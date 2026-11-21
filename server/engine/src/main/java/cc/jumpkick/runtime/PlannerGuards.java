@@ -402,9 +402,7 @@ final class PlannerGuards {
                 : withSuite.run(() -> runLane(lane, rules, laneCtx, baseline));
         // Engine validations ride the lane: invariants of the build model, not rules, so they
         // have no table and no baseline, and a workspace without guards runs none.
-        List<Fault> faults = lane == Lane.MODEL
-                ? EngineValidations.model(g.root())
-                : lane == Lane.MODULE ? EngineValidations.module(g.root(), ectx.module(), ectx.testFacts()) : List.of();
+        List<Fault> faults = engineValidations(lane, g.root(), ectx);
         for (Fault f : faults) ctx.error(f.code(), EngineValidations.render(f));
         boolean ci = Baselines.ciMode();
         String storedSlice = tightenBaseline(ctx, g, result, ci) ? GuardKeys.slice(g, lane, ectx, load) : baselineSha;
@@ -532,6 +530,18 @@ final class PlannerGuards {
     private static boolean readsCoverage(Rule rule) {
         return rule.kind() == Kind.METRIC
                 && String.valueOf(rule.table().getString("measure")).startsWith("coverage.");
+    }
+
+    /** The lane's engine validations; a type the tests do not hold is read through the lane's hierarchy, released after. */
+    private static List<Fault> engineValidations(Lane lane, Path root, EvalContext ectx) {
+        if (lane == Lane.MODEL) return EngineValidations.model(root);
+        if (lane != Lane.MODULE) return List.of();
+        try {
+            return EngineValidations.module(
+                    root, ectx.module(), ectx.testFacts(), n -> ectx.hierarchy().classFacts(n));
+        } finally {
+            ectx.closeHierarchy();
+        }
     }
 
     private static LaneRun.Result runLane(Lane lane, List<Rule> rules, EvalContext ectx, Baseline baseline)

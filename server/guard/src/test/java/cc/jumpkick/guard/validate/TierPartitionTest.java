@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.guard.extract.FactsExtractor;
 import cc.jumpkick.guard.facts.ClassFacts;
 import cc.jumpkick.guard.facts.FactsIndex;
+import cc.jumpkick.guard.facts.TestClassFacts;
 import cc.jumpkick.guard.rules.GuardRules;
 import cc.jumpkick.guard.rules.GuardsPresence;
 import cc.jumpkick.guard.rules.LoadResult;
@@ -16,6 +17,7 @@ import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.objectweb.asm.AnnotationVisitor;
@@ -60,6 +62,67 @@ class TierPartitionTest {
         }
         cw.visitEnd();
         return FactsExtractor.extract(cw.toByteArray());
+    }
+
+    /**
+     * A class {@code p/<simple>} extending {@code p/<superSimple>} (or Object when null), wearing the
+     * annotation types {@code p/<annotation>} on itself and, when {@code method} is not null, on a
+     * test method of that name.
+     */
+    private static ClassFacts composed(
+            String simple,
+            @Nullable String superSimple,
+            String[] classAnnotations,
+            @Nullable String method,
+            String[] methodAnnotations) {
+        ClassWriter cw = new ClassWriter(0);
+        cw.visit(
+                Opcodes.V17,
+                Opcodes.ACC_PUBLIC,
+                "p/" + simple,
+                null,
+                superSimple == null ? "java/lang/Object" : "p/" + superSimple,
+                null);
+        for (String a : classAnnotations)
+            cw.visitAnnotation("Lp/" + a + ";", true).visitEnd();
+        if (method != null) {
+            MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PUBLIC, method, "()V", null, null);
+            mv.visitAnnotation("Lorg/junit/jupiter/api/Test;", true).visitEnd();
+            for (String a : methodAnnotations)
+                mv.visitAnnotation("Lp/" + a + ";", true).visitEnd();
+            mv.visitCode();
+            mv.visitInsn(Opcodes.RETURN);
+            mv.visitMaxs(0, 1);
+            mv.visitEnd();
+        }
+        cw.visitEnd();
+        return FactsExtractor.extract(cw.toByteArray());
+    }
+
+    /** An annotation type {@code p/<simple>} meta-annotated {@code @Tag(tag)}. */
+    private static ClassFacts tagAnnotation(String simple, String tag) {
+        ClassWriter cw = new ClassWriter(0);
+        cw.visit(
+                Opcodes.V17,
+                Opcodes.ACC_PUBLIC | Opcodes.ACC_INTERFACE | Opcodes.ACC_ABSTRACT | Opcodes.ACC_ANNOTATION,
+                "p/" + simple,
+                null,
+                "java/lang/Object",
+                new String[] {"java/lang/annotation/Annotation"});
+        AnnotationVisitor av = cw.visitAnnotation("Lorg/junit/jupiter/api/Tag;", true);
+        av.visit("value", tag);
+        av.visitEnd();
+        cw.visitEnd();
+        return FactsExtractor.extract(cw.toByteArray());
+    }
+
+    private static List<Fault> faults(TierPartition.Table t, FactsIndex tests, String module) {
+        return faults(t, tests, index(), module);
+    }
+
+    /** {@code beyond} the classes outside the tests, a main source set's or a library's. */
+    private static List<Fault> faults(TierPartition.Table t, FactsIndex tests, FactsIndex beyond, String module) {
+        return TierPartition.tagFaults(t, tests, new TestClassFacts(List.of(tests, beyond)), module);
     }
 
     private static FactsIndex index(ClassFacts... classes) {
@@ -142,7 +205,7 @@ class TierPartitionTest {
                 table(root, "[test]\nworkers = 2\n\n[test.suites.contract]\nclasses = [\"*Contract\"]\n");
         assertThat(t).isEqualTo(TierPartition.Table.EMPTY);
         assertThat(TierPartition.partitionFaults(t)).isEmpty();
-        assertThat(TierPartition.tagFaults(t, index(tagged("T", new String[] {"whatever"}, Map.of())), "m"))
+        assertThat(faults(t, index(tagged("T", new String[] {"whatever"}, Map.of())), "m"))
                 .isEmpty();
     }
 
@@ -165,7 +228,7 @@ class TierPartitionTest {
         ClassFacts method = tagged("MethodTest", new String[0], Map.of("b", new String[] {"nightly"}));
         ClassFacts fixture =
                 tagged("LauncherPathTest", new String[0], Map.of("c", new String[] {"[slow]", "brackets"}));
-        List<Fault> faults = TierPartition.tagFaults(t, index(fine, typo, method, fixture), "m");
+        List<Fault> faults = faults(t, index(fine, typo, method, fixture), "m");
         // an unowned tag still runs in the fast tier (no suite claims it), so it is unowned, not orphaned
         assertThat(faults).singleElement().satisfies(f -> assertThat(f.observed())
                 .contains("[nightly, slwo]")
@@ -175,8 +238,44 @@ class TierPartitionTest {
                 .doesNotContain("brackets"));
         // a class tag and a method tag route together, as JUnit filters them
         ClassFacts both = tagged("BothTest", new String[] {"slow"}, Map.of("d", new String[] {"network"}));
-        assertThat(TierPartition.tagFaults(t, index(both), "")).singleElement().satisfies(f -> assertThat(f.observed())
+        assertThat(faults(t, index(both), "")).singleElement().satisfies(f -> assertThat(f.observed())
                 .contains("p.BothTest#d @Tag[network, slow] — no tier runs it"));
+    }
+
+    /** A tag reaches a test through a composed annotation and a superclass, as JUnit reads it. */
+    @Test
+    void composed_and_inherited_tags_are_read_as_junit_reads_them(@TempDir Path root) throws Exception {
+        TierPartition.Table t = table(root, """
+                [test.suites.integration]
+                exclude-tags = ["slow", "network"]
+
+                [test.suites.slow]
+                tags = ["slow"]
+                exclude-tags = ["network"]
+
+                [test.suites.network]
+                tags = ["network"]
+                exclude-tags = ["slow"]
+                """);
+        FactsIndex annotations = index(tagAnnotation("Slow", "slow"), tagAnnotation("Nightly", "nightly"));
+
+        ClassFacts composedTypo = composed("NightlyTest", null, new String[] {"Nightly"}, null, new String[0]);
+        assertThat(faults(t, index(composedTypo), annotations, "m"))
+                .as("a tag a composed annotation stands for must be owned")
+                .singleElement()
+                .satisfies(f -> assertThat(f.observed()).contains("[nightly]"));
+
+        ClassFacts base = tagged("BaseTest", new String[] {"slow"}, Map.of());
+        ClassFacts sub = composed("SubTest", "BaseTest", new String[0], null, new String[0]);
+        ClassFacts network = tagged("NetworkTest", new String[] {"network"}, Map.of());
+        ClassFacts subNetwork = composed("SubNetworkTest", "NetworkTest", new String[0], "x", new String[] {"Slow"});
+        assertThat(faults(t, index(base, sub, network, subNetwork), annotations, "m"))
+                .as("a superclass's tag and a composed method tag route together")
+                .singleElement()
+                .satisfies(f -> assertThat(f.observed())
+                        .contains("p.SubNetworkTest#x @Tag[network, slow] — no tier runs it")
+                        .doesNotContain("p.SubTest")
+                        .doesNotContain("p.BaseTest"));
     }
 
     /**
@@ -201,17 +300,17 @@ class TierPartitionTest {
                 .containsExactly("integration", "slow");
 
         ClassFacts alone = tagged("HogTest", new String[] {"slow", "serial"}, Map.of());
-        assertThat(TierPartition.tagFaults(t, index(alone), "m"))
+        assertThat(faults(t, index(alone), "m"))
                 .as("`serial` beside a tier tag routes on the tier tag")
                 .isEmpty();
 
         ClassFacts fastAndSerial = tagged("FastHogTest", new String[] {"serial"}, Map.of());
-        assertThat(TierPartition.tagFaults(t, index(fastAndSerial), "m"))
+        assertThat(faults(t, index(fastAndSerial), "m"))
                 .as("scheduling alone routes as untagged does, into the fast tier")
                 .isEmpty();
 
         ClassFacts undeclared = tagged("TypoTest", new String[] {"seriall"}, Map.of());
-        assertThat(TierPartition.tagFaults(t, index(undeclared), "m"))
+        assertThat(faults(t, index(undeclared), "m"))
                 .as("a tag that is neither a tier nor a declared scheduling tag is still unowned")
                 .singleElement()
                 .satisfies(f -> assertThat(f.observed()).contains("[seriall]"));
