@@ -12,7 +12,7 @@ public enum InstallDestination {
     /** jk's private {@code repos/jk-local} tree under the store. */
     JK("jk");
 
-    /** The key naming a target in {@code [install]}, {@code config.toml}, the lock and the wire. */
+    /** The key naming the destination in {@code [install]}, {@code config.toml}, the lock and the wire. */
     public static final String KEY = "destination";
 
     private final String spelling;

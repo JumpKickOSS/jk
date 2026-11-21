@@ -283,7 +283,8 @@ public final class ManifestProject {
     private static @Nullable InstallDestination parseInstallDestination(
             TomlTable root, boolean workspaceRoot, java.util.EnumSet<ProjectInherit> inherits) {
         if (root.contains("install") && !root.isTable("install")) {
-            throw new JkBuildParseException("`install` must be a table — use [install] with a target key");
+            throw new JkBuildParseException(
+                    "`install` must be a table; use [install] with a " + InstallDestination.KEY + " key");
         }
         TomlTable install = root.isTable("install") ? root.getTable("install") : null;
         boolean present = install != null && install.contains(InstallDestination.KEY);
@@ -295,7 +296,7 @@ public final class ManifestProject {
         String word = String.valueOf(install.get(List.of(InstallDestination.KEY)));
         return InstallDestination.parse(word)
                 .orElseThrow(() -> new JkBuildParseException(
-                        "[install] destination must be \"m2\" or \"jk\", not `" + word + "`"));
+                        "[install] " + InstallDestination.KEY + " must be \"m2\" or \"jk\", not `" + word + "`"));
     }
 
     /**

@@ -180,19 +180,20 @@ public final class ManifestTables {
      *
      * <p>Absent for every ordinary target, which is the point: a library, an executable, a native
      * binary, a script and an external jar are complete shapes already and declare nothing. {@code
-     * target} is read into the project (see {@link ManifestProject}); the keys here are {@code
+     * destination} is read into the project (see {@link ManifestProject}); the keys here are {@code
      * product-lib} and {@code product-bin}, which are jk installing jk — see {@link JkBuild.Install}.
      */
     static Optional<JkBuild.Install> parseInstall(TomlTable root) {
         if (root.contains("install") && !root.isTable("install")) {
-            throw new JkBuildParseException("`install` must be a table; use [install] with a target key");
+            throw new JkBuildParseException(
+                    "`install` must be a table; use [install] with a " + InstallDestination.KEY + " key");
         }
         TomlTable install = root.getTable("install");
         if (install == null) return Optional.empty();
         for (String key : install.keySet()) {
             if (!InstallDestination.KEY.equals(key) && !"product-lib".equals(key) && !"product-bin".equals(key)) {
-                throw new JkBuildParseException(
-                        "[install] unknown key `" + key + "` — expected target, product-lib or product-bin");
+                throw new JkBuildParseException("[install] unknown key `" + key + "` — expected "
+                        + InstallDestination.KEY + ", product-lib or product-bin");
             }
         }
         String productLib = optionalString(install, "product-lib", "install.product-lib");

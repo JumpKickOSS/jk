@@ -46,6 +46,19 @@ class ManifestInstallTest {
     }
 
     @Test
+    void an_unknown_key_names_every_key_the_parser_accepts() throws Exception {
+        assertThatThrownBy(() -> parse("[install]\ntarget = \"m2\"\n"))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("`target`")
+                .hasMessageContaining("expected destination, product-lib or product-bin");
+    }
+
+    @Test
+    void destination_is_accepted_beside_the_product_keys() throws Exception {
+        assertThat(parse("[install]\ndestination = \"m2\"\n").installOpt()).isEmpty();
+    }
+
+    @Test
     void product_lib_accepts_only_the_engine_home_name() throws Exception {
         // EngineInstall hardcodes the jk-engine home, pointer and jar naming — any other value
         // would install under jk-engine/ while announcing a directory nothing wrote to.
@@ -75,6 +88,8 @@ class ManifestInstallTest {
     void install_must_be_a_table() throws Exception {
         assertThatThrownBy(() -> parse("install = \"jk-engine\"\n"))
                 .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("must be a table");
+                .hasMessageContaining("must be a table")
+                .hasMessageContaining("destination key")
+                .hasMessageNotContaining("target");
     }
 }

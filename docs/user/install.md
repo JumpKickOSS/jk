@@ -259,7 +259,7 @@ Five names, and `JK_HOME` is the only one most people need.
 | `JK_ENGINE_AOT=off` | The engine neither maps nor records its own JEP 514 startup cache. Otherwise an idle engine records one per install (about 10 s, once, skipped under `CI`) and every later engine maps it: a build on a fresh engine starts ~0.4 s sooner |
 | `JK_CANCEL_GRACE_MS` | Shared cancel window for forked workers (default **500** ms, max 5000) |
 | `JK_M2_INTEGRATION` | `read` (default: use a verified file already in the Maven local repo, download into the store), `share` (download into the Maven local repo too) or `off`; `false` is `off` and `true` is `share` (same as `[m2] integration` in `config.toml`) |
-| `JK_INSTALL_DESTINATION` | `jk` (`JK_STORE_DIR/repos/jk-local`) or `m2` (the Maven local repo): where `jk install` puts a project that names no target. Unset, `jk`, or `m2` when `[m2] integration` is `share` (same as `[install] destination` in `config.toml`) |
+| `JK_INSTALL_DESTINATION` | `jk` (`JK_STORE_DIR/repos/jk-local`) or `m2` (the Maven local repo): where `jk install` puts a project that names no `[install] destination`. Unset, `jk`, or `m2` when `[m2] integration` is `share` (same as `[install] destination` in `config.toml`) |
 | `JK_CLIENT` | Installers and wrapper only: `native` or `jvm`. Unset picks the native client when the release lists one for the host, else the [JVM client](#the-jvm-client) |
 | `JK_JAVA_HOME` | The JDK the JVM client (and, by default, its engine) runs on; the launcher checks it before the JDK it was installed with, `JAVA_HOME`, and the PATH |
 | `JK_CLIENT_OPTS` | Extra JVM flags for the JVM client's own launch (the engine's are `JK_JVM_ARGS`) |
