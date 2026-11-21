@@ -771,12 +771,27 @@ public final class LockOrchestrator {
 
         progress.materializePhase(
                 progress.graphPackages() + union.roots().fileDeps().size());
-        Lockfile lockfile = assemble(union, project, jkVersion, progress, pomBuilder);
+        Lockfile lockfile;
+        try {
+            lockfile = assemble(union, project, jkVersion, progress, pomBuilder);
+        } catch (IOException | RuntimeException e) {
+            noteDeclaredRepositoriesNotUsed(union.source(), observer);
+            throw e;
+        }
         // Which POM-declared repositories served a row is known once the rows are assembled.
         if (union.source() != null) {
             for (String line : union.source().declaredRepositoryNotes(lockfile.artifacts())) observer.onNote(line);
         }
         return new Merged(union, lockfile);
+    }
+
+    /**
+     * On a failed lock, the repositories dependency POMs declared that were refused or ignored: a
+     * package that only such a repository serves fails as not found, and these say where it was.
+     */
+    private static void noteDeclaredRepositoriesNotUsed(@Nullable MavenPackageSource source, ResolveObserver observer) {
+        if (source == null) return;
+        for (String line : source.declaredRepositoryNotes(List.of())) observer.onNote(line);
     }
 
     record Solve(
@@ -851,7 +866,13 @@ public final class LockOrchestrator {
                         conditionalRules, sharedSource != null ? sharedSource::reposFor : pkg -> repos, bomConstraints);
         ScopeSolves scopeSolves = new ScopeSolves(
                 resolverOverride, sharedSource, pomBuilder, kmp, floorPin, conditionals, testRoots(project));
-        ScopeSolves.Solved solved = scopeSolves.solve(roots, prefs, progress);
+        ScopeSolves.Solved solved;
+        try {
+            solved = scopeSolves.solve(roots, prefs, progress);
+        } catch (IOException | RuntimeException e) {
+            noteDeclaredRepositoriesNotUsed(sharedSource, observer);
+            throw e;
+        }
         if (rounds != null && sharedSource != null) rounds.read(sharedSource.readsCompleted());
         for (String line : scopeSolves.overrides()) observer.onOverride(line);
         if (sharedSource != null) {

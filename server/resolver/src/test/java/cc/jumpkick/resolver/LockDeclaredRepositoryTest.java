@@ -98,6 +98,47 @@ class LockDeclaredRepositoryTest {
                         .lock(project("io.apicurio:schema-util-json", "=2.6.13"), "test", List.of(), true, observer()))
                 .hasMessageContaining("org.everit.json.schema");
         assertThat(jitpack.requested()).isEmpty();
+        assertThat(notes)
+                .as("the failed lock says which repository it did not ask, and why")
+                .containsExactly("repository `jitpack.io` (" + jitpack.baseUrl()
+                        + ") from the POM of io.apicurio:schema-util-json:2.6.13 not used:"
+                        + " [resolve] pom-repositories = \"ignore\"");
+    }
+
+    /** A lock that fails for a transitive only a refused repository serves names that repository and why. */
+    @Test
+    void a_lock_that_fails_for_a_transitive_only_a_refused_repository_has_names_that_repository(@TempDir Path dir) {
+        new MavenStub(central)
+                .metadata("io.apicurio", "over-http", "1.0")
+                .pom("io.apicurio", "over-http", "1.0", """
+                        <project>
+                          <groupId>io.apicurio</groupId>
+                          <artifactId>over-http</artifactId>
+                          <version>1.0</version>
+                          <repositories>
+                            <repository>
+                              <id>plain</id>
+                              <url>http://repo.example.com/maven</url>
+                            </repository>
+                          </repositories>
+                          <dependencies>
+                            <dependency>
+                              <groupId>com.foo</groupId>
+                              <artifactId>only-there</artifactId>
+                              <version>1.0</version>
+                            </dependency>
+                          </dependencies>
+                        </project>
+                        """)
+                .jar("io.apicurio", "over-http", "1.0");
+
+        assertThatThrownBy(() -> new LockOrchestrator(repos(dir))
+                        .lock(project("io.apicurio:over-http", "=1.0"), "test", List.of(), true, observer()))
+                .hasMessageContaining("only-there");
+        assertThat(notes).singleElement().satisfies(note -> assertThat(note)
+                .startsWith("repository `plain` (http://repo.example.com/maven")
+                .contains("from the POM of io.apicurio:over-http:1.0")
+                .contains("not used: plain http"));
     }
 
     @Test

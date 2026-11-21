@@ -357,7 +357,8 @@ with one rule:
   one with snapshots disabled is never asked for a snapshot.
 - `jk lock` notes a declared repository once a row of the lock came from it, naming the POM that
   introduced it and the policy it is asked under; a repository a POM declares that served nothing
-  earns no note. A repository refused is always noted.
+  earns no note. A repository refused is always noted, on a lock that fails too, so a
+  dependency only that repository has fails naming it and why.
 - `jk lock` says so: one note per repository names it, its URL and the POM that introduced it.
   Declaring the same URL under `[repositories]` makes it a project repository with the project's
   order and opt-ins.
@@ -372,8 +373,8 @@ pom-repositories = "ignore"   # default "use"
 
 No repository a dependency's POM declares is then asked anything, and `jk lock` notes each one once
 (`repository `jitpack` (https://jitpack.io) from the POM of … not used: [resolve] pom-repositories =
-"ignore"`). A dependency only such a repository has fails the lock as one no repository has; declare
-that repository under `[repositories]` to use it. In a workspace the root's `[resolve]` decides. The
+"ignore"`). A dependency only such a repository has fails the lock as one no repository has, with the
+same notes; declare that repository under `[repositories]` to use it. In a workspace the root's `[resolve]` decides. The
 setting is part of `jk.toml`, so changing it makes the lock stale.
 
 ### Snapshots
