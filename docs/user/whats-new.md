@@ -6,6 +6,9 @@ JumpKick shows you this page's new entries after it updates itself.
 
 ## 0.54.0
 
+- **A cancelled build cannot silently lose a lock it holds.** An interrupt that landed while a lock
+  file's description was being written or read closed the file, which released the lock while the
+  build still believed it held it. That I/O now runs where an interrupt cannot reach it.
 - **An archive entry cannot create a directory outside the install.** Installing a JDK or a build
   tool from a zip no longer creates directories outside the destination when an entry name climbs
   out through a missing directory (`missing/../../x`): the entry is refused before anything is

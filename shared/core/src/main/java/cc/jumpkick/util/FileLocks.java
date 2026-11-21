@@ -3,10 +3,10 @@ package cc.jumpkick.util;
 
 import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.OwnerOnlyFiles;
+import cc.jumpkick.run.JkThreads;
 import java.io.Closeable;
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.nio.channels.AsynchronousCloseException;
 import java.nio.channels.ClosedChannelException;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
@@ -19,6 +19,9 @@ import java.nio.file.OpenOption;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Future;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
 import org.jspecify.annotations.Nullable;
@@ -33,8 +36,10 @@ import org.jspecify.annotations.Nullable;
  * channel, and a re-entrant or same-process taker is answered from the JVM's own bookkeeping. A
  * filesystem that refuses the lock file or the lock degrades to the JVM lock rather than failing
  * the caller; an interrupt while waiting propagates, since a fold that ran unlocked would lose
- * rows. The 0-byte lock file stays on disk: unlinking it while another process holds the lock
- * would let a third process lock a fresh inode at the same path.
+ * rows. An interrupt inside a channel's I/O closes the channel and with it the lock, so the I/O on
+ * a channel that may hold a lock runs on a thread nothing interrupts. The 0-byte lock file stays
+ * on disk: unlinking it while another process holds the lock would let a third process lock a
+ * fresh inode at the same path.
  *
  * <p>The locked region is one byte at the far end of the file, never the description a holder
  * writes at offset 0, so a refused process can read the description under Windows' mandatory
@@ -152,7 +157,7 @@ public final class FileLocks {
                 FileChannel busy = e.channel;
                 if (busy == null) continue; // being opened or closed, or a body runs without an OS lock
                 try {
-                    return readDescription(busy);
+                    return uninterruptibly(() -> readDescription(busy));
                 } catch (ClosedChannelException released) {
                     // the hold ended under the read; ask again
                 } catch (IOException unreadable) {
@@ -165,7 +170,9 @@ public final class FileLocks {
         }
         try {
             FileChannel open = e.channel;
-            return open != null ? readDescription(open) : Files.readString(lockFile, StandardCharsets.UTF_8);
+            return open != null
+                    ? uninterruptibly(() -> readDescription(open))
+                    : Files.readString(lockFile, StandardCharsets.UTF_8);
         } catch (IOException unreadable) {
             return "";
         } finally {
@@ -185,6 +192,39 @@ public final class FileLocks {
             // until the buffer is full or the file ends
         }
         return new String(buf.array(), 0, buf.position(), StandardCharsets.UTF_8);
+    }
+
+    /**
+     * Run {@code io} on a pool thread nothing interrupts and wait for it, keeping an interrupt of the
+     * caller for after: an interrupt inside a {@link FileChannel}'s I/O closes the channel, and the
+     * close releases every lock on it. For short calls only, since the wait cannot be interrupted.
+     * Once the pool has shut down with the JVM, {@code io} runs on the caller.
+     */
+    private static <T> T uninterruptibly(Body<T> io) throws IOException {
+        Future<T> done;
+        try {
+            done = JkThreads.platform().submit(io::run);
+        } catch (RejectedExecutionException exiting) {
+            return io.run();
+        }
+        boolean interrupted = false;
+        try {
+            while (true) {
+                try {
+                    return done.get();
+                } catch (InterruptedException later) {
+                    interrupted = true;
+                } catch (ExecutionException failed) {
+                    Throwable cause = failed.getCause();
+                    if (cause instanceof IOException e) throw e;
+                    if (cause instanceof RuntimeException e) throw e;
+                    if (cause instanceof Error e) throw e;
+                    throw new IOException(cause);
+                }
+            }
+        } finally {
+            if (interrupted) Thread.currentThread().interrupt();
+        }
     }
 
     /**
@@ -259,17 +299,17 @@ public final class FileLocks {
 
         /**
          * Take the OS lock, waiting when {@code wait}. False when the tree or the filesystem refuses
-         * it and the caller proceeds under the JVM lock alone. An interrupt while waiting closes the
-         * channel and propagates.
+         * it and the caller proceeds under the JVM lock alone. An interrupt while waiting, or a channel
+         * found closed, closes the channel and propagates: neither is a filesystem without locks.
          */
         boolean acquire(boolean wait) throws IOException {
             FileChannel c = open();
             if (c == null) return false;
             try {
                 os = wait ? c.lock(LOCK_POSITION, 1, false) : c.tryLock(LOCK_POSITION, 1, false);
-            } catch (FileLockInterruptionException | AsynchronousCloseException interrupted) {
+            } catch (FileLockInterruptionException | ClosedChannelException lost) {
                 closeChannel();
-                throw interrupted;
+                throw lost;
             } catch (IOException noLock) {
                 closeChannel(); // e.g. NFS without lockd
                 return false;
@@ -314,9 +354,13 @@ public final class FileLocks {
             try {
                 FileChannel c = entry.channel;
                 if (!open || c == null) throw new IOException("lock released: " + entry.file);
-                c.truncate(0);
-                AtomicWrites.writeFully(c, ByteBuffer.wrap(description.getBytes(StandardCharsets.UTF_8)), 0);
-                c.force(false);
+                ByteBuffer bytes = ByteBuffer.wrap(description.getBytes(StandardCharsets.UTF_8));
+                uninterruptibly(() -> {
+                    c.truncate(0);
+                    AtomicWrites.writeFully(c, bytes, 0);
+                    c.force(false);
+                    return Boolean.TRUE;
+                });
             } finally {
                 entry.jvm.unlock();
             }
@@ -331,7 +375,7 @@ public final class FileLocks {
                 FileChannel c = entry.channel;
                 if (c != null) {
                     try {
-                        c.truncate(0);
+                        uninterruptibly(() -> c.truncate(0));
                     } catch (IOException ignored) {
                         // a stale description misleads nobody once the lock is gone
                     }

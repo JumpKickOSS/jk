@@ -130,6 +130,110 @@ class FileLocksTest {
         }
     }
 
+    /**
+     * An interrupted thread taking, describing, writing and closing a hold must not close the
+     * channel: on every platform that releases the lock while the holder still believes it holds it.
+     * The forked process is the judge, and the caller's interrupt survives each call.
+     */
+    @Test
+    void an_interrupted_holder_keeps_the_os_lock(@TempDir Path dir) throws Exception {
+        Path lock = dir.resolve("build.lock");
+        FileLocks.Hold hold;
+        Thread.currentThread().interrupt();
+        try {
+            hold = (FileLocks.Hold) FileLocks.tryHold(lock);
+            hold.write("pid=1\nbuild=7\n");
+            FileLocks.describeHolder(lock);
+            assertThat(Thread.currentThread().isInterrupted())
+                    .as("the interrupt is kept")
+                    .isTrue();
+        } finally {
+            Thread.interrupted();
+        }
+        try {
+            assertThat(probeFromAnotherProcess(lock)).isEqualTo("held");
+            assertThat(FileLocks.describeHolder(lock)).contains("build=7");
+        } catch (Throwable failed) {
+            hold.close();
+            throw failed;
+        }
+        Thread.currentThread().interrupt();
+        try {
+            hold.close();
+        } finally {
+            Thread.interrupted();
+        }
+        assertThat(FileLocks.describeHolder(lock))
+                .as("an interrupted close still empties the description")
+                .isEmpty();
+        assertThat(probeFromAnotherProcess(lock)).isEqualTo("free");
+    }
+
+    /**
+     * Describers interrupted at any point of their read never close the channel an open hold lives
+     * on. The forked process is the judge.
+     */
+    @Test
+    void interrupting_a_describer_keeps_a_hold(@TempDir Path dir) throws Exception {
+        Path lock = dir.resolve("build.lock");
+        FileLocks.Hold hold = (FileLocks.Hold) FileLocks.tryHold(lock);
+        try {
+            hold.write("pid=1\nbuild=7\n" + "x".repeat(32 * 1024));
+            interruptDescribers(lock, Duration.ofSeconds(1));
+            assertThat(probeFromAnotherProcess(lock)).isEqualTo("held");
+            hold.write("pid=1\nbuild=8\n");
+        } finally {
+            hold.close();
+        }
+    }
+
+    /** As {@link #interrupting_a_describer_keeps_a_hold}, while a body runs under the lock. */
+    @Test
+    void interrupting_a_describer_keeps_the_lock_a_body_runs_under(@TempDir Path dir) throws Exception {
+        Path lock = Files.writeString(dir.resolve("build.lock"), "x".repeat(32 * 1024));
+        String seen = FileLocks.withLock(lock, () -> {
+            interruptDescribers(lock, Duration.ofSeconds(1));
+            return probeFromAnotherProcess(lock);
+        });
+        assertThat(seen).isEqualTo("held");
+    }
+
+    /**
+     * Four threads describe the holder for {@code duration} while a fifth interrupts each one whenever
+     * it runs rather than waits, which is when it is reading through the lock's channel.
+     */
+    private static void interruptDescribers(Path lock, Duration duration) {
+        AtomicBoolean stop = new AtomicBoolean();
+        AtomicBoolean described = new AtomicBoolean();
+        List<Thread> describers = new ArrayList<>();
+        for (int i = 0; i < 4; i++) {
+            describers.add(Thread.ofPlatform().daemon().start(() -> {
+                while (!stop.get()) {
+                    Thread.interrupted();
+                    FileLocks.describeHolder(lock);
+                }
+            }));
+        }
+        Thread interrupter = Thread.ofPlatform().daemon().start(() -> {
+            while (!described.get()) {
+                for (Thread describer : describers) {
+                    if (describer.getState() == Thread.State.RUNNABLE) describer.interrupt();
+                }
+                Thread.onSpinWait();
+            }
+        });
+        try {
+            Thread.sleep(duration);
+            stop.set(true);
+            for (Thread describer : describers) describer.join(Duration.ofSeconds(10));
+            described.set(true);
+            interrupter.join(Duration.ofSeconds(10));
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            throw new AssertionError(interrupted);
+        }
+    }
+
     /** {@link FileLocks#tryHold} until it holds; the describer's brief turns under the JVM lock refuse it. */
     private static FileLocks.Hold takeWhileDescribed(Path lock) {
         long deadline = System.nanoTime() + Duration.ofSeconds(10).toNanos();
