@@ -566,6 +566,19 @@ public final class RepoArtifactStore {
     }
 
     /**
+     * Move {@code staged} onto {@code target} in the Maven local repository {@code m2Repository}, for
+     * a writer that keeps no memo of it ({@code jk install}): under the lock every store takes to
+     * publish there, stamped after the file it replaces, so no store's memo of that file describes it.
+     */
+    public static void publishIntoM2(Path m2Repository, Path staged, Path target) throws IOException {
+        Files.createDirectories(m2Repository);
+        FileLocks.withLock(m2Repository.resolve(M2_LOCK_NAME), () -> {
+            stampAfter(staged, target);
+            AtomicWrites.moveInto(staged, target);
+        });
+    }
+
+    /**
      * Give {@code staged} an mtime after that of {@code replaced}, the file it is about to replace,
      * so a memo of the replaced file never describes it. The later steps are for filesystems that
      * keep whole or even seconds.

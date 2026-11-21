@@ -395,10 +395,11 @@ public final class InstallPlans {
         String pomSha = Hashing.sha256Hex(pomBytes);
         ModuleOutcome.Installed.Change change = checkSlot(coord, m2Root, jarSha, pomSha);
         if (change != ModuleOutcome.Installed.Change.UNCHANGED) {
-            M2CompatWriter.MavenHashes jarH = HeldOpen.replace(m2Jar, () -> M2CompatWriter.copyToM2AndHash(jar, m2Jar));
+            M2CompatWriter.MavenHashes jarH =
+                    HeldOpen.replace(m2Jar, () -> M2CompatWriter.copyToM2AndHash(jar, m2Jar, m2Root));
             M2CompatWriter.writeMavenSidecars(m2Jar, jarH.sha1(), jarH.md5());
             M2CompatWriter.MavenHashes pomH =
-                    HeldOpen.replace(m2Pom, () -> M2CompatWriter.writeBytesToM2(pomBytes, m2Pom));
+                    HeldOpen.replace(m2Pom, () -> M2CompatWriter.writeBytesToM2(pomBytes, m2Pom, m2Root));
             M2CompatWriter.writeMavenSidecars(m2Pom, pomH.sha1(), pomH.md5());
             // Maven marks what its own install wrote with an empty repository id; any other id makes
             // a build without that repository refuse the file as one it cannot re-verify.

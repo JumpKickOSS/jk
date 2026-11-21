@@ -128,15 +128,23 @@ public final class M2CompatWriter {
     }
 
     /**
-     * Write {@code content} bytes to {@code target} atomically and return the Maven hashes.
-     * Equivalent to {@link #copyToM2AndHash} but for in-memory content (e.g. a generated POM).
+     * Write {@code content} bytes to {@code target} in the Maven local repository {@code m2Repository}
+     * and return the Maven hashes. Equivalent to {@link #copyToM2AndHash} but for in-memory content
+     * (e.g. a generated POM).
      */
-    public static MavenHashes writeBytesToM2(byte[] content, Path target) throws IOException {
+    public static MavenHashes writeBytesToM2(byte[] content, Path target, Path m2Repository) throws IOException {
         MessageDigest sha1 = Hashing.newDigest("SHA-1");
         MessageDigest md5 = Hashing.newDigest("MD5");
         sha1.update(content);
         md5.update(content);
-        AtomicWrites.replace(target, content);
+        Files.createDirectories(target.getParent());
+        Path tmp = Files.createTempFile(target.getParent(), "." + target.getFileName() + ".", ".part");
+        try {
+            Files.write(tmp, content);
+            RepoArtifactStore.publishIntoM2(m2Repository, tmp, target);
+        } finally {
+            Files.deleteIfExists(tmp);
+        }
         return new MavenHashes(Hashing.hex(sha1.digest()), Hashing.hex(md5.digest()));
     }
 
@@ -147,12 +155,12 @@ public final class M2CompatWriter {
     public record MavenHashes(String sha1, String md5) {}
 
     /**
-     * Copy {@code source} to {@code target} (atomic temp-rename), then compute and return the
-     * SHA-1 and MD5 of the bytes. Always a copy, never a hard link — jk does not own writes to
-     * the Maven local repository. I/O errors in the copy propagate; errors in sidecar writing are
-     * swallowed.
+     * Copy {@code source} to {@code target} in the Maven local repository {@code m2Repository}
+     * (staged, then published as {@link RepoArtifactStore#publishIntoM2} does), then compute and
+     * return the SHA-1 and MD5 of the bytes. Always a copy, never a hard link — jk does not own
+     * writes to the Maven local repository. I/O errors in the copy propagate.
      */
-    public static MavenHashes copyToM2AndHash(Path source, Path target) throws IOException {
+    public static MavenHashes copyToM2AndHash(Path source, Path target, Path m2Repository) throws IOException {
         Files.createDirectories(target.getParent());
         // Unique temp so concurrent writers of the same artifact don't share an inode.
         Path tmp = Files.createTempFile(target.getParent(), "." + target.getFileName() + ".", ".part");
@@ -169,7 +177,7 @@ public final class M2CompatWriter {
                     md5.update(buf, 0, n);
                 }
             }
-            AtomicWrites.moveInto(tmp, target);
+            RepoArtifactStore.publishIntoM2(m2Repository, tmp, target);
         } catch (IOException | RuntimeException e) {
             try {
                 Files.deleteIfExists(tmp);

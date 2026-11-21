@@ -13,11 +13,13 @@ import cc.jumpkick.model.Project;
 import cc.jumpkick.repo.M2CompatWriter;
 import cc.jumpkick.repo.M2InstallMemo;
 import cc.jumpkick.repo.MavenLayout;
+import cc.jumpkick.repo.RepoArtifactStore;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
 import cc.jumpkick.wire.runtime.ModuleOutcome.Installed.Change;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -129,6 +131,30 @@ class InstallPlansPolicyTest {
         assertThat(out.change()).isEqualTo(Change.REPLACED);
         assertThat(Files.readString(slotJar("1.0.0-SNAPSHOT"))).isEqualTo("v2");
         assertThat(out.jarSha256()).isEqualTo(Hashing.sha256Hex(slotJar("1.0.0-SNAPSHOT")));
+    }
+
+    /**
+     * A store sharing the Maven local repository judges a file by its memo's size and mtime, so a
+     * replaced snapshot of the same size is stamped after the file it replaces, under the lock
+     * every store takes to publish there.
+     */
+    @Test
+    void a_replaced_snapshot_is_published_under_the_share_lock_and_newer_than_the_file_it_replaces() throws Exception {
+        JkBuild project = project("1.0.0-SNAPSHOT");
+        install(project, built(project, "v1"));
+        Path jar = slotJar("1.0.0-SNAPSHOT");
+        Path pom = jar.resolveSibling("money-1.0.0-SNAPSHOT.pom");
+        long ahead = System.currentTimeMillis() + 3_600_000;
+        Files.setLastModifiedTime(jar, FileTime.fromMillis(ahead));
+        Files.setLastModifiedTime(pom, FileTime.fromMillis(ahead));
+
+        assertThat(install(project, built(project, "v2")).change()).isEqualTo(Change.REPLACED);
+
+        assertThat(Files.readString(jar)).isEqualTo("v2");
+        assertThat(Files.getLastModifiedTime(jar).toMillis()).isGreaterThan(ahead);
+        assertThat(Files.getLastModifiedTime(pom).toMillis()).isGreaterThan(ahead);
+        assertThat(m2Dir.resolve("repository").resolve(RepoArtifactStore.M2_LOCK_NAME))
+                .exists();
     }
 
     @Test
