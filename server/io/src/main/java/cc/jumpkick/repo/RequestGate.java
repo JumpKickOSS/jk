@@ -10,6 +10,7 @@ import java.io.InputStream;
 import java.net.SocketTimeoutException;
 import java.net.URI;
 import java.net.http.HttpTimeoutException;
+import java.nio.file.Path;
 import java.util.Optional;
 import java.util.function.Consumer;
 import org.jspecify.annotations.Nullable;
@@ -71,6 +72,12 @@ record RequestGate(Admission admit, Consumer<IOException> failed) {
             public int put(URI uri, byte[] body, String contentType, RepoCredential credential)
                     throws IOException, InterruptedException {
                 return transport.put(uri, body, contentType, credential);
+            }
+
+            @Override
+            public int putFile(URI uri, Path file, String contentType, RepoCredential credential)
+                    throws IOException, InterruptedException {
+                return transport.putFile(uri, file, contentType, credential);
             }
         };
     }

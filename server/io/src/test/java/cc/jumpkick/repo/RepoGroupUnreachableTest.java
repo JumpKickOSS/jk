@@ -60,6 +60,11 @@ class RepoGroupUnreachableTest {
         public int put(URI uri, byte[] body, String contentType, RepoCredential credential) {
             return 0;
         }
+
+        @Override
+        public int putFile(URI uri, Path file, String contentType, RepoCredential credential) {
+            return 0;
+        }
     }
 
     @BeforeEach
@@ -295,6 +300,11 @@ class RepoGroupUnreachableTest {
             public int put(URI uri, byte[] body, String contentType, RepoCredential credential) {
                 return 0;
             }
+
+            @Override
+            public int putFile(URI uri, Path file, String contentType, RepoCredential credential) {
+                return 0;
+            }
         };
         MavenRepo nexus = MavenRepo.overTransport(
                 "nexus",
@@ -324,6 +334,11 @@ class RepoGroupUnreachableTest {
 
         @Override
         public int put(URI uri, byte[] body, String contentType, RepoCredential credential) {
+            return 0;
+        }
+
+        @Override
+        public int putFile(URI uri, Path file, String contentType, RepoCredential credential) {
             return 0;
         }
     }

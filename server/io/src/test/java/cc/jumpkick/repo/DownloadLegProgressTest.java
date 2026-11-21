@@ -148,6 +148,11 @@ class DownloadLegProgressTest {
             public int put(URI uri, byte[] body, String contentType, RepoCredential credential) {
                 return 405;
             }
+
+            @Override
+            public int putFile(URI uri, Path file, String contentType, RepoCredential credential) {
+                return 405;
+            }
         };
     }
 }

@@ -85,6 +85,11 @@ class MavenRepoCredentialRefreshTest {
         public int put(URI uri, byte[] body, String contentType, RepoCredential credential) {
             return 0;
         }
+
+        @Override
+        public int putFile(URI uri, Path file, String contentType, RepoCredential credential) {
+            return 0;
+        }
     }
 
     @BeforeEach

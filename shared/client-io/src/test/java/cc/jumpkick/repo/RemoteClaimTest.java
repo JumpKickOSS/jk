@@ -8,6 +8,7 @@ import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.task.IoLedger;
 import java.io.IOException;
 import java.net.URI;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
@@ -29,6 +30,11 @@ class RemoteClaimTest {
 
             @Override
             public int put(URI uri, byte[] body, String contentType, RepoCredential credential) {
+                throw new AssertionError("a claim check never writes");
+            }
+
+            @Override
+            public int putFile(URI uri, Path file, String contentType, RepoCredential credential) {
                 throw new AssertionError("a claim check never writes");
             }
         };
@@ -62,6 +68,11 @@ class RemoteClaimTest {
             public int put(URI uri, byte[] body, String contentType, RepoCredential credential) {
                 return 500;
             }
+
+            @Override
+            public int putFile(URI uri, Path file, String contentType, RepoCredential credential) {
+                return 500;
+            }
         };
         assertThat(ask(down, Duration.ofSeconds(5))).isEqualTo(RemoteClaim.Verdict.UNKNOWN);
     }
@@ -77,6 +88,11 @@ class RemoteClaimTest {
 
             @Override
             public int put(URI uri, byte[] body, String contentType, RepoCredential credential) {
+                return 500;
+            }
+
+            @Override
+            public int putFile(URI uri, Path file, String contentType, RepoCredential credential) {
                 return 500;
             }
         };
@@ -98,6 +114,11 @@ class RemoteClaimTest {
 
             @Override
             public int put(URI uri, byte[] body, String contentType, RepoCredential credential) {
+                return 500;
+            }
+
+            @Override
+            public int putFile(URI uri, Path file, String contentType, RepoCredential credential) {
                 return 500;
             }
         };
