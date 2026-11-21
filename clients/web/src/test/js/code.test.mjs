@@ -773,12 +773,12 @@ test('a CDN module is fetched with its pinned integrity and a failed fetch is no
   assert.equal(asked[0].opts.integrity, 'sha384-abc');
 });
 
-test('each document renderer is fetched as a verified ES module, and a failed load retries', async () => {
+test('marked and DOMPurify load from the jar with no network; Asciidoctor is fetched verified, and a failed load retries', async () => {
   // Asciidoctor's browser build is an ES module: its .min.js run as a classic script set no global,
   // so the AsciiDoc preview failed every time. Headless node cannot import a blob: URL, so a refused
   // fetch shows the path: which file is asked for, with which integrity, and that a failure does
   // not latch.
-  const { ensureCdn } = await spa('monaco.js');
+  const { ensureCdn, markedParse } = await spa('monaco.js');
   const saved = globalThis.fetch;
   const asked = [];
   globalThis.fetch = async (url, opts) => {
@@ -786,19 +786,18 @@ test('each document renderer is fetched as a verified ES module, and a failed lo
     return { ok: false, status: 503 };
   };
   try {
-    const expected = {
-      marked: 'https://unpkg.com/marked@15.0.12/lib/marked.esm.js',
-      purify: 'https://unpkg.com/dompurify@3.2.5/dist/purify.es.mjs',
-      asciidoctor: 'https://unpkg.com/@asciidoctor/core@3.0.4/dist/browser/asciidoctor.js',
-    };
-    for (const [name, src] of Object.entries(expected)) {
-      asked.length = 0;
-      await assert.rejects(ensureCdn(name), (e) => e.message === 'could not load ' + src + ' (503)', name);
-      assert.equal(asked.length, 1, name);
-      assert.match(asked[0].opts.integrity, /^sha384-/, name);
-      await assert.rejects(ensureCdn(name), undefined, name);
-      assert.equal(asked.length, 2, name + ' retries after a failed load');
-    }
+    const marked = await ensureCdn('marked');
+    assert.equal(markedParse(marked, '# hi').trim(), '<h1>hi</h1>');
+    // DOMPurify needs a document, which headless node lacks, so its loader refuses it here.
+    await assert.rejects(ensureCdn('purify'), /DOMPurify ESM export missing/);
+    assert.equal(asked.length, 0, 'the vendored modules are not fetched');
+
+    const src = 'https://unpkg.com/@asciidoctor/core@3.0.4/dist/browser/asciidoctor.js';
+    await assert.rejects(ensureCdn('asciidoctor'), (e) => e.message === 'could not load ' + src + ' (503)');
+    assert.equal(asked.length, 1);
+    assert.match(asked[0].opts.integrity, /^sha384-/);
+    await assert.rejects(ensureCdn('asciidoctor'));
+    assert.equal(asked.length, 2, 'retries after a failed load');
   } finally {
     globalThis.fetch = saved;
   }

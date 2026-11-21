@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
-// Monaco and the preview CDNs: the version pins, the subresource-integrity hashes, the AMD-define
-// parking those UMD bundles need, and the editor options/decorations built against the loaded
-// namespace. One file so a pin can never drift from the loader that fetches it.
+// Monaco and the preview renderers: the version pins, the subresource-integrity hashes, the
+// AMD-define parking those UMD bundles need, and the editor options/decorations built against the
+// loaded namespace. One file so a pin can never drift from the loader that fetches it.
 
 import { clipHashMsg } from './route.js';
 
@@ -9,7 +9,7 @@ export const HIGHLIGHT_MAX_BYTES = 200 * 1024;
 export const HIGHLIGHT_MAX_LINES = 4000;
 
 /**
- * Same CDN origin as Vue/ECharts in index.html. The shell's CSP names each unpkg package prefix
+ * Same CDN origin as ECharts in index.html. The shell's CSP names each unpkg package prefix
  * this client loads, so every unpkg URL here is a literal with its exact version (StaticContent;
  * ShellPolicyTest fails when the two disagree).
  */
@@ -219,21 +219,20 @@ export function viewerOptions({ content, lang, readOnly = false } = {}) {
 }
 
 /**
- * Preview renderers (unpkg only; never self-hosted).
+ * Preview renderers. marked and DOMPurify ship in the jar (vendor/, the published files byte for
+ * byte), so Markdown previews and the sanitizer every renderer goes through work offline; the rest
+ * load from unpkg when that kind of document is first previewed.
  * marked, DOMPurify and Asciidoctor load as ESM via dynamic import() so we never park Monaco's AMD
  * {@code define} for them (parking races Monaco's on-demand markdown grammar → "define is not a
  * function"). Asciidoctor's browser build is an ES module; its .min.js is a transpile of it that sets
  * no global. Mermaid and viz still use classic UMD + noAmd, and only when that diagram kind is needed.
  */
+const VENDORED = {
+  marked: './vendor/marked-15.0.12/marked.esm.js',
+  purify: './vendor/dompurify-3.2.5/purify.es.mjs',
+};
+
 const CDN = {
-  markedEsm: {
-    src: 'https://unpkg.com/marked@15.0.12/lib/marked.esm.js',
-    integrity: 'sha384-lq4NLkerQHkbMAdHSdtQaZigoSO2ONX6Ink84jzU+8MZHEKDmLUYspbP0h6tybCc',
-  },
-  purifyEsm: {
-    src: 'https://unpkg.com/dompurify@3.2.5/dist/purify.es.mjs',
-    integrity: 'sha384-2G1R+xYUzDJWsgWNyUeZC4h+GvYt3MJG5zXKiLD7fxMkwT5y7P45szixzpn8OHFa',
-  },
   asciidoctorEsm: {
     src: 'https://unpkg.com/@asciidoctor/core@3.0.4/dist/browser/asciidoctor.js',
     integrity: 'sha384-fwlQOIqOHAsoHascvSa46N5VKhblRqQaixjCpwWq+cC/B8DO2bnUUmbvN6wC1JtN',
@@ -252,9 +251,9 @@ const previewLoaders = Object.create(null);
 
 /**
  * An ES module from the CDN, verified before it runs: import() takes no integrity, so the bytes
- * are fetched with one (the browser refuses a mismatch) and imported from a blob: URL. The
- * sanitizer is among these, and the page's token can write files and start builds. The pinned
- * modules import nothing of their own, which a blob: URL could not resolve.
+ * are fetched with one (the browser refuses a mismatch) and imported from a blob: URL, since the
+ * page's token can write files and start builds. The pinned modules import nothing of their own,
+ * which a blob: URL could not resolve.
  */
 export async function importVerified(pin, fetchImpl = fetch) {
   const resp = await fetchImpl(pin.src, { integrity: pin.integrity, mode: 'cors', credentials: 'omit' });
@@ -270,14 +269,14 @@ export async function importVerified(pin, fetchImpl = fetch) {
 /** How each ESM preview library is fetched, verified and turned into its renderer. */
 const ESM_LOADERS = {
   async marked() {
-    const m = await importVerified(CDN.markedEsm);
+    const m = await import(VENDORED.marked);
     const api = m.marked || m.default || m;
     if (api == null) throw new Error('marked ESM export missing');
     return api;
   },
   async purify() {
     // purify.es.mjs exports a ready DOMPurify instance as default.
-    const m = await importVerified(CDN.purifyEsm);
+    const m = await import(VENDORED.purify);
     const api = m.default || m.DOMPurify || m;
     if (api == null || typeof api.sanitize !== 'function') throw new Error('DOMPurify ESM export missing');
     return api;

@@ -16,7 +16,7 @@ stopped providing.
 
 | File | Role |
 | --- | --- |
-| `index.html` | The shell: in-DOM Vue template, CDN pins, brand chrome |
+| `index.html` | The shell: in-DOM Vue template, the vendored Vue and the ECharts pin, brand chrome |
 | `app.js` | The root component: auth, the SSE connection, the hash route, cross-view fetches |
 | `api.js` | **The only file that talks HTTP**: token bootstrap, fetch wrappers, SSE client |
 | `format.js` | One duration, one relative time, one byte size — every surface formats the same |
@@ -50,7 +50,7 @@ stopped providing.
 | `chart.js` | `<build-bars>` and `<module-dep-graph>`: the two ECharts surfaces |
 | `code.js` | `<code-view>`: the `#project/<id>/files` pane |
 | `fileviewer.js` | `<file-viewer>`: one workspace file read-only over the page, as an `edited N files` path opens it |
-| `monaco.js` | Monaco and the preview CDNs: version pins, SRI hashes, AMD parking, editor options |
+| `monaco.js` | Monaco and the preview renderers: vendored paths, CDN pins, SRI hashes, AMD parking, editor options |
 | `preview.js` | The Preview half: markdown, mermaid, graphviz, asciidoc, images |
 | `paths.js` | Workspace paths: extension → language, previewable kinds, markdown href resolution |
 | `route.js` | The hash router: `#console/<session>`, `#project/<id>/files/<rel>?line=…` parsed and rendered |
@@ -91,16 +91,25 @@ Hover help uses `data-tip="…"` (or `:data-tip`) plus `tip.js`, which paints a 
 panel with the same soft Jk Dark shell as retention / the millis I/O tip. Do not reintroduce
 `title=` for user-visible hover text.
 
-## Dependencies: CDN, pinned, integrity-locked
+## Dependencies: vendored or CDN, pinned, integrity-locked
 
-Vue (and ECharts for history sparks **and** the Project-page module dependency graph) load from
-the CDN, **version-pinned with an SRI `integrity` hash** — a CDN compromise must not be able to
-script a page that can trigger builds. When bumping a pin, update the `integrity` hash in
-`index.html` in the same change. Preview-only libraries (marked, DOMPurify, mermaid, viz-js,
-Asciidoctor) are pinned in `monaco.js` and load **only** when Preview is used —
-same unpkg origin, never self-hosted, and each with its `integrity` hash. marked, DOMPurify and Asciidoctor load as **ESM** so Preview never parks Monaco's AMD
+Vue, marked and DOMPurify ship in the jar under `web/vendor/<package>-<version>/`, each the
+published file byte for byte beside its licence, so the shell starts, renders Markdown and
+sanitizes every preview with no network (an air-gapped machine, a flight). `ShellPolicyTest` holds
+each file's SRI hash as unpkg serves it (`https://unpkg.com/<package>@<version>/<file>`) and fails
+when the bytes differ, when the client stops loading one, or when any client file still names that
+package on unpkg; moving a pin means replacing the file with the new release's and its hash there.
+`index.html` loads Vue with a plain same-origin `defer` tag; `monaco.js` imports marked and
+DOMPurify from their `vendor/` paths (`VENDORED`).
+
+ECharts (history sparks **and** the Project-page module dependency graph) loads from the CDN,
+**version-pinned with an SRI `integrity` hash** — a CDN compromise must not be able to script a
+page that can trigger builds. When bumping a pin, update the `integrity` hash in `index.html` in
+the same change. The other preview-only libraries (mermaid, viz-js, Asciidoctor) are pinned in
+`monaco.js` and load **only** when Preview needs them — the unpkg origin, each with its
+`integrity` hash. marked, DOMPurify and Asciidoctor load as **ESM** so Preview never parks Monaco's AMD
 `define` (that race broke Monaco's on-demand markdown grammar: `define is not a function`); `import()` takes no
-integrity, so `importVerified` fetches them with it and imports the verified bytes from a `blob:` URL. Nothing is
+integrity, so `importVerified` fetches Asciidoctor with it and imports the verified bytes from a `blob:` URL. Nothing is
 imported from a CDN unverified, which is why D2 has no preview: its WASM bundle loads more files relative to its
 own URL, which a `blob:` import cannot. Document previews forbid `<style>`, `<link>`,
 `<meta>`, `<base>` and `<form>`, so a repository's README cannot restyle the console around it.
@@ -110,10 +119,10 @@ one pinned. Mermaid and viz still use classic UMD with a refcounted `define` par
 those diagram kinds are needed. There is no bundler and no npm build step: the shell ships as
 static resources inside the engine jar.
 
-The shell's CSP (`StaticContent.SHELL_POLICY`) names each of these packages by its exact versioned
-prefix (`https://unpkg.com/vue@3.5.39/`), never unpkg as a whole, in the directive that governs the
-load: `script-src` for the `index.html` tags, Monaco (its loader, chunks and the worker bundles its
-Blob workers `importScripts`) and the UMD renderers; `connect-src` for marked, DOMPurify and Asciidoctor, which
+The shell's CSP (`StaticContent.SHELL_POLICY`) names each CDN package by its exact versioned
+prefix (`https://unpkg.com/echarts@5.5.1/`), never unpkg as a whole, in the directive that governs the
+load: `script-src` for the `index.html` tag, Monaco (its loader, chunks and the worker bundles its
+Blob workers `importScripts`) and the UMD renderers; `connect-src` for Asciidoctor, which
 `importVerified` fetches; `style-src` for Monaco's `editor.main.css`. So every unpkg URL in the
 client is a literal with its exact version (no template, no bare `@3` that unpkg would redirect),
 and moving a pin means moving the prefix in `StaticContent` in the same change: `ShellPolicyTest`
@@ -130,7 +139,7 @@ CDN bundle, `'unsafe-inline'` in `style-src` for the inline style attributes it 
 line and widget with, and `data:` in `font-src` for the codicon font inlined into
 `editor.main.css`. Monaco must load **after** the UMD globals above — its AMD loader claims
 `window.define`, and a UMD script that loads afterwards would register as an AMD module instead of
-setting its global. Vue/ECharts are `defer` tags in `index.html`, and Monaco only loads when a
+setting its global. Vue and ECharts are `defer` tags in `index.html`, and Monaco only loads when a
 user opens `/files`, so that ordering holds.
 
 ## The console
@@ -413,8 +422,8 @@ tab bar: [ file-name-pill ]   [ Copy ] [ Preview ] [ Save ]
   too large, concurrency). Saves send the load-time `etag`; a **409 file changed on disk** means
   another tab or process rewrote the file — reload to continue.
 - **Preview** is enabled for markdown, images, mermaid (`.mmd`/`.mermaid`), Graphviz (`.dot`/`.gv`),
-  and AsciiDoc (`.adoc`/`.asciidoc`). Renderers load **lazily from unpkg only** (never
-  self-hosted); images use an auth-fetch → blob URL. Markdown also renders fenced
+  and AsciiDoc (`.adoc`/`.asciidoc`). Renderers load **lazily**: marked and DOMPurify from the
+  jar's `vendor/`, the diagram renderers and Asciidoctor from unpkg; images use an auth-fetch → blob URL. Markdown also renders fenced
   ` ```mermaid ` blocks: each block leaves a placeholder paragraph random per render, and after
   DOMPurify the sanitized HTML is parsed once into an inert document where the diagram replaces
   that paragraph as a node, images are hydrated and links rewritten, and only then is it

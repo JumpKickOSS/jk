@@ -29,7 +29,8 @@ function localScripts() {
   for (const m of html.matchAll(/<script\b([^>]*)>/g)) {
     const attrs = m[1];
     const src = /\bsrc="([^"]+)"/.exec(attrs);
-    if (!src || /^https?:/.test(src[1])) continue;
+    // A library, from the CDN or vendored as published, is a classic global, not the SPA's code.
+    if (!src || /^https?:/.test(src[1]) || src[1].startsWith('vendor/')) continue;
     out.push({ src: src[1], module: /\btype="module"/.test(attrs) });
   }
   return out;

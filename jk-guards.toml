@@ -481,10 +481,11 @@ instead  = "add an entry to RetiredKeys.ALL (key, release, replacement, remedy) 
 why      = "a retired key refused outside the one list is missing from the writers' check and the docs table"
 
 # G71. `class` is banned as a field key in the SPA only: .class literals and the test-worker
-# discovery protocol keep the token live in Java on purpose. The dashboard reads d.testClass.
+# discovery protocol keep the token live in Java on purpose. The dashboard reads d.testClass. The
+# SPA's own files sit at the top of web/; the libraries under web/vendor/ are not hand-typed.
 [guards.spa-no-class-key]
 kind     = "text"
-files    = ["clients/web/src/main/resources/web/**"]
+files    = ["clients/web/src/main/resources/web/*"]
 blank    = "none"
 patterns = ["(?<=[\"'.])class(?![A-Za-z0-9_$])"]
 hit      = "d.class"

@@ -360,7 +360,7 @@ file whose real path leaves the directory (a symlink) is not served.
 
 Every static response, a 404 or 405 included, carries `X-Frame-Options: DENY`, and every file
 carries the shell's `Content-Security-Policy` (`StaticContent.SHELL_POLICY`;
-[webclient.md](webclient.md#dependencies-cdn-pinned-integrity-locked) says what each directive
+[webclient.md](webclient.md#dependencies-vendored-or-cdn-pinned-integrity-locked) says what each directive
 allows), whose `frame-ancestors 'none'` keeps another site from framing the dashboard. Every response
 the server sends, static, `/api`, event stream, MCP and coverage report alike, carries
 `X-Content-Type-Options: nosniff`, set once as the request enters `HttpEngineServer.handle`.

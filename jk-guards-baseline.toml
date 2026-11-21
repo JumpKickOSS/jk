@@ -1340,6 +1340,10 @@ population = { examined = 15 }
 
 [file-size]
 population = { units = 4145 }
+[[file-size.entries]]
+unit   = "clients/web/src/main/resources/web/vendor/marked-15.0.12/marked.esm.js"
+value  = 2164
+reason = "marked 15.0.12 as published, vendored byte for byte; ShellPolicyTest holds its hash, so it is never edited to fit"
 
 [forecast-key-owner-callers]
 [forecast-key-owner-callers.populations]

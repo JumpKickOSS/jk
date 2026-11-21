@@ -15,11 +15,9 @@
   <link rel="stylesheet" href="style.css">
   <!-- Iconography is inline SVG via <jk-icon> (icons.js). Brand: jumpkick-logo.webp in the header;
        the jk-logo.svg mark as favicon and in the About dialog. -->
-  <!-- Version-pinned + SRI: a CDN compromise must not be able to script a page that can trigger
-       builds. Update the integrity hash whenever the pin moves (docs/contributors/webclient.md). -->
-  <script src="https://unpkg.com/vue@3.5.39/dist/vue.global.prod.js"
-          integrity="sha384-yrrm1s9PCS0I4n39ldjMqQlTorYls89GAS3wXVJooje/BSWnC2vTgky2LIyzRLEo"
-          crossorigin="anonymous" defer></script>
+  <!-- Vue ships in the jar (vendor/), so the shell starts with no network: the published file,
+       byte for byte (docs/contributors/webclient.md). -->
+  <script src="vendor/vue-3.5.39/vue.global.prod.js" defer></script>
   <!-- Apache ECharts: Projects tab build-history sparks + Project-page module dependency graph
        (lazy-loaded). Version-pinned + SRI; update the hash whenever the pin moves. -->
   <script src="https://unpkg.com/echarts@5.5.1/dist/echarts.min.js"

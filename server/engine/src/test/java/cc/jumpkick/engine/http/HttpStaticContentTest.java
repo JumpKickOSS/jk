@@ -257,28 +257,32 @@ class HttpStaticContentTest extends HttpEngineServerHarness {
                 .contains("image/webp");
         HttpResponse<String> css = get("/style.css");
         assertThat(css.headers().firstValue("Content-Type")).contains("text/css; charset=utf-8");
-        // Vue rides the CDN, version-pinned and integrity-locked (docs/contributors/webclient.md) — the shell
-        // must carry the pin + SRI, and the CSP must allow that package's prefix, not all of unpkg
-        // (ShellPolicyTest checks every prefix against the client's files).
-        // (Read from the classpath: this test's web-root shadows /index.html with its own.)
+        // Vue ships in the jar, so the shell starts offline; ECharts rides the CDN, and the CSP allows
+        // each CDN package's prefix, not all of unpkg (ShellPolicyTest checks every prefix against the
+        // client's files). (Read from the classpath: this test's web-root shadows /index.html.)
         String shell;
         try (var in = getClass().getResourceAsStream("/web/index.html")) {
             shell = new String(in.readAllBytes(), UTF_8);
         }
-        assertThat(shell).contains("https://unpkg.com/vue@3.5.39/dist/vue.global.prod.js");
+        assertThat(shell).contains("<script src=\"vendor/vue-3.5.39/vue.global.prod.js\" defer>");
+        assertThat(shell).doesNotContain("unpkg.com/vue@");
+        HttpResponse<String> vue = get("/vendor/vue-3.5.39/vue.global.prod.js");
+        assertThat(vue.statusCode()).isEqualTo(200);
+        assertThat(vue.headers().firstValue("Content-Type")).contains("text/javascript; charset=utf-8");
+        assertThat(vue.body()).contains("createApp");
         assertThat(shell).contains("integrity=\"sha384-");
         assertThat(shell).contains("crossorigin=\"anonymous\"");
         HttpResponse<String> js = get("/app.js");
         // OptionalAssert#contains is equality, not substring — unwrap and check the directives.
         String csp = js.headers().firstValue("Content-Security-Policy").orElseThrow();
         assertThat(csp)
-                .startsWith("default-src 'self'; script-src 'self' 'unsafe-eval' blob: https://unpkg.com/vue@3.5.39/ ")
+                .startsWith(
+                        "default-src 'self'; script-src 'self' 'unsafe-eval' blob: https://unpkg.com/echarts@5.5.1/ ")
                 .doesNotContain("https://unpkg.com;")
                 .doesNotContain("https://unpkg.com ")
                 .contains("style-src 'self' 'unsafe-inline' https://fonts.googleapis.com "
                         + "https://unpkg.com/monaco-editor@0.56.0/; ")
-                .contains("connect-src 'self' https://unpkg.com/marked@15.0.12/ https://unpkg.com/dompurify@3.2.5/ "
-                        + "https://unpkg.com/@asciidoctor/core@3.0.4/; ")
+                .contains("connect-src 'self' https://unpkg.com/@asciidoctor/core@3.0.4/; ")
                 .contains("font-src https://fonts.gstatic.com data:; worker-src 'self' blob:")
                 .contains("frame-src 'none'; frame-ancestors 'none'; object-src 'none'; base-uri 'none'; ")
                 .contains("form-action 'none'");

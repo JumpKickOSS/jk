@@ -35,8 +35,8 @@ import org.junit.jupiter.params.provider.MethodSource;
  *
  * <p>Staging: the SPA's shipped assets are copied once into a {@code type:module} temp dir (a bare
  * {@code .js} import is CommonJS, and every suite's top-level {@code import} would throw).
- * {@code JK_APP_DIR} names that directory, and a suite reaches any module or {@code index.html}
- * (or the manifest and stylesheet) through it. Adding a module or a suite needs no change here.
+ * {@code JK_APP_DIR} names that directory, and a suite reaches any module, {@code index.html}, the
+ * vendored libraries (or the manifest and stylesheet) through it. Adding a module or a suite needs no change here.
  *
  * <p>Paths resolve against the checkout root, never {@code user.dir}: a workspace build runs
  * tests with CWD at the engine state dir. See {@link RepoRoot}.
@@ -53,6 +53,9 @@ class WebClientJsTest {
 
     /** The stylesheet, which modal.test.mjs reads for the dialog sizing and page-lock rules. */
     private static final String STYLES = "style.css";
+
+    /** The libraries the jar carries as published, each in a directory of its own. */
+    private static final String VENDOR = "vendor";
 
     private static final Path JS_SUITES = Path.of("src/test/js");
 
@@ -96,6 +99,15 @@ class WebClientJsTest {
         Files.copy(assets.resolve(SHELL), stage.resolve(SHELL));
         Files.copy(assets.resolve(MANIFEST), stage.resolve(MANIFEST));
         Files.copy(assets.resolve(STYLES), stage.resolve(STYLES));
+        // The vendored libraries, which monaco.js imports by path.
+        Path vendor = assets.resolve(VENDOR);
+        try (Stream<Path> tree = Files.walk(vendor)) {
+            for (Path p : tree.toList()) {
+                Path to = stage.resolve(VENDOR).resolve(vendor.relativize(p).toString());
+                if (Files.isDirectory(p)) Files.createDirectories(to);
+                else Files.copy(p, to);
+            }
+        }
         Files.writeString(stage.resolve("package.json"), "{\"type\":\"module\"}\n");
         nodeEnv = Map.of("JK_APP_DIR", stage.toString());
     }

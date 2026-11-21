@@ -13,8 +13,10 @@ import java.nio.file.FileSystemAlreadyExistsException;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -31,7 +33,8 @@ import org.junit.jupiter.api.Test;
 /**
  * {@link StaticContent#SHELL_POLICY} against the client it ships with: the unpkg sources in the
  * policy are exactly the versioned package prefixes the files under {@code /web} load, each in the
- * directive that governs how it loads, and nothing frames, embeds or rebases the dashboard.
+ * directive that governs how it loads, the libraries vendored under {@code /web/vendor} are the
+ * published files and come from nowhere else, and nothing frames, embeds or rebases the dashboard.
  */
 class ShellPolicyTest {
 
@@ -40,6 +43,19 @@ class ShellPolicyTest {
             "https://unpkg\\.com/((?:@[a-z0-9._-]+/)?[a-z0-9._-]+@\\d+\\.\\d+\\.\\d+(?:-[0-9A-Za-z.-]+)?/)");
 
     private static final String UNPKG = "https://unpkg.com/";
+
+    /**
+     * The libraries the jar carries, each the published file byte for byte: the subresource-integrity
+     * hash of {@code https://unpkg.com/<package>@<version>/<file>}. Moving a pin means replacing the
+     * file with the new release's and its hash here.
+     */
+    private static final Map<String, String> VENDORED = Map.of(
+            "vendor/vue-3.5.39/vue.global.prod.js",
+                    "sha384-yrrm1s9PCS0I4n39ldjMqQlTorYls89GAS3wXVJooje/BSWnC2vTgky2LIyzRLEo",
+            "vendor/marked-15.0.12/marked.esm.js",
+                    "sha384-lq4NLkerQHkbMAdHSdtQaZigoSO2ONX6Ink84jzU+8MZHEKDmLUYspbP0h6tybCc",
+            "vendor/dompurify-3.2.5/purify.es.mjs",
+                    "sha384-2G1R+xYUzDJWsgWNyUeZC4h+GvYt3MJG5zXKiLD7fxMkwT5y7P45szixzpn8OHFa");
 
     private static Map<String, String> client;
     private static Map<String, List<String>> policy;
@@ -85,6 +101,33 @@ class ShellPolicyTest {
             if (Set.of("script-src", "connect-src", "style-src").contains(d.getKey())) continue;
             assertThat(d.getValue()).as(d.getKey()).noneMatch(s -> s.contains("unpkg"));
         }
+    }
+
+    @Test
+    void the_vendored_libraries_are_the_published_files_and_nothing_loads_them_from_unpkg() throws Exception {
+        String all = String.join("\n", client.values());
+        for (var lib : VENDORED.entrySet()) {
+            byte[] bytes;
+            try (var in = ShellPolicyTest.class.getResourceAsStream("/web/" + lib.getKey())) {
+                assertThat(in).as(lib.getKey()).isNotNull();
+                bytes = requireNonNull(in).readAllBytes();
+            }
+            String sri = "sha384-"
+                    + Base64.getEncoder()
+                            .encodeToString(MessageDigest.getInstance("SHA-384").digest(bytes));
+            assertThat(sri).as(lib.getKey()).isEqualTo(lib.getValue());
+            String dir = lib.getKey().substring(0, lib.getKey().lastIndexOf('/'));
+            assertThat(all).as("the client loads " + lib.getKey()).contains(lib.getKey());
+            assertThat(ShellPolicyTest.class.getResource("/web/" + dir + "/" + licence(dir)))
+                    .as(dir + " carries its licence")
+                    .isNotNull();
+            String pkg = dir.substring("vendor/".length(), dir.lastIndexOf('-'));
+            assertThat(all).as(pkg + " from unpkg").doesNotContain("unpkg.com/" + pkg + "@");
+        }
+    }
+
+    private static String licence(String dir) {
+        return dir.startsWith("vendor/marked-") ? "LICENSE.md" : "LICENSE";
     }
 
     @Test
