@@ -44,7 +44,7 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * Embedded JDK {@code jdk.httpserver}: bind/stop lifecycle, the gate chain every exchange passes
- * (Host header, a changing request's {@code Origin}, {@link HttpAdmission}, {@link HttpTokenGate},
+ * (Host header, a changing or MCP request's {@code Origin}, {@link HttpAdmission}, {@link HttpTokenGate},
  * {@link EngineEpochGate}), the route
  * table over {@link ApiRouter} / {@link McpFront} / {@link StaticContent}, and the composition of
  * those owners. Nothing else. Bind failure is non-fatal.
@@ -606,12 +606,12 @@ public final class HttpEngineServer implements AutoCloseable {
                     HttpResponses.sendText(exchange, 421, "unrecognized Host header\n");
                     return;
                 }
-                // A page on another origin may not build, write files, answer decisions or call
-                // MCP through a token it was handed: whatever a request would change, only this
-                // listener's own pages, or a client that is not a page, may ask for.
+                // A page on another origin may not build, write files, answer decisions or reach
+                // MCP through a token it was handed: whatever a request would change, and any MCP
+                // request, its event stream included, only this listener's own pages, or a client
+                // that is not a page, may ask for.
                 String method = exchange.getRequestMethod();
-                if (!method.equals("GET")
-                        && !method.equals("HEAD")
+                if (((!method.equals("GET") && !method.equals("HEAD")) || HttpAdmission.isMcpRequest(exchange))
                         && !HostCheck.sameOrigin(exchange.getRequestHeaders().getFirst("Origin"), host, boundPort)) {
                     HttpResponses.sendText(exchange, 403, "refused: this request came from another page\n");
                     return;

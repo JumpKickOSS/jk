@@ -391,7 +391,8 @@ Missing or invalid credentials → **401** (plus SPA hard-gate). Engine generati
 **409** with `engine-epoch-mismatch` (see below).
 
 A request with any method but `GET` and `HEAD`, on any path (`/api`, `/mcp`, the front door's
-prefix), that carries an `Origin` other than its own is a **403** before its token is read
+prefix), and any request to `/mcp` (here or through the front door), its event-stream `GET`
+included, that carries an `Origin` other than its own is a **403** before its token is read
 (`HostCheck.sameOrigin`): the origin must be `http`, the request's `Host` name and the listener's
 port, so `null` (a sandboxed frame, a `file:` page), another port, another loopback spelling and
 another machine's address are all refused. A token a page was handed does not let it build, write a

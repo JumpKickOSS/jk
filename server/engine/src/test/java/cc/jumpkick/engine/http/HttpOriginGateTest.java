@@ -14,7 +14,8 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * A request that would change something, carrying the bearer token and the engine's epoch, is
  * still refused when its {@code Origin} is another page's, on every route: the API, MCP and the
- * front door's prefix. Reads, and clients that send no {@code Origin}, pass.
+ * front door's prefix. So is any MCP request, its event stream included. Other reads, and clients
+ * that send no {@code Origin}, pass.
  */
 class HttpOriginGateTest extends HttpEngineServerHarness {
 
@@ -60,6 +61,27 @@ class HttpOriginGateTest extends HttpEngineServerHarness {
                     .isEqualTo(403);
         }
         assertThat(triggeredDirs).isEmpty();
+    }
+
+    @Test
+    void an_mcp_event_stream_from_another_origin_is_refused_here_and_through_the_front_door() throws Exception {
+        for (String path : new String[] {"/mcp", "/engines/0123456789ab/mcp"}) {
+            assertThat(get(
+                                    path,
+                                    "Authorization",
+                                    "Bearer " + token(),
+                                    "Accept",
+                                    "text/event-stream",
+                                    "Origin",
+                                    "http://evil.example")
+                            .statusCode())
+                    .as("GET " + path + " from another origin")
+                    .isEqualTo(403);
+        }
+        assertThat(get("/mcp", "Authorization", "Bearer " + token(), "Origin", "http://127.0.0.1:" + port)
+                        .statusCode())
+                .as("GET /mcp from the listener's own page")
+                .isNotEqualTo(403);
     }
 
     @Test

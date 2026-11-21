@@ -66,6 +66,11 @@ final class HttpAdmission {
         return target == null ? path : target.path();
     }
 
+    /** Whether the request is for MCP, here or another engine's through the front door. */
+    static boolean isMcpRequest(HttpExchange exchange) {
+        return isMcpPath(routed(exchange));
+    }
+
     static boolean isMcpPath(String path) {
         return path.equals("/mcp") || path.startsWith("/mcp/");
     }
