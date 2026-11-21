@@ -562,8 +562,8 @@ writes — it can legitimately report “Nothing to clean up.” on a large cach
   go on the heavy window from when they were pulled, and the tree resets past 2 GiB. The JRE an AOT
   image build extracts from its base image (`base-jre/`, 50–200 MB each, two at most) goes on the
   heavy window from its last use. An image's kept layers (`image-layers/`: a copy of the release jars
-  and their compressed layer, or the compressed layer alone of a Quarkus app tree or a node image's
-  `node_modules`; four at most) go on the same window from the last image that shipped them.
+  or of a Quarkus app's `lib/` and their compressed layer, or the compressed layer alone of a node
+  image's `node_modules`; one per image, four at most) go on the same window from the last image that shipped them.
 - **The Maven local repository** (`~/.m2/repository`): JumpKick downloads into it only under
   `[m2] integration = "share"`, and never removes from it on its own
   account. `jk cache clean --m2` (MCP: `disk` `action=m2-clean`) removes files unused for

@@ -17,6 +17,7 @@ import com.google.cloud.tools.jib.api.RegistryImage;
 import com.google.cloud.tools.jib.api.TarImage;
 import com.google.cloud.tools.jib.api.buildplan.AbsoluteUnixPath;
 import com.google.cloud.tools.jib.api.buildplan.FileEntriesLayer;
+import com.google.cloud.tools.jib.api.buildplan.FileEntry;
 import com.google.cloud.tools.jib.api.buildplan.FilePermissions;
 import com.google.cloud.tools.jib.api.buildplan.Platform;
 import com.google.cloud.tools.jib.api.buildplan.Port;
@@ -272,6 +273,35 @@ public final class ImageBuilder {
         return layer.build();
     }
 
+    /** The name of an app tree's {@code lib/} layer. */
+    static final String APP_TREE_LIB = "lib";
+
+    /**
+     * A packager's app tree as two layers: its {@code lib/} first, then the rest, either left out
+     * when it holds nothing. A code edit leaves {@code lib/}'s bytes as they were, though the packager
+     * lays every file down again, so that layer is kept by its bytes and the rest is built every time.
+     */
+    static List<FileEntriesLayer> appTreeLayers(Path tree) throws IOException {
+        FileEntriesLayer.Builder lib = FileEntriesLayer.builder().setName(APP_TREE_LIB);
+        FileEntriesLayer.Builder rest = FileEntriesLayer.builder().setName("application");
+        String libPrefix = AotCacheTrainer.APP_DIR + "/lib/";
+        int libCount = 0;
+        int restCount = 0;
+        for (FileEntry e : treeLayer(tree, null).getEntries()) {
+            if (e.getExtractionPath().toString().startsWith(libPrefix)) {
+                lib.addEntry(e);
+                libCount++;
+            } else {
+                rest.addEntry(e);
+                restCount++;
+            }
+        }
+        List<FileEntriesLayer> out = new ArrayList<>();
+        if (libCount > 0) out.add(lib.build());
+        if (restCount > 0) out.add(rest.build());
+        return out;
+    }
+
     /**
      * The files staged before training, in the layers the image keeps without a cache, least
      * volatile first: the release dependency jars, then the snapshot and sibling jars, then the
@@ -422,13 +452,15 @@ public final class ImageBuilder {
         // A packager-produced tree is the entire application. Shipping it verbatim is the only
         // layout that runs — Quarkus enters through its own bootstrap and loads lib/main with its
         // own class loader, so a lock-derived classpath describes a different program.
-        // Layers kept across builds under the cache root: release jars by their bytes, the app tree
-        // by its files' identities.
+        // Layers kept across builds under the cache root: release jars and an app tree's lib/ by
+        // their bytes.
         List<KeptLayer> kept = new ArrayList<>();
 
         if (plan.hasAppTree()) {
-            FileEntriesLayer tree = treeLayer(plan.appTree(), null);
-            builder = builder.addFileEntriesLayer(kept(KeptLayer.byIdentity(cacheRoot, tree), tree, kept));
+            for (FileEntriesLayer layer : appTreeLayers(plan.appTree())) {
+                boolean lib = layer.getName().equals(APP_TREE_LIB);
+                builder = builder.addFileEntriesLayer(lib ? released(layer, cacheRoot, kept) : layer);
+            }
             builder = builder.setWorkingDirectory(AbsoluteUnixPath.get(AotCacheTrainer.APP_DIR));
             boolean aot = cfg.aotCache() && trainable;
             if (aot) {
@@ -517,8 +549,9 @@ public final class ImageBuilder {
     }
 
     /**
-     * {@code layer}, a layer of release jars, read from its copies under {@code cacheRoot} and added
-     * to {@code kept}, so the build can start from its compressed blob; as given when it cannot be.
+     * {@code layer}, release jars or an app tree's {@code lib/}, read from its copies under {@code
+     * cacheRoot} and added to {@code kept}, so the build can start from its compressed blob; as
+     * given when it cannot be.
      */
     private static FileEntriesLayer released(FileEntriesLayer layer, Path cacheRoot, List<KeptLayer> kept)
             throws IOException {

@@ -41,12 +41,11 @@ import org.jspecify.annotations.Nullable;
  * keyed on more than that, one of two ways:
  *
  * <ul>
- *   <li>{@link #byContent} keys release jars on every entry's image path, mode, time and owner and
+ *   <li>{@link #byContent} keys release jars, or an app tree's {@code lib/}, on every entry's image path, mode, time and owner and
  *       the sha256 of its bytes. The jars are copied under {@code files/} and the layer is built
  *       from those copies, whose paths and times never change, so Jib's selector for them is
  *       stable too.
- *   <li>{@link #byIdentity} keys a tree too large to hash on every build (a packager's app tree,
- *       {@code node_modules}) on the same entry fields and each source's path and {@link
+ *   <li>{@link #byIdentity} keys a tree too large to hash on every build ({@code node_modules}) on the same entry fields and each source's path and {@link
  *       StatIdentity}, which a rewrite in place moves. Nothing is copied: the layer is built from
  *       the tree itself. A tree with a file written inside {@link Settled#WINDOW_MS}, or on a file
  *       system that cannot report a change time and file id, is not kept.
@@ -84,8 +83,8 @@ final class KeptLayer {
     }
 
     /**
-     * {@code layer}, a layer of release jars, kept under {@code cacheRoot} by their bytes, the jars
-     * copied there on first use. Returns null when a jar changed while it was copied: the build then
+     * {@code layer}, a layer of jars, kept under {@code cacheRoot} by their bytes, the jars copied
+     * there on first use. Returns null when a jar changed while it was copied: the build then
      * uses {@code layer} as given.
      */
     static @Nullable KeptLayer byContent(Path cacheRoot, FileEntriesLayer layer) throws IOException {

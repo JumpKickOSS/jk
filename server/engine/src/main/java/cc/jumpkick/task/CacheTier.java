@@ -75,9 +75,11 @@ public final class CacheTier {
             // so the heavy window runs from the write and the tier resets past 2 GiB.
             case JIB_LAYERS -> Bound.files(heavyWindow(), Bound.resetOverBytes(2L * 1024 * 1024 * 1024));
 
-            // An image's compressed layer per key (with a copy of the jars for a release layer), its
-            // `.used` stamped on every build that ships it. A heavy output, so the heavy window from
-            // its last use; four keys at most, since each is the size of an application's jars twice.
+            // An image's compressed dependency layer per key (with a copy of the jars when keyed by
+            // their bytes), its `.used` stamped on every build that ships it. An image keeps one key,
+            // which a code edit does not move, so four keys are four images' dependencies. A heavy
+            // output, so the heavy window from its last use; four at most, since each is the size
+            // of an application's jars twice.
             case IMAGE_LAYERS -> Bound.subtrees(heavyWindow(), Bound.countCap(4));
 
             // Every source edit mints one, so the cap belongs to the inner key, not the tier.

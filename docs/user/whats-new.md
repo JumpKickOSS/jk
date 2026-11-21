@@ -75,9 +75,9 @@ JumpKick shows you this page's new entries after it updates itself.
 - **A repeat `jk image` reuses its release-jar layer.** The layer is kept in the cache's
   `image-layers/` by the jars' content, so an image whose releases have not changed skips
   compressing them again; snapshot and sibling jars are still packed on every build. A Quarkus
-  app's `quarkus-app/` layer and a node image's `node_modules` layer are kept the same way, keyed
-  by each file's path, size, times and file id, so a tree the build did not rewrite is not packed
-  again.
+  app's `quarkus-app/lib/` ships as a layer of its own, kept by its jars' content too, so a code
+  edit packs only the application again. A node image's `node_modules` layer is kept by each
+  file's path, size, times and file id, so a tree the build did not rewrite is not packed again.
 - **The JRE `jk image` trains an AOT cache with keeps its base image's links.** A JDK package's
   links into the image, such as `lib/security/cacerts -> /etc/ssl/certs/java/cacerts`, were dropped
   when the JRE was extracted; they are kept now, and a link that leads out of the image is skipped.

@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.host.CacheTree;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.Settled;
 import cc.jumpkick.image.ImageConfig;
 import cc.jumpkick.testing.RegistryStub;
@@ -30,10 +31,10 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * A packager's app tree and a node image's {@code node_modules} are kept under the cache root by
- * each file's identity, and a second build of the unchanged tree ships the kept layer instead of
- * building it again. A file rewritten in place, or written too recently for its identity to vouch
- * for its bytes, ships what it holds now.
+ * A node image's {@code node_modules} is kept under the cache root by each file's identity, and a
+ * packager's app tree's {@code lib/} by its bytes; a second build of the unchanged layer ships the
+ * kept one instead of building it again. A file rewritten in place, or written too recently for its
+ * identity to vouch for its bytes, ships what it holds now.
  */
 class ImageTreeLayerTest {
 
@@ -115,13 +116,69 @@ class ImageTreeLayerTest {
     }
 
     @Test
-    void a_second_image_of_an_unchanged_app_tree_ships_the_kept_layer(@TempDir Path tmp) throws Exception {
+    void an_app_tree_relaid_after_a_code_edit_ships_its_kept_lib_layer(@TempDir Path tmp) throws Exception {
         Path app = tmp.resolve("quarkus-app");
+        layAppTree(app, "CODE-1");
+        Path cache = Files.createDirectories(tmp.resolve("cache"));
+        ImageBuilder.Plan plan = appTreePlan(tmp, app);
+        ImageBuilder.writeToTarball(plan, tmp.resolve("a.tar"), cache, anonymous());
+        Map<String, byte[]> first = untar(Files.readAllBytes(tmp.resolve("a.tar")));
+        assertThat(layerNames(first)).hasSize(2);
+
+        Path blob = keptBlob(cache);
+        assertThat(Files.readAllBytes(blob))
+                .isEqualTo(first.get(layerNames(first).get(0)));
+        byte[] marker = "kept-lib".getBytes(StandardCharsets.UTF_8);
+        Files.delete(blob);
+        Files.write(blob, marker);
+
+        // The packager lays the whole tree down again: lib/ under its old bytes, app/ changed.
+        PathUtil.deleteRecursively(app);
+        layAppTree(app, "CODE-2");
+        ImageBuilder.writeToTarball(plan, tmp.resolve("b.tar"), cache, anonymous());
+
+        Map<String, byte[]> second = untar(Files.readAllBytes(tmp.resolve("b.tar")));
+        assertThat(layerNames(second)).hasSize(2);
+        assertThat(second.get(layerNames(second).get(0)))
+                .as("the lib layer, as kept")
+                .isEqualTo(marker);
+        Map<String, byte[]> application = layer(second, layerNames(second).get(1));
+        assertThat(new String(application.get("app/app/quark.jar"), StandardCharsets.UTF_8))
+                .isEqualTo("CODE-2");
+        assertThat(application).doesNotContainKey("app/lib/main/dep.jar");
+        assertThat(blobs(cache)).as("lib/ alone").hasSize(1);
+    }
+
+    @Test
+    void an_app_tree_lib_jar_rewritten_under_its_old_name_ships_its_new_bytes(@TempDir Path tmp) throws Exception {
+        Path app = tmp.resolve("quarkus-app");
+        layAppTree(app, "CODE");
+        Path cache = Files.createDirectories(tmp.resolve("cache"));
+        ImageBuilder.Plan plan = appTreePlan(tmp, app);
+        ImageBuilder.writeToTarball(plan, tmp.resolve("a.tar"), cache, anonymous());
+
+        Files.writeString(app.resolve("lib/main/dep.jar"), "DEP-2");
+        ImageBuilder.writeToTarball(plan, tmp.resolve("b.tar"), cache, anonymous());
+
+        Map<String, byte[]> image = untar(Files.readAllBytes(tmp.resolve("b.tar")));
+        Map<String, byte[]> lib = layer(image, layerNames(image).get(0));
+        assertThat(new String(lib.get("app/lib/main/dep.jar"), StandardCharsets.UTF_8))
+                .isEqualTo("DEP-2");
+    }
+
+    /** A fast-jar tree: run jar, {@code lib/} and an application jar holding {@code code}. */
+    private static void layAppTree(Path app, String code) throws IOException {
         Files.createDirectories(app.resolve("lib/main"));
+        Files.createDirectories(app.resolve("lib/boot"));
+        Files.createDirectories(app.resolve("app"));
         Files.writeString(app.resolve("quarkus-run.jar"), "RUN");
         Files.writeString(app.resolve("lib/main/dep.jar"), "DEP");
-        Path cache = Files.createDirectories(tmp.resolve("cache"));
-        ImageBuilder.Plan plan = new ImageBuilder.Plan(
+        Files.writeString(app.resolve("lib/boot/boot.jar"), "BOOT");
+        Files.writeString(app.resolve("app/quark.jar"), code);
+    }
+
+    private ImageBuilder.Plan appTreePlan(Path tmp, Path app) {
+        return new ImageBuilder.Plan(
                 config(),
                 "quark",
                 "0.1.0",
@@ -134,22 +191,6 @@ class ImageTreeLayerTest {
                 app,
                 "quarkus-run.jar",
                 null);
-        ImageBuilder.writeToTarball(plan, tmp.resolve("a.tar"), cache, anonymous());
-        Map<String, byte[]> first = untar(Files.readAllBytes(tmp.resolve("a.tar")));
-
-        Path blob = keptBlob(cache);
-        assertThat(Files.readAllBytes(blob))
-                .isEqualTo(first.get(layerNames(first).get(0)));
-        byte[] marker = "kept-tree".getBytes(StandardCharsets.UTF_8);
-        Files.delete(blob);
-        Files.write(blob, marker);
-
-        ImageBuilder.writeToTarball(plan, tmp.resolve("b.tar"), cache, anonymous());
-
-        Map<String, byte[]> second = untar(Files.readAllBytes(tmp.resolve("b.tar")));
-        assertThat(second.get(layerNames(second).get(0)))
-                .as("the app tree layer, as kept")
-                .isEqualTo(marker);
     }
 
     private record Node(LayeredImage.Plan plan, Path cache, Path deps) {}
