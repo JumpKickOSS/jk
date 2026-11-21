@@ -707,31 +707,45 @@ public class PubGrubSolver {
      * requires, would still be unread when a package is found to have no version; every version such
      * a POM names is a candidate from here on. It walks each package's compact window, or a floored
      * pin alone, and the versions POMs name, not its full history, so it costs a few reads per
-     * package it reaches.
+     * package it reaches. A POM read after a package was walked can name a new version of it with
+     * no edge that walks it again (a constraint brings none), so once no edge is left each walked
+     * package is looked at again under every range that reached it, until no POM names a new one.
      * Once per solve.
      */
     private void readAhead() throws IOException, InterruptedException {
         readAhead = true;
         Set<String> read = new HashSet<>();
+        Map<String, Set<VersionSet>> reached = new LinkedHashMap<>();
         List<Term> edges = new ArrayList<>(rootDeps);
         while (!edges.isEmpty()) {
-            Term edge = edges.removeLast();
-            if (!edge.positive()) continue;
-            String pkg = edge.pkg();
-            phase = "reading ahead the dependencies of " + pkg;
-            // A floored pin's candidates are the pin and the versions edges name; see pinCandidates.
-            Optional<String> pin = pinFloor(pkg);
-            Set<String> versions = new LinkedHashSet<>(pin.isPresent() ? Set.of(pin.get()) : source.versions(pkg));
-            versions.addAll(source.declaredVersions(pkg).keySet());
-            edge.versions().asExactSingleton().ifPresent(versions::add);
-            for (String version : versions) {
-                if (!edge.versions().contains(version) || !read.add(pkg + "@" + version)) continue;
-                checkBudget();
-                try {
-                    edges.addAll(source.dependencies(pkg, version));
-                } catch (PackageSource.VersionUnavailableException e) {
-                    // Deciding it reports it; reading ahead only looks for the versions POMs name.
-                }
+            while (!edges.isEmpty()) {
+                Term edge = edges.removeLast();
+                if (!edge.positive()) continue;
+                Set<VersionSet> ranges = reached.computeIfAbsent(edge.pkg(), k -> new LinkedHashSet<>());
+                if (ranges.add(edge.versions())) readAheadOf(edge.pkg(), Set.of(edge.versions()), read, edges);
+            }
+            for (Map.Entry<String, Set<VersionSet>> pkg : reached.entrySet()) {
+                readAheadOf(pkg.getKey(), pkg.getValue(), read, edges);
+            }
+        }
+    }
+
+    /** Read the POM of each of {@code pkg}'s versions some range allows, once, adding its edges. */
+    private void readAheadOf(String pkg, Set<VersionSet> ranges, Set<String> read, List<Term> edges)
+            throws IOException, InterruptedException {
+        phase = "reading ahead the dependencies of " + pkg;
+        // A floored pin's candidates are the pin and the versions edges name; see pinCandidates.
+        Optional<String> pin = pinFloor(pkg);
+        Set<String> versions = new LinkedHashSet<>(pin.isPresent() ? Set.of(pin.get()) : source.versions(pkg));
+        versions.addAll(source.declaredVersions(pkg).keySet());
+        for (VersionSet range : ranges) range.asExactSingleton().ifPresent(versions::add);
+        for (String version : versions) {
+            if (ranges.stream().noneMatch(range -> range.contains(version)) || !read.add(pkg + "@" + version)) continue;
+            checkBudget();
+            try {
+                edges.addAll(source.dependencies(pkg, version));
+            } catch (PackageSource.VersionUnavailableException e) {
+                // Deciding it reports it; reading ahead only looks for the versions POMs name.
             }
         }
     }

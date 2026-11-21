@@ -117,6 +117,38 @@ class PubGrubUniverseGrowthTest {
     }
 
     @Test
+    void a_range_takes_a_version_named_two_poms_deep_after_its_namer_was_walked() throws Exception {
+        // m is walked first, through the root's own edge, when only m 1.0 is known. c, under x@1,
+        // names m 1.5 by a constraint, which brings no edge to m, and m 1.5's POM names p 1.5.
+        PomSource src = new PomSource()
+                .advertise("a", "2.0")
+                .advertise("x", "2.0", "1.0")
+                .advertise("c", "1.0")
+                .advertise("m", "1.0")
+                .advertise("p", "2.0", "1.0")
+                .pom("a", "2.0", Term.positive("p", VersionSet.between("1.5", true, "2.0", false)))
+                .pom("x", "2.0")
+                .pom("x", "1.0", Term.positive("c", VersionSet.ALL))
+                .pomConstraint("c", "1.0", "m", "1.5")
+                .pom("m", "1.0")
+                .pomPlain("m", "1.5", "p", "1.5")
+                .pom("p", "1.5")
+                .pom("p", "1.0")
+                .pom("p", "2.0");
+
+        Map<String, String> solution = new PubGrubSolver(src)
+                .solve(
+                        "root",
+                        "1.0",
+                        List.of(
+                                Term.positive("a", VersionSet.ALL),
+                                Term.positive("x", VersionSet.ALL),
+                                Term.positive("m", VersionSet.ALL)));
+
+        assertThat(solution).containsEntry("a", "2.0").containsEntry("p", "1.5");
+    }
+
+    @Test
     void a_range_no_pom_ever_fills_still_fails() throws Exception {
         PomSource src = new PomSource()
                 .advertise("a", "2.0")
@@ -192,6 +224,17 @@ class PubGrubUniverseGrowthTest {
                     .computeIfAbsent(pkg + "@" + version, k -> new LinkedHashMap<>())
                     .put(dep, depVersion);
             return pom(pkg, version, Term.positive(dep, VersionSet.atLeast(depVersion, true)));
+        }
+
+        /** A constraint on {@code dep}, as Gradle metadata writes one: it names the version and requires nothing. */
+        PomSource pomConstraint(String pkg, String version, String dep, String depVersion) {
+            plainEdges
+                    .computeIfAbsent(pkg + "@" + version, k -> new LinkedHashMap<>())
+                    .put(dep, depVersion);
+            return pom(
+                    pkg,
+                    version,
+                    Term.negative(dep, VersionSet.atLeast(depVersion, true).complement()));
         }
 
         @Override
