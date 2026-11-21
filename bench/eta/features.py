@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Judge cheap effort features for step kinds never measured on a host (JK-PMF9X).
+"""Judge cheap effort features for step kinds never measured on a host.
 
 Reads a cold set (coldset.sh's manifest: one first build per project, each copied to scratch) and,
 for each step of a kind below, its wall and a feature counted from the project copy, as the planner

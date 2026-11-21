@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""What a compile costs on a cold compiler worker against a warm one (JK-D3785).
+"""What a compile costs on a cold compiler worker against a warm one.
 
 Reads compile-warmth.sh's manifest: per project, a forced build on a fresh engine (cold worker) and
 the same build again while the worker lingers (warm). For each compile step (compile-java,

@@ -604,7 +604,7 @@ and exclusions stay GA-scoped.
 
 **A step's key does not depend on what its own build writes.** A key taken before a file the
 same build then writes existed keys the next build differently: the second build of an unchanged
-tree misses, runs the step again and stores it again, and only the third is a no-op (JK-875KR: a
+tree misses, runs the step again and stores it again, and only the third is a no-op (a
 node step's tree walk before a file beside `out` appeared, a plugin step's classes token before
 build-info wrote into the tree, the preflight memo's guard salt before a pack was unpacked, a
 suite's stamp over a listing its own fixtures wrote into). On content the action cache has seen,
@@ -617,7 +617,7 @@ key that tree with its `META-INF` resources, so they wait for both
 (`PlannerResources.lateClassesWriters`). Without the edge a test compile the scheduler ran first
 keyed the tree without Boot's `META-INF/build-info.properties` and one it ran after keyed it with:
 two keys for one tree, and the suite, whose stamp names the compile key, ran again under whichever
-verb drew the other order (JK-NVBS1).
+verb drew the other order.
 
 `JK_KEY_AUDIT=warn` (or `strict`) on the client turns on the **key audit** for that build
 (`KeyAudit`; the session's `keyAudit`, sent as `keyAudit` on the request; `-Djk.keyAudit=` in a
@@ -755,8 +755,8 @@ keys** when adding a read-only remote later — only add an optional remote look
 | Target | `target:` is `JdkToolchain.target`, `<os>-<arch>[-<libc>]` from the `release` file. Only steps whose outputs are for one platform: jlink and native-image (trained caches included). The record names it as `TARGET` | Compile, resources, packaging and code generation are platform-free and carry none. A test result's platform is its record's `HOST`, recorded and not keyed |
 | Test locale and zone | A run-tests stamp names `test-locale:<tag>` (`[test] locale`, default `en-US`) and `test-timezone:<id>` (`[test] timezone`, default `UTC`); the test JVM gets the `-Duser.*` and `-Duser.timezone` flags, a fixed `LC_ALL`/`LANG` and `TZ` (`TestEnv.localeEnv`, `timeZoneEnv`). Only `inherit` keys the shell's `LANG`/`LANGUAGE`/`LC_*` (`machine-env:`) or `TZ` (`test-timezone:inherit=<id>`) | Hosts on different shell locales and zones share suites. `ToolIdentity` asks `--version` under `LC_ALL=C`, so a translated version line moves no key |
 | JDK of compile and test steps | Compile keys (javac with processors, kotlinc, groovyc, a KSP round) and the run-tests stamp carry `java:<level>` (`ToolchainPolicy.level`: the module's `java`, else the JDK's major), never the JDK build; the JDK that ran is the record's `TOOLCHAIN`, a lookup dimension. `ToolchainPolicy.expect` states per key what the reader accepts (`[cache] jdk-match`: `major` default, `level`, `build`; never below the level; `--enable-preview` holds `major`; a `jdk = { …, required = true }` table admits only what it names) and `ToolchainChoice` takes the closest acceptable record among `keys/<key>` and its variants `keys/<key>~<toolchain digest>`. A caller off a job's request (the forecast) passes the expectation to `ActionCache.restorable(key, expectation)` itself. An unpinned module builds on an installed JDK of its level's major, else the nearest newer (`JdkResolution` tier `LEVEL`); one is installed only when none satisfies | Hosts on different JDKs share keys and take each other's records as the policy allows; a hit made on another JDK says which, and a declined one says once why with the two ways out (`jk explain` gives it as the step's reason). A javac step's local stamp, AOT caches, jlink and native-image keys keep the exact build |
-| Guard lanes | A lane key is its read set (facts digests, tree text, manifests and lock, the rules' sources, the baseline slice). A module lane adds `java:<engine major>` (the engine JDK's platform classes answer its `java.*` supertypes; `ToolchainPolicy.expectOnEngineMajor` states it, held to the major) where it named the JDK build; only a module lane that runs a `src/guard` suite adds `os:<os.name>`, since suite code may throw `Skipped.onThisPlatform` | Verdicts are shared across operating systems, architectures and patches of one major (JK-F48TW) |
-| Build info | `[build-info]`'s `git.properties` and Boot's `META-INF/build-info.properties` by their stable entries (`BuildInfoKeys.stableDigest`: the commit, branch, dirty state and times left out) in the run-tests `main:` token and a compile's `res:` token; a suite whose sources name a volatile value keys the files whole (`BuildInfoKeys.namedBy`) | The rule `BuildIdentity.keyId` applies to the engine's `Build-Commit`/`Build-Time`; JK-M9055 |
+| Guard lanes | A lane key is its read set (facts digests, tree text, manifests and lock, the rules' sources, the baseline slice). A module lane adds `java:<engine major>` (the engine JDK's platform classes answer its `java.*` supertypes; `ToolchainPolicy.expectOnEngineMajor` states it, held to the major) where it named the JDK build; only a module lane that runs a `src/guard` suite adds `os:<os.name>`, since suite code may throw `Skipped.onThisPlatform` | Verdicts are shared across operating systems, architectures and patches of one major |
+| Build info | `[build-info]`'s `git.properties` and Boot's `META-INF/build-info.properties` by their stable entries (`BuildInfoKeys.stableDigest`: the commit, branch, dirty state and times left out) in the run-tests `main:` token and a compile's `res:` token; a suite whose sources name a volatile value keys the files whole (`BuildInfoKeys.namedBy`) | The rule `BuildIdentity.keyId` applies to the engine's `Build-Commit`/`Build-Time` |
 
 `CrossHostKeyEqualityTest` (clients/cli, integration tier) is the guard for this table: one project
 built by two client processes with cleared environments against two engines in fresh homes, at two
@@ -874,7 +874,7 @@ A tier that fails is off for the rest of the build after one `remote-cache-unrea
 the step that met it, or on the run when the forecast met it before any step ran; the build goes on
 locally. No ACLs or REAPI execution in 1.0.
 
-A run-tests stamp that read a value of the caller's environment has two forms (JK-FQWGG). The
+A run-tests stamp that read a value of the caller's environment has two forms. The
 local form, which the local cache, history and `jk explain` name, keys each value by HMAC under the
 JumpKick home's secret (`EnvReadKey`) and carries `x:env-keyed=this-host`, so it never leaves the host.
 With a key seed in force (`CacheSeeds`: `JK_CACHE_KEY_SEED`, `[cache] key-seed-file`, else
@@ -888,7 +888,7 @@ included. A failed seed fetch says `remote-cache-key-seed` once and keeps such r
 the build.
 
 Every other step key takes a value of the caller's environment the same way, through one generic
-substitution rather than a mapping per step kind (JK-EAJPR). `EnvKeyText.Sealer.seal` is the one
+substitution rather than a mapping per step kind. `EnvKeyText.Sealer.seal` is the one
 place such a value becomes key text: `hmac:` and an HMAC under the home's secret, with the value
 under the seed noted on the build's tier as that part's shared form (or the part as its own, with
 no seed or for a credential under `credential-env = "local"`). `EnvKeyText.digest` is the hash of
@@ -995,7 +995,7 @@ Two fixed taxonomies (do not collapse them):
 
 - **Task DAG** (`TaskNames` + `requires`) is the scheduler; stages are product buckets for UI fold, ETA, and future pre/post hooks — not a second scheduler.
 - **Workspace edges are compile-to-compile.** A module's compile classpath names its siblings' `target/classes` trees (`WorkspaceClasspath.siblingClosureClasses`), never their jars, and the workspace scheduler admits a dependent once every module on that classpath has compiled, assembled its classes and copied its resources — while those modules still package, test and build their tails. The jars remain what the dependent's package, native and plugin steps read; each of those steps waits (`SiblingArtifacts`) for the siblings of its build-order closure to have published their artifacts and then names any jar that is missing. `resolve-deps` requires only the main compile's trees.
-- **Test edges gate test steps, not admission.** `BuildGraph.Result.edges` holds the build-order edges (every scope but the test scopes, plus `order-after`); they admit modules, size the forecast width and may not cycle. A sibling named only in test scopes is in `testEdges`. The test, fixtures and guard-suite compiles wait for those siblings' classes trees and for the fixtures and test classes a `fixtures = true` or `kind = "tests"` edge selects (signalled when that compile step finishes); the test run and the module guard lane wait for every jar on the test runtime classpath. No wait keys on a sibling's tests, so a loop through test scopes (infra's tests → arch's fixtures → infra's main) builds. A step waiting on a sibling the schedule has not started is parked and holds no `-j` slot (`WorkspaceScheduler.Parking`). Forecast walks that price a test re-run order units by `readOrder()`, the build-order edges plus each test edge that closes no loop; a dirty sibling reached only by build order (`order-after`, `test-plugin-jars`) prices nothing in its consumer but the run-tests step, when the consumer's stamp hashes a worker jar it makes (`TestStampInputs.rebuildingWorker`: the forecast would otherwise key the suite on the jar still on disk, and the build runs it once the jar is rebuilt, JK-W25W0); `jarConsumed`, `launchedAssemblies`, module selection and the graph worker read `reads()`, both edge sets.
+- **Test edges gate test steps, not admission.** `BuildGraph.Result.edges` holds the build-order edges (every scope but the test scopes, plus `order-after`); they admit modules, size the forecast width and may not cycle. A sibling named only in test scopes is in `testEdges`. The test, fixtures and guard-suite compiles wait for those siblings' classes trees and for the fixtures and test classes a `fixtures = true` or `kind = "tests"` edge selects (signalled when that compile step finishes); the test run and the module guard lane wait for every jar on the test runtime classpath. No wait keys on a sibling's tests, so a loop through test scopes (infra's tests → arch's fixtures → infra's main) builds. A step waiting on a sibling the schedule has not started is parked and holds no `-j` slot (`WorkspaceScheduler.Parking`). Forecast walks that price a test re-run order units by `readOrder()`, the build-order edges plus each test edge that closes no loop; a dirty sibling reached only by build order (`order-after`, `test-plugin-jars`) prices nothing in its consumer but the run-tests step, when the consumer's stamp hashes a worker jar it makes (`TestStampInputs.rebuildingWorker`: the forecast would otherwise key the suite on the jar still on disk, and the build runs it once the jar is rebuilt); `jarConsumed`, `launchedAssemblies`, module selection and the graph worker read `reads()`, both edge sets.
 - In-plan stage **`resolve`** (parse / lock classpath / ensure JDK) ≠ request phase **`RESOLVE`** (lock/graph for the command).
 - Prefer `Task.builder(…).stage(BuildStage.COMPILE)`; free-form `group("…")` maps unknown strings to `OTHER`.
 - `TaskPhases` remains a string facade over `BuildStage` for metrics call sites.
@@ -1175,7 +1175,7 @@ whole graph can confirm is a `Mention` the linker resolves against an anchor som
 names, and is always inferred. An edge JumpKick cannot ground is inferred, never declared: precision
 before recall. Answers print `(inferred)` on inferred edges and nothing on the other two. "Unchecked" is not a
 grade: a use is unchecked when no step of a build verifies it, which is every declared or
-inferred use in a file the build neither compiles nor tests; the build verdict (JK-4K5FP) lists
+inferred use in a file the build neither compiles nor tests; the build verdict lists
 those.
 
 **Cache.** An anchor's id depends only on the text that names it, so each file's fragment

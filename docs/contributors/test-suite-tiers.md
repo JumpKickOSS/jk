@@ -35,7 +35,7 @@ step of `ci.yml` (release tag) and `ci-nightly.yml` is its CI run. A directory s
 tag suite claims, and `e2e` is in `guard-suites`, so the push gate runs whatever `src/e2e` holds untagged. The
 ci-cadence guard holds that every suite `--all` runs is run by a CI step (`jk test -s <name>`) or by
 the push gate. Members carry no `[test.suites.*]` of their own for these tiers: the root's tables
-are the only routing, and a member may only add settings to them (JK-CWJGR).
+are the only routing, and a member may only add settings to them.
 
 Tag new heavy tests at class level:
 

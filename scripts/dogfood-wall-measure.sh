@@ -33,7 +33,7 @@
 #            second `jk build`, timed, with the productive steps it ran counted. A key that
 #            depends on what its own build writes misses exactly here and nowhere else: the no-op
 #            row runs after a rebuild and a warm-up that have already absorbed the re-run
-#            (JK-875KR: 2m25s on a fresh clone of v0.51.0, 3 s after the fix).
+#            (2m25s on a fresh clone of v0.51.0, 3 s after the fix).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"

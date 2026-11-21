@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-// A build on hold for memory (JK-VYJ4X): hold-start marks the card held, progress while held keeps
+// A build on hold for memory: hold-start marks the card held, progress while held keeps
 // the countdown where the hold found it, and hold-end moves its anchors by the time held.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';

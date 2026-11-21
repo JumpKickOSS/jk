@@ -675,8 +675,8 @@ when a method overrides one outside the workspace or `Object`'s, and when a move
 (a package-private type or member used across the new package line, a module that does not see the
 target module), naming each.
 
-A shared-surface name such as a JPA column or an HTTP route is what the graph's anchors model
-(JK-Q6VJ6); until they answer for it, rename reports it as a candidate or hazard as above.
+A shared-surface name such as a JPA column or an HTTP route is what the graph's anchors model;
+until they answer for it, rename reports it as a candidate or hazard as above.
 
 The [retrieval bench](../../bench/graph-retrieval/README.md) asks who calls a method, what
 implements or overrides it and where it is defined, on seven JVM repositories, and grades every

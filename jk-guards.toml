@@ -641,13 +641,17 @@ in     = "bench/agent-loop/results/2026-11-18-anchor-push/chain6.sh"
 reason = "a banked bench script, kept as it ran: its PATH names the directory the agent CLIs under test install into, which is not a jk layout"
 
 # G50. A ticket id names a tracker this repository's readers do not have. Extension-blind on
-# purpose: every scope this rule was given by extension is where it was missed next.
+# purpose: every scope this rule was given by extension is where it was missed next. An id is the
+# board's five characters (or an imported four-digit one); a TODO( or FIXME( that names the
+# follow-up it waits for is the one place it may stand.
 [guards.no-ticket-ids]
 kind    = "text"
 files   = ["**"]
 blank   = "none"
-pattern = '\bJK-\d{4}\b'
-hit     = "see JK-1234"
+pattern = '(?<!TODO\(|FIXME\()\bJK-(?:\d{4}|[0-9A-Z]{5})\b'
+fixture = "server/guard/fixtures/no-ticket-ids"
+hit     = "// the cache is keyed by path (JK-R0N5S)"
+miss    = "// TODO(JK-R0N5S): key the cache by content"
 instead = "state the invariant or the defect; history belongs in the commit message, not the tree"
 why     = "a ticket id names a tracker the reader does not have; a Giter8 template writes it into a user's project"
 
@@ -662,6 +666,22 @@ reason = "states the ban, using ids as its own examples"
 [[guards.no-ticket-ids.allow]]
 in     = "jk-guards.toml"
 reason = "this rule's own hit fixture"
+
+[[guards.no-ticket-ids.allow]]
+in     = "server/guard/fixtures/no-ticket-ids"
+reason = "this rule's fixture: an id it must catch and one it must let stand"
+
+[[guards.no-ticket-ids.allow]]
+in     = "docs/contributors/releases.md"
+reason = "shows a ticket id as the bullet a release note must not be"
+
+[[guards.no-ticket-ids.allow]]
+in     = "scripts/test-release-notes.sh"
+reason = "the release-notes check's fixture for a bullet that names a ticket"
+
+[[guards.no-ticket-ids.allow]]
+in     = "bench/agent-loop/results"
+reason = "banked bench results, kept as they were written when the run was judged"
 
 # G59. A comment that narrates history describes a tree that no longer exists. State the current
 # invariant; history belongs in the commit body. Comments and prose only: a string literal that

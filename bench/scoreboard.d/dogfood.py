@@ -8,7 +8,7 @@ Night and release tiers only: a rebuild of this tree is minutes of every core. S
   dogfood.<row>.guards   the same build as contributors run it, guards on (its own series)
   dogfood.fresh          the second `jk build` of a fresh clone of the tree (one timed run)
   dogfood.fresh.steps    the productive steps that second build ran: 0, or a key depends on
-                         what its own build writes (JK-875KR)
+                         what its own build writes
 
 The first run of each row warms the engine and is left out of the median.
 """

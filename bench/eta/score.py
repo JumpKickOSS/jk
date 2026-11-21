@@ -10,7 +10,7 @@ the user was shown against the truth:
 - plateau: the longest stretch the bar moved less than one point, as a share of the wall
 - tail: the time spent at 99% or more before the run finished, as a share of the wall
 - calibration: checkpoints bucketed by the confidence shown (the predicted chance that the truth
-  lands within 10% of the ETA, JK-R0N5S) against the share that did
+  lands within 10% of the ETA) against the share that did
 
 A run the machine slept through (or whose engine was stopped) is rejected, never scored: its wall
 holds time nothing ran. The run's own record names the gap (`suspensions` in record.json, the
@@ -93,9 +93,9 @@ class Point:
     eta_ms: int | None
     true_ms: int
     eta_err: float | None
-    # Whether the truth fell inside the likely range shown (JK-4TEZ7); None when none was shown.
+    # Whether the truth fell inside the likely range shown; None when none was shown.
     in_range: bool | None = None
-    # The confidence shown (JK-R0N5S): the predicted chance that the truth lands within 10% of the ETA.
+    # The confidence shown: the predicted chance that the truth lands within 10% of the ETA.
     confidence: float | None = None
 
 
@@ -166,7 +166,7 @@ def attribute(run_dir: Path, ev: list[dict]) -> list[list]:
         elif t == "task-finish" and e.get("task"):  # a cache hit's wall is wall too
             d = e.get("dir") or dir_of.get(e.get("module") or "")
             if d:
-                # A wait for a worker lease is a hold, not the step's work (JK-VYJ4X).
+                # A wait for a worker lease is a hold, not the step's work.
                 work = int(e.get("millis") or 0) - int(e.get("waitMillis") or 0)
                 ran[(d, e["task"])] = ran.get((d, e["task"]), 0) + max(0, work)
                 if e.get("rung"):  # the run's own word on which layer priced it wins
@@ -228,7 +228,7 @@ def score_run(run_dir: Path, scenario: str = "", warm: bool = True) -> RunScore 
         return None
     gap = suspended_gap(run_dir, ev)
     # Time on hold for memory comes off the run's clock: the countdown stands still through a
-    # hold, and the run's wall the estimate is judged against is its working time (JK-VYJ4X).
+    # hold, and the run's wall the estimate is judged against is its working time.
     holds = hold_intervals(ev)
     if holds:
         for e in ev:
@@ -511,7 +511,7 @@ def main(argv: list[str]) -> int:
             f"  {100 * statistics.median(r0s) if r0s else 0:9.0f}%  " + " ".join(f"{c:>5}" for c in cells)
         )
     print("\n(cells: share of runs inside the target band; ! = below the required share)")
-    # Calibration of the likely range (JK-4TEZ7): the share of warm runs' scored checkpoints whose
+    # Calibration of the likely range: the share of warm runs' scored checkpoints whose
     # truth fell inside the range shown, meant to be about 80%, as the scoreboard's eta dimension
     # judges it. A cold run's estimate misses by more than any range it could honestly show; its
     # coverage is reported, not judged.
@@ -537,7 +537,7 @@ def main(argv: list[str]) -> int:
     return 1 if failed else 0
 
 
-# Confidence buckets (JK-R0N5S): the share of a bucket's checkpoints that landed within 10% of the
+# Confidence buckets: the share of a bucket's checkpoints that landed within 10% of the
 # ETA shown must track the bucket's mean confidence within CALIBRATION_LIMIT, over at least
 # CALIBRATION_MIN checkpoints; a thinner bucket is reported, not judged.
 CALIBRATION_BUCKETS = (0.0, 0.2, 0.4, 0.6, 0.8, 0.9, 1.0001)
@@ -599,7 +599,7 @@ RUNG_MIN_STEPS = 5
 
 
 def step_kind(step: str) -> str:
-    """The kind of work a step is, which a rung's rates are kept per (JK-PMF9X)."""
+    """The kind of work a step is, which a rung's rates are kept per."""
     if step.startswith("compile-guard") or step.startswith("guard"):
         return "guard"
     if step.startswith("compile-"):
@@ -612,11 +612,11 @@ def step_kind(step: str) -> str:
 
 
 def rung_attribution(scores: list[RunScore]) -> bool:
-    """Error per pricing layer and step kind, over every run, warm and cold (JK-626GS).
+    """Error per pricing layer and step kind, over every run, warm and cold.
 
     Per (rung, kind), over the steps that layer priced and that ran for a second or more, the median
     of (priced - ran) / ran and its quartiles. A step priced and never run is a decision error, not
-    a pricing one (JK-KSYZB), and is left to the step attribution; a touch (TOKEN) is not judged. A
+    a pricing one, and is left to the step attribution; a touch (TOKEN) is not judged. A
     rung whose median misses by more than 25% over five or more steps, the same way in 80% of them,
     is systematically off: the layer itself, not the steps it happened to price, and fails the score.
     """
@@ -652,7 +652,7 @@ def rung_attribution(scores: list[RunScore]) -> bool:
 
 
 def attribution(scores: list[RunScore]) -> bool:
-    """Steps whose seed price misses their wall the same way across warm runs (JK-E8CGE).
+    """Steps whose seed price misses their wall the same way across warm runs.
 
     Per (verb, module, step) over the warm runs where it was priced or ran for a second or more, the median of (priced - ran) / ran: a step priced and never run reads as +inf, one
     run and never priced as -100%. A step whose median misses by more than 25% over three or more

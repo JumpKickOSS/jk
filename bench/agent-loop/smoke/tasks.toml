@@ -13,7 +13,7 @@ repo = "smoke"
 prompt = "Rename the method `Ledger.post(Entry)` to `record`, keeping its behaviour, and update every caller. `Journal.post` is a different method and stays as it is."
 test = ["jk", "-u", "-x", "-a", "build", "-S"]
 
-# Tier 0 for the renames beyond a method (JK-N63YH's traps, small): a field as a bean property with
+# Tier 0 for the renames beyond a method (tier 2's rename traps, small): a field as a bean property with
 # a template that must follow and a SQL column that must not, and a class named in a services file.
 [tasks.smoke-rename-field]
 opt-in = true

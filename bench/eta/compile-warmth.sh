@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# What a compile costs on a cold compiler worker against a warm one (JK-D3785). For each project: stop
+# What a compile costs on a cold compiler worker against a warm one. For each project: stop
 # the engine, so the next build starts a fresh engine and compiler worker; force a build that compiles
 # everything and runs no tests (the cold run); then force the same build again while the worker still
 # lingers (the warm run). The same compiles run in both, so the difference is the worker's warm-up.

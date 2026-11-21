@@ -252,7 +252,7 @@ answer = ["AndroidPlugin.register", "AndroidPlugin.run", "AntlrPreset.build", "A
           "SpringBootPlugin.run", "SpringBootPlugin.runAot", "TaglibPreset.build", "TaglibPreset.run",
           "TaskExec.java", "TaskExec.tool", "TestConfigStep.run"]
 
-# Tier 2's rename traps (JK-N63YH), a sliver: run each with --arm jk --arm jk-nograph, never the whole
+# Tier 2's rename traps, a sliver: run each with --arm jk --arm jk-nograph, never the whole
 # tier. The test runs name their classes: petclinic's Postgres and MySQL tests need Docker.
 [tasks.petclinic-rename-telephone]
 repo   = "spring-petclinic"
@@ -275,7 +275,7 @@ Rename the class `Owner` to `Customer`, its file too, and update every use, test
 """
 test   = ["jk", "-u", "-x", "-a", "test", "-S", "CustomerRenameTests", "-S", "OwnerControllerTests", "-S", "ClinicServiceTests", "-S", "PetControllerTests", "-S", "VisitControllerTests"]
 
-# The anchor slice (JK-SW5P6): change tasks whose trap is a file no compiler checks. Each plants that
+# The anchor slice: change tasks whose trap is a file no compiler checks. Each plants that
 # file (inject/all/) and hides a check that fails when only the Java and the obvious files change.
 [tasks.petclinic-anchor-phone-column]
 repo   = "spring-petclinic"
@@ -347,7 +347,7 @@ the repository that names the column.
 # comment above says: on a host whose Docker is podman, Spring's compose support fails before a test runs.
 test   = ["jk", "-u", "-x", "-a", "test", "-S", "DateOfBirthColumnAcceptanceTests", "-S", "ValidatorTests", "-S", "OwnerControllerTests", "-S", "OwnerTests", "-S", "PetControllerTests", "-S", "PetTypeFormatterTests", "-S", "PetValidatorTests", "-S", "VisitControllerTests", "-S", "ClinicServiceTests", "-S", "CrashControllerIntegrationTests", "-S", "CrashControllerTests", "-S", "I18nPropertiesSyncTest", "-S", "WelcomeControllerTests", "-S", "VetControllerTests", "-S", "VetTests", "-S", "PetClinicIntegrationTests", "-S", "PetClinicConcurrencyTests"]
 
-# The push slice (JK-BHW43): paired tasks for the stale-anchor push in a build's verdict (docs/user/graph.md,
+# The push slice: paired tasks for the stale-anchor push in a build's verdict (docs/user/graph.md,
 # "After a hand edit"). A TRAP asks for one side of an anchor by hand, and the hidden check fails unless the
 # other side changes too, where no test of the agent's own run looks; a DECOY edits a file full of anchors and
 # the right change touches nothing else. jk's default build pushes (anchor-tail silent: the places, prose silent):
