@@ -277,7 +277,8 @@ class HttpStaticContentTest extends HttpEngineServerHarness {
                 .doesNotContain("https://unpkg.com ")
                 .contains("style-src 'self' 'unsafe-inline' https://fonts.googleapis.com "
                         + "https://unpkg.com/monaco-editor@0.56.0/; ")
-                .contains("connect-src 'self' https://unpkg.com/marked@15.0.12/ https://unpkg.com/dompurify@3.2.5/; ")
+                .contains("connect-src 'self' https://unpkg.com/marked@15.0.12/ https://unpkg.com/dompurify@3.2.5/ "
+                        + "https://unpkg.com/@asciidoctor/core@3.0.4/; ")
                 .contains("font-src https://fonts.gstatic.com data:; worker-src 'self' blob:")
                 .contains("frame-src 'none'; frame-ancestors 'none'; object-src 'none'; base-uri 'none'; ")
                 .contains("form-action 'none'");
