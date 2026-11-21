@@ -11,6 +11,7 @@ import cc.jumpkick.guard.rules.GuardRules;
 import cc.jumpkick.guard.rules.GuardsPresence;
 import cc.jumpkick.guard.rules.LoadResult;
 import cc.jumpkick.guard.rules.Rule;
+import cc.jumpkick.guard.rules.RuleSet;
 import cc.jumpkick.guard.schema.Lane;
 import cc.jumpkick.model.GuardsConfig;
 import java.io.IOException;
@@ -19,6 +20,8 @@ import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.jar.JarEntry;
+import java.util.jar.JarOutputStream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.objectweb.asm.AnnotationVisitor;
@@ -299,6 +302,86 @@ class TiersEvaluatorTest {
 
         Evaluation bySuite = eval(root, rule(root, "tagged = [\"slow\"]\nsuite  = \"e2e\"\n"), index(slow, test));
         assertThat(bySuite.observations()).extracting(Observation::key).containsExactly("p.BootTest", "p.Slow");
+    }
+
+    @Test
+    void a_nested_class_carries_the_tag_of_the_class_enclosing_it(@TempDir Path root) throws Exception {
+        String boot = "org/springframework/boot/test/context/SpringBootTest";
+        ClassFacts outer = testClassFrom("OuterTest", "OuterTest.java", "java/util/List", "slow");
+        ClassWriter cw = new ClassWriter(0);
+        cw.visit(Opcodes.V17, Opcodes.ACC_PUBLIC, "p/OuterTest$Inner", null, "java/lang/Object", null);
+        cw.visitSource("OuterTest.java", null);
+        cw.visitAnnotation("Lorg/junit/jupiter/api/Nested;", true).visitEnd();
+        cw.visitField(Opcodes.ACC_PRIVATE, "c", "L" + boot + ";", null, null).visitEnd();
+        MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PUBLIC, "runs", "()V", null, null);
+        mv.visitAnnotation("Lorg/junit/jupiter/api/Test;", true).visitEnd();
+        mv.visitCode();
+        mv.visitInsn(Opcodes.RETURN);
+        mv.visitMaxs(0, 1);
+        mv.visitEnd();
+        cw.visitEnd();
+        ClassFacts inner = FactsExtractor.extract(cw.toByteArray());
+        source(root, "test", "OuterTest");
+
+        Rule byTag = rule(root, "uses = [\"org.springframework.boot.test.**\"]\ntag  = \"slow\"\n");
+        assertThat(eval(root, byTag, index(outer, inner)).outcome()).isEqualTo(Outcome.CLEAN);
+    }
+
+    @Test
+    void a_composed_tag_annotation_is_read_from_the_test_classpath(@TempDir Path root) throws Exception {
+        ClassWriter aw = new ClassWriter(0);
+        aw.visit(
+                Opcodes.V17,
+                Opcodes.ACC_PUBLIC | Opcodes.ACC_ANNOTATION | Opcodes.ACC_INTERFACE | Opcodes.ACC_ABSTRACT,
+                "lib/Slow",
+                null,
+                "java/lang/Object",
+                new String[] {"java/lang/annotation/Annotation"});
+        AnnotationVisitor tag = aw.visitAnnotation("Lorg/junit/jupiter/api/Tag;", true);
+        tag.visit("value", "slow");
+        tag.visitEnd();
+        aw.visitEnd();
+        Path jar = root.resolve("test-only.jar");
+        try (var out = new JarOutputStream(Files.newOutputStream(jar))) {
+            out.putNextEntry(new JarEntry("lib/Slow.class"));
+            out.write(aw.toByteArray());
+            out.closeEntry();
+        }
+
+        ClassWriter cw = new ClassWriter(0);
+        cw.visit(Opcodes.V17, Opcodes.ACC_PUBLIC, "p/BootTest", null, "java/lang/Object", null);
+        cw.visitSource("BootTest.java", null);
+        cw.visitAnnotation("Llib/Slow;", true).visitEnd();
+        cw.visitField(Opcodes.ACC_PRIVATE, "c", "Lorg/springframework/boot/test/context/SpringBootTest;", null, null)
+                .visitEnd();
+        MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PUBLIC, "runs", "()V", null, null);
+        mv.visitAnnotation("Lorg/junit/jupiter/api/Test;", true).visitEnd();
+        mv.visitCode();
+        mv.visitInsn(Opcodes.RETURN);
+        mv.visitMaxs(0, 1);
+        mv.visitEnd();
+        cw.visitEnd();
+        FactsIndex tests = index(FactsExtractor.extract(cw.toByteArray()));
+        source(root, "test", "BootTest");
+
+        Rule byTag = rule(root, "uses = [\"org.springframework.boot.test.**\"]\ntag  = \"slow\"\n");
+        EvalContext ctx = new EvalContext(
+                Lane.MODULE,
+                root,
+                "m",
+                root.resolve("m"),
+                List.of(root.resolve("m")),
+                () -> FactsIndex.EMPTY,
+                () -> tests,
+                List::of,
+                () -> List.of(jar),
+                RuleSet.EMPTY);
+        try {
+            assertThat(Evaluators.forKind(byTag.kind()).evaluate(byTag, ctx).outcome())
+                    .isEqualTo(Outcome.CLEAN);
+        } finally {
+            ctx.closeHierarchy();
+        }
     }
 
     @Test

@@ -532,13 +532,13 @@ final class PlannerGuards {
                 && String.valueOf(rule.table().getString("measure")).startsWith("coverage.");
     }
 
-    /** The lane's engine validations; a type the tests do not hold is read through the lane's hierarchy, released after. */
+    /** The lane's engine validations; a type the tests do not hold is read through the lane's test hierarchy, released after. */
     private static List<Fault> engineValidations(Lane lane, Path root, EvalContext ectx) {
         if (lane == Lane.MODEL) return EngineValidations.model(root);
         if (lane != Lane.MODULE) return List.of();
         try {
-            return EngineValidations.module(
-                    root, ectx.module(), ectx.testFacts(), n -> ectx.hierarchy().classFacts(n));
+            return EngineValidations.module(root, ectx.module(), ectx.testFacts(), n -> ectx.testHierarchy()
+                    .classFacts(n));
         } finally {
             ectx.closeHierarchy();
         }

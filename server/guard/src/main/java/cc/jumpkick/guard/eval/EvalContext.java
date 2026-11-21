@@ -22,6 +22,9 @@ import org.jspecify.annotations.Nullable;
  *
  * @param module the module's workspace-relative path, or {@code ""} at the root
  * @param modules every module directory of the workspace (root lanes), else just this module's
+ * @param classpath the main source set's compile classpath, which {@link #hierarchy()} reads
+ * @param testClasspath where a test's supertypes and annotations are read from beyond the module's
+ *     own classes, the one the engine routes test tags through ({@link #testHierarchy()})
  * @param rules every loaded rule, for kinds that refer to another rule ({@code metric matches:<id>})
  */
 public record EvalContext(
@@ -33,9 +36,13 @@ public record EvalContext(
         Supplier<FactsIndex> factsSupplier,
         Supplier<@Nullable FactsIndex> testFactsSupplier,
         Supplier<List<Path>> classpath,
+        Supplier<List<Path>> testClasspath,
         RuleSet rules) {
 
-    /** Without a rule set: for tests and callers whose kinds never refer to another rule. */
+    /**
+     * Without a rule set, the tests' types read from {@code classpath}: for lanes that judge no test
+     * classes, and for tests.
+     */
     public EvalContext(
             Lane lane,
             Path root,
@@ -45,12 +52,31 @@ public record EvalContext(
             Supplier<FactsIndex> factsSupplier,
             Supplier<@Nullable FactsIndex> testFactsSupplier,
             Supplier<List<Path>> classpath) {
-        this(lane, root, module, moduleDir, modules, factsSupplier, testFactsSupplier, classpath, RuleSet.EMPTY);
+        this(
+                lane,
+                root,
+                module,
+                moduleDir,
+                modules,
+                factsSupplier,
+                testFactsSupplier,
+                classpath,
+                classpath,
+                RuleSet.EMPTY);
     }
 
     public EvalContext withRules(RuleSet set) {
         return new EvalContext(
-                lane, root, module, moduleDir, modules, factsSupplier, testFactsSupplier, classpath, set);
+                lane,
+                root,
+                module,
+                moduleDir,
+                modules,
+                factsSupplier,
+                testFactsSupplier,
+                classpath,
+                testClasspath,
+                set);
     }
 
     /** A context is one lane run: two runs over equal inputs still keep their own memos. */
@@ -65,6 +91,9 @@ public record EvalContext(
     }
 
     private static final Map<EvalContext, TypeHierarchy> HIERARCHIES = new WeakHashMap<>();
+
+    /** The memo key of the hierarchy {@link #testHierarchy()} builds. */
+    private static final Object TEST_HIERARCHY = new Object();
 
     private static final Map<EvalContext, Map<Object, Object>> MEMOS = new WeakHashMap<>();
 
@@ -86,7 +115,16 @@ public record EvalContext(
     }
 
     /**
-     * Release the hierarchy built for this context, closing the classpath jars it opened; the lane
+     * The module's type hierarchy as its tests see it (facts, then the test classpath, then JDK),
+     * built once per lane run: a composed annotation or base class a test-only library declares is
+     * read here.
+     */
+    public TypeHierarchy testHierarchy() {
+        return memo(TEST_HIERARCHY, c -> new TypeHierarchy(c.facts(), c.testClasspath()));
+    }
+
+    /**
+     * Release the hierarchies built for this context, closing the classpath jars they opened; the lane
      * run calls this once its rules are evaluated, and the next {@link #hierarchy()} builds afresh.
      */
     public void closeHierarchy() {
@@ -95,9 +133,11 @@ public record EvalContext(
             built = HIERARCHIES.remove(this);
         }
         if (built != null) built.close();
+        Map<Object, Object> memos;
         synchronized (MEMOS) {
-            MEMOS.remove(this);
+            memos = MEMOS.remove(this);
         }
+        if (memos != null && memos.get(TEST_HIERARCHY) instanceof TypeHierarchy test) test.close();
     }
 
     /** Contexts holding a hierarchy or memos that {@link #closeHierarchy} has not released. Test seam. */

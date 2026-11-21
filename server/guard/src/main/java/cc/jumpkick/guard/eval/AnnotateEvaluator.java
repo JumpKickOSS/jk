@@ -355,12 +355,10 @@ final class AnnotateEvaluator implements Evaluator {
 
     /**
      * Which classes of the test facts are test classes: supertypes and annotations read from the
-     * test facts, the main facts, then the classpath.
+     * test facts, the main facts, then the test classpath.
      */
     static TestClassFacts testClasses(EvalContext ctx, FactsIndex test) {
-        return ctx.memo(TEST_CLASSES, c -> {
-            TypeHierarchy types = c.hierarchy();
-            return new TestClassFacts(List.of(test, c.facts()), types::classFacts);
-        });
+        TypeHierarchy types = ctx.testHierarchy();
+        return ctx.memo(TEST_CLASSES, c -> new TestClassFacts(List.of(test, c.facts()), types::classFacts));
     }
 }

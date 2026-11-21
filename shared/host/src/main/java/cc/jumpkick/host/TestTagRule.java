@@ -12,10 +12,13 @@ import org.jspecify.annotations.Nullable;
 /**
  * The JUnit tags a class carries, judged from class-file facts as JUnit's {@code
  * findRepeatableAnnotations} finds {@code @Tag}: on the class and on its superclasses and
- * interfaces, each directly or through a composed annotation meta-annotated with one. The engine's
- * test index and the guard facts both ask this one rule. Names are binary names.
+ * interfaces, each directly or through a composed annotation meta-annotated with one; a {@code
+ * @Nested} class carries its enclosing class's too. The engine's test index and the guard facts
+ * both ask this one rule. Names are binary names.
  */
 public final class TestTagRule {
+
+    private static final String NESTED = "org.junit.jupiter.api.Nested";
 
     private TestTagRule() {}
 
@@ -41,11 +44,23 @@ public final class TestTagRule {
         Type get(String binaryName);
     }
 
-    /** The tags every test of {@code type} carries: those on it and its supertypes, composed ones followed. */
+    /**
+     * The tags every test of {@code type} carries: those on it and its supertypes, composed ones
+     * followed, and when it is a {@code @Nested} class, those of the class enclosing it.
+     */
     public static Set<String> classTags(Type type, Types types) {
         Set<String> out = new LinkedHashSet<>();
         for (Type at : hierarchy(type, types)) out.addAll(elementTags(at.classTags(), at.classAnnotations(), types));
+        Type enclosing = enclosing(type, types);
+        if (enclosing != null) out.addAll(classTags(enclosing, types));
         return out;
+    }
+
+    /** The class a {@code @Nested} {@code type} is declared in, or {@code null} for any other class or one that cannot be read. */
+    private static @Nullable Type enclosing(Type type, Types types) {
+        int dollar = type.name().lastIndexOf('$');
+        if (dollar <= 0 || !type.classAnnotations().contains(NESTED)) return null;
+        return types.get(type.name().substring(0, dollar));
     }
 
     /** The tags on the members of {@code type} and its supertypes, composed ones followed. */

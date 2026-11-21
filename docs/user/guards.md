@@ -83,7 +83,8 @@ routed type puts it on its suite's classpath as surely as a test does. Its `tag`
 classes JUnit reads a tag from, a test class and the test-tree types it extends or implements; a tag
 on any other helper selects nothing. A class's tags, for `tagged` and `tag` alike, are the ones
 `jk test` filters on: its own and its methods', those of the types it extends or implements, since
-`@Tag` is inherited, and those of any annotation composed of a `@Tag`.
+`@Tag` is inherited, a `@Nested` class's enclosing class's, and those of any annotation composed of
+a `@Tag`, including one from a library only the tests depend on.
 
 ## Kinds
 

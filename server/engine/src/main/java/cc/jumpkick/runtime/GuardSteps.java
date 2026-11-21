@@ -17,6 +17,7 @@ import cc.jumpkick.guard.extract.FactsIndexing;
 import cc.jumpkick.guard.extract.WorkspaceFacts;
 import cc.jumpkick.guard.facts.FactsIndex;
 import cc.jumpkick.guard.rules.Rule;
+import cc.jumpkick.guard.rules.RuleSet;
 import cc.jumpkick.guard.schema.Lane;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.ManifestPaths;
@@ -194,7 +195,9 @@ final class GuardSteps {
                 List.of(moduleDir),
                 EvalContext.lazy(() -> FactsIndexing.load(main)),
                 testFacts(test),
-                () -> ctx.require(CLASSPATHS).main());
+                () -> ctx.require(CLASSPATHS).main(),
+                () -> PlannerTest.tagClasspath(ctx),
+                RuleSet.EMPTY);
         // ---- the module's src/guard suite, if compiled: its guards join the lane's rules
         Path guardClasses = ctx.require(MODULE).layout().guardClassesDir();
         List<Rule> suiteRules = List.of();

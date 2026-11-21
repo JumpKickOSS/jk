@@ -11,6 +11,8 @@ import org.junit.jupiter.api.Test;
 
 class TestTagRuleTest {
 
+    private static final String NESTED = "org.junit.jupiter.api.Nested";
+
     private static TestTagRule.Type type(
             String name, List<String> supertypes, Set<String> tags, Set<String> annotations) {
         return new TestTagRule.Type(name, supertypes, tags, annotations, Set.of(), Set.of());
@@ -67,5 +69,30 @@ class TestTagRuleTest {
         var test = type("p.CycleTest", List.of(), Set.of(), Set.of("p.A"));
 
         assertThat(TestTagRule.classTags(test, types(a, b))).containsExactlyInAnyOrder("a", "b");
+    }
+
+    @Test
+    void a_nested_class_carries_the_tags_of_the_classes_enclosing_it_and_a_static_member_class_does_not() {
+        var slow = type("p.Slow", List.of(), Set.of("slow"), Set.of());
+        var base = type("p.Base", List.of(), Set.of("base"), Set.of());
+        var outer = type("p.OuterTest", List.of("p.Base"), Set.of("outer"), Set.of("p.Slow"));
+        var inner = type("p.OuterTest$Inner", List.of(), Set.of("inner"), Set.of(NESTED));
+        var deeper = type("p.OuterTest$Inner$Deeper", List.of(), Set.of(), Set.of(NESTED));
+        var member = type("p.OuterTest$Member", List.of(), Set.of("member"), Set.of());
+        var all = types(slow, base, outer, inner, deeper, member);
+
+        assertThat(TestTagRule.classTags(inner, all)).containsExactlyInAnyOrder("inner", "outer", "slow", "base");
+        assertThat(TestTagRule.classTags(deeper, all)).containsExactlyInAnyOrder("inner", "outer", "slow", "base");
+        assertThat(TestTagRule.tags(deeper, all)).containsExactlyInAnyOrder("inner", "outer", "slow", "base");
+        assertThat(TestTagRule.classTags(member, all)).containsExactly("member");
+    }
+
+    @Test
+    void a_superclass_nested_in_another_class_does_not_bring_that_class_tags() {
+        var holder = type("p.Holder", List.of(), Set.of("holder"), Set.of());
+        var base = type("p.Holder$Base", List.of(), Set.of("base"), Set.of(NESTED));
+        var test = type("p.ChildTest", List.of("p.Holder$Base"), Set.of(), Set.of());
+
+        assertThat(TestTagRule.classTags(test, types(holder, base, test))).containsExactly("base");
     }
 }
