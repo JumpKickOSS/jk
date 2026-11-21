@@ -357,8 +357,8 @@ public final class McpTools {
 
     /**
      * MCP progress token from {@code params._meta.progressToken} (string or number). Numeric
-     * tokens are canonicalized to their integral form — MiniJson parses numbers as Double, and
-     * {@code String.valueOf(5.0)} would never match the client's {@code ?progressToken=5} query.
+     * tokens are canonicalized to their integral form, so a token sent as {@code 5.0} matches the
+     * client's {@code ?progressToken=5} query.
      */
     private static @Nullable String progressTokenOf(Map<String, Object> params) {
         Object meta = params.get("_meta");

@@ -9,7 +9,8 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * Tree-shaped JSON parse/write ({@code Map}/{@code List}/{@code String}/{@code Number}/
- * {@code Boolean}/{@code null}) for HTTP/MCP/journal. Sibling of {@link Jsonl} (wire field codec +
+ * {@code Boolean}/{@code null}) for HTTP/MCP/journal. A parsed integer is a {@link Long}, any other
+ * number a {@link Double}; a written NaN or infinity is {@code null}. Sibling of {@link Jsonl} (wire field codec +
  * {@link Jsonl#quote}); this is the single tree codec — never reimplement escaping here.
  *
  * <p>Lives in :host at the SPI language floor ({@code --release 17}); written without
@@ -52,9 +53,13 @@ public final class MiniJson {
         }
         if (value instanceof Double) {
             Double d = (Double) value;
-            // Integral doubles (the parser's number type) print without the ".0" so
-            // parse→write round-trips don't reformat whole numbers.
-            if (d == Math.floor(d) && !d.isInfinite() && Math.abs(d) < 9.007199254740992E15) {
+            // JSON has no NaN or Infinity; null is what JavaScript's JSON.stringify writes for them.
+            if (d.isNaN() || d.isInfinite()) {
+                sb.append("null");
+                return;
+            }
+            // Integral doubles print without the ".0" so a whole number stays one on the wire.
+            if (d == Math.floor(d) && Math.abs(d) < 9.007199254740992E15) {
                 sb.append((long) (double) d);
             } else {
                 sb.append(d);
@@ -359,13 +364,29 @@ public final class MiniJson {
         throw new IllegalArgumentException("bad literal at offset " + pos);
     }
 
-    private Double parseNumber() {
+    /**
+     * A literal with no fraction or exponent that fits a {@code long} is a {@link Long}, so an id or
+     * a nanosecond count past 2^53 keeps every digit; any other number is a {@link Double}.
+     */
+    private Number parseNumber() {
         int start = pos;
         if (peek() == '-') pos++;
-        while (pos < src.length() && "0123456789.eE+-".indexOf(src.charAt(pos)) >= 0) pos++;
+        boolean integral = true;
+        while (pos < src.length() && "0123456789.eE+-".indexOf(src.charAt(pos)) >= 0) {
+            char c = src.charAt(pos++);
+            if (c < '0' || c > '9') integral = false;
+        }
         if (pos == start) throw new IllegalArgumentException("unexpected character at offset " + pos);
+        String literal = src.substring(start, pos);
         try {
-            return Double.parseDouble(src.substring(start, pos));
+            if (integral) {
+                try {
+                    return Long.parseLong(literal);
+                } catch (NumberFormatException pastLongRange) {
+                    // A Double is the nearest a tree of Number can hold; a bare "-" fails below.
+                }
+            }
+            return Double.parseDouble(literal);
         } catch (NumberFormatException e) {
             throw new IllegalArgumentException("bad number at offset " + start, e);
         }

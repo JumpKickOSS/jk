@@ -61,12 +61,12 @@ class BspServerProtocolTest {
         assertThat(items).hasSizeGreaterThanOrEqualTo(2);
         assertThat(items)
                 .as("SourceItemKind 2 is a directory; 1 would be a file")
-                .allSatisfy(item -> assertThat(item).containsEntry("kind", 2.0));
+                .allSatisfy(item -> assertThat(item).containsEntry("kind", 2L));
         Map<String, Object> outputs = itemOf(result(frames, 3));
         List<Map<String, Object>> paths = (List<Map<String, Object>>) outputs.get("outputPaths");
         assertThat(paths).hasSize(2);
         assertThat(paths).as("OutputPathItemKind 2 is a directory").allSatisfy(item -> assertThat(item)
-                .containsEntry("kind", 2.0));
+                .containsEntry("kind", 2L));
     }
 
     @Test

@@ -161,13 +161,13 @@ class McpBridgeConcurrencyTest {
         assertThat(replies(stdout))
                 .as("the ping and the second call answer while the first is parked")
                 .extracting(r -> r.get("id"))
-                .containsExactlyInAnyOrder(2.0, 3.0);
+                .containsExactlyInAnyOrder(2L, 3L);
         send(client, "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/cancelled\",\"params\":{\"requestId\":1}}");
         client.close();
         serving.join(TimeUnit.SECONDS.toMillis(10));
         List<Map<String, Object>> replies = replies(stdout);
         assertThat(replies).hasSize(3);
-        assertThat(replies.getLast().get("id")).isEqualTo(1.0);
+        assertThat(replies.getLast().get("id")).isEqualTo(1L);
         assertThat(outcome(replies.getLast())).isEqualTo("cancelled");
         assertThat(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started))
                 .as("the cancel released the parked call well before its own wait ran out")
@@ -211,7 +211,7 @@ class McpBridgeConcurrencyTest {
         Set<Object> ids = new HashSet<>();
         for (int i = 1; i <= 2 * McpBridge.MAX_IN_FLIGHT; i++) {
             lines.add(call(i, "quick"));
-            ids.add((double) i);
+            ids.add((long) i);
         }
         List<Map<String, Object>> replies = serve(lines.toArray(String[]::new));
         assertThat(replies).hasSize(ids.size());

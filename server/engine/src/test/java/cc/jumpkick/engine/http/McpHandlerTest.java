@@ -73,7 +73,7 @@ class McpHandlerTest {
         @SuppressWarnings("unchecked")
         Map<String, Object> resp = (Map<String, Object>) requireNonNull(MiniJson.parse(body));
         assertThat(resp.get("jsonrpc")).isEqualTo("2.0");
-        assertThat(resp.get("id")).isEqualTo(1.0); // MiniJson numbers are doubles
+        assertThat(resp.get("id")).isEqualTo(1L); // MiniJson numbers are doubles
         Map<String, Object> result = object(resp, "result");
         assertThat(result.get("protocolVersion")).isEqualTo(McpRevision.LATEST.wire());
         Map<String, Object> info = object(result, "serverInfo");
@@ -604,6 +604,6 @@ class McpHandlerTest {
         Map<String, Object> resp = (Map<String, Object>) requireNonNull(MiniJson.parse(body));
         assertThat(resp.get("error")).isNotNull();
         Map<String, Object> err = object(resp, "error");
-        assertThat(err.get("code")).isEqualTo(-32601.0);
+        assertThat(err.get("code")).isEqualTo(-32601L);
     }
 }

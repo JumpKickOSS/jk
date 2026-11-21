@@ -59,7 +59,7 @@ class McpTestCountShapeTest {
 
         assertThat(row).doesNotContainKey("testFailed").doesNotContainKey("testsFailed");
         assertThat(row.get(TestSummary.WIRE_KEY))
-                .isEqualTo(Map.of("total", 4323.0, "succeeded", 4314.0, "failed", 0.0, "skipped", 9.0));
+                .isEqualTo(Map.of("total", 4323L, "succeeded", 4314L, "failed", 0L, "skipped", 9L));
     }
 
     /** No test phase: the key is present and null, never a zeroed object pretending zero tests ran. */

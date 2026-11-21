@@ -140,7 +140,7 @@ class McpNewFormTest {
         String session = initialize("2025-11-25", "{}");
         Map<String, Object> error = error(mcp.handle(call(Map.of("name", "widget")), session));
 
-        assertThat(error.get("code")).isEqualTo(-32602.0);
+        assertThat(error.get("code")).isEqualTo(-32602L);
         assertThat(String.valueOf(error.get("message")))
                 .contains("motto: text /[a-z]+/ (required)  # Motto")
                 .contains("native: true|false (required)")

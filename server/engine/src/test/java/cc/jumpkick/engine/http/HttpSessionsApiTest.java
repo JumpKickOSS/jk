@@ -76,8 +76,8 @@ class HttpSessionsApiTest extends HttpEngineServerHarness {
         assertThat(MiniJson.list(body, "episodes")).hasSize(1);
         assertThat(MiniJson.list(body, "actions"))
                 .extracting(a -> (Object) ((Map<?, ?>) a).get("seq"))
-                .containsExactly(2.0, 3.0);
-        assertThat(MiniJson.get(body, "next")).isEqualTo(2.0);
+                .containsExactly(2L, 3L);
+        assertThat(MiniJson.get(body, "next")).isEqualTo(2L);
 
         Object older = requireNonNull(
                 MiniJson.parse(get("/api/sessions/" + id + "?before=2&limit=2").body()));

@@ -39,9 +39,33 @@ class MiniJsonTest {
     @Test
     void parses_scalars_nesting_and_numbers() {
         assertThat(MiniJson.parse("{\"a\":{\"b\":[1,2.5,-3e2,null,false]}}"))
-                .isEqualTo(Map.of("a", Map.of("b", Arrays.asList(1.0, 2.5, -300.0, null, false))));
+                .isEqualTo(Map.of("a", Map.of("b", Arrays.asList(1L, 2.5, -300.0, null, false))));
         assertThat(MiniJson.parse("\"plain\"")).isEqualTo("plain");
         assertThat(MiniJson.parse(" true ")).isEqualTo(true);
+    }
+
+    @Test
+    void integers_parse_as_longs_with_every_digit() {
+        long past2To53 = 9_007_199_254_740_993L;
+        assertThat(MiniJson.parse("{\"n\":" + past2To53 + "}")).isEqualTo(Map.of("n", past2To53));
+        assertThat(MiniJson.parse(Long.toString(Long.MIN_VALUE))).isEqualTo(Long.MIN_VALUE);
+        assertThat(MiniJson.write(MiniJson.parse("[" + Long.MAX_VALUE + "]"))).isEqualTo("[" + Long.MAX_VALUE + "]");
+        assertThat(MiniJson.parse("1.0")).isEqualTo(1.0);
+        assertThat(MiniJson.parse("1e3")).isEqualTo(1000.0);
+        assertThat(MiniJson.parse("12345678901234567890")).isEqualTo(1.2345678901234567e19);
+        assertThatThrownBy(() -> MiniJson.parse("-")).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> MiniJson.parse("1-2")).isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void non_finite_numbers_write_as_null() {
+        Map<String, Object> obj = new LinkedHashMap<>();
+        obj.put("nan", Double.NaN);
+        obj.put("up", Double.POSITIVE_INFINITY);
+        obj.put("down", Float.NEGATIVE_INFINITY);
+        String json = MiniJson.write(obj);
+        assertThat(json).isEqualTo("{\"nan\":null,\"up\":null,\"down\":null}");
+        assertThat(MiniJson.parse(json)).isEqualTo(MiniJson.parse("{\"nan\":null,\"up\":null,\"down\":null}"));
     }
 
     @Test
@@ -69,19 +93,19 @@ class MiniJsonTest {
 
     @Test
     void parse_relaxed_accepts_comments_wherever_whitespace_is_legal() {
-        assertThat(MiniJson.parseRelaxed("// leading note\n{\"a\":1}")).isEqualTo(Map.of("a", 1.0));
-        assertThat(MiniJson.parseRelaxed("{\"a\":1} // trailing note")).isEqualTo(Map.of("a", 1.0));
+        assertThat(MiniJson.parseRelaxed("// leading note\n{\"a\":1}")).isEqualTo(Map.of("a", 1L));
+        assertThat(MiniJson.parseRelaxed("{\"a\":1} // trailing note")).isEqualTo(Map.of("a", 1L));
         assertThat(MiniJson.parseRelaxed("{\"a\":1}\n// trailing note with a newline\n"))
-                .isEqualTo(Map.of("a", 1.0));
+                .isEqualTo(Map.of("a", 1L));
         assertThat(MiniJson.parseRelaxed("/* leading */{\"a\":1}/* trailing */"))
-                .isEqualTo(Map.of("a", 1.0));
+                .isEqualTo(Map.of("a", 1L));
         // between every token of an object: before the key, around the colon, before the closer
         assertThat(MiniJson.parseRelaxed("{ /* k */ \"a\" /* c */ : /* v */ 1 /* end */ }"))
-                .isEqualTo(Map.of("a", 1.0));
+                .isEqualTo(Map.of("a", 1L));
         // and of an array, including a line comment that ends at the newline
-        assertThat(MiniJson.parseRelaxed("[ // one\n 1, /* two */ 2 ]")).isEqualTo(List.of(1.0, 2.0));
+        assertThat(MiniJson.parseRelaxed("[ // one\n 1, /* two */ 2 ]")).isEqualTo(List.of(1L, 2L));
         // a comment is the only thing separating two tokens
-        assertThat(MiniJson.parseRelaxed("[1/* x */,/* y */2]")).isEqualTo(List.of(1.0, 2.0));
+        assertThat(MiniJson.parseRelaxed("[1/* x */,/* y */2]")).isEqualTo(List.of(1L, 2L));
         assertThatThrownBy(() -> MiniJson.parseRelaxed("{/* never closed \n \"a\":1}"))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("unterminated comment at offset 1");
@@ -91,11 +115,11 @@ class MiniJsonTest {
 
     @Test
     void parse_relaxed_tolerates_trailing_commas() {
-        assertThat(MiniJson.parseRelaxed("{\"a\":1,}")).isEqualTo(Map.of("a", 1.0));
-        assertThat(MiniJson.parseRelaxed("[1,2,]")).isEqualTo(List.of(1.0, 2.0));
-        assertThat(MiniJson.parseRelaxed("{\"a\":[1,],}")).isEqualTo(Map.of("a", List.of(1.0)));
-        assertThat(MiniJson.parseRelaxed("[1, /* done */ ]")).isEqualTo(List.of(1.0));
-        assertThat(MiniJson.parseRelaxed("{\"a\":1, // done\n}")).isEqualTo(Map.of("a", 1.0));
+        assertThat(MiniJson.parseRelaxed("{\"a\":1,}")).isEqualTo(Map.of("a", 1L));
+        assertThat(MiniJson.parseRelaxed("[1,2,]")).isEqualTo(List.of(1L, 2L));
+        assertThat(MiniJson.parseRelaxed("{\"a\":[1,],}")).isEqualTo(Map.of("a", List.of(1L)));
+        assertThat(MiniJson.parseRelaxed("[1, /* done */ ]")).isEqualTo(List.of(1L));
+        assertThat(MiniJson.parseRelaxed("{\"a\":1, // done\n}")).isEqualTo(Map.of("a", 1L));
         // one comma is the limit — a second has no value in front of it
         assertThatThrownBy(() -> MiniJson.parseRelaxed("[1,,]")).isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> MiniJson.parseRelaxed("{\"a\":1,,}")).isInstanceOf(IllegalArgumentException.class);
@@ -107,8 +131,8 @@ class MiniJsonTest {
     @Test
     void parse_relaxed_skips_a_byte_order_mark() {
         // Character.isWhitespace('\uFEFF') is false, so the strict skipWhitespace stalls on it
-        assertThat(MiniJson.parseRelaxed("\uFEFF{\"a\":1}")).isEqualTo(Map.of("a", 1.0));
-        assertThat(MiniJson.parseRelaxed("\uFEFF// note\n[1]")).isEqualTo(List.of(1.0));
+        assertThat(MiniJson.parseRelaxed("\uFEFF{\"a\":1}")).isEqualTo(Map.of("a", 1L));
+        assertThat(MiniJson.parseRelaxed("\uFEFF// note\n[1]")).isEqualTo(List.of(1L));
     }
 
     @Test
@@ -134,7 +158,7 @@ class MiniJsonTest {
         assertThat(settings.get("editor.fontFamily")).isEqualTo("JetBrainsMono Nerd Font");
         assertThat(settings.get("editor.fontLigatures")).isEqualTo(Boolean.TRUE);
         Map<?, ?> terminal = (Map<?, ?>) requireNonNull(settings.get("terminal.integrated"));
-        assertThat(terminal.get("fontSize")).isEqualTo(13.0);
+        assertThat(terminal.get("fontSize")).isEqualTo(13L);
         assertThat(terminal.get("env.osx")).isEqualTo(Map.of("JK_NERD_FONT", "1"));
         assertThat(settings.get("files.exclude")).isEqualTo(List.of("**/.git", "**/.jk"));
     }

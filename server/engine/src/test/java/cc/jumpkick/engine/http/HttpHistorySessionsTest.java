@@ -50,7 +50,7 @@ class HttpHistorySessionsTest extends HttpEngineServerHarness {
         }
         assertThat(groups).containsExactlyInAnyOrder("mcp|claude-code 3f9a", "cli|null", "mcp|codex 9c01");
         Map<String, Object> newest = rows.getFirst();
-        assertThat(newest.get("buildNumber")).isEqualTo(14.0);
+        assertThat(newest.get("buildNumber")).isEqualTo(14L);
         assertThat(newest.get("trigger")).isEqualTo("mcp");
         assertThat(newest.get("session")).isEqualTo("claude-code 3f9a");
         // The CLI row carries no session key at all — absent, not an empty string.

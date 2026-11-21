@@ -39,7 +39,7 @@ class DokkaToolTest {
         assertThat(MiniJson.list(sourceSet, "sourceRoots")).isEqualTo(List.of(abs(greeter), abs(util)));
         assertThat(MiniJson.list(sourceSet, "classpath")).isEqualTo(List.of(abs(stdlib)));
         assertThat(MiniJson.str(sourceSet, "analysisPlatform")).isEqualTo("jvm");
-        assertThat(MiniJson.get(sourceSet, "jdkVersion")).isEqualTo(25.0);
+        assertThat(MiniJson.get(sourceSet, "jdkVersion")).isEqualTo(25L);
         assertThat(MiniJson.get(sourceSet, "noJdkLink")).isEqualTo(Boolean.TRUE);
         assertThat(MiniJson.get(sourceSet, "noStdlibLink")).isEqualTo(Boolean.TRUE);
         assertThat(MiniJson.str(MiniJson.get(sourceSet, "sourceSetID"), "scopeId"))

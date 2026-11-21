@@ -544,7 +544,7 @@ public final class McpBridge {
         return MiniJson.write(reply);
     }
 
-    /** The id as the client sent it: MiniJson reads numbers as doubles, so an integral one goes back whole. */
+    /** The id as a key: an integral number, {@code 5} or {@code 5.0}, is the long {@code 5}. */
     private static @Nullable Object wholeId(@Nullable Object id) {
         if (id instanceof Number n && n.doubleValue() == Math.rint(n.doubleValue())) return n.longValue();
         return id;

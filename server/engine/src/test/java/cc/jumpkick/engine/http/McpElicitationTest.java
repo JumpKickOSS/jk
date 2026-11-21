@@ -219,7 +219,7 @@ class McpElicitationTest {
             assertThat(answered.statusCode()).isEqualTo(202);
 
             Map<String, Object> response = parseObject(nextData(events));
-            assertThat(response.get("id")).isEqualTo(2.0);
+            assertThat(response.get("id")).isEqualTo(2L);
             assertThat(String.valueOf(objects(object(response, "result"), "content")
                             .getFirst()
                             .get("text")))

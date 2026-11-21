@@ -251,7 +251,7 @@ class McpContractTest {
         String withId = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"notifications/initialized\"}");
         @SuppressWarnings("unchecked")
         Map<String, Object> resp = (Map<String, Object>) requireNonNull(MiniJson.parse(withId));
-        assertThat(resp.get("id")).isEqualTo(7.0);
+        assertThat(resp.get("id")).isEqualTo(7L);
         assertThat(resp.get("result")).isEqualTo(Map.of());
         assertThat(mcp.handleBody("{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}"))
                 .isEmpty();
@@ -265,7 +265,7 @@ class McpContractTest {
         @SuppressWarnings("unchecked")
         Map<String, Object> resp = JsonFields.parseObject(body);
         Map<String, Object> err = object(resp, "error");
-        assertThat(err.get("code")).isEqualTo(-32600.0);
+        assertThat(err.get("code")).isEqualTo(-32600L);
         assertThat(resp.get("id")).isNull();
     }
 
@@ -287,7 +287,7 @@ class McpContractTest {
         for (Map<String, Object> row : rows) {
             assertThat(row.get("id")).isNull();
             Map<String, Object> err = object(row, "error");
-            assertThat(err.get("code")).isEqualTo(-32600.0);
+            assertThat(err.get("code")).isEqualTo(-32600L);
         }
     }
 

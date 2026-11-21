@@ -48,14 +48,14 @@ class HttpNoticesApiTest extends HttpEngineServerHarness {
         HttpResponse<String> list = get("/api/notices");
         assertThat(list.statusCode()).isEqualTo(200);
         Object body = MiniJson.parse(list.body());
-        assertThat(MiniJson.get(body, "unseen")).isEqualTo(1.0);
+        assertThat(MiniJson.get(body, "unseen")).isEqualTo(1L);
         assertThat(MiniJson.list(body, "notices"))
                 .singleElement()
                 .satisfies(row -> assertThat(((Map<?, ?>) row).get("text")).isEqualTo("An agent needs you: Go?"));
 
         HttpResponse<String> moved = seen("{\"upTo\":" + n.at() + "}");
         assertThat(moved.statusCode()).isEqualTo(200);
-        assertThat(MiniJson.get(MiniJson.parse(moved.body()), "unseen")).isEqualTo(0.0);
+        assertThat(MiniJson.get(MiniJson.parse(moved.body()), "unseen")).isEqualTo(0L);
         assertThat(awaitSseEvent(lines, "notice"))
                 .contains("\"change\":\"seen\"")
                 .contains("\"unseen\":0");

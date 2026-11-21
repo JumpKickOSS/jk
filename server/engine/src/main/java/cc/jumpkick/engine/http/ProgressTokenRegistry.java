@@ -93,9 +93,9 @@ public final class ProgressTokenRegistry {
     }
 
     /**
-     * Canonical text form of a token. MCP allows integer progress tokens; MiniJson parses every
-     * JSON number as Double, so {@code 5} stringifies as {@code "5.0"} while the SSE query carries
-     * {@code "5"}. Integral double forms drop the fraction; every other token passes through.
+     * Canonical text form of a token. MCP allows integer progress tokens, and a client that sends
+     * {@code 5.0} means the token the SSE query spells {@code "5"}. Integral double forms drop the
+     * fraction; every other token passes through.
      */
     public static String canonicalText(String token) {
         String s = token.trim();

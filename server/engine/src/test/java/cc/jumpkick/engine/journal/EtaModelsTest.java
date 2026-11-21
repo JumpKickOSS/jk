@@ -81,7 +81,7 @@ class EtaModelsTest {
         assertThat((List<?>) rows.get(1)).last().isEqualTo("REPLAY");
         assertThat(((List<?>) rows.get(1)).stream().map(String::valueOf).toList())
                 .as("[step, weight, kind, spread, workers, rung]")
-                .containsExactly("run-tests", "60.0", "TEST", "0.08", "4.0", "REPLAY");
+                .containsExactly("run-tests", "60", "TEST", "0.08", "4", "REPLAY");
     }
 
     @Test
