@@ -658,10 +658,13 @@ public final class MavenPackageSource implements PackageSource {
      * Un-capped candidate list for the solver's widen-on-failure pathwhen every
      * compact candidate is ruled out (a Maven range below the top releases, backtracking past
      * the pin), the solver re-expands from the full advertised history instead of hard-failing
-     * a satisfiable graph. The solver applies its own cap.
+     * a satisfiable graph. The solver caps it outside its wide retry.
      */
     @Override
     public List<String> expandedVersions(String pkg) throws IOException, InterruptedException {
+        // The member's version is its whole history: widening never reads a repository for it.
+        String memberVersion = workspaceModules.get(PackageId.parse(pkg).ga());
+        if (memberVersion != null) return List.of(memberVersion);
         Set<String> wanted = wantedVersions(pkg);
         return cachedCandidates(expandedVersionCache, pkg, wanted, () -> {
             List<String> result = List.copyOf(orderedVersions(pkg, wanted));

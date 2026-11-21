@@ -6,6 +6,10 @@ JumpKick shows you this page's new entries after it updates itself.
 
 ## 0.54.0
 
+- **A version range far below a library's newest releases resolves.** A resolve that fails at first
+  now retries with every published version of each library, so a range below the newest 48 releases
+  resolves instead of reporting no solution. Widening the search after a conflict no longer asks the
+  repositories for the versions of a workspace member.
 - **A stalled gzip download fails instead of hanging, and an empty gzip answer is read as what it
   is.** A download of a gzip-encoded file that stops before its first bytes now fails after the idle
   limit, naming the URL, instead of hanging jk; an empty 304 or 404 that a server labels gzip is

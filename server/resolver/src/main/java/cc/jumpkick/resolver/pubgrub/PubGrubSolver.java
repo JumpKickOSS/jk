@@ -930,9 +930,13 @@ public class PubGrubSolver {
      * versions POM edges declared. A release deep in a long history is exactly what such a pin
      * names, and a cap that dropped it would report the pin as matching nothing the repository
      * advertises.
+     *
+     * <p>Wide mode keeps every version. The cap is judged against the set as it stands, and a
+     * ceiling that arrives later finds nothing below the newest slice, so the retry meant to rule
+     * out a cap artifact would report the same false unsat.
      */
     private List<String> capExpanded(String pkg, List<String> versions) {
-        if (versions.size() <= MAX_EXPANDED_VERSIONS) return versions;
+        if (wideUniverses || versions.size() <= MAX_EXPANDED_VERSIONS) return versions;
         VersionSet positive = solution.positiveSet(pkg);
         Set<String> named = new LinkedHashSet<>(source.declaredVersions(pkg).keySet());
         positive.asExactSingleton().ifPresent(named::add);

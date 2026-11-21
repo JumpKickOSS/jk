@@ -221,6 +221,47 @@ class PubGrubSolverTest {
         assertThat(solution).containsEntry("leaf", "80.0");
     }
 
+    /**
+     * The newest release is picked first under an open floor, and the conflict widens the package
+     * while its set admits only that release, so the cap keeps the newest 48; the range an edge
+     * then asks for lies below them. The compact solve gives up, says it may be incomplete, and the
+     * wide retry finds the range.
+     */
+    @Test
+    void the_wide_retry_finds_a_range_below_the_newest_forty_eight_releases() throws Exception {
+        InMemoryPackageSource.Builder builder = InMemoryPackageSource.builder();
+        for (int n = 1; n <= 80; n++) builder.version("leaf", n + ".0");
+        builder.version("lib", "1.0", deps -> deps.require("leaf", VersionSet.between("10.0", true, "11.0", false)));
+        InMemoryPackageSource full = builder.build();
+        PackageSource capped = new PackageSource() {
+            @Override
+            public List<String> versions(String pkg) throws IOException, InterruptedException {
+                List<String> all = full.versions(pkg);
+                return all.size() <= 4 ? all : all.subList(0, 4);
+            }
+
+            @Override
+            public List<String> expandedVersions(String pkg) throws IOException, InterruptedException {
+                return full.versions(pkg);
+            }
+
+            @Override
+            public List<Term> dependencies(String pkg, String version) throws IOException, InterruptedException {
+                return full.dependencies(pkg, version);
+            }
+        };
+        List<Term> root = List.of(
+                Term.positive("leaf", VersionSet.atLeast("1.0", true)), Term.positive("lib", VersionSet.exact("1.0")));
+
+        PubGrubSolver compact = new PubGrubSolver(capped);
+        assertThatThrownBy(() -> compact.solve("root", "1.0", root)).isInstanceOf(UnsatisfiableException.class);
+        assertThat(compact.maybeIncomplete()).isTrue();
+
+        Map<String, String> solution =
+                new PubGrubSolver(capped).withWideUniverses().solve("root", "1.0", root);
+        assertThat(solution).containsEntry("leaf", "10.0").containsEntry("lib", "1.0");
+    }
+
     private static PackageSource counting(
             PackageSource inner, AtomicInteger versionsCalls, @Nullable Map<String, String> preferredOrNull) {
         return new PackageSource() {

@@ -209,6 +209,41 @@ class LockOrchestratorWorkspaceSubstitutionTest {
         assertThat(notes).anySatisfy(line -> assertThat(line).contains("com.example:lib, which this workspace builds"));
     }
 
+    /**
+     * A conflict widens every package the solve has met to its full history, the member's
+     * coordinate included. The member still answers with its own version only, so the published
+     * lib's catalog is never read: {@code picky} 2.0 needs a leaf no repository has, and backing off
+     * to 1.0 is that conflict.
+     */
+    @Test
+    void a_conflict_does_not_read_the_catalog_of_a_member(@TempDir Path tempDir) throws Exception {
+        upstream.leaf("com.foo", "picky", "1.0");
+        upstream.metadata("com.foo", "picky", "1.0", "2.0");
+        upstream.pom("com.foo", "picky", "2.0", """
+                <project>
+                  <groupId>com.foo</groupId><artifactId>picky</artifactId><version>2.0</version>
+                  <dependencies>
+                    <dependency>
+                      <groupId>com.foo</groupId><artifactId>leaf</artifactId><version>[2.0,)</version>
+                    </dependency>
+                  </dependencies>
+                </project>
+                """);
+        Dependency middle = new Dependency("com.foo:middle", VersionSelector.parse("=1.0"));
+        Dependency picky = new Dependency("com.foo:picky", VersionSelector.parse(">=1.0"));
+        JkBuild lib = manifest("lib", Map.of());
+        JkBuild app = manifest("app", Map.of(Scope.MAIN, List.of(middle, picky)));
+
+        Lockfile lock = lockWorkspace(tempDir, List.of(lib, app), new ArrayList<>());
+
+        assertThat(lock.artifacts())
+                .filteredOn(a -> a.packageKey().equals("com.foo:picky:jar:"))
+                .extracting(Lockfile.Artifact::version)
+                .containsExactly("1.0");
+        assertThat(lock.artifacts()).extracting(Lockfile.Artifact::packageKey).doesNotContain("com.example:lib:jar:");
+        assertThat(http.requested()).doesNotContain(MavenStub.metadataPath("com.example", "lib"));
+    }
+
     private static JkBuild manifest(String name, Map<Scope, List<Dependency>> byScope) {
         EnumMap<Scope, List<Dependency>> copy = new EnumMap<>(Scope.class);
         copy.putAll(byScope);
