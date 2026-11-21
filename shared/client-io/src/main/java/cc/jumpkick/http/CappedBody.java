@@ -96,7 +96,8 @@ final class CappedBody implements BodySubscriber<byte[]> {
             at += n;
         }
         received.clear();
-        if (!gzipped) {
+        // No bytes is no body, encoded or not: a 304 or a 404 a server labels gzip has no header to read.
+        if (!gzipped || body.length == 0) {
             result.complete(body);
             return;
         }

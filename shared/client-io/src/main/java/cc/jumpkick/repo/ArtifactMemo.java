@@ -173,14 +173,18 @@ public record ArtifactMemo(
         String want = expectedSha256.strip().toLowerCase(Locale.ROOT);
         Optional<ArtifactMemo> memo = read(jkFile);
         if (memo.isPresent() && memo.get().stillMatches(blob, want)) return true;
+        // Stat before the read: a file another writer puts in its place after the stat has its own
+        // size and mtime, which the memo written below then does not describe.
+        BasicFileAttributes hashed = Files.readAttributes(blob, BasicFileAttributes.class);
         String actual = Hashing.sha256Hex(blob);
         if (!actual.equalsIgnoreCase(want)) return false;
         String gav = coordinate == null || coordinate.isBlank() ? "-" : coordinate;
         // A re-hash refreshes size and mtime; who packaged the blob, and whether jk downloaded
         // it, have not changed — unless the bytes did, which the digest match above rules out.
-        ofBlob(
-                        blob,
+        new ArtifactMemo(
                         gav,
+                        hashed.lastModifiedTime().toMillis(),
+                        hashed.size(),
                         actual,
                         memo.map(ArtifactMemo::packagedBy).orElse(null),
                         memo.map(m -> m.sha256.equalsIgnoreCase(actual) && m.fetched)

@@ -8,7 +8,6 @@ import cc.jumpkick.model.RepositorySpec;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.io.UncheckedIOException;
 import java.net.InetSocketAddress;
 import java.net.Proxy;
 import java.net.ProxySelector;
@@ -34,7 +33,6 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
-import java.util.zip.GZIPInputStream;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -565,7 +563,7 @@ public final class Http {
         }
         HttpRequest request = withProxyAuthorization(builder, uri).build();
         // Drain the streamed body before each retry so the connection can be reused.
-        return sendWithRetry("GET", uri, request, stallGuarded(gzipAwareInputStream(), uri, bodyIdle), response -> {
+        return sendWithRetry("GET", uri, request, streamedBody(uri, bodyIdle), response -> {
             try (var body = response.body()) {
                 body.transferTo(OutputStream.nullOutputStream());
             }
@@ -1095,35 +1093,21 @@ public final class Http {
     }
 
     /**
-     * Streaming counterpart of {@link #cappedBytes}. Wraps the incoming {@link InputStream}
-     * in a {@link GZIPInputStream} when the response is gzip-encoded; the caller's {@code
-     * try-with-resources} closes the gzip stream, which in turn releases the underlying connection.
+     * Streaming counterpart of {@link #cappedBytes}: the body read through a {@link
+     * StalledBodyGuard} for {@code uri}, and inflated by {@link InflatingBody} when the response is
+     * gzip-encoded. Nothing is read before the caller reads, so a body that stalls before its gzip
+     * header fails that read rather than hanging the request. The caller's {@code
+     * try-with-resources} closes the stream, which releases the underlying connection.
      */
-    static BodyHandler<InputStream> gzipAwareInputStream() {
+    static BodyHandler<InputStream> streamedBody(URI uri, Duration idle) {
         return responseInfo -> {
-            var upstream = HttpResponse.BodyHandlers.ofInputStream().apply(responseInfo);
-            if (!isGzipped(responseInfo)) return upstream;
-            return BodySubscribers.mapping(upstream, in -> {
-                try {
-                    return new GZIPInputStream(in);
-                } catch (IOException e) {
-                    // Not a gzip header after all: close the half-read body, so its connection is
-                    // closed rather than held until the client is collected.
-                    try {
-                        in.close();
-                    } catch (IOException closing) {
-                        e.addSuppressed(closing);
-                    }
-                    throw new UncheckedIOException(e);
-                }
-            });
+            boolean gzipped = isGzipped(responseInfo);
+            return BodySubscribers.mapping(
+                    HttpResponse.BodyHandlers.ofInputStream().apply(responseInfo), in -> {
+                        InputStream guarded = new StalledBodyGuard(in, uri, idle);
+                        return gzipped ? new InflatingBody(guarded) : guarded;
+                    });
         };
-    }
-
-    /** {@code handler}'s body read through a {@link StalledBodyGuard} for {@code uri}. */
-    private static BodyHandler<InputStream> stallGuarded(BodyHandler<InputStream> handler, URI uri, Duration idle) {
-        return responseInfo ->
-                BodySubscribers.mapping(handler.apply(responseInfo), in -> new StalledBodyGuard(in, uri, idle));
     }
 
     private static boolean isGzipped(HttpResponse.ResponseInfo info) {

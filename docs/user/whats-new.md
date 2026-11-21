@@ -6,6 +6,12 @@ JumpKick shows you this page's new entries after it updates itself.
 
 ## 0.54.0
 
+- **A stalled gzip download fails instead of hanging, and an empty gzip answer is read as what it
+  is.** A download of a gzip-encoded file that stops before its first bytes now fails after the idle
+  limit, naming the URL, instead of hanging jk; an empty 304 or 404 that a server labels gzip is
+  read as the answer it is instead of being retried and reported as a failure. Two fetches storing
+  different bytes for the same artifact at once no longer leave the first one's checksum recorded
+  against the second one's file.
 - **`jk build --redo` recompiles a Kotlin module from scratch.** Under `--redo` (and `--force`)
   Kotlin's incremental compile found nothing to do, kept whatever classes were in `target/kotlin/`,
   damaged or stray ones included, and stored them in the action cache as a fresh result.

@@ -14,13 +14,14 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 
 /**
  * A response that says {@code Content-Encoding: gzip} and starts with bytes that are not a gzip
- * header fails in {@code new GZIPInputStream(in)} inside {@link Http#gzipAwareInputStream}; the
- * upstream stream is closed with it, so the half-read connection is closed rather than left open.
+ * header fails the first read of {@link Http#streamedBody}; closing the body then closes the
+ * half-read connection rather than leaving it open.
  */
 class GzipHeaderLeakTest {
 
@@ -32,10 +33,13 @@ class GzipHeaderLeakTest {
                     HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1).build();
             URI uri = URI.create("http://127.0.0.1:" + listen.getLocalPort() + "/x.jar");
             Thread caller = Thread.ofPlatform().start(() -> {
-                try {
-                    client.send(HttpRequest.newBuilder(uri).GET().build(), Http.gzipAwareInputStream());
+                try (InputStream body = client.send(
+                                HttpRequest.newBuilder(uri).GET().build(),
+                                Http.streamedBody(uri, Duration.ofSeconds(60)))
+                        .body()) {
+                    body.read();
                 } catch (IOException | InterruptedException | RuntimeException expected) {
-                    // the bad header fails the send; the question is what happens to the socket
+                    // the bad header fails the read; the question is what happens to the socket
                 }
             });
             try (Socket s = listen.accept()) {
@@ -46,7 +50,9 @@ class GzipHeaderLeakTest {
                 out.write("not gzip at all".getBytes(StandardCharsets.US_ASCII));
                 out.flush();
                 caller.join(10_000);
-                assertThat(caller.isAlive()).as("send returned").isFalse();
+                assertThat(caller.isAlive())
+                        .as("the read failed and the body was closed")
+                        .isFalse();
                 s.setSoTimeout(5_000);
                 int read;
                 try {

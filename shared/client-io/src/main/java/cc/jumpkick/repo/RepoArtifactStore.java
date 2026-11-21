@@ -473,6 +473,12 @@ public final class RepoArtifactStore {
      * throws {@link HeldOpen.Held}, whose message names the file, its holder and the fix.
      */
     public void materialize(String relativePath, Path source, String sha256, boolean fetched) throws HeldOpen.Held {
+        materialize(relativePath, source, sha256, fetched, () -> {});
+    }
+
+    /** As {@link #materialize(String, Path, String, boolean)}, running {@code published} after the move: a test seam. */
+    void materialize(String relativePath, Path source, String sha256, boolean fetched, Runnable published)
+            throws HeldOpen.Held {
         if (root == null || source == null || !Files.isRegularFile(source)) return;
         Path artifact = writePath(relativePath, source);
         try {
@@ -502,28 +508,35 @@ public final class RepoArtifactStore {
             }
             Files.createDirectories(artifact.getParent());
             recordOrigin();
-            boolean same = Files.isRegularFile(artifact) && Files.isSameFile(source, artifact);
-            if (!same) {
-                // Unique temp per writer: a shared fixed ".part" name let two concurrent fetchers
-                // (two engines on one ~/.jk, or two syncs in one engine) interleave writes to the
-                // same inode and install corrupt bytes, which the memo then blessed as VERIFIED.
-                // A unique temp + atomic move makes the published file exactly the (already
-                // caller-verified) source bytes, so the memo's pinned sha describes them correctly.
-                Path tmp = Files.createTempFile(artifact.getParent(), "." + artifact.getFileName() + ".", ".part");
-                // Failure path only — moveInto consumed tmp on success.
-                boolean moved = false;
-                try {
-                    Files.copy(source, tmp, StandardCopyOption.REPLACE_EXISTING);
-                    HeldOpen.replace(artifact, () -> {
-                        AtomicWrites.moveInto(tmp, artifact);
-                        return artifact;
-                    });
-                    moved = true;
-                } finally {
-                    if (!moved) Files.deleteIfExists(tmp);
-                }
+            if (Files.isRegularFile(artifact) && Files.isSameFile(source, artifact)) {
+                writeMemo(relativePath, artifact, sha256, fetched);
+                return;
             }
-            writeMemo(relativePath, artifact, sha256, fetched);
+            // Each writer stages its own copy, and the move and the memo happen under the store's
+            // lock with the memo built from the staged file: two writers of other bytes for one path
+            // leave the memo of whichever file is on disk, never one writer's digest on the other's.
+            Path tmp = Files.createTempFile(artifact.getParent(), "." + artifact.getFileName() + ".", ".part");
+            Path lock = rootOf(this).resolve(SHELF_LOCK_NAME);
+            Files.createDirectories(rootOf(this));
+            // Failure path only — moveInto consumed tmp on success.
+            boolean[] moved = new boolean[1];
+            try {
+                Files.copy(source, tmp, StandardCopyOption.REPLACE_EXISTING);
+                // The release runs between two takes of the lock, never under it.
+                HeldOpen.replace(artifact, () -> {
+                    FileLocks.withLock(lock, () -> {
+                        // The move keeps the inode, so the staged copy's size and mtime are the published file's.
+                        ArtifactMemo memo = memoOf(relativePath, tmp, sha256, fetched);
+                        AtomicWrites.moveInto(tmp, artifact);
+                        moved[0] = true;
+                        published.run();
+                        memo.write(sidecarPath(relativePath));
+                    });
+                    return artifact;
+                });
+            } finally {
+                if (!moved[0]) Files.deleteIfExists(tmp);
+            }
         } catch (HeldOpen.Held held) {
             throw held;
         } catch (IOException | RuntimeException e) {
@@ -550,12 +563,16 @@ public final class RepoArtifactStore {
         Path sidecar = sidecarPath(relativePath);
         Files.createDirectories(Objects.requireNonNull(sidecar.getParent(), "sidecar dir"));
         recordOrigin();
-        Optional<ArtifactMemo> held =
-                ArtifactMemo.read(sidecar).filter(memo -> memo.sha256().equalsIgnoreCase(sha256));
+        memoOf(relativePath, blob, sha256, fetched).write(sidecar);
+    }
+
+    /** The memo of {@code blob} as the bytes of {@code relativePath}, keeping what the held memo of the same bytes records. */
+    private ArtifactMemo memoOf(String relativePath, Path blob, String sha256, boolean fetched) throws IOException {
+        Optional<ArtifactMemo> held = ArtifactMemo.read(sidecarPath(relativePath))
+                .filter(memo -> memo.sha256().equalsIgnoreCase(sha256));
         @Nullable String packagedBy = held.map(ArtifactMemo::packagedBy).orElse(null);
         boolean downloaded = fetched || held.map(ArtifactMemo::fetched).orElse(false);
-        ArtifactMemo.ofBlob(blob, inferGav(relativePath), sha256, packagedBy, downloaded)
-                .write(sidecar);
+        return ArtifactMemo.ofBlob(blob, inferGav(relativePath), sha256, packagedBy, downloaded);
     }
 
     // -------------------------------------------------------------------------
@@ -1075,7 +1092,7 @@ public final class RepoArtifactStore {
                 + " a directory rather than a link";
     }
 
-    /** The lock every shelf publish under one store takes; lives at the shelf root. */
+    /** The lock every publish of an artifact and its memo under one store takes; lives at the store's root. */
     public static final String SHELF_LOCK_NAME = ".shelf.lock";
 
     /**
