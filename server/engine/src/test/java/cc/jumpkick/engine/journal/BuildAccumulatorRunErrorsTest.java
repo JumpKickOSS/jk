@@ -4,9 +4,15 @@ package cc.jumpkick.engine.journal;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.tuple;
 
+import cc.jumpkick.config.SecretRedactor;
+import cc.jumpkick.engine.listen.EventRedaction;
 import cc.jumpkick.run.SourceLocation;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 /**
  * A workspace run that failed on a run-level verdict records that verdict as an error row, so both
@@ -73,6 +79,23 @@ class BuildAccumulatorRunErrorsTest {
         assertThat(r.diagnostics()).singleElement().satisfies(d -> {
             assertThat(d.step()).isEqualTo("lock");
             assertThat(d.conflict()).isEqualTo(conflict);
+        });
+    }
+
+    @Test
+    void a_preflight_failure_masks_a_secret_in_its_reason_and_conflict(@TempDir Path ws) throws IOException {
+        String secret = "lock-preflight-s3cret-token";
+        Files.writeString(ws.resolve(".env"), "TOKEN=" + secret + "\n");
+        BuildAccumulator a = new BuildAccumulator("build", ws.toString(), "g:ws", "cli");
+        String reason = "401 from https://u:" + secret + "@repo.example/a/b";
+        a.addPreflightFailure("lock", 40, reason, null, "{\"conclusion\":\"" + reason + "\"}");
+        a.addRunErrors(List.of(EventRedaction.redactText(ws.toString(), reason)));
+
+        BuildRecord r = a.toRecord(2_000, false, 100, "9.9", null);
+
+        assertThat(r.diagnostics()).singleElement().satisfies(d -> {
+            assertThat(d.message()).doesNotContain(secret).contains(SecretRedactor.MASK);
+            assertThat(d.conflict()).doesNotContain(secret).contains(SecretRedactor.MASK);
         });
     }
 }

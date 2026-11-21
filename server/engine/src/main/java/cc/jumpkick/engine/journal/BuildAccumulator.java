@@ -659,13 +659,18 @@ public final class BuildAccumulator {
         addPreflightFailure(stage, millis, reason, at, "");
     }
 
-    /** As above, the error carrying a resolve with no solution's {@code conflict} ({@code ""} for none). */
+    /**
+     * As above, the error carrying a resolve with no solution's {@code conflict} ({@code ""} for
+     * none). The reason and the conflict are redacted, as a module's diagnostics are.
+     */
     public void addPreflightFailure(
             String stage, long millis, String reason, @Nullable SourceLocation at, String conflict) {
         String step = stage == null || stage.isBlank() ? "preflight" : stage;
         addTask("", step, "resolve", "FAIL", millis, 0L);
         anyFailure = true;
-        addDiag(locatedError(step, step, reason == null ? "" : reason, at, conflict));
+        String message = redactEnv(dir, reason);
+        String safeConflict = redactEnv(dir, conflict);
+        addDiag(locatedError(step, step, message == null ? "" : message, at, safeConflict == null ? "" : safeConflict));
     }
 
     /** An error row with no module, step output or test identity, at {@code at} when known. */
