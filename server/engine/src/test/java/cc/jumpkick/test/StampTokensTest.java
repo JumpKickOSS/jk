@@ -23,7 +23,9 @@ class StampTokensTest {
     }
 
     private static final String SRC = "src:clients/cli/src/test/java/a/FooTest.java:" + "ab".repeat(32);
-    private static final String CP = "cp:" + "cd".repeat(32);
+    private static final String CP = "cp:store:repos/central/g/a/1/a-1.jar:" + "cd".repeat(32);
+    private static final String CLASSES = "cp:lib/target/classes:" + "ce".repeat(32);
+    private static final String ORDER = "cp-order:" + "cf".repeat(32);
 
     @Test
     void a_new_jk_is_named_before_the_inputs_it_moved_with() {
@@ -40,12 +42,24 @@ class StampTokensTest {
                 CP,
                 "x:read:bench/agent-loop/README.md=" + "22".repeat(32));
         assertThat(StampTokens.reason(was, now)).isEqualTo("test source a/FooTest.java changed (+1 more)");
-        assertThat(StampTokens.reason(tokens(SRC, CP), tokens(SRC, "cp:" + "99".repeat(32))))
-                .isEqualTo("runtime classpath changed");
+        assertThat(StampTokens.reason(
+                        tokens(SRC, CP), tokens(SRC, "cp:store:repos/central/g/a/1/a-1.jar:" + "99".repeat(32))))
+                .isEqualTo("runtime classpath entry a-1.jar changed");
         assertThat(StampTokens.describe("x:read:bench/agent-loop/README.md"))
                 .isEqualTo("read file bench/agent-loop/README.md changed");
         assertThat(StampTokens.describe("x:worker:jk.test-runner.plugin.jar"))
                 .isEqualTo("worker jk.test-runner.plugin.jar changed");
+    }
+
+    @Test
+    void a_runtime_classpath_entry_or_its_order_is_named() {
+        assertThat(StampTokens.reason(
+                        tokens(SRC, CP, CLASSES, ORDER),
+                        tokens(SRC, CP, "cp:lib/target/classes:" + "99".repeat(32), ORDER)))
+                .isEqualTo("runtime classpath entry lib/target/classes changed");
+        assertThat(StampTokens.reason(
+                        tokens(SRC, CP, CLASSES, ORDER), tokens(SRC, CLASSES, CP, "cp-order:" + "98".repeat(32))))
+                .isEqualTo("runtime classpath order changed");
     }
 
     /**

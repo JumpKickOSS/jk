@@ -10,6 +10,12 @@ JumpKick shows you this page's new entries after it updates itself.
   version, such as `(1.0)`, `[]` or `[2.0,1.0]`, is refused naming the file, line and key, instead of
   failing the next `jk lock` with no place to look.
 
+
+- **`jk explain` names the classpath entry that moved.** A suite, native image or plugin step
+  keyed on a runtime classpath now keys each entry on its own, so a miss says `runtime classpath
+  entry guava-33.4.0-jre.jar changed`, or `runtime classpath order changed` when the same entries
+  traded places, instead of `runtime classpath changed`. The first build after the update re-runs
+  these steps once.
 - **A module's single test JVM runs its plan once when nothing on the test classpath hooks the
   launcher.** It no longer discovers each class a second time to run it; a classpath with a
   launcher session or discovery listener, or an interceptor (Quarkus), still runs class by class.

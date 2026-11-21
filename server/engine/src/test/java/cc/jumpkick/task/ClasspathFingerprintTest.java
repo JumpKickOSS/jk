@@ -50,6 +50,22 @@ class ClasspathFingerprintTest {
     }
 
     @Test
+    void the_ordered_lines_name_each_entry_and_the_order_apart(@TempDir Path dir) throws IOException {
+        Path a = write(dir.resolve("libs/a.jar"), "A");
+        Path b = write(dir.resolve("libs/b.jar"), "B");
+        var id = ClasspathFingerprint.ON_DISK;
+        Map<String, String> ab = KeyAudit.lines("", ClasspathFingerprint.orderedLines("cp", List.of(a, b), id));
+        assertThat(ab).containsOnlyKeys("cp:libs/a.jar", "cp:libs/b.jar", "cp-order");
+
+        Map<String, String> ba = KeyAudit.lines("", ClasspathFingerprint.orderedLines("cp", List.of(b, a), id));
+        assertThat(KeyAudit.diff(ab, ba)).extracting(KeyAudit.Token::name).containsExactly("cp-order");
+
+        write(b, "B2");
+        Map<String, String> moved = KeyAudit.lines("", ClasspathFingerprint.orderedLines("cp", List.of(a, b), id));
+        assertThat(KeyAudit.diff(ab, moved)).extracting(KeyAudit.Token::name).containsExactly("cp:libs/b.jar");
+    }
+
+    @Test
     void jar_entry_is_keyed_by_file_content(@TempDir Path dir) throws IOException {
         Path jar = write(dir.resolve("repos/central/g/a/1/a-1.jar"), "anything");
         String fp = ClasspathFingerprint.entry(jar);

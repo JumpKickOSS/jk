@@ -195,10 +195,10 @@ public final class TestStamp {
                 }
             }
 
-            // Runtime classpath by CONTENT in its order: a sibling module's change ripples in, a
-            // byte-identical rebuild (new mtime, same bytes) does not, and two entries that trade
-            // places change which of two copies of a class the tests load.
-            feed(md, "cp:" + ClasspathFingerprint.ordered(runtimeCp, identity));
+            // Runtime classpath by CONTENT in its order, one line per entry: a sibling module's
+            // change ripples in, a byte-identical rebuild (new mtime, same bytes) does not, and two
+            // entries that trade places change which of two copies of a class the tests load.
+            for (String line : ClasspathFingerprint.orderedLines("cp", runtimeCp, identity)) feed(md, line);
 
             // Toolchain / runner / forked-worker identity, sorted for stability.
             if (extraInputs != null) {

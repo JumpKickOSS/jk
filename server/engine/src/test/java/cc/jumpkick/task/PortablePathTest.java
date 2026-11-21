@@ -87,4 +87,28 @@ class PortablePathTest {
                 .isEqualTo(user.toAbsolutePath().normalize().toString().replace('\\', '/'));
         assertThat(PortablePath.projectRoot(user)).isEmpty();
     }
+
+    @Test
+    void two_siblings_class_trees_are_named_apart_relative_to_their_workspace(@TempDir Path tmp) throws Exception {
+        Path ws = Files.createDirectories(tmp.resolve("ws"));
+        Files.writeString(
+                ws.resolve(ManifestPaths.MANIFEST), "name = \"ws\"\n[workspace]\nmodules = [\"lib\", \"app\"]\n");
+        for (String m : new String[] {"lib", "app"}) {
+            Files.writeString(
+                    Files.createDirectories(ws.resolve(m)).resolve(ManifestPaths.MANIFEST),
+                    "[project]\nname='" + m + "'\n");
+        }
+        assertThat(PortablePath.of(ws.resolve("lib/target/classes")))
+                .as("module-relative, the two collide")
+                .isEqualTo(PortablePath.of(ws.resolve("app/target/classes")));
+        assertThat(PortablePath.entryName(ws.resolve("lib/target/classes"))).isEqualTo("lib/target/classes");
+        assertThat(PortablePath.entryName(ws.resolve("app/target/classes"))).isEqualTo("app/target/classes");
+    }
+
+    @Test
+    void an_entry_under_no_root_is_named_without_the_machine(@TempDir Path tmp) throws Exception {
+        Path jar =
+                Files.writeString(Files.createDirectories(tmp.resolve("libs/x")).resolve("x.jar"), "");
+        assertThat(PortablePath.entryName(jar)).isEqualTo("x/x.jar");
+    }
 }

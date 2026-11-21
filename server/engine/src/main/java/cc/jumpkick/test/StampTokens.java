@@ -5,6 +5,7 @@ import cc.jumpkick.cache.ActionRecordText;
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.Log;
+import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.task.KeyAudit;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -222,7 +223,8 @@ public final class StampTokens {
         if (name.startsWith("src:")) return "test source " + tail(name.substring(4)) + " changed";
         if (name.startsWith("main")) return "main classes changed";
         if (name.startsWith("res:")) return "test resources changed";
-        if (name.startsWith("cp")) return "runtime classpath changed";
+        if (name.equals("cp" + ClasspathFingerprint.ORDER)) return "runtime classpath order changed";
+        if (name.startsWith("cp:")) return "runtime classpath entry " + entry(name.substring(3)) + " changed";
         if (name.startsWith("x:read:")) return "read file " + path(name.substring(7)) + " changed";
         if (name.startsWith("x:list:")) return "the listing of read dir " + path(name.substring(7)) + " changed";
         if (name.startsWith("x:proc:")) return "program " + tail(name.substring(7)) + " changed";
@@ -265,6 +267,11 @@ public final class StampTokens {
     private static String path(String token) {
         int eq = token.indexOf('=');
         return eq > 0 ? token.substring(0, eq) : token;
+    }
+
+    /** A jar by its file name; a class tree by its whole name, since its last segments are every module's. */
+    private static String entry(String name) {
+        return name.endsWith(".jar") ? name.substring(name.lastIndexOf('/') + 1) : name;
     }
 
     private static String tail(String path) {

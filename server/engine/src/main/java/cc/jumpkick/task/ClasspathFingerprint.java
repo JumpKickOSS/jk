@@ -168,6 +168,28 @@ public final class ClasspathFingerprint {
     }
 
     /**
+     * A run classpath as key lines: {@code <token>:<name>:<digest>} per entry in its order ({@link
+     * PortablePath#entryName}, the digest of its identity), then {@code <token>-order:<digest>} of
+     * the names in order. A miss names the entry that moved, or the order alone when the same
+     * entries traded places; the order line keeps a key that sorts its lines order-sensitive.
+     */
+    public static List<String> orderedLines(String token, List<Path> entries, EntryIdentity identity)
+            throws IOException {
+        List<String> lines = new ArrayList<>(entries.size() + 1);
+        StringBuilder order = new StringBuilder();
+        for (Path p : entries) {
+            String name = PortablePath.entryName(p);
+            lines.add(token + ":" + name + ":" + Hashing.sha256Hex(identity.of(p)));
+            order.append(name).append('\n');
+        }
+        lines.add(token + ORDER + ":" + Hashing.sha256Hex(order.toString()));
+        return lines;
+    }
+
+    /** The suffix of the token {@link #orderedLines} names a classpath's order with. */
+    public static final String ORDER = "-order";
+
+    /**
      * Directory fingerprint matching {@link #entry(Path)} for a classes tree that is not on disk —
      * typically the outputs map from a compile action record after {@code jk clean}. Keys are
      * forward-slash relative paths; values are content SHA-256 hex. Stamp / {@code .jk-*} scratch

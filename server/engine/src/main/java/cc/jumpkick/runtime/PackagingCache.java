@@ -13,6 +13,7 @@ import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.task.ActionCache;
+import cc.jumpkick.task.ChangedInputs;
 import cc.jumpkick.task.FileHashMemo;
 import cc.jumpkick.task.HeavyActionPolicy;
 import cc.jumpkick.task.InputGuard;
@@ -158,7 +159,13 @@ final class PackagingCache {
             List<String> said)
             throws IOException {
         packagingActionCache(cacheRoot)
-                .storeArtifacts(taskId, key, Map.of("inputs", String.join(";", tokens)), baseDir, artifacts, said);
+                .storeArtifacts(
+                        taskId,
+                        key,
+                        Map.of(ChangedInputs.JOINED_TOKENS, String.join(";", tokens)),
+                        baseDir,
+                        artifacts,
+                        said);
     }
 
     /**

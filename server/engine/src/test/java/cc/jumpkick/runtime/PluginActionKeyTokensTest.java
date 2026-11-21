@@ -58,8 +58,11 @@ class PluginActionKeyTokensTest {
 
         List<String> classpathOnly =
                 PlannerPlugin.declaredInputTokens(List.of(In.runtimeClasspath().wireName()), src);
-        assertThat(classpathOnly).hasSize(1);
-        assertThat(classpathOnly.get(0)).startsWith("cp:");
+        assertThat(classpathOnly)
+                .as("one token per entry, then the order")
+                .hasSize(src.runtimeClasspath().size() + 1)
+                .allSatisfy(token -> assertThat(token).startsWith("cp"));
+        assertThat(classpathOnly.getLast()).startsWith("cp-order:");
 
         assertThat(PlannerPlugin.declaredInputTokens(List.of(In.runtimeEntries().wireName()), src))
                 .anySatisfy(token -> assertThat(token).startsWith("cp:"))
@@ -73,8 +76,8 @@ class PluginActionKeyTokensTest {
 
         List<String> compile =
                 PlannerPlugin.declaredInputTokens(List.of(In.compileClasspath().wireName()), src);
-        assertThat(compile).hasSize(1);
-        assertThat(compile.get(0)).startsWith("ccp:");
+        assertThat(compile).hasSize(src.compileClasspath().size() + 1).allSatisfy(token -> assertThat(token)
+                .startsWith("ccp"));
 
         Files.writeString(tmp.resolve("provided-1.0.jar"), "provided, edited");
         assertThat(PlannerPlugin.declaredInputTokens(

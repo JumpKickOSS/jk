@@ -80,6 +80,23 @@ public final class PortablePath {
     }
 
     /**
+     * A classpath entry's name in key material: under jk's own roots and the Maven local repository
+     * as {@link #underJkRoot} spells it, else relative to the workspace that holds it, else as
+     * {@link #of}. Location-free, and two siblings' class trees stay apart where a module-relative
+     * name reads {@code target/classes} for both.
+     */
+    public static String entryName(Path path) {
+        Path abs = path.toAbsolutePath().normalize();
+        String spelled = underJkRoot(abs);
+        boolean underRoot = !spelled.equals(slashed(abs));
+        if (underRoot && !spelled.startsWith("jk-home:")) return spelled;
+        Optional<Path> root = projectRoot(abs);
+        if (root.isPresent() && abs.startsWith(root.get()) && !abs.equals(root.get()))
+            return slashed(root.get().relativize(abs));
+        return underRoot ? spelled : of(abs);
+    }
+
+    /**
      * {@code abs} relative to the root that holds it, named: jk's artifact store ({@code store:}),
      * cache ({@code cache:}), state ({@code state:}) and JDKs ({@code jdks:}), whichever is deepest,
      * since any may be moved; else the Maven local repository ({@code m2:}); else the jk home

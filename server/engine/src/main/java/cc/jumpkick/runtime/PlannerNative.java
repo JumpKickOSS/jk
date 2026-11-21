@@ -513,8 +513,8 @@ public final class PlannerNative {
         // The toolchain and the platform the image is for: a native binary runs on one OS and
         // architecture. A home with no release file keys its content, never the machine's path.
         String graalTok = JdkToolchain.token(javaHome);
-        List<String> nativeTokens = new ArrayList<>(List.of(
-                "cp:" + ClasspathFingerprint.ordered(classpath, identity),
+        List<String> nativeTokens = new ArrayList<>(ClasspathFingerprint.orderedLines("cp", classpath, identity));
+        nativeTokens.addAll(List.of(
                 "args:" + ActionKey.optionsToken(allArgs),
                 "main:" + (mainClass == null ? "" : mainClass),
                 "shared:" + shared,

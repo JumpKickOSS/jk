@@ -710,7 +710,7 @@ public final class ActionCache {
             } else if (previous.isEmpty()) {
                 reason = StepCache.Reason.NO_RECORD;
             } else {
-                List<String> moved = changedInputs(previous.get().inputs(), inputs);
+                List<String> moved = ChangedInputs.of(previous.get().inputs(), inputs);
                 if (moved.isEmpty()) {
                     reason = StepCache.Reason.KEY_CHANGED;
                 } else {
@@ -745,17 +745,6 @@ public final class ActionCache {
             return Optional.empty();
         }
         return key.isEmpty() ? Optional.empty() : lookupLocal(key, ToolchainPolicy.of(key));
-    }
-
-    /** The input names whose values differ between {@code prior} and {@code now}, sorted. */
-    static List<String> changedInputs(Map<String, String> prior, Map<String, String> now) {
-        Set<String> names = new TreeSet<>(prior.keySet());
-        names.addAll(now.keySet());
-        List<String> moved = new ArrayList<>();
-        for (String name : names) {
-            if (!Objects.equals(prior.get(name), now.get(name))) moved.add(name);
-        }
-        return moved;
     }
 
     /** An input naming the compiler, JDK or jk rather than a source, dependency or setting of the build's own. */
