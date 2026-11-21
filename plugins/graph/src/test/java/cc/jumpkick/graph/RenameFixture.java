@@ -19,8 +19,8 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * A one-module workspace compiled the way jk compiles it: main and test classes, each with the
- * reference index javac writes, and the facts index the engine hands the graph worker. A rename or
- * a delete runs through {@link GraphService} as the engine asks for it; {@link #compile} after an
+ * reference index javac writes, and the facts index the engine hands the graph worker. A rename, a
+ * delete or a move runs through {@link GraphService} as the engine asks for it; {@link #compile} after an
  * edit is the engine's compile step, so the proof ({@code phase=verify}) reads what javac resolved.
  */
 final class RenameFixture {
@@ -138,6 +138,21 @@ final class RenameFixture {
             return delete("-", "phase=undo", "why=the code does not compile (" + line + ")");
         }
         return delete("-", "phase=verify");
+    }
+
+    /** {@code move address target} with {@code options} ({@code key=value}), as the engine asks for it. */
+    String move(String address, String target, String... options) throws IOException {
+        return ask("move", List.of(address, target), 8000, options);
+    }
+
+    /** The engine's check after a move: compile, then the proof, or the undo when the compile failed. */
+    String checkMove() throws IOException {
+        String errors = compile();
+        if (errors != null) {
+            String line = errors.lines().findFirst().orElse("").strip();
+            return move("-", "-", "phase=undo", "why=the code does not compile (" + line + ")");
+        }
+        return move("-", "-", "phase=verify");
     }
 
     private String ask(String op, List<String> args, int budget, String... options) throws IOException {

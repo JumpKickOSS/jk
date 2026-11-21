@@ -109,7 +109,7 @@ final class SafeDelete {
     private static String delete(
             GraphService.Workspace w, CodeGraph graph, String address, @Nullable String kind, int budget)
             throws IOException {
-        String stale = edited(w.indexes());
+        String stale = edited(w.indexes(), "Not deleted", "delete");
         if (stale != null) throw new RenameRefusal(stale);
         if (address.contains("(")) {
             throw new RenameRefusal("Not deleted: a delete takes Type.method and removes every overload of it;"
@@ -393,14 +393,19 @@ final class SafeDelete {
     /** One line per annotation of {@code names} a framework may call the declaration through. */
     private static void framework(Target t, List<String> names, String what) {
         for (String a : names) {
-            if (!INERT.contains(a)) {
+            if (!inert(a)) {
                 t.also.add("  @" + a + " on " + what + ": a framework may call or create it by reflection");
             }
         }
     }
 
+    /** Whether the annotation of simple name {@code name} changes nothing at run time. */
+    static boolean inert(String name) {
+        return INERT.contains(name);
+    }
+
     /** The simple names of {@code declared} annotations, else those written in {@code lines}. */
-    private static List<String> annotations(List<String> declared, List<String> lines) {
+    static List<String> annotations(List<String> declared, List<String> lines) {
         Set<String> out = new TreeSet<>();
         for (String a : declared) out.add(a.substring(a.lastIndexOf('.') + 1));
         for (String line : lines) {
@@ -606,16 +611,19 @@ final class SafeDelete {
         return List.copyOf(out);
     }
 
-    /** Why the classes cannot answer for every source yet, or {@code null} when they can. */
-    private static @Nullable String edited(List<GraphBuild.ClassIndex> indexes) {
+    /**
+     * Why the classes cannot answer for every source yet, or {@code null} when they can: {@code not}
+     * opens the answer ({@code Not deleted}), {@code verb} names the edit to run after the build.
+     */
+    static @Nullable String edited(List<GraphBuild.ClassIndex> indexes, String not, String verb) {
         Set<String> edited = new TreeSet<>();
         for (GraphBuild.ClassIndex c : indexes) edited.addAll(c.stale());
         if (edited.isEmpty()) return null;
         List<String> shown = new ArrayList<>(edited).subList(0, Math.min(edited.size(), 5));
-        return "Not deleted: " + edited.size() + (edited.size() == 1 ? " source" : " sources")
+        return not + ": " + edited.size() + (edited.size() == 1 ? " source" : " sources")
                 + " edited since the last build (" + String.join(", ", shown)
                 + (edited.size() > shown.size() ? ", …" : "")
-                + "). The compiled classes are what find every use: build first, then delete.";
+                + "). The compiled classes are what find every use: build first, then " + verb + ".";
     }
 
     /** Undoes the last delete whose modules did not compile; the answer's line. */

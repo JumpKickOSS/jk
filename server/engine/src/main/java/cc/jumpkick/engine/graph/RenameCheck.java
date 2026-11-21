@@ -13,9 +13,9 @@ import java.util.Map;
 import org.jspecify.annotations.Nullable;
 
 /**
- * A rename or a delete proves itself before it answers, for the CLI and MCP alike: the engine
+ * A rename, a delete or a move proves itself before it answers, for the CLI and MCP alike: the engine
  * compiles the modules the edit wrote in (main and tests, as a job), then the graph worker checks
- * that every renamed symbol's new name has exactly the references the old one had (a delete has
+ * that every renamed or moved symbol has exactly the references the old one had (a delete has
  * only the compile to pass), or undoes the edit whole when the compile failed. The worker names the
  * modules on the first line of its proof file; that line is all the engine reads of it.
  */
@@ -29,7 +29,7 @@ final class RenameCheck {
     }
 
     /** The graph operations that edit the tree and prove the edit. */
-    static final List<String> EDITS = List.of("rename", "delete");
+    static final List<String> EDITS = List.of("rename", "delete", "move");
 
     /** Where the worker leaves a rename's or a delete's proof. */
     static Path proof(Path root) {
@@ -61,9 +61,9 @@ final class RenameCheck {
         String why = compiler.compile(root, args, tests);
         String untested = tests
                 ? ""
-                : "delete".equals(op)
-                        ? "\nNot checked: the tests did not compile before the delete, so their uses of it are not"
-                                + " known; not done until they compile."
+                : "delete".equals(op) || "move".equals(op)
+                        ? "\nNot checked: the tests did not compile before the " + op + ", so their uses of it are"
+                                + " not known; not done until they compile."
                         : "\nNot checked: the tests did not compile before the rename, so their calls are neither"
                                 + " renamed nor proven; not done until they compile.";
         if (why == null) {

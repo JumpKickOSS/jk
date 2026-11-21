@@ -106,6 +106,14 @@ final class RenameProof {
 
     /** The check's answer, after which the rename is either settled or undone whole. */
     static String verify(Path root, Path out, CodeGraph graph) throws IOException {
+        return verify(root, out, graph, false);
+    }
+
+    /**
+     * As above; with {@code moved} the symbols changed type rather than name, and the references
+     * expected are where the move put them, not at the same lines.
+     */
+    static String verify(Path root, Path out, CodeGraph graph, boolean moved) throws IOException {
         RenameStore.Proof p = RenameStore.readProof(out);
         if (p == null) return "";
         Map<String, Map<String, Integer>> want = new HashMap<>();
@@ -171,8 +179,10 @@ final class RenameProof {
                 ? show(p.symbols().values().iterator().next()) + " has the " + total + " reference"
                         + (total == 1 ? "" : "s") + " "
                         + show(p.symbols().keySet().iterator().next()) + " had"
-                : "the " + p.symbols().size() + " renamed symbols have the " + total + " references they had";
-        return scope + "it compiles, and " + names + ", at the same lines; nothing else binds to the new name."
+                : "the " + p.symbols().size() + (moved ? " moved" : " renamed") + " symbols have the " + total
+                        + " references they had";
+        return scope + "it compiles, and " + names + (moved ? ", where the move put them" : ", at the same lines")
+                + "; nothing else binds to the new " + (moved ? "symbol." : "name.")
                 + (notProven.isEmpty()
                         ? ""
                         : " Not proven for " + notProven.size() + " file" + (notProven.size() == 1 ? "" : "s")

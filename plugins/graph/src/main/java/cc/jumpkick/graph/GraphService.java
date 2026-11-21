@@ -35,8 +35,8 @@ public final class GraphService {
     private GraphService() {}
 
     /** The operations {@link #run} answers. */
-    public static final List<String> OPS =
-            List.of("build", "query", "path", "neighbors", "callers", "rename", "delete", "read", "find", "rules");
+    public static final List<String> OPS = List.of(
+            "build", "query", "path", "neighbors", "callers", "rename", "delete", "move", "read", "find", "rules");
 
     /**
      * One operation's arguments, as the CLI and MCP surfaces collect them. {@code modulePrefixes} are
@@ -104,7 +104,7 @@ public final class GraphService {
      * the engine matched to the file (one JSON object each), for {@code read}, {@code find} and a
      * library {@code query} the locked jars and where their API indexes are kept, the modules and test suites with sources
      * the engine has no compiled classes of ({@code uncompiled}), whose calls no answer holds, and
-     * for a rename, a delete or callers which modules see which ({@code reach}).
+     * for a rename, a delete, a move or callers which modules see which ({@code reach}).
      */
     public record Workspace(
             Path root,
@@ -213,6 +213,7 @@ public final class GraphService {
     static Reply text(Workspace w, GraphBuild.Result build, Request r) throws IOException {
         if ("rename".equals(r.op())) return RenameOp.run(w, build.graph(), r);
         if ("delete".equals(r.op())) return SafeDelete.run(w, build.graph(), r);
+        if ("move".equals(r.op())) return MoveMember.run(w, build.graph(), r);
         if ("callers".equals(r.op())) {
             CodeGraph g = build.graph();
             Scope scope = Scope.of(r.scope(), r.modulePrefixes(), r.sourceSet(), g.modules());
