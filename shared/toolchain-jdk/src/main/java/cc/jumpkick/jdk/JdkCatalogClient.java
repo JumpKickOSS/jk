@@ -149,9 +149,14 @@ public final class JdkCatalogClient {
         }
     }
 
+    /**
+     * How long ago the cache file was written, never negative: the file system stamps a write finer
+     * than the clock reads, so a file written this millisecond can read as written just ahead of now.
+     */
     private Duration cacheAge() throws IOException {
         Instant mtime = Files.getLastModifiedTime(cacheFile).toInstant();
-        return Duration.between(mtime, Clock.SYSTEM.instant());
+        Duration age = Duration.between(mtime, Clock.SYSTEM.instant());
+        return age.isNegative() ? Duration.ZERO : age;
     }
 
     private void writeCache(byte[] payload) throws IOException {
