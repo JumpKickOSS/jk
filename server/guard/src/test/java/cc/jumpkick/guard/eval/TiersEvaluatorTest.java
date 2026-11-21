@@ -261,6 +261,47 @@ class TiersEvaluatorTest {
     }
 
     @Test
+    void a_composed_annotation_carries_the_tag_it_is_meta_annotated_with(@TempDir Path root) throws Exception {
+        String boot = "org/springframework/boot/test/context/SpringBootTest";
+        ClassWriter aw = new ClassWriter(0);
+        aw.visit(
+                Opcodes.V17,
+                Opcodes.ACC_PUBLIC | Opcodes.ACC_ANNOTATION | Opcodes.ACC_INTERFACE | Opcodes.ACC_ABSTRACT,
+                "p/Slow",
+                null,
+                "java/lang/Object",
+                new String[] {"java/lang/annotation/Annotation"});
+        aw.visitSource("Slow.java", null);
+        AnnotationVisitor tag = aw.visitAnnotation("Lorg/junit/jupiter/api/Tag;", true);
+        tag.visit("value", "slow");
+        tag.visitEnd();
+        aw.visitEnd();
+        ClassFacts slow = FactsExtractor.extract(aw.toByteArray());
+
+        ClassWriter cw = new ClassWriter(0);
+        cw.visit(Opcodes.V17, Opcodes.ACC_PUBLIC, "p/BootTest", null, "java/lang/Object", null);
+        cw.visitSource("BootTest.java", null);
+        cw.visitAnnotation("Lp/Slow;", true).visitEnd();
+        cw.visitField(Opcodes.ACC_PRIVATE, "c", "L" + boot + ";", null, null).visitEnd();
+        MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PUBLIC, "runs", "()V", null, null);
+        mv.visitAnnotation("Lorg/junit/jupiter/api/Test;", true).visitEnd();
+        mv.visitCode();
+        mv.visitInsn(Opcodes.RETURN);
+        mv.visitMaxs(0, 1);
+        mv.visitEnd();
+        cw.visitEnd();
+        ClassFacts test = FactsExtractor.extract(cw.toByteArray());
+        source(root, "test", "Slow");
+        source(root, "test", "BootTest");
+
+        Rule byTag = rule(root, "uses = [\"org.springframework.boot.test.**\"]\ntag  = \"slow\"\n");
+        assertThat(eval(root, byTag, index(slow, test)).outcome()).isEqualTo(Outcome.CLEAN);
+
+        Evaluation bySuite = eval(root, rule(root, "tagged = [\"slow\"]\nsuite  = \"e2e\"\n"), index(slow, test));
+        assertThat(bySuite.observations()).extracting(Observation::key).containsExactly("p.BootTest", "p.Slow");
+    }
+
+    @Test
     void no_test_classes_is_not_evaluated_and_an_unknown_tag_is_a_load_error(@TempDir Path root) throws Exception {
         Rule r = rule(root, "uses  = [\"org.testcontainers.**\"]\nsuite = \"integration\"\n");
         EvalContext ctx = new EvalContext(

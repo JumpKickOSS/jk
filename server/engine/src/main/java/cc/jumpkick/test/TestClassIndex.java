@@ -13,12 +13,12 @@ import cc.jumpkick.guard.facts.FieldFacts;
 import cc.jumpkick.guard.facts.MethodFacts;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.TestClassRule;
+import cc.jumpkick.host.TestTagRule;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
-import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -113,6 +113,10 @@ public final class TestClassIndex {
         TestClassRule.Type shape() {
             return new TestClassRule.Type(name, access, supertypes, classAnnotations, memberAnnotations);
         }
+
+        TestTagRule.Type tagged() {
+            return new TestTagRule.Type(name, supertypes, classTags, classAnnotations, memberTags, memberAnnotations);
+        }
     }
 
     /** The entries as the class files would yield them, from the facts index. */
@@ -192,16 +196,18 @@ public final class TestClassIndex {
                 nested.computeIfAbsent(r.name().substring(0, dollar), k -> new ArrayList<>())
                         .add(r);
         }
+        TestTagRule.Types tagTypes = name -> {
+            Raw t = types.get(name);
+            return t == null ? null : t.tagged();
+        };
         List<Entry> out = new ArrayList<>();
         for (Raw r : raws) {
             if (r.name().indexOf('$') >= 0) continue;
-            Set<String> classTags = classTags(r, types);
-            Set<String> tags = new LinkedHashSet<>(classTags);
-            tags.addAll(memberTags(r, types));
+            Set<String> classTags = TestTagRule.classTags(r.tagged(), tagTypes);
+            Set<String> tags = TestTagRule.tags(r.tagged(), tagTypes);
             Set<String> refs = new LinkedHashSet<>(r.refs());
             for (Raw inner : nested.getOrDefault(r.name(), List.of())) {
-                tags.addAll(classTags(inner, types));
-                tags.addAll(memberTags(inner, types));
+                tags.addAll(TestTagRule.tags(inner.tagged(), tagTypes));
                 refs.addAll(inner.refs());
             }
             Set<String> imports = new LinkedHashSet<>();
@@ -235,57 +241,6 @@ public final class TestClassIndex {
                     return t == null ? null : t.shape();
                 },
                 true);
-    }
-
-    /**
-     * The tags every test of {@code r} carries: on it and on its superclasses and interfaces, each
-     * directly or through its composed annotations, as JUnit's {@code findRepeatableAnnotations} finds
-     * {@code @Tag} on a class.
-     */
-    private static Set<String> classTags(Raw r, Types types) {
-        Set<String> out = new LinkedHashSet<>();
-        for (Raw at : hierarchy(r, types)) {
-            out.addAll(at.classTags());
-            for (String a : at.classAnnotations()) out.addAll(metaTags(a, types, new LinkedHashSet<>()));
-        }
-        return out;
-    }
-
-    /** The tags on the members of {@code r}, its superclasses and interfaces, composed ones followed. */
-    private static Set<String> memberTags(Raw r, Types types) {
-        Set<String> out = new LinkedHashSet<>();
-        for (Raw at : hierarchy(r, types)) {
-            out.addAll(at.memberTags());
-            for (String a : at.memberAnnotations()) out.addAll(metaTags(a, types, new LinkedHashSet<>()));
-        }
-        return out;
-    }
-
-    /** {@code r}, then every superclass and interface of it that can be read, each once. */
-    private static List<Raw> hierarchy(Raw r, Types types) {
-        List<Raw> out = new ArrayList<>();
-        Set<String> seen = new LinkedHashSet<>();
-        ArrayDeque<Raw> todo = new ArrayDeque<>(List.of(r));
-        while (!todo.isEmpty()) {
-            Raw at = todo.poll();
-            if (!seen.add(at.name())) continue;
-            out.add(at);
-            for (String s : at.supertypes()) {
-                Raw sup = types.get(s);
-                if (sup != null) todo.add(sup);
-            }
-        }
-        return out;
-    }
-
-    /** The tags annotation type {@code type} stands for: those it is meta-annotated with, followed through its own annotations. */
-    private static Set<String> metaTags(String type, Types types, Set<String> seen) {
-        if (!seen.add(type)) return Set.of();
-        Raw annotation = types.get(type);
-        if (annotation == null) return Set.of();
-        Set<String> out = new LinkedHashSet<>(annotation.classTags());
-        for (String a : annotation.classAnnotations()) out.addAll(metaTags(a, types, seen));
-        return out;
     }
 
     private static final String TAG = "Lorg/junit/jupiter/api/Tag;";

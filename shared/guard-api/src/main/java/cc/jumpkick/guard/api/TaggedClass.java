@@ -5,8 +5,8 @@ import cc.jumpkick.guard.facts.ClassFacts;
 import java.util.Set;
 
 /**
- * A test class and the JUnit tags it carries — its own plus its methods', as the launcher filters
- * them.
+ * A test class and the JUnit tags it carries, as the launcher filters them: its own and its
+ * methods', those of its supertypes, and those of the composed annotations on any of them.
  */
 public record TaggedClass(ClassFacts cls, Set<String> tags) implements Site {
 

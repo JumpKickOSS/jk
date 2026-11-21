@@ -17,15 +17,12 @@ import cc.jumpkick.guard.facts.MethodFacts;
 import cc.jumpkick.guard.facts.TestClassFacts;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
 /** {@link Facts} over one merged index (and the test index, for tagged classes). */
 public final class FactsView implements Facts {
-
-    private static final String TAG = "org.junit.jupiter.api.Tag";
 
     private final FactsIndex main;
     private final FactsIndex test;
@@ -111,11 +108,7 @@ public final class FactsView implements Facts {
         List<TaggedClass> out = new ArrayList<>();
         for (ClassFacts c : test.classList()) {
             if (c.isPackageInfo() || !testClasses.isTestClass(c)) continue;
-            Set<String> tags = new LinkedHashSet<>();
-            for (AnnotationFacts a : c.annotations()) if (a.typeName().equals(TAG)) tags.addAll(a.value());
-            for (MethodFacts m : c.methods())
-                for (AnnotationFacts a : m.annotations()) if (a.typeName().equals(TAG)) tags.addAll(a.value());
-            out.add(new TaggedClass(c, tags));
+            out.add(new TaggedClass(c, testClasses.tags(c)));
         }
         return out;
     }

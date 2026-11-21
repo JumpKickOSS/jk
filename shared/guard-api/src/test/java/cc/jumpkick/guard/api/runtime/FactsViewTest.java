@@ -205,6 +205,57 @@ class FactsViewTest {
     }
 
     @Test
+    void a_test_class_carries_the_tags_of_its_composed_annotations_and_its_supertypes() {
+        var slowAnnotation = new AnnotationFacts("La/Slow;", true, Map.of());
+        ClassFacts slow = new ClassFacts(
+                "a/Slow",
+                0x2601,
+                "java/lang/Object",
+                List.of("java/lang/annotation/Annotation"),
+                "Slow.java",
+                List.of(tag("slow")),
+                List.of(),
+                List.of(),
+                Set.of());
+        ClassFacts base = new ClassFacts(
+                "a/BaseTest",
+                0x0401,
+                "java/lang/Object",
+                List.of(),
+                "BaseTest.java",
+                List.of(tag("db")),
+                List.of(),
+                List.of(),
+                Set.of());
+        ClassFacts contract = new ClassFacts(
+                "a/Contract",
+                0x0601,
+                "java/lang/Object",
+                List.of(),
+                "Contract.java",
+                List.of(slowAnnotation),
+                List.of(),
+                List.of(),
+                Set.of());
+        ClassFacts test = new ClassFacts(
+                "a/RepoTest",
+                1,
+                "a/BaseTest",
+                List.of("a/Contract"),
+                "RepoTest.java",
+                List.of(),
+                List.of(),
+                List.of(method("runs", "()V", List.of(TEST, slowAnnotation), List.of(), List.of(), List.of())),
+                Set.of());
+        FactsView v = new FactsView(main(), index(slow, base, contract, test), List.of());
+
+        assertThat(v.testClasses()).singleElement().satisfies(t -> {
+            assertThat(t.cls().name()).isEqualTo("a/RepoTest");
+            assertThat(t.tags()).containsExactlyInAnyOrder("db", "slow");
+        });
+    }
+
+    @Test
     void constants_edges_and_class_dirs_come_from_the_main_index_and_the_config() {
         assertThat(view().constants("a.Esc")).containsExactly(Map.entry("SEP", ","));
         assertThat(view().packageEdges()).containsExactly(Map.entry("a", Set.of("b")), Map.entry("b", Set.of("a")));
