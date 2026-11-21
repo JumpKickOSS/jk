@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.util.AccessLedger;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -14,6 +15,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -270,5 +272,23 @@ class CasTest {
         assertThatThrownBy(() -> cas.pathFor("abcd" + "/".repeat(4) + "etc/passwd"))
                 .isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> cas.pathFor("abcd../../x")).isInstanceOf(IllegalArgumentException.class);
+    }
+
+    /** A digest names one blob in either case: one path, one ledger key, and a read that verifies. */
+    @Test
+    void an_uppercase_digest_names_the_blob_its_lowercase_names(@TempDir Path root) throws IOException {
+        Cas cas = Cas.tracked(root);
+        byte[] payload = "either case".getBytes(StandardCharsets.UTF_8);
+        String lower = Hashing.sha256Hex(payload);
+        String upper = lower.toUpperCase(Locale.ROOT);
+        cas.put(payload);
+
+        assertThat(cas.pathFor(upper).toString()).isEqualTo(cas.pathFor(lower).toString());
+        assertThat(cas.contains(upper)).isTrue();
+        assertThat(cas.read(upper)).isEqualTo(payload);
+        assertThat(cas.reuse(upper)).isPresent();
+        assertThat(AccessLedger.at(root.resolve(".access")).load())
+                .containsKey(StoreCasGc.key(lower))
+                .doesNotContainKey(StoreCasGc.key(upper));
     }
 }

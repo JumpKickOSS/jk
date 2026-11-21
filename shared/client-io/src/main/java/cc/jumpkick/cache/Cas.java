@@ -89,17 +89,24 @@ public final class Cas {
 
     /**
      * Stable path for a hash. May or may not exist on disk. Only hex digits name a blob: anything
-     * else (a separator, a {@code ..}) would resolve outside the store, so it is refused.
+     * else (a separator, a {@code ..}) would resolve outside the store, so it is refused. Either
+     * case names the same blob: the hash is lowercased, as blobs are stored.
      */
     public Path pathFor(String sha256Hex) {
+        String hex = lowerHex(sha256Hex);
+        if (ledger != null) ledger.touch(StoreCasGc.key(hex));
+        return root.resolve("sha256")
+                .resolve(hex.substring(0, 2))
+                .resolve(hex.substring(2, 4))
+                .resolve(hex.substring(4));
+    }
+
+    /** {@code sha256Hex} lowercased; refused unless it is at least 4 hex digits. */
+    private static String lowerHex(String sha256Hex) {
         if (sha256Hex.length() < 4 || !Hashing.isHex(sha256Hex)) {
             throw new IllegalArgumentException("sha256 hex must be at least 4 hex digits, got: " + sha256Hex);
         }
-        if (ledger != null) ledger.touch(StoreCasGc.key(sha256Hex));
-        return root.resolve("sha256")
-                .resolve(sha256Hex.substring(0, 2))
-                .resolve(sha256Hex.substring(2, 4))
-                .resolve(sha256Hex.substring(4));
+        return sha256Hex.toLowerCase(Locale.ROOT);
     }
 
     /**
@@ -371,7 +378,7 @@ public final class Cas {
         }
         byte[] data = Files.readAllBytes(file);
         String actual = Hashing.sha256Hex(data);
-        if (!actual.equals(sha256Hex)) {
+        if (!actual.equalsIgnoreCase(sha256Hex)) {
             throw new IOException("CAS corruption: expected " + sha256Hex + " but got " + actual);
         }
         return data;
