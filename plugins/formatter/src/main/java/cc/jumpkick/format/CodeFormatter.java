@@ -49,6 +49,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicIntegerArray;
+import java.util.function.Supplier;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 
@@ -96,8 +97,9 @@ public final class CodeFormatter implements Plugin {
                 ? new FormatStampCache(CacheTree.FORMAT_STAMPS.under(spec.cacheDir), spec.configKey)
                 : null;
 
-        // Built once for the whole run, then only read, so every thread shares one copy.
-        TypeIndex index = spec.optimizeImports ? TypeIndex.scan(spec.indexFiles) : null;
+        // Built by the first Java file that misses the stamp cache, then only read, so a run whose
+        // files are all settled never lexes the workspace or walks the JDK.
+        @Nullable Supplier<TypeIndex> types = spec.optimizeImports ? TypeIndex.lazy(spec.indexFiles) : null;
 
         Formatters formatters = new Formatters(spec);
         Tally tally;
@@ -114,7 +116,8 @@ public final class CodeFormatter implements Plugin {
                     return new FileResult(ref.file(), "error", "no " + ref.kind() + " formatter jars were provided");
                 }
                 try (var window = dog.watch(i, ref.file())) {
-                    return formatOne(ref, fmt, spec, stampCache, index);
+                    // Building the index is the run's cost, not this file's: it is not timed.
+                    return formatOne(ref, fmt, spec, stampCache, types == null ? null : () -> window.untimed(types));
                 } finally {
                     formatters.giveBack(ref.kind(), fmt);
                 }
@@ -606,10 +609,15 @@ public final class CodeFormatter implements Plugin {
      * One file, start to finish: stamp lookup (skipped under {@link Spec#redo}), the FQCN pass, then Spotless, all in memory off one
      * read. Runs on a pool thread under the run's wall bound. It writes nothing and stamps nothing:
      * the verdict, the bytes and the key come back in the result for {@link #formatAll} to emit in
-     * spec order and {@linkplain #commit apply}.
+     * spec order and {@linkplain #commit apply}. {@code index} is asked for the type index only by
+     * a Java file the stamps did not settle.
      */
     static FileResult formatOne(
-            FileRef ref, Formatter fmt, Spec spec, @Nullable FormatStampCache stampCache, @Nullable TypeIndex index) {
+            FileRef ref,
+            Formatter fmt,
+            Spec spec,
+            @Nullable FormatStampCache stampCache,
+            @Nullable Supplier<TypeIndex> index) {
         try {
             byte[] original = Files.readAllBytes(ref.file().toPath());
             String stampKey = stampCache != null ? stampCache.keyFor(original) : null;
@@ -641,7 +649,7 @@ public final class CodeFormatter implements Plugin {
             // per language, not a wider regex.
             byte[] input = original;
             if (index != null && ref.kind() == Kind.JAVA) {
-                FqcnShortener.Result r = FqcnShortener.shorten(text(original), index, syntax(ref.kind()));
+                FqcnShortener.Result r = FqcnShortener.shorten(text(original), index.get(), syntax(ref.kind()));
                 if (r.changed()) input = r.source().getBytes(StandardCharsets.UTF_8);
             }
 

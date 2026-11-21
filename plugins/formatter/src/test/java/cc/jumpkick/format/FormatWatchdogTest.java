@@ -66,6 +66,32 @@ class FormatWatchdogTest {
         }
     }
 
+    /** Work the run shares, such as building the type index, is not charged to the file that asked. */
+    @Test
+    void time_spent_untimed_does_not_count_toward_the_bound() {
+        FormatWatchdog dog = watchdog(500, 2_000);
+        try (var window = dog.watch(0, FILE)) {
+            advanceMs(300);
+            String built = window.untimed(() -> {
+                advanceMs(5_000);
+                dog.tick();
+                return "index";
+            });
+            advanceMs(300);
+            dog.tick();
+
+            assertThat(built).isEqualTo("index");
+            assertThat(dog.verdict(0)).isNull();
+            assertThat(notices).isEmpty();
+
+            advanceMs(1_800);
+            dog.tick();
+            assertThat(dog.verdict(0))
+                    .as("the bound still holds after the pause")
+                    .isNotNull();
+        }
+    }
+
     @Test
     void a_file_past_the_hard_threshold_is_abandoned_and_named_in_its_verdict() {
         FormatWatchdog dog = watchdog(500, 2_000);

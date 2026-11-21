@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
@@ -136,6 +137,23 @@ class TypeIndexTopLevelTest {
                 """, index);
         assertThat(r.changed()).isTrue();
         assertThat(r.source()).contains("import cc.jumpkick.foo.Bar;").contains("return Bar.hi();");
+    }
+
+    /** Sources are lexed in parallel but indexed in their given order, so collisions list stably. */
+    @Test
+    void a_parallel_scan_indexes_in_source_order_and_a_lazy_one_builds_once(@TempDir Path tmp) throws Exception {
+        List<Path> sources = new ArrayList<>();
+        List<String> expected = new ArrayList<>();
+        for (int i = 0; i < 40; i++) {
+            Path p = tmp.resolve("Dup" + i + ".java");
+            Files.writeString(p, "package p" + i + ";\nclass Dup {}\n");
+            sources.add(p);
+            expected.add("p" + i + ".Dup");
+        }
+
+        assertThat(TypeIndex.scan(sources, false).fqcnsNamed("Dup")).containsExactlyElementsOf(expected);
+        var lazy = TypeIndex.lazy(sources);
+        assertThat(lazy.get()).isSameAs(lazy.get());
     }
 
     /**

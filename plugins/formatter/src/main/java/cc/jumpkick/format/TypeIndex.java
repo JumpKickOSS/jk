@@ -14,6 +14,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Supplier;
 import java.util.regex.Matcher;
 import org.jspecify.annotations.Nullable;
 
@@ -38,11 +39,40 @@ final class TypeIndex {
         return scan(sources, true);
     }
 
+    /**
+     * {@link #scan(Collection)} on the first {@code get}, then that one index for every caller:
+     * a run that never needs the index never reads the workspace or the JDK.
+     */
+    static Supplier<TypeIndex> lazy(Collection<Path> sources) {
+        return new Supplier<>() {
+            private @Nullable TypeIndex built;
+
+            @Override
+            public synchronized TypeIndex get() {
+                TypeIndex index = built;
+                if (index == null) {
+                    index = scan(sources);
+                    built = index;
+                }
+                return index;
+            }
+        };
+    }
+
+    /**
+     * Sources are read and lexed in parallel, then indexed in their given order, so the index is
+     * the same whatever the thread timing.
+     */
     static TypeIndex scan(Collection<Path> sources, boolean includeJdk) {
         Set<String> known = new LinkedHashSet<>();
         Map<String, List<String>> bySimple = new HashMap<>();
         if (sources != null) {
-            for (Path p : sources) addSource(p, known, bySimple);
+            // This runs in the formatter's own worker process, where no request value is carried.
+            List<List<String>> declared = new ArrayList<>(sources)
+                    .parallelStream().map(TypeIndex::topLevelTypes).toList();
+            for (List<String> types : declared) {
+                for (String fqcn : types) add(fqcn, known, bySimple);
+            }
         }
         TypeIndex project = new TypeIndex(known, bySimple);
         return includeJdk ? project.merge(jdk()) : project;
@@ -74,21 +104,23 @@ final class TypeIndex {
         return new TypeIndex(k, b);
     }
 
-    private static void addSource(Path file, Set<String> known, Map<String, List<String>> bySimple) {
-        if (file == null || !Files.isRegularFile(file)) return;
+    /** The top-level types {@code file} declares, as FQCNs in declaration order. */
+    private static List<String> topLevelTypes(@Nullable Path file) {
+        if (file == null || !Files.isRegularFile(file)) return List.of();
         String name = file.getFileName().toString();
         if (!name.endsWith(".java") && !name.endsWith(".kt") && !name.endsWith(".groovy") && !name.endsWith(".scala")) {
-            return;
+            return List.of();
         }
         String src;
         try {
             src = Files.readString(file);
         } catch (IOException e) {
-            return;
+            return List.of();
         }
         String blanked = JavaText.blanked(src);
         String pkg = JavaText.packageName(blanked);
-        if (pkg.isEmpty()) return;
+        if (pkg.isEmpty()) return List.of();
+        List<String> out = new ArrayList<>();
         Matcher m = JavaText.TYPE_DECL.matcher(blanked);
         // Only a declaration at brace depth 0 is a top-level type, and only a top-level type is
         // named {@code package.Simple}. Indexing every match invented an FQCN for each nested,
@@ -104,8 +136,9 @@ final class TypeIndex {
             if (depth != 0) continue;
             String simple = m.group(1) != null ? m.group(1) : m.group(2);
             if (simple == null) continue;
-            add(pkg + "." + simple, known, bySimple);
+            out.add(pkg + "." + simple);
         }
+        return out;
     }
 
     /** Net {@code { }} nesting change over {@code [from, to)} of an already-blanked source. */

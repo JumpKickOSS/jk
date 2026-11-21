@@ -11,6 +11,8 @@ import com.diffplug.spotless.LineEnding;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Supplier;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -61,6 +63,34 @@ class CodeFormatterRedoTest {
             assertThat(result.status()).isEqualTo("clean");
         }
         assertThat(stamps.contains(stamps.keyFor(source))).isTrue();
+    }
+
+    /** A settled Java file never asks for the type index, so an all-clean run never builds it. */
+    @Test
+    void the_type_index_is_asked_for_only_by_a_java_file_the_stamps_did_not_settle(@TempDir Path tmp) throws Exception {
+        Path file = tmp.resolve("C.java");
+        byte[] source = "class C { java.util.List<String> xs; }\n".getBytes(StandardCharsets.UTF_8);
+        Files.write(file, source);
+        FormatStampCache stamps = new FormatStampCache(tmp.resolve("stamps"), CONFIG_KEY);
+        stamps.record(stamps.keyFor(source));
+        var ref = new CodeFormatter.FileRef(CodeFormatter.Kind.JAVA, file.toFile());
+        var spec = new CodeFormatter.Spec();
+        spec.apply = false;
+        AtomicInteger asked = new AtomicInteger();
+        Supplier<TypeIndex> index = () -> {
+            asked.incrementAndGet();
+            return TypeIndex.jdkOnly();
+        };
+
+        try (Formatter fmt = groovy()) {
+            assertThat(CodeFormatter.formatOne(ref, fmt, spec, stamps, index).status())
+                    .isEqualTo("clean");
+            assertThat(asked).as("a stamp hit").hasValue(0);
+
+            spec.redo = true;
+            CodeFormatter.formatOne(ref, fmt, spec, stamps, index);
+            assertThat(asked).as("a file the run formats").hasValue(1);
+        }
     }
 
     @Test

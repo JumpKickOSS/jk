@@ -6,6 +6,7 @@ import java.io.File;
 import java.util.Locale;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -174,13 +175,30 @@ final class FormatWatchdog implements AutoCloseable {
 
         private final int index;
         private final File file;
-        private final long startNanos;
+        private volatile long startNanos;
         private volatile long nextNoticeNanos = warnNanos;
 
         private Watch(int index, File file, long startNanos) {
             this.index = index;
             this.file = file;
             this.startNanos = startNanos;
+        }
+
+        /**
+         * Run {@code work} outside the bound, for a cost the run shares rather than this file's own;
+         * the window's clock starts again when it returns. A window already abandoned stays so.
+         */
+        <T> T untimed(Supplier<T> work) {
+            boolean open = inFlight.remove(index, this);
+            try {
+                return work.get();
+            } finally {
+                if (open) {
+                    startNanos = clock.nanos();
+                    nextNoticeNanos = warnNanos;
+                    inFlight.put(index, this);
+                }
+            }
         }
 
         @Override
