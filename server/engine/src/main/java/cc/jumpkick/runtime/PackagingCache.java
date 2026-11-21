@@ -18,6 +18,7 @@ import cc.jumpkick.task.FileHashMemo;
 import cc.jumpkick.task.HeavyActionPolicy;
 import cc.jumpkick.task.InputGuard;
 import cc.jumpkick.task.ModuleIdentity;
+import cc.jumpkick.task.RunNotices;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -105,14 +106,36 @@ final class PackagingCache {
     /**
      * True when {@code artifacts} may go into the cache under {@code cacheRoot}: a heavy artifact
      * enters only while the machine keeps heavy outputs and the module has not opted out ({@link
-     * #heavyRefused}), and jk never fills a disk, so on a nearly full volume ({@link DiskGuard}) a
-     * heavy artifact stays in target/ only, the step says so, and the engine is woken to reclaim space.
+     * #heavyRefused}), which the build says once, and jk never fills a disk, so on a nearly full
+     * volume ({@link DiskGuard}) a heavy artifact stays in target/ only, the step says so, and the
+     * engine is woken to reclaim space.
      */
     static boolean admitted(TaskContext ctx, Path cacheRoot, List<Path> artifacts, @Nullable String taskId) {
+        JkBuild project =
+                ctx.get(BuildPlanner.MODULE).map(ModuleIdentity::project).orElse(null);
+        return admitted(ctx, cacheRoot, artifacts, taskId, project, HeavyTtl.resolve());
+    }
+
+    /** As {@link #admitted(TaskContext, Path, List, String)} for {@code project} under the heavy window {@code heavyTtl}. */
+    static boolean admitted(
+            TaskContext ctx,
+            Path cacheRoot,
+            List<Path> artifacts,
+            @Nullable String taskId,
+            @Nullable JkBuild project,
+            Duration heavyTtl) {
         if (HeavyActionPolicy.classC(taskId) || largestOf(artifacts) >= DiskGuard.HEAVY_BYTES) {
-            JkBuild project =
-                    ctx.get(BuildPlanner.MODULE).map(ModuleIdentity::project).orElse(null);
-            if (heavyRefused(project, HeavyTtl.resolve()) != null) return false;
+            String refused = heavyRefused(project, heavyTtl);
+            if (refused != null) {
+                // The machine's setting is one fact for the whole build; a module's opt-out is its own.
+                String module = HeavyTtl.caches(heavyTtl) && project != null
+                        ? project.project().name()
+                        : null;
+                RunNotices.warnOnce(
+                        module == null ? HEAVY_NOT_CACHED : HEAVY_NOT_CACHED + ":" + module,
+                        () -> (module == null ? "" : module + ": ") + "heavy outputs " + refused);
+                return false;
+            }
         }
         if (DiskGuard.admits(cacheRoot, artifacts)) return true;
         ctx.warn(
@@ -155,6 +178,9 @@ final class PackagingCache {
 
     /** The warning a packaging step carries when the disk guard kept its artifact out of the cache. */
     static final String DISK_LOW = "disk-low";
+
+    /** The notice a build gives once when a setting keeps its heavy outputs out of the cache. */
+    static final String HEAVY_NOT_CACHED = "heavy-not-cached";
 
     private static long largestOf(List<Path> artifacts) {
         long largest = 0;

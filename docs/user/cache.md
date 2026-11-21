@@ -463,7 +463,8 @@ nothing from them, and a long-lived one is where a full disk does the most harm.
 its own heavy outputs out of the cache with `[build] cache-heavy-outputs = false` in its
 `jk.toml`; it cannot lengthen the window, which is the machine's. Either setting means a heavy
 step runs on every build that schedules its module, and `jk explain` names it beside the step:
-`relink · not cached: [cache] heavy-ttl = 0`.
+`relink · not cached: [cache] heavy-ttl = 0`. The build says it once, not once per step:
+`heavy outputs not cached: [cache] heavy-ttl = 0`.
 
 Class-C outputs (native images, OCI tarballs, fat/minified jars) keep at most **1**
 generation of action keys **per checkout**: two worktrees of one project on

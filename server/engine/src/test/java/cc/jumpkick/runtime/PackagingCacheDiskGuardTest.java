@@ -19,6 +19,7 @@ import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.InputGuard;
+import cc.jumpkick.task.RunNotices;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.file.Files;
@@ -37,7 +38,7 @@ import org.junit.jupiter.api.io.TempDir;
  * cache whose volume is nearly full, and the step says so with the volume's figures; with room it
  * is stored. The volume is pinned, so neither case depends on the host's free space. {@code jk
  * explain} names whichever of the disk, {@code [cache] heavy-ttl} and {@code [build]
- * cache-heavy-outputs} keeps a heavy output out.
+ * cache-heavy-outputs} keeps a heavy output out, and the build says once which setting did.
  */
 class PackagingCacheDiskGuardTest {
 
@@ -107,6 +108,61 @@ class PackagingCacheDiskGuardTest {
                     .as("the machine's setting is named first")
                     .isEqualTo("not cached: [cache] heavy-ttl = 0");
         }
+    }
+
+    @Test
+    void a_build_says_once_that_the_machine_keeps_heavy_outputs_out(@TempDir Path tmp) throws Exception {
+        Recording ctx = new Recording();
+        List<String> notices = refusals(tmp, null, Duration.ZERO, ctx, 2);
+
+        assertThat(notices)
+                .as("two heavy outputs, one notice")
+                .containsExactly(PackagingCache.HEAVY_NOT_CACHED + "=heavy outputs not cached: [cache] heavy-ttl = 0");
+        assertThat(ctx.warnings).as("no step repeats it").isEmpty();
+    }
+
+    @Test
+    void a_build_says_once_which_module_keeps_its_heavy_outputs_out(@TempDir Path tmp) throws Exception {
+        Path dir = Files.createDirectories(tmp.resolve("app"));
+        JkBuild optedOut = JkBuildParser.parse(Files.writeString(dir.resolve("jk.toml"), """
+                name = "app"
+                group = "g"
+                version = "1.0"
+
+                [build]
+                cache-heavy-outputs = false
+                """));
+        Recording ctx = new Recording();
+        List<String> notices = refusals(tmp, optedOut, HeavyTtl.DEFAULT, ctx, 2);
+
+        assertThat(notices)
+                .containsExactly(PackagingCache.HEAVY_NOT_CACHED
+                        + ":app=app: heavy outputs not cached: [build] cache-heavy-outputs = false");
+        assertThat(ctx.warnings).isEmpty();
+    }
+
+    /**
+     * Offers {@code times} Class-C outputs of {@code project} to the cache in one run under {@code
+     * heavyTtl}, each refused, and returns the run's notices as {@code key=message}.
+     */
+    private static List<String> refusals(
+            Path tmp, @Nullable JkBuild project, Duration heavyTtl, Recording ctx, int times) throws Exception {
+        Path cache = tmp.resolve("cache");
+        Path base = Files.createDirectories(tmp.resolve("target"));
+        List<String> notices = new ArrayList<>();
+        try (DiskGuard.Pin room = DiskGuard.pinForTest(cache, new JkCacheConfig.DiskSpace(100 * GIB, 50 * GIB))) {
+            SessionContext.where(Session.defaults().withCacheDir(cache), () -> {
+                RunNotices.openSink(SessionContext.current().io(), (key, message) -> notices.add(key + "=" + message));
+                for (int i = 0; i < times; i++) {
+                    Path jar = Files.writeString(base.resolve("app-" + i + "-all.jar"), "fat " + i);
+                    String task = ActionKey.qualifiedTaskId(TaskNames.PACKAGE_ASSEMBLY, jar);
+                    assertThat(PackagingCache.admitted(ctx, cache, List.of(jar), task, project, heavyTtl))
+                            .isFalse();
+                }
+                return null;
+            });
+        }
+        return notices;
     }
 
     @Test
