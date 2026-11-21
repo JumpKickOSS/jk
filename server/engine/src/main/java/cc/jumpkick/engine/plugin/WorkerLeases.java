@@ -536,7 +536,7 @@ public final class WorkerLeases {
          */
         public Grant acquire(List<String> command, @Nullable Long requestId, JvmOptions.HeapChoice choice)
                 throws InterruptedException {
-            return acquire(demand(command, choice), requestId);
+            return acquire(LeaseDemand.of(command, choice, capacityBytes()), requestId);
         }
 
         /**
@@ -548,7 +548,9 @@ public final class WorkerLeases {
         public Grant acquireResident(List<String> command, JvmOptions.HeapChoice choice, LeaseResident resident)
                 throws InterruptedException {
             return acquire(new LeaseWaiter(
-                    demand(command, choice).resident(), null, Objects.requireNonNull(resident, "resident")));
+                    LeaseDemand.of(command, choice, capacityBytes()).resident(),
+                    null,
+                    Objects.requireNonNull(resident, "resident")));
         }
 
         /** As {@link #acquire(List, Long)} for a lease already measured in bytes. */
@@ -1120,30 +1122,6 @@ public final class WorkerLeases {
 
         private boolean requestEnded(@Nullable Long requestId) {
             return requestId != null && ended.test(requestId);
-        }
-
-        private LeaseDemand demand(List<String> command, JvmOptions.HeapChoice choice) {
-            long cap = Math.max(1, capacityBytes());
-            long requested = HeapFlags.parseXmx(command);
-            if (requested <= 0 && choice.xmxBytes() > 0) requested = choice.xmxBytes();
-            boolean jvm = requested > 0 || HeapFlags.jvmCommand(command);
-            if (!jvm) {
-                long bytes = Math.min(TOOL_BYTES, cap);
-                return new LeaseDemand(bytes, 0, false, bytes < TOOL_BYTES, false, false);
-            }
-            long xmx = requested > 0 ? requested : UnsizedHeap.lease(command, cap);
-            if (choice.userPinned()) {
-                long natural = jvmLease(xmx);
-                long bytes = Math.min(cap, natural);
-                String pin = choice.label().isEmpty() ? "heap" : choice.label();
-                return new LeaseDemand(
-                        bytes, requested > 0 ? requested : 0, true, false, true, natural > cap, true, natural, pin);
-            }
-            long fitted = clampXmx(xmx, cap);
-            long ceiling = Math.min(cap, jvmLease(fitted));
-            long bytes = choice.priceBytes() > 0 ? Math.min(ceiling, choice.priceBytes()) : ceiling;
-            return new LeaseDemand(
-                    bytes, fitted, true, fitted < xmx || ceiling < jvmLease(xmx), false, false, true, ceiling, "");
         }
     }
 

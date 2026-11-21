@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.plugin;
 
+import java.util.List;
+
 /**
  * What a lease asks of a {@link WorkerLeases.Ledger}. {@code cpuSlot}: counts against the running-JVM cap; a resident helper between requests does
  * not. {@code worstBytes} is what the process may use: its {@code -Xmx} lease when {@code bytes} is
@@ -18,6 +20,44 @@ record LeaseDemand(
         String pin) {
     LeaseDemand(long bytes, long xmxBytes, boolean jvm, boolean clamped, boolean userPinned, boolean overBudget) {
         this(bytes, xmxBytes, jvm, clamped, userPinned, overBudget, jvm, bytes, "");
+    }
+
+    /**
+     * What {@code command} leases against {@code capacityBytes}: a tool {@link
+     * WorkerLeases#TOOL_BYTES}; a JVM its {@linkplain WorkerLeases#jvmLease lease}, with a planned
+     * {@code -Xmx} lowered to fit and a user's pin kept but charged at most the whole capacity. A
+     * {@code choice} that prices the fork below its ceiling charges that price.
+     */
+    static LeaseDemand of(List<String> command, JvmOptions.HeapChoice choice, long capacityBytes) {
+        long cap = Math.max(1, capacityBytes);
+        long requested = HeapFlags.parseXmx(command);
+        if (requested <= 0 && choice.xmxBytes() > 0) requested = choice.xmxBytes();
+        boolean jvm = requested > 0 || HeapFlags.jvmCommand(command);
+        if (!jvm) {
+            long bytes = Math.min(WorkerLeases.TOOL_BYTES, cap);
+            return new LeaseDemand(bytes, 0, false, bytes < WorkerLeases.TOOL_BYTES, false, false);
+        }
+        long xmx = requested > 0 ? requested : UnsizedHeap.lease(command, cap);
+        if (choice.userPinned()) {
+            long natural = WorkerLeases.jvmLease(xmx);
+            long bytes = Math.min(cap, natural);
+            String pin = choice.label().isEmpty() ? "heap" : choice.label();
+            return new LeaseDemand(
+                    bytes, requested > 0 ? requested : 0, true, false, true, natural > cap, true, natural, pin);
+        }
+        long fitted = WorkerLeases.clampXmx(xmx, cap);
+        long ceiling = Math.min(cap, WorkerLeases.jvmLease(fitted));
+        long bytes = choice.priceBytes() > 0 ? Math.min(ceiling, choice.priceBytes()) : ceiling;
+        return new LeaseDemand(
+                bytes,
+                fitted,
+                true,
+                fitted < xmx || ceiling < WorkerLeases.jvmLease(xmx),
+                false,
+                false,
+                true,
+                ceiling,
+                "");
     }
 
     LeaseDemand resident() {
