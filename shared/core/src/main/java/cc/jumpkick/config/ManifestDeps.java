@@ -2,6 +2,9 @@
 package cc.jumpkick.config;
 
 import static cc.jumpkick.config.JkBuildParser.*;
+import static cc.jumpkick.config.TomlTableReader.optionalBool;
+import static cc.jumpkick.config.TomlTableReader.optionalString;
+import static cc.jumpkick.config.TomlTableReader.optionalTable;
 
 import cc.jumpkick.library.LibraryCatalog;
 import cc.jumpkick.model.Dependency;
@@ -40,13 +43,13 @@ public final class ManifestDeps {
 
     static JkBuild.Dependencies parseDependencies(
             TomlTable root, @Nullable Workspace workspace, LibraryCatalog catalog) {
-        if (root.getTable(Scope.PLUGIN.tomlSection()) != null) {
+        if (root.contains(Scope.PLUGIN.tomlSection())) {
             throw new JkBuildParseException(PLUGIN_TABLE_REFUSED);
         }
         EnumMap<Scope, List<Dependency>> byScope = new EnumMap<>(Scope.class);
 
         // [dependencies] → MAIN scope (all entries are flat deps, no sub-tables)
-        TomlTable mainDeps = root.getTable("dependencies");
+        TomlTable mainDeps = scopeTable(root, Scope.MAIN);
         if (mainDeps != null) {
             List<Dependency> parsed =
                     parseScopeTable(mainDeps, new ArrayList<>(mainDeps.keySet()), Scope.MAIN, workspace, catalog);
@@ -87,7 +90,7 @@ public final class ManifestDeps {
             @Nullable Workspace workspace,
             LibraryCatalog catalog) {
         Scope scope = Scope.TEST_PROCESSOR;
-        TomlTable table = root.getTable(scope.tomlSection());
+        TomlTable table = scopeTable(root, scope);
         if (table == null) return true;
         boolean inherit = true;
         List<String> keys = new ArrayList<>(table.keySet());
@@ -125,10 +128,15 @@ public final class ManifestDeps {
             Scope scope,
             @Nullable Workspace workspace,
             LibraryCatalog catalog) {
-        TomlTable table = root.getTable(scope.tomlSection());
+        TomlTable table = scopeTable(root, scope);
         if (table == null) return;
         List<Dependency> parsed = parseScopeTable(table, new ArrayList<>(table.keySet()), scope, workspace, catalog);
         if (!parsed.isEmpty()) byScope.put(scope, parsed);
+    }
+
+    private static @Nullable TomlTable scopeTable(TomlTable root, Scope scope) {
+        String section = scope.tomlSection();
+        return optionalTable(root, section, "[" + section + "]");
     }
 
     static List<Dependency> parseScopeTable(
@@ -334,7 +342,8 @@ public final class ManifestDeps {
         // [features] entry pulls it in by name. Works with every dep form
         // (coord / git / path / workspace / sha256) since it's applied to the
         // parsed result regardless of source.
-        boolean optional = Boolean.TRUE.equals(entry.getBoolean("optional"));
+        boolean optional =
+                Boolean.TRUE.equals(optionalBool(entry, "optional", scope.tomlSection() + "." + name + ".optional"));
         Dependency dep =
                 parseDepEntryForm(name, entry, scope, workspace, catalog).withOptional(optional);
         dep = applyDependencyKind(dep, entry, scope, name);
@@ -349,7 +358,8 @@ public final class ManifestDeps {
         List<String> features = hasFeaturesKey
                 ? optionalStringList(entry, "features", scope.tomlSection() + "." + name + ".features")
                 : List.of();
-        boolean defaultFeatures = !hasDefaultFeaturesKey || !Boolean.FALSE.equals(entry.getBoolean("default-features"));
+        boolean defaultFeatures = !Boolean.FALSE.equals(
+                optionalBool(entry, "default-features", scope.tomlSection() + "." + name + ".default-features"));
         return dep.withFeatures(features, defaultFeatures);
     }
 
@@ -362,7 +372,7 @@ public final class ManifestDeps {
     static Dependency applyClassifier(Dependency dep, TomlTable entry, Scope scope, String name) {
         if (!entry.contains("classifier")) return dep;
         String displayPath = scope.tomlSection() + "." + name;
-        String classifier = entry.getString("classifier");
+        String classifier = optionalString(entry, "classifier", displayPath + ".classifier");
         if (classifier == null || classifier.isBlank() || classifier.indexOf(':') >= 0) {
             throw new JkBuildParseException(displayPath + ".classifier must be a non-blank word without `:`");
         }
@@ -383,7 +393,7 @@ public final class ManifestDeps {
     static Dependency applyDependencyKind(Dependency dep, TomlTable entry, Scope scope, String name) {
         if (!entry.contains("kind")) return dep;
         String displayPath = scope.tomlSection() + "." + name;
-        String raw = entry.getString("kind");
+        String raw = optionalString(entry, "kind", displayPath + ".kind");
         DependencyKind kind;
         try {
             kind = DependencyKind.parse(raw);
@@ -419,7 +429,7 @@ public final class ManifestDeps {
     static Dependency applyFixtures(Dependency dep, TomlTable entry, Scope scope, String name) {
         if (!entry.contains("fixtures")) return dep;
         String displayPath = scope.tomlSection() + "." + name;
-        Boolean flag = entry.getBoolean("fixtures");
+        Boolean flag = optionalBool(entry, "fixtures", displayPath + ".fixtures");
         if (!Boolean.TRUE.equals(flag)) {
             throw new JkBuildParseException(displayPath + ".fixtures can only be `true`");
         }
@@ -465,7 +475,7 @@ public final class ManifestDeps {
         }
 
         if (hasWorkspace) {
-            Boolean ws = entry.getBoolean("workspace");
+            Boolean ws = optionalBool(entry, "workspace", displayPath + ".workspace");
             if (!Boolean.TRUE.equals(ws)) {
                 throw new JkBuildParseException(displayPath + ".workspace can only be `true`");
             }
@@ -474,13 +484,13 @@ public final class ManifestDeps {
             // picks one of two members carrying it.
             String sibling = name;
             if (entry.contains("name")) {
-                String named = entry.getString("name");
+                String named = optionalString(entry, "name", displayPath + ".name");
                 if (named == null || named.isBlank()) {
                     throw new JkBuildParseException(displayPath + ".name must not be blank");
                 }
                 sibling = named;
             }
-            String group = entry.getString("group");
+            String group = optionalString(entry, "group", displayPath + ".group");
             if (group != null) {
                 if (group.isBlank()) {
                     throw new JkBuildParseException(displayPath + ".group must not be blank");
@@ -496,8 +506,8 @@ public final class ManifestDeps {
         // A git source still REQUIRES explicit `group` — it's inherently a
         // user-controlled override where defaulting silently would be
         // surprising.
-        String groupExplicit = entry.getString("group");
-        String artifactExplicit = entry.getString("name");
+        String groupExplicit = optionalString(entry, "group", displayPath + ".group");
+        String artifactExplicit = optionalString(entry, "name", displayPath + ".name");
         LibraryCatalog.Module catalogHit =
                 (groupExplicit == null) ? catalog.lookup(name).orElse(null) : null;
 
@@ -512,11 +522,11 @@ public final class ManifestDeps {
             if (groupExplicit == null || groupExplicit.isBlank()) {
                 throw new JkBuildParseException(displayPath + " with `sha256` needs an explicit `group`");
             }
-            String sha256 = entry.getString("sha256");
+            String sha256 = optionalString(entry, "sha256", displayPath + ".sha256");
             if (sha256 == null || sha256.isBlank()) {
                 throw new JkBuildParseException(displayPath + ".sha256 must not be blank");
             }
-            String versionRaw = entry.getString("version");
+            String versionRaw = optionalString(entry, "version", displayPath + ".version");
             if (versionRaw == null || versionRaw.isBlank()) {
                 throw new JkBuildParseException(displayPath + " with `sha256 = ...` must also set `version`");
             }
@@ -546,7 +556,7 @@ public final class ManifestDeps {
                             displayPath + " with `path` cannot set `" + forbidden + "`; it comes from that project");
                 }
             }
-            String pathValue = entry.getString("path");
+            String pathValue = optionalString(entry, "path", displayPath + ".path");
             if (pathValue == null || pathValue.isBlank()) {
                 throw new JkBuildParseException(displayPath + ".path must not be blank");
             }
@@ -565,7 +575,7 @@ public final class ManifestDeps {
         if (group == null || group.isBlank()) {
             throw new JkBuildParseException(displayPath + " needs a `group` or a catalog short name");
         }
-        String versionRaw = entry.getString("version");
+        String versionRaw = optionalString(entry, "version", displayPath + ".version");
         if (versionRaw == null || versionRaw.isBlank()) {
             throw new JkBuildParseException(displayPath + ".version must not be blank");
         }
@@ -608,16 +618,16 @@ public final class ManifestDeps {
     }
 
     static GitSource parseGitSource(TomlTable obj, String displayPath) {
-        String urlRaw = obj.getString("git");
+        String urlRaw = optionalString(obj, "git", displayPath + ".git");
         if (urlRaw == null) {
             throw new JkBuildParseException(displayPath + " requires a `git` URL");
         }
 
         JkBuildParser.EmbeddedUrlParts parts = splitEmbeddedUrl(urlRaw);
 
-        String tag = obj.getString("tag");
-        String branch = obj.getString("branch");
-        String rev = obj.getString("rev");
+        String tag = optionalString(obj, "tag", displayPath + ".tag");
+        String branch = optionalString(obj, "branch", displayPath + ".branch");
+        String rev = optionalString(obj, "rev", displayPath + ".rev");
         boolean hasExplicitRef = tag != null || branch != null || rev != null;
 
         if (parts.refSpec() != null && hasExplicitRef) {
@@ -625,14 +635,14 @@ public final class ManifestDeps {
                     displayPath + " sets a ref in both the URL and `tag`, `branch` or `rev`; use one");
         }
 
-        String explicitPath = obj.getString("path");
+        String explicitPath = optionalString(obj, "path", displayPath + ".path");
         if (parts.subdir() != null && explicitPath != null) {
             throw new JkBuildParseException(displayPath + " sets a subdirectory in both the URL and `path`; use one");
         }
         String path = parts.subdir() != null ? parts.subdir() : explicitPath;
 
-        boolean submodules = obj.getBoolean("submodules", () -> true);
-        boolean verifySigned = obj.getBoolean("verify-signed", () -> false);
+        boolean submodules = !Boolean.FALSE.equals(optionalBool(obj, "submodules", displayPath + ".submodules"));
+        boolean verifySigned = Boolean.TRUE.equals(optionalBool(obj, "verify-signed", displayPath + ".verify-signed"));
 
         GitRefSpec ref;
         boolean shallow;

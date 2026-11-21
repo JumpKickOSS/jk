@@ -2,6 +2,7 @@
 package cc.jumpkick.config;
 
 import static cc.jumpkick.config.JkBuildParser.*;
+import static cc.jumpkick.config.TomlTableReader.*;
 
 import cc.jumpkick.library.LibraryCatalog;
 import cc.jumpkick.model.BuildBlock;
@@ -65,7 +66,7 @@ public final class ManifestTables {
      */
     static Variants parseVariants(
             TomlTable root, @Nullable Workspace workspace, LibraryCatalog catalog, List<PluginDescriptor> installed) {
-        TomlTable table = root.getTable("variants");
+        TomlTable table = optionalTable(root, "variants", "`variants`");
         if (table == null) return Variants.EMPTY;
         Map<String, PluginDescriptor> byTable = new LinkedHashMap<>();
         for (PluginDescriptor m : installed) byTable.put(m.table(), m);
@@ -79,7 +80,7 @@ public final class ManifestTables {
             Map<String, Variants.Value> values = new LinkedHashMap<>();
             for (String key : dimTable.keySet()) {
                 if (key.equals("default")) {
-                    defaultValue = dimTable.getString("default");
+                    defaultValue = optionalString(dimTable, "default", "[variants." + dim + "].default");
                     if (defaultValue == null || defaultValue.isBlank()) {
                         throw new JkBuildParseException("[variants." + dim + "].default must be a value name");
                     }
@@ -163,14 +164,14 @@ public final class ManifestTables {
         if (format == null) return JkBuild.FormatConfig.EMPTY;
         rejectUnknownKeys(format, FORMAT_KEYS, "[format]");
         return new JkBuild.FormatConfig(
-                stringOrThrow(format, "style", "format.style"),
-                stringOrThrow(format, "java", "format.java"),
-                stringOrThrow(format, "kotlin", "format.kotlin"),
+                optionalString(format, "style", "format.style"),
+                optionalString(format, "java", "format.java"),
+                optionalString(format, "kotlin", "format.kotlin"),
                 optionalBool(format, "optimize-imports", "format.optimize-imports"),
                 optionalBool(format, "import-order", "format.import-order"),
                 optionalBool(format, "remove-unused-imports", "format.remove-unused-imports"),
                 Boolean.TRUE.equals(optionalBool(format, "enforce", "format.enforce")),
-                stringOrThrow(format, "ratchet-from", "format.ratchet-from"),
+                optionalString(format, "ratchet-from", "format.ratchet-from"),
                 format.contains("exclude") ? requireStringList(format, "exclude", "[format].exclude") : List.of());
     }
 
@@ -194,8 +195,8 @@ public final class ManifestTables {
                         "[install] unknown key `" + key + "` — expected target, product-lib or product-bin");
             }
         }
-        String productLib = stringOrThrow(install, "product-lib", "install.product-lib");
-        String productBin = stringOrThrow(install, "product-bin", "install.product-bin");
+        String productLib = optionalString(install, "product-lib", "install.product-lib");
+        String productBin = optionalString(install, "product-bin", "install.product-bin");
         // The destination is not configurable: EngineInstall hardcodes the jk-engine home, the
         // pointer name and the jar naming, so any other value would be freshness-checked and
         // installed under jk-engine/ while announcing a directory nothing wrote to. (A client-io
@@ -226,7 +227,7 @@ public final class ManifestTables {
         TomlTable table = root.getTable("dokka");
         if (table == null) return Optional.empty();
         rejectUnknownKeys(table, DOKKA_KEYS, "[dokka]");
-        String version = stringOrThrow(table, "version", "dokka.version");
+        String version = optionalString(table, "version", "dokka.version");
         VersionSelector selector = BuildBlock.Dokka.DEFAULT.version();
         if (version != null) {
             try {
@@ -236,7 +237,7 @@ public final class ManifestTables {
             }
             selector = ManifestSelectors.checked(selector, table, "version", "[dokka] version");
         }
-        String format = stringOrThrow(table, "format", "dokka.format");
+        String format = optionalString(table, "format", "dokka.format");
         BuildBlock.Dokka.Format shape = BuildBlock.Dokka.DEFAULT.format();
         if (format != null) {
             try {
@@ -313,12 +314,12 @@ public final class ManifestTables {
         TomlTable table = root.getTable(TaskNames.BUILD_INFO);
         if (table == null) return Optional.empty();
         rejectUnknownKeys(table, BUILD_INFO_KEYS, "[build-info]");
-        String file = stringOrThrow(table, "file", "build-info.file");
+        String file = optionalString(table, "file", "build-info.file");
         if (file != null && (file.isBlank() || file.startsWith("/") || file.contains(".."))) {
             throw new JkBuildParseException(
                     "[build-info] file must be a relative path in the jar, e.g. git.properties");
         }
-        String time = stringOrThrow(table, "time", "build-info.time");
+        String time = optionalString(table, "time", "build-info.time");
         boolean buildTime =
                 switch (time == null ? "commit" : time.trim().toLowerCase(Locale.ROOT)) {
                     case "commit" -> false;
@@ -342,11 +343,11 @@ public final class ManifestTables {
         TomlTable table = root.getTable(WAR);
         if (table == null) return Optional.empty();
         rejectUnknownKeys(table, WAR_KEYS, "[war]");
-        String name = stringOrThrow(table, "name", "war.name");
+        String name = optionalString(table, "name", "war.name");
         if (name != null && (name.contains("/") || name.contains("\\") || name.endsWith(".war"))) {
             throw new JkBuildParseException("[war] name is the file name without .war, such as \"ROOT\"");
         }
-        String webapp = stringOrThrow(table, "webapp", "war.webapp");
+        String webapp = optionalString(table, "webapp", "war.webapp");
         if (webapp != null && (webapp.startsWith("/") || webapp.contains(".."))) {
             throw new JkBuildParseException("[war] webapp must be a directory inside the module, e.g. src/main/webapp");
         }
@@ -376,7 +377,7 @@ public final class ManifestTables {
         TomlTable release = root.getTable("release");
         if (release == null) return ReleaseTable.DEFAULT;
         rejectUnknownKeys(release, RELEASE_KEYS, "[release]");
-        String tag = stringOrThrow(release, "tag", "release.tag");
+        String tag = optionalString(release, "tag", "release.tag");
         if (tag == null) {
             tag = ReleaseTag.DEFAULT_TEMPLATE;
         } else if (!tag.contains("{version}")) {
@@ -385,8 +386,8 @@ public final class ManifestTables {
         Map<String, String> files = new LinkedHashMap<>();
         for (TomlTable t : tables(release, "files", "release.files")) {
             rejectUnknownKeys(t, RELEASE_FILE_KEYS, "[release] files");
-            String path = stringOrThrow(t, "path", "release.files.path");
-            String pattern = stringOrThrow(t, "pattern", "release.files.pattern");
+            String path = optionalString(t, "path", "release.files.path");
+            String pattern = optionalString(t, "pattern", "release.files.pattern");
             if (path == null || path.isBlank() || pattern == null) {
                 throw new JkBuildParseException("[release] files: every entry needs a path and a pattern");
             }
@@ -430,36 +431,28 @@ public final class ManifestTables {
             }
         }
         rejectUnknownKeys(publish, PUBLISH_KEYS, "[publish]");
-        boolean sign = false;
-        if (publish.contains("sign")) {
-            if (!publish.isBoolean("sign")) throw new JkBuildParseException("[publish] sign must be true or false");
-            sign = Boolean.TRUE.equals(publish.getBoolean("sign"));
-        }
-        boolean skip = false;
-        if (publish.contains("skip")) {
-            if (!publish.isBoolean("skip")) throw new JkBuildParseException("[publish] skip must be true or false");
-            skip = Boolean.TRUE.equals(publish.getBoolean("skip"));
-        }
+        boolean sign = Boolean.TRUE.equals(optionalBool(publish, "sign", "[publish] sign"));
+        boolean skip = Boolean.TRUE.equals(optionalBool(publish, "skip", "[publish] skip"));
         List<PomMetadata.License> licenses = new ArrayList<>();
         for (TomlTable t : tables(publish, "licenses", "publish.licenses")) {
             rejectUnknownKeys(t, PUBLISH_LICENSE_KEYS, "[publish] licenses");
-            String name = stringOrThrow(t, "name", "publish.licenses.name");
+            String name = optionalString(t, "name", "publish.licenses.name");
             if (name == null || name.isBlank()) {
                 throw new JkBuildParseException("[publish] licenses: each license needs a name, e.g. Apache-2.0");
             }
-            licenses.add(new PomMetadata.License(name, stringOrThrow(t, "url", "publish.licenses.url")));
+            licenses.add(new PomMetadata.License(name, optionalString(t, "url", "publish.licenses.url")));
         }
         List<PomMetadata.Developer> developers = new ArrayList<>();
         for (TomlTable t : tables(publish, "developers", "publish.developers")) {
             rejectUnknownKeys(t, PUBLISH_DEVELOPER_KEYS, "[publish] developers");
-            String id = stringOrThrow(t, "id", "publish.developers.id");
+            String id = optionalString(t, "id", "publish.developers.id");
             if (id == null || id.isBlank()) {
                 throw new JkBuildParseException("[publish] developers: every developer needs an id");
             }
             developers.add(new PomMetadata.Developer(
                     id,
-                    stringOrThrow(t, "name", "publish.developers.name"),
-                    stringOrThrow(t, "email", "publish.developers.email")));
+                    optionalString(t, "name", "publish.developers.name"),
+                    optionalString(t, "email", "publish.developers.email")));
         }
         PomMetadata.Scm scm = null;
         if (publish.contains("scm")) {
@@ -470,20 +463,20 @@ public final class ManifestTables {
             TomlTable t = Objects.requireNonNull(publish.getTable("scm"));
             rejectUnknownKeys(t, PUBLISH_SCM_KEYS, "[publish] scm");
             scm = new PomMetadata.Scm(
-                    stringOrThrow(t, "url", "publish.scm.url"),
-                    stringOrThrow(t, "connection", "publish.scm.connection"),
-                    stringOrThrow(t, "developer-connection", "publish.scm.developer-connection"));
+                    optionalString(t, "url", "publish.scm.url"),
+                    optionalString(t, "connection", "publish.scm.connection"),
+                    optionalString(t, "developer-connection", "publish.scm.developer-connection"));
         }
         return Optional.of(new PomMetadata(
-                stringOrThrow(publish, "name", "publish.name"),
+                optionalString(publish, "name", "publish.name"),
                 null,
-                stringOrThrow(publish, "url", "publish.url"),
+                optionalString(publish, "url", "publish.url"),
                 licenses,
                 developers,
                 scm,
-                stringOrThrow(publish, "repository", "publish.repository"),
+                optionalString(publish, "repository", "publish.repository"),
                 sign,
-                stringOrThrow(publish, "key-file", "publish.key-file"),
+                optionalString(publish, "key-file", "publish.key-file"),
                 skip));
     }
 
@@ -511,43 +504,17 @@ public final class ManifestTables {
         if (table != null) rejectUnknownKeys(table, JkConfigLoader.KEYS, "[config]");
     }
 
-    private static void rejectUnknownKeys(TomlTable table, List<String> known, String where) {
-        for (String key : table.keySet()) {
-            if (!known.contains(key)) {
-                throw new JkBuildParseException(
-                        where + " unknown key `" + key + "` — expected one of: " + String.join(", ", known));
-            }
-        }
-    }
-
-    /** Present boolean key → its value; absent → null (caller applies the default); any other type is a parse error. */
-    static @Nullable Boolean optionalBool(TomlTable table, String key, String path) {
-        if (!table.contains(key)) return null;
-        if (!table.isBoolean(key)) throw new JkBuildParseException(path + " must be true or false");
-        return table.getBoolean(key);
-    }
-
-    /** Read an optional string key; present-but-non-string is a parse error; absent → null. */
-    static @Nullable String stringOrThrow(TomlTable table, String key, String path) {
-        if (!table.contains(key)) return null;
-        if (!table.isString(key)) throw new JkBuildParseException(path + " must be a string");
-        return table.getString(key);
-    }
-
     /**
      * Parse the optional top-level {@code [manifest]} table — string-valued custom jar-manifest
      * attributes (e.g. {@code "Implementation-Title"}). {@code Main-Class} is intentionally
      * <em>not</em> read here; it derives from {@code main}.
      */
     static Map<String, String> parseManifest(TomlParseResult root) {
-        TomlTable table = root.getTable("manifest");
+        TomlTable table = optionalTable(root, "manifest", "`manifest`");
         if (table == null) return Map.of();
         Map<String, String> attrs = new LinkedHashMap<>();
         for (String key : table.keySet()) {
-            String value = table.getString(List.of(key));
-            if (value == null) {
-                throw new JkBuildParseException("manifest." + key + " must be a string");
-            }
+            String value = Objects.requireNonNull(optionalString(table, key, "manifest." + key));
             if (key.equalsIgnoreCase("Main-Class")) {
                 throw new JkBuildParseException("manifest.Main-Class is not allowed; set project.main instead");
             }
@@ -564,7 +531,9 @@ public final class ManifestTables {
      */
     static List<RepositorySpec> parseRepositories(TomlTable root) {
         return RepositoryToml.repositories(
-                root.getTable("repositories"), RepositoryToml.VarPolicy.DEFER, RepositoryToml.OnBad.REJECT);
+                optionalTable(root, "repositories", "`repositories`"),
+                RepositoryToml.VarPolicy.DEFER,
+                RepositoryToml.OnBad.REJECT);
     }
 
     /**
@@ -574,7 +543,7 @@ public final class ManifestTables {
      * literally); any unset field falls back to the AWS environment / default chain.
      */
     static Profiles parseProfiles(TomlTable root) {
-        TomlTable profiles = root.getTable("profiles");
+        TomlTable profiles = optionalTable(root, "profiles", "`profiles`");
         if (profiles == null) return Profiles.empty();
         Map<String, Profile> byName = new LinkedHashMap<>();
         for (String name : profiles.keySet()) {
@@ -582,7 +551,7 @@ public final class ManifestTables {
             if (body == null) {
                 throw new JkBuildParseException("profiles." + name + " must be a table");
             }
-            String inherits = body.getString("inherits");
+            String inherits = optionalString(body, "inherits", "profiles." + name + ".inherits");
             List<String> javacArgs = optionalStringList(body, "javac", "profiles." + name + ".javac");
             List<String> jvmArgs = jvmArgsList(body, "profiles." + name);
             Map<String, String> env = new LinkedHashMap<>();
@@ -606,7 +575,7 @@ public final class ManifestTables {
     }
 
     static Features parseFeatures(TomlTable root) {
-        TomlTable features = root.getTable("features");
+        TomlTable features = optionalTable(root, "features", "`features`");
         if (features == null) return Features.empty();
         List<String> defaults = optionalStringList(features, "default", "features.default");
         Map<String, Feature> byName = new LinkedHashMap<>();
@@ -646,7 +615,7 @@ public final class ManifestTables {
     }
 
     static @Nullable Workspace parseWorkspace(TomlTable root, LibraryCatalog catalog) {
-        TomlTable workspace = root.getTable("workspace");
+        TomlTable workspace = optionalTable(root, "workspace", "`workspace`");
         if (workspace == null) return null;
         List<String> modules = optionalStringList(workspace, "modules", "workspace.modules");
         Map<String, WorkspaceDependency> wsDeps = parseWorkspaceDependencies(workspace, catalog);
@@ -654,7 +623,7 @@ public final class ManifestTables {
     }
 
     static Map<String, WorkspaceDependency> parseWorkspaceDependencies(TomlTable workspace, LibraryCatalog catalog) {
-        TomlTable wsDeps = workspace.getTable("dependencies");
+        TomlTable wsDeps = optionalTable(workspace, "dependencies", "workspace.dependencies");
         if (wsDeps == null) return Map.of();
         Map<String, WorkspaceDependency> out = new LinkedHashMap<>();
         for (String name : wsDeps.keySet()) {
@@ -729,11 +698,11 @@ public final class ManifestTables {
         if (hasGit) {
             // Git workspace deps still carry an explicit coordinate: the shared coordinate is what
             // sibling modules pin against, and it must be known at parse time.
-            String gitGroup = entry.getString("group");
+            String gitGroup = optionalString(entry, "group", displayPath + ".group");
             if (gitGroup == null || gitGroup.isBlank()) {
                 throw new JkBuildParseException(displayPath + " with `git` must set a `group`");
             }
-            String gitArtifact = entry.getString("name");
+            String gitArtifact = optionalString(entry, "name", displayPath + ".name");
             if (gitArtifact == null) gitArtifact = name;
             if (gitArtifact.isBlank()) {
                 throw new JkBuildParseException(displayPath + ".name must not be blank");
@@ -747,8 +716,8 @@ public final class ManifestTables {
         }
         // Version dep: group/name may be explicit or resolved from the catalog by the short name,
         // exactly like a [dependencies] entry.
-        String groupExplicit = entry.getString("group");
-        String artifactExplicit = entry.getString("name");
+        String groupExplicit = optionalString(entry, "group", displayPath + ".group");
+        String artifactExplicit = optionalString(entry, "name", displayPath + ".name");
         LibraryCatalog.Module catalogHit =
                 (groupExplicit == null) ? catalog.lookup(name).orElse(null) : null;
         String group = groupExplicit != null ? groupExplicit : (catalogHit != null ? catalogHit.group() : null);
@@ -760,7 +729,7 @@ public final class ManifestTables {
         if (artifact.isBlank()) {
             throw new JkBuildParseException(displayPath + ".name must not be blank");
         }
-        String versionRaw = entry.getString("version");
+        String versionRaw = optionalString(entry, "version", displayPath + ".version");
         if (versionRaw == null || versionRaw.isBlank()) {
             throw new JkBuildParseException(displayPath + ".version must not be blank");
         }
@@ -781,22 +750,17 @@ public final class ManifestTables {
      */
     static Optional<JkBuild.Application> parseApplication(TomlTable root, boolean libDirImplied) {
         rejectFlattenedApplicationKeys(root);
-        TomlTable application = root.getTable("application");
+        TomlTable application = optionalTable(root, "application", "`application`");
         if (application == null) return Optional.empty();
         // Same stance as the [m2]/[install] guards: a typo inside the right table must not parse
         // clean and do nothing — `asembly = true` silently building a thin jar is the identical
         // symptom the misplacement guard below exists for.
-        for (String key : application.keySet()) {
-            if (!APPLICATION_KEYS.contains(key)) {
-                throw new JkBuildParseException("[application] unknown key `" + key + "` — expected one of: "
-                        + String.join(", ", APPLICATION_KEYS));
-            }
-        }
-        String main = application.getString("main");
+        rejectUnknownKeys(application, APPLICATION_KEYS, "[application]");
+        String main = optionalString(application, "main", "[application].main");
         boolean assembly = artifactFlag(application, "assembly");
         boolean minified = artifactFlag(application, "minified");
         boolean nativeImage = artifactFlag(application, "native");
-        String config = application.getString("config");
+        String config = optionalString(application, "config", "[application].config");
         if (main == null || main.isBlank()) {
             throw new JkBuildParseException("[application].main is required");
         }
@@ -817,17 +781,12 @@ public final class ManifestTables {
      * [application]}, never both — an application's fat jar is already the application's.
      */
     static Optional<JkBuild.Library> parseLibrary(TomlTable root) {
-        TomlTable library = root.getTable("library");
+        TomlTable library = optionalTable(root, "library", "`library`");
         if (library == null) return Optional.empty();
-        if (root.getTable("application") != null) {
+        if (root.contains("application")) {
             throw new JkBuildParseException("[library] and [application] cannot both be set; drop [library]");
         }
-        for (String key : library.keySet()) {
-            if (!LIBRARY_KEYS.contains(key)) {
-                throw new JkBuildParseException(
-                        "[library] unknown key `" + key + "` — expected one of: " + String.join(", ", LIBRARY_KEYS));
-            }
-        }
+        rejectUnknownKeys(library, LIBRARY_KEYS, "[library]");
         return Optional.of(new JkBuild.Library(
                 artifactFlag(library, "assembly", "[library]"), parseRelocate(library, "[library]")));
     }
@@ -910,8 +869,7 @@ public final class ManifestTables {
      */
     /** Whether {@code [application] native} asks for a native image (the table read as written). */
     static boolean nativeAsked(TomlTable root) {
-        TomlTable application = root.getTable("application");
-        return application != null && artifactFlag(application, "native");
+        return root.get(List.of("application")) instanceof TomlTable application && artifactFlag(application, "native");
     }
 
     static boolean artifactFlag(TomlTable application, String key) {

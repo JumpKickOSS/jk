@@ -2,6 +2,7 @@
 package cc.jumpkick.config;
 
 import static cc.jumpkick.config.JkBuildParser.*;
+import static cc.jumpkick.config.TomlTableReader.*;
 
 import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.DebugInfo;
@@ -215,18 +216,13 @@ public final class ManifestBuild {
      * "graalvm"}.
      */
     static Optional<JkBuild.NativeConfig> parseNativeConfig(TomlTable root) {
-        TomlTable native_ = root.getTable("native");
+        TomlTable native_ = optionalTable(root, "native", "`native`");
         if (native_ == null) return Optional.empty();
-        for (String key : native_.keySet()) {
-            if (!NATIVE_KEYS.contains(key)) {
-                throw new JkBuildParseException(
-                        "[native] unknown key `" + key + "` — expected one of: " + String.join(", ", NATIVE_KEYS));
-            }
-        }
-        String mainClass = native_.getString("main");
-        String name = native_.getString("name");
+        rejectUnknownKeys(native_, NATIVE_KEYS, "[native]");
+        String mainClass = optionalString(native_, "main", "[native].main");
+        String name = optionalString(native_, "name", "[native].name");
         List<String> args = new ArrayList<>();
-        TomlArray argsArr = native_.getArray("args");
+        TomlArray argsArr = optionalArray(native_, "args", "[native].args");
         if (argsArr != null) {
             for (int i = 0; i < argsArr.size(); i++) {
                 Object val = argsArr.get(i);
@@ -259,7 +255,7 @@ public final class ManifestBuild {
      * release, as it does for a dependency; {@code "^1"} floats within the line.
      */
     private static @Nullable VersionSelector parseMetadataRepository(TomlTable native_) {
-        String raw = native_.getString("metadata-repository");
+        String raw = optionalString(native_, "metadata-repository", "[native].metadata-repository");
         if (raw == null) return null;
         if (raw.isBlank()) {
             throw new JkBuildParseException("[native].metadata-repository must not be blank");
@@ -305,9 +301,9 @@ public final class ManifestBuild {
      * block. Absent both → {@link BuildBlock#EMPTY}.
      */
     static BuildBlock parseBuild(TomlTable root) {
-        TomlTable build = root.getTable("build");
-        TomlTable test = root.getTable("test");
-        TomlTable resolve = root.getTable("resolve");
+        TomlTable build = optionalTable(root, "build", "`build`");
+        TomlTable test = optionalTable(root, "test", "`test`");
+        TomlTable resolve = optionalTable(root, "resolve", "`resolve`");
         ResolvePolicies policies = resolvePolicies(resolve);
         if (build == null && test == null && resolve == null) return BuildBlock.EMPTY;
         if (build == null && test == null) {
@@ -418,15 +414,10 @@ public final class ManifestBuild {
         PlatformPolicy platformPolicy = PlatformPolicy.ENFORCED;
         UnmappedPolicy unmappedPolicy = UnmappedPolicy.MEDIATE;
         if (resolve != null) {
-            for (String key : resolve.keySet()) {
-                if (!RESOLVE_KEYS.contains(key)) {
-                    throw new JkBuildParseException("[resolve] unknown key `" + key + "` — expected one of: "
-                            + String.join(", ", RESOLVE_KEYS));
-                }
-            }
+            rejectUnknownKeys(resolve, RESOLVE_KEYS, "[resolve]");
         }
         if (resolve != null && resolve.contains("platform")) {
-            String raw = resolve.getString("platform");
+            String raw = optionalString(resolve, "platform", "[resolve].platform");
             if (raw == null || raw.isBlank()) {
                 throw new JkBuildParseException("[resolve].platform must be a string (enforced or floor)");
             }
@@ -437,7 +428,7 @@ public final class ManifestBuild {
             }
         }
         if (resolve != null && resolve.contains("unmapped")) {
-            String raw = resolve.getString("unmapped");
+            String raw = optionalString(resolve, "unmapped", "[resolve].unmapped");
             if (raw == null || raw.isBlank()) {
                 throw new JkBuildParseException("[resolve].unmapped must be a string (mediate or strict)");
             }
@@ -449,7 +440,7 @@ public final class ManifestBuild {
         }
         PomRepositoriesPolicy pomRepositories = PomRepositoriesPolicy.USE;
         if (resolve != null && resolve.contains("pom-repositories")) {
-            String raw = resolve.getString("pom-repositories");
+            String raw = optionalString(resolve, "pom-repositories", "[resolve].pom-repositories");
             if (raw == null || raw.isBlank()) {
                 throw new JkBuildParseException("[resolve].pom-repositories must be a string (use or ignore)");
             }
@@ -505,12 +496,7 @@ public final class ManifestBuild {
         if (!(rawDev instanceof TomlTable dev)) {
             throw new JkBuildParseException("[dev] must be a table: [dev.sidecars] web = { command = \"…\" }");
         }
-        for (String key : dev.keySet()) {
-            if (!DEV_KEYS.contains(key)) {
-                throw new JkBuildParseException(
-                        "[dev] unknown key `" + key + "` — expected one of: " + String.join(", ", DEV_KEYS));
-            }
-        }
+        rejectUnknownKeys(dev, DEV_KEYS, "[dev]");
         return dev;
     }
 
@@ -574,12 +560,7 @@ public final class ManifestBuild {
     }
 
     private static Sidecar parseSidecar(String name, TomlTable table, String where) {
-        for (String key : table.keySet()) {
-            if (!SIDECAR_KEYS.contains(key)) {
-                throw new JkBuildParseException(
-                        where + " unknown key `" + key + "` — expected one of: " + String.join(", ", SIDECAR_KEYS));
-            }
-        }
+        rejectUnknownKeys(table, SIDECAR_KEYS, where);
         Object rawCommand = table.get(List.of("command"));
         List<String> command;
         if (rawCommand == null) {
@@ -746,12 +727,7 @@ public final class ManifestBuild {
                 if (!(table.get(List.of(name)) instanceof TomlTable plugin)) {
                     throw new JkBuildParseException(where + " must be a table: { options = […] }");
                 }
-                for (String key : plugin.keySet()) {
-                    if (!JAVAC_PLUGIN_KEYS.contains(key)) {
-                        throw new JkBuildParseException(where + " unknown key `" + key + "` — expected one of: "
-                                + String.join(", ", JAVAC_PLUGIN_KEYS));
-                    }
-                }
+                rejectUnknownKeys(plugin, JAVAC_PLUGIN_KEYS, where);
                 plugins.put(name, stringArray(plugin.get(List.of("options")), where + ".options"));
             }
         }
@@ -800,12 +776,7 @@ public final class ManifestBuild {
             throw new JkBuildParseException(
                     "[audit] must be a table: [audit] ignore = [{ id = \"GHSA-…\", reason = \"…\" }]");
         }
-        for (String key : audit.keySet()) {
-            if (!AUDIT_KEYS.contains(key)) {
-                throw new JkBuildParseException(
-                        "[audit] unknown key `" + key + "` — expected one of: " + String.join(", ", AUDIT_KEYS));
-            }
-        }
+        rejectUnknownKeys(audit, AUDIT_KEYS, "[audit]");
         Object rawIgnore = audit.get(List.of("ignore"));
         if (rawIgnore == null) return List.of();
         if (!(rawIgnore instanceof TomlArray entries)) {
@@ -824,12 +795,7 @@ public final class ManifestBuild {
     }
 
     private static BuildBlock.AuditIgnore parseAuditIgnore(TomlTable entry, String where) {
-        for (String key : entry.keySet()) {
-            if (!AUDIT_IGNORE_KEYS.contains(key)) {
-                throw new JkBuildParseException(where + " unknown key `" + key + "` — expected one of: "
-                        + String.join(", ", AUDIT_IGNORE_KEYS));
-            }
-        }
+        rejectUnknownKeys(entry, AUDIT_IGNORE_KEYS, where);
         if (!(entry.get(List.of("id")) instanceof String id) || id.isBlank()) {
             throw new JkBuildParseException(where + " needs the advisory id, e.g. id = \"GHSA-…\"");
         }
@@ -873,13 +839,8 @@ public final class ManifestBuild {
             if (!(arr.get(i) instanceof TomlTable t)) {
                 throw new JkBuildParseException("[[kotlin-plugins]] entries must be tables");
             }
-            for (String key : t.keySet()) {
-                if (!KOTLIN_PLUGIN_KEYS.contains(key)) {
-                    throw new JkBuildParseException("[[kotlin-plugins]] unknown key `" + key + "` — expected one of: "
-                            + String.join(", ", KOTLIN_PLUGIN_KEYS));
-                }
-            }
-            String coordinate = t.getString("coordinate");
+            rejectUnknownKeys(t, KOTLIN_PLUGIN_KEYS, "[[kotlin-plugins]]");
+            String coordinate = optionalString(t, "coordinate", "[[kotlin-plugins]].coordinate");
             if (coordinate == null || coordinate.isBlank()) {
                 throw new JkBuildParseException("[[kotlin-plugins]] needs coordinate = \"group:artifact[:version]\"");
             }
@@ -888,9 +849,9 @@ public final class ManifestBuild {
                 throw new JkBuildParseException(
                         "[[kotlin-plugins]] coordinate must be group:artifact[:version], not " + coordinate);
             }
-            String id = t.getString("id");
+            String id = optionalString(t, "id", "[[kotlin-plugins]].id");
             List<String> options = new ArrayList<>();
-            TomlArray opts = t.getArray("options");
+            TomlArray opts = optionalArray(t, "options", "[[kotlin-plugins]].options");
             if (opts != null) {
                 for (int j = 0; j < opts.size(); j++) {
                     if (!(opts.get(j) instanceof String o)) {
@@ -907,7 +868,7 @@ public final class ManifestBuild {
     static final Set<String> PLUGIN_RESERVED = Set.of("group", "name", "version", "path", "sha256", "coordinate");
 
     static List<PluginDeclaration> parsePlugins(TomlTable root) {
-        TomlTable plugins = root.getTable("plugins");
+        TomlTable plugins = optionalTable(root, "plugins", "`plugins`");
         if (plugins == null) return List.of();
         List<PluginDeclaration> result = new ArrayList<>();
         for (String alias : plugins.keySet()) {
@@ -915,17 +876,17 @@ public final class ManifestBuild {
             if (!(val instanceof TomlTable entry)) {
                 throw new JkBuildParseException("plugins." + alias + " must be a table");
             }
-            String shaRaw = entry.getString("sha256");
+            String shaRaw = optionalString(entry, "sha256", "plugins." + alias + ".sha256");
             if (shaRaw == null || shaRaw.isBlank()) {
                 throw new JkBuildParseException(
                         "plugins." + alias + " needs `sha256`; compute it with sha256sum <plugin.jar>");
             }
-            String path = entry.getString("path");
-            String group = entry.getString("group");
-            String name = entry.getString("name");
-            String version = entry.getString("version");
+            String path = optionalString(entry, "path", "plugins." + alias + ".path");
+            String group = optionalString(entry, "group", "plugins." + alias + ".group");
+            String name = optionalString(entry, "name", "plugins." + alias + ".name");
+            String version = optionalString(entry, "version", "plugins." + alias + ".version");
             // coordinate = "g:a:v" shorthand for group/name/version.
-            String coordinate = entry.getString("coordinate");
+            String coordinate = optionalString(entry, "coordinate", "plugins." + alias + ".coordinate");
             if (coordinate != null && !coordinate.isBlank()) {
                 String[] parts = coordinate.split(":", -1);
                 if (parts.length != 3 || parts[0].isBlank() || parts[1].isBlank() || parts[2].isBlank()) {

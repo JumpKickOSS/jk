@@ -1,6 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.config;
 
+import static cc.jumpkick.config.TomlTableReader.optionalArray;
+import static cc.jumpkick.config.TomlTableReader.optionalBool;
+import static cc.jumpkick.config.TomlTableReader.optionalString;
+import static cc.jumpkick.config.TomlTableReader.optionalTable;
+import static cc.jumpkick.config.TomlTableReader.rejectUnknownKeys;
+
 import cc.jumpkick.model.ImageTable;
 import cc.jumpkick.model.JkBuild;
 import java.util.ArrayList;
@@ -99,31 +105,53 @@ public final class ManifestImage {
         return (s != null && !s.isBlank()) ? s : null;
     }
 
+    static final List<String> KEYS = List.of(
+            "base",
+            "name",
+            "user",
+            "ports",
+            "env",
+            "training-env",
+            "labels",
+            "registry",
+            "tag",
+            "platforms",
+            "main",
+            "docker-executable",
+            "docker-file",
+            "aot-cache",
+            "kind");
+
     /** {@link ImageTable#EMPTY} when the document has no {@code [image]} table. */
     static ImageTable parse(TomlTable root) {
-        TomlTable image = root.getTable("image");
+        TomlTable image = optionalTable(root, "image", "`image`");
         if (image == null) return ImageTable.EMPTY;
+        rejectUnknownKeys(image, KEYS, "[image]");
         return new ImageTable(
-                image.getString("base"),
-                image.getString("name"),
-                image.getString("user"),
+                string(image, "base"),
+                string(image, "name"),
+                string(image, "user"),
                 optionalIntList(image, "ports"),
                 optionalStringMap(image, "env"),
                 optionalStringMap(image, "training-env"),
                 optionalStringMap(image, "labels"),
-                image.getString("registry"),
-                image.getString("tag"),
+                string(image, "registry"),
+                string(image, "tag"),
                 optionalStringList(image, "platforms"),
-                image.getString("main"),
-                image.getString("docker-executable"),
-                image.getString("docker-file"),
-                image.getBoolean("aot-cache"),
+                string(image, "main"),
+                string(image, "docker-executable"),
+                string(image, "docker-file"),
+                optionalBool(image, "aot-cache", "image.aot-cache"),
                 kind(image));
+    }
+
+    private static @Nullable String string(TomlTable image, String key) {
+        return optionalString(image, key, "image." + key);
     }
 
     /** {@code image.kind}: unset for the module's own image, {@code "static"} for an nginx image of a node build. */
     private static @Nullable String kind(TomlTable image) {
-        String kind = image.getString("kind");
+        String kind = string(image, "kind");
         if (kind != null && !kind.equals(ImageTable.KIND_STATIC)) {
             throw new JkBuildParseException(
                     "[image] kind must be \"" + ImageTable.KIND_STATIC + "\" or unset, got `" + kind + "`");
@@ -132,7 +160,7 @@ public final class ManifestImage {
     }
 
     private static List<String> optionalStringList(TomlTable table, String key) {
-        TomlArray arr = table.getArray(key);
+        TomlArray arr = optionalArray(table, key, "image." + key);
         if (arr == null) return List.of();
         List<String> result = new ArrayList<>(arr.size());
         for (int i = 0; i < arr.size(); i++) {
@@ -146,7 +174,7 @@ public final class ManifestImage {
     }
 
     private static List<Integer> optionalIntList(TomlTable table, String key) {
-        TomlArray arr = table.getArray(key);
+        TomlArray arr = optionalArray(table, key, "image." + key);
         if (arr == null) return List.of();
         List<Integer> result = new ArrayList<>(arr.size());
         for (int i = 0; i < arr.size(); i++) {
@@ -160,7 +188,7 @@ public final class ManifestImage {
     }
 
     private static Map<String, String> optionalStringMap(TomlTable parent, String key) {
-        TomlTable t = parent.getTable(key);
+        TomlTable t = optionalTable(parent, key, "image." + key);
         if (t == null) return Map.of();
         Map<String, String> out = new LinkedHashMap<>();
         for (String k : t.keySet()) {

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.config;
 
+import static cc.jumpkick.config.TomlTableReader.rejectUnknownKeys;
+
 import cc.jumpkick.layout.ResourceFilter;
 import cc.jumpkick.model.BuildBlock;
 import java.util.LinkedHashMap;
@@ -24,16 +26,10 @@ final class ManifestResources {
         }
         TomlTable table = root.getTable(TABLE);
         if (table == null) return BuildBlock.Resources.EMPTY;
-        for (String key : table.keySet()) {
-            if (!KEYS.contains(key)) {
-                throw new JkBuildParseException(
-                        "[resources] unknown key `" + key + "` — expected one of: " + String.join(", ", KEYS));
-            }
-        }
+        rejectUnknownKeys(table, KEYS, "[resources]");
         Map<String, String> properties = new LinkedHashMap<>();
         if (table.contains("properties")) {
-            TomlTable props = table.getTable("properties");
-            if (props == null) {
+            if (!(table.get(List.of("properties")) instanceof TomlTable props)) {
                 throw new JkBuildParseException("[resources] properties must be a table of name = \"value\"");
             }
             collect(props, "", properties);

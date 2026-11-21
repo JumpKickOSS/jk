@@ -3,6 +3,7 @@ package cc.jumpkick.config;
 
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Set;
 import java.util.TreeSet;
 import org.jspecify.annotations.Nullable;
@@ -30,7 +31,7 @@ public record ManifestOutline(@Nullable String name, Set<String> workspaceDepend
             TomlTable entries = toml.getTableOrEmpty(table);
             for (String key : entries.keySet()) {
                 if (entries.isTable(key)
-                        && Boolean.TRUE.equals(entries.getTableOrEmpty(key).getBoolean("workspace"))) {
+                        && Boolean.TRUE.equals(entries.getTableOrEmpty(key).get(List.of("workspace")))) {
                     deps.add(key);
                 }
             }

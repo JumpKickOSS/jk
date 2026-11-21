@@ -44,7 +44,7 @@ final class ManifestEnv {
      * variable literally named {@code TZ=UTC}.
      */
     static List<EnvDecl> parseTestEnv(TomlTable root) {
-        TomlTable test = root.getTable("test");
+        TomlTable test = TomlTableReader.optionalTable(root, "test", "`test`");
         if (test == null) return List.of();
         return parseEnvDecls(test.get(List.of("env")), "[test]", "env");
     }

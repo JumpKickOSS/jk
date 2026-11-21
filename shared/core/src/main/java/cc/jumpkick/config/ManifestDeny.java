@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.config;
 
+import static cc.jumpkick.config.TomlTableReader.optionalArray;
+import static cc.jumpkick.config.TomlTableReader.optionalString;
+import static cc.jumpkick.config.TomlTableReader.optionalTable;
+import static cc.jumpkick.config.TomlTableReader.rejectUnknownKeys;
+
 import cc.jumpkick.model.DenyPolicy;
 import java.util.ArrayList;
 import java.util.List;
@@ -16,15 +21,22 @@ import org.tomlj.TomlTable;
  */
 final class ManifestDeny {
 
+    static final List<String> KEYS = List.of("sources", "licenses", "yanked");
+
     private ManifestDeny() {}
 
     static DenyPolicy parse(TomlTable root) {
-        TomlTable deny = root.getTable("deny");
+        TomlTable deny = optionalTable(root, "deny", "`deny`");
         if (deny == null) return DenyPolicy.permissive();
-        List<String> sources = optionalStringList(deny.getTable("sources"), "deny");
-        List<String> deniedLicenses = optionalStringList(deny.getTable("licenses"), "deny");
-        List<String> allowedLicenses = optionalStringList(deny.getTable("licenses"), "allow");
-        String yankedRaw = deny.getString("yanked");
+        rejectUnknownKeys(deny, KEYS, "[deny]");
+        TomlTable sourcesTable = optionalTable(deny, "sources", "deny.sources");
+        if (sourcesTable != null) rejectUnknownKeys(sourcesTable, List.of("deny"), "[deny.sources]");
+        TomlTable licensesTable = optionalTable(deny, "licenses", "deny.licenses");
+        if (licensesTable != null) rejectUnknownKeys(licensesTable, List.of("deny", "allow"), "[deny.licenses]");
+        List<String> sources = optionalStringList(sourcesTable, "deny", "[deny.sources] deny");
+        List<String> deniedLicenses = optionalStringList(licensesTable, "deny", "[deny.licenses] deny");
+        List<String> allowedLicenses = optionalStringList(licensesTable, "allow", "[deny.licenses] allow");
+        String yankedRaw = optionalString(deny, "yanked", "deny.yanked");
         DenyPolicy.YankedPolicy yanked;
         if (yankedRaw != null && !yankedRaw.isBlank()) {
             yanked = parseYanked(yankedRaw);
@@ -39,15 +51,15 @@ final class ManifestDeny {
         return new DenyPolicy(sources, deniedLicenses, allowedLicenses, yanked);
     }
 
-    private static List<String> optionalStringList(@Nullable TomlTable table, String key) {
+    private static List<String> optionalStringList(@Nullable TomlTable table, String key, String where) {
         if (table == null) return List.of();
-        TomlArray arr = table.getArray(key);
+        TomlArray arr = optionalArray(table, key, where);
         if (arr == null) return List.of();
         List<String> result = new ArrayList<>(arr.size());
         for (int i = 0; i < arr.size(); i++) {
             Object element = arr.get(i);
             if (!(element instanceof String s)) {
-                throw new JkBuildParseException("expected `deny." + key + "` to be a list of strings");
+                throw new JkBuildParseException(where + " must be a list of strings");
             }
             result.add(s);
         }

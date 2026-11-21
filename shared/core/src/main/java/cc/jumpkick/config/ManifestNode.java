@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.config;
 
+import static cc.jumpkick.config.TomlTableReader.optionalString;
+import static cc.jumpkick.config.TomlTableReader.rejectUnknownKeys;
+
 import cc.jumpkick.model.NodeTable;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -12,7 +15,6 @@ import java.util.Optional;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
 import org.tomlj.TomlArray;
-import org.tomlj.TomlPosition;
 import org.tomlj.TomlTable;
 
 /** The {@code [node]} table of {@code jk.toml}. */
@@ -67,7 +69,7 @@ final class ManifestNode {
         }
         TomlTable t = root.getTable(TABLE);
         if (t == null) return Optional.empty();
-        rejectUnknown(t, KEYS, "[node]");
+        rejectUnknownKeys(t, KEYS, "[node]");
         // node = { workspace = true } and [node] version = … are the toolchain alone, not a table of settings.
         if (onlyToolchain(t)) return Optional.empty();
         String pm = string(t, "package-manager");
@@ -124,7 +126,7 @@ final class ManifestNode {
         Object raw = t.get("build");
         if (raw instanceof String script) return NodeTable.Command.run(script);
         if (raw instanceof TomlTable inline) {
-            rejectUnknown(inline, List.of("run", "npx", "exec"), "[node] build");
+            rejectUnknownKeys(inline, List.of("run", "npx", "exec"), "[node] build");
             return command(inline, "[node] build");
         }
         throw new JkBuildParseException("[node] build must be a script name or { npx = \"…\" }");
@@ -133,7 +135,7 @@ final class ManifestNode {
     private static NodeTable.Command command(TomlTable t, String where) {
         NodeTable.Command found = null;
         for (NodeTable.Command.Kind kind : NodeTable.Command.Kind.values()) {
-            String value = string(t, kind.key(), where + "." + kind.key());
+            String value = optionalString(t, kind.key(), where + "." + kind.key());
             if (value == null) continue;
             if (found != null) {
                 throw new JkBuildParseException(where + " names more than one of run, npx, exec — keep one");
@@ -153,10 +155,10 @@ final class ManifestNode {
         List<NodeTable.Step> out = new ArrayList<>();
         Set<String> names = new HashSet<>();
         for (int i = 0; i < arr.size(); i++) {
-            TomlTable s = arr.getTable(i);
             String where = "[[node.steps]] #" + (i + 1);
-            rejectUnknown(s, STEP_KEYS, where);
-            String name = string(s, "name", where + ".name");
+            if (!(arr.get(i) instanceof TomlTable s)) throw new JkBuildParseException(where + " must be a table");
+            rejectUnknownKeys(s, STEP_KEYS, where);
+            String name = optionalString(s, "name", where + ".name");
             if (name == null || name.isBlank()) throw new JkBuildParseException(where + " needs a name");
             if (!names.add(name)) throw new JkBuildParseException("[[node.steps]] name `" + name + "` is used twice");
             where = "[[node.steps]] `" + name + "`";
@@ -190,7 +192,7 @@ final class ManifestNode {
     }
 
     private static <E extends Enum<E>> E choice(TomlTable t, String key, String where, Class<E> type, E fallback) {
-        String raw = string(t, key, where + "." + key);
+        String raw = optionalString(t, key, where + "." + key);
         if (raw == null) return fallback;
         try {
             return Enum.valueOf(type, raw.toUpperCase(Locale.ROOT));
@@ -203,7 +205,7 @@ final class ManifestNode {
     }
 
     private static @Nullable String relativePath(TomlTable t, String key, String where) {
-        String path = string(t, key, where);
+        String path = optionalString(t, key, where);
         if (path != null && (path.isBlank() || path.startsWith("/") || path.contains(".."))) {
             throw new JkBuildParseException(where + " must be a path inside the module, got \"" + path + "\"");
         }
@@ -221,7 +223,7 @@ final class ManifestNode {
 
     /** A relative path that may climb with {@code ..}; {@link cc.jumpkick.layout.NodeShape#check} bounds where it lands. */
     private static @Nullable String climbingPath(TomlTable t, String key, String where) {
-        String path = string(t, key, where);
+        String path = optionalString(t, key, where);
         if (path != null && (path.isBlank() || path.startsWith("/"))) {
             throw new JkBuildParseException(where + " must be a relative path, got \"" + path + "\"");
         }
@@ -240,23 +242,6 @@ final class ManifestNode {
     }
 
     private static @Nullable String string(TomlTable t, String key) {
-        return string(t, key, "[node] " + key);
-    }
-
-    private static @Nullable String string(TomlTable t, String key, String where) {
-        if (!t.contains(key)) return null;
-        if (!(t.get(key) instanceof String s)) throw new JkBuildParseException(where + " must be a string");
-        return s;
-    }
-
-    /** An unknown key fails naming where it was typed. */
-    private static void rejectUnknown(TomlTable t, List<String> known, String where) {
-        for (String key : t.keySet()) {
-            if (known.contains(key)) continue;
-            TomlPosition at = t.inputPositionOf(List.of(key));
-            String position = at == null ? "" : " at line " + at.line() + ", column " + at.column();
-            throw new JkBuildParseException(where + " unknown key `" + key + "`" + position + " — expected one of: "
-                    + String.join(", ", known));
-        }
+        return optionalString(t, key, "[node] " + key);
     }
 }

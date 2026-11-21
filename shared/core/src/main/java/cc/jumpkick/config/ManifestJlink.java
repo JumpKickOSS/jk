@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.config;
 
+import static cc.jumpkick.config.TomlTableReader.rejectUnknownKeys;
+
 import cc.jumpkick.model.Jlink;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -37,12 +39,7 @@ final class ManifestJlink {
         }
         TomlTable table = root.getTable(TABLE);
         if (table == null) return Optional.empty();
-        for (String key : table.keySet()) {
-            if (!KEYS.contains(key)) {
-                throw new JkBuildParseException(
-                        "[jlink] unknown key `" + key + "` — expected one of: " + String.join(", ", KEYS));
-            }
-        }
+        rejectUnknownKeys(table, KEYS, "[jlink]");
         List<String> modules = JkBuildParser.optionalStringList(table, MODULES, "jlink." + MODULES);
         for (String module : modules) {
             if (!MODULE_NAME.matcher(module).matches()) {
@@ -88,7 +85,7 @@ final class ManifestJlink {
         if (table.isBoolean(AOT_CACHE)) {
             return Boolean.TRUE.equals(table.getBoolean(AOT_CACHE)) ? Jlink.AotCache.AUTO : Jlink.AotCache.OFF;
         }
-        if ("cds".equals(table.getString(AOT_CACHE))) return Jlink.AotCache.CDS;
+        if ("cds".equals(table.get(List.of(AOT_CACHE)))) return Jlink.AotCache.CDS;
         throw new JkBuildParseException("[jlink] aot-cache is true (an AOT cache on JDK 25+, a CDS archive below),"
                 + " false, or \"cds\" (a CDS archive on any JDK)");
     }

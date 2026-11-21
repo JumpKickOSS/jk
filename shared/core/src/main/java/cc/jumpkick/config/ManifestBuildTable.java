@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.config;
 
+import static cc.jumpkick.config.TomlTableReader.optionalArray;
+import static cc.jumpkick.config.TomlTableReader.optionalBool;
+import static cc.jumpkick.config.TomlTableReader.rejectUnknownKeys;
+
 import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.DebugInfo;
@@ -96,13 +100,8 @@ final class ManifestBuildTable {
         if (build.contains("extra-resources")) {
             throw new JkBuildParseException("[build].extra-resources is not a setting; use src/main/resources");
         }
-        for (String key : build.keySet()) {
-            if (!BUILD_KEYS.contains(key)) {
-                throw new JkBuildParseException(
-                        "[build] unknown key `" + key + "` — expected one of: " + String.join(", ", BUILD_KEYS));
-            }
-        }
-        TomlArray arr = build.getArray("order-after");
+        rejectUnknownKeys(build, BUILD_KEYS, "[build]");
+        TomlArray arr = optionalArray(build, "order-after", "[build].order-after");
         if (arr != null) {
             for (int i = 0; i < arr.size(); i++) {
                 Object val = arr.get(i);
@@ -111,7 +110,7 @@ final class ManifestBuildTable {
                 if (!str.isBlank()) s.orderAfter.add(str);
             }
         }
-        TomlArray twj = build.getArray("test-plugin-jars");
+        TomlArray twj = optionalArray(build, "test-plugin-jars", "[build].test-plugin-jars");
         if (twj != null) {
             for (int i = 0; i < twj.size(); i++) {
                 Object val = twj.get(i);
@@ -122,7 +121,7 @@ final class ManifestBuildTable {
         }
         // `lint` defaults on (surface deprecation/unchecked); `lint = false`
         // suppresses jk's default javac lint flags for users who don't want it.
-        s.lint = !Boolean.FALSE.equals(build.getBoolean("lint"));
+        s.lint = !Boolean.FALSE.equals(optionalBool(build, "lint", "[build].lint"));
         // `debug` is the javac debug-info level; absent means full, as Gradle and Maven compile.
         Object rawDebug = build.get("debug");
         if (rawDebug != null) {
@@ -138,7 +137,7 @@ final class ManifestBuildTable {
         // [build] ksp-options — project-declared KSP processor options (`key=value`; Room's
         // room.schemaLocation is the canonical consumer). Plugin manifests contribute theirs
         // via [[contribute.compiler-args]] ksp; this is the project-owned lane.
-        TomlArray kspOpts = build.getArray("ksp-options");
+        TomlArray kspOpts = optionalArray(build, "ksp-options", "[build].ksp-options");
         if (kspOpts != null) {
             for (int i = 0; i < kspOpts.size(); i++) {
                 Object val = kspOpts.get(i);
@@ -160,7 +159,7 @@ final class ManifestBuildTable {
             s.kspVersion = exact.version();
         }
         // [build] extra-src — additional module-relative source roots (variant overlays append).
-        TomlArray es = build.getArray("extra-src");
+        TomlArray es = optionalArray(build, "extra-src", "[build].extra-src");
         if (es != null) {
             for (int i = 0; i < es.size(); i++) {
                 Object val = es.get(i);
@@ -171,7 +170,7 @@ final class ManifestBuildTable {
         }
         // [build] generated-src — committed generated source roots: compiled as extra-src roots
         // are, and never formatted.
-        TomlArray gs = build.getArray("generated-src");
+        TomlArray gs = optionalArray(build, "generated-src", "[build].generated-src");
         if (gs != null) {
             for (int i = 0; i < gs.size(); i++) {
                 Object val = gs.get(i);
@@ -200,19 +199,45 @@ final class ManifestBuildTable {
         }
     }
 
+    /** Every key {@code [test]} may carry; {@code env} and {@code guard-suites} have readers of their own. */
+    static final List<String> TEST_KEYS = List.of(
+            "workers",
+            "extra-src",
+            "fixtures",
+            "serial-tags",
+            "exclude-classes",
+            "exclude-src",
+            "exclude-dependencies",
+            "assertions",
+            "network",
+            "coverage",
+            "failures",
+            "fast-method-budget",
+            "cache",
+            "idle-timeout",
+            "tools",
+            "locale",
+            "timezone",
+            "suites",
+            "jvm-args",
+            "system-properties",
+            "env",
+            "guard-suites");
+
     private static void readTestTable(TomlTable test, Settings s) {
         // [test] workers — pin within-module test JVMs (1 = serial; 0 = same as omitting: the
         // build's auto share).
+        rejectUnknownKeys(test, TEST_KEYS, "[test]");
         if (test.contains("workers")) {
-            Long n = test.getLong("workers");
-            if (n == null) throw new JkBuildParseException("[test].workers must be an integer >= 0");
+            if (!(test.get("workers") instanceof Long n))
+                throw new JkBuildParseException("[test].workers must be an integer >= 0");
             if (n < 0) throw new JkBuildParseException("[test].workers must be >= 0");
             s.testWorkers = n.intValue();
         }
         // [test] extra-src — extra test-tier sources compiled into test classes. A single file
         // is legal where a directory would over-reach (clients/cli compiling one IntelliJ
         // parser type). Shared helpers a sibling consumes belong in [test] fixtures.
-        TomlArray tes = test.getArray("extra-src");
+        TomlArray tes = optionalArray(test, "extra-src", "[test].extra-src");
         if (tes != null) {
             for (int i = 0; i < tes.size(); i++) {
                 Object val = tes.get(i);
@@ -239,7 +264,7 @@ final class ManifestBuildTable {
             }
         }
         // [test] serial-tags — class-level tags that never share the sharded worker pool.
-        TomlArray st = test.getArray("serial-tags");
+        TomlArray st = optionalArray(test, "serial-tags", "[test].serial-tags");
         if (st != null) {
             for (int i = 0; i < st.size(); i++) {
                 Object val = st.get(i);
@@ -318,7 +343,7 @@ final class ManifestBuildTable {
         // [test] tools — external executables the suite shells out to, by the bare name the tests
         // invoke; each one's PATH location and --version become run-tests inputs. A path is refused:
         // the tests resolve the name on PATH, and so must the stamp, or the two would disagree.
-        TomlArray tools = test.getArray("tools");
+        TomlArray tools = optionalArray(test, "tools", "[test].tools");
         if (tools != null) {
             for (int i = 0; i < tools.size(); i++) {
                 Object val = tools.get(i);
@@ -549,10 +574,10 @@ final class ManifestBuildTable {
      * string. Both are run-tests inputs.
      */
     private static void readTestJvm(TomlTable test, Settings s) {
-        TomlArray jvmArgs = test.getArray("jvm-args");
-        if (test.contains("jvm-args") && jvmArgs == null) {
+        if (test.contains("jvm-args") && !(test.get("jvm-args") instanceof TomlArray)) {
             throw new JkBuildParseException("[test].jvm-args must be an array of JVM flags: jvm-args = [\"-Xmx1g\"]");
         }
+        TomlArray jvmArgs = test.getArray("jvm-args");
         if (jvmArgs != null) {
             for (int i = 0; i < jvmArgs.size(); i++) {
                 Object val = jvmArgs.get(i);

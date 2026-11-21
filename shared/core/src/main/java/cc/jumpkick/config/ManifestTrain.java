@@ -1,6 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.config;
 
+import static cc.jumpkick.config.TomlTableReader.optionalArray;
+import static cc.jumpkick.config.TomlTableReader.optionalBool;
+import static cc.jumpkick.config.TomlTableReader.optionalString;
+import static cc.jumpkick.config.TomlTableReader.optionalTable;
+import static cc.jumpkick.config.TomlTableReader.rejectUnknownKeys;
+
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -16,34 +22,40 @@ import org.tomlj.TomlTable;
  */
 final class ManifestTrain {
 
+    static final List<String> KEYS = List.of("command", "commit-to", "require-fresh", "aot-cache", "profile");
+
+    static final List<String> PROFILE_KEYS = List.of("name", "env", "properties", "args");
+
     private ManifestTrain() {}
 
     static TrainConfig parse(TomlTable root, String displayPath) {
-        TomlTable train = root.getTable("train");
+        TomlTable train = optionalTable(root, "train", "`train`");
         if (train == null) return TrainConfig.EMPTY;
+        rejectUnknownKeys(train, KEYS, "[train]");
 
-        String command = train.getString("command");
-        String commitTo = train.getString("commit-to");
-        boolean requireFresh = Boolean.TRUE.equals(train.getBoolean("require-fresh"));
-        boolean aotCache = Boolean.TRUE.equals(train.getBoolean("aot-cache"));
+        String command = optionalString(train, "command", "[train] command");
+        String commitTo = optionalString(train, "commit-to", "[train] commit-to");
+        boolean requireFresh = Boolean.TRUE.equals(optionalBool(train, "require-fresh", "[train] require-fresh"));
+        boolean aotCache = Boolean.TRUE.equals(optionalBool(train, "aot-cache", "[train] aot-cache"));
 
         List<TrainConfig.Profile> profiles = new ArrayList<>();
-        TomlArray arr = train.getArray("profile");
+        TomlArray arr = optionalArray(train, "profile", "[train] profile");
         if (arr != null) {
             for (int i = 0; i < arr.size(); i++) {
-                TomlTable t = arr.getTable(i);
-                if (t == null) {
+                if (!(arr.get(i) instanceof TomlTable t)) {
                     throw new JkBuildParseException(displayPath + ".train.profile[" + i + "] must be a table");
                 }
-                String name = t.getString("name");
+                String where = displayPath + ".train.profile[" + i + "]";
+                rejectUnknownKeys(t, PROFILE_KEYS, where);
+                String name = optionalString(t, "name", where + " name");
                 if (name == null || name.isBlank()) {
-                    throw new JkBuildParseException(displayPath + ".train.profile[" + i + "] requires name = \"…\"");
+                    throw new JkBuildParseException(where + " requires name = \"…\"");
                 }
                 profiles.add(new TrainConfig.Profile(
                         name,
-                        stringMap(t.getTable("env")),
-                        stringMap(t.getTable("properties")),
-                        stringList(t, "args")));
+                        stringMap(optionalTable(t, "env", where + " env")),
+                        stringMap(optionalTable(t, "properties", where + " properties")),
+                        JkBuildParser.optionalStringList(t, "args", where + " args")));
             }
         }
         return new TrainConfig(command, commitTo, requireFresh, aotCache, profiles);
@@ -55,17 +67,6 @@ final class ManifestTrain {
         for (String key : table.keySet()) {
             Object v = table.get(List.of(key));
             if (v != null) out.put(key, String.valueOf(v));
-        }
-        return out;
-    }
-
-    private static List<String> stringList(TomlTable table, String key) {
-        TomlArray arr = table.getArray(key);
-        if (arr == null) return List.of();
-        List<String> out = new ArrayList<>();
-        for (int i = 0; i < arr.size(); i++) {
-            String s = arr.getString(i);
-            if (s != null) out.add(s);
         }
         return out;
     }

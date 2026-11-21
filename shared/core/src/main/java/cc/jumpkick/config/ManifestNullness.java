@@ -2,6 +2,7 @@
 package cc.jumpkick.config;
 
 import static cc.jumpkick.config.JkBuildParser.*;
+import static cc.jumpkick.config.TomlTableReader.rejectUnknownKeys;
 
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
@@ -48,12 +49,7 @@ public final class ManifestNullness {
         if (!(raw instanceof TomlTable table)) {
             throw new JkBuildParseException("[nullness] must be a table: [nullness] include = [\"com.example\"]");
         }
-        for (String key : table.keySet()) {
-            if (!KEYS.contains(key)) {
-                throw new JkBuildParseException(
-                        "[nullness] unknown key `" + key + "` — expected one of: " + String.join(", ", KEYS));
-            }
-        }
+        rejectUnknownKeys(table, KEYS, "[nullness]");
         List<String> include = table.contains("include") ? packages(table, "include") : null;
         List<String> exclude = packages(table, "exclude");
         boolean explicit = bool(table, "explicit");

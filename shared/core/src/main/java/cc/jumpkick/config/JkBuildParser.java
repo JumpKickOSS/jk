@@ -608,8 +608,9 @@ public final class JkBuildParser {
     }
 
     static List<String> requireStringList(TomlTable table, String key, String where) {
-        TomlArray arr = table.getArray(key);
-        if (arr == null) throw new JkBuildParseException(where + " must be an array of directory strings");
+        if (!(table.get(List.of(key)) instanceof TomlArray arr)) {
+            throw new JkBuildParseException(where + " must be an array of directory strings");
+        }
         List<String> out = new ArrayList<>(arr.size());
         for (int i = 0; i < arr.size(); i++) {
             if (!(arr.get(i) instanceof String s) || s.isBlank()) {
@@ -622,10 +623,9 @@ public final class JkBuildParser {
 
     /** True when {@code [workspace] modules = [...]} is a non-empty array — a workspace root. */
     static boolean hasWorkspaceModules(TomlTable root) {
-        TomlTable ws = root.getTable("workspace");
-        if (ws == null || !ws.contains("modules") || !ws.isArray("modules")) return false;
-        TomlArray modules = ws.getArray("modules");
-        return modules != null && modules.size() > 0;
+        return root.get(List.of("workspace")) instanceof TomlTable ws
+                && ws.get(List.of("modules")) instanceof TomlArray modules
+                && modules.size() > 0;
     }
 
     /** Convert a tomlj value to a plain JDK type so plugin-api stays tomlj-free. */
@@ -650,11 +650,12 @@ public final class JkBuildParser {
     }
 
     static String requireString(TomlTable table, String key, String displayPath) {
-        String v = table.getString(key);
+        Object v = table.get(List.of(key));
         if (v == null) {
             throw new JkBuildParseException("jk.toml is missing required key `" + displayPath + "`");
         }
-        return v;
+        if (!(v instanceof String s)) throw JkBuildParseException.at(table, key, displayPath + " must be a string");
+        return s;
     }
 
     /** The table's {@code jvm-args} as a list of strings; empty when it is not set. */

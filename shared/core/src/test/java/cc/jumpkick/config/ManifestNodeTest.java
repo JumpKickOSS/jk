@@ -7,6 +7,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.NodeTable;
 import cc.jumpkick.model.ToolchainSpec;
+import cc.jumpkick.run.SourceLocation;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -171,10 +172,12 @@ class ManifestNodeTest {
     }
 
     @Test
-    void an_unknown_key_names_its_line_and_column() {
+    void an_unknown_key_is_located_at_its_line_and_column() {
         assertThatThrownBy(() -> parse("\n[node]\nframework = \"vite\"\noutdir = \"dist\"\n"))
-                .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("[node] unknown key `outdir` at line 7, column 1");
+                .isInstanceOfSatisfying(JkBuildParseException.class, e -> {
+                    assertThat(e).hasMessageContaining("[node] unknown key `outdir`");
+                    assertThat(e.location()).isEqualTo(SourceLocation.at(7, 1));
+                });
         assertThatThrownBy(() -> parse("[[node.steps]]\nname = \"x\"\nrun = \"x\"\nwhen = \"always\"\n"))
                 .isInstanceOf(JkBuildParseException.class)
                 .hasMessageContaining("[[node.steps]] #1 unknown key `when`");

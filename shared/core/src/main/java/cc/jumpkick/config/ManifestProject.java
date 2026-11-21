@@ -2,6 +2,7 @@
 package cc.jumpkick.config;
 
 import static cc.jumpkick.config.JkBuildParser.*;
+import static cc.jumpkick.config.TomlTableReader.optionalString;
 
 import cc.jumpkick.model.InstallDestination;
 import cc.jumpkick.model.JavadocMode;
@@ -180,7 +181,7 @@ public final class ManifestProject {
             description = null;
         } else {
             // Omitted description stays unset — never auto-inherits from the workspace root.
-            description = root.getString("description");
+            description = optionalString(root, "description", "description");
         }
 
         boolean m2integration = parseM2Integration(root, workspaceRoot, inherits);
@@ -191,7 +192,7 @@ public final class ManifestProject {
             inherits.add(ProjectInherit.LAYOUT);
             layout = Layout.AUTO;
         } else if (root.contains("layout")) {
-            String layoutRaw = root.getString("layout");
+            String layoutRaw = optionalString(root, "layout", "layout");
             try {
                 layout = Layout.parse(layoutRaw);
             } catch (IllegalArgumentException e) {
@@ -267,7 +268,7 @@ public final class ManifestProject {
             return true;
         }
         if (m2 == null || !present) return true;
-        Boolean value = m2.getBoolean("integration");
+        Boolean value = m2.get(List.of("integration")) instanceof Boolean b ? b : null;
         if (value == null) {
             throw new JkBuildParseException("[m2].integration must be true or false");
         }
@@ -291,7 +292,7 @@ public final class ManifestProject {
             return null;
         }
         if (install == null || !present) return null;
-        String word = install.getString(InstallDestination.KEY);
+        String word = String.valueOf(install.get(List.of(InstallDestination.KEY)));
         return InstallDestination.parse(word)
                 .orElseThrow(() -> new JkBuildParseException(
                         "[install] destination must be \"m2\" or \"jk\", not `" + word + "`"));
@@ -324,7 +325,7 @@ public final class ManifestProject {
             }
             throw new JkBuildParseException("jk.toml is missing required key `" + path + "`" + strandedHint(root, key));
         }
-        String value = root.getString(key);
+        String value = root.get(List.of(key)) instanceof String s ? s : null;
         if (value == null) {
             throw new JkBuildParseException(path + " must be a string (e.g. \"1.0.0\") or `{ workspace = true }`");
         }
@@ -343,7 +344,7 @@ public final class ManifestProject {
         TomlTable t = root.getTable(key);
         // A table without workspace is the key's own table form (jdk = { vendor = … }), read by its parser.
         if (t != null && !t.contains("workspace")) return false;
-        Boolean ws = t == null ? null : t.getBoolean("workspace");
+        Boolean ws = t != null && t.get(List.of("workspace")) instanceof Boolean b ? b : null;
         if (t == null || !Boolean.TRUE.equals(ws)) {
             throw new JkBuildParseException(key + ".workspace can only be `true`; or set " + key + " directly");
         }
@@ -527,7 +528,7 @@ public final class ManifestProject {
      */
     static @Nullable VersionSelector parseKotlinVersion(TomlTable root) {
         if (!root.contains("kotlin")) return null;
-        String raw = root.getString("kotlin");
+        String raw = root.get(List.of("kotlin")) instanceof String s ? s : null;
         if (raw == null) {
             throw new JkBuildParseException("kotlin must be a version string, e.g. \"2.3.21\"");
         }
@@ -542,7 +543,7 @@ public final class ManifestProject {
      */
     static @Nullable VersionSelector parseGroovyVersion(TomlTable root) {
         if (!root.contains("groovy")) return null;
-        String raw = root.getString("groovy");
+        String raw = root.get(List.of("groovy")) instanceof String s ? s : null;
         if (raw == null) {
             throw new JkBuildParseException("groovy must be a version string, e.g. \"5.0.4\"");
         }
@@ -557,7 +558,7 @@ public final class ManifestProject {
      */
     static @Nullable VersionSelector parseScalaVersion(TomlTable root) {
         if (!root.contains("scala")) return null;
-        String raw = root.getString("scala");
+        String raw = root.get(List.of("scala")) instanceof String s ? s : null;
         if (raw == null) {
             throw new JkBuildParseException("scala must be a version string, e.g. \"3.8.4\"");
         }

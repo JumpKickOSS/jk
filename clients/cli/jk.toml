@@ -70,9 +70,6 @@ bcpg-jdk18on = "1.86"
 # test runtime classpath costs nothing.
 annotations = { group = "org.jetbrains", name = "annotations", version = "26.1.0" }
 
-[image]
-main-class = "cc.jumpkick.cli.Jk"
-
 [native]
 enabled = "always"
 # Installable client binary (PATH entry is `jk` / `jk.exe`), not the Maven artifact name.

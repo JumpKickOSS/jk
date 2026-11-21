@@ -24,6 +24,10 @@ JumpKick shows you this page's new entries after it updates itself.
   at `${project.version}`, where both wrote a `workspace:` coordinate no build could resolve; a
   `[workspace.dependencies]` entry is written as its coordinate. A `[war]` module exports as `war`
   packaging, and dropped `[dev-dependencies]` are a report row.
+- **A misspelt or mistyped `jk.toml` key fails naming it.** `[image]`, `[test]`, `[train]` and
+  `[deny]` refuse a key they do not know, as the other tables already did, where it was ignored;
+  a value of the wrong type (`[build] lint = "no"`, a dependency's `version = 1`) is a parse error
+  naming the key, where it failed with an internal error.
 
 
 - **`[audit] ignore` matches an advisory's aliases.** An entry written for `CVE-2026-1234` now
