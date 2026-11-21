@@ -381,7 +381,8 @@ as `com.example.app.debug`. The suffix reaches the APK or AAB manifest, `BuildCo
 `${applicationId}.androidx-startup` authority differs between the debug and release installs.
 Classes and `R` stay in the namespace: a relative class name such as `.MainActivity` names
 `com.example.app.MainActivity`. A minified build leaves R8's `mapping.txt`, `seeds.txt` and
-`usage.txt` in `target/r8/`, which a cached build restores with the artifact.
+`usage.txt` in `target/r8/`, which a cached build restores with the artifact; packaging without
+R8 removes the directory.
 
 `[android] version-code` (default 1) is the app's `versionCode`: the APK or AAB manifest carries
 it unless the manifest sets its own, and `BuildConfig.VERSION_CODE` reads it. Every release a store

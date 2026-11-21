@@ -235,6 +235,41 @@ class ApkPackagerTest {
                 .contains(r8);
     }
 
+    /**
+     * A build without R8 (minify off, or a debug build after a release one) leaves no
+     * {@code target/r8/}: a mapping beside an artifact it does not describe would retrace that
+     * artifact's crashes wrongly.
+     */
+    @Test
+    void a_build_without_r8_clears_the_retrace_artifacts_an_earlier_build_left(@TempDir Path tmp) throws Exception {
+        FakeBuildIo io = app(tmp);
+        Path r8 = io.moduleDir().resolve("target/r8");
+        FakeBuildIo.write(r8.resolve("mapping.txt"), "com.example.App -> a.a:\n");
+
+        ApkPackager.produce(io);
+
+        assertThat(r8).doesNotExist();
+        assertThat(io.produced()).doesNotContain(r8);
+    }
+
+    /** A minified build replaces {@code target/r8/} whole, so a file R8 no longer writes does not linger. */
+    @Test
+    void a_build_with_r8_replaces_the_retrace_artifacts_whole(@TempDir Path tmp) throws Exception {
+        FakeBuildIo io = app(tmp);
+        Path r8 = io.moduleDir().resolve("target/r8");
+        FakeBuildIo.write(r8.resolve("usage.txt"), "stale\n");
+        FakeBuildIo.write(io.step("android-r8").resolve("mapping/mapping.txt"), "com.example.App -> a.a:\n");
+        Files.createDirectories(io.step("android-r8").resolve("dex"));
+        Files.copy(
+                io.step("android-dex").resolve("dex/classes.dex"),
+                io.step("android-r8").resolve("dex/classes.dex"));
+
+        ApkPackager.produce(io);
+
+        assertThat(r8.resolve("mapping.txt")).exists();
+        assertThat(r8.resolve("usage.txt")).doesNotExist();
+    }
+
     /** A minified build dexes through R8, so its output is the one the APK must be built from. */
     @Test
     void the_r8_output_is_preferred_over_the_plain_dex_output(@TempDir Path tmp) throws Exception {

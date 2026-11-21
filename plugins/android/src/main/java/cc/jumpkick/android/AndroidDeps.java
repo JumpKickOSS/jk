@@ -198,16 +198,18 @@ final class AndroidDeps {
      * Copy the R8 retrace artifacts ({@code mapping.txt}, {@code seeds.txt}, {@code usage.txt})
      * from the step's cached scratch to the module's stable {@code target/r8/} — the path release
      * tooling (Play upload, crash retrace) reads — and declare the directory produced, so a cached
-     * package restores it with the artifact.
+     * package restores it with the artifact. The directory is replaced whole, and a build without
+     * R8 removes it, so it never describes an artifact it was not made for.
      */
     static void copyRetraceArtifacts(PackageIo io) throws IOException {
-        Path mapping =
-                io.stepOutput("android-r8").map(dir -> dir.resolve("mapping")).orElse(null);
-        if (mapping == null || !Files.isDirectory(mapping)) return;
         // The artifact sits at the root of target/, so its directory is target/.
         Path target = io.artifactPath().getParent();
         if (target == null) throw new IOException("artifact path has no target directory: " + io.artifactPath());
         Path targetR8 = target.resolve("r8");
+        PathUtil.deleteRecursivelyOrThrow(targetR8);
+        Path mapping =
+                io.stepOutput("android-r8").map(dir -> dir.resolve("mapping")).orElse(null);
+        if (mapping == null || !Files.isDirectory(mapping)) return;
         Files.createDirectories(targetR8);
         try (var listing = Files.list(mapping)) {
             for (Path file : (Iterable<Path>) listing.sorted()::iterator) {
