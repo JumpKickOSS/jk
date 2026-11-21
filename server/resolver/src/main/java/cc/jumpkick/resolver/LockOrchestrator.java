@@ -93,6 +93,9 @@ public final class LockOrchestrator {
     /** What the previous solve of a series left for this one to reuse; {@code null} for a lone lock. */
     private @Nullable Rounds rounds;
 
+    /** The feature version of the JDK the modules build and run on, for a lock no module declares a {@code java} for. */
+    private int jdkLevel = Runtime.version().feature();
+
     /** URL → the repository a dependency POM declared during {@link #lock}, with the policy the POM wrote. */
     private final Map<String, Pom.Repository> declaredRepositories = new ConcurrentHashMap<>();
 
@@ -129,6 +132,15 @@ public final class LockOrchestrator {
      */
     public LockOrchestrator withWorkspaceVersions(Set<String> modules) {
         this.workspaceVersions = modules == null ? Set.of() : Set.copyOf(modules);
+        return this;
+    }
+
+    /**
+     * The feature version of the JDK the modules build and run on: the {@code java} level Gradle
+     * variants are chosen for when no module declares one. Unset, the engine's own JDK.
+     */
+    public LockOrchestrator withJdkLevel(int level) {
+        if (level > 0) this.jdkLevel = level;
         return this;
     }
 
@@ -263,7 +275,8 @@ public final class LockOrchestrator {
             Map<String, String> prefs,
             Map<String, String> floors,
             Set<String> unshared,
-            Set<String> carried) {
+            Set<String> carried,
+            int javaLevel) {
         MemberInputs {
             features = List.copyOf(features);
             prefs = Map.copyOf(prefs);
@@ -527,8 +540,14 @@ public final class LockOrchestrator {
                 // A pin the member holds only through a sibling is the sibling's: a floor here.
                 Set<String> carried = carriedBy.getOrDefault(member, Set.of());
                 Map<String, String> memberFloors = without(floors.forMember(member), unshared);
-                MemberInputs inputs =
-                        new MemberInputs(manifest, List.copyOf(features), memberPrefs, memberFloors, unshared, carried);
+                MemberInputs inputs = new MemberInputs(
+                        manifest,
+                        List.copyOf(features),
+                        memberPrefs,
+                        memberFloors,
+                        unshared,
+                        carried,
+                        javaLevel(manifest));
                 if (rounds != null) {
                     MemberPartitions.MemberSolve prior = rounds.prior(member, inputs);
                     if (prior != null) return prior;
@@ -803,7 +822,8 @@ public final class LockOrchestrator {
 
     /**
      * The {@code java} level Gradle variants are chosen for: the lowest any module this lock serves
-     * declares, since one lock serves every workspace member; the engine's JDK when none declares one.
+     * declares, since one lock serves every workspace member; the JDK they build on when none
+     * declares one.
      */
     private int javaLevel(JkBuild project) {
         int lowest = project.project().javaRelease();
@@ -811,7 +831,7 @@ public final class LockOrchestrator {
             int level = m.manifest().project().javaRelease();
             if (level > 0 && (lowest <= 0 || level < lowest)) lowest = level;
         }
-        return lowest > 0 ? lowest : Runtime.version().feature();
+        return lowest > 0 ? lowest : jdkLevel;
     }
 
     /**

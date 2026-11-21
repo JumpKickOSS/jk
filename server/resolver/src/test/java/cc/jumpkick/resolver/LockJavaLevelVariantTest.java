@@ -27,7 +27,8 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * A lock chooses a module's Gradle runtime variant for the {@code java} its modules compile for: a
- * variant built for a newer JVM is passed over, and a workspace lock is chosen for its lowest member.
+ * variant built for a newer JVM is passed over, and a workspace lock is chosen for its lowest member;
+ * with no {@code java} declared, for the JDK the modules build on.
  */
 class LockJavaLevelVariantTest {
 
@@ -56,6 +57,18 @@ class LockJavaLevelVariantTest {
                 { "formatVersion": "1.1", "variants": [ %s, %s ] }
                 """.formatted(variant(21), variant(11)));
         upstream.leaf(GROUP, "widget-jdk21", "1.0.0").leaf(GROUP, "widget-jdk11", "1.0.0");
+        // Only the older pinned reaches widget, so only a member pinning it holds a variant.
+        upstream.metadata(GROUP, "pinned", "1.0.0", "2.0.0")
+                .pom(
+                        GROUP,
+                        "pinned",
+                        "1.0.0",
+                        pinnedPom(
+                                "1.0.0",
+                                "<dependencies><dependency><groupId>" + GROUP
+                                        + "</groupId><artifactId>widget</artifactId><version>1.0.0</version></dependency>"
+                                        + "</dependencies>"))
+                .pom(GROUP, "pinned", "2.0.0", pinnedPom("2.0.0", ""));
     }
 
     @Test
@@ -70,6 +83,72 @@ class LockJavaLevelVariantTest {
         Lockfile lock = new LockOrchestrator(repos(tmp)).lock(manifest("app", 25), "test");
 
         assertThat(modules(lock)).contains("widget-jdk21").doesNotContain("widget-jdk11");
+    }
+
+    @Test
+    void a_project_that_declares_no_java_locks_for_the_jdk_it_builds_on(@TempDir Path tmp) throws Exception {
+        Lockfile onOlder = new LockOrchestrator(repos(tmp)).withJdkLevel(17).lock(manifest("app", 0), "test");
+        Lockfile onNewer = new LockOrchestrator(repos(tmp)).withJdkLevel(25).lock(manifest("app", 0), "test");
+
+        assertThat(modules(onOlder)).contains("widget-jdk11").doesNotContain("widget-jdk21");
+        assertThat(modules(onNewer)).contains("widget-jdk21").doesNotContain("widget-jdk11");
+    }
+
+    @Test
+    void a_declared_java_outranks_the_jdk_the_project_builds_on(@TempDir Path tmp) throws Exception {
+        Lockfile lock = new LockOrchestrator(repos(tmp)).withJdkLevel(25).lock(manifest("app", 17), "test");
+
+        assertThat(modules(lock)).contains("widget-jdk11").doesNotContain("widget-jdk21");
+    }
+
+    /**
+     * A later solve of a series reuses a member's answer only when its inputs are equal, and the
+     * level the workspace's variants are chosen for is one: a sibling lowering its java moves it,
+     * even where the merged solve reaches no module with variants.
+     */
+    @Test
+    void a_series_re_solves_a_member_whose_sibling_lowered_the_workspace_java(@TempDir Path tmp) throws Exception {
+        LockOrchestrator.Rounds series = new LockOrchestrator.Rounds();
+        JkBuild current = pinning(manifest("current", 25), "1.0.0");
+        JkBuild root = pinning(manifest("root", 25), "2.0.0");
+
+        Lockfile first = new LockOrchestrator(repos(tmp))
+                .withRounds(series)
+                .withMembers(List.of(
+                        new LockOrchestrator.Member("legacy", pinning(manifest("legacy", 25), "2.0.0")),
+                        new LockOrchestrator.Member("current", current)))
+                .lock(root, "test");
+        int solvedFirst = series.memberSolves();
+        series.resetCounts();
+        Lockfile lowered = new LockOrchestrator(repos(tmp))
+                .withRounds(series)
+                .withMembers(List.of(
+                        new LockOrchestrator.Member("legacy", pinning(manifest("legacy", 17), "2.0.0")),
+                        new LockOrchestrator.Member("current", current)))
+                .lock(root, "test");
+
+        assertThat(solvedFirst).isEqualTo(1);
+        assertThat(modules(first.forMember("current"))).contains("widget-jdk21");
+        assertThat(series.memberReuses()).isZero();
+        assertThat(modules(lowered.forMember("current")))
+                .contains("widget-jdk11")
+                .doesNotContain("widget-jdk21");
+    }
+
+    @Test
+    void a_series_reuses_a_member_whose_workspace_java_held(@TempDir Path tmp) throws Exception {
+        LockOrchestrator.Rounds series = new LockOrchestrator.Rounds();
+        List<LockOrchestrator.Member> members = List.of(
+                new LockOrchestrator.Member("legacy", pinning(manifest("legacy", 25), "2.0.0")),
+                new LockOrchestrator.Member("current", pinning(manifest("current", 25), "1.0.0")));
+        JkBuild root = pinning(manifest("root", 25), "2.0.0");
+
+        new LockOrchestrator(repos(tmp)).withRounds(series).withMembers(members).lock(root, "test");
+        series.resetCounts();
+        new LockOrchestrator(repos(tmp)).withRounds(series).withMembers(members).lock(root, "test");
+
+        assertThat(series.memberReuses()).isEqualTo(1);
+        assertThat(series.memberSolves()).isZero();
     }
 
     @Test
@@ -115,6 +194,21 @@ class LockJavaLevelVariantTest {
         EnumMap<Scope, List<Dependency>> deps = new EnumMap<>(Scope.class);
         deps.putAll(Map.of(Scope.MAIN, List.of(new Dependency(GROUP + ":widget", VersionSelector.parse("1.0.0")))));
         return new JkBuild(new Project("com.example", name, "0.1.0", java), new JkBuild.Dependencies(deps));
+    }
+
+    /**
+     * {@code build} depending on an exact {@code pinned} alone: a member whose pin is not the
+     * workspace's is solved on its own.
+     */
+    private static JkBuild pinning(JkBuild build, String pinned) {
+        EnumMap<Scope, List<Dependency>> deps = new EnumMap<>(Scope.class);
+        deps.put(Scope.MAIN, List.of(new Dependency(GROUP + ":pinned", VersionSelector.parse("=" + pinned))));
+        return new JkBuild(build.project(), new JkBuild.Dependencies(deps));
+    }
+
+    private static String pinnedPom(String version, String dependencies) {
+        return "<project><groupId>" + GROUP + "</groupId><artifactId>pinned</artifactId><version>" + version
+                + "</version>" + dependencies + "</project>";
     }
 
     private RepoGroup repos(Path tmp) {

@@ -74,6 +74,7 @@ import cc.jumpkick.runtime.base.ReachabilityMetadata;
 import cc.jumpkick.runtime.base.SdkComponents;
 import cc.jumpkick.runtime.schema.SchemaPins;
 import cc.jumpkick.scala.ScalaResolver;
+import cc.jumpkick.task.ToolchainPolicy;
 import cc.jumpkick.version.Versions;
 import java.io.IOException;
 import java.net.URI;
@@ -392,6 +393,7 @@ public final class LockPipeline {
         LockPlans.LockMembers members = LockPlans.lockMembers(lockDir, effective);
         LockOrchestrator orchestrator = new LockOrchestrator(pathPrep.repos())
                 .withProjectDir(lockDir)
+                .withJdkLevel(ToolchainPolicy.level(0, javaHome))
                 .withMembers(members.members())
                 .withWorkspaceVersions(members.workspaceVersions())
                 .withActivatedFeatures(pathPrep.activatedFeatures())
