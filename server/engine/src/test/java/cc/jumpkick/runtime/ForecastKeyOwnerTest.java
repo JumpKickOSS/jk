@@ -461,7 +461,8 @@ class ForecastKeyOwnerTest {
                         null,
                         Map.of(),
                         false,
-                        null))
+                        null,
+                        ClasspathFingerprint.ON_DISK))
                 .as("the forecast recomputes the key the build stored")
                 .isTrue();
     }

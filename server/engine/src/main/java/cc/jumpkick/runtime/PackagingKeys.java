@@ -213,7 +213,8 @@ public final class PackagingKeys {
      * compute. Dep jars must come from {@link PackagedClasses#assemblyDependencyJars} — never the
      * whole workspace lock RUNTIME set, or explain permanently shows "repackage" after a warm
      * assembly. Sibling jars missing after clean are fingerprinted via CAS shas recovered from
-     * each sibling's package record.
+     * each sibling's package record. A transformed module's classes are the transform's output
+     * ({@link #transformedClassesToken}), read by {@code identity} as the build will read them.
      */
     static boolean assemblyActionCached(
             Path dir,
@@ -225,20 +226,31 @@ public final class PackagingKeys {
             @Nullable String compileMainKey,
             Map<Path, String> restoredJarShas,
             @Nullable Boolean knownResourceDrift,
-            @Nullable String projectedClassesTok)
+            @Nullable String projectedClassesTok,
+            ClasspathFingerprint.EntryIdentity identity)
             throws IOException {
-        // The walk's own projection of a wiped tree wins: it merges every compiler's record, where
-        // the reconstruction below reads only javac's.
-        String classesTok = projectedClassesTok != null
-                ? projectedClassesTok
-                : classesTokenForPackage(
-                        dir,
-                        CompileSupport.isSimpleLayout(project.project(), dir),
-                        layout,
-                        project,
-                        actionCache,
-                        compileMainKey,
-                        knownResourceDrift);
+        // A transformed module's fat jar packs the transform's output, as the live step reads it.
+        // Otherwise the walk's own projection of a wiped tree wins: it merges every compiler's
+        // record, where the reconstruction below reads only javac's.
+        String transformedTok;
+        try {
+            transformedTok = transformedClassesToken(project, layout, cache, identity);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return false;
+        }
+        String classesTok = transformedTok != null
+                ? transformedTok
+                : projectedClassesTok != null
+                        ? projectedClassesTok
+                        : classesTokenForPackage(
+                                dir,
+                                CompileSupport.isSimpleLayout(project.project(), dir),
+                                layout,
+                                project,
+                                actionCache,
+                                compileMainKey,
+                                knownResourceDrift);
         // Same jar set as PlannerTails.assemblyStep (ModuleRuntimeClasspath), the wiped sibling
         // jars the walk pinned included.
         List<Path> depJars = PackagedClasses.assemblyDependencyJars(dir, project, lockFile, cache, restoredJarShas);

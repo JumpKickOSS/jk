@@ -453,19 +453,7 @@ public final class PlannerTails {
 
     /** package-assembly's price, under the key {@link PackagingKeys#assembly} derives for the live step. */
     static TaskForecast.@Nullable Task forecastAssembly(ForecastScope s) throws Exception {
-        s.projectOwnOutputs();
-        return ForecastPackagingTails.assembly(
-                s.project,
-                s.dir,
-                s.prepared(),
-                s.lockFile,
-                s.actionCache,
-                s.cache,
-                s.compileMainKey,
-                s.restored,
-                s.knownResourceDrift,
-                // The assembly embeds the runtime siblings' jars by their bytes.
-                s.compileDirty || s.runtimeDepDirty);
+        return ForecastPackagingTails.assembly(s);
     }
 
     /** package-javadoc's price, under the key {@link PackagingKeys#javadoc} derives for the live step. */

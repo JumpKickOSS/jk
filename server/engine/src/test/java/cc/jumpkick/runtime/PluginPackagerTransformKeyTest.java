@@ -24,6 +24,7 @@ import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.util.List;
 import java.util.Map;
 import java.util.jar.Attributes;
@@ -150,6 +151,63 @@ class PluginPackagerTransformKeyTest {
         assertThat(PackagingKeys.packageJar(jar, dir, build, compiled, "", null).key())
                 .as("the compiler's classes would key another jar")
                 .isNotEqualTo(live);
+    }
+
+    @Test
+    void the_assembly_is_forecast_on_the_transformed_classes() throws Exception {
+        Path dir = pluginProject(null);
+        Files.writeString(
+                dir.resolve("jk.toml"),
+                "\n[application]\nmain = \"ex.A\"\nassembly = true\n",
+                StandardOpenOption.APPEND);
+        JkBuild build = build(dir);
+        assertThat(build.assembly()).isTrue();
+        seedDescribeCache(dir, build, DESCRIBE_TRANSFORM);
+        BuildLayout layout = BuildLayout.of(dir, build);
+        Path cache = tmp.resolve("cache");
+        Path transformed = compileAndTransform(build, layout, cache);
+        Path lockFile = dir.resolve("jk-lock.toml");
+
+        // What PlannerTails.assemblyStep keys: its guard's token of BuildPlanner.mainClasses.
+        List<Path> contributed = PackagedClasses.packagedDirs(
+                PackagedClasses.pluginDeclarationsFor(build, layout, cache), layout, build);
+        List<Path> depJars = PackagedClasses.assemblyDependencyJars(dir, build, lockFile, cache);
+        PackagingKeys.Keyed live = PackagingKeys.assembly(
+                layout.assemblyJar(),
+                dir,
+                build,
+                PackagingKeys.assemblyAttributes(dir, build),
+                InputGuard.of(List.of(transformed)).token(transformed),
+                PackagedClasses.contributionsToken(contributed),
+                ClasspathFingerprint.ordered(depJars),
+                PackagingKeys.assemblySbom(build, dir, lockFile));
+        Path jar = layout.assemblyJar();
+        Files.createDirectories(requireNonNull(jar.getParent()));
+        Files.writeString(jar, "fat");
+        PackagingCache.storePackagedForTest(
+                cache,
+                live.taskId(),
+                live.key(),
+                live.tokens(),
+                requireNonNull(jar.getParent()),
+                List.of(jar),
+                true,
+                List.of());
+
+        assertThat(PackagingKeys.assemblyActionCached(
+                        dir,
+                        build,
+                        layout,
+                        lockFile,
+                        PackagingCache.packagingActionCache(cache),
+                        cache,
+                        null,
+                        Map.of(),
+                        false,
+                        null,
+                        ClasspathFingerprint.ON_DISK))
+                .as("the forecast recomputes the key the build stored")
+                .isTrue();
     }
 
     @Test

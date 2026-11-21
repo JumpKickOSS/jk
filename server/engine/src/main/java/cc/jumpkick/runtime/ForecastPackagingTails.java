@@ -32,42 +32,40 @@ final class ForecastPackagingTails {
     private ForecastPackagingTails() {}
 
     /** {@code package-assembly} — only when configured; the key recipe is {@code PlannerTails.assemblyStep}'s. */
-    static TaskForecast.@Nullable Task assembly(
-            JkBuild project,
-            Path dir,
-            Prepared prepared,
-            Path lockFile,
-            ActionCache actionCache,
-            Path cache,
-            @Nullable String compileMainKey,
-            RestoredOutputs restored,
-            @Nullable Boolean knownResourceDrift,
-            boolean compileDirty)
-            throws IOException {
-        BuildLayout layout = prepared.parsed().layout();
+    static TaskForecast.@Nullable Task assembly(ForecastScope s) throws Exception {
+        s.projectOwnOutputs();
+        JkBuild project = s.project;
         // A workspace root plans no tails. A member with no sources of its own is a distribution
         // when it assembles: the fat jar over its siblings is its whole output, so it is priced
         // like any other. Returning nothing for it forecast a module with no steps, which a
         // sibling's edit never reached, while the build repackaged it.
         if (!project.assembly() || project.isWorkspaceRoot()) return null;
-        if (compileDirty) {
+        // The assembly embeds the runtime siblings' jars by their bytes.
+        if (s.compileDirty || s.runtimeDepDirty) {
             return new TaskForecast.Task(
                     TaskNames.PACKAGE_ASSEMBLY, TaskForecast.Status.RUN, "repackage · compile changed", null);
         }
+        if (PlannerPlugin.transformRuns(s)) {
+            // The fat jar packs what the transform writes, and that is unknown until it has run.
+            return new TaskForecast.Task(
+                    TaskNames.PACKAGE_ASSEMBLY, TaskForecast.Status.RUN, "repackage · classes transform runs", null);
+        }
+        BuildLayout layout = s.prepared().parsed().layout();
         boolean hit = PackagingKeys.assemblyActionCached(
-                dir,
+                s.dir,
                 project,
                 layout,
-                lockFile,
-                actionCache,
-                cache,
-                compileMainKey,
-                restored.jarShas(),
-                knownResourceDrift,
-                restored.projectedIdentity(layout.classesDir()));
+                s.lockFile,
+                s.actionCache,
+                s.cache,
+                s.compileMainKey,
+                s.restored.jarShas(),
+                s.knownResourceDrift,
+                s.restored.projectedIdentity(layout.classesDir()),
+                s.restored.identity());
         if (hit) return new TaskForecast.Task(TaskNames.PACKAGE_ASSEMBLY, TaskForecast.Status.CACHED, "", null);
         // A fat jar is a heavy output: the cache may never have been allowed to keep the last one.
-        String notCached = PackagingCache.heavyNotCached(cache, project);
+        String notCached = PackagingCache.heavyNotCached(s.cache, project);
         return new TaskForecast.Task(
                 TaskNames.PACKAGE_ASSEMBLY,
                 TaskForecast.Status.RUN,
