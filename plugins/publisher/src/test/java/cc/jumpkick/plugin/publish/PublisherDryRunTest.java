@@ -63,6 +63,54 @@ class PublisherDryRunTest {
     }
 
     @Test
+    void a_member_publishes_under_a_root_that_declares_a_tagged_suite(@TempDir Path ws) throws Exception {
+        Files.writeString(ws.resolve("jk.toml"), """
+                group   = "com.example"
+                name    = "root"
+                version = "1.2.3"
+
+                [workspace]
+                modules = ["core", "widget"]
+
+                [test.suites.integration]
+                tags = ["integration"]
+                """);
+        Files.writeString(Files.createDirectories(ws.resolve("core")).resolve("jk.toml"), "name = \"core\"\n");
+        Path dir = Files.createDirectories(ws.resolve("widget"));
+        Files.writeString(dir.resolve("jk.toml"), """
+                name = "widget"
+
+                [dependencies]
+                core.workspace = true
+                """);
+        Path jar = dir.resolve("widget-1.2.3.jar");
+        Files.write(jar, new byte[] {0x50, 0x4b, 0x05, 0x06});
+
+        Path spec = dir.resolve("publish.spec");
+        Files.write(
+                spec,
+                new SpecWriter()
+                        .op(PluginProtocol.OP_PUBLISH, null, "jk-publisher")
+                        .configString("repoAuthType", "anonymous")
+                        .configBool("dryRun", true)
+                        .artifact(jar)
+                        .layout(Map.of("moduleDir", dir))
+                        .lines());
+
+        var buffer = new ByteArrayOutputStream();
+        ProtocolWriter out = new ProtocolWriter(new PrintStream(buffer, true, StandardCharsets.UTF_8), "##JKPU:");
+        int exit = new Publisher().run(List.of(spec.toString()), out);
+
+        String output = buffer.toString(StandardCharsets.UTF_8);
+        assertThat(exit).as(output).isZero();
+        assertThat(output).contains("\"dry_run\":true");
+        assertThat(Files.readString(dir.resolve("target/publish/widget-1.2.3.pom")))
+                .contains("<groupId>com.example</groupId>")
+                .contains("<artifactId>core</artifactId>")
+                .doesNotContain("workspace");
+    }
+
+    @Test
     void dry_run_with_sbom_writes_both_documents_under_target_and_names_them(@TempDir Path dir) throws Exception {
         Files.writeString(dir.resolve("jk.toml"), """
                 group   = "com.example"

@@ -166,11 +166,9 @@ public final class Publisher implements Plugin, PublishExtension {
         c.stringOpt("pluginJars")
                 .ifPresent(joined -> Classpaths.split(joined).forEach(PluginTableRegistry::installFromJar));
 
-        // Resolve workspace-sibling placeholders before rendering anything: a single-file parse
-        // leaves `workspace:<name>`/`LATEST`, which would land in the POM and make the published
-        // artifact unconsumable.
-        JkBuild project =
-                WorkspaceResolve.applyWorkspace(projectDir, JkBuildParser.parse(ManifestPaths.manifestIn(projectDir)));
+        // The resolved parse: workspace inheritance applied once and `workspace:<name>` placeholders
+        // rewritten, so the POM names coordinates a consumer can resolve.
+        JkBuild project = JkBuildParser.parse(ManifestPaths.manifestIn(projectDir));
 
         // Assemble artifacts. Each is a file: what jk package wrote, or what is generated here into
         // the module's target/publish/, so publishing streams every artifact and holds none whole.
