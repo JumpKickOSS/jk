@@ -138,6 +138,22 @@ final class AndroidDeps {
         return namespace + config.stringOpt("application-id-suffix").orElse("");
     }
 
+    /** The largest version code Google Play accepts. */
+    static final long MAX_VERSION_CODE = 2_100_000_000L;
+
+    /**
+     * The app's {@code [android] version-code}: the integer every release must raise. 1 when
+     * unset; refused outside 1 to {@link #MAX_VERSION_CODE}, which no store or device accepts.
+     */
+    static long versionCode(PluginConfig config) {
+        long code = config.intValue("version-code", 1);
+        if (code < 1 || code > MAX_VERSION_CODE) {
+            throw new IllegalArgumentException(
+                    "[android] version-code " + code + " is outside 1 to " + MAX_VERSION_CODE);
+        }
+        return code;
+    }
+
     /** Extract the per-OS aapt2 binary from its Maven wrapper jar into {@code destDir}. */
     static Path extractAapt2(Path aapt2Jar, Path destDir) throws IOException {
         String binaryName = Os.isWindows() ? "aapt2.exe" : "aapt2";

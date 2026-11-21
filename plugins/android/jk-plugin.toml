@@ -55,6 +55,9 @@ build-config = { type = "bool", default = false }   # generates BuildConfig.java
 # Extra BuildConfig constants, each a verbatim `TYPE NAME = VALUE` Java declaration
 # (AGP's buildConfigField, declarative): ['String BACKEND_URL = "http://example.com"']
 build-config-fields = { type = "string-list", default = [] }
+# The app's versionCode: in the APK/AAB manifest (unless the manifest sets its own) and in
+# BuildConfig.VERSION_CODE. Every release uploaded to a store must raise it.
+version-code = { type = "int", default = 1 }
 hilt         = { type = "bool", default = false }   # Hilt unmodified-source mode: superclass transform + processor toggle
 # Where the stable debug keystore lives, overriding the ecosystem default
 # ($ANDROID_USER_HOME → $ANDROID_SDK_HOME/.android → ~/.android). For hermetic

@@ -383,6 +383,10 @@ Classes and `R` stay in the namespace: a relative class name such as `.MainActiv
 `com.example.app.MainActivity`. A minified build leaves R8's `mapping.txt`, `seeds.txt` and
 `usage.txt` in `target/r8/`, which a cached build restores with the artifact.
 
+`[android] version-code` (default 1) is the app's `versionCode`: the APK or AAB manifest carries
+it unless the manifest sets its own, and `BuildConfig.VERSION_CODE` reads it. Every release a store
+takes must raise it; a value outside 1 to 2100000000 fails the build.
+
 JVM unit tests run under Robolectric when it is on the test classpath: `android-test-config`
 writes its `test_config.properties`, naming a unit-test manifest and a unit-test resource package.
 That manifest is the module's own merged as an application with every AAR on the test runtime

@@ -40,7 +40,9 @@ final class BuildConfigStep {
                 .append("    public static final String VERSION_NAME = \"")
                 .append(exec.project().version())
                 .append("\";\n")
-                .append("    public static final int VERSION_CODE = 1;\n");
+                .append("    public static final int VERSION_CODE = ")
+                .append(AndroidDeps.versionCode(exec.config()))
+                .append(";\n");
         // Custom constants ([android] build-config-fields): each entry is a verbatim
         // `TYPE NAME = VALUE` declaration — AGP's buildConfigField, declaratively.
         for (String field : exec.config().stringList("build-config-fields")) {

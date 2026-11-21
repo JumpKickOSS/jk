@@ -197,7 +197,7 @@ final class ResourceStep {
                 .arg("--target-sdk-version")
                 .arg(Long.toString(compileSdk))
                 .arg("--version-code")
-                .arg("1")
+                .arg(Long.toString(AndroidDeps.versionCode(exec.config())))
                 .arg("--version-name")
                 .arg(exec.project().version())
                 .arg("--auto-add-overlay");

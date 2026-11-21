@@ -11,6 +11,9 @@ JumpKick shows you this page's new entries after it updates itself.
   at `${project.version}`, where both wrote a `workspace:` coordinate no build could resolve; a
   `[workspace.dependencies]` entry is written as its coordinate. A `[war]` module exports as `war`
   packaging, and dropped `[dev-dependencies]` are a report row.
+
+- **`[android] version-code` sets the app's versionCode.** It reaches the APK or AAB manifest and
+  `BuildConfig.VERSION_CODE`, which were always 1.
 - **A malformed version range in `jk.toml` fails when the file is read.** A range that names no
   version, such as `(1.0)`, `[]` or `[2.0,1.0]`, is refused naming the file, line and key, instead of
   failing the next `jk lock` with no place to look.

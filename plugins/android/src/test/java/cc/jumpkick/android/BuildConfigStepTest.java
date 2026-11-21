@@ -2,6 +2,7 @@
 package cc.jumpkick.android;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.plugin.testing.FakeBuildIo;
 import java.nio.file.Files;
@@ -55,6 +56,26 @@ class BuildConfigStepTest {
         assertThat(generated(exec))
                 .contains("public static final String APPLICATION_ID = \"com.example.app.debug\";")
                 .contains("package com.example.app;");
+    }
+
+    /** {@code [android] version-code} is the constant the app reads, not a fixed 1. */
+    @Test
+    void the_version_code_is_the_configured_one(@TempDir Path tmp) throws Exception {
+        FakeBuildIo exec = AndroidIo.step(tmp).config("version-code", 42L);
+
+        BuildConfigStep.run(exec);
+
+        assertThat(generated(exec)).contains("public static final int VERSION_CODE = 42;");
+    }
+
+    /** A version code no store or device accepts fails the step, naming the key. */
+    @Test
+    void a_version_code_out_of_range_is_refused(@TempDir Path tmp) throws Exception {
+        FakeBuildIo zero = AndroidIo.step(tmp).config("version-code", 0L);
+        FakeBuildIo huge = AndroidIo.step(tmp).config("version-code", 2_100_000_001L);
+
+        assertThatThrownBy(() -> BuildConfigStep.run(zero)).hasMessageContaining("[android] version-code 0");
+        assertThatThrownBy(() -> BuildConfigStep.run(huge)).hasMessageContaining("version-code 2100000001");
     }
 
     /** {@code build-config-fields} entries are verbatim declarations, trimmed and nothing more. */
