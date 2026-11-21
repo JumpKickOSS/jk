@@ -3,6 +3,7 @@ package cc.jumpkick.command.system;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.host.WorkingDirectory;
 import org.junit.jupiter.api.Test;
 
 /** {@code jk history show} names a diagnostic's place once, whether the record kept it in the text or beside it. */
@@ -10,11 +11,14 @@ class HistoryDiagLocusTest {
 
     @Test
     void a_place_kept_beside_the_text_leads_the_row() {
+        String file =
+                WorkingDirectory.current().resolve("app").resolve("jk.toml").toString();
         String row = "{\"type\":\"history-diag\",\"severity\":\"error\",\"code\":\"run-error\","
-                + "\"message\":\"[build] unknown key `bogus`\",\"file\":\"/nowhere/ws/app/jk.toml\",\"line\":7,\"col\":1}";
+                + "\"message\":\"[build] unknown key `bogus`\",\"file\":\"" + file.replace("\\", "\\\\")
+                + "\",\"line\":7,\"col\":1}";
 
         assertThat(HistoryCommand.HistoryShowCommand.diagLine(row))
-                .isEqualTo("  [error] /nowhere/ws/app/jk.toml:7:1: [build] unknown key `bogus`");
+                .isEqualTo("  [error] app/jk.toml:7:1: [build] unknown key `bogus`");
     }
 
     @Test
