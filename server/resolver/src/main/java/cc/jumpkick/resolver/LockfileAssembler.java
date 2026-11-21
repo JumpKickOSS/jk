@@ -44,7 +44,7 @@ final class LockfileAssembler {
     private final RepoGroup repos;
     private final Function<String, RepoGroup> reposFor;
     private final KmpRedirects kmp;
-    private final EffectivePomBuilder pomBuilder;
+    private final Function<String, EffectivePomBuilder> pomBuilderFor;
     private final PlatformConstraints constraints;
     private final Map<String, List<String>> activatedFeatures;
     private Set<String> workspaceModules = Set.of();
@@ -52,20 +52,21 @@ final class LockfileAssembler {
     /**
      * @param reposFor the group a package's artifact is fetched from: {@code repos} plus the
      *     repositories a dependency POM declared for the subtree the package was reached through
-     * @param pomBuilder the one POM builder the lock shares with BOM load and the solves
+     * @param pomBuilderFor the POM builder a package's POM is read through: the one the solve read
+     *     it with, over the same repositories as {@code reposFor}
      * @param activatedFeatures cross-package features activated per library module, for {@code pinnedBy}
      */
     LockfileAssembler(
             RepoGroup repos,
             Function<String, RepoGroup> reposFor,
             KmpRedirects kmp,
-            EffectivePomBuilder pomBuilder,
+            Function<String, EffectivePomBuilder> pomBuilderFor,
             PlatformConstraints constraints,
             Map<String, List<String>> activatedFeatures) {
         this.repos = repos;
         this.reposFor = reposFor;
         this.kmp = kmp;
-        this.pomBuilder = pomBuilder;
+        this.pomBuilderFor = pomBuilderFor;
         this.constraints = constraints;
         this.activatedFeatures = activatedFeatures;
     }
@@ -233,6 +234,7 @@ final class LockfileAssembler {
         String source = fallbackSource;
         String checksum = null;
         RepoGroup group = reposFor.apply(mod.module());
+        EffectivePomBuilder pomBuilder = pomBuilderFor.apply(mod.module());
         // A coordinate of type pom or a relocation stub has no artifact to ask for: its POM, read
         // by the solve, already says so. A packaging=pom POM says less than it seems — an assembly
         // publishes one beside its jar, and a type-less dependency means the jar to Maven whatever
@@ -310,11 +312,11 @@ final class LockfileAssembler {
                         null,
                         null,
                         mod.excluded())
-                .withLicenses(licensesOf(coord));
+                .withLicenses(licensesOf(coord, pomBuilder));
     }
 
     /** The licences {@code coord}'s effective POM declares, as SPDX ids where they map; null when it cannot be read. */
-    private @Nullable List<String> licensesOf(Coordinate coord) {
+    private static @Nullable List<String> licensesOf(Coordinate coord, EffectivePomBuilder pomBuilder) {
         try {
             return SpdxLicenses.of(pomBuilder.build(coord).licenses());
         } catch (Exception e) {

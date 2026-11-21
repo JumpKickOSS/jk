@@ -9,6 +9,7 @@ import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.testing.LoopbackHttp;
+import java.net.URI;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -88,6 +89,26 @@ class RepoGroupLegSlotsTest {
         assertThat(DownloadSlots.legsAvailable(host))
                 .as("a completed leg's cancel is a no-op")
                 .isEqualTo(legs);
+    }
+
+    /** A repository a mirror stands in for takes its leg slot on the mirror's host, the one it dials. */
+    @Test
+    void a_mirrored_repository_s_leg_takes_a_slot_of_the_mirror_s_host(@TempDir Path tmp) throws Exception {
+        String mirrorHost = "mirror-legs.example.org";
+        MavenRepo repo = new MavenRepo(
+                        "declared",
+                        URI.create("https://declared-legs.example.org/maven/"),
+                        new Http(),
+                        new Cas(tmp.resolve("cas")),
+                        RepoCredential.ANONYMOUS,
+                        false)
+                .mirroredThrough(new MavenRepo.Mirror(
+                        "corp", URI.create("https://" + mirrorHost + "/all/"), RepoCredential.ANONYMOUS, "corp"));
+        int width = DownloadSlots.legsAvailable(mirrorHost);
+
+        List<RepoLegs.Leg<Integer>> legs = RepoLegs.legs(List.of(repo), r -> DownloadSlots.legsAvailable(mirrorHost));
+
+        assertThat(legs.getFirst().future().get()).isEqualTo(width - 1);
     }
 
     @Test

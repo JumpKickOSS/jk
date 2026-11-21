@@ -90,6 +90,33 @@ class LockDeclaredRepositoryTest {
                 .contains("from the POM of io.apicurio:schema-util-json:2.6.13"));
     }
 
+    /** The row of a package a declared repository served reads its POM there too: its licences are recorded. */
+    @Test
+    void a_row_a_declared_repository_served_records_the_licences_its_pom_declares(@TempDir Path dir) throws Exception {
+        new MavenStub(jitpack).pom("com.github.everit-org.json-schema", "org.everit.json.schema", "1.14.4", """
+                <project>
+                  <groupId>com.github.everit-org.json-schema</groupId>
+                  <artifactId>org.everit.json.schema</artifactId>
+                  <version>1.14.4</version>
+                  <licenses>
+                    <license>
+                      <name>Apache License, Version 2.0</name>
+                      <url>https://www.apache.org/licenses/LICENSE-2.0</url>
+                    </license>
+                  </licenses>
+                </project>
+                """);
+
+        Lockfile lock = new LockOrchestrator(repos(dir))
+                .lock(project("io.apicurio:schema-util-json", "=2.6.13"), "test", List.of(), true, observer());
+
+        Lockfile.Artifact everit = lock.artifacts().stream()
+                .filter(a -> a.name().startsWith("com.github.everit-org.json-schema:"))
+                .findFirst()
+                .orElseThrow();
+        assertThat(everit.licenses()).containsExactly("Apache-2.0");
+    }
+
     @Test
     void the_projects_own_declaration_does_not_see_a_repository_another_pom_declared(@TempDir Path dir) {
         assertThatThrownBy(() -> new LockOrchestrator(repos(dir))

@@ -102,9 +102,12 @@ final class RepoLegs {
     /** How long a fan-out waits on one host's queue before looking at the next host's. */
     private static final long LEG_SLOT_POLL_MS = 10;
 
-    /** The host whose leg slots and request permits a repository's legs take; empty for a local tree. */
+    /**
+     * The host whose leg slots and request permits a repository's legs take: the one its requests
+     * open on, a mirror's when one stands in. Empty for a local tree.
+     */
     private static String hostOf(MavenRepo repo) {
-        String host = repo.baseUrl().getHost();
+        String host = repo.fetchBase().getHost();
         return host == null ? "" : host;
     }
 
@@ -168,6 +171,9 @@ final class RepoLegs {
             if (!owned.compareAndSet(false, true)) return;
             leg.running(Thread.currentThread());
             try {
+                // A cancel that lost the race for the release, but came before the runner was
+                // known, interrupted nobody: the leg it cancelled is not run.
+                if (future.isCancelled()) return;
                 future.complete(work.call());
             } catch (Throwable t) {
                 future.completeExceptionally(t);

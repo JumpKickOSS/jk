@@ -913,8 +913,10 @@ public final class LockOrchestrator {
             Solve solve, JkBuild project, String jkVersion, LockProgress progress, EffectivePomBuilder pomBuilder)
             throws IOException, InterruptedException {
         Function<String, RepoGroup> reposFor = solve.source() != null ? solve.source()::reposFor : pkg -> repos;
-        LockfileAssembler assembler =
-                new LockfileAssembler(repos, reposFor, solve.kmp(), pomBuilder, solve.constraints(), activatedFeatures);
+        Function<String, EffectivePomBuilder> pomBuilderFor =
+                solve.source() != null ? solve.source()::pomBuilderFor : pkg -> pomBuilder;
+        LockfileAssembler assembler = new LockfileAssembler(
+                repos, reposFor, solve.kmp(), pomBuilderFor, solve.constraints(), activatedFeatures);
         if (solve.source() != null) assembler.workspaceModules(solve.source().workspaceModules());
         return assembler.assemble(project, solve.solved(), solve.roots().fileDeps(), jkVersion, progress);
     }
