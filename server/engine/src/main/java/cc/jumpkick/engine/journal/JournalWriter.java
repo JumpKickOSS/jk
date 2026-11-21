@@ -139,12 +139,18 @@ public final class JournalWriter {
         return a != null ? a.results() : new RunResults();
     }
 
-    /** {@code group:name} from {@code jk.toml}, else the POM's coordinate for a Maven-only checkout. */
+    /**
+     * {@code group:name} from {@code jk.toml}, else the POM's coordinate for a Maven-only checkout.
+     * The POM is read as written, never through its shadow: rendering one imports the whole reactor
+     * and raises its pins, which is the build's work, not the work of naming the run.
+     */
     public static @Nullable String coordOf(String dir) {
         try {
-            var project =
-                    JkBuildParser.parse(ManifestPaths.manifestIn(Path.of(dir))).project();
-            return project.group() + ":" + project.name();
+            Path project = Path.of(dir);
+            if (ManifestPaths.isShadowed(project)) return PomCoord.of(project);
+            var manifest =
+                    JkBuildParser.parse(ManifestPaths.manifestIn(project)).project();
+            return manifest.group() + ":" + manifest.name();
         } catch (Exception e) {
             return pomCoord(dir);
         }
