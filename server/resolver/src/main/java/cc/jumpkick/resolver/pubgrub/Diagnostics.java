@@ -89,16 +89,6 @@ public final class Diagnostics {
         return render(rootCause, Palette.PLAIN);
     }
 
-    /** Compatibility overload; {@code rootDepNames} ignored. */
-    public static String render(Incompatibility rootCause, Map<String, String> rootDepNames) {
-        return render(rootCause, Palette.PLAIN);
-    }
-
-    /** Compatibility overload; {@code rootDepNames} ignored. */
-    public static String render(Incompatibility rootCause, Map<String, String> rootDepNames, boolean ansi) {
-        return render(rootCause, ansi ? Palette.DEFAULT : Palette.PLAIN);
-    }
-
     public static String render(Incompatibility rootCause, Palette palette) {
         StringBuilder out = new StringBuilder();
         boolean ansi = !palette.reset().isEmpty();

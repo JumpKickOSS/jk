@@ -346,8 +346,9 @@ public final class InstallPlans {
     /**
      * Where {@code project}'s install goes. A plugin worker always goes to {@code repos/jk-local}:
      * the launcher reads it there. Otherwise the {@code --destination} flag, then the project's {@code
-     * [install] destination}, then the machine's {@code config.toml}, then {@code repos/jk-local}, or
-     * the Maven local repository on a machine whose {@code [m2] integration} is {@code "share"}.
+     * [install] destination}, then {@code JK_INSTALL_DESTINATION}, then the machine's {@code
+     * config.toml}, then {@code repos/jk-local}, or the Maven local repository on a machine whose
+     * {@code [m2] integration} is {@code "share"}.
      */
     static InstallDestination destinationOf(JkBuild project, Path moduleRoot, @Nullable InstallDestination override) {
         if (PluginModule.isWorker(moduleRoot)) return InstallDestination.JK;

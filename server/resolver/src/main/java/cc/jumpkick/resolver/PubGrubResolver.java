@@ -140,7 +140,6 @@ public final class PubGrubResolver implements Resolver {
     public Resolution resolve(List<Dependency> roots) throws IOException, InterruptedException {
         List<Term> rootTerms = new ArrayList<>(roots.size());
         Map<Term, String> written = new HashMap<>();
-        Map<String, String> rootDepNames = new HashMap<>();
         for (Dependency dep : roots) {
             // Declared GAs → g:a:jar:; kind=tests → g:a:jar:tests.
             String pkg = dep.packageKey();
@@ -149,11 +148,6 @@ public final class PubGrubResolver implements Resolver {
             // A pin reads the same either way; a floating selector reads as the user wrote it.
             if (!(dep.version() instanceof VersionSelector.Exact)) {
                 written.putIfAbsent(term, dep.version().raw().trim());
-            }
-            // Skip workspace placeholders — they never hit the network so
-            // the artifact-defaulting hint would be misleading there.
-            if (!dep.isWorkspace()) {
-                rootDepNames.put(pkg, dep.library());
             }
         }
         if (source instanceof MavenPackageSource mps) {
