@@ -8,14 +8,18 @@ import cc.jumpkick.run.JkThreads;
 import cc.jumpkick.version.Versions;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutionException;
-import java.util.stream.Collectors;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.atomic.AtomicReference;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -23,6 +27,12 @@ import org.jspecify.annotations.Nullable;
  * Findings emit in deterministic package × result order.
  */
 public final class OsvAuditor {
+
+    /**
+     * Advisory detail fetches in flight at once: enough to hide OSV's latency, few enough that a
+     * lockfile with hundreds of advisories does not open hundreds of connections.
+     */
+    static final int MAX_FETCHES = 8;
 
     private final OsvClient client;
 
@@ -55,24 +65,18 @@ public final class OsvAuditor {
         for (OsvClient.Result r : results) uniqueIds.addAll(r.vulnIds());
         if (uniqueIds.isEmpty()) return new AuditReport(List.of());
 
-        // Dispatch all detail fetches concurrently.
-        Map<String, CompletableFuture<OsvClient.Vulnerability>> futures = uniqueIds.stream()
-                .collect(Collectors.toMap(
-                        id -> id,
-                        id -> CompletableFuture.supplyAsync(
-                                () -> {
-                                    try {
-                                        return client.fetchVuln(id);
-                                    } catch (IOException | InterruptedException e) {
-                                        if (e instanceof InterruptedException)
-                                            Thread.currentThread().interrupt();
-                                        throw new RuntimeException(e);
-                                    }
-                                },
-                                JkThreads.io())));
+        // Every detail fetch at once, at most MAX_FETCHES of them in flight. The first failure
+        // fails the audit, so the fetches still waiting for a slot are not started.
+        Semaphore slots = new Semaphore(MAX_FETCHES, true);
+        AtomicReference<@Nullable Exception> failure = new AtomicReference<>();
+        Map<String, CompletableFuture<OsvClient.Vulnerability>> futures = new LinkedHashMap<>();
+        for (String id : uniqueIds) {
+            futures.put(id, CompletableFuture.supplyAsync(() -> fetch(id, slots, failure), JkThreads.io()));
+        }
 
         // Findings in package × vulnId order; the supply-chain report sidecar depends on it.
         List<AuditReport.Finding> findings = new ArrayList<>();
+        boolean complete = false;
         try {
             for (int i = 0; i < pkgs.size(); i++) {
                 Locked pkg = pkgs.get(i);
@@ -88,13 +92,44 @@ public final class OsvAuditor {
                             fixedIn(v.fixedVersions(pkg.ga()), pkg.version())));
                 }
             }
-        } catch (ExecutionException e) {
-            Throwable cause = e.getCause() != null ? e.getCause() : e;
-            if (cause instanceof RuntimeException re && re.getCause() instanceof IOException io) throw io;
-            if (cause instanceof RuntimeException re && re.getCause() instanceof InterruptedException ie) throw ie;
+            complete = true;
+        } catch (ExecutionException | CancellationException e) {
+            // The fetch that failed first, not whichever one this loop reached first: a fetch that
+            // was stopped because of it says only that.
+            Throwable cause = failure.get();
+            if (cause == null) cause = e.getCause() != null ? e.getCause() : e;
+            if (cause instanceof IOException io) throw io;
+            if (cause instanceof InterruptedException ie) throw ie;
             throw new IOException("audit vuln-detail fetch failed: " + cause.getMessage(), cause);
+        } finally {
+            if (!complete) {
+                failure.compareAndSet(null, new CancellationException("the audit stopped"));
+                for (CompletableFuture<OsvClient.Vulnerability> f : futures.values()) f.cancel(false);
+            }
         }
         return new AuditReport(findings);
+    }
+
+    /**
+     * One advisory's details, fetched once a slot is free and only while nothing has failed. A
+     * failure is recorded in {@code failure}, so every fetch still waiting stops.
+     */
+    private OsvClient.Vulnerability fetch(String id, Semaphore slots, AtomicReference<@Nullable Exception> failure) {
+        try {
+            slots.acquire();
+            try {
+                if (failure.get() != null) throw new CancellationException("another advisory fetch failed");
+                return client.fetchVuln(id);
+            } finally {
+                slots.release();
+            }
+        } catch (CancellationException stopped) {
+            throw stopped;
+        } catch (IOException | InterruptedException | RuntimeException e) {
+            failure.compareAndSet(null, e);
+            if (e instanceof InterruptedException) Thread.currentThread().interrupt();
+            throw new CompletionException(e);
+        }
     }
 
     /** One locked package as OSV keys it: {@code group:artifact} and version. */
