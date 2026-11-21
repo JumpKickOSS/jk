@@ -5,7 +5,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.tuple;
 
 import cc.jumpkick.config.SecretRedactor;
+import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.listen.EventRedaction;
+import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.run.SourceLocation;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -96,6 +98,52 @@ class BuildAccumulatorRunErrorsTest {
         assertThat(r.diagnostics()).singleElement().satisfies(d -> {
             assertThat(d.message()).doesNotContain(secret).contains(SecretRedactor.MASK);
             assertThat(d.conflict()).doesNotContain(secret).contains(SecretRedactor.MASK);
+        });
+    }
+
+    @Test
+    void a_lock_failure_handed_over_raw_reaches_the_record_masked(@TempDir Path ws) throws IOException {
+        String secret = "lock-failure-s3cret-token";
+        Files.writeString(ws.resolve(".env"), "TOKEN=" + secret + "\n");
+        BuildAccumulator a = new BuildAccumulator("lock", ws.toString(), "g:ws", "cli");
+        String reason = "401 from https://u:" + secret + "@repo.example/a/b";
+        a.addRunError(reason, new SourceLocation(ws.resolve("jk.toml").toString(), 3, 1));
+        a.addRunErrors(List.of(reason, EventRedaction.redactText(ws.toString(), reason)));
+        a.stamp(JobOutcome.failed(Exit.FAILURE));
+
+        BuildRecord r = a.toRecord(2_000, false, 100, "9.9", null);
+
+        assertThat(r.diagnostics()).singleElement().satisfies(d -> assertThat(d.message())
+                .isEqualTo("401 from https://u:" + SecretRedactor.MASK + "@repo.example/a/b"));
+        assertThat(JkResultsMarkdown.render(r)).doesNotContain(secret);
+    }
+
+    @Test
+    void every_other_text_the_record_takes_whole_is_masked(@TempDir Path ws) throws IOException {
+        String secret = "accumulator-s3cret-token";
+        Files.writeString(ws.resolve(".env"), "TOKEN=" + secret + "\n");
+        BuildAccumulator a = new BuildAccumulator("publish", ws.toString(), "g:ws", "cli");
+        a.addEscapedThrow(new IllegalStateException("GET https://u:" + secret + "@repo.example failed"));
+        a.addWarning(null, null, "notice", "token " + secret + " expires soon");
+        a.markUserCancelled(true, "cancelled by " + secret);
+        a.addPublish(new BuildRecord.Publish(
+                "https://u:" + secret + "@repo.example",
+                1,
+                false,
+                "d1",
+                "FAILED",
+                List.of("bad " + secret),
+                List.of()));
+
+        BuildRecord r = a.toRecord(2_000, false, 100, "9.9", null);
+
+        assertThat(r.diagnostics())
+                .hasSize(3)
+                .allSatisfy(d -> assertThat(d.message()).doesNotContain(secret).contains(SecretRedactor.MASK));
+        assertThat(a.cancelReason()).doesNotContain(secret);
+        assertThat(r.publish()).isNotNull().satisfies(p -> {
+            assertThat(p.destination()).doesNotContain(secret);
+            assertThat(p.deploymentErrors()).singleElement().asString().doesNotContain(secret);
         });
     }
 }

@@ -466,7 +466,7 @@ public final class WorkspaceBuildVerb implements HostedVerb {
             // editor's problem list do too.
             if (rid > 0) {
                 SourceLocation at = dir == null ? null : FailureLocation.of(e, Path.of(dir));
-                host.accRunError(rid, at == null ? msg : EventRedaction.redactText(dir, FailureLocation.text(e)), at);
+                host.accRunError(rid, at == null ? msg : FailureLocation.text(e), at);
             }
             return JobOutcome.failed(Exit.FAILURE);
         }

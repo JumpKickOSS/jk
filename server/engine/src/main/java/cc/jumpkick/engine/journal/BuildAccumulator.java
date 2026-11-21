@@ -318,18 +318,20 @@ public final class BuildAccumulator {
     /**
      * As {@link #markUserCancelled(boolean)}, recording <em>why</em> (wall deadline, …). The first
      * reason wins; it rides the journal as a warning diagnostic so a job with no wire writer still
-     * records the cause, and {@code request-finish} carries it as {@code cancelReason}.
+     * records the cause, and {@code request-finish} carries it as {@code cancelReason}. The reason
+     * is redacted.
      */
     public void markUserCancelled(boolean explicit, String reason) {
         markUserCancelled(explicit);
         if (!userCancelled || reason == null || reason.isBlank() || cancelReason != null) return;
-        cancelReason = reason;
+        String safe = redactOrSelf(reason);
+        cancelReason = safe;
         addDiag(new BuildRecord.Diag(
                 "warning",
                 "",
                 null,
                 "cancelled",
-                reason,
+                safe,
                 null,
                 null,
                 null,
@@ -353,7 +355,7 @@ public final class BuildAccumulator {
     /**
      * The row for a throw that escaped the job body. The envelope's catch stamps a failed verdict
      * alongside it, so the record names the exception instead of deriving green from whatever
-     * clean rows the body recorded before it died.
+     * clean rows the body recorded before it died. Its message is redacted.
      */
     public void addEscapedThrow(Throwable t) {
         addDiag(new BuildRecord.Diag(
@@ -361,7 +363,7 @@ public final class BuildAccumulator {
                 "",
                 null,
                 "escaped-throw",
-                t.getMessage() == null ? t.getClass().getName() : t.getMessage(),
+                t.getMessage() == null ? t.getClass().getName() : redactOrSelf(t.getMessage()),
                 null,
                 t.getClass().getName(),
                 null,
@@ -380,10 +382,14 @@ public final class BuildAccumulator {
     /** The diagnostic code of {@link #addInputsChanged}. */
     public static final String INPUTS_CHANGED = "inputs-changed";
 
-    /** A warning of the module at {@code moduleDir}, the run's when null: a run notice, or an up-to-date module's. */
+    /**
+     * A warning of the module at {@code moduleDir}, the run's when null: a run notice, or an
+     * up-to-date module's. The message is redacted.
+     */
     public void addWarning(@Nullable String moduleDir, @Nullable String step, String code, String message) {
         if (message == null || message.isBlank()) return;
-        addDiag(new BuildRecord.Diag("warning", moduleDir == null ? dir : moduleDir, step, code, message, null, null));
+        addDiag(new BuildRecord.Diag(
+                "warning", moduleDir == null ? dir : moduleDir, step, code, redactOrSelf(message), null, null));
     }
 
     /** At most this many changed inputs are named; the rest are counted. */
@@ -716,9 +722,14 @@ public final class BuildAccumulator {
         for (String error : errors) addRunError(error, null);
     }
 
-    /** One run-level error, at the place in the project {@code at} names when known. */
-    public void addRunError(@Nullable String error, @Nullable SourceLocation at) {
-        if (error == null || error.isBlank()) return;
+    /**
+     * One run-level error, at the place in the project {@code at} names when known. The error is
+     * redacted here, so a caller handing over an exception's text as it stands cannot put a secret
+     * on the record.
+     */
+    public void addRunError(@Nullable String raw, @Nullable SourceLocation at) {
+        if (raw == null || raw.isBlank()) return;
+        String error = redactOrSelf(raw);
         boolean recorded;
         synchronized (diagnostics) {
             recorded = diagnostics.stream().anyMatch(d -> error.equals(d.message()));
@@ -957,10 +968,20 @@ public final class BuildAccumulator {
      * a workspace build calls it per module (each module's {@code TEST_RESULT}), so the counts
      * accumulate into the run's total rather than the last module overwriting the rest.
      */
-    /** What a publish run sent where; the one Publish row a record carries. */
+    /**
+     * What a publish run sent where; the one Publish row a record carries. Its destination and the
+     * repository's validation errors are redacted.
+     */
     public synchronized void addPublish(BuildRecord.Publish p) {
         anyFact = true;
-        publish = p;
+        publish = new BuildRecord.Publish(
+                redactOrSelf(p.destination()),
+                p.files(),
+                p.dryRun(),
+                p.deploymentId(),
+                p.deploymentState(),
+                p.deploymentErrors().stream().map(this::redactOrSelf).toList(),
+                p.bundle());
     }
 
     /**
@@ -1125,6 +1146,11 @@ public final class BuildAccumulator {
 
     private static boolean notBlank(String s) {
         return s != null && !s.isBlank();
+    }
+
+    /** {@code text} with this run's secrets masked. */
+    private String redactOrSelf(String text) {
+        return Objects.requireNonNullElse(redactEnv(dir, text), text);
     }
 
     static @Nullable String redactEnv(String dir, @Nullable String text) {

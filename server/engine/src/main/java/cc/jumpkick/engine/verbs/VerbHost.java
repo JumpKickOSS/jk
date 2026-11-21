@@ -79,7 +79,10 @@ public interface VerbHost {
         throw new UnsupportedOperationException("accToolWall");
     }
 
-    /** A failed run's run-level errors, the verdicts no module or step owns, as error rows on its journal row. */
+    /**
+     * A failed run's run-level errors, the verdicts no module or step owns, as error rows on its
+     * journal row. The journal redacts them, so a caller passes an error's text as it stands.
+     */
     default void accRunErrors(long rid, List<String> errors) {}
 
     /** One run-level error with the place in the project it points at ({@code null} when none). */
