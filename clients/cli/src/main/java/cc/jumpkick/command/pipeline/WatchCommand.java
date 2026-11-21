@@ -187,11 +187,9 @@ public final class WatchCommand implements CliCommand {
             CommandWedge.printFail("Watch", "initial " + verb + " failed (exit " + code + "); watching anyway");
         }
 
-        List<Path> roots = SourceWatch.defaultRoots(projectDir);
-
         CommandWedge.printWorking("Watch", verb + " when sources, resources or jk.toml change. Ctrl-C stops.");
 
-        try (SourceWatch watch = SourceWatch.open(projectDir, roots, debounceMs, nodeOutput(projectDir))) {
+        try (SourceWatch watch = SourceWatch.openDefault(projectDir, debounceMs, nodeOutput(projectDir))) {
             while (true) {
                 watch.awaitChange();
                 if (ClientUpdate.updatedBetweenPasses()) return Exit.SUCCESS;

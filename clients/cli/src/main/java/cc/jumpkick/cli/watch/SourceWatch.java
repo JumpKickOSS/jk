@@ -7,6 +7,7 @@ import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.layout.NodeProject;
+import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.layout.WalkSkip;
 import cc.jumpkick.lock.ManifestPaths;
 import java.io.IOException;
@@ -20,8 +21,10 @@ import java.nio.file.WatchService;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
@@ -32,9 +35,10 @@ import org.jspecify.annotations.Nullable;
  * implementation for all verbs.
  *
  * <p>By default only the module's source and resource trees are watched ({@link #defaultRoots}),
- * plus {@code jk.toml} at the project root. Build outputs ({@code target/}, {@code out/}, {@code build/}), {@code
- * node_modules}, VCS dirs, editor junk and the {@code skipped} trees a caller names are not
- * registered — so they never wake the loop. A node module watches its whole directory, its root
+ * plus {@code jk.toml} at the project root. In the simple layout a test suite made while the loop
+ * runs is taken up once it holds sources ({@link #openDefault}). Build outputs ({@code target/},
+ * {@code out/}, {@code build/}), {@code node_modules}, VCS dirs, editor junk and the {@code
+ * skipped} trees a caller names are not registered — so they never wake the loop. A node module watches its whole directory, its root
  * files ({@code package.json}, a bundler's config) included.
  *
  * <p>A change it reports starts the loop's next pass ({@link SessionContext#nextPass}): what the
@@ -74,6 +78,15 @@ public final class SourceWatch implements AutoCloseable {
     /** The project directory is itself a root: its own files are sources, not only {@code jk.toml}. */
     private boolean wholeDir;
 
+    /** The module a test suite may appear in while the loop runs; null when none is looked for. */
+    private @Nullable Path suiteHome;
+
+    /**
+     * Directories of {@link #suiteHome} named as a suite may be that hold no sources yet: each is
+     * watched with its {@code src/} tree, and wakes the loop only once it holds sources.
+     */
+    private final Set<Path> maybeSuites = new HashSet<>();
+
     private SourceWatch(WatchService watcher, Path projectDir, long debounceMillis, Set<Path> skipped, Clock clock) {
         this.watcher = watcher;
         this.projectDir = projectDir;
@@ -103,13 +116,30 @@ public final class SourceWatch implements AutoCloseable {
                 .anyMatch(r -> WorkingDirectory.resolve(r).normalize().equals(WorkingDirectory.resolve(projectDir)));
         for (Path root : roots) {
             sw.roots.add(root.toAbsolutePath().normalize());
-            if (Files.isDirectory(root)) {
-                sw.registerTree(root);
-                sw.anchor(root.toAbsolutePath().normalize());
-            } else if (Files.isRegularFile(root) && root.getParent() != null) sw.registerDir(root.getParent());
-            else sw.watchForRoot(root.toAbsolutePath().normalize());
+            if (Files.isRegularFile(root) && root.getParent() != null) {
+                sw.registerDir(root.getParent());
+                continue;
+            }
+            if (Files.isDirectory(root)) sw.registerTree(root);
+            sw.anchor(root.toAbsolutePath().normalize());
         }
         sw.registerDir(projectDir);
+        return sw;
+    }
+
+    /**
+     * Open a watch over {@link #defaultRoots}, never registering a tree under {@code skipped}. In
+     * the simple layout a directory of the module named as a test suite may be is watched too, and
+     * once it holds sources its {@code src/} and {@code resources/} are roots, so a suite made while
+     * the loop runs is tested without a restart; a stray file in it wakes nothing.
+     */
+    public static SourceWatch openDefault(Path projectDir, long debounceMillis, List<Path> skipped) throws IOException {
+        List<Path> roots = defaultRoots(projectDir);
+        SourceWatch sw = open(projectDir, roots, debounceMillis, skipped);
+        if (!sw.wholeDir && ModuleLayout.isCompact(projectDir)) {
+            sw.suiteHome = projectDir.toAbsolutePath().normalize();
+            sw.lookForSuites();
+        }
         return sw;
     }
 
@@ -212,6 +242,8 @@ public final class SourceWatch implements AutoCloseable {
      */
     @Nullable
     Changes event(Path dir, WatchEvent.Kind<?> kind, Path changed) throws IOException {
+        Path maybeSuite = maybeSuiteOf(dir);
+        if (maybeSuite != null) return maybeSuiteEvent(maybeSuite, kind, changed);
         boolean created = kind == StandardWatchEventKinds.ENTRY_CREATE && Files.isDirectory(changed);
         if (created) return newDirectory(dir, changed);
         return anchorOnly(dir) ? null : classify(dir, changed);
@@ -231,25 +263,40 @@ public final class SourceWatch implements AutoCloseable {
     /**
      * A directory created under the watched {@code dir}: registered with everything under it, and
      * what its files ask for, since a file written before the registration raises no event. A
-     * root missing at open, or a directory it will appear under, is taken up here too.
+     * root missing at open, or a directory it will appear under, is taken up here too, as is a
+     * directory of the module named as a test suite may be.
      */
     private @Nullable Changes newDirectory(Path dir, Path created) throws IOException {
         Path abs = created.toAbsolutePath().normalize();
         boolean underRoot = !anchorOnly(dir) && classify(dir, created) != null;
+        Set<Path> below = new LinkedHashSet<>();
         for (Path root : roots) {
             if (root.equals(abs)) {
                 underRoot = true;
             } else if (root.startsWith(abs) && !skip(created)) {
                 registerDir(created);
                 rootParents.add(abs);
-                Path below = abs.resolve(abs.relativize(root).getName(0));
-                if (Files.isDirectory(below)) return newDirectory(created, below);
+                below.add(abs.resolve(abs.relativize(root).getName(0)));
             }
         }
-        if (!underRoot) return null;
-        registerTree(created);
+        if (underRoot) return takeUp(created);
+        if (below.isEmpty()
+                && suiteHome != null
+                && suiteHome.equals(dir.toAbsolutePath().normalize())) {
+            return maybeSuite(abs);
+        }
+        Changes found = null;
+        for (Path next : below) {
+            if (Files.isDirectory(next)) found = merge(found, newDirectory(created, next));
+        }
+        return found;
+    }
+
+    /** Register {@code tree} with everything under it, and say what the files already in it ask for. */
+    private Changes takeUp(Path tree) throws IOException {
+        registerTree(tree);
         boolean[] seen = new boolean[3];
-        PathUtil.forEachEntry(created, this::skip, (path, attrs) -> {
+        PathUtil.forEachEntry(tree, this::skip, (path, attrs) -> {
             if (!attrs.isRegularFile() || path.getParent() == null) return true;
             Changes c = classify(path.getParent(), path);
             if (c != null) {
@@ -262,53 +309,116 @@ public final class SourceWatch implements AutoCloseable {
         return new Changes(seen[0], seen[1], seen[2]);
     }
 
+    private static @Nullable Changes merge(@Nullable Changes a, @Nullable Changes b) {
+        if (a == null) return b;
+        if (b == null) return a;
+        return new Changes(a.sources() || b.sources(), a.resources() || b.resources(), a.manifest() || b.manifest());
+    }
+
+    /** Take up each directory of {@link #suiteHome} named as a suite may be that no root covers yet. */
+    private void lookForSuites() throws IOException {
+        if (suiteHome == null) return;
+        PathUtil.forEachChild(suiteHome, (child, attrs) -> {
+            if (attrs.isDirectory()) maybeSuite(child.toAbsolutePath().normalize());
+            return true;
+        });
+    }
+
     /**
-     * Watch every directory between the project and {@code root}, an existing root, so the root is
-     * seen to come back after it, or a directory above it, is deleted and made again. A root outside
-     * the project, a sibling module's, has its parent watched.
+     * {@code dir}, a directory of {@link #suiteHome}: when named as a suite may be and no root covers
+     * it, a suite now if it holds sources, else watched until it does. What its files ask for once
+     * it is a suite; null while it is not.
+     */
+    private @Nullable Changes maybeSuite(Path dir) throws IOException {
+        Path home = suiteHome;
+        if (home == null || skip(dir) || roots.stream().anyMatch(r -> r.startsWith(dir))) return null;
+        if (!TestSuites.maySimpleSuiteDir(home, dir)) return null;
+        String suite = dir.getFileName().toString();
+        if (TestSuites.holdsSources(home, true, suite)) return addSuite(dir);
+        maybeSuites.add(dir);
+        registerDir(dir);
+        Path src = TestSuites.simpleSuiteSrc(home, suite);
+        if (Files.isDirectory(src)) registerTree(src);
+        return null;
+    }
+
+    /** The directory watched in case it becomes a suite that {@code dir} is or lies in; null when none. */
+    private @Nullable Path maybeSuiteOf(Path dir) {
+        Path abs = dir.toAbsolutePath().normalize();
+        for (Path suite : maybeSuites) {
+            if (abs.startsWith(suite)) return suite;
+        }
+        return null;
+    }
+
+    /**
+     * An event in {@code suite}, a directory not yet a suite, or its {@code src/} tree: a directory
+     * made in the tree is watched, and the loop wakes only when the event leaves the suite holding
+     * sources.
+     */
+    private @Nullable Changes maybeSuiteEvent(Path suite, WatchEvent.Kind<?> kind, Path changed) throws IOException {
+        Path home = Objects.requireNonNull(suiteHome);
+        String name = suite.getFileName().toString();
+        Path src = TestSuites.simpleSuiteSrc(home, name).toAbsolutePath().normalize();
+        Path abs = changed.toAbsolutePath().normalize();
+        if (kind == StandardWatchEventKinds.ENTRY_CREATE && abs.startsWith(src) && Files.isDirectory(abs)) {
+            registerTree(abs);
+        }
+        return TestSuites.holdsSources(home, true, name) ? addSuite(suite) : null;
+    }
+
+    /** {@code suite} holds sources: its trees become roots, watched, and what their files ask for. */
+    private Changes addSuite(Path suite) throws IOException {
+        maybeSuites.remove(suite);
+        Changes found = null;
+        for (Path root : ModuleLayout.suiteWatchDirs(
+                Objects.requireNonNull(suiteHome), suite.getFileName().toString())) {
+            roots.add(root);
+            anchor(root);
+            if (Files.isDirectory(root)) found = merge(found, takeUp(root));
+        }
+        return found == null ? new Changes(false, false, false) : found;
+    }
+
+    /**
+     * Watch every existing directory between {@code root} and the project, so the root is seen to
+     * appear, or to come back after it or a directory above it is deleted and made again. A root
+     * outside the project, a sibling module's, is watched up to the directory holding both (the
+     * workspace root), which a module made again appears in.
      */
     private void anchor(Path root) throws IOException {
         Path project = projectDir.toAbsolutePath().normalize();
-        Path at = root.getParent();
-        if (at != null && !at.startsWith(project)) {
-            if (!skip(at)) {
+        Path top = anchorTop(project, root);
+        for (Path at = root.getParent(); at != null && at.startsWith(top) && !at.equals(project); at = at.getParent()) {
+            if (Files.isDirectory(at) && (at.startsWith(project) || !skip(at))) {
                 registerDir(at);
                 rootParents.add(at);
             }
-            return;
-        }
-        while (at != null && at.startsWith(project) && !at.equals(project)) {
-            registerDir(at);
-            rootParents.add(at);
-            at = at.getParent();
         }
     }
 
     /**
-     * {@code root} does not exist yet: watch its nearest existing ancestor inside the project to see
-     * it made. A root outside the project, a sibling module's, has its parent watched, when it exists.
+     * How far up {@link #anchor} watches for {@code root}: the project for a root in it, else the
+     * nearest directory holding both, or only the root's parent when they share no more than a
+     * filesystem root.
      */
-    private void watchForRoot(Path root) throws IOException {
-        Path project = projectDir.toAbsolutePath().normalize();
-        Path at = root.getParent();
-        if (at != null && !at.startsWith(project)) {
-            if (Files.isDirectory(at) && !skip(at)) {
-                registerDir(at);
-                rootParents.add(at);
-            }
-            return;
+    private static Path anchorTop(Path project, Path root) {
+        if (root.startsWith(project)) return project;
+        Path top = project.getParent();
+        while (top != null && !root.startsWith(top)) top = top.getParent();
+        if (top == null || top.getParent() == null) {
+            Path parent = root.getParent();
+            return parent == null ? root : parent;
         }
-        while (at != null && at.startsWith(project) && !Files.isDirectory(at)) at = at.getParent();
-        if (at == null || !at.startsWith(project) || at.equals(project)) return; // the project dir is watched anyway
-        registerDir(at);
-        rootParents.add(at);
+        return top;
     }
 
     private void reregisterRoots() throws IOException {
-        for (Path root : roots) {
+        for (Path root : List.copyOf(roots)) {
             if (Files.isDirectory(root)) registerTree(root);
         }
         registerDir(projectDir);
+        lookForSuites();
     }
 
     /** What a change to {@code changed}, an entry of the watched {@code dir}, asks for; null when it is ignored. */

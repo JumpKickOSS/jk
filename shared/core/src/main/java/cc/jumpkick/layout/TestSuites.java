@@ -104,19 +104,10 @@ public final class TestSuites {
                 stream.filter(Files::isDirectory)
                         .filter(p -> !members.contains(p.normalize()))
                         .map(p -> p.getFileName().toString())
-                        .filter(n -> !n.startsWith("."))
-                        .filter(n -> !SIMPLE_RESERVED.contains(n.toLowerCase(Locale.ROOT)))
-                        .filter(n -> !FIXTURES_DIR.equals(n) && !GUARD.equals(n))
-                        .filter(n -> isSuiteName(n))
+                        .filter(TestSuites::maySimpleSuite)
                         .sorted()
                         .forEach(n -> {
-                            if (hasSources(
-                                    javaRoots(projectDir, true, n),
-                                    kotlinRoots(projectDir, true, n),
-                                    groovyRoots(projectDir, true, n),
-                                    scalaRoots(projectDir, true, n))) {
-                                names.add(n);
-                            }
+                            if (holdsSources(projectDir, true, n)) names.add(n);
                         });
             } catch (IOException ignored) {
                 // discovery is best-effort
@@ -153,6 +144,35 @@ public final class TestSuites {
             }
         }
         return List.copyOf(names);
+    }
+
+    /**
+     * Whether {@code dir}, a directory directly in a simple-layout module, is named as a test suite
+     * may be: a suite name that is not reserved, the fixtures or guard set, nor a workspace member.
+     * It is a suite once it holds sources ({@link #holdsSources}).
+     */
+    public static boolean maySimpleSuiteDir(Path projectDir, Path dir) {
+        Path name = dir.getFileName();
+        return name != null
+                && maySimpleSuite(name.toString())
+                && !WorkspaceModules.memberDirs(projectDir).contains(dir.normalize());
+    }
+
+    private static boolean maySimpleSuite(String name) {
+        return !name.startsWith(".")
+                && !SIMPLE_RESERVED.contains(name.toLowerCase(Locale.ROOT))
+                && !FIXTURES_DIR.equals(name)
+                && !GUARD.equals(name)
+                && isSuiteName(name);
+    }
+
+    /** Whether {@code suite} has a Java, Kotlin, Groovy or Scala source under its roots. */
+    public static boolean holdsSources(Path projectDir, boolean compact, String suite) {
+        return hasSources(
+                javaRoots(projectDir, compact, suite),
+                kotlinRoots(projectDir, compact, suite),
+                groovyRoots(projectDir, compact, suite),
+                scalaRoots(projectDir, compact, suite));
     }
 
     /**

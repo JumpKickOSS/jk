@@ -287,9 +287,9 @@ public final class ModuleLayout {
      * each test suite's sources and resources ({@code test/src/}, {@code test/resources/}, {@code
      * <suite>/src/}, …); TRADITIONAL's {@code src/}, which holds them all. A tree is named whether or
      * not it exists yet, so one made while the loop runs is watched once it appears; a suite is one
-     * on disk, or the default. Unlike {@link #fingerprintDirs} it never names a suite's whole
-     * directory, so a stray file beside {@code test/src/} wakes no loop. When {@code skipTests}, only
-     * the main trees.
+     * on disk, or the default (a loop over the tests looks for one made later itself). Unlike
+     * {@link #fingerprintDirs} it never names a suite's whole directory, so a stray file beside
+     * {@code test/src/} wakes no loop. When {@code skipTests}, only the main trees.
      */
     public static List<Path> watchDirs(Path moduleDir, boolean skipTests) {
         boolean compact = isCompact(moduleDir);
@@ -301,10 +301,18 @@ public final class ModuleLayout {
         LinkedHashSet<String> suites = new LinkedHashSet<>();
         suites.add(TestSuites.DEFAULT);
         suites.addAll(TestSuites.discover(moduleDir, true));
-        for (String suite : suites) {
-            for (Path r : TestSuites.javaRoots(moduleDir, true, suite)) dirs.add(absolute(r));
-            dirs.add(absolute(suiteResourcesDir(moduleDir, true, suite)));
-        }
+        for (String suite : suites) dirs.addAll(suiteWatchDirs(moduleDir, suite));
+        return List.copyOf(dirs);
+    }
+
+    /**
+     * The trees a live loop watches for one test suite of a simple-layout module, made yet or not:
+     * its sources and its resources ({@code <suite>/src/}, {@code <suite>/resources/}).
+     */
+    public static List<Path> suiteWatchDirs(Path moduleDir, String suite) {
+        LinkedHashSet<Path> dirs = new LinkedHashSet<>();
+        for (Path r : TestSuites.javaRoots(moduleDir, true, suite)) dirs.add(absolute(r));
+        dirs.add(absolute(suiteResourcesDir(moduleDir, true, suite)));
         return List.copyOf(dirs);
     }
 

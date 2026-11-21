@@ -211,4 +211,157 @@ class SourceWatchTest {
             }
         }
     }
+
+    /** A test suite made while {@code jk watch} runs is taken up once it holds sources; a stray file in it wakes nothing. */
+    @Test
+    void a_suite_made_after_open_is_watched_once_it_holds_sources(@TempDir Path tmp) throws Exception {
+        Path project = Files.createDirectories(tmp.resolve("app"));
+        Files.writeString(project.resolve("jk.toml"), "name = \"app\"\nlayout = \"simple\"\n");
+        Files.createDirectories(project.resolve("src"));
+        Path suite = project.resolve("integration");
+        Path suiteSrc = suite.resolve("src");
+        Path suiteResources = suite.resolve("resources");
+
+        try (SourceWatch watch = SourceWatch.openDefault(project, 0, List.of())) {
+            Files.createDirectories(suite);
+            assertThat(watch.event(project, StandardWatchEventKinds.ENTRY_CREATE, suite))
+                    .as("an empty suite directory")
+                    .isNull();
+            assertThat(watch.watches(suite))
+                    .as("the directory a suite may become")
+                    .isTrue();
+            assertThat(watch.event(
+                            suite,
+                            StandardWatchEventKinds.ENTRY_CREATE,
+                            Files.writeString(suite.resolve("README.md"), "x\n")))
+                    .as("a stray file in it")
+                    .isNull();
+
+            Path pkg = Files.createDirectories(suiteSrc.resolve("ex"));
+            assertThat(watch.event(suite, StandardWatchEventKinds.ENTRY_CREATE, suiteSrc))
+                    .as("its src/ with no sources yet")
+                    .isNull();
+            assertThat(watch.watches(pkg)).as("a directory under its src/").isTrue();
+
+            Path test = Files.writeString(pkg.resolve("FlowIT.java"), "class FlowIT {}\n");
+            SourceWatch.Changes first =
+                    Objects.requireNonNull(watch.event(pkg, StandardWatchEventKinds.ENTRY_CREATE, test));
+            assertThat(Pass.of(first)).as("its first source").isEqualTo(Pass.RECOMPILE);
+
+            Files.createDirectories(suiteResources);
+            Files.writeString(suiteResources.resolve("it.properties"), "k=v\n");
+            assertThat(watch.event(suite, StandardWatchEventKinds.ENTRY_CREATE, suiteResources))
+                    .as("its resources/, made once it is a suite")
+                    .isEqualTo(new SourceWatch.Changes(false, true, false));
+            assertThat(watch.event(
+                            suite,
+                            StandardWatchEventKinds.ENTRY_MODIFY,
+                            Files.writeString(suite.resolve("README.md"), "y\n")))
+                    .as("a stray file beside a suite's trees")
+                    .isNull();
+        }
+    }
+
+    /** A suite made whole, a directory not named as one, and one on disk with no sources at open. */
+    @Test
+    void only_a_directory_named_as_a_suite_becomes_one(@TempDir Path tmp) throws Exception {
+        Path project = Files.createDirectories(tmp.resolve("app"));
+        Files.writeString(project.resolve("jk.toml"), "name = \"app\"\nlayout = \"simple\"\n");
+        Files.createDirectories(project.resolve("src"));
+        Path waiting = Files.createDirectories(project.resolve("e2e/src"));
+
+        try (SourceWatch watch = SourceWatch.openDefault(project, 0, List.of())) {
+            assertThat(watch.watches(waiting))
+                    .as("a suite's src/ on disk with no sources")
+                    .isTrue();
+            Path late = Files.writeString(waiting.resolve("E2eTest.java"), "class E2eTest {}\n");
+            assertThat(watch.event(waiting, StandardWatchEventKinds.ENTRY_CREATE, late))
+                    .isEqualTo(new SourceWatch.Changes(true, false, false));
+
+            Path whole = Files.createDirectories(project.resolve("perf/src"));
+            Files.writeString(whole.resolve("PerfTest.kt"), "class PerfTest\n");
+            assertThat(watch.event(project, StandardWatchEventKinds.ENTRY_CREATE, project.resolve("perf")))
+                    .as("a suite made with its sources")
+                    .isEqualTo(new SourceWatch.Changes(true, false, false));
+            assertThat(watch.watches(whole)).isTrue();
+
+            for (String name : List.of("docs", "Demo", "fixtures")) {
+                Path dir = Files.createDirectories(project.resolve(name).resolve("src"));
+                Files.writeString(dir.resolve("X.java"), "class X {}\n");
+                assertThat(watch.event(project, StandardWatchEventKinds.ENTRY_CREATE, project.resolve(name)))
+                        .as(name)
+                        .isNull();
+                assertThat(watch.watches(dir)).as(name).isFalse();
+            }
+        }
+    }
+
+    /** A sibling member's directory, deleted and made again, is seen from the workspace root it lies in. */
+    @Test
+    void a_sibling_member_made_again_is_watched_again(@TempDir Path tmp) throws Exception {
+        Path workspace = Files.createDirectories(tmp.resolve("ws"));
+        Path project = Files.createDirectories(workspace.resolve("app"));
+        Path lib = workspace.resolve("lib");
+        Path libSrc = Files.createDirectories(lib.resolve("src"));
+        Path libResources = Files.createDirectories(lib.resolve("resources"));
+
+        try (SourceWatch watch = SourceWatch.open(project, List.of(libSrc, libResources), 0)) {
+            assertThat(watch.watches(workspace))
+                    .as("the directory the member is made in")
+                    .isTrue();
+            assertThat(watch.event(
+                            workspace,
+                            StandardWatchEventKinds.ENTRY_MODIFY,
+                            Files.writeString(workspace.resolve("notes.txt"), "x\n")))
+                    .as("a file beside the member")
+                    .isNull();
+
+            PathUtil.deleteRecursively(lib);
+            Files.createDirectories(libSrc);
+            Files.createDirectories(libResources);
+            Files.writeString(libSrc.resolve("Lib.java"), "class Lib {}\n");
+            Files.writeString(libResources.resolve("lib.properties"), "k=v\n");
+            assertThat(watch.event(workspace, StandardWatchEventKinds.ENTRY_CREATE, lib))
+                    .as("both trees of the member made again")
+                    .isEqualTo(new SourceWatch.Changes(true, true, false));
+            assertThat(watch.watches(lib)).isTrue();
+        }
+    }
+
+    /** A sibling member missing at open is watched for from the workspace root. */
+    @Test
+    void a_sibling_member_missing_at_open_is_watched_for(@TempDir Path tmp) throws Exception {
+        Path workspace = Files.createDirectories(tmp.resolve("ws"));
+        Path project = Files.createDirectories(workspace.resolve("app"));
+        Path lib = workspace.resolve("lib");
+
+        try (SourceWatch watch = SourceWatch.open(project, List.of(lib.resolve("src")), 0)) {
+            assertThat(watch.watches(workspace)).isTrue();
+            Files.createDirectories(lib.resolve("src"));
+            Files.writeString(lib.resolve("src/Lib.java"), "class Lib {}\n");
+            assertThat(watch.event(workspace, StandardWatchEventKinds.ENTRY_CREATE, lib))
+                    .isEqualTo(new SourceWatch.Changes(true, false, false));
+            assertThat(watch.watches(lib.resolve("src"))).isTrue();
+        }
+    }
+
+    /** {@code test/} restored with both {@code src/} and {@code resources/} in it brings back both roots. */
+    @Test
+    void a_directory_made_with_two_roots_in_it_takes_up_both(@TempDir Path tmp) throws Exception {
+        Path project = Files.createDirectories(tmp.resolve("app"));
+        Files.writeString(project.resolve("jk.toml"), "name = \"app\"\nlayout = \"simple\"\n");
+        Path testSrc = project.resolve("test/src");
+        Path testResources = project.resolve("test/resources");
+
+        try (SourceWatch watch = SourceWatch.open(project, List.of(testSrc, testResources), 0)) {
+            Files.createDirectories(testSrc);
+            Files.createDirectories(testResources);
+            Files.writeString(testSrc.resolve("MainTest.java"), "class MainTest {}\n");
+            Files.writeString(testResources.resolve("fixture.txt"), "x\n");
+            assertThat(watch.event(project, StandardWatchEventKinds.ENTRY_CREATE, project.resolve("test")))
+                    .isEqualTo(new SourceWatch.Changes(true, true, false));
+            assertThat(watch.watches(testSrc)).isTrue();
+            assertThat(watch.watches(testResources)).isTrue();
+        }
+    }
 }

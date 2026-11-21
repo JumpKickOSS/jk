@@ -69,7 +69,10 @@ Watches the module's sources and resources — **`src/`**, **`resources/`**, **`
 **`src/`** in the traditional one — and project-root **`jk.toml`**; `jk dev` watches the main
 trees of the app and of every workspace member it runs on. Not `target/`, `out/`, `build/`, or
 VCS trees. A tree that does not exist when the loop starts (a first `resources/`) is watched
-once it is made, and one deleted and made again (a branch switch) is watched again. Editor
+once it is made, and one deleted and made again (a branch switch) is watched again; so is a
+workspace member `jk dev` runs on. In the simple layout `jk watch` also takes up a test suite
+made while it runs (`integration/src/`) once that holds a source file; a file elsewhere in the
+new directory wakes nothing. Editor
 save bursts are debounced: a pass starts once sources have been quiet for
 **150 ms** (`-U` / `--debounce-ms`), and a burst that never goes quiet starts one at the latest
 2 s after its first change (or four debounce windows, when that is longer).
