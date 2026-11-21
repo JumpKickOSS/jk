@@ -282,6 +282,30 @@ public final class ModuleLayout {
         return List.copyOf(dirs);
     }
 
+    /**
+     * The trees a live loop watches for a module, those on disk: SIMPLE's {@code src/} and {@code
+     * resources/}, and each test suite's sources and resources ({@code test/src/}, {@code
+     * test/resources/}, {@code <suite>/src/}, …); TRADITIONAL's {@code src/}, which holds them all.
+     * Unlike {@link #fingerprintDirs} it never names a suite's whole directory, so a stray file
+     * beside {@code test/src/} wakes no loop. When {@code skipTests}, only the main trees.
+     */
+    public static List<Path> watchDirs(Path moduleDir, boolean skipTests) {
+        boolean compact = isCompact(moduleDir);
+        LinkedHashSet<Path> dirs = new LinkedHashSet<>();
+        addDir(dirs, moduleDir.resolve("src"));
+        if (!compact) return List.copyOf(dirs);
+        addDir(dirs, mainResourcesDir(moduleDir, true));
+        if (skipTests) return List.copyOf(dirs);
+        LinkedHashSet<String> suites = new LinkedHashSet<>();
+        suites.add(TestSuites.DEFAULT);
+        suites.addAll(TestSuites.discover(moduleDir, true));
+        for (String suite : suites) {
+            for (Path r : TestSuites.javaRoots(moduleDir, true, suite)) addDir(dirs, r);
+            addDir(dirs, suiteResourcesDir(moduleDir, true, suite));
+        }
+        return List.copyOf(dirs);
+    }
+
     private static boolean hasDefaultSuiteDir(Path moduleDir, boolean compact) {
         for (Path r : TestSuites.javaRoots(moduleDir, compact, TestSuites.DEFAULT)) {
             if (Files.isDirectory(r)) return true;

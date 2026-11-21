@@ -43,6 +43,39 @@ class ModuleLayoutTest {
                         p.toString().contains("integration") && p.toString().contains("resources"));
     }
 
+    @Test
+    void watch_dirs_are_the_simple_layouts_source_and_resource_trees(@TempDir Path tmp) throws Exception {
+        writeToml(tmp);
+        for (String dir :
+                List.of("src", "resources", "test/src", "test/resources", "integration/src", "integration/resources")) {
+            Files.createDirectories(tmp.resolve(dir));
+        }
+        Files.writeString(tmp.resolve("src/Main.java"), "class Main {}");
+        Files.writeString(tmp.resolve("integration/src/I.java"), "class I {}");
+
+        assertThat(ModuleLayout.watchDirs(tmp, false))
+                .as("a suite's whole directory is not a root: a stray file beside test/src wakes no loop")
+                .containsExactly(
+                        tmp.resolve("src"),
+                        tmp.resolve("resources"),
+                        tmp.resolve("test/src"),
+                        tmp.resolve("test/resources"),
+                        tmp.resolve("integration/src"),
+                        tmp.resolve("integration/resources"));
+        assertThat(ModuleLayout.watchDirs(tmp, true)).containsExactly(tmp.resolve("src"), tmp.resolve("resources"));
+    }
+
+    @Test
+    void watch_dirs_of_the_traditional_layout_are_src(@TempDir Path tmp) throws Exception {
+        writeToml(tmp);
+        Files.createDirectories(tmp.resolve("src/main/java"));
+        Files.createDirectories(tmp.resolve("src/main/resources"));
+        Files.createDirectories(tmp.resolve("src/test/resources"));
+
+        assertThat(ModuleLayout.watchDirs(tmp, false)).containsExactly(tmp.resolve("src"));
+        assertThat(ModuleLayout.watchDirs(tmp, true)).containsExactly(tmp.resolve("src"));
+    }
+
     /**
      * In the compact layout a sibling directory holding {@code src/} is a test suite; under a
      * workspace root that sibling is a member, so the root's walk stays at its own roots.

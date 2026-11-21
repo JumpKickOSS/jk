@@ -5,6 +5,7 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.host.time.Clock;
+import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.layout.NodeProject;
 import cc.jumpkick.layout.WalkSkip;
 import cc.jumpkick.lock.ManifestPaths;
@@ -30,8 +31,8 @@ import org.jspecify.annotations.Nullable;
  * Debounced recursive directory watch for live loops ({@code jk watch}, {@code jk dev}). One
  * implementation for all verbs.
  *
- * <p>By default only {@code src/} and {@code test/} trees are watched (plus {@code jk.toml} at the
- * project root). Build outputs ({@code target/}, {@code out/}, {@code build/}), {@code
+ * <p>By default only the module's source and resource trees are watched ({@link #defaultRoots}),
+ * plus {@code jk.toml} at the project root. Build outputs ({@code target/}, {@code out/}, {@code build/}), {@code
  * node_modules}, VCS dirs, editor junk and the {@code skipped} trees a caller names are not
  * registered — so they never wake the loop. A node module watches its whole directory, its root
  * files ({@code package.json}, a bundler's config) included.
@@ -361,14 +362,15 @@ public final class SourceWatch implements AutoCloseable {
         }
     }
 
-    /** Default source roots for a simple project layout. */
+    /**
+     * The roots {@code jk watch} watches by default: the module's sources and resources, its tests'
+     * among them ({@link ModuleLayout#watchDirs}); a node project's whole directory.
+     */
     public static List<Path> defaultRoots(Path projectDir) {
         if (Files.isRegularFile(projectDir.resolve(NodeProject.PACKAGE_JSON))
                 && !Files.isDirectory(projectDir.resolve("src/main"))) {
             return List.of(projectDir);
         }
-        return List.of(projectDir.resolve("src"), projectDir.resolve("test").resolve("src")).stream()
-                .filter(Files::isDirectory)
-                .toList();
+        return ModuleLayout.watchDirs(projectDir, false);
     }
 }

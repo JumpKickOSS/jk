@@ -55,14 +55,20 @@ class ExecPlansWorkspaceRunTest {
         writeLib(root.resolve("lib"));
         writeApp(root.resolve("app"), true);
         Files.createDirectories(root.resolve("app/target/classes/main/com/example"));
+        Files.createDirectories(root.resolve("app/resources"));
+        Files.createDirectories(root.resolve("app/test/resources"));
+        Files.createDirectories(root.resolve("lib/resources"));
 
         ExecPlan plan = ExecPlans.execPlan(root, root.resolve("cache"), "dev", null, null);
         assertThat(plan.error()).isNull();
-        // An edit to lib, which app depends on, restarts the app like an edit to app's own code.
+        // An edit to lib, which app depends on, restarts the app like an edit to app's own code; a
+        // resource edit copies resources, and the app's tests are not what it runs.
         assertThat(plan.watchRoots())
                 .containsExactly(
                         root.resolve("app/src").toString(),
-                        root.resolve("lib/src").toString());
+                        root.resolve("app/resources").toString(),
+                        root.resolve("lib/src").toString(),
+                        root.resolve("lib/resources").toString());
         // ...and the restarted app runs lib's recompiled classes: a dev session writes no jar.
         String classpath = plan.argv().get(plan.argv().indexOf("-cp") + 1);
         assertThat(classpath)

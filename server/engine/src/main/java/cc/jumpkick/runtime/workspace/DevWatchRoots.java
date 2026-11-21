@@ -3,6 +3,7 @@ package cc.jumpkick.runtime.workspace;
 
 import cc.jumpkick.config.WorkspaceClasspath;
 import cc.jumpkick.host.ManifestNames;
+import cc.jumpkick.layout.ModuleLayout;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashSet;
@@ -10,8 +11,9 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * What {@code jk dev} watches: the app module's {@code src/}, and the {@code src/} of every workspace
- * member it runs on. The app runs from those members' classes, and the session's compile of the
+ * What {@code jk dev} watches: the app module's main sources and resources ({@link
+ * ModuleLayout#watchDirs}: {@code src/}, and {@code resources/} in the simple layout), and those of
+ * every workspace member it runs on. The app runs from those members' classes, and the session's compile of the
  * workspace recompiles them, so an edit to a service the app injects restarts it like an edit to the
  * app's own code.
  */
@@ -33,7 +35,6 @@ final class DevWatchRoots {
     }
 
     private static void addSourceRoot(Set<String> roots, Path module) {
-        Path src = module.resolve("src");
-        if (Files.isDirectory(src)) roots.add(src.toString());
+        for (Path dir : ModuleLayout.watchDirs(module, true)) roots.add(dir.toString());
     }
 }

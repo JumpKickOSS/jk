@@ -190,7 +190,7 @@ public final class WatchCommand implements CliCommand {
         List<Path> roots = SourceWatch.defaultRoots(projectDir);
         if (roots.isEmpty()) roots = List.of(projectDir);
 
-        CommandWedge.printWorking("Watch", verb + " when src/, test/src/ or jk.toml change. Ctrl-C stops.");
+        CommandWedge.printWorking("Watch", verb + " when sources, resources or jk.toml change. Ctrl-C stops.");
 
         try (SourceWatch watch = SourceWatch.open(projectDir, roots, debounceMs, nodeOutput(projectDir))) {
             while (true) {

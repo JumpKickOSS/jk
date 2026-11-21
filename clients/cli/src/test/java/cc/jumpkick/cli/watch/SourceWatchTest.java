@@ -109,4 +109,28 @@ class SourceWatchTest {
                     .isNull();
         }
     }
+
+    /** A resource-only edit in the simple layout is under a default root, so it starts a pass. */
+    @Test
+    void the_default_roots_hold_the_simple_layouts_resources(@TempDir Path tmp) throws Exception {
+        Path project = Files.createDirectories(tmp.resolve("app"));
+        Files.writeString(project.resolve("jk.toml"), "name = \"app\"\nlayout = \"simple\"\n");
+        Files.createDirectories(project.resolve("src"));
+        Path resources = Files.createDirectories(project.resolve("resources"));
+        Path testResources = Files.createDirectories(project.resolve("test/resources"));
+        Files.createDirectories(project.resolve("test/src"));
+
+        List<Path> roots = SourceWatch.defaultRoots(project);
+        assertThat(roots).contains(resources, testResources);
+        try (SourceWatch watch = SourceWatch.open(project, roots, 0)) {
+            assertThat(watch.watches(resources)).isTrue();
+            assertThat(watch.watches(testResources)).isTrue();
+            for (Path dir : List.of(resources, testResources)) {
+                Path file = Files.writeString(dir.resolve("app.properties"), "greeting=hi\n");
+                SourceWatch.Changes changes =
+                        Objects.requireNonNull(watch.event(dir, StandardWatchEventKinds.ENTRY_MODIFY, file));
+                assertThat(Pass.of(changes)).as(dir.toString()).isEqualTo(Pass.COPY_RESOURCES);
+            }
+        }
+    }
 }
