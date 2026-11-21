@@ -48,7 +48,8 @@ class PluginCommandFallbackTest {
         });
 
         assertThat(exit[0]).isEqualTo(Exit.CONFIG);
-        assertThat(err).contains("frobnicate").contains(config + ":1:");
+        // The terminal writes a path with forward slashes on every OS.
+        assertThat(err).contains("frobnicate").contains(config.toString().replace('\\', '/') + ":1:");
     }
 
     @Test

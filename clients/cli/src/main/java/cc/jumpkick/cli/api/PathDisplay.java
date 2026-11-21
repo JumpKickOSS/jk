@@ -36,8 +36,9 @@ public final class PathDisplay {
 
     /**
      * {@code text} with every absolute path in it shown as {@link #of(Path)} shows it: what the engine
-     * wrote of a file, such as a manifest's {@code file:line:column}, read from where jk ran. The
-     * working directory itself stays as written, since {@code .} would name nothing.
+     * wrote of a file, such as a manifest's {@code file:line:column}, read from where jk ran. An
+     * anchor itself stays absolute, since {@code .} would name nothing, and forward-slashed as
+     * {@link #of(Path)} writes every path.
      */
     public static @Nullable String inText(@Nullable String text) {
         if (text == null || (text.indexOf('/') < 0 && text.indexOf('\\') < 0)) return text;
@@ -56,7 +57,7 @@ public final class PathDisplay {
         }
         if (!path.isAbsolute()) return token;
         String shown = of(path);
-        return shown.equals(".") ? token : shown;
+        return shown.equals(".") ? DirKeys.slashes(token) : shown;
     }
 
     /** {@link #of(Path, Path)} relativized and painted in the theme's {@code path} color. */

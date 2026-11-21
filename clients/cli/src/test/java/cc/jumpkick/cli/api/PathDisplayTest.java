@@ -110,12 +110,15 @@ class PathDisplayTest {
     @Test
     void engine_text_keeps_a_sentence_end_a_url_and_the_anchor_itself(@TempDir Path tmp) throws IOException {
         Path ws = workspace(tmp);
+        Files.createDirectories(ws.resolve(".git"));
 
         assertThat(PathDisplay.inText("no jk.toml in " + ws.resolve("app") + "."))
                 .isEqualTo("no jk.toml in app.");
         assertThat(PathDisplay.inText("could not reach https://repo.example/maven2/a/b.pom"))
                 .isEqualTo("could not reach https://repo.example/maven2/a/b.pom");
-        assertThat(PathDisplay.inText("no jk.toml in " + ws)).isEqualTo("no jk.toml in " + ws);
+        // The git root names itself, absolute and forward-slashed as every shown path is.
+        assertThat(PathDisplay.inText("no jk.toml in " + ws))
+                .isEqualTo("no jk.toml in " + ws.toString().replace('\\', '/'));
         assertThat(PathDisplay.inText(null)).isNull();
     }
 }
