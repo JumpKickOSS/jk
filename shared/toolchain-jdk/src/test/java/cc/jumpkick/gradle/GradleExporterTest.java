@@ -212,6 +212,93 @@ class GradleExporterTest {
     // are now declared as workspace modules), so there is no path→includeBuild export case to test.
 
     @Test
+    void a_string_literal_escapes_templates_and_control_characters() {
+        JkBuild b = parse("""
+                group = "com.example"
+                name  = "app"
+                version = "1.0.0"
+                java = 25
+
+                [manifest]
+                Built-By = "${System.getenv(\\"USER\\")} $HOME"
+                Notes = "line one\\nline two\\r\\tend"
+                """);
+
+        String kts = GradleExporter.export(b, Map.of()).buildFiles().get("");
+
+        assertThat(kts)
+                .contains("\"Built-By\" to \"\\${System.getenv(\\\"USER\\\")} \\$HOME\"")
+                .contains("\"Notes\" to \"line one\\nline two\\r\\tend\"")
+                .doesNotContain("line one\nline two");
+    }
+
+    @Test
+    void export_dependencies_apply_java_library_for_api() {
+        JkBuild b = parse("""
+                group = "com.example"
+                name  = "lib"
+                version = "1.0.0"
+                java = 25
+
+                [export-dependencies]
+                guava = { group = "com.google.guava", name = "guava", version = "33.5.0-jre" }
+                """);
+
+        String kts = GradleExporter.export(b, Map.of()).buildFiles().get("");
+
+        assertThat(kts).contains("plugins {\n    `java-library`\n").doesNotContain("\n    java\n");
+        assertThat(kts).contains("    api(\"com.google.guava:guava:33.5.0-jre\")");
+    }
+
+    @Test
+    void without_export_dependencies_the_plain_java_plugin_is_applied() {
+        JkBuild b = parse("""
+                group = "com.example"
+                name  = "app"
+                version = "1.0.0"
+                java = 25
+                """);
+
+        String kts = GradleExporter.export(b, Map.of()).buildFiles().get("");
+
+        assertThat(kts).contains("plugins {\n    java\n").doesNotContain("java-library");
+    }
+
+    @Test
+    void classifier_and_tests_kind_keep_their_artifact_and_read_their_lock_row() {
+        JkBuild b = parse("""
+                group = "com.example"
+                name  = "app"
+                version = "1.0.0"
+                java = 25
+
+                [dependencies]
+                guava = { group = "com.google.guava", name = "guava", version = "^33.0.0-jre" }
+                lwjgl = { group = "org.lwjgl", name = "lwjgl", version = "^3.3.0" }
+                lwjgl-natives = { group = "org.lwjgl", name = "lwjgl", version = "^3.3.0", classifier = "natives-linux" }
+
+                [test-dependencies]
+                helpers = { group = "com.acme", name = "helpers", version = "^1.2.0", kind = "tests" }
+                """);
+        // Lock rows key on the package id, as jk-lock.toml writes them.
+        Map<String, String> locked = Map.of(
+                "com.google.guava:guava:jar:", "33.5.0-jre",
+                "org.lwjgl:lwjgl:jar:", "3.3.6",
+                "org.lwjgl:lwjgl:jar:natives-linux", "3.3.6",
+                "com.acme:helpers:jar:tests", "1.2.9");
+
+        GradleExporter.Result r = GradleExporter.export(b, locked);
+        String kts = r.buildFiles().get("");
+
+        assertThat(kts)
+                .contains("    implementation(\"com.google.guava:guava:33.5.0-jre\")\n")
+                .contains("    implementation(\"org.lwjgl:lwjgl:3.3.6\")\n")
+                .contains("    implementation(\"org.lwjgl:lwjgl:3.3.6:natives-linux\")\n")
+                .contains("    testImplementation(\"com.acme:helpers:1.2.9:tests\")\n");
+        assertThat(r.report().issues()).as("every version came from the lock").isEmpty();
+    }
+
+    @Test
     void git_dependency_is_dropped_with_warning() {
         JkBuild b = parse("""
                 group = "com.example"

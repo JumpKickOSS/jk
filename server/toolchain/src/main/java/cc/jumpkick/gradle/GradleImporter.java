@@ -18,6 +18,7 @@ import cc.jumpkick.model.Project;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
+import cc.jumpkick.mvn.PomImporter;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -26,7 +27,6 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -56,10 +56,10 @@ public final class GradleImporter {
     // kotlin("jvm") version "2.3.21" — version is groups 3/4 (after the plugin arg).
     private static final Pattern KOTLIN_PLUGIN_VERSION =
             Pattern.compile("kotlin\\s*\\(\\s*" + STR + "\\s*\\)\\s*version\\s*" + STR);
-    // id("org.jetbrains.kotlin.jvm") [version "2.3.21"]
+    // id("org.jetbrains.kotlin.jvm") [version "2.3.21"] / id 'org.jetbrains.kotlin.jvm' [version '2.3.21']
     private static final Pattern KOTLIN_ID = Pattern.compile("id\\s*\\(?\\s*[\"']org\\.jetbrains\\.kotlin[^\"']*[\"']");
     private static final Pattern KOTLIN_ID_VERSION =
-            Pattern.compile("id\\s*\\(\\s*[\"']org\\.jetbrains\\.kotlin[^\"']*[\"']\\s*\\)\\s*version\\s*" + STR);
+            Pattern.compile("id\\s*\\(?\\s*[\"']org\\.jetbrains\\.kotlin[^\"']*[\"']\\s*\\)?\\s*version\\s*" + STR);
 
     /** The plugin ids the block applies, each with its inline version when one is spelled. */
     private static Map<String, @Nullable String> pluginsApplied(String pluginsBody) {
@@ -242,6 +242,7 @@ public final class GradleImporter {
 
         Map<Scope, List<Dependency>> deps =
                 GradleDependencies.parse(stripped, catalog, properties, refreshVersions, report);
+        PomImporter.uniquifyHandles(deps, report);
         PluginConfig javafx = JavafxGradle.map(applied.keySet(), stripped, deps, report);
         if (javafx != null) pluginConfigs.add(javafx);
         List<RepositorySpec> repos = parseRepositories(stripped, report);
@@ -332,15 +333,19 @@ public final class GradleImporter {
         return attrs;
     }
 
-    /** Resolve common Gradle property expressions used in manifest values; null if unknown. */
+    /**
+     * The project's own {@code version}, {@code name} or {@code group}, bare or as {@code
+     * project.<x>}; null for any other expression.
+     */
     private static @Nullable String resolveGradleExpr(
             @Nullable String expr, String group, String artifact, String version) {
         if (expr == null) return null;
-        String lower = expr.toLowerCase(Locale.ROOT);
-        if (lower.endsWith("version")) return version;
-        if (lower.endsWith("name")) return artifact;
-        if (lower.endsWith("group")) return group;
-        return null;
+        return switch (expr.startsWith("project.") ? expr.substring("project.".length()) : expr) {
+            case "version" -> version;
+            case "name" -> artifact;
+            case "group" -> group;
+            default -> null;
+        };
     }
 
     /**

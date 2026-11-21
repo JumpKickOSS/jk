@@ -390,6 +390,45 @@ class PomExporterTest {
     }
 
     @Test
+    void export_dependencies_are_compile_scope_dependencies() {
+        JkBuild b = parse("""
+                group = "com.example"
+                name  = "lib"
+                version = "1.0.0"
+                java = 25
+
+                [export-dependencies]
+                guava = { group = "com.google.guava", name = "guava", version = "33.5.0-jre" }
+                """);
+
+        String xml = PomExporter.export(b).xml();
+
+        assertThat(xml)
+                .contains("  <dependencies>\n    <dependency>\n      <groupId>com.google.guava</groupId>\n"
+                        + "      <artifactId>guava</artifactId>\n      <version>33.5.0-jre</version>\n"
+                        + "    </dependency>\n  </dependencies>\n");
+    }
+
+    @Test
+    void the_compiler_plugin_carries_a_version() {
+        JkBuild b = parse("""
+                group = "com.example"
+                name  = "app"
+                version = "1.0.0"
+                java = 25
+
+                [processor-dependencies]
+                lombok = { group = "org.projectlombok", name = "lombok", version = "1.18.42" }
+                """);
+
+        String xml = PomExporter.export(b).xml();
+
+        assertThat(xml)
+                .containsPattern("<artifactId>maven-compiler-plugin</artifactId>\n"
+                        + " *<version>3\\.\\d+\\.\\d+</version>\n *<configuration>\n *<release>25</release>");
+    }
+
+    @Test
     void git_dependency_warns() {
         JkBuild b = parse("""
                 group = "com.example"

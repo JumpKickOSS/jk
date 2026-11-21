@@ -2,6 +2,8 @@
 package cc.jumpkick.gradle;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.entry;
+import static org.assertj.core.api.Assertions.tuple;
 
 import cc.jumpkick.compat.ImportReport;
 import cc.jumpkick.model.Dependency;
@@ -10,6 +12,7 @@ import cc.jumpkick.model.Scope;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Objects;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -238,6 +241,64 @@ class GradleImporterConfigurationsTest {
         assertThat(build.dependencies().of(Scope.MAIN))
                 .extracting(Dependency::module)
                 .containsExactly("com.google.guava:guava", "org.slf4j:slf4j-api");
+    }
+
+    @Test
+    void a_groovy_kotlin_plugin_without_parens_carries_its_version() {
+        GradleImporter.Result result = GradleImporter.importFromString("""
+                        plugins {
+                            id 'org.jetbrains.kotlin.jvm' version '2.4.10'
+                        }
+                        """, "app");
+
+        assertThat(Objects.requireNonNull(result.jkBuild().project().kotlin()).raw())
+                .isEqualTo("2.4.10");
+        assertThat(messages(result.report())).noneMatch(m -> m.contains("Kotlin plugin has no version"));
+    }
+
+    @Test
+    void manifest_expressions_resolve_only_the_project_coordinates() {
+        GradleImporter.Result result = GradleImporter.importFromString("""
+                        group = "com.acme"
+                        version = "1.4.0"
+                        jar {
+                            manifest {
+                                attributes(
+                                    "Implementation-Version": project.version,
+                                    "Implementation-Title": name,
+                                    "Implementation-Vendor": group,
+                                    "Java-Version": javaVersion,
+                                    "Api-Version": apiVersion,
+                                    "Built-By": authorName
+                                )
+                            }
+                        }
+                        """, "widget");
+
+        assertThat(result.jkBuild().manifest())
+                .containsOnly(
+                        entry("Implementation-Version", "1.4.0"),
+                        entry("Implementation-Title", "widget"),
+                        entry("Implementation-Vendor", "com.acme"));
+        assertThat(messages(result.report()))
+                .anyMatch(m -> m.startsWith("manifest attribute Java-Version = javaVersion dropped"))
+                .anyMatch(m -> m.startsWith("manifest attribute Api-Version = apiVersion dropped"))
+                .anyMatch(m -> m.startsWith("manifest attribute Built-By = authorName dropped"));
+    }
+
+    @Test
+    void same_artifact_from_two_groups_keeps_both_edges() {
+        GradleImporter.Result result = GradleImporter.importFromString("""
+                        dependencies {
+                            implementation("com.acme:util:1.0.0")
+                            implementation("org.other:util:2.0.0")
+                        }
+                        """, "app");
+
+        assertThat(result.jkBuild().dependencies().of(Scope.MAIN))
+                .extracting(Dependency::library, Dependency::module)
+                .containsExactly(tuple("util", "com.acme:util"), tuple("util-2", "org.other:util"));
+        assertThat(messages(result.report())).anyMatch(m -> m.contains("org.other:util written as util-2"));
     }
 
     private static List<String> messages(ImportReport report) {

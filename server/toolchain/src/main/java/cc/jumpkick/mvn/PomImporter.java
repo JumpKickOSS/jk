@@ -978,11 +978,12 @@ public final class PomImporter {
 
     /**
      * The manifest key (dep {@code library} handle) must be unique per scope section — the renderer
-     * keys each section on it, so a collision silently drops an edge. Maven allows same-artifactId
-     * deps in one scope (different groups); disambiguate deterministically in declaration order.
+     * keys each section on it, so a collision silently drops an edge. Maven and Gradle allow
+     * same-artifactId deps in one scope (different groups); disambiguate deterministically in
+     * declaration order.
      * The renamed edge keeps every other field — {@code optional}, kind, classifier, exclusions.
      */
-    static void uniquifyHandles(Map<Scope, List<Dependency>> byScope, ImportReport.Builder report) {
+    public static void uniquifyHandles(Map<Scope, List<Dependency>> byScope, ImportReport.Builder report) {
         for (Map.Entry<Scope, List<Dependency>> e : byScope.entrySet()) {
             List<Dependency> deps = e.getValue();
             Set<String> seen = new HashSet<>();

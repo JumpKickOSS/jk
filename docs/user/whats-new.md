@@ -6,6 +6,14 @@ JumpKick shows you this page's new entries after it updates itself.
 
 ## 0.54.0
 
+- **`jk export gradle` writes locked versions and classifiers, and `jk export maven` keeps export
+  dependencies.** `jk export gradle` writes the versions `jk-lock.toml` holds, keeps a dependency's
+  classifier or `kind = "tests"`, applies `java-library` when `[export-dependencies]` become `api`,
+  and escapes `$` and line breaks in strings. `jk export maven` writes `[export-dependencies]` as
+  compile dependencies and pins the compiler plugin it writes for annotation processors. `jk import`
+  of a Gradle build keeps two dependencies that share an artifact name (the second as `<name>-2`,
+  with a report row), reads a Groovy `id '...kotlin...' version '...'`, and no longer writes the
+  project version into manifest attributes such as `javaVersion`.
 - **A client that stops reading no longer holds its event stream or request slot for good.** A
   dashboard tab, MCP client or front-door browser that keeps its connection open but stops reading
   is cut off: each write to an event stream, to an MCP call answered as a stream and to a front-door

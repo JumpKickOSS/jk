@@ -19,6 +19,7 @@ import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.model.Workspace;
 import cc.jumpkick.mvn.ModuleRows;
+import cc.jumpkick.mvn.PomImporter;
 import cc.jumpkick.version.Versions;
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -362,6 +363,7 @@ final class GradleModelImporter {
         Map<Scope, List<Dependency>> deps = new EnumMap<>(Scope.class);
         boolean platformed = bomPlatforms(p, applied, deps, local);
         for (GradleModel.Configuration c : p.configurations()) mapConfiguration(p, c, deps, local, platformed);
+        PomImporter.uniquifyHandles(deps, local);
         for (GradleModel.Repository r : p.repositories()) repository(r);
         List<PluginConfig> plugins = new ArrayList<>(PluginRules.map(
                 applied,

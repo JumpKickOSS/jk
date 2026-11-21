@@ -2,8 +2,11 @@
 package cc.jumpkick.gradle;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.tuple;
 
 import cc.jumpkick.compat.ImportReport;
+import cc.jumpkick.compat.JkBuildRenderer;
+import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.kotlin.KotlinResolver;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
@@ -444,6 +447,31 @@ class GradleModelImporterTest {
         assertThat(result.root().isWorkspaceRoot()).isFalse();
         assertThat(result.root().project().name()).isEqualTo("widget");
         assertThat(only(result.root(), Scope.MAIN).module()).isEqualTo("com.google.guava:guava");
+    }
+
+    @Test
+    void same_artifact_from_two_groups_keeps_both_edges_under_distinct_handles() {
+        String twoUtils = """
+                {"gradle":"9.5.1","rootName":"widget","settingsRepositories":[],"projects":[
+                  {"path":":","projectName":"widget","dir":"","group":"com.acme","version":"0.1.0","plugins":["java"],
+                   "pluginClasses":[],"pluginVersions":{},"java":{"sourceCompatibility":"25","targetCompatibility":"25"},"bootBuildInfo":false,"repositories":[],
+                   "configurations":[{"name":"implementation","dependencies":[
+                     {"kind":"module","group":"com.acme","artifact":"util","version":"1.0.0","excludes":[]},
+                     {"kind":"module","group":"org.other","artifact":"util","version":"2.0.0","excludes":[]}],"constraints":[]}],
+                   "tasks":[]}]}
+                """;
+
+        GradleBuildImport.Result result =
+                GradleModelImporter.importModel(twoUtils, Path.of("/tmp/widget"), RefreshVersions.NONE);
+
+        assertThat(result.root().dependencies().of(Scope.MAIN))
+                .extracting(Dependency::library, Dependency::module)
+                .containsExactly(tuple("util", "com.acme:util"), tuple("util-2", "org.other:util"));
+        JkBuild reparsed = JkBuildParser.parse(JkBuildRenderer.render(result.root()));
+        assertThat(reparsed.dependencies().of(Scope.MAIN))
+                .extracting(Dependency::module)
+                .containsExactlyInAnyOrder("com.acme:util", "org.other:util");
+        assertThat(messages(result.report())).anyMatch(m -> m.contains("org.other:util written as util-2"));
     }
 
     /** The shadowJar task's relocators travel in the model; a project with no main ships them under [library]. */

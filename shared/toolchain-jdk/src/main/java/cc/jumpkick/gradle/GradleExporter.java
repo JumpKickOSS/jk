@@ -5,6 +5,7 @@ import cc.jumpkick.compat.ImportReport;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Layout;
+import cc.jumpkick.model.PackageId;
 import cc.jumpkick.model.Project;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.model.Scope;
@@ -22,9 +23,9 @@ import org.jspecify.annotations.Nullable;
  * settings.gradle.kts} plus a {@code build.gradle.kts} per project. The export-direction companion
  * to the importer's {@code GradleImporter}.
  *
- * <p>Versions come from {@code jk-lock.toml} when present ({@code locked} maps {@code group:artifact} →
- * exact version), so the generated build reproduces what jk builds; otherwise the declared selector
- * collapses with a warning. {@code jdk} maps to a Gradle Java toolchain, with the {@code
+ * <p>Versions come from {@code jk-lock.toml} when present ({@code locked} maps the lock's package
+ * id, {@code group:artifact:jar:classifier}, → exact version), so the generated build reproduces
+ * what jk builds; otherwise the declared selector collapses with a warning. {@code jdk} maps to a Gradle Java toolchain, with the {@code
  * foojay-resolver-convention} settings plugin enabling auto-download.
  */
 public final class GradleExporter {
@@ -113,7 +114,8 @@ public final class GradleExporter {
 
         StringBuilder sb = new StringBuilder();
         sb.append("plugins {\n");
-        sb.append("    java\n");
+        // The api configuration exists only under java-library.
+        sb.append(jk.dependencies().of(Scope.EXPORT).isEmpty() ? "    java\n" : "    `java-library`\n");
         if (kotlin) {
             sb.append("    kotlin(\"jvm\") version \"")
                     .append(kEsc(extractVersion(Objects.requireNonNull(kotlinVersion), "kotlin", report)))
@@ -294,10 +296,17 @@ public final class GradleExporter {
         return false;
     }
 
+    /**
+     * {@code group:artifact:version}, plus {@code :classifier} for a classified or tests-kind edge.
+     * Lock rows key on the package id ({@code g:a:jar:classifier}); a bare {@code group:artifact}
+     * key is read when no row matches.
+     */
     private static String gav(Dependency d, Map<String, String> locked, ImportReport.Builder report) {
-        String v = locked.get(d.module());
+        String v = locked.get(d.packageKey());
+        if (v == null || v.isBlank()) v = locked.get(d.module());
         if (v == null || v.isBlank()) v = extractVersion(d.version(), d.module(), report);
-        return d.module() + ":" + v;
+        String classifier = d.isTestsKind() ? PackageId.TESTS_CLASSIFIER : d.classifier();
+        return d.module() + ":" + v + (classifier == null || classifier.isBlank() ? "" : ":" + classifier);
     }
 
     private static void warnDropped(JkBuild jk, ImportReport.Builder report) {
@@ -336,9 +345,22 @@ public final class GradleExporter {
         };
     }
 
-    /** Escape a Kotlin string literal ({@code \} and {@code "}). */
+    /** Escape a Kotlin string literal: {@code \}, {@code "}, the template {@code $}, line breaks and tabs. */
     private static String kEsc(@Nullable String s) {
         if (s == null) return "";
-        return s.replace("\\", "\\\\").replace("\"", "\\\"");
+        StringBuilder out = new StringBuilder(s.length());
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            switch (c) {
+                case '\\' -> out.append("\\\\");
+                case '"' -> out.append("\\\"");
+                case '$' -> out.append("\\$");
+                case '\n' -> out.append("\\n");
+                case '\r' -> out.append("\\r");
+                case '\t' -> out.append("\\t");
+                default -> out.append(c);
+            }
+        }
+        return out.toString();
     }
 }

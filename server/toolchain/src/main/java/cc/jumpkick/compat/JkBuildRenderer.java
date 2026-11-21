@@ -291,7 +291,7 @@ public final class JkBuildRenderer {
             sb.append("\n[jlink.training-env]\n");
             new TreeMap<>(jlink.trainingEnv())
                     .forEach((k, v) ->
-                            sb.append(k).append(" = ").append(quote(v)).append('\n'));
+                            sb.append(safeKey(k)).append(" = ").append(quote(v)).append('\n'));
         }
     }
 

@@ -129,9 +129,9 @@ public final class PomExporter {
 
     private static void appendDependencies(
             StringBuilder sb, JkBuild.Dependencies deps, Map<String, String> locked, ImportReport.Builder report) {
-        // Maven emits compile / runtime / provided / test under <dependencies>;
-        // platform and processor are handled elsewhere.
-        Scope[] order = {Scope.MAIN, Scope.RUNTIME, Scope.PROVIDED, Scope.TEST};
+        // Maven emits compile / runtime / provided / test under <dependencies>; export and main are
+        // both compile scope. Platform and processor are handled elsewhere.
+        Scope[] order = {Scope.EXPORT, Scope.MAIN, Scope.RUNTIME, Scope.PROVIDED, Scope.TEST};
         boolean any = false;
         for (Scope s : order) {
             if (!deps.of(s).isEmpty()) {
@@ -195,6 +195,7 @@ public final class PomExporter {
     private static final String SHADE_PLUGIN = "3.6.0"; // org.apache.maven.plugins:maven-shade-plugin
     private static final String NATIVE_PLUGIN = "0.10.3"; // org.graalvm.buildtools:native-maven-plugin
     private static final String JAR_PLUGIN = "3.4.1"; // org.apache.maven.plugins:maven-jar-plugin
+    private static final String COMPILER_PLUGIN = "3.16.0"; // org.apache.maven.plugins:maven-compiler-plugin
 
     private static void appendBuild(
             StringBuilder sb, JkBuild jkBuild, Layout layout, Map<String, String> locked, ImportReport.Builder report) {
@@ -277,6 +278,7 @@ public final class PomExporter {
         sb.append("      <plugin>\n");
         sb.append("        <groupId>org.apache.maven.plugins</groupId>\n");
         sb.append("        <artifactId>maven-compiler-plugin</artifactId>\n");
+        sb.append("        <version>").append(COMPILER_PLUGIN).append("</version>\n");
         sb.append("        <configuration>\n");
         sb.append("          <release>").append(release).append("</release>\n");
         if (!processors.isEmpty()) appendProcessorPaths(sb, processors, "          ", false, locked, report);

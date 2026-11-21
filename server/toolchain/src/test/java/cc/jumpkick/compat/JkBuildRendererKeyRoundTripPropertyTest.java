@@ -5,10 +5,12 @@ import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.Feature;
 import cc.jumpkick.model.Features;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.Jlink;
 import cc.jumpkick.model.Profile;
 import cc.jumpkick.model.Profiles;
 import cc.jumpkick.model.Project;
@@ -26,10 +28,11 @@ import net.jqwik.api.Property;
 import net.jqwik.api.Provide;
 
 /**
- * Every name {@code jk import} writes as a TOML key — a dependency handle, a feature, a profile, a
- * repository, a manifest attribute — reads back through {@link JkBuildParser} as the same string,
- * for every character a Maven artifactId or profile id can carry: letters and digits, {@code _},
- * {@code -}, {@code .}, {@code +}, a space, and a letter outside ASCII.
+ * Every name the renderer writes as a TOML key — a dependency handle, a feature, a profile, a
+ * repository, a manifest attribute, a {@code [jlink.training-env]} variable — reads back through
+ * {@link JkBuildParser} as the same string, for every character a Maven artifactId or profile id
+ * can carry: letters and digits, {@code _}, {@code -}, {@code .}, {@code +}, a space, and a letter
+ * outside ASCII.
  */
 class JkBuildRendererKeyRoundTripPropertyTest {
 
@@ -52,7 +55,8 @@ class JkBuildRendererKeyRoundTripPropertyTest {
             @ForAll("mavenIds") String feature,
             @ForAll("mavenIds") String profile,
             @ForAll("mavenIds") String repository,
-            @ForAll("mavenIds") String attribute) {
+            @ForAll("mavenIds") String attribute,
+            @ForAll("mavenIds") String variable) {
         Map<Scope, List<Dependency>> byScope = new EnumMap<>(Scope.class);
         byScope.put(
                 Scope.MAIN,
@@ -65,6 +69,15 @@ class JkBuildRendererKeyRoundTripPropertyTest {
                 .profiles(new Profiles(Map.of(profile, new Profile(profile, null, List.of("-Xlint"), List.of()))))
                 .repositories(List.of(new RepositorySpec(repository, URI.create("https://repo.example/m2"))))
                 .manifest(Map.of(attribute, "value"))
+                .build(BuildBlock.EMPTY.withJlink(new Jlink(
+                        List.of(),
+                        true,
+                        Jlink.AotCache.AUTO,
+                        List.of(),
+                        List.of(),
+                        Jlink.DEFAULT_START_TIMEOUT,
+                        true,
+                        Map.of(variable, "value"))))
                 .build();
 
         JkBuild reparsed = JkBuildParser.parse(JkBuildRenderer.render(model));
@@ -82,5 +95,7 @@ class JkBuildRendererKeyRoundTripPropertyTest {
                 .extracting(RepositorySpec::name)
                 .isEqualTo(repository);
         assertThat(reparsed.manifest()).containsEntry(attribute, "value");
+        assertThat(requireNonNull(reparsed.build().jlink()).trainingEnv())
+                .containsExactly(Map.entry(variable, "value"));
     }
 }
