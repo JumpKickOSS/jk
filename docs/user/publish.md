@@ -254,7 +254,9 @@ until enforcement ships — silent no-ops are not allowed.
 
 `jk audit` queries OSV for every package in `jk-lock.toml` and reports each advisory against
 the locked version: severity, summary, and — when OSV names one — the nearest fixed version
-above the locked one. Lock rows pin a source repo (namespace binding planned). Combine with
+above the locked one, taken from OSV's version ranges (a git commit range names no version). The
+classifier jars of one version (a native jar per platform) are one package to OSV and give one
+finding per advisory; two locked versions of a package give one each. Lock rows pin a source repo (namespace binding planned). Combine with
 exclusive repository groups — [Repositories](repositories.md).
 
 ```bash

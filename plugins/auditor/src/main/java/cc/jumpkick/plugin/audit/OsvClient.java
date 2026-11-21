@@ -13,6 +13,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 
@@ -39,6 +40,9 @@ public final class OsvClient {
     /** Queries one querybatch request may carry; OSV refuses a larger batch. */
     static final int MAX_BATCH = 1_000;
 
+    /** Range types whose events are versions; a {@code GIT} range's events are commit hashes. */
+    private static final Set<String> VERSION_RANGES = Set.of("ECOSYSTEM", "SEMVER");
+
     private final Http http;
     private final URI batchUrl;
     private final URI vulnsUrl;
@@ -54,8 +58,18 @@ public final class OsvClient {
     /** Every collaborator explicit — a test pairs a stub endpoint with a client it can watch. */
     public OsvClient(URI batchUrl, URI vulnsUrl, Http http) {
         this.batchUrl = Objects.requireNonNull(batchUrl, "batchUrl");
-        this.vulnsUrl = Objects.requireNonNull(vulnsUrl, "vulnsUrl");
+        this.vulnsUrl = directory(Objects.requireNonNull(vulnsUrl, "vulnsUrl"));
         this.http = Objects.requireNonNull(http, "http");
+    }
+
+    /**
+     * {@code uri} with a trailing slash on its path, so resolving an id against it appends a
+     * segment instead of replacing the last one.
+     */
+    private static URI directory(URI uri) {
+        String path = uri.getRawPath();
+        if (path == null || path.endsWith("/")) return uri;
+        return uri.resolve(path + "/");
     }
 
     public record Query(String ecosystem, String name, String version) {}
@@ -237,9 +251,10 @@ public final class OsvClient {
     }
 
     /**
-     * {@code affected[].ranges[].events[].fixed}, per Maven package. OSV states a fix as an event in
-     * a version range rather than as a field on the advisory, and an advisory usually spans several
-     * release lines, so one package may carry several fixed versions.
+     * {@code affected[].ranges[].events[].fixed}, per Maven package, from {@code ECOSYSTEM} and
+     * {@code SEMVER} ranges only. OSV states a fix as an event in a version range rather than as a
+     * field on the advisory, and an advisory usually spans several release lines, so one package may
+     * carry several fixed versions.
      */
     private static Map<String, List<String>> extractFixedVersions(Map<?, ?> node) {
         Map<String, List<String>> out = new LinkedHashMap<>();
@@ -250,6 +265,7 @@ public final class OsvClient {
             String name = textOrEmpty(pkg, "name");
             if (name.isEmpty() || !(object(entry).get("ranges") instanceof List<?> ranges)) continue;
             for (Object range : ranges) {
+                if (!VERSION_RANGES.contains(textOrEmpty(object(range), "type"))) continue;
                 if (!(object(range).get("events") instanceof List<?> events)) continue;
                 for (Object event : events) {
                     String fixed = textOrEmpty(object(event), "fixed");

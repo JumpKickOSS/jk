@@ -3,6 +3,7 @@ package cc.jumpkick.plugin.audit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.tuple;
 
 import cc.jumpkick.audit.AuditReport;
 import cc.jumpkick.lock.Lockfile;
@@ -13,9 +14,12 @@ import java.net.InetSocketAddress;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -28,6 +32,8 @@ class OsvAuditorTest {
     private final Map<String, byte[]> post = new HashMap<>();
     private final List<String> postBodies = new ArrayList<>();
     private final List<String> getPaths = new ArrayList<>();
+    /** When set, answers every batch POST from its body instead of {@link #post}. */
+    private @Nullable Function<String, String> batchAnswer;
 
     @BeforeEach
     void start() throws IOException {
@@ -39,8 +45,11 @@ class OsvAuditorTest {
                 getPaths.add(path);
                 body = get.get(path);
             } else {
-                postBodies.add(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
-                body = post.get(path);
+                String request = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+                postBodies.add(request);
+                body = batchAnswer != null
+                        ? batchAnswer.apply(request).getBytes(StandardCharsets.UTF_8)
+                        : post.get(path);
             }
             if (body == null) {
                 exchange.sendResponseHeaders(404, -1);
@@ -228,6 +237,81 @@ class OsvAuditorTest {
                 {"id":"GHSA-nofix","summary":"m","database_specific":{"severity":"LOW"}}
                 """);
         assertThat(report.findings().getFirst().fixedIn()).isNull();
+    }
+
+    /**
+     * OSV also lists {@code GIT} ranges, whose {@code fixed} events are commit hashes. A hash is not
+     * a Maven version, so it is never offered as the fix: an advisory with only GIT ranges names
+     * none, and one with both names the version from its ECOSYSTEM range.
+     */
+    @Test
+    void a_git_commit_is_never_reported_as_the_fixed_version() throws Exception {
+        AuditReport gitOnly = auditOne("""
+                {"id":"GHSA-git","summary":"m","database_specific":{"severity":"LOW"},
+                 "affected":[{"package":{"ecosystem":"Maven","name":"g:a"},
+                   "ranges":[{"type":"GIT","repo":"https://example.com/a.git",
+                     "events":[{"introduced":"0"},{"fixed":"3f2c9e1d4b5a6978a0b1c2d3e4f5061728394a5b"}]}]}]}
+                """);
+        assertThat(gitOnly.findings().getFirst().fixedIn()).isNull();
+
+        AuditReport mixed = auditOne("""
+                {"id":"GHSA-mix","summary":"m","database_specific":{"severity":"LOW"},
+                 "affected":[{"package":{"ecosystem":"Maven","name":"g:a"},
+                   "ranges":[
+                     {"type":"GIT","repo":"https://example.com/a.git",
+                      "events":[{"introduced":"0"},{"fixed":"1d2c9e1d4b5a6978a0b1c2d3e4f5061728394a5b"}]},
+                     {"type":"ECOSYSTEM","events":[{"introduced":"0"},{"fixed":"2.0"}]}]}]}
+                """);
+        assertThat(mixed.findings().getFirst().fixedIn()).isEqualTo("2.0");
+    }
+
+    /**
+     * Classifier jars of one version (a native jar per platform) are one package to OSV: one query
+     * and one finding per advisory. Two locked versions of the same package stay two findings.
+     */
+    @Test
+    void classifier_jars_of_one_version_are_one_finding_but_two_versions_are_two() throws Exception {
+        batchAnswer = body -> {
+            int rows = body.split("\"package\"", -1).length - 1;
+            return "{\"results\":[" + String.join(",", Collections.nCopies(rows, "{\"vulns\":[{\"id\":\"GHSA-n\"}]}"))
+                    + "]}";
+        };
+        get.put("/v1/vulns/GHSA-n", """
+                {"id":"GHSA-n","summary":"native","database_specific":{"severity":"HIGH"}}
+                """.getBytes(StandardCharsets.UTF_8));
+        Lockfile lock = lockOf(
+                artifact("io.netty:netty-transport-native-epoll:jar:", "4.1.100.Final"),
+                artifact("io.netty:netty-transport-native-epoll:jar:linux-x86_64", "4.1.100.Final"),
+                artifact("io.netty:netty-transport-native-epoll:jar:linux-aarch_64", "4.1.100.Final"),
+                artifact("io.netty:netty-transport-native-epoll:jar:linux-x86_64", "4.1.90.Final"));
+
+        AuditReport report = new OsvAuditor(osvClient()).audit(lock);
+
+        assertThat(postBodies).hasSize(1);
+        assertThat(postBodies.getFirst().split("\"package\"", -1)).hasSize(3);
+        assertThat(report.findings())
+                .extracting(AuditReport.Finding::module, AuditReport.Finding::version)
+                .containsExactly(
+                        tuple("io.netty:netty-transport-native-epoll", "4.1.100.Final"),
+                        tuple("io.netty:netty-transport-native-epoll", "4.1.90.Final"));
+    }
+
+    /** A vulns URL written without its trailing slash still names the directory the ids live under. */
+    @Test
+    void a_vulns_url_without_a_trailing_slash_keeps_its_last_segment() throws Exception {
+        post.put("/mirror/querybatch", """
+                {"results":[{"vulns":[{"id":"GHSA-slash"}]}]}
+                """.getBytes(StandardCharsets.UTF_8));
+        get.put("/mirror/vulns/GHSA-slash", """
+                {"id":"GHSA-slash","summary":"s","database_specific":{"severity":"LOW"}}
+                """.getBytes(StandardCharsets.UTF_8));
+
+        AuditReport report = new OsvAuditor(
+                        new OsvClient(base.resolve("/mirror/querybatch"), base.resolve("/mirror/vulns")))
+                .audit(lockOf(artifact("g:a:jar:", "1.0")));
+
+        assertThat(getPaths).containsExactly("/mirror/vulns/GHSA-slash");
+        assertThat(report.findings()).extracting(AuditReport.Finding::vulnId).containsExactly("GHSA-slash");
     }
 
     private AuditReport auditOne(String vulnJson) throws Exception {

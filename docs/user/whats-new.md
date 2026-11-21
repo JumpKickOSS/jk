@@ -6,6 +6,10 @@ JumpKick shows you this page's new entries after it updates itself.
 
 ## 0.54.0
 
+- **`jk audit` reports each advisory once per package version, and never offers a commit hash as the
+  fix.** The classifier jars of one version (a native jar per platform) no longer repeat a finding,
+  and the fixed version comes from OSV's version ranges only. An `--osv-vulns-url` written without a
+  trailing slash now keeps its last path segment.
 - **Replacing the engine while a build runs leaves the new engine reachable.** When the old engine
   finished draining it deleted the new engine's dashboard URL file, and could delete its endpoint
   pointer. An unused engine that nothing points to no longer exits under a job admitted the moment

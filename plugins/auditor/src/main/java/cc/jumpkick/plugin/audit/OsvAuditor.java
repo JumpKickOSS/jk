@@ -35,15 +35,15 @@ public final class OsvAuditor {
     }
 
     public AuditReport audit(Lockfile lock) throws IOException, InterruptedException {
-        List<OsvClient.Query> queries = new ArrayList<>();
-        List<Lockfile.Artifact> pkgs = new ArrayList<>();
-        for (Lockfile.Artifact pkg : lock.artifacts()) {
-            // Lockfile.Artifact.name is the four-part coordinate ("group:artifact:jar:"); OSV keys
-            // Maven packages on "group:artifact". Sending the four-part form matched nothing, so
-            // every audit reported clean. PackageId.ga() is the one owner of that projection.
-            queries.add(new OsvClient.Query("Maven", PackageId.parse(pkg.name()).ga(), pkg.version()));
-            pkgs.add(pkg);
+        // One query per group:artifact and version: classifier jars of one version (a native jar
+        // per platform) are one package to OSV, and a finding names no classifier.
+        Set<Locked> unique = new LinkedHashSet<>();
+        for (Lockfile.Artifact artifact : lock.artifacts()) {
+            unique.add(new Locked(PackageId.parse(artifact.name()).ga(), artifact.version()));
         }
+        List<Locked> pkgs = List.copyOf(unique);
+        List<OsvClient.Query> queries = new ArrayList<>(pkgs.size());
+        for (Locked pkg : pkgs) queries.add(new OsvClient.Query("Maven", pkg.ga(), pkg.version()));
         if (queries.isEmpty()) return new AuditReport(List.of());
 
         List<OsvClient.Result> results = client.queryBatch(queries);
@@ -71,23 +71,21 @@ public final class OsvAuditor {
                                 },
                                 JkThreads.io())));
 
-        // Assemble findings in the same package × vulnId order as before —
-        // determinism is important for the supply-chain report sidecar.
+        // Findings in package × vulnId order; the supply-chain report sidecar depends on it.
         List<AuditReport.Finding> findings = new ArrayList<>();
         try {
             for (int i = 0; i < pkgs.size(); i++) {
-                Lockfile.Artifact pkg = pkgs.get(i);
+                Locked pkg = pkgs.get(i);
                 for (String vulnId : results.get(i).vulnIds()) {
                     OsvClient.Vulnerability v =
                             Objects.requireNonNull(futures.get(vulnId), vulnId).get();
-                    String ga = PackageId.parse(pkg.name()).ga();
                     findings.add(new AuditReport.Finding(
-                            ga,
+                            pkg.ga(),
                             pkg.version(),
                             vulnId,
                             v.summary(),
                             AuditReport.Severity.parse(v.severity()),
-                            fixedIn(v.fixedVersions(ga), pkg.version())));
+                            fixedIn(v.fixedVersions(pkg.ga()), pkg.version())));
                 }
             }
         } catch (ExecutionException e) {
@@ -98,6 +96,9 @@ public final class OsvAuditor {
         }
         return new AuditReport(findings);
     }
+
+    /** One locked package as OSV keys it: {@code group:artifact} and version. */
+    private record Locked(String ga, String version) {}
 
     /**
      * The lowest of {@code fixed} above {@code locked} — the nearest upgrade that closes the
