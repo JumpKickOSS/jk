@@ -119,6 +119,26 @@ class McpActionsTest {
     }
 
     @Test
+    void a_pull_up_is_logged_with_the_member_and_where_it_went() {
+        McpContext ctx = context();
+        McpConnection connection = ctx.connections().open("claude-code", null, McpRevision.LATEST, McpElicitModes.NONE);
+        String id = log.open("mcp", "claude-code", connection.label(), null);
+        McpTools tools = new McpTools(List.of(tool("pull_up", in -> in.text("Pulled Book.label() up to Item\n"))));
+
+        tools.call(
+                ctx,
+                call("pull_up", Map.of("dir", project.toString(), "address", "Book.label", "to", "Item")),
+                connection,
+                null);
+
+        SessionLog.Page page = log.session(id, 0, 10).orElseThrow();
+        assertThat(page.actions()).singleElement().satisfies(a -> assertThat(a)
+                .containsEntry("kind", "pull_up")
+                .containsEntry("summary", "pull_up Book.label → Item")
+                .containsEntry("headline", "Pulled Book.label() up to Item"));
+    }
+
+    @Test
     void a_goal_titles_the_episode_a_call_without_one_is_served_and_a_new_goal_starts_the_next() {
         McpContext ctx = context();
         McpConnection connection = ctx.connections().open("claude-code", null, McpRevision.LATEST, McpElicitModes.NONE);

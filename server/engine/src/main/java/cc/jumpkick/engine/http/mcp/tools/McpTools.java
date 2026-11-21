@@ -186,7 +186,8 @@ public final class McpTools {
                 CodeGraphTool.read(),
                 CodeGraphTool.find(),
                 CodeGraphTool.delete(),
-                CodeGraphTool.move()));
+                CodeGraphTool.move(),
+                CodeGraphTool.pullUp()));
         return new McpTools(tools, LOOP);
     }
 

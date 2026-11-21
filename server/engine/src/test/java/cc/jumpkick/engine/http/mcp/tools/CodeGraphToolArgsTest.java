@@ -62,6 +62,16 @@ class CodeGraphToolArgsTest {
         assertThat(request.scope()).isNull();
     }
 
+    @Test
+    void pull_up_asks_the_pull_up_operation_with_the_member_and_its_superclass() {
+        GraphRequest request = request("pull_up", Map.of("address", "Book.label", "to", "Item", "scope", "src"));
+
+        assertThat(request.op()).isEqualTo("pull-up");
+        assertThat(request.args()).containsExactly("Book.label", "Item");
+        assertThat(request.options()).isEmpty();
+        assertThat(request.scope()).isNull();
+    }
+
     private static GraphRequest request(String tool) {
         return request(tool, EVERY_SETTING);
     }

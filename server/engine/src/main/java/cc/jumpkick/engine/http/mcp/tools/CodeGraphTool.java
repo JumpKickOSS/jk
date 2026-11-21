@@ -22,7 +22,7 @@ import org.jspecify.annotations.Nullable;
 /**
  * The code graph's tools, named like the {@code jk code} subcommands they answer: {@code usages}
  * and {@code rename} on the default list, {@code query}, {@code read}, {@code find}, {@code
- * delete} and {@code move} on the extended one.
+ * delete}, {@code move} and {@code pull_up} on the extended one.
  * Each refreshes the graph first (a walk and a snapshot load when nothing changed) and answers with
  * {@code Owner.member()} at {@code file:line}.
  */
@@ -135,6 +135,25 @@ public final class CodeGraphTool implements McpTool {
                                 props(Map.of("address", McpSchemas.string(), "to", McpSchemas.string())),
                                 List.of("address", "to"))),
                 "move",
+                in -> List.of(required(in, "address"), required(in, "to")));
+    }
+
+    /**
+     * {@code pull_up}: an instance method (every overload) or instance field moved to the class its
+     * type extends, as {@code jk code pull-up} does: its uses bind there as written, then it is
+     * compiled and proven, or undone whole; what would break or change without a compile error
+     * writes nothing and is listed. It writes, so it is not read-only.
+     */
+    public static McpTool pullUp() {
+        return new CodeGraphTool(
+                new Spec(
+                        "pull_up",
+                        "Pull instance Type.method (every overload) or Type.field up to `to`, the class Type extends;"
+                                + " proves it, or writes nothing and lists the hazards.",
+                        McpSchemas.object(
+                                props(Map.of("address", McpSchemas.string(), "to", McpSchemas.string())),
+                                List.of("address", "to"))),
+                "pull-up",
                 in -> List.of(required(in, "address"), required(in, "to")));
     }
 

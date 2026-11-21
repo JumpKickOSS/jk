@@ -783,8 +783,8 @@ on every turn, and in measured agent runs `usages` and `rename` are the ones tha
 We asked coding agents from 6 vendors questions like "who calls this method?" With JumpKick's code graph, they answered in **66–91% fewer back-and-forth turns** and used **72–98% fewer tokens** than without it. Renaming a method everywhere it is used took **75–91% fewer turns** and **78–98% fewer tokens**. The graph pays off even on tiny projects: the smallest we tested, gs-multi-module, has just **83 lines of code**. ([The tables](why.md#asking-about-the-code).)
 <!-- agents-claims:end -->
 
-`query`, `read`, `find`, `delete` and `move` answer as their
+`query`, `read`, `find`, `delete`, `move` and `pull_up` (`jk code pull-up`) answer as their
 `jk code` subcommands do and are on the extended list (`tools/list` with `extended: true`, or
 `[mcp] tools = "all"`); every tool is callable by name either way, and `callers`, the name
-`usages` had before, still answers as `usages`. `pull-up`, `neighbors`, `path` and `rules` are
-shell commands alone. See [MCP](mcp.md).
+`usages` had before, still answers as `usages`. `neighbors`, `path` and `rules` are shell commands
+alone. See [MCP](mcp.md).

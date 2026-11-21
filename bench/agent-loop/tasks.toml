@@ -267,7 +267,8 @@ test   = ["jk", "-u", "-x", "-a", "test", "-S", "PhoneColumnTests", "-S", "Owner
 
 # A pull-up: an instance method planted in Owner moves to Person, its superclass, so Vet has it too.
 # Its caller reaches it through an Owner and must keep compiling; the hidden check reads where it is
-# declared and calls it on a Vet.
+# declared and calls it on a Vet. Compare the pull_up card listed (jk-graph) with it unlisted (jk) and
+# with no graph (jk-nograph).
 [tasks.petclinic-pullup-display-name]
 repo   = "spring-petclinic"
 kind   = "pull-up"
