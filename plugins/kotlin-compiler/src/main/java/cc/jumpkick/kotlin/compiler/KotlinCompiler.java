@@ -210,8 +210,10 @@ public final class KotlinCompiler implements Plugin {
      * module's {@code target/classes} is rewritten at the same path by every build, and its
      * snapshot is recomputed exactly then — which is what lets the incremental compile see that a
      * dependency's API moved and recompile the sources that use it. Only the current snapshot of
-     * an entry is kept, so the shared snapshot cache stays bounded. On any failure the compile runs
-     * with no snapshots and stays source-incremental.
+     * an entry is kept, so the shared snapshot cache stays bounded. The name is the path and not the
+     * content: a store jar has one path wherever it is used, so byte-identical entries at two paths
+     * are few and small, while naming by content would read every class byte on every compile. On
+     * any failure the compile runs with no snapshots and stays source-incremental.
      */
     static List<Path> snapshotClasspath(List<File> classpath, Path dir, Snapshotter snapshotter) {
         try {

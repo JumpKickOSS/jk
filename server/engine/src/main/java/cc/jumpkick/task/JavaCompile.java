@@ -531,23 +531,35 @@ public final class JavaCompile {
     }
 
     /**
-     * Lay back the generated-file ledger beside {@code out} when it is missing and {@code stateDir}
-     * kept the one the compile keyed {@code key} wrote: the restored classes are that compile's, so
-     * its ledger vouches for their generated ones and the next edit stays incremental. A ledger on
-     * disk is left alone, and a kept one of another key is never laid back.
+     * Make the generated-file ledger beside {@code out} the one the compile keyed {@code key} wrote,
+     * or take it away when {@code stateDir} kept none for that key. The restored classes are that
+     * compile's, so only its ledger vouches for their generated ones and keeps the next edit
+     * incremental; a ledger left by another compile would name generated files these classes lack
+     * and pass over the ones they have, and with none the next compile is whole. Best-effort, but
+     * a ledger that cannot be laid back is deleted.
      */
     static void restoreGeneratedLedger(Path stateDir, String key, Path out) {
+        Path ledger = generatedLedger(out);
         try {
-            Path ledger = generatedLedger(out);
             Path kept = stateDir.resolve(GENERATED_LEDGER);
-            if (Files.exists(ledger) || !Files.isRegularFile(kept)) return;
-            String text = Files.readString(kept, StandardCharsets.UTF_8);
+            String text = Files.isRegularFile(kept) ? Files.readString(kept, StandardCharsets.UTF_8) : "";
             int nl = text.indexOf('\n');
-            if (nl < 0 || !text.substring(0, nl).equals(key)) return;
+            if (nl < 0 || !text.substring(0, nl).equals(key)) {
+                Files.deleteIfExists(ledger);
+                return;
+            }
+            String body = text.substring(nl + 1);
+            if (Files.isRegularFile(ledger)
+                    && Files.readString(ledger, StandardCharsets.UTF_8).equals(body)) return;
             Files.createDirectories(ledger.getParent());
-            AtomicWrites.replace(ledger, text.substring(nl + 1));
+            AtomicWrites.replace(ledger, body);
         } catch (IOException | RuntimeException unrestored) {
             Log.debug("generated-file ledger not restored for " + out, unrestored);
+            try {
+                Files.deleteIfExists(ledger);
+            } catch (IOException undeleted) {
+                Log.debug("generated-file ledger not deleted for " + out, undeleted);
+            }
         }
     }
 

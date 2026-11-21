@@ -269,6 +269,38 @@ class JavaApIncrementalCompileTest {
     }
 
     /**
+     * A hit of a compile other than the last one lays its classes over a tree whose generated-file
+     * ledger the last compile wrote. That ledger does not vouch for the classes laid back, so the hit
+     * takes it, and the next edit compiles from what is on disk and keeps the generated class.
+     */
+    @Test
+    void a_hit_of_another_compile_takes_the_last_compiles_generated_file_ledger(@TempDir Path dir) throws Exception {
+        Project p = new Project(dir, workerJar(), isolatingProcessor(dir));
+        Path ledger = JavaCompile.generatedLedger(p.out);
+        p.write("app/Widget.java", widget("one"));
+        p.write("app/Plain.java", "package app; public class Plain {}");
+        p.build();
+
+        p.write("app/Widget.java", "package app; public class Widget { public String greet() { return \"two\"; } }");
+        p.build();
+        assertThat(p.classFile("app/WidgetGen.class")).doesNotExist();
+        String lastLedger = Files.isRegularFile(ledger) ? Files.readString(ledger) : null;
+
+        p.write("app/Widget.java", widget("one"));
+        assertThat(p.build().outcome()).startsWith("cache-hit");
+        assertThat(p.classFile("app/WidgetGen.class")).isRegularFile();
+        assertThat(ledger)
+                .as("the ledger the last compile wrote (%s) does not describe the classes of the hit", lastLedger)
+                .doesNotExist();
+
+        p.write("app/Plain.java", "package app; public class Plain { int v; }");
+        p.build();
+        assertThat(p.classFile("app/WidgetGen.class")).isRegularFile();
+        assertThat(p.invokeGreet()).isEqualTo("one");
+        assertThat(ledger).isRegularFile();
+    }
+
+    /**
      * A forced build ({@code -F}) drops the compile state but not the record of what processors
      * generated, which lives beside the class output, so the full compile it runs still deletes the
      * merged file before the processor reads it back.

@@ -61,7 +61,29 @@ class JavaCompileReferencesTest {
 
         Files.writeString(ledger, "/w/gen/b/BGen.java\t/w/src/b/B.java\n");
         JavaCompile.restoreGeneratedLedger(state, "key-1", out);
-        assertThat(ledger).as("a ledger on disk is left alone").hasContent("/w/gen/b/BGen.java\t/w/src/b/B.java\n");
+        assertThat(ledger)
+                .as("another compile's ledger on disk is replaced")
+                .hasContent("/w/gen/a/AGen.java\t/w/src/a/A.java\n");
+    }
+
+    @Test
+    void a_hit_of_a_compile_the_state_kept_no_ledger_for_takes_the_ledger_on_disk(@TempDir Path dir) throws Exception {
+        Path out = Files.createDirectories(dir.resolve("module/target/classes"));
+        Path state = Files.createDirectories(dir.resolve("state"));
+        Path ledger = JavaCompile.generatedLedger(out);
+        Files.createDirectories(ledger.getParent());
+        Files.writeString(ledger, "/w/gen/a/AGen.java\t/w/src/a/A.java\n");
+        JavaCompile.keepGeneratedLedger(state, "key-1", out);
+
+        // The classes of key-2 are laid over key-1's: key-1's ledger would vouch for generated
+        // classes that are not there and leave out those that are.
+        JavaCompile.restoreGeneratedLedger(state, "key-2", out);
+        assertThat(ledger).as("a hit of another compile's classes").doesNotExist();
+
+        Files.writeString(ledger, "/w/gen/a/AGen.java\t/w/src/a/A.java\n");
+        Files.delete(state.resolve(JavaCompile.GENERATED_LEDGER));
+        JavaCompile.restoreGeneratedLedger(state, "key-1", out);
+        assertThat(ledger).as("a state that kept no ledger vouches for none").doesNotExist();
     }
 
     @Test
