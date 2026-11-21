@@ -36,7 +36,18 @@ public final class GraphService {
 
     /** The operations {@link #run} answers. */
     public static final List<String> OPS = List.of(
-            "build", "query", "path", "neighbors", "callers", "rename", "delete", "move", "read", "find", "rules");
+            "build",
+            "query",
+            "path",
+            "neighbors",
+            "usages",
+            "rename",
+            "delete",
+            "move",
+            "pull-up",
+            "read",
+            "find",
+            "rules");
 
     /**
      * One operation's arguments, as the CLI and MCP surfaces collect them. {@code modulePrefixes} are
@@ -177,7 +188,7 @@ public final class GraphService {
         if (r.noRefresh() && build == null) {
             // -n answers from what was written; with nothing written there is nothing to answer
             // from, and building one here would store a graph with no compiled facts in it.
-            throw new IllegalArgumentException("no graph has been built here yet: run jk graph without -n first");
+            throw new IllegalArgumentException("no graph has been built here yet: run jk graph build first");
         }
         if (build == null) {
             build = GraphBuild.refresh(
@@ -213,8 +224,8 @@ public final class GraphService {
     static Reply text(Workspace w, GraphBuild.Result build, Request r) throws IOException {
         if ("rename".equals(r.op())) return RenameOp.run(w, build.graph(), r);
         if ("delete".equals(r.op())) return SafeDelete.run(w, build.graph(), r);
-        if ("move".equals(r.op())) return MoveMember.run(w, build.graph(), r);
-        if ("callers".equals(r.op())) {
+        if ("move".equals(r.op()) || "pull-up".equals(r.op())) return MoveMember.run(w, build.graph(), r);
+        if ("usages".equals(r.op())) {
             CodeGraph g = build.graph();
             Scope scope = Scope.of(r.scope(), r.modulePrefixes(), r.sourceSet(), g.modules());
             GraphTools tools = tools(w, g, scope);
@@ -251,7 +262,7 @@ public final class GraphService {
                 tools.shortestPath(arg(a, 0, "a source"), arg(a, 1, "a target"), r.maxHops(), r.undirected());
             case "neighbors" ->
                 tools.neighbors(arg(a, 0, "a node name"), r.relation() == null ? "" : r.relation(), r.budget());
-            case "callers" ->
+            case "usages" ->
                 tools.callers(
                         arg(a, 0, "a method"),
                         EnvValues.parseBool(r.options().get("transitive")).orElse(false) ? r.maxHops() : 1,

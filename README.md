@@ -50,7 +50,7 @@ wait. JumpKick gives it the same things as tools it can call.
 
 | What your IDE does for you | What JumpKick does for your agent |
 |---|---|
-| Find usages | `callers`: every call, field use and type use, exact, in one call |
+| Find usages | `usages`: every call, field use and type use, exact, in one call |
 | Rename refactoring | `rename`: every use the compiler bound, proved by a compile, undone if it fails |
 | Red squiggles | A verdict: each error at `file:line` with the exact line to edit |
 | Run tests from the gutter | `run`: the cheapest test rung that can catch the bug, then the gate |
@@ -158,7 +158,7 @@ JumpKick Dojo, a shared cache for teams, so nobody re-runs what CI already prove
 | [**Getting started**](docs/user/getting-started.md) | Install, first project, first build |
 | [**User documentation**](docs/user/README.md) | People and coding agents *using* JumpKick |
 | [**Agents**](docs/user/agents.md) / [**MCP**](docs/user/mcp.md) / [**Skill**](docs/user/skill.md) | How agents talk to `jk` |
-| [**Code graph**](docs/user/graph.md) | Callers, anchors, rename |
+| [**Code graph**](docs/user/graph.md) | Usages, anchors, rename |
 | [**Migration**](docs/user/migration.md) | From Maven or Gradle |
 | [**Security**](docs/user/security.md) | Report a vulnerability; trust boundaries |
 | [**Contributor documentation**](docs/contributors/README.md) · [**Contributing**](CONTRIBUTING.md) | Changing JumpKick itself |

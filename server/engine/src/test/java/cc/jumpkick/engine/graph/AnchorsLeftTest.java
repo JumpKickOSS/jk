@@ -226,12 +226,12 @@ class AnchorsLeftTest {
                          src/main/java/org/springframework/samples/petclinic/owner/Owner.java:59
                           config:petclinic.visits.max-per-day, now petclinic.visits.daily-limit:\
                          docker-compose.yml:29 as PETCLINIC_VISITS_MAXPERDAY
-                          +2 more: callers(address="config:petclinic.visits.max-per-day")
+                          +2 more: usages(address="config:petclinic.visits.max-per-day")
                         """);
         assertThat(AnchorsLeft.more(AnchorsLeft.read(root.resolve("target/graph/anchors/stale"))))
                 .as("places of two anchors: each edited file, whose answer lists them")
-                .isEqualTo("callers(address=\"file:src/main/resources/db/h2/schema.sql\"),"
-                        + " callers(address=\"file:src/main/resources/application.properties\")");
+                .isEqualTo("usages(address=\"file:src/main/resources/db/h2/schema.sql\"),"
+                        + " usages(address=\"file:src/main/resources/application.properties\")");
     }
 
     @Test

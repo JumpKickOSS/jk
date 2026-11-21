@@ -16,9 +16,9 @@ import org.jspecify.annotations.Nullable;
  *
  * @param seq its place in the session, from 1
  * @param at when it started, epoch millis
- * @param kind {@code run}, or the MCP tool: {@code query}, {@code callers}, {@code read}, {@code
+ * @param kind {@code run}, or the MCP tool: {@code query}, {@code usages}, {@code read}, {@code
  *     find}, {@code rename}, {@code deps}, {@code update}, {@code workspace}
- * @param summary one line saying what it was: {@code callers PricingRules.weekendUplift}
+ * @param summary one line saying what it was: {@code usages PricingRules.weekendUplift}
  * @param headline the first line of its answer, or null when it had none
  * @param outcome {@code ok} or {@code error} for an action; {@code green}, {@code red} or {@code
  *     cancelled} for a run
@@ -45,8 +45,8 @@ public record ActionRecord(
     public static final String RUN = "run";
     public static final String RENAME = "rename";
 
-    /** The code-graph questions: {@code query}, {@code callers}, {@code read}, {@code find}. */
-    public static final Set<String> GRAPH = Set.of("query", "callers", "read", "find");
+    /** The code-graph questions: {@code query}, {@code usages}, {@code read}, {@code find}. */
+    public static final Set<String> GRAPH = Set.of("query", "usages", "read", "find");
 
     public static final String OK = "ok";
     public static final String ERROR = "error";

@@ -47,8 +47,10 @@ CORPUS = benchtools.scratch("GRAPH_RETRIEVAL_HOME", "graph-retrieval") / "repos"
 HOME = benchtools.scratch("AGENT_LOOP_HOME", "agent-loop") / "change-tasks"
 
 # jk's graph calls, on the extended tools/list; an arm that hides the graph drops them from every list.
-JK_GRAPH_TOOLS = ["callers", "rename", "query", "read", "find"]
-# jk's default tools/list without its one graph card, callers.
+JK_GRAPH_TOOLS = ["usages", "rename", "query", "read", "find"]
+# Released names of graph tools the engine still answers, never listed: an arm that hides the graph refuses them too.
+JK_GRAPH_ALIASES = ["callers"]
+# jk's default tools/list without its one graph card, usages.
 JK_LOOP_TOOLS = ["run", "diagnostics", "deps", "skill"]
 # graphify's MCP server (`graphify-mcp`, from the `graphifyy[mcp]` tool install).
 GRAPHIFY_MCP = Path.home() / ".local/share/uv/tools/graphifyy/bin/graphify-mcp"
@@ -134,7 +136,7 @@ NAV_TEXT = {"Grep", "Glob", "Read", "read_file", "grep", "list_dir", "view_file"
             "search"}
 EDITS = {"Edit", "Write", "MultiEdit", "search_replace", "replace_file_content", "multi_replace_file_content",
          "write_to_file", "edit_file", "write_file"}
-GRAPH = set(JK_GRAPH_TOOLS) | {"query_graph", "read_symbol", "get_neighbors", "find_symbols", "get_node",
+GRAPH = set(JK_GRAPH_TOOLS) | set(JK_GRAPH_ALIASES) | {"query_graph", "read_symbol", "get_neighbors", "find_symbols", "get_node",
                                "get_community", "god_nodes", "graph_stats", "shortest_path", "rules_for"}
 
 SYSTEM_PROMPT = """You are working in a {tool_label} project at {sandbox}.
@@ -357,8 +359,8 @@ def preflight(spec: dict, tool: str, sandbox: Path, server: dict | None, edges: 
                 problems.append(f"tools/list shows hidden graph tools {sorted(shown)}")
             elif spec.get("extended") and shown != set(JK_GRAPH_TOOLS):
                 problems.append(f"tools/list lacks graph tools {sorted(set(JK_GRAPH_TOOLS) - shown)}")
-            elif not spec["hide_graph"] and "callers" not in names:
-                problems.append("tools/list has no callers")
+            elif not spec["hide_graph"] and not names & {"usages", *JK_GRAPH_ALIASES}:
+                problems.append("tools/list has no usages")
     if problems:
         raise RuntimeError("preflight: " + "; ".join(problems))
 
@@ -385,7 +387,7 @@ def mcp_servers(tool: str, extra: list[str], hide_graph: bool, sandbox: Path,
     if hide_graph:
         # One proxy for every driver: the graph tools are gone from tools/list and refused if called.
         cfg = {"type": "stdio", "command": str(HERE / "wrappers" / "mcp-filter"),
-               "args": ["--drop", ",".join(JK_GRAPH_TOOLS), "--", cfg["command"], *cfg["args"]]}
+               "args": ["--drop", ",".join(JK_GRAPH_TOOLS + JK_GRAPH_ALIASES), "--", cfg["command"], *cfg["args"]]}
     servers = {server: cfg}
     if "graphify" in extra:
         servers["graphify"] = {"type": "stdio", "command": str(GRAPHIFY_MCP),
@@ -791,11 +793,11 @@ def _run_one(name: str, task: dict, arm: str, run_no: int, ns, run_root: Path) -
                 target.write_text(text)
             if spec.get("strip_callers"):
                 agents_md = sandbox / "AGENTS.md"
-                # The whole bullet: its first line names jk graph callers, and its indented lines continue it.
+                # The whole bullet: its first line names jk code usages, and its indented lines continue it.
                 kept, dropping = [], False
                 for line in agents_md.read_text().splitlines(keepends=True):
                     if line.startswith("- "):
-                        dropping = "jk graph callers" in line
+                        dropping = "jk code usages" in line or "jk graph callers" in line
                     elif not line.startswith("  "):
                         dropping = False
                     if not dropping:

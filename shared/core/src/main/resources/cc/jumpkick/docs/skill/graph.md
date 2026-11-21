@@ -7,9 +7,9 @@ checks: `route:GET /x/{}`, `table:t`, `column:t.c`, `env:NAME`, `config:key`.
 
 | | Shell | MCP |
 |---|---|---|
-| who calls or uses it (`-t`: all that reach it) | `jk graph callers X` | `callers(address=X)` |
-| rename a method, a field with get/set, a type, a package | `jk graph rename X new` | `rename(address=X, to=new)` |
-| one method's source, not the file | `jk graph read T.m` | `read`* |
+| who calls or uses it (`-t`: all that reach it) | `jk code usages X` | `usages(address=X)` |
+| rename a method, a field with get/set, a type, a package | `jk code rename X new` | `rename(address=X, to=new)` |
+| one method's source, not the file | `jk code read T.m` | `read`* |
 
 \* on the extended `tools/list`.
 

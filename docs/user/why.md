@@ -51,7 +51,7 @@ Every claim links what backs it. Where JumpKick loses, the linked page says so.
 | Surface | What it does for the agent | Reference |
 |---|---|---|
 | `target/jk-results.md` | One token-cheap report per invocation: what ran, each failure at its `file:line` with a fix hint, what was skipped, what to run next | [Machine output](machine-output.md) |
-| MCP in the engine | `run` returns a verdict; `diagnostics`, `deps`, `callers` and `skill` complete the default list of five, because every card costs the agent context on every turn. Two agents on one engine each keep their own project bind | [MCP](mcp.md) |
+| MCP in the engine | `run` returns a verdict; `diagnostics`, `deps`, `usages` and `skill` complete the default list of five, because every card costs the agent context on every turn. Two agents on one engine each keep their own project bind | [MCP](mcp.md) |
 | `jk skill` | The system prompt for a tool models were not trained on; JumpKick keeps its section of `AGENTS.md` current on every build | [Skill](skill.md) · [Agents](agents.md) |
 | `jk graph` | A code graph built in: code, config and docs, with nothing to install; indexed in seconds, with calls and overrides from the compiled classes. Answers name each symbol `Owner.member()` at `file:line` | [Code graph](graph.md) |
 | Named test rungs | The cheap unit suite by default, `--guard` before sharing, `--all` nightly; the report discloses what did not run | [Test rungs](#test-rungs) |
@@ -376,7 +376,7 @@ tokens. The table is re-run each release ([Releases](../contributors/releases.md
 Before an agent changes a method it asks who calls it and what can end up running it. Seven such
 questions, on commons-lang and on JumpKick itself, two of them through dynamic dispatch, are graded
 against the compiler's answer: correct means an F1 of at least 0.9. Each agent ran JumpKick as installed,
-whose default MCP list carries `callers`, and the same JumpKick with every graph tool removed
+whose default MCP list carries `usages`, and the same JumpKick with every graph tool removed
 ([change tasks](../../bench/agent-loop/README.md#change-tasks), 3 or more runs per question and
 arm). Turns, tokens (input, output, cache read and write) and wall are the per-question medians
 summed over the questions each agent ran both ways:
@@ -394,7 +394,7 @@ summed over the questions each agent ran both ways:
 JumpKick is each agent as `jk agents` sets it up (Vendor C and D with JumpKick's rules file), one run per task on the current build; without the graph, three to five runs per task, the graph hidden from MCP and the shell alike. Medians per task, summed over the tasks each agent ran on both arms; results: `2026-11-01-change-tasks`, `2026-11-02-change-tasks`, `2026-11-04-change-tasks`.
 <!-- agents-questions:end -->
 
-The answer is `callers` (`transitive=true` for everything that reaches the method): complete from
+The answer is `usages` (`transitive=true` for everything that reaches the method): complete from
 the compiled classes, where grep finds names one file at a time and an agent then reads each file
 to rule out the overloads, the other types with a method of that name, and the calls through an
 interface. Java and Kotlin make that search long: dispatch, overloads, lambdas and method
@@ -467,7 +467,7 @@ Each agent with the graph as `jk agents` sets it up, on the same tasks, its defa
 
 ## Where it is going
 
-The workbench today is the graph with `callers` and `rename`, the build and test loop, guards, the
+The workbench today is the graph with `usages` and `rename`, the build and test loop, guards, the
 dashboard and the batteries above. Next, in the order planned: more compiler-proved refactorings
 (change signature, move member, safe delete); lookup of a library's real API at the locked
 version, so an agent does not invent one; test selection per class from a change's cone; a ledger

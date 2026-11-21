@@ -1217,11 +1217,11 @@ moves `VERSION` and `ExtractorVersionTest`'s digest; a change to `Confidence` mo
 `application.yml`) belongs in the linker, not an extractor, or a cached fragment goes stale when
 that other file changes.
 
-**Answers.** `callers` given an anchor (`config:server.port`, `route:GET /orders/{id}`, or a
+**Answers.** `usages` given an anchor (`config:server.port`, `route:GET /orders/{id}`, or a
 label only an anchor has) answers with its definitions, then its uses, main sources before tests
 before other files, each at `file:line` with the line quoted and `(inferred)` where it applies,
 and counts by grade in the first line. `find -t <kind>` lists a kind's anchors with their
-definition and use counts. Anchors join the MCP `callers` tool through its address; the default
+definition and use counts. Anchors join the MCP `usages` tool through its address; the default
 tool list does not grow.
 
 Rejected: a grade field beside `Confidence` (two scales an answer would have to reconcile);

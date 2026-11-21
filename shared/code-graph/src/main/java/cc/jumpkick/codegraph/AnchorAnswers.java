@@ -11,7 +11,7 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * The answers about anchors ({@link Anchors}) that {@link GraphTools} gives: an anchor's definitions
- * and uses for {@code callers}, the place an anchor shows in other answers, and the anchors a method
+ * and uses for {@code usages}, the place an anchor shows in other answers, and the anchors a method
  * defines, under its callers.
  */
 final class AnchorAnswers {
@@ -29,7 +29,7 @@ final class AnchorAnswers {
     }
 
     /**
-     * The anchor answer {@code callers} gives for {@code wanted}: always when it is written {@code
+     * The anchor answer {@code usages} gives for {@code wanted}: always when it is written {@code
      * <kind>:<name>} or is an anchor's id, and for a bare label only when no method answers to it
      * ({@code noMethod}); {@code null} otherwise.
      */

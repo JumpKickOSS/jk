@@ -4,6 +4,12 @@ The highlights of each JumpKick release, newest first: the improvements and fixe
 Every release's full list of changes is on its [GitHub Release](https://github.com/JumpKickOSS/jk/releases).
 JumpKick shows you this page's new entries after it updates itself.
 
+## 0.54.1
+
+- **Code questions and refactorings move to `jk code`.** `jk code usages` (was `jk graph callers`),
+  `rename`, `read`, `find` and `query`, and new `delete`, `move` and `pull-up`. The old names still
+  run and print the new one. MCP `callers` is now `usages` ([Code graph](graph.md)).
+
 ## 0.54.0
 
 - **Breaking: `~/.jk` holds everything JumpKick downloads.** Central's jars no longer go into

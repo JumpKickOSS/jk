@@ -15,7 +15,7 @@ import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
 /**
- * {@code jk graph query}: seed from {@link GraphSearch}, walk {@code depth} hops breadth- or
+ * {@code jk code query}: seed from {@link GraphSearch}, walk {@code depth} hops breadth- or
  * depth-first (hubs above the 99th degree percentile, at least 50, are not expanded unless seeded),
  * then render seeds first and the rest nearest-first, cut to {@code budget} tokens at three
  * characters per token. A symbol reads {@code Owner.member()  path/File.java:12}, a connection

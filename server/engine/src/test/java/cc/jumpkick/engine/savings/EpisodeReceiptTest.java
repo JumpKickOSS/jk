@@ -102,7 +102,7 @@ class EpisodeReceiptTest {
 
     @Test
     void an_episode_counts_its_own_runs_and_actions_and_nobody_elses() {
-        act(LABEL, T + 1_000, Fact.Kind.GRAPH, "callers");
+        act(LABEL, T + 1_000, Fact.Kind.GRAPH, "usages");
         act(LABEL, T + 2_000, Fact.Kind.GRAPH, "query");
         act(OTHER, T + 2_500, Fact.Kind.GRAPH, "find");
         journaled(run(LABEL, T + 3_000, 11, new BuildRecord.CacheBenefit(90_000, 60_000, 3, 4)));
@@ -128,7 +128,7 @@ class EpisodeReceiptTest {
 
     @Test
     void a_run_is_counted_once_whether_or_not_the_journal_kept_it() {
-        act(LABEL, T + 1_000, Fact.Kind.GRAPH, "callers");
+        act(LABEL, T + 1_000, Fact.Kind.GRAPH, "usages");
         BuildRecord first = run(LABEL, T + 2_000, 21, new BuildRecord.CacheBenefit(10_000, 4_000, 1, 2));
         journaled(first);
         BuildRecord kept = run(LABEL, T + 3_000, 22, new BuildRecord.CacheBenefit(10_000, 6_000, 2, 2));
@@ -153,7 +153,7 @@ class EpisodeReceiptTest {
 
     @Test
     void the_markdown_names_the_episode_and_lists_only_what_it_counted_the_time_as_an_estimate() {
-        act(LABEL, T + 1_000, Fact.Kind.GRAPH, "callers");
+        act(LABEL, T + 1_000, Fact.Kind.GRAPH, "usages");
         journaled(run(LABEL, T + 2_000, 41, new BuildRecord.CacheBenefit(200_000, 125_000, 3, 4)));
         BuildRecord last = run(LABEL, T + 3_000, 42, null);
         journaled(last);

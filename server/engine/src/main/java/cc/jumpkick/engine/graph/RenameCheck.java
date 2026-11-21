@@ -29,7 +29,7 @@ final class RenameCheck {
     }
 
     /** The graph operations that edit the tree and prove the edit. */
-    static final List<String> EDITS = List.of("rename", "delete", "move");
+    static final List<String> EDITS = List.of("rename", "delete", "move", "pull-up");
 
     /** Where the worker leaves a rename's or a delete's proof. */
     static Path proof(Path root) {
@@ -61,7 +61,7 @@ final class RenameCheck {
         String why = compiler.compile(root, args, tests);
         String untested = tests
                 ? ""
-                : "delete".equals(op) || "move".equals(op)
+                : !"rename".equals(op)
                         ? "\nNot checked: the tests did not compile before the " + op + ", so their uses of it are"
                                 + " not known; not done until they compile."
                         : "\nNot checked: the tests did not compile before the rename, so their calls are neither"

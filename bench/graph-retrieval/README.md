@@ -48,7 +48,7 @@ generated members) is never a subject.
 | Arm | What it runs |
 |---|---|
 | `grep-read` | `grep -rnE` for the name (a call `name(`, a declaration, an `implements`/`extends`/`:` line), then reads each matching file in full with line numbers, most hits first, up to 15 files: what an agent with only a search and a file reader does |
-| `jk-query` | `jk graph query "<question>"` at the default budget |
+| `jk-query` | `jk code query "<question>"` at the default budget |
 | `jk-tool` | The jk command the skill points at for that kind: `callers <Type.method>` (every overload, each call's `file:line`), `find -I`, `find <name> -t method -I`, `read -w headline` |
 | `graphify-query` | `graphify query "<question>"` |
 | `graphify-tool` | `graphify explain <subject>` |

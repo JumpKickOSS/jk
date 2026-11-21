@@ -9,28 +9,70 @@ import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.wire.protocol.GraphAck;
 import cc.jumpkick.wire.protocol.GraphRequest;
 import java.nio.file.Path;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import org.junit.jupiter.api.Test;
 
 class GraphCommandTest {
 
+    /** The operation {@code name} of {@code jk code}, or of {@code jk graph} when code has none. */
     private static GraphOpCommand op(String name) {
-        for (CliCommand c : new GraphCommand().subcommands()) {
+        for (CliCommand c : new CodeCommand().subcommands()) {
             if (c.name().equals(name)) return (GraphOpCommand) c;
         }
-        throw new AssertionError("no graph " + name);
+        for (CliCommand c : new GraphCommand().subcommands()) {
+            if (c.name().equals(name) && c instanceof GraphOpCommand g) return g;
+        }
+        throw new AssertionError("no operation " + name);
     }
 
     @Test
-    void bareGraphBuildsAndEveryReadIsASubcommand() {
+    void bareGraphBuildsAndTheGraphKeepsOnlyItsWalks() {
         assertThat(new GraphCommand().defaultSubcommand())
                 .isNotNull()
                 .extracting(CliCommand::name)
                 .isEqualTo("build");
-        assertThat(new GraphCommand().subcommands())
+        assertThat(new GraphCommand().subcommands().stream().filter(c -> !c.hidden()))
                 .extracting(CliCommand::name)
-                .containsExactly("build", "query", "path", "neighbors", "callers", "rename", "read", "find", "rules");
+                .containsExactly("build", "path", "neighbors", "rules");
         assertThat(op("build").options()).isEmpty();
+    }
+
+    @Test
+    void everyCodeQuestionAndEditIsACodeSubcommandSentAsItsOwnOperation() {
+        assertThat(new CodeCommand().defaultSubcommand()).isNull();
+        assertThat(new CodeCommand().subcommands())
+                .extracting(CliCommand::name)
+                .containsExactly("usages", "find", "read", "query", "rename", "delete", "move", "pull-up");
+        for (String name : List.of("usages", "delete", "move", "pull-up")) {
+            Invocation in = Invocation.builder()
+                    .addPositional("Book.label")
+                    .addPositional("Item")
+                    .build();
+            assertThat(op(name).request(Path.of("/w"), in, false).op()).isEqualTo(name);
+        }
+        Invocation delete = Invocation.builder()
+                .addPositional("Book")
+                .putValue("kind", "type")
+                .build();
+        assertThat(op("delete").request(Path.of("/w"), delete, false).options()).containsExactly("kind=type");
+    }
+
+    @Test
+    void theReleasedGraphNamesAreHiddenAndSayTheNewOne() {
+        Map<String, MovedCommand> moved = new LinkedHashMap<>();
+        for (CliCommand c : new GraphCommand().subcommands()) {
+            if (c instanceof MovedCommand m) moved.put(m.name(), m);
+        }
+        assertThat(moved).containsOnlyKeys("callers", "rename", "query", "read", "find");
+        assertThat(moved.values()).allMatch(CliCommand::hidden);
+        MovedCommand callers = Objects.requireNonNull(moved.get("callers"));
+        assertThat(callers.notice()).isEqualTo("jk graph callers is now jk code usages");
+        assertThat(Objects.requireNonNull(moved.get("read")).notice()).isEqualTo("jk graph read is now jk code read");
+        assertThat(callers.options()).isEqualTo(op("usages").options());
+        assertThat(callers.parameters()).isEqualTo(op("usages").parameters());
     }
 
     @Test

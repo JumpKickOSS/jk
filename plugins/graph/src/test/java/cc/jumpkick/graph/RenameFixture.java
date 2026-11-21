@@ -145,6 +145,11 @@ final class RenameFixture {
         return ask("move", List.of(address, target), 8000, options);
     }
 
+    /** A pull-up of {@code address} to {@code target}, as the {@code pull-up} operation asks it. */
+    String pullUp(String address, String target) throws IOException {
+        return ask("pull-up", List.of(address, target), 8000);
+    }
+
     /** The engine's check after a move: compile, then the proof, or the undo when the compile failed. */
     String checkMove() throws IOException {
         String errors = compile();

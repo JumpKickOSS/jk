@@ -183,7 +183,7 @@ class GraphLibraryRowsTest {
                 .isTrue();
         assertThat(GraphRunner.readsLibraries(request("query", List.of()))).isFalse();
         assertThat(GraphRunner.readsLibraries(request("read", List.of()))).isTrue();
-        assertThat(GraphRunner.readsLibraries(request("callers", List.of()))).isFalse();
+        assertThat(GraphRunner.readsLibraries(request("usages", List.of()))).isFalse();
         assertThat(GraphRunner.asksALibrary(request("query", List.of("library=guava"))))
                 .isTrue();
         assertThat(GraphRunner.asksALibrary(request("read", List.of()))).isFalse();

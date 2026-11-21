@@ -45,7 +45,8 @@ import org.jspecify.annotations.Nullable;
  * compile error (instance state, an override, a member one side cannot see, a use javac did not
  * index, a string naming it) writes nothing and is listed. An instance method or field moves only to
  * the class its type extends, a pull-up: its uses bind there as written, and another subclass that
- * declares the method gets {@code @Override}. The edit goes through the rename's write
+ * declares the method gets {@code @Override}; the {@code pull-up} operation takes only that. The edit
+ * goes through the rename's write
  * path and undo record; the engine then compiles the modules it touched and checks that the moved
  * symbols have the references the old ones had ({@code phase=verify}), or undoes it whole ({@code
  * phase=undo}).
@@ -117,18 +118,29 @@ final class MoveMember {
         }
         // Type#member, as javadoc writes it, is Type.member.
         String address = a.get(0).strip().replace('#', '.');
+        boolean upOnly = "pull-up".equals(r.op());
         try {
-            return GraphService.Reply.of(w, move(w, graph, address, a.get(1).strip(), r.budget()));
+            return GraphService.Reply.of(w, move(w, graph, address, a.get(1).strip(), upOnly, r.budget()));
         } catch (RenameRefusal refused) {
             return GraphService.Reply.of(w, String.valueOf(refused.getMessage()));
         }
     }
 
-    private static String move(GraphService.Workspace w, CodeGraph g, String address, String target, int budget)
+    /** Moves {@code address} to {@code target}; with {@code upOnly}, only up to the class its type extends. */
+    private static String move(
+            GraphService.Workspace w, CodeGraph g, String address, String target, boolean upOnly, int budget)
             throws IOException {
         String stale = SafeDelete.edited(w.indexes(), "Not moved", "move");
         if (stale != null) throw new RenameRefusal(stale);
         Plan p = new Plan(w, g, address, target);
+        if (upOnly && !p.up) {
+            boolean statics = p.members.stream().anyMatch(m -> m.modifiers().contains("static"));
+            return "Not pulled up, nothing is written: "
+                    + (statics
+                            ? p.what + " is static; a pull-up takes an instance member, a move a static one."
+                            : canonical(p.fromBin) + " does not extend " + canonical(p.toBin)
+                                    + "; a pull-up moves a member to the class its type extends.");
+        }
         if (!p.up && !p.members.stream().allMatch(m -> m.modifiers().contains("static"))) {
             p.h.instance(w, g, p.from, p.fromBin, p.members, p.field);
             List<String> answer = new ArrayList<>();

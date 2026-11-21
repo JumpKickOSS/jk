@@ -139,7 +139,7 @@ class GraphRunnerTest {
         Path root = workspace(tmp);
         Javac javac = new Javac();
         GraphRunner.compiler(javac);
-        GraphAck before = GraphRunner.run(request(root, "callers", List.of("PriceCalculator.sum")), p -> {});
+        GraphAck before = GraphRunner.run(request(root, "usages", List.of("PriceCalculator.sum")), p -> {});
         assertThat(before.error()).isNull();
         assertThat(javac.runs).as("an unchanged tree: nothing to compile").isEmpty();
 
@@ -151,13 +151,13 @@ class GraphRunnerTest {
                     }
 
                     public long total(long a, long b) {"""));
-        GraphAck after = GraphRunner.run(request(root, "callers", List.of("PriceCalculator.sum")), p -> {});
+        GraphAck after = GraphRunner.run(request(root, "usages", List.of("PriceCalculator.sum")), p -> {});
         assertThat(javac.runs).hasSize(1);
         assertThat(after.text()).contains("OrderService.twice()");
         assertThat(String.valueOf(after.note())).doesNotContain("edited since the build", "compile skipped");
 
         Files.writeString(order, Files.readString(order).replace("return calculator.sum(a, a);", "return nope(;"));
-        GraphAck broken = GraphRunner.run(request(root, "callers", List.of("PriceCalculator.sum")), p -> {});
+        GraphAck broken = GraphRunner.run(request(root, "usages", List.of("PriceCalculator.sum")), p -> {});
         assertThat(broken.error()).as("mid-edit code never fails the question").isNull();
         assertThat(broken.note())
                 .contains("compile skipped: the code does not compile; answering from the last build's classes")
@@ -174,13 +174,13 @@ class GraphRunnerTest {
         Path root = sources(tmp);
         Javac javac = new Javac();
         GraphRunner.compiler(javac);
-        GraphAck ack = GraphRunner.run(request(root, "callers", List.of("PriceCalculator.sum")), p -> {});
+        GraphAck ack = GraphRunner.run(request(root, "usages", List.of("PriceCalculator.sum")), p -> {});
         assertThat(ack.error()).isNull();
         assertThat(javac.runs).as("the never-compiled module is compiled").hasSize(1);
         assertThat(ack.text()).contains("OrderService.total()").contains("Complete from the compiled classes");
         assertThat(String.valueOf(ack.note())).doesNotContain("no compiled classes", "compile skipped");
 
-        GraphRunner.run(request(root, "callers", List.of("PriceCalculator.sum")), p -> {});
+        GraphRunner.run(request(root, "usages", List.of("PriceCalculator.sum")), p -> {});
         assertThat(javac.runs)
                 .as("compiled once: the next question finds classes")
                 .hasSize(1);
@@ -197,7 +197,7 @@ class GraphRunnerTest {
         Files.writeString(order, Files.readString(order).replace("return calculator.sum(a, b);", "return nope(;"));
         Javac javac = new Javac();
         GraphRunner.compiler(javac);
-        GraphAck ack = GraphRunner.run(request(root, "callers", List.of("PriceCalculator.sum")), p -> {});
+        GraphAck ack = GraphRunner.run(request(root, "usages", List.of("PriceCalculator.sum")), p -> {});
         assertThat(ack.error())
                 .as("code that does not compile never fails the question")
                 .isNull();
@@ -218,7 +218,7 @@ class GraphRunnerTest {
         Path root = calc(tmp);
         Javac javac = new Javac();
         GraphRunner.compiler(javac);
-        GraphAck ack = GraphRunner.run(request(root, "callers", List.of("Calc.doubled")), p -> {});
+        GraphAck ack = GraphRunner.run(request(root, "usages", List.of("Calc.doubled")), p -> {});
         assertThat(ack.error()).isNull();
         assertThat(javac.tests).as("the main sources, then the tests").containsExactly(false, true);
         assertThat(ack.text())
@@ -226,12 +226,12 @@ class GraphRunnerTest {
                 .contains("Complete from the compiled classes");
         assertThat(String.valueOf(ack.note())).doesNotContain("no compiled classes", "compile skipped");
 
-        GraphRunner.run(request(root, "callers", List.of("Calc.doubled")), p -> {});
+        GraphRunner.run(request(root, "usages", List.of("Calc.doubled")), p -> {});
         assertThat(javac.runs).as("compiled once").hasSize(2);
 
         Path test = root.resolve("src/test/java/demo/CalcTest.java");
         Files.writeString(test, Files.readString(test) + "// edited\n");
-        GraphAck edited = GraphRunner.run(request(root, "callers", List.of("Calc.doubled")), p -> {});
+        GraphAck edited = GraphRunner.run(request(root, "usages", List.of("Calc.doubled")), p -> {});
         assertThat(javac.runs).as("an edited test is named, not compiled").hasSize(2);
         assertThat(edited.note()).contains("1 source edited since the build (src/test/java/demo/CalcTest.java)");
     }
@@ -252,7 +252,7 @@ class GraphRunnerTest {
         assertThat(root.resolve("target/test-classes")).doesNotExist();
         assertThat(GraphRunner.hasGraph(root)).isTrue();
 
-        GraphAck asked = GraphRunner.run(request(root, "callers", List.of("Calc.doubled")), p -> {});
+        GraphAck asked = GraphRunner.run(request(root, "usages", List.of("Calc.doubled")), p -> {});
         assertThat(javac.tests).containsExactly(false, true);
         assertThat(asked.text()).contains("CalcTest.doubledReturnsTwiceTheValue()");
         assertThat(GraphRunner.readsCompiledFacts("rules")).isFalse();
@@ -270,7 +270,7 @@ class GraphRunnerTest {
         Files.writeString(test, Files.readString(test).replace("return", "return nope(;"));
         Javac javac = new Javac();
         GraphRunner.compiler(javac);
-        GraphAck ack = GraphRunner.run(request(root, "callers", List.of("Calc.doubled")), p -> {});
+        GraphAck ack = GraphRunner.run(request(root, "usages", List.of("Calc.doubled")), p -> {});
         assertThat(ack.error()).isNull();
         assertThat(javac.tests).containsExactly(false, true);
         assertThat(ack.text()).doesNotContain("Complete").contains("Not complete");
@@ -354,7 +354,7 @@ class GraphRunnerTest {
         Path root = calcIt(Files.createDirectories(tmp.resolve("fresh")));
         Javac javac = new Javac();
         GraphRunner.compiler(javac);
-        GraphAck callers = GraphRunner.run(request(root, "callers", List.of("Calc.doubled")), p -> {});
+        GraphAck callers = GraphRunner.run(request(root, "usages", List.of("Calc.doubled")), p -> {});
         assertThat(callers.error()).isNull();
         assertThat(javac.tests)
                 .as("the main sources, then the test tree with its integration suite")
@@ -376,7 +376,7 @@ class GraphRunnerTest {
         Path outside = calcIt(Files.createDirectories(tmp.resolve("outside")));
         Path e2e = Files.createDirectories(outside.resolve("src/e2e/java/demo"));
         Files.move(outside.resolve("src/integration/java/demo/CalcIT.java"), e2e.resolve("CalcIT.java"));
-        GraphAck named = GraphRunner.run(request(outside, "callers", List.of("Calc.doubled")), p -> {});
+        GraphAck named = GraphRunner.run(request(outside, "usages", List.of("Calc.doubled")), p -> {});
         assertThat(named.text())
                 .contains("0 in main sources, 0 in tests")
                 .contains("Not complete")
@@ -416,7 +416,7 @@ class GraphRunnerTest {
                 BuildGraph.resolve(outside, JkBuildParser.parse(Files.readString(outside.resolve("jk.toml"))));
         ModuleInputProvenance.recordClasses(
                 outside, graph, Set.of(outside.toAbsolutePath().normalize()));
-        GraphAck compiled = GraphRunner.run(request(outside, "callers", List.of("Calc.twice")), p -> {});
+        GraphAck compiled = GraphRunner.run(request(outside, "usages", List.of("Calc.twice")), p -> {});
         assertThat(compiled.text())
                 .contains("CalcIT.doubledReturnsTwiceTheValue()")
                 .contains("Complete from the compiled classes");
@@ -431,7 +431,7 @@ class GraphRunnerTest {
     void aGuardSuitesCallIsListedOnceJkGuardCompiledIt(@TempDir Path tmp) throws Exception {
         Path root = calcGuard(Files.createDirectories(tmp.resolve("fresh")));
         GraphRunner.compiler(new Javac());
-        GraphAck callers = GraphRunner.run(request(root, "callers", List.of("Calc.doubled")), p -> {});
+        GraphAck callers = GraphRunner.run(request(root, "usages", List.of("Calc.doubled")), p -> {});
         assertThat(callers.error()).isNull();
         assertThat(callers.text()).contains("0 in main sources, 0 in tests").contains("Not complete");
         assertThat(callers.note())
@@ -456,7 +456,7 @@ class GraphRunnerTest {
                 BuildGraph.resolve(root, JkBuildParser.parse(Files.readString(root.resolve("jk.toml"))));
         ModuleInputProvenance.recordClasses(
                 root, graph, Set.of(root.toAbsolutePath().normalize()));
-        GraphAck compiled = GraphRunner.run(request(root, "callers", List.of("Calc.doubled")), p -> {});
+        GraphAck compiled = GraphRunner.run(request(root, "usages", List.of("Calc.doubled")), p -> {});
         assertThat(compiled.error()).isNull();
         assertThat(compiled.text())
                 .contains("CalcRules.doubledReturnsTwiceTheValue()")
@@ -589,7 +589,7 @@ class GraphRunnerTest {
                 .as("the engine takes the set as cached")
                 .allSatisfy(row -> assertThat(row).startsWith("\t"));
 
-        GraphAck ack = GraphRunner.run(request(root, "callers", List.of("PriceCalculator.sum")), p -> {});
+        GraphAck ack = GraphRunner.run(request(root, "usages", List.of("PriceCalculator.sum")), p -> {});
         assertThat(ack.error()).isNull();
         assertThat(ack.text()).contains("OrderService.total()").contains("Complete from the compiled classes");
     }
@@ -819,7 +819,7 @@ class GraphRunnerTest {
 
         assertThat(javac.runs).as("the post-build refresh submits no compile").isEmpty();
         assertThat(snapshot(root)).as("and still refreshes the graph").isNotEqualTo(before);
-        GraphAck asked = GraphRunner.run(request(root, "callers", List.of("PriceCalculator.sum")), p -> {});
+        GraphAck asked = GraphRunner.run(request(root, "usages", List.of("PriceCalculator.sum")), p -> {});
         assertThat(asked.error()).isNull();
         assertThat(javac.runs).as("a question compiles the moved module").hasSize(1);
     }

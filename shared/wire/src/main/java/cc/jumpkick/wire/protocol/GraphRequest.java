@@ -6,9 +6,10 @@ import java.util.List;
 import org.jspecify.annotations.Nullable;
 
 /**
- * One {@code jk graph} operation on the workspace holding {@code dir}. {@code op} is {@code build},
- * {@code query}, {@code callers}, {@code read}, {@code find}, {@code rules}, {@code path} or {@code
- * neighbors}; {@code args} are its positionals. Every read
+ * One {@code jk graph} or {@code jk code} operation on the workspace holding {@code dir}. {@code op}
+ * is {@code build}, {@code path}, {@code neighbors}, {@code rules}, or one of {@code jk code}'s:
+ * {@code usages}, {@code query}, {@code read}, {@code find}, {@code rename}, {@code delete}, {@code
+ * move}, {@code pull-up}; {@code args} are its positionals. Every read
  * refreshes the graph first unless {@code noRefresh}; {@code rebuild} discards stored fragments.
  * {@code mode} is {@code bfs} or {@code dfs}, breadth-first when unset. {@code scope} is path globs
  * ({@code ;} between them, {@code !} excludes), {@code modules} a module selector as {@code -m} takes

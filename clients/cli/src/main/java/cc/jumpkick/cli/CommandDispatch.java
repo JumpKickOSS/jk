@@ -41,6 +41,7 @@ import cc.jumpkick.command.pipeline.SelectiveCommand;
 import cc.jumpkick.command.pipeline.WatchCommand;
 import cc.jumpkick.command.project.AddCommand;
 import cc.jumpkick.command.project.AuditCommand;
+import cc.jumpkick.command.project.CodeCommand;
 import cc.jumpkick.command.project.DenyCommand;
 import cc.jumpkick.command.project.ExplainCommand;
 import cc.jumpkick.command.project.GraphCommand;
@@ -150,6 +151,7 @@ public final class CommandDispatch {
             new TreeCommand(),
             new WhyCommand(),
             new GraphCommand(),
+            new CodeCommand(),
             new ExplainCommand(),
             new TasksCommand(),
             new ShowCommand(),

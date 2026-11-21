@@ -171,7 +171,7 @@ final class LibraryQuery {
             out.add("");
             out.add("Also matched: " + String.join(", ", names) + ".");
         }
-        return Budget.lines(out, budget, "Name one member: jk graph read Type.member");
+        return Budget.lines(out, budget, "Name one member: jk code read Type.member");
     }
 
     /** A match: its qualified name, its Javadoc summary, then its signatures, the overloads past {@link #OVERLOADS} counted. */
@@ -182,7 +182,7 @@ final class LibraryQuery {
         List<String> sigs = e.signatures();
         for (String sig : sigs.subList(0, Math.min(OVERLOADS, sigs.size()))) out.add("  " + sig);
         if (sigs.size() > OVERLOADS) {
-            out.add("  … " + plural(sigs.size() - OVERLOADS, "more overload") + ": jk graph read " + e.name());
+            out.add("  … " + plural(sigs.size() - OVERLOADS, "more overload") + ": jk code read " + e.name());
         }
         return out;
     }

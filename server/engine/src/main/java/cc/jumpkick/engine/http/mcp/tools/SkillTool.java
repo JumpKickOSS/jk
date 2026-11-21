@@ -17,7 +17,7 @@ public final class SkillTool implements McpTool {
             "How to use jk: the loop and the verdict format. topic= one page (dependencies, tests, lockfile, …).";
 
     /** Tools whose usage a topic covers: asked for by the tool's name, the topic answers. */
-    static final Map<String, String> TOOL_PAGES = Map.of("callers", "graph", "rename", "graph");
+    static final Map<String, String> TOOL_PAGES = Map.of("usages", "graph", "rename", "graph");
 
     /** Another registered tool's description by name: agents ask for a tool's name as a topic. */
     private volatile Function<String, @Nullable String> tools = name -> null;

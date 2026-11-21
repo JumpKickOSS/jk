@@ -13,7 +13,7 @@ import java.util.TreeSet;
 import org.jspecify.annotations.Nullable;
 
 /**
- * What else a change to a symbol or an anchor reaches, folded into the {@code callers} answer so an
+ * What else a change to a symbol or an anchor reaches, folded into the {@code usages} answer so an
  * agent asks once instead of once per accessor, column and template: a field's accessors and their
  * callers, the anchors it maps to (a column, a JSON or bean property, a configuration key) with the
  * places no compiler checks, and the tests that reach it; a type's anchors; an anchor's Java side.

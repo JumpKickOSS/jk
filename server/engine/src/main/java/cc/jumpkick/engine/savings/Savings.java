@@ -27,7 +27,7 @@ import org.jspecify.annotations.Nullable;
  * @param suitesSkipped of those, test suites
  * @param testClassesNotRerun test classes left out of a re-run because they passed under the same
  *     inputs
- * @param graphCalls code-graph questions answered ({@code query}, {@code callers}, {@code read},
+ * @param graphCalls code-graph questions answered ({@code query}, {@code usages}, {@code read},
  *     {@code find})
  * @param renames renames applied
  * @param edits dependency and workspace edits made ({@link

@@ -196,7 +196,7 @@ export function frameStamp(type, frame) {
 
 // ---- one episode's timeline ----
 
-const GRAPH_TOOLS = new Set(['query', 'callers', 'read', 'find']);
+const GRAPH_TOOLS = new Set(['query', 'usages', 'read', 'find']);
 const DEP_TOOLS = new Set(['deps', 'update', 'workspace']);
 
 /** The timeline family of an action kind: run, graph, rename, deps or other. */

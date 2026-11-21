@@ -84,7 +84,7 @@ class InitializerCallersTest {
                 List.of(),
                 ModuleReach.UNKNOWN);
         GraphService.Request r = new GraphService.Request(
-                "callers", List.of(address), "bfs", 3, 4000, List.of(), false, 8, null, false, false);
+                "usages", List.of(address), "bfs", 3, 4000, List.of(), false, 8, null, false, false);
         return GraphService.run(w, r, GraphBuild.Progress.NONE).text();
     }
 

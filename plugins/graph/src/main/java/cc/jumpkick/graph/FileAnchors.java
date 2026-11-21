@@ -20,7 +20,7 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * {@code callers file:<path>} (or {@code file:<path>:<line>}): the anchors a file defines or uses
+ * {@code usages file:<path>} (or {@code file:<path>:<line>}): the anchors a file defines or uses
  * ({@link Anchors}), each with the other files that name it, so one call says what an edit to the
  * file may leave behind. The places the file's last edit left under an old name ({@link
  * AnchorEdits}) come first; then each anchor in line order, the places that define or use it in a
@@ -117,7 +117,7 @@ final class FileAnchors {
                     ? "no other place names it"
                     : String.join(", ", all.subList(0, Math.min(PLACES, all.size())))
                             + (all.size() > PLACES
-                                    ? ", +" + (all.size() - PLACES) + " more: callers(address=\"" + clean(g, id) + "\")"
+                                    ? ", +" + (all.size() - PLACES) + " more: usages(address=\"" + clean(g, id) + "\")"
                                     : "");
             lines.add("  L" + first(e.getValue()) + " " + clean(g, id) + (defines ? " (defined here)" : "") + ": "
                     + places + (bound == 0 ? "" : "; " + bound + " bound by the compiler"));

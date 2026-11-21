@@ -13,7 +13,8 @@ Canonical names. Hidden aliases (Maven/Gradle muscle memory) are listed in
 | `jk outdated` | Newer versions than the lock (read-only) | [Lockfile](lockfile.md) |
 | `jk update` | Bump declared pins in `jk.toml` to the newest stable on the same major (`--major` to cross), relock. At a terminal it previews the moves across a minor and those adding packages and asks once (`-y` skips the question); without one it applies. A newer major is named, not taken | [Lockfile](lockfile.md#jk-update) |
 | `jk tree` / `jk why` | Inspect the graph | [Dependencies](dependencies.md) |
-| `jk graph` | Build and query the code graph: symbols, calls, config and docs | [Code graph](graph.md) |
+| `jk code` | Ask about the code and refactor it: usages, read, find, query, rename, delete, move, pull-up | [Code graph](graph.md) |
+| `jk graph` | Build and walk the code graph: symbols, calls, config and docs | [Code graph](graph.md) |
 | `jk compile` | Type-check | [Build](build.md) |
 | `jk build` | Compile + package; a `pom.xml` with no `jk.toml` builds in place | [Build](build.md), [Migration](migration.md#building-a-maven-repository-without-importing) |
 | `jk test` | Run tests (`--affected` / `--affected-since` list ranked classes) | [Test](test.md) |

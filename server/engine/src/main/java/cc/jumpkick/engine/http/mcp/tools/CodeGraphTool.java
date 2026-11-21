@@ -20,8 +20,9 @@ import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 
 /**
- * The code graph's read tools, named like the {@code jk graph} subcommands they answer: {@code
- * callers} on the default list, {@code query}, {@code read} and {@code find} on the extended one.
+ * The code graph's tools, named like the {@code jk code} subcommands they answer: {@code usages}
+ * and {@code rename} on the default list, {@code query}, {@code read} and {@code find} on the
+ * extended one.
  * Each refreshes the graph first (a walk and a snapshot load when nothing changed) and answers with
  * {@code Owner.member()} at {@code file:line}.
  */
@@ -38,14 +39,14 @@ public final class CodeGraphTool implements McpTool {
     }
 
     /**
-     * {@code callers}: who calls a method, or uses a field, a type, an annotation or a constructor,
-     * complete, in one call. The one graph tool on the default list — measured to answer caller
+     * {@code usages}: who calls a method, or uses a field, a type, an annotation or a constructor,
+     * complete, in one call. The one graph question on the default list — measured to answer caller
      * questions in fewer tokens than grep and reads.
      */
-    public static McpTool callers() {
+    public static McpTool usages() {
         return new CodeGraphTool(
                 spec(
-                        "callers",
+                        "usages",
                         "Who calls Type.method or uses a field, type, @Annotation or anchor at file:line, complete."
                                 + " transitive=true: all that reach it. Call it first, before any search.",
                         scoped(Map.of(
@@ -62,7 +63,7 @@ public final class CodeGraphTool implements McpTool {
                                 "token_budget",
                                 McpSchemas.integer())),
                         List.of("address")),
-                "callers",
+                "usages",
                 in -> List.of(required(in, "address")));
     }
 
@@ -96,7 +97,7 @@ public final class CodeGraphTool implements McpTool {
                 in -> List.of(required(in, "address"), required(in, "to")));
     }
 
-    /** {@code query}: the symbols and connections a question is about, as {@code jk graph query} answers it. */
+    /** {@code query}: the symbols and connections a question is about, as {@code jk code query} answers it. */
     public static McpTool query() {
         return new CodeGraphTool(
                 spec(
@@ -109,7 +110,7 @@ public final class CodeGraphTool implements McpTool {
                 in -> List.of(required(in, "question")));
     }
 
-    /** {@code read}: one symbol's source or a type's members, as {@code jk graph read} answers it. */
+    /** {@code read}: one symbol's source or a type's members, as {@code jk code read} answers it. */
     public static McpTool read() {
         return new CodeGraphTool(
                 spec(
@@ -125,7 +126,7 @@ public final class CodeGraphTool implements McpTool {
                 in -> List.of(required(in, "address")));
     }
 
-    /** {@code find}: declarations by kind, visibility, supertype, annotation and name, as {@code jk graph find}. */
+    /** {@code find}: declarations by kind, visibility, supertype, annotation and name, as {@code jk code find}. */
     public static McpTool find() {
         return new CodeGraphTool(
                 spec(

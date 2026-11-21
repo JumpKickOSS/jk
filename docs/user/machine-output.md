@@ -177,8 +177,8 @@ export JK_OUTPUT=jsonl     # the same for every command that has machine output
   `watch`, `dev`), `lock`, `update`, `audit`, `guard` (also `-O sarif`), `outdated`, `doctor`,
   `status`, `env`, `engine status`, the `node` family, `jobs`, `history list`, `history show`, `stats`,
   `cancel`, `tree`, `why`, `tool list`, `jdk list`, `cache usage` and `storage usage`, and the
-  commands in [Command rows](#command-rows): `results`, `explain`, the `graph` family, `tasks`,
-  `inspect`, `add`, `remove`, `format`, `deny`, `verify`, `clean`, `cache clean`, `storage clean`,
+  commands in [Command rows](#command-rows): `results`, `explain`, the `graph` and `code`
+  families, `tasks`, `inspect`, `add`, `remove`, `format`, `deny`, `verify`, `clean`, `cache clean`, `storage clean`,
   `library list|search|update`, `auth status`, the `trust` family, `import`, `jdk install`,
   `jdk uninstall`, `jdk pin` and `jdk verify`.
 - One JSON object per line, flushed promptly, each with the envelope below; a command's own
@@ -265,7 +265,8 @@ These commands print their own rows, one envelope object each, and nothing else 
 | `explain-step` | `explain` | `module`, `step`, `status` (`cached`, `full`, `partial`, `run`), `detail`, `key` |
 | `explain` | `explain` | `modules`, `dirty`, `etaMillis`, `fullEtaMillis`, `criticalPath` (step names) |
 | `graph` | `graph build` | `op`, `nodes`, `edges`, `files`, `read`, `classes`, `dir`, `millis` |
-| `graph` | every other `graph` read | `op`, `found`, `text` (the answer as the engine wrote it) |
+| `graph` | `graph path`, `neighbors`, `rules` | `op`, `found`, `text` (the answer as the engine wrote it) |
+| `code` | every `code` command | `op`, `found`, `text` (the answer as the engine wrote it) |
 | `task` | `tasks` | `module`, `name`, `stage`, `description` |
 | `task-output` | `tasks show` | `task`, `module`, `moduleDir`, `output`, `onDisk` |
 | `task-inspect` | `inspect`, `tasks inspect` | the `task-output` fields, then `stage`, `description`, `aliases`, `cache` |
@@ -292,7 +293,7 @@ These commands print their own rows, one envelope object each, and nothing else 
 {"schema":1,"ts":1721664000123,"type":"dependency-added","library":"guava","group":"com.google.guava","artifact":"guava","version":"33.5.0-jre","scope":"compile"}
 ```
 
-The exit code is the human run's: `graph` reads that find nothing, `deny` with a violation and
+The exit code is the human run's: `graph` and `code` answers that find or write nothing, `deny` with a violation and
 `library search` with no match exit 1.
 
 ### `jk node`

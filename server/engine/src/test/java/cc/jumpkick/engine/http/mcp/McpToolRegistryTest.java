@@ -95,10 +95,19 @@ class McpToolRegistryTest {
     void the_default_list_is_the_loop() {
         McpTools tools = McpTools.standard();
         List<String> listed = names(tools.listing(McpTools.Surface.LOOP));
-        assertThat(listed).containsExactly("run", "diagnostics", "deps", "callers", "rename", "skill");
+        assertThat(listed).containsExactly("run", "diagnostics", "deps", "usages", "rename", "skill");
         assertThat(listed).isEqualTo(tools.loopNames());
         assertThat(listed).doesNotContain("bind", "history", "manifest", "query", "read", "find");
-        assertThat(tools.names()).contains("callers", "rename", "query", "read", "find");
+        assertThat(tools.names()).contains("usages", "rename", "query", "read", "find");
+    }
+
+    @Test
+    void callers_is_answered_by_usages_and_never_listed() {
+        McpTools tools = McpTools.standard();
+        assertThat(tools.tool("callers")).isSameAs(tools.tool("usages")).isNotNull();
+        assertThat(names(tools.listing(McpTools.Surface.ALL)))
+                .contains("usages")
+                .doesNotContain("callers");
     }
 
     @Test
@@ -228,7 +237,7 @@ class McpToolRegistryTest {
         for (String instructions : List.of(McpTools.INSTRUCTIONS, McpTools.PINNED_INSTRUCTIONS)) {
             assertThat(instructions)
                     .contains("show every argument they need")
-                    .contains("callers(address=\"Type.method\")")
+                    .contains("usages(address=\"Type.method\")")
                     .contains("rename(goal=\"<the task>\", address=\"Type.field\", to=\"newName\")")
                     .contains("also=\"c1,c3\"")
                     .contains("do not grep, read or re-run to check them");

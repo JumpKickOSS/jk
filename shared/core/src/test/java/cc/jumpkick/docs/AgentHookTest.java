@@ -33,11 +33,11 @@ class AgentHookTest {
         for (String c :
                 new String[] {"grep -rn OrderService src", "rg \"\\bfooBar\\(\" .", "git grep -n Order.total"}) {
             String reply = AgentHook.decide(bash(c));
-            assertThat(reply).as(c).contains("additionalContext").contains("jk graph callers");
+            assertThat(reply).as(c).contains("additionalContext").contains("jk code usages");
             assertThat(reply).doesNotContain("deny");
         }
         assertThat(AgentHook.decide("{\"tool_name\":\"Grep\",\"tool_input\":{\"pattern\":\"OrderService.total\"}}"))
-                .contains("jk graph callers OrderService.total");
+                .contains("jk code usages OrderService.total");
     }
 
     @Test

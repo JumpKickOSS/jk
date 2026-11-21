@@ -425,22 +425,22 @@ def grep_read(q: dict, tree: Path) -> tuple[str, list[list[str]], set[str]]:
 
 
 def jk_query(q: dict, tree: Path) -> tuple[str, list[list[str]], set[str]]:
-    cmd = jk("graph", "query", q["question"])
+    cmd = jk("code", "query", q["question"])
     _, out, _ = sh(cmd, tree)
     return out, [cmd], set()
 
 
 def jk_tool(q: dict, tree: Path) -> tuple[str, list[list[str]], set[str]]:
-    """The jk graph command the skill points an agent at for this kind of question."""
+    """The jk code command the skill points an agent at for this kind of question."""
     if q["kind"] == "implementers":
-        cmd = jk("graph", "find", "-I", q["subject"]["label"])
+        cmd = jk("code", "find", "-I", q["subject"]["label"])
     else:
         owner, name = member(q)
         cmd = {
             # Every overload, with each call site's file:line; a nested type's `Outer.Inner.m` resolves as is.
-            "callers": jk("graph", "callers", f"{owner}.{name}"),
-            "overrides": jk("graph", "find", name, "-t", "method", "-I", owner),
-            "definition": jk("graph", "read", f"{owner}.{name}", "-w", "headline"),
+            "callers": jk("code", "usages", f"{owner}.{name}"),
+            "overrides": jk("code", "find", name, "-t", "method", "-I", owner),
+            "definition": jk("code", "read", f"{owner}.{name}", "-w", "headline"),
         }[q["kind"]]
     _, out, _ = sh(cmd, tree)
     return out, [cmd], set()
@@ -691,7 +691,7 @@ def jk_snapshot(path: Path) -> dict:
 
     The fragments in the action cache hold each file's unlinked declarations and its compiled facts'
     mentions (`Type#member` strings); the linker binds those to nodes and writes the result here, so reading
-    this file is reading the edges `jk graph callers` walks, without re-implementing the linker or
+    this file is reading the edges `jk code usages` walks, without re-implementing the linker or
     paying a CLI call per method. Layout (GraphSnapshot.java): magic JKGS, format 1, the key, a
     string table, nodes (id, label, file_type, source_file, source_location, extra), edges (source,
     target as node indices; relation, confidence, source_file, source_location, context, extra; then

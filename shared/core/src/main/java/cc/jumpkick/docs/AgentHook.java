@@ -102,10 +102,10 @@ public final class AgentHook {
         return reply(
                 "additionalContext",
                 "`" + symbol + "` looks like a symbol. The code graph answers symbol questions completely, from"
-                        + " the compiled classes, so use it instead of grepping and reading each match: MCP `callers`"
+                        + " the compiled classes, so use it instead of grepping and reading each match: MCP `usages`"
                         + " (who calls it; transitive=true for everything that reaches it) and `rename` (every edit"
-                        + " in one call); in a shell `jk graph callers " + symbol + "`, `jk graph read " + symbol
-                        + "` (its source alone), `jk graph rename " + symbol + " <new>`."
+                        + " in one call); in a shell `jk code usages " + symbol + "`, `jk code read " + symbol
+                        + "` (its source alone), `jk code rename " + symbol + " <new>`."
                         + " Grep is still right for text that is not a symbol.",
                 null,
                 null);

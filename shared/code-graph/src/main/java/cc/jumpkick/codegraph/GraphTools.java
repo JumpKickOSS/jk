@@ -160,7 +160,7 @@ public final class GraphTools {
             lines.add("Neighbors of " + GraphQuery.clean(graph.display(id)) + (ids.size() == 1 ? "" : where(id)) + ":");
             lines.addAll(edgeLines(id, relationFilter.toLowerCase(Locale.ROOT)));
         }
-        return Budget.lines(lines, budget, "Narrow with --relation, or read one symbol with jk graph read");
+        return Budget.lines(lines, budget, "Narrow with --relation, or read one symbol with jk code read");
     }
 
     /**

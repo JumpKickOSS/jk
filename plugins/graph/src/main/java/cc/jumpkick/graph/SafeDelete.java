@@ -25,7 +25,7 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * The {@code delete} operation: removes a method (every overload), a field or a type only when
- * nothing uses it, and otherwise writes nothing and lists what does, as {@code callers} lists it. A
+ * nothing uses it, and otherwise writes nothing and lists what does, as {@code usages} lists it. A
  * use is a call or reference the compiled classes or javac's index hold, a line of a source they do
  * not describe that spells the name, an anchor the symbol maps to or defines, an override, an
  * annotation a framework may call it through, an entry point, a doc link, or a string that names
@@ -67,10 +67,10 @@ final class SafeDelete {
         final List<int[]> spans = new ArrayList<>();
         boolean wholeFile;
 
-        /** The answer {@code callers} gives, when a use it lists keeps the symbol. */
+        /** The answer {@code usages} gives, when a use it lists keeps the symbol. */
         final List<String> callers = new ArrayList<>();
 
-        /** Uses {@code callers} does not list, one line each. */
+        /** Uses {@code usages} does not list, one line each. */
         final List<String> also = new ArrayList<>();
 
         /** Patterns whose match in a string, outside the deleted lines, names the symbol. */

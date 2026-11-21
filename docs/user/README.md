@@ -103,7 +103,7 @@ If you are changing JumpKick itself, go to [../contributors/](../contributors/RE
 
 - [Agents](agents.md)
 - [MCP](mcp.md)
-- [Code graph](graph.md) — `jk graph`: query the code instead of reading it
+- [Code graph](graph.md) — `jk code`: ask about the code instead of reading it, and refactor it
 - [Machine output](machine-output.md)
 - [CI](ci.md)
 - [Config, CLI chrome, env](config.md)

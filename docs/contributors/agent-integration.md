@@ -95,7 +95,7 @@ renamed tool or argument fails a test instead of misleading an agent.
 | Codex | yes, natively | none | user-level: `codex mcp add jk -- jk mcp` | No file tools: reads and searches through its shell (`zsh -lc '…'`) and edits with `apply_patch` |
 | grok | only in a trusted folder | `.grok/rules/*.md` (not needed) | its config | Reaches MCP tools through `search_tool`/`use_tool` |
 | agy | yes | `.agents/rules/jk.md` (helps) | its config | Reads its own MCP descriptors before a call; glances at config files after an answer |
-| muse | only in a trusted workspace | none | its config | Tends to call `callers` before `rename` and to re-run tests after "done" |
+| muse | only in a trusted workspace | none | its config | Tends to call `usages` before `rename` and to re-run tests after "done" |
 
 `jk agents` writes each agent's files when the agent is detected (or with `-A`) and prints the steps
 only the user can take (grok's and muse's trust, Codex's `codex mcp add`).

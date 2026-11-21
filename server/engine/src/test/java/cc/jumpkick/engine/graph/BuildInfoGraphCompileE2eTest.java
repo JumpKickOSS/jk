@@ -106,7 +106,7 @@ class BuildInfoGraphCompileE2eTest {
     private static GraphRequest callers(Path dir, String method) {
         return new GraphRequest(
                 dir.toString(),
-                "callers",
+                "usages",
                 List.of(method),
                 "bfs",
                 3,

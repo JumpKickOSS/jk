@@ -19,7 +19,7 @@ class FileAnchorsTest {
 
     static String callers(RenameFixture ws, String address) throws IOException {
         GraphService.Request r = new GraphService.Request(
-                "callers",
+                "usages",
                 List.of(address),
                 "bfs",
                 3,

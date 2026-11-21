@@ -18,7 +18,7 @@ hook of this kind cannot pay for itself on these tasks.
 
     bench/agent-loop/graph-counterfactual                         # every run under change-tasks/
     bench/agent-loop/graph-counterfactual --date 2026-10-26 --arm jk --arm jk-nograph
-    bench/agent-loop/graph-counterfactual --graph-cmd 'jk graph find -n {sym}' --json out.json
+    bench/agent-loop/graph-counterfactual --graph-cmd 'jk code find -n {sym}' --json out.json
     bench/agent-loop/graph-counterfactual --runs-only             # per-run rows too
 
 Graph answers are cached in ``--cache`` (keyed by repo, command and symbol); delete it after the
@@ -361,7 +361,7 @@ def main() -> int:
     ap.add_argument("--arm", action="append", help="only these arms (repeatable)")
     ap.add_argument("--task", action="append", help="only these tasks (repeatable)")
     ap.add_argument("--driver", default="claude-code", help="only this driver's transcripts (stream-json)")
-    ap.add_argument("--graph-cmd", default="jk graph query {sym} -b {budget} -n",
+    ap.add_argument("--graph-cmd", default="jk code query {sym} -b {budget} -n",
                     help="the answer a hook would attach; {sym} and {budget} are filled in")
     ap.add_argument("--budget", type=int, default=300, help="graph answer budget in tokens (default 300)")
     ap.add_argument("--near", type=int, default=3, help="API calls within which a hit counts as 'near' (default 3)")

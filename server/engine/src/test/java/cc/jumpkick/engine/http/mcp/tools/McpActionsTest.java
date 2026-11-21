@@ -49,10 +49,11 @@ class McpActionsTest {
         McpConnection connection = ctx.connections().open("claude-code", null, McpRevision.LATEST, McpElicitModes.NONE);
         String id = log.open("mcp", "claude-code", connection.label(), null);
         McpTools tools = new McpTools(List.of(
-                tool("callers", in -> in.text("3 callers\nQuote.total\n")),
+                tool("usages", in -> in.text("3 callers\nQuote.total\n")),
                 tool("deps", in -> in.error("no such artifact org.postgresql:postgresql\n")),
                 tool("status", in -> in.text("ok\n"))));
 
+        // A call by the released name is logged as the tool that answers it.
         tools.call(
                 ctx,
                 call("callers", Map.of("dir", project.toString(), "address", "PricingRules.weekendUplift")),
@@ -66,10 +67,10 @@ class McpActionsTest {
         tools.call(ctx, call("status", Map.of()), connection, null);
 
         SessionLog.Page page = log.session(id, 0, 10).orElseThrow();
-        assertThat(page.actions()).extracting(a -> a.get("kind")).containsExactly("callers", "deps");
+        assertThat(page.actions()).extracting(a -> a.get("kind")).containsExactly("usages", "deps");
         Map<String, Object> callers = page.actions().getFirst();
         assertThat(callers)
-                .containsEntry("summary", "callers PricingRules.weekendUplift")
+                .containsEntry("summary", "usages PricingRules.weekendUplift")
                 .containsEntry("headline", "3 callers")
                 .containsEntry("outcome", "ok");
         assertThat(page.actions().get(1))
@@ -89,7 +90,7 @@ class McpActionsTest {
         McpTools tools = new McpTools(List.of(
                 tool("rename", in -> in.text("renamed 3 calls\n")),
                 tool("deps", in -> in.text("added\n")),
-                tool("callers", in -> in.text("3 callers\n"))));
+                tool("usages", in -> in.text("3 callers\n"))));
         String dir = project.toString();
 
         tools.call(
@@ -99,7 +100,7 @@ class McpActionsTest {
                 null);
         // No goal: answered as any call, and its work joins the goal's episode.
         Map<String, Object> answer =
-                tools.call(ctx, call("callers", Map.of("address", "Ledger.record")), connection, null);
+                tools.call(ctx, call("usages", Map.of("address", "Ledger.record")), connection, null);
         assertThat(answer).doesNotContainEntry("isError", true);
         tools.call(ctx, call("deps", Map.of("coords", List.of("org.postgresql:postgresql"))), connection, null);
         tools.call(

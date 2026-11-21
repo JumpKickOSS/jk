@@ -125,7 +125,7 @@ terminal's, the dashboard's, and one a previous engine left open. The
 next run after it opens another session, and an agent whose session expired is asked to start a new
 one. Besides its runs, a session's timeline
 holds the MCP calls that are not runs, each as one line with its outcome and time: the code
-graph's `query`, `callers`, `read` and `find`, `rename`, and the dependency changes `deps`,
+graph's `query`, `usages`, `read` and `find`, `rename`, and the dependency changes `deps`,
 `update` and `workspace`.
 
 A session survives the engine. When an upgrade replaces the engine, or the engine dies and the
@@ -193,7 +193,7 @@ same panel for that project. Both cover the last 7 days and show what `jk stats`
 | time avoided | Build and test time the cache avoided. An estimate: each run's cold-cache critical path less its wall ([Cache](cache.md)); `measured` is the share of cache hits backed by a measured time |
 | steps from cache | Steps whose result came from the cache instead of running, and of those, test suites |
 | classes not re-run | Test classes a red re-run left out because they passed under the same inputs ([Test](test.md)) |
-| graph answers | Code-graph questions an agent asked through MCP (`query`, `callers`, `read`, `find`) |
+| graph answers | Code-graph questions an agent asked through MCP (`query`, `usages`, `read`, `find`) |
 | renames · edits | Renames applied, and dependency edits made: each coordinate a `deps` call added, removed or pinned, each applied `update` or `workspace` change |
 | guard stops | Guard-rule violations a run stopped, and the runs they stopped |
 

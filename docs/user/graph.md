@@ -1,27 +1,28 @@
 # Code graph
 
-`jk graph` maps a workspace into a graph of its code, configuration and documentation, and answers
+JumpKick maps a workspace into a graph of its code, configuration and documentation, and answers
 questions from it within a token budget. It is built in: nothing to install, an index in seconds,
 and call edges from the compiled classes. Every answer names a symbol as `Owner.member()` and places
-it at `file:line`.
+it at `file:line`. `jk code` asks about the code and refactors it; `jk graph` builds the graph and
+walks it.
 
 ```bash
 jk graph                                   # build or refresh the graph (target/graph/)
-jk graph query "how is the order total computed"
-jk graph read OrderService.total           # that method's source, not the whole file
-jk graph read OrderService -w structure    # the type's declarations without bodies
-jk graph find -t interface -I Repository   # declarations by kind, supertype, annotation, name
-jk graph callers OrderService.total        # who calls it, every overload, complete
-jk graph callers OrderService.total -t     # everything that reaches it
-jk graph callers Order.status              # every read and write of a field, at its line
-jk graph callers Order                     # every use of a type (@Audited for an annotation)
+jk code query "how is the order total computed"
+jk code read OrderService.total           # that method's source, not the whole file
+jk code read OrderService -w structure    # the type's declarations without bodies
+jk code find -t interface -I Repository   # declarations by kind, supertype, annotation, name
+jk code usages OrderService.total        # who calls it, every overload, complete
+jk code usages OrderService.total -t     # everything that reaches it
+jk code usages Order.status              # every read and write of a field, at its line
+jk code usages Order                     # every use of a type (@Audited for an annotation)
 jk graph neighbors OrderService            # its direct connections
 jk graph path OrderService PriceCalculator -U
 jk graph rules src/main/java/com/acme/shop/OrderService.java
 ```
 
 A name is a node id, a label, or `Type.member` (qualify the type, `shop.OrderService.total`, when
-two packages declare it). `callers` and `neighbors` answer for every overload a `Type.member` names;
+two packages declare it). `usages` and `neighbors` answer for every overload a `Type.member` names;
 `path`, which needs one node, lists the overloads' ids instead. Answers name a member with its
 owner, `Release.Plan.label()` for a nested type's, so a caller is never read as its file's top-level
 class.
@@ -59,10 +60,10 @@ or symbol that defines or uses it has an edge to it, so one
 question finds the YAML line, the annotation and the string literal together.
 
 ```bash
-jk graph callers config:server.port        # every definition and use, at file:line
-jk graph callers shop.max-items            # a label only an anchor has works too
-jk graph find -t config 'shop.*'           # a kind's anchors, with counts
-jk graph callers 'route:*'                 # the same listing through callers (MCP: address=route:*)
+jk code usages config:server.port        # every definition and use, at file:line
+jk code usages shop.max-items            # a label only an anchor has works too
+jk code find -t config 'shop.*'           # a kind's anchors, with counts
+jk code usages 'route:*'                 # the same listing through usages (MCP: address=route:*)
 ```
 
 ```
@@ -92,11 +93,11 @@ share a name (`Shop.currency`), the bare name is the symbol's; write `config:sho
 
 A route is `route:<METHOD> <path>` with each path variable as `{}`: `route:GET /api/hotels/{}`
 answers for `@GetMapping("/hotels/{slug}")` under `@RequestMapping("/api")`, and you may write it
-with the variable's name (`jk graph callers 'route:GET /api/hotels/{slug}'`). A handler serving
+with the variable's name (`jk code usages 'route:GET /api/hotels/{slug}'`). A handler serving
 every method is `*`. Only literal paths count: a path built at run time defines nothing. `jk graph
 find -t route` lists every route with its definitions and uses; one an OpenAPI document defines
 and no handler serves shows the document alone, and a handler's route the document lacks shows
-the handler alone. A handler's `callers` answer ends with the route it defines and how many uses
+the handler alone. A handler's `usages` answer ends with the route it defines and how many uses
 no compiler checks.
 
 A use links to the routes it fits, the one with the most literal segments when several do, and to
@@ -120,7 +121,7 @@ SE and other routing written as calls, Kotlin and Groovy route DSLs, and JSON Op
 
 A table is `table:<name>` and a column `column:<table>.<column>`, lower-cased unless quoted, with
 the default schema (`public`, `dbo`) dropped. Every migration that defines, changes or drops a
-column is listed: `jk graph callers column:orders.status` names the migration that created it, the
+column is listed: `jk code usages column:orders.status` names the migration that created it, the
 one that renamed it away (`dropped or renamed away:`), and every use, so a rename is found in the
 migration history as well as in the code. The reader works statement by statement without a SQL
 parser: what it cannot place (a dialect's own syntax, a name built at run time) contributes
@@ -151,7 +152,7 @@ Kubernetes container's `env:` entries. Reads: `System.getenv("NAME")`, a
 declared; `$NAME` in a script, a workflow step or another YAML value is inferred and links only to a
 variable something sets or reads. Variables every shell has (`HOME`, `PATH`, …) are left out.
 
-`jk graph callers env:FEATURE_X` on a variable only code reads answers `No file defines it.`; one a
+`jk code usages env:FEATURE_X` on a variable only code reads answers `No file defines it.`; one a
 `.env` sets and nothing reads, `Nothing uses it.`. A variable named as a Spring key under relaxed
 binding (`SPRING_DATASOURCE_URL`) shows the key it sets and that key's definitions and uses (`sets
 config:spring.datasource.url (inferred)`), and the key's answer names the variables that set it;
@@ -167,7 +168,7 @@ the published side of a compose `ports:` entry (`"8081:8080"` defines 8081) and 
 `published:`, a Kubernetes `containerPort`. The container side of a compose mapping (8080) is a
 declared use; the long form's container side is not read yet. A URL to this machine
 (`localhost:8080`, `127.0.0.1:8080`) in a script, a workflow, a config value, a doc or code is an
-inferred use and links only to a port something defines or uses. So `jk graph callers port:8080` before moving a service lists the
+inferred use and links only to a port something defines or uses. So `jk code usages port:8080` before moving a service lists the
 Dockerfile, the compose file and every script and test that calls it there.
 
 ### JSON properties
@@ -250,12 +251,12 @@ nor a file that merely shares an anchor with the edited one; an edit that change
 nothing. The places are kept in `target/graph/anchors/stale`, each dropped once its file no longer
 carries the old name or the edit is undone, so a build after a graph question still names them.
 
-The record is always kept, and `callers` answers from it (below). An agent also sees its places without
+The record is always kept, and `usages` answers from it (below). An agent also sees its places without
 asking: in a workspace with a graph, an MCP `run` that builds (`kind=build`, `test`, `gate`, `guard`,
 `install` or any kind that builds the tree) and passes ends with the places that must change, a file's
 lines as one place, in five files at most, then `+N more:` and the call that lists the rest. It says
 nothing when none is left, nothing after a run that failed, nothing in a checkout with no graph yet,
-and nothing on the CLI: `jk build` and the rest print their usual output, and `callers file:<path>`
+and nothing on the CLI: `jk build` and the rest print their usual output, and `usages file:<path>`
 is how a person asks. Prose that still names the old name is not mentioned. `[graph] anchor-tail =
 "off"` turns the lines off ([Settings](#settings)); a project JumpKick builds from its `pom.xml` has no
 `[graph]` to set and gets none. A verdict waits for the refresh its build started (10 seconds at
@@ -275,7 +276,7 @@ Your edit changed these names; these places still use the old one:
   lines, src/main/java/org/springframework/samples/petclinic/owner/Owner.java:65
 ```
 
-`callers` with `file:<path>` (or `file:<path>:<line>`) answers for a file: first the places its
+`usages` with `file:<path>` (or `file:<path>:<line>`) answers for a file: first the places its
 last edit left under an old name, then each anchor it defines or uses with the other places that
 name it, a use a compiler bound counted, not listed.
 
@@ -285,8 +286,8 @@ first sentence of its doc comment. `read`, `find` and the search use them.
 
 ## How it stays current
 
-A checkout has a graph once the first `jk graph` command or MCP `callers` call makes one; nothing
-builds it before that. From then on it is kept current: every `jk graph` command refreshes it before
+A checkout has a graph once the first `jk graph` or `jk code` command or MCP `usages` call makes one;
+nothing builds it before that. From then on it is kept current: every such command refreshes it before
 answering, and a build or `jk guard` that succeeds refreshes it right after it reports, so the graph
 an agent reads is the tree as it stands. That refresh writes under `target/` after the build has
 returned; `jk clean` waits for it (up to two minutes) rather than deleting the tree under it, but a
@@ -380,7 +381,7 @@ the closest names.
 
 ### Asking a library
 
-`jk graph query -l <name> <question>` answers "what in this library does X" from the jars
+`jk code query -l <name> <question>` answers "what in this library does X" from the jars
 `jk-lock.toml` pins, for when the type's name is not known yet. `<name>` is an artifact
 (`jackson-databind`), a `group:artifact`, a whole coordinate or a glob over any of them
 (`'com.fasterxml.jackson.*'`); a name no locked jar matches lists the ones whose coordinate
@@ -392,11 +393,11 @@ fetches it); without one the answer says only names were matched. Each match sho
 name, its Javadoc summary and its signatures, the first four overloads of a member and a count of the
 rest, best match first, as many as the budget holds. A member name that matches on many types
 (`toString`) is shown three times and counted after that. The answer opens with the locked version
-it read; `jk graph read` on a name it lists shows the source.
+it read; `jk code read` on a name it lists shows the source.
 
 ```bash
-jk graph query -l jackson-databind "read json into a tree"
-jk graph query -l guava "split a string" -b 4000
+jk code query -l jackson-databind "read json into a tree"
+jk code query -l guava "split a string" -b 4000
 ```
 
 A jar's API is indexed the first time a question asks about it, and again only when the jar or its
@@ -405,7 +406,7 @@ walk and scope options do not apply to it.
 
 ## Scope
 
-`query`, `neighbors`, `callers`, `read` and `find` take the same three narrowing options. A symbol
+`query`, `neighbors`, `usages`, `read` and `find` take the same three narrowing options. A symbol
 outside the scope is neither a starting point nor walked through.
 
 | Option | Meaning |
@@ -415,13 +416,13 @@ outside the scope is neither a starting point nor walked through.
 | `-S`, `--source-set main\|test` | Main sources, or any test suite |
 
 ```bash
-jk graph query "retry policy" -m server/engine -S main
-jk graph find '*Test' -g 'server/**;!**/integration/**'
+jk code query "retry policy" -m server/engine -S main
+jk code find '*Test' -g 'server/**;!**/integration/**'
 ```
 
 ## Reading a symbol
 
-`jk graph read <address>` answers with the source of what the address names, in the richest view
+`jk code read <address>` answers with the source of what the address names, in the richest view
 the budget fits: `content` (the numbered source of each span), then `structure` (each declaration
 without its body, annotations above it), then `headline` (one line per symbol with its kind, span and
 doc summary). `-w` picks one.
@@ -447,15 +448,15 @@ A name several files declare is refused with the candidates; qualify it. A type 
 declares is read from the jars `jk-lock.toml` pins, and the answer opens with the locked version
 it read. The read fetches that library's `-sources.jar` the first time it needs it, unless
 `--offline` (`jk sync --sources` fetches every one at once), and answers from it in the same views:
-`jk graph read ObjectMapper` shows the type's public and protected API, each declaration's Javadoc
-and signature without bodies or private members, and `jk graph read ObjectMapper.readValue` each
+`jk code read ObjectMapper` shows the type's public and protected API, each declaration's Javadoc
+and signature without bodies or private members, and `jk code read ObjectMapper.readValue` each
 overload's source starting at its Javadoc. A library that publishes no sources jar is answered
 with the public signatures its class file holds, generics included, without Javadoc, and the answer
 says why. Each jar's type list is read once and kept under the store.
 
 ## Finding declarations
 
-`jk graph find [name-glob]` lists the declarations that pass every filter given, one line each with
+`jk code find [name-glob]` lists the declarations that pass every filter given, one line each with
 kind, visibility, name and span. Each filter takes a comma list.
 
 | Option | Matches |
@@ -472,10 +473,10 @@ kind, visibility, name and span. Each filter takes a comma list.
 can be named by its outer one, `-I Preflight.Main`.
 
 ```bash
-jk graph find -A RestController
-jk graph find total -t method -I OrderService   # every override
-jk graph find -t member -p public -m server/engine 'get*'
-jk graph find -l '*Mapper' -t class
+jk code find -A RestController
+jk code find total -t method -I OrderService   # every override
+jk code find -t member -p public -m server/engine 'get*'
+jk code find -l '*Mapper' -t class
 ```
 
 ## Before editing a file
@@ -533,9 +534,9 @@ nothing of it and neither waits for the graph's refresh nor reads the record. Tw
 experimental: `count`, those places and how many places of prose (`Docs use the old name too: 3
 places.`); `kinds`, how many of each kind of file (`1 markdown, 2 text`).
 
-## Callers
+## Usages
 
-`jk graph callers Type.method` (MCP `callers`) lists every method that calls it, each as
+`jk code usages Type.method` (MCP `usages`) lists every method that calls it, each as
 `Owner.method()` with its call sites' `file:line` and the first lines quoted, main sources before
 tests, with a count. The calls come from the compiled classes, so the list is complete: a call
 inside a lambda counts for the method holding it, and a call made through a supertype's method is
@@ -553,7 +554,7 @@ there is no need to grep for the name afterwards. A method reached only by refle
 a string is not a call, so it is not listed; the note under the answer says when a module's calls
 are missing.
 
-**One completeness rule, every language.** `callers` says its list is complete only where a
+**One completeness rule, every language.** `usages` says its list is complete only where a
 compiler bound every call it lists. A call matched by name instead is listed `(inferred)`, and the
 answer then says it is not complete and why, in one line.
 
@@ -578,7 +579,7 @@ A workspace with no Groovy, or only `@CompileStatic` Groovy, answers as before.
 
 ### Uses of a field, a type, an annotation or a constructor
 
-`callers` answers for any symbol a type declares, in the same shape: each use under the declaration
+`usages` answers for any symbol a type declares, in the same shape: each use under the declaration
 holding it, `Owner.member()` at `file:line` with the line quoted, main sources before tests, and a
 count.
 
@@ -601,7 +602,7 @@ What is exact, and what is not:
 - **Kotlin and Groovy:** their compilers write no reference index yet, so a Kotlin or Groovy source
   that can see the symbol is searched for its name, and each line that spells it is listed
   `(inferred)`. Outside its own class a Kotlin property is used through its getter and setter, so
-  `callers Type.getName` lists those uses from the compiled classes; a Groovy property is only
+  `usages Type.getName` lists those uses from the compiled classes; a Groovy property is only
   matched by name.
 - **A Java source edited since its compile, or in a module with no compiled classes:** searched for
   the name the same way, `(inferred)`.
@@ -614,7 +615,7 @@ search. Reflection and names in strings are not uses.
 
 ### What a change reaches
 
-A `callers` answer carries what else a change to the symbol reaches, so one question does the work
+A `usages` answer carries what else a change to the symbol reaches, so one question does the work
 of one per accessor, column and template. Each list is bounded (six places per anchor, six callers
 per accessor, six test classes, each with the question that lists the rest), the places no compiler
 checks come first, and the answer says what it looked at; it never says nothing else exists.
@@ -634,7 +635,7 @@ annotation or name maps to, the member a JSON or bean property is read from, the
 
 ## Rename
 
-`jk graph rename <symbol> <new name>` (MCP `rename`) renames in one call, by what the symbol is:
+`jk code rename <symbol> <new name>` (MCP `rename`) renames in one call, by what the symbol is:
 
 | Symbol | What it renames |
 |---|---|
@@ -711,6 +712,24 @@ target module), naming each.
 A shared-surface name such as a JPA column or an HTTP route is what the graph's anchors model;
 until they answer for it, rename reports it as a candidate or hazard as above.
 
+## Delete, move and pull up
+
+```bash
+jk code delete OrderService.legacyTotal          # only if nothing uses it; else lists what does
+jk code move PriceMath.round Money               # a static method or field, every use edited
+jk code pull-up Book.label Item                  # an instance member up to the class Book extends
+```
+
+`delete` removes a method (every overload), a field or a type only when nothing uses it: no call or
+reference in the compiled classes, no anchor it maps to, no override, no framework annotation or entry
+point, no doc link or string naming it. Otherwise it writes nothing and lists the uses as `usages`
+does. `move` takes a static Java method (every overload) or static field to another class, enum or
+record and edits every use javac bound; `pull-up` takes an instance method or field to the class its
+type extends, where its uses bind as written. Both write nothing and list what would break or change
+behaviour without a compile error (state the target does not have, a `super` call, a member one side
+cannot see, an override). Like `rename`, each then compiles the modules it touched and undoes the
+edit whole when they do not compile.
+
 The [retrieval bench](../../bench/graph-retrieval/README.md) asks who calls a method, what
 implements or overrides it and where it is defined, on seven JVM repositories, and grades every
 answer against the call and type facts read from the compiled classes. Each cell is the median
@@ -736,15 +755,16 @@ On JumpKick (679,533 lines), asked who calls a method, what implements or overri
 
 ## MCP
 
-JumpKick's MCP server lists one graph tool by default, `callers` (methods, and every use of a
+JumpKick's MCP server lists one graph tool by default, `usages` (methods, and every use of a
 field, type, annotation or constructor): every card an agent's host shows is paid
-on every turn, and in measured agent runs `callers` and `rename` are the ones that repay it.
+on every turn, and in measured agent runs `usages` and `rename` are the ones that repay it.
 
 <!-- agents-claims:begin -->
 We asked coding agents from 6 vendors questions like "who calls this method?" With JumpKick's code graph, they answered in **66–91% fewer back-and-forth turns** and used **72–98% fewer tokens** than without it. Renaming a method everywhere it is used took **75–91% fewer turns** and **78–98% fewer tokens**. The graph pays off even on tiny projects: the smallest we tested, gs-multi-module, has just **83 lines of code**. ([The tables](why.md#asking-about-the-code).)
 <!-- agents-claims:end -->
 
 `query`, `read` and `find` answer as their
-`jk graph` subcommands do and are on the extended list (`tools/list` with `extended: true`, or
-`[mcp] tools = "all"`); every tool is callable by name either way. `neighbors`, `path` and `rules`
-are `jk graph` in a shell. See [MCP](mcp.md).
+`jk code` subcommands do and are on the extended list (`tools/list` with `extended: true`, or
+`[mcp] tools = "all"`); every tool is callable by name either way, and `callers`, the name
+`usages` had before, still answers as `usages`. `delete`, `move` and `pull-up`, and `neighbors`,
+`path` and `rules`, are shell commands alone. See [MCP](mcp.md).

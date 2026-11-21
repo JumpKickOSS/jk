@@ -220,7 +220,7 @@ public final class AnchorsLeft {
     }
 
     private static String call(String address) {
-        return "callers(address=\"" + address + "\")";
+        return "usages(address=\"" + address + "\")";
     }
 
     /** {@code 2 markdown, 1 text}: the prose places by the kind of file. */

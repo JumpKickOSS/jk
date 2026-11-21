@@ -849,7 +849,7 @@ import java.util.List;
                 .contains("OrderService.total()  src/main/java/com/acme/shop/OrderService.java:");
         assertThat(run(root, request("path", "OrderService", "BaseService"))).startsWith("Shortest path, 1 hop:");
         assertThat(run(root, request("neighbors", "PriceCalculator"))).startsWith("Neighbors of PriceCalculator:");
-        assertThat(run(root, request("callers", "BaseService.log")))
+        assertThat(run(root, request("usages", "BaseService.log")))
                 .startsWith("Callers of BaseService.log(): 1 in main sources");
         GraphService.Request stored = new GraphService.Request(
                 "neighbors", List.of("PriceCalculator"), "bfs", 3, 2000, List.of(), false, 8, null, false, true);

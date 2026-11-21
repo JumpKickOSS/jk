@@ -153,7 +153,7 @@ class TestClassesGraphCacheE2eTest {
     private static GraphRequest request(Path dir) {
         return new GraphRequest(
                 dir.toString(),
-                "callers",
+                "usages",
                 List.of("Calc.doubled"),
                 "bfs",
                 3,

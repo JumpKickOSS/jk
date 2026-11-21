@@ -33,7 +33,7 @@ import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Every use of a type, an annotation, a field or a constructor, in the shape {@code callers} answers
+ * Every use of a type, an annotation, a field or a constructor, in the shape {@code usages} answers
  * a method with: each use under the declaration holding it, {@code Owner.member()} at {@code
  * file:line} with the line quoted, main sources before tests, counted, and a field's writes told
  * from its reads.
@@ -110,7 +110,7 @@ final class GraphUses {
     /**
      * The answer for {@code address} when it names a type, an annotation, a field or a constructor,
      * with the uncompiled sets it may miss uses in; {@code null} when it names a method, or nothing a
-     * type declares, which {@code callers} answers.
+     * type declares, which {@code usages} answers.
      */
     static GraphService.@Nullable Reply answer(
             GraphService.Workspace w, CodeGraph g, Scope scope, GraphTools tools, String address, int budget) {
@@ -404,7 +404,7 @@ final class GraphUses {
         return null;
     }
 
-    /** The answer {@code callers} gives for {@code found}'s uses. */
+    /** The answer {@code usages} gives for {@code found}'s uses. */
     static List<String> render(CodeGraph g, Path root, GraphTools tools, Found found) {
         Subject s = found.subject();
         List<Use> uses = found.uses();
@@ -510,7 +510,7 @@ final class GraphUses {
     }
 
     /**
-     * How an answer names declaration {@code id}: as {@code callers} does, and a constant, which its
+     * How an answer names declaration {@code id}: as {@code usages} does, and a constant, which its
      * type contains rather than declares as a method, with its type too ({@code Limits.MAX}).
      */
     private static String name(CodeGraph g, String id) {
@@ -540,7 +540,7 @@ final class GraphUses {
     }
 
     /**
-     * Every call of {@code type}'s constructors, from the compiled classes as {@code callers} reads a
+     * Every call of {@code type}'s constructors, from the compiled classes as {@code usages} reads a
      * method's: a {@code new}, a subclass constructor's {@code super(…)}, a method reference.
      */
     private static String constructors(GraphService.Workspace w, CodeGraph g, Scope scope, GraphNode type, int budget) {

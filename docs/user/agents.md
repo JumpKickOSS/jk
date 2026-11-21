@@ -68,7 +68,7 @@ Any other agent reads `AGENTS.md` and needs the one MCP command above.
 
 The hook is `jk agent-hook`, so its behaviour changes with JumpKick, not with the file. It denies `mvn` and
 `gradle` (naming MCP `run`, with `jk -a test` as the fallback) and answers a grep for a symbol, such as
-`OrderService` or `Order.total`, with a pointer to MCP `callers` / `rename` and `jk graph callers` /
+`OrderService` or `Order.total`, with a pointer to MCP `usages` / `rename` and `jk code usages` /
 `read` / `rename`. It never blocks a grep.
 Text searches pass untouched.
 
@@ -81,7 +81,7 @@ Text searches pass untouched.
 | Gemini CLI (`.gemini/` or `GEMINI.md` exists) | `.gemini/settings.json` | `mcpServers.jk` with `trust` set, and `AGENTS.md` added to `context.fileName` so Gemini reads the guide |
 | opencode (`opencode.json`, `opencode.jsonc` or `.opencode/` exists) | `opencode.json` | `mcp.jk`, a local server running `jk mcp` |
 
-| agy (`agy` on `PATH`, or `.agents/rules/` exists) | `.agents/rules/jk.md` | an always-on rule, owned by JumpKick: take `callers` and `rename` answers as final instead of re-opening the files they name |
+| agy (`agy` on `PATH`, or `.agents/rules/` exists) | `.agents/rules/jk.md` | an always-on rule, owned by JumpKick: take `usages` and `rename` answers as final instead of re-opening the files they name |
 
 Most agents read `AGENTS.md` and a project's MCP files (`.mcp.json` and the rest) only in a folder
 you have trusted, which JumpKick cannot do on your behalf. `jk agents`, `jk new` and `jk import` list that
@@ -110,11 +110,11 @@ them by hand.
 8. Stalled                   jk jobs / jk cancel   or MCP status, then cancel (extended tools/list)
 ```
 
-Before changing a method, ask who calls it: MCP `callers` or `jk graph callers Type.method`
+Before changing a method, ask who calls it: MCP `usages` or `jk code usages Type.method`
 (`-t` / `transitive=true` for everything that can end up running it). The answer comes from the
 compiled classes and is complete, so it replaces grepping for the name and reading each match
-([Code graph](graph.md#callers)). To rename a method, a field, a type or a package, or move a type,
-MCP `rename` or `jk graph rename <symbol> <new name>` makes every compiler-bound edit in one call,
+([Code graph](graph.md#usages)). To rename a method, a field, a type or a package, or move a type,
+MCP `rename` or `jk code rename <symbol> <new name>` makes every compiler-bound edit in one call,
 lists the rest as candidates `also` applies, and proves the edit by a compile
 ([Code graph](graph.md#rename)).
 
@@ -180,8 +180,8 @@ the URL with `jk engine status`. Send `Authorization: Bearer <token>`
 (`jk web -O jsonl --with-token` prints it; an agent's own output never does, [Web](web.md)). Pass `dir` on the first
 call — that binds the connection — then omit it; `bind` switches.
 
-The default `tools/list` is `run`, `diagnostics`, `deps`, `callers`, `rename`, and `skill`: every
-card is paid on every turn, so the list holds what a fix-and-rerun loop calls plus `callers`, which
+The default `tools/list` is `run`, `diagnostics`, `deps`, `usages`, `rename`, and `skill`: every
+card is paid on every turn, so the list holds what a fix-and-rerun loop calls plus `usages`, which
 answers who calls a method, complete, in one call instead of a grep and reads, and `rename`, which
 renames a method, field, type or package, or moves a type, with every use in one call instead of an
 edit per use. `run(kind=gate)` is the bar

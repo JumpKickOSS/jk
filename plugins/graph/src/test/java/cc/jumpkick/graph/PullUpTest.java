@@ -236,4 +236,26 @@ class PullUpTest {
                         + " members, or an instance member up to the class its type extends.");
         assertThat(f.read(SHOP + "Book.java")).isEqualTo(BOOK);
     }
+
+    @Test
+    void thePullUpOperationTakesOnlyAnInstanceMemberToTheClassItsTypeExtends(@TempDir Path dir) throws IOException {
+        Map<String, String> files = shop();
+        files.put(
+                SHOP + "Book.java",
+                BOOK.replace(
+                        "    public int pages() {",
+                        "    public static int count() {\n        return 1;\n    }\n\n    public int pages() {"));
+        RenameFixture f = new RenameFixture(dir, files);
+
+        assertThat(f.pullUp("Book.label", "Toy"))
+                .isEqualTo("Not pulled up, nothing is written: org.acme.shop.Book does not extend org.acme.shop.Toy;"
+                        + " a pull-up moves a member to the class its type extends.");
+        assertThat(f.pullUp("Book.count", "Item"))
+                .isEqualTo("Not pulled up, nothing is written: Book.count() is static; a pull-up takes an instance"
+                        + " member, a move a static one.");
+        assertThat(f.read(SHOP + "Book.java")).isEqualTo(files.get(SHOP + "Book.java"));
+
+        assertThat(f.pullUp("Book.label", "Item")).startsWith("Pulled up Book.label() to org.acme.base.Item: ");
+        assertThat(f.checkMove()).startsWith("Proven: it compiles, and Item.label has the 4 references");
+    }
 }

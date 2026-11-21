@@ -40,7 +40,7 @@ public final class AgentsGuide {
             | build | `run(kind=build)` | `jk -a build` |
             | every error of the last run | `diagnostics()` | `jk results -A` |
             | add / remove / pin a dependency | `deps` | `jk add` / `jk remove` |
-            | who uses `T.m`, `T.f`, `T`, `column:t.c` / rename or move it | `callers` / `rename` | `jk graph callers\\|rename` |
+            | who uses `T.m`, `T.f`, `T`, `column:t.c` / rename or move it | `usages` / `rename` | `jk code usages\\|rename` |
             | what a build would run | | `jk explain` |
             | finish: tests + guards | `run(kind=gate)` | `jk -a test -g` |
             | anything else | `skill(topic=…)` | `jk skill <topic>` |
@@ -48,7 +48,7 @@ public final class AgentsGuide {
             - Done when the gate is OK, or when `rename` says the task is done (it ran the tests and guards).
               `· up to date`: nothing was left to run. A `W` saying an input moved: rerun. A guard rule id:
               `jk guard explain <id>`.
-            - `callers` and `rename` answers are compiled facts and final: do not grep, re-read or re-test to check;
+            - `usages` and `rename` answers are compiled facts and final: do not grep, re-read or re-test to check;
               apply the uses `rename` lists with its `also`.
             - Never add `pom.xml` or Gradle files, run `mvn` or `./gradlew`, or edit `jk-guards-baseline.toml`.
             - `node = N` in `jk.toml` pins Node.js: `jk node exec -- <cmd>`, never a host `node` or `npm`.

@@ -31,8 +31,10 @@ class CodeGraphToolArgsTest {
     }
 
     @Test
-    void callers_reads_the_settings_it_declares() {
-        GraphRequest request = request("callers");
+    void usages_reads_the_settings_it_declares() {
+        GraphRequest request = request("usages");
+
+        assertThat(request.op()).isEqualTo("usages");
 
         assertThat(request.budget()).isEqualTo(50_000);
         assertThat(request.maxHops()).isEqualTo(40);

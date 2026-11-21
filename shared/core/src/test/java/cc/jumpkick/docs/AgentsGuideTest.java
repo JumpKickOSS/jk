@@ -107,14 +107,14 @@ class AgentsGuideTest {
     /**
      * Every byte is paid on every turn. The table costs about 260 bytes over the bullet list it
      * replaced and buys a first-time tool for each task an agent meets: a build, one class or suite,
-     * the gate, every error, a dependency, a symbol, a forecast. The callers line repays its bytes for
+     * the gate, every error, a dependency, a symbol, a forecast. The usages line repays its bytes for
      * an agent that checks every answer by hand.
      */
     @Test
-    void the_section_points_at_the_skill_and_callers_and_stays_short() {
+    void the_section_points_at_the_skill_and_usages_and_stays_short() {
         assertThat(AgentsGuide.SECTION)
                 .contains("jk skill")
-                .contains("jk graph callers")
+                .contains("jk code usages")
                 .contains("| To | MCP | CLI |")
                 .endsWith("\n");
         // Ceilings stand in for "do not waste tokens": every word must make a capability discoverable,

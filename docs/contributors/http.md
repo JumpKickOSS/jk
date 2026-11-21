@@ -742,7 +742,7 @@ one, `null` on the first page. Each episode carries `saved`, what it saved: a
 [`GET /api/stats`](#get-apistats) row with `scope` `episode`, `dir` its checkout, and `since`/`until`
 its start and last fact, added up over the runs the journal placed in it and every action it kept
 (not only the page's). An action is `{ seq, at, kind, summary, headline?, outcome, millis,
-episode, project?, buildNumber? }`: `kind` is `run` or the MCP tool (`query`, `callers`, `read`,
+episode, project?, buildNumber? }`: `kind` is `run` or the MCP tool (`query`, `usages`, `read`,
 `find`, `rename`, `deps`, `update`, `workspace`), `summary` one line of what it asked (`callers
 PricingRules.weekendUplift`), `headline` the first line of its answer (`3 callers`), `outcome`
 `ok`/`error` for an action and `green`/`red`/`cancelled` for a run. `summary` and `headline` are

@@ -26,24 +26,49 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 
 /**
- * One {@code jk graph} operation. A refresh that takes long enough to notice gets a progress row;
- * {@code build} settles on a summary line, every read prints its answer as plain text. Under
- * {@code -O jsonl} each prints one {@code graph} row instead.
+ * One {@code jk graph} or {@code jk code} operation, the engine operation of the same name. A refresh
+ * that takes long enough to notice gets a progress row; {@code build} settles on a summary line,
+ * every other operation prints its answer as plain text. Under {@code -O jsonl} each prints one row
+ * named for its group instead.
  */
 final class GraphOpCommand implements CliCommand {
 
     /** A refresh shorter than this paints nothing: an unchanged graph answers without a flicker. */
     private static final long QUIET_MILLIS = 250;
 
+    static final Opt NO_REFRESH = Opt.flag("Answer from the last graph; skip the refresh.", "-n", "--no-refresh");
+    static final Opt BUDGET = Opt.value("<tokens>", "Answer size in tokens (default 2000).", "-b", "--budget");
+
+    /** The options that narrow a read to part of the workspace. */
+    static final List<Opt> SCOPE = List.of(
+            Opt.value("<globs>", "Only these paths; ! excludes.", "-g", "--scope"),
+            CommonOpts.modules("Only these modules (globs; repeatable)."),
+            Opt.value("<main|test>", "Only main or test sources.", "-S", "--source-set"));
+
+    /** {@code options} followed by {@link #SCOPE}. */
+    static List<Opt> scoped(Opt... options) {
+        List<Opt> out = new ArrayList<>(List.of(options));
+        out.addAll(SCOPE);
+        return List.copyOf(out);
+    }
+
+    /** An answer that says nothing was found or nothing was written: the command exits 1. */
+    private static final Pattern NOTHING =
+            Pattern.compile("^(No |Not (renamed|moved|deleted|pulled up)\\b)|\\nRolled back");
+
+    private final String group;
     private final String op;
     private final String description;
     private final List<Opt> options;
     private final List<Param> parameters;
 
-    GraphOpCommand(String op, String description, List<Opt> options, List<Param> parameters) {
+    /** Operation {@code op} of {@code jk <group>}. */
+    GraphOpCommand(String group, String op, String description, List<Opt> options, List<Param> parameters) {
+        this.group = group;
         this.op = op;
         this.description = description;
         this.options = options;
@@ -88,18 +113,16 @@ final class GraphOpCommand implements CliCommand {
         } finally {
             row.close();
         }
+        String label = label(group);
         if (!ack.ok()) {
-            CommandWedge.printFail("Graph", ack.error());
+            CommandWedge.printFail(label, ack.error());
             return Exit.FAILURE;
         }
         String note = ack.note();
-        if (note != null) CommandWedge.printChipErr(Glyphs.BANG, "Graph", note);
-        boolean found = !ack.text().startsWith("No ")
-                && !ack.text().startsWith("Not renamed")
-                && !ack.text().startsWith("Not moved")
-                && !ack.text().contains("\nRolled back");
+        if (note != null) CommandWedge.printChipErr(Glyphs.BANG, label, note);
+        boolean found = !NOTHING.matcher(ack.text()).find();
         if (json) {
-            JsonlShape.row("graph", f -> {
+            JsonlShape.row(group, f -> {
                 f.string("op", op);
                 if (op.equals("build")) {
                     f.number("nodes", ack.nodes())
@@ -158,6 +181,11 @@ final class GraphOpCommand implements CliCommand {
     /** Options passed through to the worker by name. */
     static final List<String> SETTINGS =
             List.of("view", "kind", "visibility", "extends", "implements", "annotated", "also", "module", "library");
+
+    /** {@code code} → {@code Code}: how a group names itself on a status line. */
+    static String label(String group) {
+        return Character.toUpperCase(group.charAt(0)) + group.substring(1);
+    }
 
     private static int number(Invocation in, String option, int fallback) {
         String raw = in.value(option).orElse(null);

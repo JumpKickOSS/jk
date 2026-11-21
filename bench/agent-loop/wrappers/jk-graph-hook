@@ -38,7 +38,7 @@ IDENT = re.compile(r"[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*")
 
 def jk(cwd: str, *args: str) -> str:
     try:
-        p = subprocess.run(["jk", "-u", "-x", "-C", cwd, "graph", *args], capture_output=True, text=True, timeout=20)
+        p = subprocess.run(["jk", "-u", "-x", "-C", cwd, "code", *args], capture_output=True, text=True, timeout=20)
     except (OSError, subprocess.TimeoutExpired):
         return ""
     return p.stdout.strip() if p.returncode == 0 else ""
@@ -68,7 +68,7 @@ def for_grep(cwd: str, pattern: str) -> str:
         if "." in name:
             owner, member = name.rsplit(".", 1)
             if owner[:1].isupper() and member[:1].islower():
-                callers = jk(cwd, "callers", name, "-b", str(BUDGET))
+                callers = jk(cwd, "usages", name, "-b", str(BUDGET))
                 if useful(callers) and callers.startswith("Callers of"):
                     parts.append(callers)
                     continue
@@ -87,7 +87,7 @@ def for_grep(cwd: str, pattern: str) -> str:
             if 0 < len(owners) <= MAX_OWNERS:
                 answered = []
                 for owner in owners:
-                    callers = jk(cwd, "callers", owner, "-b", str(BUDGET // len(owners)))
+                    callers = jk(cwd, "usages", owner, "-b", str(BUDGET // len(owners)))
                     if useful(callers) and callers.startswith("Callers of"):
                         answered.append(callers)
                 if answered:

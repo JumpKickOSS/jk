@@ -32,7 +32,7 @@ public record Fact(
     /** The fact kinds inference tells apart. */
     public enum Kind {
         RUN,
-        /** A code-graph question: {@code query}, {@code callers}, {@code read}, {@code find}. */
+        /** A code-graph question: {@code query}, {@code usages}, {@code read}, {@code find}. */
         GRAPH,
         RENAME,
         /** {@code deps add}. */

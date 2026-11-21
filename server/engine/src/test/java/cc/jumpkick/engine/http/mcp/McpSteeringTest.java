@@ -42,7 +42,7 @@ class McpSteeringTest {
     /** A backticked call or bare tool name: {@code `run(kind=build)`}, {@code `deps`}. */
     private static final Pattern TICKED = Pattern.compile("`([a-z_]+)(\\(([^`)]*)\\))?`");
 
-    /** A call in running prose: {@code run(dir=<project>)}, {@code callers(address)}. */
+    /** A call in running prose: {@code run(dir=<project>)}, {@code usages(address)}. */
     private static final Pattern CALL = Pattern.compile("\\b([a-z_]+)\\(([^)]*)\\)");
 
     private static final McpTools TOOLS = McpTools.standard();
@@ -82,7 +82,7 @@ class McpSteeringTest {
         calls(text.toString(), TICKED).forEach((name, args) -> {
             if (TOOLS.tool(name) != null) named.put(name, args);
         });
-        assertThat(named).as("MCP tools the agent files and the hook name").containsKeys("run", "callers", "rename");
+        assertThat(named).as("MCP tools the agent files and the hook name").containsKeys("run", "usages", "rename");
         named.forEach(McpSteeringTest::assertCallable);
     }
 
@@ -101,7 +101,7 @@ class McpSteeringTest {
                 if (m.group(3) != null && !m.group(3).isBlank()) args.add(m.group(3));
             }
         }
-        assertThat(calls).as("tool calls in the skill").containsKeys("run", "deps", "callers", "rename");
+        assertThat(calls).as("tool calls in the skill").containsKeys("run", "deps", "usages", "rename");
         calls.forEach(McpSteeringTest::assertAccepted);
         for (String page : skillPages()) {
             Matcher on = ARGUMENT_ON.matcher(page);

@@ -29,7 +29,8 @@ import org.jspecify.annotations.Nullable;
  * and a native image must be able to see it at build time.
  *
  * <p>{@code tools/list} and {@code tools/call} both read this one map, so a name cannot be
- * advertised without a body or answered without being advertised.
+ * advertised without a body or answered without being advertised; the one exception is an {@link
+ * #ALIASES alias}, answered by the tool it names and never listed.
  *
  * <p>The default {@code tools/list} is {@link #LOOP}. A client asks for the rest by sending {@code
  * tools/list} with {@code extended: true}, or by setting {@code [mcp] tools = "all"} so every list
@@ -42,11 +43,14 @@ public final class McpTools {
 
     /**
      * The default {@code tools/list}: what one fix-and-rerun loop needs, in reading order, {@code
-     * callers}, the one graph question that answers in a call what grep and reads take turns to
+     * usages}, the one graph question that answers in a call what grep and reads take turns to
      * approximate, and {@code rename}, which makes in one call the edits a rename takes a turn each
      * for. Every card is paid on every turn.
      */
-    public static final List<String> LOOP = List.of("run", "diagnostics", "deps", "callers", "rename", "skill");
+    public static final List<String> LOOP = List.of("run", "diagnostics", "deps", "usages", "rename", "skill");
+
+    /** Released tool names a call may still use, each answered by the tool it maps to; never listed. */
+    public static final Map<String, String> ALIASES = Map.of("callers", "usages");
 
     /** Which rows {@code tools/list} answers. */
     public enum Surface {
@@ -77,15 +81,15 @@ public final class McpTools {
      */
     private static String instructions(boolean pinned) {
         return "This project builds with jk, not Maven or Gradle: never add pom.xml or Gradle files. "
-                + "Tools: run, diagnostics, deps, callers, rename, skill. The calls below show every argument they "
+                + "Tools: run, diagnostics, deps, usages, rename, skill. The calls below show every argument they "
                 + "need: make them as written, without fetching a card, schema or skill page. "
                 + (pinned
                         ? "Loop: run() returns the verdict → edit → run(). "
                         : "Loop: run(dir=<project>) returns the verdict and binds the connection → edit → run(). ")
-                + "Who uses a method, field, type or column: callers(address=\"Type.method\"), once, before any "
+                + "Who uses a method, field, type or column: usages(address=\"Type.method\"), once, before any "
                 + "search; complete. "
                 + "Rename or move a method, field (with its getter and setter), class or package: "
-                + "rename(goal=\"<the task>\", address=\"Type.field\", to=\"newName\") first, with no callers "
+                + "rename(goal=\"<the task>\", address=\"Type.field\", to=\"newName\") first, with no usages call "
                 + "before it; it edits every use, compiles and tests. Uses it lists but did not apply: the same "
                 + "call with also=\"c1,c3\". "
                 + "Both answers are compiled facts and final: do not grep, read or re-run to check them; when "
@@ -176,7 +180,7 @@ public final class McpTools {
                 new GraphTool(),
                 new DoctorTool(),
                 new MachineTool(),
-                CodeGraphTool.callers(),
+                CodeGraphTool.usages(),
                 CodeGraphTool.rename(),
                 CodeGraphTool.query(),
                 CodeGraphTool.read(),
@@ -184,9 +188,9 @@ public final class McpTools {
         return new McpTools(tools, LOOP);
     }
 
-    /** The tool registered as {@code name}; null for none. */
+    /** The tool registered as {@code name}, or the one it is an alias of; null for none. */
     public @Nullable McpTool tool(String name) {
-        return byName.get(name);
+        return byName.get(ALIASES.getOrDefault(name, name));
     }
 
     /** Every tool name, in registration order. */
@@ -272,8 +276,9 @@ public final class McpTools {
             @Nullable McpConnection connection,
             @Nullable McpOutbound outbound) {
         Object rawName = params.get("name");
-        String name = rawName == null ? null : String.valueOf(rawName);
-        if (name == null || name.isBlank()) throw new McpError(-32602, "tools/call requires name");
+        String asked = rawName == null ? null : String.valueOf(rawName);
+        if (asked == null || asked.isBlank()) throw new McpError(-32602, "tools/call requires name");
+        String name = ALIASES.getOrDefault(asked, asked);
         McpTool tool = byName.get(name);
         if (tool == null) throw new McpError(-32602, "unknown tool: " + name);
         Map<String, Object> args = params.get("arguments") instanceof Map<?, ?> a ? (Map<String, Object>) a : Map.of();

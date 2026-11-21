@@ -23,7 +23,7 @@ final class McpActions {
 
     /** Every tool a session's timeline logs. */
     static final Set<String> LOGGED =
-            Set.of("query", "callers", "read", "find", "rename", "deps", "update", "workspace");
+            Set.of("query", "usages", "read", "find", "rename", "deps", "update", "workspace");
 
     /** The tools that take {@link McpSchemas#GOAL}: the ones that start work. */
     static final Set<String> GOALS = Set.of("run", "deps", "rename", "update");
@@ -118,12 +118,12 @@ final class McpActions {
         };
     }
 
-    /** One line saying what the call asked: {@code callers PricingRules.weekendUplift}. */
+    /** One line saying what the call asked: {@code usages PricingRules.weekendUplift}. */
     static String summary(String name, McpCall call, @Nullable Map<String, Object> result) {
         String text =
                 switch (name) {
                     case "query" -> "query \"" + orEmpty(call.str("question")) + "\"";
-                    case "callers", "read" -> name + " " + orEmpty(call.str("address"));
+                    case "usages", "read" -> name + " " + orEmpty(call.str("address"));
                     case "find" -> "find " + orEmpty(call.str("name"));
                     case "rename" -> "rename " + orEmpty(call.str("address")) + " → " + orEmpty(call.str("to"));
                     case "deps" ->
