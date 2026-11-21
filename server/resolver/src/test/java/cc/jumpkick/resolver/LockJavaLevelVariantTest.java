@@ -83,6 +83,17 @@ class LockJavaLevelVariantTest {
         assertThat(modules(lock)).contains("widget-jdk11").doesNotContain("widget-jdk21");
     }
 
+    @Test
+    void a_relock_after_java_is_lowered_keeps_no_variant_the_new_java_cannot_run(@TempDir Path tmp) throws Exception {
+        Lockfile atNewest = new LockOrchestrator(repos(tmp)).lock(manifest("app", 25), "test");
+
+        Lockfile lowered = new LockOrchestrator(repos(tmp))
+                .lockConservative(manifest("app", 17), atNewest, "test", List.of(), true, ResolveObserver.NOOP);
+
+        assertThat(modules(atNewest)).contains("widget-jdk21");
+        assertThat(modules(lowered)).contains("widget-jdk11").doesNotContain("widget-jdk21");
+    }
+
     private static String variant(int level) {
         return """
                 { "name": "jdk%1$dRuntimeElements",

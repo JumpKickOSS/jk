@@ -334,6 +334,35 @@ class LockFreshnessTest {
     }
 
     /**
+     * The lock chooses a Gradle module's runtime variant for the lowest {@code java} its modules
+     * declare, so lowering one member's {@code java} must stale it: the digest reads every member's
+     * bytes, and a same-length edit ({@code 25} to {@code 17}) is not hidden by the digest's memo.
+     */
+    @Test
+    void lowering_a_members_java_stales_the_workspace_lock(@TempDir Path dir) throws Exception {
+        Files.writeString(dir.resolve("jk.toml"), """
+                group   = "g"
+                name    = "n"
+                version = "1"
+                java    = 25
+
+                [workspace]
+                modules = ["a", "b"]
+                """);
+        Files.createDirectories(dir.resolve("a"));
+        Files.createDirectories(dir.resolve("b"));
+        Path member = Files.writeString(dir.resolve("a/jk.toml"), "name = \"a\"\njava = 25\n");
+        Files.writeString(dir.resolve("b/jk.toml"), "name = \"b\"\n");
+        Path lockFile = dir.resolve("jk-lock.toml");
+        LockfileWriter.write(Lockfile.empty("test"), lockFile);
+        assertThat(LockFreshness.staleReason(dir, lockFile)).isNull();
+
+        Files.writeString(member, "name = \"a\"\njava = 17\n");
+
+        assertThat(LockFreshness.staleReason(dir, lockFile)).isEqualTo(LockFreshness.STALE);
+    }
+
+    /**
      * A closure an active plugin resolves for the lock ([quarkus] resolves its extensions'
      * deployment closures) is pinned by a row per module, stamped by the plugin that answered it:
      * none, one for another module, or one another build of the plugin answered is a stale lock,
