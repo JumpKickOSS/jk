@@ -165,7 +165,7 @@ final class HttpProjectApi {
         }
         // One card, one parse path (shared with MCP project): identity resolves without a
         // parseable manifest, so a ?dir= call on a broken workspace still gets its durable id.
-        ProjectCard card = ProjectCard.of(Path.of(dir));
+        ProjectCard card = ProjectCard.of(HttpRequests.path(Objects.requireNonNull(dir)));
         String resolvedId = card.projectId() != null ? card.projectId() : projectId;
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("dir", dir);
@@ -256,7 +256,7 @@ final class HttpProjectApi {
                     JsonOut.object().put("error", "missing \"dir\"").toString());
             return;
         }
-        Map<String, Object> body = ProjectModelJson.forDir(Path.of(dir));
+        Map<String, Object> body = ProjectModelJson.forDir(HttpRequests.path(dir));
         HttpResponses.sendJson(exchange, body.containsKey("error") ? 422 : 200, MiniJson.write(body));
     }
 

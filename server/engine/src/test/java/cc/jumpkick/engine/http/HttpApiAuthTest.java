@@ -255,7 +255,7 @@ class HttpApiAuthTest extends HttpEngineServerHarness {
                         .build(),
                 HttpResponse.BodyHandlers.ofString());
         assertThat(resp.statusCode()).isEqualTo(405);
-        assertThat(resp.headers().firstValue("Allow")).contains("GET");
+        assertThat(resp.headers().firstValue("Allow")).contains("GET, HEAD");
     }
 
     @Test

@@ -43,6 +43,12 @@ public final class McpMachine {
 
     private static final Pattern HEAP_LINE = Pattern.compile("(?m)^([ \\t]*)max-heap-mb[ \\t]*=[ \\t]*\\d+[ \\t]*$");
 
+    /** The least {@code engine.max-heap-mb} config set writes, 0 (uncapped) aside: an engine under it cannot build. */
+    static final int MIN_HEAP_MB = 128;
+
+    /** The most {@code engine.max-heap-mb} config set writes (64 GiB): a larger number is a typo. */
+    static final int MAX_HEAP_MB = 65_536;
+
     private McpMachine() {}
 
     /**
@@ -121,7 +127,7 @@ public final class McpMachine {
             }
             if ("engine.max-heap-mb".equals(key)) {
                 if (value == null) throw new McpError(-32602, "config set " + key + " requires value");
-                int mb = Integer.parseInt(value.trim());
+                int mb = heapMb(value);
                 Path file = JkDirs.userConfigFile();
                 String text = Files.isRegularFile(file) ? Files.readString(file, StandardCharsets.UTF_8) : "";
                 String after = upsertHeap(text, mb);
@@ -441,6 +447,23 @@ public final class McpMachine {
             m.put("error", Errors.text(e));
         }
         return m;
+    }
+
+    /** {@code value} as a heap in MiB: 0 (uncapped) or {@link #MIN_HEAP_MB} to {@link #MAX_HEAP_MB}. */
+    static int heapMb(String value) {
+        int mb;
+        try {
+            mb = Integer.parseInt(value.trim());
+        } catch (NumberFormatException e) {
+            mb = -1;
+        }
+        if (mb != 0 && (mb < MIN_HEAP_MB || mb > MAX_HEAP_MB)) {
+            throw new McpError(
+                    -32602,
+                    "engine.max-heap-mb is 0 (uncapped) or " + MIN_HEAP_MB + " to " + MAX_HEAP_MB + ", not "
+                            + value.trim());
+        }
+        return mb;
     }
 
     static String upsertHeap(String toml, int mb) {

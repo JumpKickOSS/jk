@@ -38,15 +38,16 @@ final class HostCheck {
                 || (LOCAL_HOSTNAME != null && name.equalsIgnoreCase(LOCAL_HOSTNAME));
     }
 
-    /** {@code portPart} is either empty or {@code :<digits>}; when present it must match. */
+    /** {@code portPart} is either empty or {@code :<digits>}, no sign; when present it must match. */
     private static boolean portMatches(String portPart, int boundPort) {
         if (portPart.isEmpty()) return true;
         if (portPart.charAt(0) != ':') return false;
-        try {
-            return Integer.parseInt(portPart.substring(1)) == boundPort;
-        } catch (NumberFormatException e) {
-            return false;
+        String digits = portPart.substring(1);
+        if (digits.isEmpty() || digits.length() > 5) return false;
+        for (int i = 0; i < digits.length(); i++) {
+            if (digits.charAt(i) < '0' || digits.charAt(i) > '9') return false;
         }
+        return Integer.parseInt(digits) == boundPort;
     }
 
     private static boolean isIpv4Literal(String s) {
@@ -55,7 +56,7 @@ final class HostCheck {
         for (String part : parts) {
             if (part.isEmpty() || part.length() > 3) return false;
             for (int i = 0; i < part.length(); i++) {
-                if (!Character.isDigit(part.charAt(i))) return false;
+                if (part.charAt(i) < '0' || part.charAt(i) > '9') return false;
             }
             if (Integer.parseInt(part) > 255) return false;
         }

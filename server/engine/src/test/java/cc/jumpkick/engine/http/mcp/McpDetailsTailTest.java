@@ -111,4 +111,22 @@ class McpDetailsTailTest {
         assertThat(String.valueOf(oldest.get("events"))).contains("e0").doesNotContain("e1");
         assertThat(oldest).containsEntry("truncatedTail", false);
     }
+
+    @Test
+    void each_event_has_the_runs_project_secrets_masked() throws Exception {
+        Path project = Files.createDirectories(tmp.resolve("app"));
+        Files.writeString(project.resolve("jk.toml"), "group = \"g\"\nname = \"a\"\nversion = \"1\"\n");
+        Files.writeString(project.resolve(".env"), "TOKEN='details\"s3cret'\n");
+        Path file = Files.writeString(
+                tmp.resolve("details.jsonl"),
+                "{\"schema\":1,\"type\":\"error\",\"message\":\"login with details\\\"s3cret failed\"}\n");
+
+        Map<String, Object> page = McpDetails.tail(
+                Map.of("id", "r1", "dir", project.toString()), id -> Optional.of(file), List.of("error"), 5, 0);
+
+        assertThat(String.valueOf(page.get("events")))
+                .contains("login with")
+                .contains("failed")
+                .doesNotContain("s3cret");
+    }
 }

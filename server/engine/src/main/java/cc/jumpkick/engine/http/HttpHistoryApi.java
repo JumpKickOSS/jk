@@ -7,6 +7,7 @@ import cc.jumpkick.engine.api.BuildHistoryKinds;
 import cc.jumpkick.engine.api.HttpLive;
 import cc.jumpkick.engine.api.JsonOut;
 import cc.jumpkick.engine.journal.BuildJournal;
+import cc.jumpkick.engine.journal.BuildRecord;
 import cc.jumpkick.engine.listen.EventRedaction;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.jsonl.MiniJson;
@@ -342,8 +343,8 @@ final class HttpHistoryApi {
     }
 
     /**
-     * {@code GET /api/history/artifact?id=…&name=…} — a snapshot file served as plain text.
-     * {@code name} is whitelisted by the journal; one over {@link HttpCoverageReport#MAX_FILE_BYTES} is
+     * {@code GET /api/history/artifact?id=…&name=…} — a snapshot file served as plain text, its
+     * project's secrets masked as it is read. {@code name} is whitelisted by the journal; one over {@link HttpCoverageReport#MAX_FILE_BYTES} is
      * refused (413) rather than read whole.
      */
     void handleHistoryArtifact(HttpExchange exchange) throws IOException {
@@ -351,7 +352,7 @@ final class HttpHistoryApi {
         String id = HttpQuery.queryParamLenient(query, "id");
         String name = HttpQuery.queryParamLenient(query, "name");
         var artifact = id == null || name == null ? Optional.<Path>empty() : journal.artifact(id, name);
-        if (artifact.isEmpty()) {
+        if (id == null || artifact.isEmpty()) {
             HttpResponses.sendJson(
                     exchange,
                     404,
@@ -362,7 +363,9 @@ final class HttpHistoryApi {
             HttpResponses.sendText(exchange, 413, "artifact too large to serve\n");
             return;
         }
-        HttpResponses.sendText(exchange, 200, Files.readString(artifact.get(), StandardCharsets.UTF_8));
+        String text = Files.readString(artifact.get(), StandardCharsets.UTF_8);
+        String dir = journal.get(id).map(BuildRecord::dir).orElse(null);
+        HttpResponses.sendText(exchange, 200, EventRedaction.redactText(dir, text));
     }
 
     /**

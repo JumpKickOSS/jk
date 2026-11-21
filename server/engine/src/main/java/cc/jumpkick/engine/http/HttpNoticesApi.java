@@ -3,7 +3,6 @@ package cc.jumpkick.engine.http;
 
 import cc.jumpkick.engine.api.JsonOut;
 import cc.jumpkick.engine.notices.Notices;
-import cc.jumpkick.jsonl.MiniJson;
 import com.sun.net.httpserver.HttpExchange;
 import java.io.IOException;
 import java.util.LinkedHashMap;
@@ -38,7 +37,7 @@ final class HttpNoticesApi {
      * {@code upTo} is not a number.
      */
     void handleSeen(HttpExchange exchange) throws IOException {
-        Object parsed = MiniJson.parse(HttpRequests.body(exchange));
+        Object parsed = HttpRequests.json(exchange);
         if (!(parsed instanceof Map<?, ?> body) || !(body.get("upTo") instanceof Number upTo)) {
             HttpResponses.sendJson(
                     exchange,

@@ -108,9 +108,11 @@ final class HttpTokenGate {
         HttpResponses.sendText(exchange, 401, "missing or invalid bearer token\n");
     }
 
+    /** The credentials of a {@code Bearer} header; the scheme name is case-insensitive (RFC 9110 §11.1). */
     private static @Nullable String bearerToken(@Nullable String authorization) {
-        if (authorization == null || !authorization.startsWith("Bearer ")) return null;
-        return authorization.substring("Bearer ".length()).trim();
+        String scheme = "Bearer ";
+        if (authorization == null || !authorization.regionMatches(true, 0, scheme, 0, scheme.length())) return null;
+        return authorization.substring(scheme.length()).trim();
     }
 
     /** Constant-time equality with the minted token; a path segment or query value presents the same way. */

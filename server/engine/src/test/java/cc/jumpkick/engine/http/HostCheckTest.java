@@ -43,6 +43,17 @@ class HostCheckTest {
     }
 
     @Test
+    void a_port_is_plain_ascii_digits() {
+        assertThat(HostCheck.allowed("127.0.0.1:+8910", PORT)).isFalse();
+        assertThat(HostCheck.allowed("localhost:+8910", PORT)).isFalse();
+        assertThat(HostCheck.allowed("[::1]:+8910", PORT)).isFalse();
+        assertThat(HostCheck.allowed("localhost:08910", PORT)).isTrue();
+        assertThat(HostCheck.allowed("localhost:\u0668\u0669\u0661\u0660", PORT))
+                .isFalse(); // Arabic-Indic 8910
+        assertThat(HostCheck.allowed("\u0661\u0662\u0667.0.0.1:8910", PORT)).isFalse();
+    }
+
+    @Test
     void missing_or_blank_host_is_rejected() {
         assertThat(HostCheck.allowed(null, PORT)).isFalse();
         assertThat(HostCheck.allowed("", PORT)).isFalse();

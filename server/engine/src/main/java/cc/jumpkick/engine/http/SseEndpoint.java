@@ -107,7 +107,7 @@ final class SseEndpoint {
      */
     void report(HttpExchange exchange) throws IOException {
         String stream = exchange.getRequestURI().getPath().substring(PRESENCE_PREFIX.length());
-        Object parsed = MiniJson.parse(HttpRequests.body(exchange));
+        Object parsed = HttpRequests.json(exchange);
         if (!(parsed instanceof Map<?, ?> body)) {
             HttpResponses.sendJson(
                     exchange,

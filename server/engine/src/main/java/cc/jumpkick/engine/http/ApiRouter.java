@@ -3,14 +3,18 @@ package cc.jumpkick.engine.http;
 
 import com.sun.net.httpserver.HttpExchange;
 import java.io.IOException;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Method+path router for {@code /api/*}: an exact path, or a prefix whose route takes one more path
- * segment ({@code /api/sessions/<id>}). Wrong method → 405, unknown → 404.
+ * segment ({@code /api/sessions/<id>}). A {@code HEAD} runs the {@code GET} route, whose response
+ * helpers send headers only, except on an event stream. Wrong method → 405, unknown → 404.
  */
 final class ApiRouter {
 
@@ -25,8 +29,17 @@ final class ApiRouter {
     /** {@code "GET /api/sessions/"} → handler for {@code /api/sessions/<segment>}. */
     private final Map<String, Handler> prefixes = new LinkedHashMap<>();
 
+    /** Exact paths whose {@code GET} opens an event stream, which a {@code HEAD} must not open. */
+    private final Set<String> streams = new HashSet<>();
+
     void register(String method, String path, Handler handler) {
         routes.put(method + " " + path, handler);
+    }
+
+    /** Route {@code GET path} to an event stream; a {@code HEAD} of it is 405. */
+    void registerStream(String path, Handler handler) {
+        register("GET", path, handler);
+        streams.add(path);
     }
 
     /** Route {@code prefix + <one segment>}; {@code prefix} ends with {@code /}. */
@@ -37,8 +50,9 @@ final class ApiRouter {
 
     void handle(HttpExchange exchange) throws IOException {
         String path = exchange.getRequestURI().getPath();
-        Handler handler = routes.get(exchange.getRequestMethod() + " " + path);
-        if (handler == null) handler = prefixes.get(exchange.getRequestMethod() + " " + prefixOf(path));
+        String method = exchange.getRequestMethod();
+        Handler handler = route(method, path);
+        if (handler == null && method.equals("HEAD") && !streams.contains(path)) handler = route("GET", path);
         if (handler != null) {
             handler.handle(exchange);
             return;
@@ -50,6 +64,11 @@ final class ApiRouter {
             return;
         }
         HttpResponses.sendText(exchange, 404, "no such endpoint\n");
+    }
+
+    private @Nullable Handler route(String method, String path) {
+        Handler handler = routes.get(method + " " + path);
+        return handler != null ? handler : prefixes.get(method + " " + prefixOf(path));
     }
 
     /** {@code path} up to and including its last {@code /} when one segment follows it, else {@code ""}. */
@@ -65,6 +84,9 @@ final class ApiRouter {
                         routes.keySet().stream().filter(key -> key.endsWith(suffix)),
                         prefixes.keySet().stream().filter(key -> prefix.length() > 1 && key.endsWith(prefix)))
                 .map(key -> key.substring(0, key.indexOf(' ')))
+                .flatMap(method ->
+                        method.equals("GET") && !streams.contains(path) ? Stream.of("GET", "HEAD") : Stream.of(method))
+                .distinct()
                 .collect(Collectors.joining(", "));
     }
 }

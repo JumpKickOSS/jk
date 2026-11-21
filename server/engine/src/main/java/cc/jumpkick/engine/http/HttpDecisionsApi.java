@@ -55,7 +55,7 @@ final class HttpDecisionsApi {
      */
     void handleAnswer(HttpExchange exchange) throws IOException {
         String id = idOf(exchange);
-        Object parsed = MiniJson.parse(HttpRequests.body(exchange));
+        Object parsed = HttpRequests.json(exchange);
         if (!(parsed instanceof Map<?, ?> body)) {
             error(exchange, 400, "the body is a JSON object");
             return;

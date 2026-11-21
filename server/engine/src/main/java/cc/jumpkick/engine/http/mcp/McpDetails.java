@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.http.mcp;
 
+import cc.jumpkick.config.SecretRedactor;
+import cc.jumpkick.engine.listen.EventRedaction;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.wire.protocol.EngineProtocol;
@@ -24,7 +26,7 @@ import org.jspecify.annotations.Nullable;
  * MCP {@code details}: a budgeted tail of a run's {@code details.jsonl} transcript. The default
  * shape (last-fail run, error + task-finish events, 80-event tail, hard byte budget) keeps a
  * failed compile under a few KiB; the absolute path rides along for hosts that want the whole
- * file. Paging: {@code next} counts matching events already consumed from the newest end.
+ * file. Each event has the run's project secrets masked as it is read. Paging: {@code next} counts matching events already consumed from the newest end.
  */
 public final class McpDetails {
 
@@ -146,11 +148,12 @@ public final class McpDetails {
         long older = Math.max(0L, (long) total - skipNewest - matching.size());
         int end = matching.size();
         // Enforce the byte budget from the newest edge of the window backward.
+        SecretRedactor redactor = redactorFor(McpHistoryViews.str(rec, "dir"));
         int chars = 0;
         List<Map<String, Object>> events = new ArrayList<>();
         int first = end;
         for (int i = end - 1; i >= 0; i--) {
-            String line = matching.get(i);
+            String line = redact(redactor, matching.get(i));
             if (chars + line.length() > MAX_CHARS && !events.isEmpty()) break;
             chars += line.length();
             first = i;
@@ -172,5 +175,26 @@ public final class McpDetails {
         m.put("truncatedTail", truncated);
         if (truncated) m.put("nextCursor", skipNewest + (end - first));
         return m;
+    }
+
+    /** The redactor for the run's project; fail-open, as every read-time redaction is. */
+    private static SecretRedactor redactorFor(String dir) {
+        try {
+            return EventRedaction.redactorFor(dir).forEscapedJson();
+        } catch (RuntimeException e) {
+            // A record with no dir read outside a session is routine, not a broken redactor.
+            if (!dir.isBlank()) EventRedaction.warnFailOpen(e);
+            return SecretRedactor.none();
+        }
+    }
+
+    /** {@code line}, a JSON document, with each secret masked in its escaped form too. */
+    private static String redact(SecretRedactor redactor, String line) {
+        try {
+            return redactor.redact(line);
+        } catch (RuntimeException e) {
+            EventRedaction.warnFailOpen(e);
+            return line;
+        }
     }
 }

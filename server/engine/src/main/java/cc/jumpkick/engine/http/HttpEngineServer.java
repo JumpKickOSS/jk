@@ -419,7 +419,7 @@ public final class HttpEngineServer implements AutoCloseable {
                 this::url);
         api.register("GET", "/api/status", readApi::handleStatus);
         api.register("GET", "/api/config", readApi::handleConfig);
-        api.register("GET", "/api/events", sse::serveDashboard);
+        api.registerStream("/api/events", sse::serveDashboard);
         api.registerPrefix("POST", SseEndpoint.PRESENCE_PREFIX, sse::report);
         api.register("GET", "/api/log", readApi::handleLog);
         api.register("GET", "/api/fs", readApi::handleFs);
@@ -622,6 +622,11 @@ public final class HttpEngineServer implements AutoCloseable {
                                 .put("error", "request body too large")
                                 .put("maxBytes", e.maxBytes())
                                 .toString());
+            } catch (HttpRequests.BadRequest e) {
+                HttpResponses.sendJson(
+                        exchange,
+                        400,
+                        JsonOut.object().put("error", e.getMessage()).toString());
             } catch (RuntimeException e) {
                 // A handler bug must not kill the virtual thread silently mid-response.
                 log.accept("jk engine: http handler error: " + e);

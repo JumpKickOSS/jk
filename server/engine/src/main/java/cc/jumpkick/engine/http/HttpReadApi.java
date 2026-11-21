@@ -109,14 +109,18 @@ final class HttpReadApi {
                 // keep the default
             }
         }
+        exchange.getResponseHeaders().set("Content-Type", "text/plain; charset=utf-8");
+        exchange.getResponseHeaders().set("Cache-Control", "no-store");
+        if (exchange.getRequestMethod().equals("HEAD")) {
+            exchange.sendResponseHeaders(200, -1);
+            return;
+        }
         String tail;
         try {
             tail = tailOf(logFile, requested);
         } catch (IOException e) {
             tail = "";
         }
-        exchange.getResponseHeaders().set("Content-Type", "text/plain; charset=utf-8");
-        exchange.getResponseHeaders().set("Cache-Control", "no-store");
         byte[] bytes = tail.getBytes(StandardCharsets.UTF_8);
         if (bytes.length == 0) {
             exchange.sendResponseHeaders(200, -1);

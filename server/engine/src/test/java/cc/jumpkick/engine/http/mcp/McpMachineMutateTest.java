@@ -3,6 +3,7 @@ package cc.jumpkick.engine.http.mcp;
 
 import static cc.jumpkick.engine.http.JsonFields.objects;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.jdk.JdkOwnership;
@@ -148,5 +149,19 @@ class McpMachineMutateTest {
         Files.createDirectories(file.getParent());
         Files.write(file, new byte[32]);
         return file;
+    }
+
+    @Test
+    void a_heap_is_uncapped_or_within_bounds() {
+        assertThat(McpMachine.heapMb("0")).isZero();
+        assertThat(McpMachine.heapMb(" 512 ")).isEqualTo(512);
+        assertThat(McpMachine.heapMb(String.valueOf(McpMachine.MIN_HEAP_MB))).isEqualTo(McpMachine.MIN_HEAP_MB);
+        assertThat(McpMachine.heapMb(String.valueOf(McpMachine.MAX_HEAP_MB))).isEqualTo(McpMachine.MAX_HEAP_MB);
+        for (String bad : List.of("-512", "1", "127", "65537", "99999999999", "lots", "")) {
+            assertThatThrownBy(() -> McpMachine.heapMb(bad))
+                    .as(bad)
+                    .isInstanceOf(McpError.class)
+                    .hasMessageContaining("engine.max-heap-mb is 0 (uncapped) or 128 to 65536");
+        }
     }
 }

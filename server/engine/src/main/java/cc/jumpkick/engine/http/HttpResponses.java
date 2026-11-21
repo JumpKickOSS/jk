@@ -8,7 +8,8 @@ import java.nio.charset.StandardCharsets;
 /**
  * Write a JSON, text or binary response with the project's header conventions and HEAD handling.
  * Each carries {@code X-Content-Type-Options: nosniff}, so a browser takes the declared type and
- * never reads a body as a script or page it did not say it was.
+ * never reads a body as a script or page it did not say it was, and {@code Cache-Control: no-store},
+ * so no cache keeps an answer that can carry build output.
  */
 final class HttpResponses {
 
@@ -30,6 +31,7 @@ final class HttpResponses {
     static void sendText(HttpExchange exchange, int status, String body) throws IOException {
         exchange.getResponseHeaders().set("Content-Type", "text/plain; charset=utf-8");
         exchange.getResponseHeaders().set("X-Content-Type-Options", "nosniff");
+        exchange.getResponseHeaders().set("Cache-Control", "no-store");
         if (exchange.getRequestMethod().equals("HEAD")) {
             exchange.sendResponseHeaders(status, -1);
             return;
