@@ -58,8 +58,10 @@ class EngineTakeoverTest {
         CountDownLatch done = new CountDownLatch(1);
         Thread t = new Thread(() -> {
             try {
-                server.run();
-            } catch (IOException e) {
+                // Every engine these tests start is meant to serve; one that yields to another
+                // engine's startup lock returns false and otherwise reads as a poll timeout too.
+                if (!server.run()) serverFailures.add(new AssertionError("an engine lost its election and yielded"));
+            } catch (IOException | RuntimeException e) {
                 serverFailures.add(e); // a dead server otherwise reads as a mystery poll timeout
             } finally {
                 done.countDown();
@@ -78,6 +80,16 @@ class EngineTakeoverTest {
      * otherwise reads as a mystery poll timeout. */
     private void waitUntil(Duration timeout, BooleanSupplier condition) throws InterruptedException {
         Await.until(timeout, condition, () -> "server failures: " + serverFailures);
+    }
+
+    /**
+     * Wait until the endpoint's engine answers hello as {@code version}. The endpoint file alone does
+     * not say an engine is ready to be succeeded: it is written under the startup lock, which is
+     * released after the write is made durable, and a successor that finds the lock still held
+     * yields as a redundant spawn. An engine answers hello only from its accept loop, after that.
+     */
+    private void awaitServing(EnginePaths.Paths p, String version) throws InterruptedException {
+        waitUntil(Duration.ofSeconds(30), () -> version.equals(helloVersion(EnginePaths.activeSocket(p))));
     }
 
     private static @Nullable String helloVersion(Path socket) {
@@ -246,7 +258,7 @@ class EngineTakeoverTest {
 
         EngineServer old = new EngineServer(p, JkEngineConfig.DEFAULTS, "1.0.0-test", null);
         Running oldRun = start(old);
-        waitUntil(Duration.ofSeconds(30), () -> Files.exists(EnginePaths.endpoint(p)));
+        awaitServing(p, "1.0.0-test");
         Path firstSocket = EnginePaths.activeSocket(p);
         assertThat(old.claimPlanSlotForTests()).isTrue();
 
@@ -280,7 +292,7 @@ class EngineTakeoverTest {
 
         EngineServer old = new EngineServer(p, JkEngineConfig.DEFAULTS, "1.0.0-test", null);
         Running oldRun = start(old);
-        waitUntil(Duration.ofSeconds(30), () -> Files.exists(EnginePaths.endpoint(p)));
+        awaitServing(p, "1.0.0-test");
         Path firstSocket = EnginePaths.activeSocket(p);
         String label = "claude-code " + Long.toHexString(System.nanoTime());
         String dir = state.toString();
