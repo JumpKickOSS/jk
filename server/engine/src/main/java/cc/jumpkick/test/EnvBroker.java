@@ -52,6 +52,9 @@ public final class EnvBroker implements AutoCloseable {
     private static final byte NAMES = 'N';
     private static final byte ALL = 'A';
 
+    /** The most names one question may ask for: far more than any environment holds. */
+    private static final int MAX_NAMES = 65_536;
+
     private final ServerSocket server;
     private final byte[] token;
     private final Path file;
@@ -141,6 +144,7 @@ public final class EnvBroker implements AutoCloseable {
                 switch (op) {
                     case GET -> {
                         int n = in.readInt();
+                        if (n < 0 || n > MAX_NAMES) throw new IOException("a question for " + n + " names");
                         List<String> names = new ArrayList<>(n);
                         for (int i = 0; i < n; i++) names.add(readString(in));
                         writeVars(out, values(names));

@@ -95,6 +95,35 @@ class EnvBrokerTest {
     }
 
     @Test
+    void a_question_for_more_names_than_an_environment_holds_closes_the_line(@TempDir Path tmp) throws Exception {
+        CallerEnv caller = CallerEnv.of(RequestShell.of(Map.of("A", "1"), Set.of(), true, null), null);
+        try (EnvBroker broker = Objects.requireNonNull(EnvBroker.start(tmp, caller, SuiteEnvReads.Policy.NONE))) {
+            String[] address =
+                    Files.readString(tmp.resolve(EnvBroker.FILE)).trim().split(" ");
+            for (int count : List.of(65_537, Integer.MAX_VALUE, -1)) {
+                try (Socket s = new Socket(InetAddress.getByName(address[2]), Integer.parseInt(address[0]))) {
+                    s.setSoTimeout(10_000);
+                    DataOutputStream out = new DataOutputStream(s.getOutputStream());
+                    write(out, address[1]);
+                    out.writeByte('G');
+                    out.writeInt(count);
+                    out.flush();
+                    int answer;
+                    try {
+                        answer = s.getInputStream().read();
+                    } catch (SocketException reset) {
+                        answer = -1;
+                    }
+                    assertThat(answer)
+                            .as("a count of %d is refused before any name is read or room made for it", count)
+                            .isEqualTo(-1);
+                }
+            }
+            assertThat(broker.record().isEmpty()).isTrue();
+        }
+    }
+
+    @Test
     void a_volatile_name_is_handed_over_and_never_recorded(@TempDir Path tmp) {
         CallerEnv caller = CallerEnv.of(
                 RequestShell.of(Map.of("OLDPWD", "/a", "SSH_CONNECTION", "x", "APP", "1"), Set.of(), true, null), null);
