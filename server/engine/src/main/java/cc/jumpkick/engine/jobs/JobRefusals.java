@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.jobs;
 
-import cc.jumpkick.builds.ProjectIds;
+import cc.jumpkick.builds.ProjectIdCache;
 import cc.jumpkick.engine.api.InFlightBuilds;
 import cc.jumpkick.engine.api.JsonOut;
 import cc.jumpkick.engine.api.WireWriter;
@@ -34,7 +34,7 @@ final class JobRefusals {
                 .put("jid", jid)
                 .put("kind", kind)
                 .put("dir", dir)
-                .put("projectId", ProjectIds.idOf(dir))
+                .put("projectId", ProjectIdCache.idOf(dir))
                 .put("success", false)
                 .put("cancelled", cancelled);
         if (error != null) finish.put("error", error);

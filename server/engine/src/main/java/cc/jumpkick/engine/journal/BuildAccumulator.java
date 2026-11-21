@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.journal;
 
-import cc.jumpkick.builds.ProjectIds;
+import cc.jumpkick.builds.ProjectIdCache;
 import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.engine.api.HttpLive;
 import cc.jumpkick.engine.jobs.JobOutcome;
@@ -183,7 +183,7 @@ public final class BuildAccumulator {
         this.kind = kind;
         this.dir = dir;
         this.coord = coord;
-        this.projectId = ProjectIds.idOf(dir);
+        this.projectId = ProjectIdCache.idOf(dir);
         this.trigger = trigger;
         this.session = session;
         this.timeline = timeline;

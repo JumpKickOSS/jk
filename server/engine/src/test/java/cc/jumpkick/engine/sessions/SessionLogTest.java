@@ -3,7 +3,7 @@ package cc.jumpkick.engine.sessions;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.builds.ProjectIds;
+import cc.jumpkick.builds.ProjectIdCache;
 import cc.jumpkick.config.SessionExpiry;
 import cc.jumpkick.engine.journal.BuildRecord;
 import cc.jumpkick.engine.journal.SessionJournal;
@@ -671,7 +671,7 @@ class SessionLogTest {
 
         SessionLog next = newLog();
         assertThat(next.sessions(2)).extracting(r -> r.get("id")).containsExactly(onLib.get(2), onLib.get(1));
-        String appId = Objects.requireNonNull(ProjectIds.idOf(app.toString()));
+        String appId = Objects.requireNonNull(ProjectIdCache.idOf(app.toString()));
         assertThat(next.sessions(1, appId)).extracting(r -> r.get("id")).containsExactly(onApp);
         assertThat(next.sessions(10)).hasSize(4);
     }

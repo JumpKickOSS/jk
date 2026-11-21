@@ -2,8 +2,8 @@
 package cc.jumpkick.engine.runtime;
 
 import cc.jumpkick.builds.ProjectBuilds;
+import cc.jumpkick.builds.ProjectIdCache;
 import cc.jumpkick.builds.ProjectIdentity;
-import cc.jumpkick.builds.ProjectIds;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.JkTemplatesConfig;
 import cc.jumpkick.config.SessionContext;
@@ -241,7 +241,7 @@ public final class NewProjectOps {
         try {
             var identity = ProjectIdentity.resolve(result.path());
             ProjectIdentity.IdentityFile.write(ProjectBuilds.projectHome(identity.id()), identity);
-            ProjectIds.refresh(result.path().toString());
+            ProjectIdCache.refresh(result.path().toString());
             projectId = identity.id();
         } catch (RuntimeException | IOException e) {
             // best-effort — see javadoc

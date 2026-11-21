@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.sessions;
 
-import cc.jumpkick.builds.ProjectIds;
+import cc.jumpkick.builds.ProjectIdCache;
 import cc.jumpkick.lock.ManifestPaths;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -98,6 +98,6 @@ final class ProjectIdMemo {
 
     private static @Nullable String resolve(String dir) {
         // A directory with no jk manifest has no project identity; asking git costs a fork.
-        return Files.isRegularFile(ManifestPaths.manifestIn(Path.of(dir))) ? ProjectIds.idOf(dir) : null;
+        return Files.isRegularFile(ManifestPaths.manifestIn(Path.of(dir))) ? ProjectIdCache.idOf(dir) : null;
     }
 }

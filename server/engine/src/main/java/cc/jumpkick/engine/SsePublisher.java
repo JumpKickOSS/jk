@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine;
 
-import cc.jumpkick.builds.ProjectIds;
+import cc.jumpkick.builds.ProjectIdCache;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.engine.api.CoalescingBuildPlanListener;
 import cc.jumpkick.engine.api.InFlightBuilds;
@@ -563,7 +563,7 @@ public final class SsePublisher implements SseEvents {
                         .put("jid", requestId)
                         .put("kind", kind)
                         .put("dir", dir)
-                        .put("projectId", ProjectIds.idOf(dir))
+                        .put("projectId", ProjectIdCache.idOf(dir))
                         .put("ahead", ahead)
                         .put("reason", "memory")
                         .put("activeBuildPlans", activePlans.get()));
@@ -602,7 +602,7 @@ public final class SsePublisher implements SseEvents {
                 .put("kind", kind)
                 .put("dir", dir)
                 .put("coord", coord)
-                .put("projectId", ProjectIds.idOf(dir));
+                .put("projectId", ProjectIdCache.idOf(dir));
         // The origin rides the first frame so a card shows who asked from its first paint.
         var hold = inFlight.get(requestId).orElse(null);
         if (hold != null && hold.trigger() != null) payload = payload.put("trigger", hold.trigger());

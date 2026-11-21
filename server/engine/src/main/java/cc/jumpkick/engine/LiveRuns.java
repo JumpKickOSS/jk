@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine;
 
-import cc.jumpkick.builds.ProjectIds;
+import cc.jumpkick.builds.ProjectIdCache;
 import cc.jumpkick.engine.api.HttpLive;
 import cc.jumpkick.engine.api.InFlightBuilds;
 import cc.jumpkick.engine.api.JsonOut;
@@ -121,7 +121,7 @@ public final class LiveRuns {
             m.put("serverNow", serverNow);
         }
         if (run.dir() != null && !run.dir().isBlank()) {
-            m.put("projectId", ProjectIds.idOf(run.dir()));
+            m.put("projectId", ProjectIdCache.idOf(run.dir()));
         }
         m.put("running", true);
         if (run.buildNumber() > 0) m.put("buildNumber", run.buildNumber());

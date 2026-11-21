@@ -12,7 +12,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-class ProjectIdsTest {
+class ProjectIdCacheTest {
 
     @TempDir
     Path stateDir;
@@ -20,12 +20,12 @@ class ProjectIdsTest {
     @BeforeEach
     void sandboxState() {
         System.setProperty("jk.env.JK_STATE_DIR", stateDir.toString());
-        ProjectIds.clear();
+        ProjectIdCache.clear();
     }
 
     @AfterEach
     void restoreState() {
-        ProjectIds.clear();
+        ProjectIdCache.clear();
     }
 
     /**
@@ -40,28 +40,28 @@ class ProjectIdsTest {
                 name = "demo"
                 version = "0.1.0"
                 """);
-        String before = ProjectIds.idOf(dir.toString());
+        String before = ProjectIdCache.idOf(dir.toString());
         assertThat(before).isNotNull();
 
         LockfileWriter.write(Lockfile.empty("test"), dir.resolve("jk-lock.toml"));
         String minted = ProjectIdentity.recordedId(dir.resolve("jk-lock.toml")).orElseThrow();
 
         assertThat(minted).isNotEqualTo(before);
-        assertThat(ProjectIds.idOf(dir.toString()))
+        assertThat(ProjectIdCache.idOf(dir.toString()))
                 .as("the memo names the lock's id inside the build that minted it")
                 .isEqualTo(minted);
-        assertThat(ProjectIds.idOf(dir.toRealPath().toString())).isEqualTo(minted);
+        assertThat(ProjectIdCache.idOf(dir.toRealPath().toString())).isEqualTo(minted);
     }
 
     @Test
     void a_memoized_id_is_answered_from_the_memo_until_refreshed(@TempDir Path dir) throws Exception {
         Files.writeString(dir.resolve("jk.toml"), "name = \"demo\"\n");
-        String first = ProjectIds.idOf(dir.toString());
+        String first = ProjectIdCache.idOf(dir.toString());
         // A lock written behind the memo's back (no writer of ours) is invisible until a refresh.
         Files.writeString(
                 dir.resolve("jk-lock.toml"), "version = 1\nproject-id = \"0123456789abcdef0123456789abcdef\"\n");
-        assertThat(ProjectIds.idOf(dir.toString())).isEqualTo(first);
-        assertThat(ProjectIds.refresh(dir.toString())).isEqualTo("0123456789abcdef0123456789abcdef");
-        assertThat(ProjectIds.idOf(dir.toString())).isEqualTo("0123456789abcdef0123456789abcdef");
+        assertThat(ProjectIdCache.idOf(dir.toString())).isEqualTo(first);
+        assertThat(ProjectIdCache.refresh(dir.toString())).isEqualTo("0123456789abcdef0123456789abcdef");
+        assertThat(ProjectIdCache.idOf(dir.toString())).isEqualTo("0123456789abcdef0123456789abcdef");
     }
 }

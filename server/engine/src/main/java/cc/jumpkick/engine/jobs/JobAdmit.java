@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.jobs;
 
-import cc.jumpkick.builds.ProjectIds;
+import cc.jumpkick.builds.ProjectIdCache;
 import cc.jumpkick.engine.api.BuildHistoryKinds;
 import cc.jumpkick.engine.api.BuildJobFingerprint;
 import cc.jumpkick.engine.api.InFlightBuilds;
@@ -108,7 +108,7 @@ public final class JobAdmit {
             buildNumber = BuildNumberAllocator.allocate(canonDir, coord);
         }
         long startedAt = host.nowMillis();
-        String projectId = ProjectIds.refresh(canonDir != null ? canonDir : dir);
+        String projectId = ProjectIdCache.refresh(canonDir != null ? canonDir : dir);
         String episode =
                 host.episodeFor(requestId, trigger, session, kind, canonDir != null ? canonDir : dir, startedAt);
         String journalId = null;

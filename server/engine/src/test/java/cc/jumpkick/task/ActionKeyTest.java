@@ -3,8 +3,8 @@ package cc.jumpkick.task;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.builds.ProjectIdCache;
 import cc.jumpkick.builds.ProjectIdentity;
-import cc.jumpkick.builds.ProjectIds;
 import cc.jumpkick.compile.CompileRequest;
 import cc.jumpkick.compile.GroovycRequest;
 import cc.jumpkick.compile.KotlincRequest;
@@ -732,7 +732,7 @@ class ActionKeyTest {
         Files.createDirectories(root);
         Files.writeString(root.resolve("jk.toml"), "name = \"fresh\"\n");
         Path classes = root.resolve("target/classes/main");
-        ProjectIds.clear();
+        ProjectIdCache.clear();
         String before = ActionKey.taskTag(classes);
 
         LockfileWriter.write(Lockfile.empty("test"), root.resolve("jk-lock.toml"));

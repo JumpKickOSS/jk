@@ -4,7 +4,7 @@ package cc.jumpkick.engine.http;
 import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.builds.ProjectIds;
+import cc.jumpkick.builds.ProjectIdCache;
 import cc.jumpkick.config.SecretRedactor;
 import cc.jumpkick.config.SessionExpiry;
 import cc.jumpkick.engine.journal.SessionJournal;
@@ -120,8 +120,8 @@ class HttpSessionsApiTest extends HttpEngineServerHarness {
             Files.writeString(
                     dir.resolve("jk.toml"), "group = \"g\"\nname = \"" + dir.getFileName() + "\"\nversion = \"1\"\n");
         }
-        String hotelId = ProjectIds.idOf(hotel.toString());
-        String shopId = ProjectIds.idOf(shop.toString());
+        String hotelId = ProjectIdCache.idOf(hotel.toString());
+        String shopId = ProjectIdCache.idOf(shop.toString());
         assertThat(hotelId).isNotNull().isNotEqualTo(shopId);
         String agent = log.open("mcp", "claude-code", "claude-code aaaa", hotel.toString());
         act("claude-code aaaa", 10, hotel);

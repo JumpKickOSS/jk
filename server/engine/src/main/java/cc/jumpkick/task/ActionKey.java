@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.task;
 
-import cc.jumpkick.builds.ProjectIds;
+import cc.jumpkick.builds.ProjectIdCache;
 import cc.jumpkick.compile.CompileRequest;
 import cc.jumpkick.compile.GroovycInputs;
 import cc.jumpkick.compile.GroovycRequest;
@@ -743,7 +743,7 @@ public final class ActionKey {
 
     /**
      * Qualify a base task id (e.g. {@code compile-main}) with a tag naming the output within its
-     * project: the project's durable id ({@link ProjectIds}) and {@code outputDir}'s path relative
+     * project: the project's durable id ({@link ProjectIdCache}) and {@code outputDir}'s path relative
      * to the workspace root, hashed to 12 hex characters. Every checkout of one project spells the
      * same tag for the same output, so the {@code task:} line of a key and the {@link ActionCache}
      * {@code tasks/<taskId>} pointer are shared across worktrees, while two modules or two projects
@@ -763,7 +763,7 @@ public final class ActionKey {
         Path p = (outputDir == null ? Path.of("") : outputDir).toAbsolutePath().normalize();
         Optional<Path> root = PortablePath.projectRoot(p);
         if (root.isEmpty()) return checkoutTag(p);
-        String id = ProjectIds.idOf(root.get().toString());
+        String id = ProjectIdCache.idOf(root.get().toString());
         if (id == null) return checkoutTag(p);
         String rel = root.get().relativize(p).toString().replace('\\', '/');
         return Hashing.sha256Hex(id + "\n" + rel).substring(0, 12);

@@ -2491,7 +2491,7 @@ in     = "cc.jumpkick.repo.RepoArtifactStore#CLAIMS"
 reason = "engine-process fact: the loopback trees this process has claimed with its own token"
 
 [[guards.engine-static-memo.allow]]
-in     = "cc.jumpkick.builds.ProjectIds#CACHE"
+in     = "cc.jumpkick.builds.ProjectIdCache#CACHE"
 reason = "TTL 60s: a directory's project id, read again after a minute; dropped whole past 4096"
 
 [[guards.engine-static-memo.allow]]

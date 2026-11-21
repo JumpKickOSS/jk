@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.http;
 
-import cc.jumpkick.builds.ProjectIds;
+import cc.jumpkick.builds.ProjectIdCache;
 import cc.jumpkick.config.SecretRedactor;
 import cc.jumpkick.engine.api.BuildHistoryKinds;
 import cc.jumpkick.engine.api.HttpLive;
@@ -177,7 +177,7 @@ final class HttpHistoryApi {
             // minting a fresh unknown:unknown id that 404s on the detail page.
             if (!(m.get("projectId") instanceof String pid) || pid.isBlank()) {
                 if (m.get("dir") instanceof String dir && !dir.isBlank()) {
-                    String resolved = ProjectIds.idOf(dir);
+                    String resolved = ProjectIdCache.idOf(dir);
                     if (resolved != null) m.put("projectId", resolved);
                 }
             }

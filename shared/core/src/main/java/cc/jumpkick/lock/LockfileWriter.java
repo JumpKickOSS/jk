@@ -4,8 +4,8 @@ package cc.jumpkick.lock;
 import cc.jumpkick.builds.DeclaredDeps;
 import cc.jumpkick.builds.DepFrequency;
 import cc.jumpkick.builds.ProjectBuilds;
+import cc.jumpkick.builds.ProjectIdCache;
 import cc.jumpkick.builds.ProjectIdentity;
-import cc.jumpkick.builds.ProjectIds;
 import cc.jumpkick.config.TomlScan;
 import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.Log;
@@ -119,10 +119,10 @@ public final class LockfileWriter {
      * since the memo is keyed by the string a caller passed.
      */
     private static void refreshMemoizedId(Path owner) {
-        ProjectIds.refresh(owner.toString());
+        ProjectIdCache.refresh(owner.toString());
         try {
             Path real = owner.toRealPath();
-            if (!real.equals(owner)) ProjectIds.refresh(real.toString());
+            if (!real.equals(owner)) ProjectIdCache.refresh(real.toString());
         } catch (IOException ignored) {
             // The directory was just written into; a real path that cannot be taken keeps the memo it has.
         }

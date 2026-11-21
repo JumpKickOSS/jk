@@ -4,7 +4,7 @@ package cc.jumpkick.engine.jobs;
 import cc.jumpkick.builds.AggregatedMetrics;
 import cc.jumpkick.builds.HostStore;
 import cc.jumpkick.builds.ProjectBuilds;
-import cc.jumpkick.builds.ProjectIds;
+import cc.jumpkick.builds.ProjectIdCache;
 import cc.jumpkick.builds.ProjectStore;
 import cc.jumpkick.config.JobLimits;
 import cc.jumpkick.engine.api.BuildHistoryKinds;
@@ -672,7 +672,7 @@ public final class MemoryAdmission {
             toml += sizeOf(Path.of(dir).resolve(ManifestNames.LOCK));
             if ("lock".equals(kind))
                 declared = DeclaredDependencies.countDistinct(LockPaths.lockOwnerDir(Path.of(dir)));
-            String projectId = ProjectIds.idOf(dir);
+            String projectId = ProjectIdCache.idOf(dir);
             if (projectId != null) {
                 ledgers += sizeOf(ProjectStore.file(ProjectBuilds.projectHome(projectId)));
             }

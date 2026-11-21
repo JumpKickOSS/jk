@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.jobs;
 
-import cc.jumpkick.builds.ProjectIds;
+import cc.jumpkick.builds.ProjectIdCache;
 import cc.jumpkick.engine.api.JsonOut;
 import cc.jumpkick.engine.api.WireWriter;
 import cc.jumpkick.engine.journal.BuildAccumulator;
@@ -72,7 +72,7 @@ final class JobSettlement {
                 .put("jid", jid)
                 .put("kind", kind)
                 .put("dir", dir)
-                .put("projectId", ProjectIds.idOf(dir))
+                .put("projectId", ProjectIdCache.idOf(dir))
                 .put("success", success)
                 .put("cancelled", cancelled)
                 .put("millis", elapsedMillis)

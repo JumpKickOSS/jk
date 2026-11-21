@@ -16,7 +16,7 @@ import org.jspecify.annotations.Nullable;
  * checkout except when a lock first mints an id, so a short TTL plus an explicit
  * {@link #refresh} at build admission keeps the memo honest.
  */
-public final class ProjectIds {
+public final class ProjectIdCache {
 
     private static final long TTL_NANOS = TimeUnit.SECONDS.toNanos(60);
     private static final int MAX_ENTRIES = 4_096;
@@ -24,7 +24,7 @@ public final class ProjectIds {
 
     private record Entry(String id, long expiresAtNanos) {}
 
-    private ProjectIds() {}
+    private ProjectIdCache() {}
 
     /** The durable project id for {@code dir}, or null when it cannot be resolved. */
     public static @Nullable String idOf(String dir) {
