@@ -18,8 +18,10 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.BooleanSupplier;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 
@@ -355,6 +357,47 @@ class WorkerLeasesTest {
         return grant;
     }
 
+    /**
+     * A plan stops waiting on the steps it cancels without interrupting their threads. A fork such a
+     * step was waiting to start leaves the queue, so the forks behind it, the next build's included,
+     * are not held up by a lease nobody will use.
+     */
+    @Test
+    void a_lease_whose_step_was_cancelled_leaves_the_queue_and_the_next_one_is_granted() throws Exception {
+        WorkerLeases.Ledger ledger = ledger(1L << 30, 4);
+        AtomicBoolean cancelled = new AtomicBoolean();
+        List<String> states = new CopyOnWriteArrayList<>();
+        TaskContext step = recording(
+                new AtomicReference<>(""),
+                new ArrayList<>(),
+                new AtomicInteger(),
+                states,
+                new ArrayList<>(),
+                cancelled::get);
+        try (WorkerLeases.Grant held = ledger.acquireBytes(512L << 20, true, null)) {
+            CompletableFuture<WorkerLeases.Grant> whole = new CompletableFuture<>();
+            Thread.ofVirtual()
+                    .start(() -> StepScope.run(step, () -> {
+                        try {
+                            whole.complete(ledger.acquireBytes(1L << 30, true, null));
+                        } catch (InterruptedException e) {
+                            whole.completeExceptionally(e);
+                        }
+                    }));
+            awaitQueued(ledger, 1);
+            CompletableFuture<WorkerLeases.Grant> next = acquireLater(ledger, 256L << 20, 8L);
+            awaitQueued(ledger, 2);
+
+            cancelled.set(true);
+            assertThatThrownBy(() -> whole.get(5, TimeUnit.SECONDS)).hasCauseInstanceOf(InterruptedException.class);
+            try (WorkerLeases.Grant granted = next.get(5, TimeUnit.SECONDS)) {
+                assertThat(granted.bytes()).isEqualTo(256L << 20);
+            }
+        }
+        assertThat(ledger.queued()).isZero();
+        assertThat(ledger.snapshot().leasedBytes()).isZero();
+    }
+
     @Test
     void a_jvm_waits_for_a_core_even_when_memory_is_free() throws Exception {
         WorkerLeases.Ledger ledger = ledger(1L << 30, 1);
@@ -498,6 +541,17 @@ class WorkerLeasesTest {
             AtomicInteger waitedCalls,
             List<String> states,
             List<String> warnings) {
+        return recording(label, output, waitedCalls, states, warnings, () -> false);
+    }
+
+    /** As the other form, with the step cancelled while {@code cancelled} says so. */
+    private static TaskContext recording(
+            AtomicReference<String> label,
+            List<String> output,
+            AtomicInteger waitedCalls,
+            List<String> states,
+            List<String> warnings,
+            BooleanSupplier cancelled) {
         return new TaskContext() {
             @Override
             public void waiting(@Nullable String reason) {
@@ -535,7 +589,7 @@ class WorkerLeasesTest {
 
             @Override
             public boolean cancelled() {
-                return false;
+                return cancelled.getAsBoolean();
             }
 
             @Override

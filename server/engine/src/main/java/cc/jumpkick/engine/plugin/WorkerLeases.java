@@ -522,8 +522,8 @@ public final class WorkerLeases {
         /**
          * Block until {@code command}'s lease fits, classifying the heap with {@link
          * JvmOptions.HeapChoice#inspect}. A planned JVM lease larger than the budget is clamped
-         * first; a user pin is not. Interrupt, or {@link JobWorkers#ended} for {@code requestId},
-         * abandons the wait.
+         * first; a user pin is not. Interrupt, {@link JobWorkers#ended} for {@code requestId}, or a
+         * cancel of the step that asked ({@link TaskContext#cancelled}) abandons the wait.
          */
         public Grant acquire(List<String> command, @Nullable Long requestId) throws InterruptedException {
             return acquire(command, requestId, JvmOptions.HeapChoice.inspect(command));
@@ -614,8 +614,9 @@ public final class WorkerLeases {
                     long free;
                     @Nullable WaitReason reason;
                     refresh();
+                    boolean stepCancelled = waiter.scope != null && waiter.scope.cancelled();
                     synchronized (lock) {
-                        if (waiter.cancelled || requestEnded(requestId)) {
+                        if (waiter.cancelled || stepCancelled || requestEnded(requestId)) {
                             queue.remove(waiter);
                             grantQueued();
                             changed();
@@ -741,9 +742,10 @@ public final class WorkerLeases {
 
         /**
          * Under the lock: when {@code head} is short only of what residents hold, its bytes or room
-         * under the heap {@linkplain #ceilingBlocks ceiling}, ask enough of them to exit. Each resident
-         * is asked once; its grant closes when its process is gone. While forks that are working still
-         * hold what the head needs, residents are left alone.
+         * under the heap {@linkplain #ceilingBlocks ceiling}, ask enough of them to exit. A resident
+         * gives back what it is charged, its lease or its larger resident set. Each resident is asked
+         * once; its grant closes when its process is gone. While forks that are working still hold
+         * what the head needs, residents are left alone.
          */
         private void reclaimFor(LeaseWaiter head) {
             if (head.demand.cpuSlot() && hostJvms() >= cpuCap()) return;
@@ -754,10 +756,11 @@ public final class WorkerLeases {
             long heapsLeft = 0;
             for (LeaseWaiter w : held) {
                 if (w.resident == null) continue;
+                long bytes = chargedTo(w);
                 long heap = heapOf(w);
-                bytesShort -= w.yieldAsked ? w.demand.bytes() : 0;
+                bytesShort -= w.yieldAsked ? bytes : 0;
                 heapsShort -= w.yieldAsked ? heap : 0;
-                bytesLeft += w.yieldAsked ? 0 : w.demand.bytes();
+                bytesLeft += w.yieldAsked ? 0 : bytes;
                 heapsLeft += w.yieldAsked ? 0 : heap;
             }
             if (bytesShort > bytesLeft || heapsShort > heapsLeft) return;
@@ -768,7 +771,7 @@ public final class WorkerLeases {
                 // Asking helps only with what it gives back: an idle resident holds no room under the bound.
                 if (w.resident == null || w.yieldAsked || (bytesShort <= 0 && heap == 0)) continue;
                 w.yieldAsked = true;
-                bytesShort -= w.demand.bytes();
+                bytesShort -= chargedTo(w);
                 heapsShort -= heap;
                 ask.add(w);
             }
@@ -916,6 +919,11 @@ public final class WorkerLeases {
         private static long heapOf(LeaseWaiter w) {
             LeaseResident r = w.resident;
             return r != null && r.idle().getAsBoolean() ? 0 : w.demand.worstBytes();
+        }
+
+        /** Under the lock: what {@code w} is charged, its lease or its last resident set when larger. */
+        private static long chargedTo(LeaseWaiter w) {
+            return w.demand.bytes() + w.excess();
         }
 
         private static boolean refused(LeaseWaiter waiter, WaitReason reason) {

@@ -14,7 +14,9 @@ import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -92,6 +94,40 @@ class WorkerLeasesRssTest {
             assertThat(ledger.snapshot().leasedBytes()).isEqualTo(2 * GIB);
             assertThat(ledger.snapshot().overLease()).isEmpty();
         }
+    }
+
+    /**
+     * A lingering compiler worker leased at its committed heap and charged its larger resident set
+     * is all that holds back a fork that needs the whole budget. It is asked to exit for it: the
+     * room it gives back is what it is charged, not only its lease.
+     */
+    @Test
+    void an_idle_resident_over_its_lease_is_asked_to_exit_for_a_whole_budget_head() throws Exception {
+        Map<Long, Long> rss = new ConcurrentHashMap<>();
+        WorkerLeases.Ledger ledger = ledger(4 * GIB, rss);
+        CountDownLatch asked = new CountDownLatch(1);
+        AtomicReference<WorkerLeases.Grant> lingering = new AtomicReference<>();
+        LeaseResident compiler = new LeaseResident(
+                "Java compiler worker",
+                () -> {
+                    asked.countDown();
+                    lingering.get().close();
+                },
+                () -> true);
+        lingering.set(ledger.acquireResidentBytes(360 * MIB, compiler));
+        lingering.get().watch(101, "Java compiler worker", null);
+        rss.put(101L, 700 * MIB);
+        ledger.sample();
+        assertThat(ledger.snapshot().leasedBytes()).isEqualTo(700 * MIB);
+
+        CompletableFuture<WorkerLeases.Grant> whole = acquireOnThread(() -> ledger.acquireBytes(4 * GIB, true, 7L));
+        assertThat(asked.await(5, TimeUnit.SECONDS))
+                .as("the lingering worker is asked to exit")
+                .isTrue();
+        try (WorkerLeases.Grant granted = whole.get(5, TimeUnit.SECONDS)) {
+            assertThat(granted.bytes()).isEqualTo(4 * GIB);
+        }
+        assertThat(ledger.snapshot().leasedBytes()).isZero();
     }
 
     @Test
