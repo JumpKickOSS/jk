@@ -306,6 +306,16 @@ public final class PartialSolution {
     }
 
     /**
+     * The undecided required package mentioned next after {@code pkg}, an undecided required
+     * package itself, or {@code null} when it is the last.
+     */
+    public @Nullable String nextUndecidedPositiveAfter(String pkg) {
+        Map.Entry<Integer, String> next =
+                undecidedPositive.higherEntry(Objects.requireNonNull(byPackage.get(pkg)).firstIndex);
+        return next == null ? null : next.getValue();
+    }
+
+    /**
      * True iff at least one positive term about {@code pkg} has been recorded — i.e. the partial
      * solution requires the package to exist at some version. False for "phantom" packages mentioned
      * only by negative incompatibilities.

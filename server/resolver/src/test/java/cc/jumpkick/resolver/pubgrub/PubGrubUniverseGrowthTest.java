@@ -2,6 +2,7 @@
 package cc.jumpkick.resolver.pubgrub;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -40,6 +41,47 @@ class PubGrubUniverseGrowthTest {
                 .solve("root", "1.0", List.of(Term.positive("a", VersionSet.ALL), Term.positive("b", VersionSet.ALL)));
 
         assertThat(solution).containsEntry("a", "2.0").containsEntry("p", "1.5");
+    }
+
+    @Test
+    void a_range_with_no_listed_version_waits_for_a_later_pom_to_name_one() throws Exception {
+        // a has no other release, so ruling out a@2 when p is first found to have no candidate in
+        // [1.5, 2.0) would fail the root before c's POM, which names p 1.5, is ever read.
+        PomSource src = new PomSource()
+                .advertise("a", "2.0")
+                .advertise("b", "1.0")
+                .advertise("c", "1.0")
+                .advertise("p", "2.0", "1.0")
+                .pom("a", "2.0", Term.positive("p", VersionSet.between("1.5", true, "2.0", false)))
+                .pom("b", "1.0", Term.positive("c", VersionSet.ALL))
+                .pomPlain("c", "1.0", "p", "1.5")
+                .pom("p", "1.5")
+                .pom("p", "1.0")
+                .pom("p", "2.0");
+
+        Map<String, String> solution = new PubGrubSolver(src)
+                .solve("root", "1.0", List.of(Term.positive("a", VersionSet.ALL), Term.positive("b", VersionSet.ALL)));
+
+        assertThat(solution).containsEntry("a", "2.0").containsEntry("c", "1.0").containsEntry("p", "1.5");
+    }
+
+    @Test
+    void a_range_no_pom_ever_fills_still_fails() throws Exception {
+        PomSource src = new PomSource()
+                .advertise("a", "2.0")
+                .advertise("b", "1.0")
+                .advertise("p", "2.0", "1.0")
+                .pom("a", "2.0", Term.positive("p", VersionSet.between("1.5", true, "2.0", false)))
+                .pom("b", "1.0")
+                .pom("p", "1.0")
+                .pom("p", "2.0");
+
+        assertThatThrownBy(() -> new PubGrubSolver(src)
+                        .solve(
+                                "root",
+                                "1.0",
+                                List.of(Term.positive("a", VersionSet.ALL), Term.positive("b", VersionSet.ALL))))
+                .isInstanceOf(UnsatisfiableException.class);
     }
 
     /**

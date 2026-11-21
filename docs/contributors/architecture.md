@@ -491,7 +491,12 @@ Ship layout (`jk build`, under `target/dist/`; `<version>` carries `-SNAPSHOT` o
   POM read admits a version the catalog omits. A clause learned while a range held no candidate
   (a "no versions" clause, or a residual resolution dropped as vacuous) is true only while it
   still holds none, so when a universe grows into such a range `PubGrubSolver` restarts from the
-  root, keeping the dependency and unavailability clauses and the grown universes.
+  root, keeping the dependency and unavailability clauses and the grown universes. A range found
+  empty before the POM that names a version in it is read can fail the root with nothing grown, so
+  a solve that would end unsatisfiable after taking a range to be empty restarts once more, now
+  deciding every package that has a candidate before it learns that one has none. Only then: that
+  order puts off conflicts PubGrub learns early and multiplies the decisions of a solve that
+  succeeds.
 - **Effective-POM tables are shared objects:** `EffectivePomBuilder` values a BOM's managed table
   once, in the BOM's own merge, and every POM that imports or inherits it carries the same
   `Pom.Dep` objects — a row is copied only where a `${...}` it spells values differently in the

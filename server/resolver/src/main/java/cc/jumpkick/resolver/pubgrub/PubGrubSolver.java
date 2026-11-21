@@ -41,6 +41,12 @@ import org.jspecify.annotations.Nullable;
  * restarts from the root with its dependency and unavailability facts and the grown universes,
  * and learns again. Universes only grow, so restarts are bounded.
  *
+ * <p>A version a POM names joins the universe only once that POM is read, so a range found empty
+ * early can fail the root before the POM naming a version in it is reached. A solve that would end
+ * unsatisfiable after taking a range to be empty restarts once more, and from then on a package with
+ * no candidate waits while any other can be decided. Only then, because waiting puts off conflicts
+ * PubGrub learns early, which multiplies the decisions of a solve that succeeds.
+ *
  * <p><strong>Anti-loop:</strong> large AndroidX/BOM graphs can still thrash (broken POM floors,
  * prefer-pin churn). Every budget check counts a <em>step</em>, propagation storms included, so
  * that fails closed instead of spinning for minutes.
@@ -111,10 +117,13 @@ public class PubGrubSolver {
     private final Map<String, List<Incompatibility>> incompatibilitiesByPackage = new LinkedHashMap<>();
 
     /**
-     * Per package, the version ranges a learned clause took to hold no version of it. A universe
-     * that grows into one of them restarts the solve; see the class comment.
+     * Per package, the union of the version ranges learned clauses took to hold no version of it. A
+     * universe that grows into it restarts the solve; see the class comment.
      */
-    private final Map<String, List<VersionSet>> assumedEmpty = new HashMap<>();
+    private final Map<String, VersionSet> assumedEmpty = new HashMap<>();
+
+    /** Whether a package with no candidate waits while another can be decided; see the class comment. */
+    private boolean deferEmpty;
 
     protected @Nullable String rootPkg;
 
@@ -249,6 +258,7 @@ public class PubGrubSolver {
         dependenciesRecorded.clear();
         declaredOnlyUniverses.clear();
         assumedEmpty.clear();
+        deferEmpty = false;
         for (Term dep : rootDeps) {
             addIncompatibility(new Incompatibility(
                     List.of(rootTerm, dep.invert()), new Incompatibility.Cause.Dependency(rootTerm, dep)));
@@ -276,6 +286,15 @@ public class PubGrubSolver {
                     propagate(next);
                     next = makeDecision();
                 } catch (UniverseGrew grew) {
+                    restart(rootVersion);
+                    next = rootPkg;
+                } catch (UnsatisfiableException unsat) {
+                    if (deferEmpty
+                            || assumedEmpty.isEmpty()
+                            || unsat.rootCause().cause() instanceof Incompatibility.Cause.BudgetExceeded) {
+                        throw unsat;
+                    }
+                    deferEmpty = true;
                     restart(rootVersion);
                     next = rootPkg;
                 }
@@ -335,19 +354,16 @@ public class PubGrubSolver {
     }
 
     private void assumeEmpty(String pkg, VersionSet versions) {
-        if (!versions.isEmpty())
-            assumedEmpty.computeIfAbsent(pkg, k -> new ArrayList<>()).add(versions);
+        if (!versions.isEmpty()) assumedEmpty.merge(pkg, versions, VersionSet::union);
     }
 
     /** Restart when {@code pkg}'s universe, grown from {@code before}, now holds a version assumed absent. */
     private void checkGrowth(String pkg, @Nullable VersionUniverse before) {
-        List<VersionSet> ranges = assumedEmpty.get(pkg);
-        if (ranges == null) return;
+        VersionSet assumed = assumedEmpty.get(pkg);
+        if (assumed == null) return;
         for (String v : Objects.requireNonNull(universes.get(pkg)).versions()) {
             if (before != null && before.indexOf(v) >= 0) continue;
-            for (VersionSet range : ranges) {
-                if (range.contains(v)) throw new UniverseGrew();
-            }
+            if (assumed.contains(v)) throw new UniverseGrew();
         }
     }
 
@@ -646,7 +662,21 @@ public class PubGrubSolver {
         // which grew quadratic over a solve on large BOM graphs.
         String pkg = solution.nextUndecidedPositive();
         if (pkg == null) return null;
-        if (!pinFloors.isEmpty()) pkg = deferExhaustedPins(pkg);
+        if (deferEmpty) {
+            for (String next = pkg; next != null; next = solution.nextUndecidedPositiveAfter(next)) {
+                String pick = pick(next);
+                if (pick != null) return decide(next, pick);
+            }
+        } else {
+            if (!pinFloors.isEmpty()) pkg = deferExhaustedPins(pkg);
+            String pick = pick(pkg);
+            if (pick != null) return decide(pkg, pick);
+        }
+        return noVersions(pkg);
+    }
+
+    /** The version to decide for {@code pkg}, or {@code null} when none of its candidates is left. */
+    private @Nullable String pick(String pkg) throws IOException, InterruptedException {
         phase = "choosing a version for " + pkg;
         ensureUniverse(pkg);
         // Lazy singleton may project empty (pref outside constraint) or after Unavailable.
@@ -656,6 +686,7 @@ public class PubGrubSolver {
         // A version an edge named is a candidate whatever the catalogs list, in every mode: a
         // release the catalog omits is what an edge naming it outright is for.
         if (!lazyUniverses.contains(pkg)) admitDeclared(pkg, candidatesNamedFor(pkg));
+        if (solution.hasNoCandidates(pkg) && !widenable(pkg)) return null;
         Set<String> declared = steeringDeclarations(pkg);
 
         Optional<Set<String>> asked = pinCandidates(pkg);
@@ -666,27 +697,34 @@ public class PubGrubSolver {
             admitDeclared(pkg, candidatesNamedFor(pkg));
             pick = choose(pkg, declared, pinCandidates(pkg));
         }
-        if (pick == null) {
-            // Diagnostics: if we never widened, expand once for a useful sample.
-            if (widenable(pkg)) {
-                expandUniverse(pkg);
-            }
-            VersionUniverse known = universes.get(pkg);
-            boolean unknownPackage = known == null || known.size() == 0 || declaredOnlyUniverses.contains(pkg);
-            VersionSet allowed = solution.positiveSet(pkg);
-            if (allowed.isEmpty()) allowed = VersionSet.ALL;
-            List<String> available = unknownPackage ? List.of() : sampleAvailable(pkg);
-            List<String> notes = new ArrayList<>(source.refusalNotes(pkg));
-            if (asked.isPresent() && solution.choosePreferred(pkg, declared) != null) {
-                notes.add("pinned " + pinFloor(pkg).orElse("") + ": no version the graph asks for fits");
-            }
-            assumeEmpty(pkg, allowed);
-            addIncompatibility(new Incompatibility(
-                    List.of(Term.positive(pkg, allowed)),
-                    new Incompatibility.Cause.NoVersions(pkg, allowed, unknownPackage, available, notes)));
-            return pkg;
-        }
+        return pick;
+    }
 
+    /** Learn that {@code pkg} has no version its constraint allows. */
+    private String noVersions(String pkg) throws IOException, InterruptedException {
+        phase = "choosing a version for " + pkg;
+        // Diagnostics: if we never widened, expand once for a useful sample.
+        if (widenable(pkg)) {
+            expandUniverse(pkg);
+        }
+        VersionUniverse known = universes.get(pkg);
+        boolean unknownPackage = known == null || known.size() == 0 || declaredOnlyUniverses.contains(pkg);
+        VersionSet allowed = solution.positiveSet(pkg);
+        if (allowed.isEmpty()) allowed = VersionSet.ALL;
+        List<String> available = unknownPackage ? List.of() : sampleAvailable(pkg);
+        List<String> notes = new ArrayList<>(source.refusalNotes(pkg));
+        if (pinCandidates(pkg).isPresent() && solution.choosePreferred(pkg, steeringDeclarations(pkg)) != null) {
+            notes.add("pinned " + pinFloor(pkg).orElse("") + ": no version the graph asks for fits");
+        }
+        assumeEmpty(pkg, allowed);
+        addIncompatibility(new Incompatibility(
+                List.of(Term.positive(pkg, allowed)),
+                new Incompatibility.Cause.NoVersions(pkg, allowed, unknownPackage, available, notes)));
+        return pkg;
+    }
+
+    /** Decide {@code pkg} at {@code pick}, recording its dependencies, or learn why it cannot be. */
+    private String decide(String pkg, String pick) throws IOException, InterruptedException {
         String coord = pkg + "@" + pick;
         boolean dependenciesKnown = dependenciesRecorded.contains(coord);
         List<Term> deps = List.of();
