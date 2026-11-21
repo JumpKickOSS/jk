@@ -968,7 +968,12 @@ public final class SelfCommand extends GroupCommand {
         }
 
         private static Path unzipSingleBinary(byte[] zip) throws IOException {
-            Path tmp = Files.createTempFile(HostTemp.dir(), "jk-self-", ".bin");
+            return unzipSingleBinary(zip, HostTemp.dir());
+        }
+
+        /** The archive's first file, written to a new file in {@code tmpDir}; nothing is left there on failure. */
+        static Path unzipSingleBinary(byte[] zip, Path tmpDir) throws IOException {
+            Path tmp = Files.createTempFile(tmpDir, "jk-self-", ".bin");
             try (var zin = new ZipInputStream(new ByteArrayInputStream(zip))) {
                 ZipEntry e;
                 while ((e = zin.getNextEntry()) != null) {
@@ -976,8 +981,11 @@ public final class SelfCommand extends GroupCommand {
                     Files.copy(zin, tmp, StandardCopyOption.REPLACE_EXISTING);
                     return tmp;
                 }
+                throw new IOException("release client archive contains no file");
+            } catch (IOException | RuntimeException e) {
+                Files.deleteIfExists(tmp);
+                throw e;
             }
-            throw new IOException("release client archive contains no file");
         }
     }
 }

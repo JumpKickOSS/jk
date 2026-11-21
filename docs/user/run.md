@@ -65,8 +65,10 @@ One mechanism: re-run a verb when sources change. **`jk dev` is only an alias fo
 `jk watch run`.**
 
 Watches **`src/`**, **`test/src/`**, and project-root **`jk.toml`** by default — not
-`target/`, `out/`, `build/`, or VCS trees. Editor save bursts are debounced (default
-**150 ms**).
+`target/`, `out/`, `build/`, or VCS trees. A root deleted and made again (a branch switch) is
+watched again. Editor save bursts are debounced: a pass starts once sources have been quiet for
+**150 ms** (`-U` / `--debounce-ms`), and a burst that never goes quiet starts one at the latest
+2 s after its first change (or four debounce windows, when that is longer).
 
 ```bash
 jk watch compile

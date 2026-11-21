@@ -156,10 +156,19 @@ final class StackWatchLoop {
         }
     }
 
-    /** Poll every member's sources in turn; restart the one that changed, end when one exits. */
+    /**
+     * Poll every member's sources in turn; restart the one that changed, end when one exits. A stack
+     * of node members alone has nothing to poll: it waits on the supervisor until every process is
+     * gone for good, or Ctrl-C stops them.
+     */
     private int watch(
             Sidecars supervisor, Path cache, List<Member> apps, List<String> appArgs, Map<String, String> exports)
             throws IOException, InterruptedException {
+        if (apps.isEmpty()) {
+            supervisor.awaitAllExited();
+            CliOutput.err(loop.logPrefix() + ": every process exited; stopping");
+            return Exit.SOFTWARE;
+        }
         long slice = Math.max(50, 500 / Math.max(1, apps.size()));
         while (true) {
             for (Member m : apps) {
@@ -240,7 +249,7 @@ final class StackWatchLoop {
 
     private void exited(Member m) {
         Process process = m.run().process();
-        loop.emit(SidecarOutput.appExited(Clock.SYSTEM, m.name, process.pid(), process.exitValue()));
+        loop.emit(SidecarOutput.appExited(Clock.SYSTEM, m.name, process.pid(), ProcessTrees.exitCode(process)));
     }
 
     /** The one line, and its {@code dev-ready} event, that says the whole stack is up. */

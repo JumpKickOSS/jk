@@ -12,11 +12,13 @@ import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.GitCommand;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.Processes;
 import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.jsonl.JsonFields;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.jsonl.MiniJson;
+import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.command.Arity;
@@ -40,7 +42,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
-import java.util.stream.Stream;
+import java.util.TreeMap;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -285,7 +287,7 @@ public final class SelectiveCommand implements CliCommand {
             }
             effectiveModules = String.join(",", dirty);
             effectiveSince = null; // modules list is authoritative
-            CommandWedge.printFail("Selective", "content-hash dirty modules: " + effectiveModules);
+            CommandWedge.printWorking("Selective", "content-hash dirty modules: " + effectiveModules);
         }
 
         List<String> args = new ArrayList<>();
@@ -350,49 +352,62 @@ public final class SelectiveCommand implements CliCommand {
     }
 
     /**
-     * What decides whether a module's build or test can be skipped: its own files ({@link
-     * #fingerprintModule}), the lock file that governs it, and the own files of every workspace
-     * sibling it depends on ({@code upstreams}: any scope, transitively), so an upstream edit or a
-     * lock change re-runs it.
+     * What decides whether a module's build or test can be skipped: its own files, tests included
+     * ({@link #fingerprintModule}), the lock file that governs it, the workspace root's {@code
+     * jk.toml} it inherits from, and the main files of every workspace sibling it depends on
+     * ({@code upstreams}: any scope, transitively), so an upstream edit, a root edit or a lock change
+     * re-runs it.
      */
     static String fingerprint(Path workspaceRoot, Path moduleDir, List<Path> upstreams) throws Exception {
         MessageDigest md = Hashing.newSha256();
-        feed(md, "self", fingerprintModule(moduleDir));
+        feed(md, "self", fingerprintModule(moduleDir, true));
         Path lock = LockPaths.lockFile(moduleDir);
-        feed(md, "lock", Files.isRegularFile(lock) ? Hashing.sha256Hex(Files.readAllBytes(lock)) : "absent");
+        feed(md, "lock", hashOrAbsent(lock));
+        Path owner = LockPaths.lockOwnerDir(moduleDir);
+        if (!owner.equals(moduleDir.toAbsolutePath().normalize())) {
+            feed(md, "workspace", hashOrAbsent(ManifestPaths.manifestIn(owner)));
+        }
         Path root = WorkingDirectory.resolve(workspaceRoot);
         List<Path> sorted = new ArrayList<>();
         for (Path sibling : upstreams) sorted.add(WorkingDirectory.resolve(sibling));
         sorted.sort(Comparator.comparing(Path::toString));
         for (Path abs : sorted) {
             String rel = abs.startsWith(root) ? root.relativize(abs).toString().replace('\\', '/') : abs.toString();
-            feed(md, "sibling:" + rel, fingerprintModule(abs));
+            feed(md, "sibling:" + rel, fingerprintModule(abs, false));
         }
         return "sha256:" + Hashing.hex(md.digest());
+    }
+
+    private static String hashOrAbsent(Path file) throws Exception {
+        return Files.isRegularFile(file) ? Hashing.sha256Hex(Files.readAllBytes(file)) : "absent";
     }
 
     private static void feed(MessageDigest md, String name, String value) {
         md.update((name + "\0" + value + "\0").getBytes(StandardCharsets.UTF_8));
     }
 
-    /** A module's own files: {@code jk.toml} and everything under {@code src/}, by relative path and content. */
-    static String fingerprintModule(Path moduleDir) throws Exception {
-        MessageDigest md = Hashing.newSha256();
-        List<Path> files = new ArrayList<>();
-        Path toml = ManifestPaths.manifestIn(moduleDir);
-        if (Files.isRegularFile(toml)) files.add(toml);
-        Path src = moduleDir.resolve("src");
-        if (Files.isDirectory(src)) {
-            try (Stream<Path> walk = Files.walk(src)) {
-                walk.filter(Files::isRegularFile).forEach(files::add);
-            }
+    /**
+     * A module's own files by relative path and content: {@code jk.toml} and every input root the
+     * build reads ({@link ModuleLayout#fingerprintDirs}: sources and resources, and with {@code
+     * tests} the test sources and test resources of every suite).
+     */
+    static String fingerprintModule(Path moduleDir, boolean tests) throws Exception {
+        Path module = moduleDir.toAbsolutePath().normalize();
+        Map<String, Path> files = new TreeMap<>();
+        Path toml = ManifestPaths.manifestIn(module);
+        if (Files.isRegularFile(toml))
+            files.put(module.relativize(toml).toString().replace('\\', '/'), toml);
+        for (Path dir : ModuleLayout.fingerprintDirs(module, !tests)) {
+            PathUtil.forEachRegularFile(
+                    dir,
+                    (file, attrs) ->
+                            files.put(module.relativize(file).toString().replace('\\', '/'), file));
         }
-        files.sort(Comparator.comparing(p -> moduleDir.relativize(p).toString().replace('\\', '/')));
-        for (Path f : files) {
-            String rel = moduleDir.relativize(f).toString().replace('\\', '/');
-            md.update(rel.getBytes(StandardCharsets.UTF_8));
+        MessageDigest md = Hashing.newSha256();
+        for (Map.Entry<String, Path> f : files.entrySet()) {
+            md.update(f.getKey().getBytes(StandardCharsets.UTF_8));
             md.update((byte) 0);
-            md.update(Files.readAllBytes(f));
+            md.update(Files.readAllBytes(f.getValue()));
             md.update((byte) 0);
         }
         return "sha256:" + Hashing.hex(md.digest());

@@ -36,6 +36,17 @@ public final class ProcessTrees {
         }
     }
 
+    /** What {@link #exitCode} reports for a process that has not exited. */
+    static final int STILL_RUNNING = -1;
+
+    /**
+     * {@code process}'s exit code, or {@link #STILL_RUNNING} when it is not gone: a {@link #stop}
+     * whose force-kill outlived its settle time returns with the process still alive.
+     */
+    static int exitCode(Process process) {
+        return process.isAlive() ? STILL_RUNNING : process.exitValue();
+    }
+
     /** Stop {@code roots} and everything beneath them; a root that is already gone is nothing to do. */
     static void stop(Collection<ProcessHandle> roots, Clock clock) {
         List<ProcessHandle> family = new ArrayList<>();

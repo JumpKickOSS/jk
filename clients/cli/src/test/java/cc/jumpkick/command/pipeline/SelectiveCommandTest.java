@@ -68,9 +68,9 @@ class SelectiveCommandTest {
         writeWorkspace(tempDir);
         Files.createDirectories(tempDir.resolve("api/src/main/java"));
         Files.writeString(tempDir.resolve("api/src/main/java/A.java"), "class A {}");
-        String h1 = SelectiveCommand.fingerprintModule(tempDir.resolve("api"));
+        String h1 = SelectiveCommand.fingerprintModule(tempDir.resolve("api"), true);
         Files.writeString(tempDir.resolve("api/src/main/java/A.java"), "class A { int x; }");
-        String h2 = SelectiveCommand.fingerprintModule(tempDir.resolve("api"));
+        String h2 = SelectiveCommand.fingerprintModule(tempDir.resolve("api"), true);
         assertThat(h1).isNotEqualTo(h2);
     }
 

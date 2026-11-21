@@ -6,9 +6,13 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.EngineInstall;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Arrays;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -115,6 +119,43 @@ class SelfUpdateArtifactTest {
         String sha = SelfCommand.UpdateSub.ingestClient(cas, client);
         assertThat(cas.contains(sha)).isTrue();
         assertThat(client).doesNotExist();
+    }
+
+    private static byte[] zip(String name, byte[] body) throws IOException {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        try (ZipOutputStream zip = new ZipOutputStream(out)) {
+            zip.putNextEntry(new ZipEntry(name));
+            zip.write(body);
+            zip.closeEntry();
+        }
+        return out.toByteArray();
+    }
+
+    private static byte[] emptyZip() throws IOException {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        new ZipOutputStream(out).close();
+        return out.toByteArray();
+    }
+
+    @Test
+    void the_windows_client_archive_unpacks_to_one_temp_file(@TempDir Path tmp) throws Exception {
+        Path client = SelfCommand.UpdateSub.unzipSingleBinary(zip("jk.exe", new byte[] {'M', 'Z'}), tmp);
+        assertThat(client).hasBinaryContent(new byte[] {'M', 'Z'});
+    }
+
+    /** A corrupt or empty download fails the update; the temp file it was unpacking into goes with it. */
+    @Test
+    void a_client_archive_that_does_not_unpack_leaves_no_temp_file(@TempDir Path tmp) throws Exception {
+        byte[] whole = zip("jk.exe", new byte[64 * 1024]);
+        byte[] truncated = Arrays.copyOf(whole, 40);
+        assertThatThrownBy(() -> SelfCommand.UpdateSub.unzipSingleBinary(truncated, tmp))
+                .isInstanceOf(IOException.class);
+        assertThatThrownBy(() -> SelfCommand.UpdateSub.unzipSingleBinary(emptyZip(), tmp))
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("contains no file");
+        try (var left = Files.list(tmp)) {
+            assertThat(left).isEmpty();
+        }
     }
 
     @Test

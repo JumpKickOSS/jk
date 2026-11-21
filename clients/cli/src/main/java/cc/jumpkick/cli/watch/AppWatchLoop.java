@@ -488,7 +488,7 @@ public final class AppWatchLoop {
      * terminal the loop's own line says it.
      */
     private void appExited(Process app) {
-        events.accept(SidecarOutput.appExited(Clock.SYSTEM, "", app.pid(), app.exitValue()));
+        events.accept(SidecarOutput.appExited(Clock.SYSTEM, "", app.pid(), ProcessTrees.exitCode(app)));
     }
 
     private App restartApp(Sidecars sidecars, App app, ExecPlan plan, List<String> appArgs)

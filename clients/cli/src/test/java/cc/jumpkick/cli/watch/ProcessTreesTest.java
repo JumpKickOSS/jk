@@ -79,6 +79,22 @@ class ProcessTreesTest {
         assertThat(ProcessTrees.GRACE.plus(ProcessTrees.SETTLE).toMillis()).isLessThan(GlobalCancel.HOOKS_BOUND_MILLIS);
     }
 
+    /** A stop can return with the process still alive; its exit event must not throw then. */
+    @Test
+    void the_exit_code_of_a_process_still_running_is_reported_not_thrown() throws Exception {
+        Process running = new ProcessBuilder("sh", "-c", "sleep 30").start();
+        try {
+            assertThat(ProcessTrees.exitCode(running)).isEqualTo(ProcessTrees.STILL_RUNNING);
+        } finally {
+            running.destroyForcibly().waitFor();
+        }
+        assertThat(ProcessTrees.exitCode(new ProcessBuilder("sh", "-c", "exit 7")
+                        .start()
+                        .onExit()
+                        .get()))
+                .isEqualTo(7);
+    }
+
     @Test
     void await_exit_returns_the_childs_code_when_it_exits_on_its_own() throws Exception {
         Process child = new ProcessBuilder("sh", "-c", "exit 7").start();

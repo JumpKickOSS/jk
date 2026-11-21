@@ -4,6 +4,7 @@ package cc.jumpkick.cli.watch;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.WorkingDirectory;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.layout.NodeProject;
 import cc.jumpkick.layout.WalkSkip;
 import cc.jumpkick.lock.ManifestPaths;
@@ -44,26 +45,40 @@ public final class SourceWatch implements AutoCloseable {
     /** Coalesce editor save bursts (rename+write+chmod) into one notification. */
     public static final long DEBOUNCE_MILLIS = 150;
 
+    /**
+     * The longest a burst that never goes quiet holds a pass back, from its first event; a longer
+     * debounce window stretches it to {@link #MAX_WAIT_WINDOWS} windows.
+     */
+    static final long MAX_WAIT_MILLIS = 2_000;
+
+    /** How many debounce windows a burst may last when that is longer than {@link #MAX_WAIT_MILLIS}. */
+    static final long MAX_WAIT_WINDOWS = 4;
+
     private final WatchService watcher;
     private final Map<WatchKey, Path> keys = new HashMap<>();
     private final Path projectDir;
     private final long debounceMillis;
     private final Set<Path> skipped;
+    private final Clock clock;
 
     /** The roots asked for, as absolute paths: one missing at open is watched once it appears. */
     private final List<Path> roots = new ArrayList<>();
 
-    /** Directories watched only because a missing root will appear under them. */
+    /**
+     * Directories between the project and a root, watched so a root deleted and made again (a
+     * checkout, a {@code rm -rf} and restore) is seen to appear and is watched anew.
+     */
     private final Set<Path> rootParents = new HashSet<>();
 
     /** The project directory is itself a root: its own files are sources, not only {@code jk.toml}. */
     private boolean wholeDir;
 
-    private SourceWatch(WatchService watcher, Path projectDir, long debounceMillis, Set<Path> skipped) {
+    private SourceWatch(WatchService watcher, Path projectDir, long debounceMillis, Set<Path> skipped, Clock clock) {
         this.watcher = watcher;
         this.projectDir = projectDir;
         this.debounceMillis = Math.max(0, debounceMillis);
         this.skipped = skipped;
+        this.clock = clock;
     }
 
     /** Open a watch over {@code roots} (and the project dir for {@code jk.toml}). */
@@ -82,13 +97,15 @@ public final class SourceWatch implements AutoCloseable {
         WatchService ws = FileSystems.getDefault().newWatchService();
         Set<Path> skip = new HashSet<>();
         for (Path p : skipped) skip.add(WorkingDirectory.resolve(p));
-        SourceWatch sw = new SourceWatch(ws, projectDir, debounceMillis, skip);
+        SourceWatch sw = new SourceWatch(ws, projectDir, debounceMillis, skip, Clock.SYSTEM);
         sw.wholeDir = roots.stream()
                 .anyMatch(r -> WorkingDirectory.resolve(r).normalize().equals(WorkingDirectory.resolve(projectDir)));
         for (Path root : roots) {
             sw.roots.add(root.toAbsolutePath().normalize());
-            if (Files.isDirectory(root)) sw.registerTree(root);
-            else if (Files.isRegularFile(root) && root.getParent() != null) sw.registerDir(root.getParent());
+            if (Files.isDirectory(root)) {
+                sw.registerTree(root);
+                sw.anchor(root.toAbsolutePath().normalize());
+            } else if (Files.isRegularFile(root) && root.getParent() != null) sw.registerDir(root.getParent());
             else sw.watchForRoot(root.toAbsolutePath().normalize());
         }
         sw.registerDir(projectDir);
@@ -162,7 +179,7 @@ public final class SourceWatch implements AutoCloseable {
     private Changes drainEvents(WatchKey first) throws IOException, InterruptedException {
         boolean sources = false, resources = false, manifest = false;
         WatchKey key = first;
-        long settleUntil = System.currentTimeMillis() + debounceMillis;
+        Settle settle = new Settle(clock, debounceMillis);
         while (key != null) {
             Path dir = keys.get(key);
             for (WatchEvent<?> event : key.pollEvents()) {
@@ -174,19 +191,40 @@ public final class SourceWatch implements AutoCloseable {
                     continue;
                 }
                 if (!(event.context() instanceof Path rel) || dir == null) continue;
-                Path changed = dir.resolve(rel);
-                boolean created = event.kind() == StandardWatchEventKinds.ENTRY_CREATE && Files.isDirectory(changed);
-                Changes c = created ? newDirectory(dir, changed) : classify(dir, changed);
-                if (c == null) continue;
+                Changes c = event(dir, event.kind(), dir.resolve(rel));
+                if (c == null || !c.any()) continue;
+                settle.event();
                 sources |= c.sources();
                 resources |= c.resources();
                 manifest |= c.manifest();
             }
             if (!key.reset()) keys.remove(key);
-            long remaining = settleUntil - System.currentTimeMillis();
-            key = remaining > 0 ? watcher.poll(remaining, TimeUnit.MILLISECONDS) : watcher.poll();
+            long remaining = settle.remainingNanos();
+            key = remaining > 0 ? watcher.poll(remaining, TimeUnit.NANOSECONDS) : watcher.poll();
         }
         return new Changes(sources, resources, manifest);
+    }
+
+    /**
+     * What one event for {@code changed}, an entry of the watched {@code dir}, asks for; null when
+     * it is ignored. Under a directory watched only to see a root appear, only a new directory counts.
+     */
+    @Nullable
+    Changes event(Path dir, WatchEvent.Kind<?> kind, Path changed) throws IOException {
+        boolean created = kind == StandardWatchEventKinds.ENTRY_CREATE && Files.isDirectory(changed);
+        if (created) return newDirectory(dir, changed);
+        return anchorOnly(dir) ? null : classify(dir, changed);
+    }
+
+    /** True when {@code dir} is watched only because a root lies below it, not because it is in one. */
+    private boolean anchorOnly(Path dir) {
+        Path abs = dir.toAbsolutePath().normalize();
+        return rootParents.contains(abs) && roots.stream().noneMatch(abs::startsWith);
+    }
+
+    /** Whether {@code dir} is registered with the watch service now. */
+    boolean watches(Path dir) {
+        return keys.containsValue(dir.toAbsolutePath().normalize());
     }
 
     /**
@@ -196,7 +234,7 @@ public final class SourceWatch implements AutoCloseable {
      */
     private @Nullable Changes newDirectory(Path dir, Path created) throws IOException {
         Path abs = created.toAbsolutePath().normalize();
-        boolean underRoot = !rootParents.contains(dir.toAbsolutePath().normalize()) && classify(dir, created) != null;
+        boolean underRoot = !anchorOnly(dir) && classify(dir, created) != null;
         for (Path root : roots) {
             if (root.equals(abs)) {
                 underRoot = true;
@@ -221,6 +259,28 @@ public final class SourceWatch implements AutoCloseable {
             return true;
         });
         return new Changes(seen[0], seen[1], seen[2]);
+    }
+
+    /**
+     * Watch every directory between the project and {@code root}, an existing root, so the root is
+     * seen to come back after it, or a directory above it, is deleted and made again. A root outside
+     * the project, a sibling module's, has its parent watched.
+     */
+    private void anchor(Path root) throws IOException {
+        Path project = projectDir.toAbsolutePath().normalize();
+        Path at = root.getParent();
+        if (at != null && !at.startsWith(project)) {
+            if (!skip(at)) {
+                registerDir(at);
+                rootParents.add(at);
+            }
+            return;
+        }
+        while (at != null && at.startsWith(project) && !at.equals(project)) {
+            registerDir(at);
+            rootParents.add(at);
+            at = at.getParent();
+        }
     }
 
     /** {@code root} does not exist yet: watch its nearest existing ancestor inside the project to see it made. */
@@ -255,7 +315,11 @@ public final class SourceWatch implements AutoCloseable {
             return manifestOnly;
         }
         if (relPath.contains("/resources/")) return new Changes(false, true, manifest);
-        if (name.endsWith(".java") || name.endsWith(".kt") || name.endsWith(".kts") || name.endsWith(".groovy")) {
+        if (name.endsWith(".java")
+                || name.endsWith(".kt")
+                || name.endsWith(".kts")
+                || name.endsWith(".groovy")
+                || name.endsWith(".scala")) {
             return new Changes(true, false, manifest);
         }
         return new Changes(false, !Files.isDirectory(changed) && isInteresting(name), manifest);
@@ -263,6 +327,38 @@ public final class SourceWatch implements AutoCloseable {
 
     private static boolean isInteresting(String name) {
         return !name.startsWith(".") && !name.endsWith(".class") && !name.endsWith("~");
+    }
+
+    /**
+     * When a burst of events is over: once it has been quiet for the debounce window since its last
+     * relevant event (the trailing edge), or at the latest {@link #MAX_WAIT_MILLIS} (or {@link
+     * #MAX_WAIT_WINDOWS} windows, when longer) after the burst began, so a tree that never stops
+     * changing still gets its pass. Read from the monotonic clock: a wall-clock step cannot stretch
+     * or cut the wait.
+     */
+    static final class Settle {
+        private final Clock clock;
+        private final long quietNanos;
+        private final long deadline;
+        private long last;
+
+        Settle(Clock clock, long debounceMillis) {
+            this.clock = clock;
+            this.quietNanos = TimeUnit.MILLISECONDS.toNanos(debounceMillis);
+            this.last = clock.nanos();
+            long capMillis = Math.max(MAX_WAIT_MILLIS, MAX_WAIT_WINDOWS * debounceMillis);
+            this.deadline = last + TimeUnit.MILLISECONDS.toNanos(capMillis);
+        }
+
+        /** A relevant event arrived now: the quiet window starts over. */
+        void event() {
+            last = clock.nanos();
+        }
+
+        /** How long to wait for the next event; zero or less when the burst is over. */
+        long remainingNanos() {
+            return Math.min(last + quietNanos, deadline) - clock.nanos();
+        }
     }
 
     /** Default source roots for a simple project layout. */

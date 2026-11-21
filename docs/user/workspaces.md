@@ -447,9 +447,12 @@ jk selective run test
 jk selective resolve -m 'api,worker'   # dry list
 ```
 
-`prepare` records per-module content fingerprints: the module's `jk.toml` + `src/**`, the
-`jk-lock.toml` that governs it, and the same files of every workspace sibling it depends on
-(any scope, transitively), so an upstream edit or a lock change re-runs it. A later
+`prepare` records per-module content fingerprints: the module's `jk.toml` and every input root
+its build and tests read (`src/`, `resources/`, `test/src/`, `test/resources/` and each named
+suite's, or `src/**` in the traditional layout), the `jk-lock.toml` that governs it, the
+workspace root's `jk.toml`, and the `jk.toml`, sources and resources of every workspace sibling it
+depends on (any scope, transitively), so an upstream edit, a root edit or a lock change re-runs
+it. A later
 `selective run` without `--force` / `--redo` skips modules that still match. Hashes are
 content-based (not absolute paths). Generated / `target` trees are not fingerprinted.
 

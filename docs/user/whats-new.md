@@ -6,6 +6,16 @@ JumpKick shows you this page's new entries after it updates itself.
 
 ## 0.54.0
 
+- **`jk dev` on a stack of node dev servers no longer spins a CPU core, and `jk watch` waits for a
+  save burst to finish.** `jk dev` at a workspace root whose members are all node dev servers waits
+  on them and stops when they have all exited. `jk watch` and `jk dev` start a pass once sources
+  have been quiet for the debounce window (150 ms), at most 2 s after a burst began (or four windows
+  when `-U` is longer), so a long save burst or a checkout runs one pass, not two. A `test/src` or
+  `src/main/java` deleted and restored is watched again, and a `.scala` edit is reported as
+  recompiled. `jk selective` fingerprints test sources, resources, test resources and the workspace
+  root `jk.toml`, so an edit there re-runs the module (every module reads as changed once after this
+  upgrade), and its dirty-modules line is no longer printed as a failure. `jk verify` passes over a
+  module that packages no jar and removes its scratch copy on Ctrl-C too.
 - **Guards see more of the bytecode, so a rule may find sites it missed.** Type references now
   include generic type arguments (`List<Banned>`) and record components, so `cycles`, `forbid`,
   `layers` and `classes` rules can find new sites. `split-package` catches two modules compiling the

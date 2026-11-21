@@ -76,6 +76,12 @@ public final class Sidecars implements AutoCloseable {
     /** The apps started through {@link #startCompanion}; guarded by {@code this} like {@link #running}. */
     private final List<Process> companions = new ArrayList<>();
 
+    /**
+     * Sidecars still running or about to be relaunched; guarded by {@code this}. A launch counts one
+     * up, and its supervisor counts it down once that run ends with nothing launched in its place.
+     */
+    private int live;
+
     private final Listener listener;
     private final Clock clock;
     private final Sleeper sleeper;
@@ -187,6 +193,14 @@ public final class Sidecars implements AutoCloseable {
         return process;
     }
 
+    /**
+     * Block until no sidecar runs and none is waiting out a restart's backoff: each has exited for
+     * good, given up, or been stopped by {@link #close}.
+     */
+    public synchronized void awaitAllExited() throws InterruptedException {
+        while (live > 0) wait();
+    }
+
     private synchronized List<Running> snapshot() {
         return List.copyOf(running);
     }
@@ -209,6 +223,9 @@ public final class Sidecars implements AutoCloseable {
                     e);
         }
         Running r = new Running(spec, process, failures, clock);
+        synchronized (this) {
+            live++;
+        }
         listener.started(spec.name(), process.pid());
         CountDownLatch drained = new CountDownLatch(2);
         // Pipe readers on platform threads: a pipe read blocks the thread making it, and a reader
@@ -244,6 +261,17 @@ public final class Sidecars implements AutoCloseable {
      * holding the pipes open past the exit gets {@link #DRAIN_AFTER_EXIT_MILLIS}, not a veto.
      */
     private void supervise(Running r, CountDownLatch drained) {
+        try {
+            superviseRun(r, drained);
+        } finally {
+            synchronized (this) {
+                live--;
+                notifyAll();
+            }
+        }
+    }
+
+    private void superviseRun(Running r, CountDownLatch drained) {
         int exit;
         try {
             exit = r.process.waitFor();

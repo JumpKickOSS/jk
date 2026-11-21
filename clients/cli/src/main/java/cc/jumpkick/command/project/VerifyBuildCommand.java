@@ -10,6 +10,7 @@ import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.run.JsonlShape;
 import cc.jumpkick.cli.tui.CommandWedge;
+import cc.jumpkick.cli.tui.GlobalCancel;
 import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
@@ -71,7 +72,6 @@ public final class VerifyBuildCommand implements CliCommand {
     }
 
     private @Nullable Path cacheDir;
-    private @Nullable GlobalOptions global;
 
     /** What parse-build decided to verify: the module dirs whose artifacts get compared. */
     private record VerifyPlan(List<Path> moduleDirs) {}
@@ -90,7 +90,6 @@ public final class VerifyBuildCommand implements CliCommand {
     private record Report(List<Comparison> comparisons) {}
 
     private static final BuildPlanKey<VerifyPlan> PLAN = BuildPlanKey.scalar("verify-plan", VerifyPlan.class);
-    private static final BuildPlanKey<Path> SCRATCH = BuildPlanKey.scalar("scratch", Path.class);
     private static final BuildPlanKey<Report> REPORT = BuildPlanKey.scalar("report", Report.class);
 
     @Override
@@ -101,7 +100,7 @@ public final class VerifyBuildCommand implements CliCommand {
     @Override
     public int run(Invocation in) throws IOException {
         this.cacheDir = in.value("cache-dir").map(CliPaths::abs).orElse(null);
-        this.global = GlobalOptions.from(in);
+        GlobalOptions global = GlobalOptions.from(in);
         Path dir = global.workingDir();
         Path buildFile = ManifestPaths.manifestIn(dir);
         Path lockFile = LockPaths.lockFile(dir);
@@ -110,26 +109,36 @@ public final class VerifyBuildCommand implements CliCommand {
             return Exit.CONFIG;
         }
         Path cache = cacheDir != null ? cacheDir : JkDirs.cache();
+        // The scratch copy is a whole project tree plus its build: gone on every way out, Ctrl-C
+        // included, which halts without running this method's finally.
+        Path scratch = Files.createTempDirectory(HostTemp.dir(), "jk-verify-");
+        try (GlobalCancel.Registration onInterrupt =
+                GlobalCancel.onInterrupt(() -> PathUtil.deleteRecursively(scratch))) {
+            return verify(global, dir, cache, scratch);
+        } finally {
+            PathUtil.deleteRecursively(scratch);
+        }
+    }
 
+    private int verify(GlobalOptions global, Path dir, Path cache, Path scratch) {
         Task parseBuild = Task.builder(TaskNames.PARSE_BUILD)
                 .ticks(1)
                 .execute(ctx -> {
                     ctx.label("parse jk.toml + jk-lock.toml");
                     ProjectInfo root = projectInfo(dir);
                     List<Path> moduleDirs = moduleDirs(dir, root);
-                    // Every module the user built must have its jar in place before we rebuild
-                    // same "run `jk build` first" gate the single-jar verify always had. The
-                    // workspace root itself is exempt (a pure aggregator produces no jar).
+                    // A build that never ran fails here, before the rebuild. Which modules package
+                    // no jar at all (a sourceless root, a node module nothing depends on) only the
+                    // rebuild tells, so a module missing its jar alone is judged after it.
+                    List<Path> jars = new ArrayList<>();
                     for (Path moduleDir : moduleDirs) {
                         if (root.workspaceRoot() && moduleDir.equals(dir)) continue;
-                        Path jar = Path.of(projectInfo(moduleDir).mainJarPath());
-                        if (!Files.exists(jar)) {
-                            ctx.error("missing-jar", "no existing jar at " + jar + " — run `jk build` first.");
-                            throw new RuntimeException("missing existing jar");
-                        }
+                        jars.add(Path.of(projectInfo(moduleDir).mainJarPath()));
+                    }
+                    if (!jars.isEmpty() && jars.stream().noneMatch(Files::exists)) {
+                        missingJar(ctx::error, jars.getFirst());
                     }
                     ctx.put(PLAN, new VerifyPlan(moduleDirs));
-                    ctx.put(SCRATCH, Files.createTempDirectory(HostTemp.dir(), "jk-verify-"));
                     ctx.progress(1);
                 })
                 .build();
@@ -140,7 +149,6 @@ public final class VerifyBuildCommand implements CliCommand {
                 .ticks(1)
                 .execute(ctx -> {
                     ctx.label("rebuild into scratch");
-                    Path scratch = ctx.require(SCRATCH);
                     try {
                         copyProjectTree(dir, scratch);
                         touchLockfiles(scratch);
@@ -161,20 +169,18 @@ public final class VerifyBuildCommand implements CliCommand {
                 .execute(ctx -> {
                     ctx.label("sha256 artifacts");
                     VerifyPlan plan = ctx.require(PLAN);
-                    Path scratch = ctx.require(SCRATCH);
-                    ctx.put(REPORT, new Report(compareArtifacts(dir, scratch, plan)));
+                    ctx.put(REPORT, new Report(compareArtifacts(dir, scratch, plan, ctx::error)));
                     ctx.progress(1);
                 })
                 .build();
 
         BuildPlan plan = BuildPlan.builder("verify-build")
-                .stateKeys(PLAN, SCRATCH, REPORT)
+                .stateKeys(PLAN, REPORT)
                 .addTask(parseBuild)
                 .addTask(rebuild)
                 .addTask(compare)
                 .build();
         BuildPlanResult result = BuildPlanConsole.run(plan, BuildPlanConsole.modeFor(global), cache);
-        plan.get(SCRATCH).ifPresent(PathUtil::deleteRecursively);
 
         if (!result.success()) {
             for (BuildPlanResult.Diagnostic d : result.errors()) {
@@ -319,15 +325,30 @@ public final class VerifyBuildCommand implements CliCommand {
      * javadocJar}) that exists on either side, per module. Native binaries and OCI tars are out of
      * scope — they are not byte-comparable across builds the way the jar path guarantees.
      */
-    private static List<Comparison> compareArtifacts(Path dir, Path scratch, VerifyPlan plan) throws IOException {
+    private static List<Comparison> compareArtifacts(Path dir, Path scratch, VerifyPlan plan, ErrorSink errors)
+            throws IOException {
         List<Comparison> comparisons = new ArrayList<>();
         for (Path moduleDir : plan.moduleDirs()) {
             Path[] existing = artifactPaths(moduleDir);
             Path scratchModule = scratch.resolve(dir.relativize(moduleDir));
             Path[] rebuilt = artifactPaths(scratchModule);
+            if (unbuilt(existing[0], rebuilt[0])) missingJar(errors, existing[0]);
             comparisons.addAll(compareModule(dir, existing, rebuilt));
         }
         return comparisons;
+    }
+
+    /**
+     * A module the rebuild packages a jar for that the user's build has not: built since the last
+     * {@code jk build}, or never. A module neither side packages a jar for has none to compare.
+     */
+    static boolean unbuilt(Path existingJar, Path rebuiltJar) {
+        return !Files.exists(existingJar) && Files.exists(rebuiltJar);
+    }
+
+    private static void missingJar(ErrorSink errors, Path jar) {
+        errors.error("missing-jar", "no existing jar at " + jar + " — run `jk build` first.");
+        throw new RuntimeException("missing existing jar");
     }
 
     /** Pair up one module's artifacts by kind; include a pair when either side produced the file. */

@@ -333,7 +333,10 @@ refused, so a misspelt `untill` cannot silently turn a dated ignore into a perma
 ## Verify
 
 `jk verify` rebuilds in a scratch directory and compares artifact hashes. Use it when you
-need a rebuild-from-lock check, not as a substitute for the lockfile itself.
+need a rebuild-from-lock check, not as a substitute for the lockfile itself. A module that
+packages no jar (a node module nothing depends on) has nothing to compare and is passed over;
+one whose jar the rebuild makes but your last `jk build` did not fails with "run `jk build`
+first". The scratch directory is removed when verify ends, on Ctrl-C too.
 
 ## Related
 
