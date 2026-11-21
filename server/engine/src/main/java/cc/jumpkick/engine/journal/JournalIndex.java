@@ -3,6 +3,7 @@ package cc.jumpkick.engine.journal;
 
 import cc.jumpkick.builds.ProjectBuilds;
 import cc.jumpkick.host.Settled;
+import cc.jumpkick.jsonl.Jsonl;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -161,19 +162,19 @@ final class JournalIndex {
         HeadText head = reader.read(dir);
         if (head == null) return null;
         String text = head.text();
-        long sort = BuildJournal.scanLong(text, "finishedAt");
-        if (sort <= 0) sort = BuildJournal.scanLong(text, "startedAt");
-        boolean running = BuildJournal.scanTrue(text, "running");
+        long sort = Jsonl.longValue(text, "finishedAt", 0);
+        if (sort <= 0) sort = Jsonl.longValue(text, "startedAt", 0);
+        boolean running = Jsonl.bool(text, "running", false);
         return new Entry(
                 dir,
                 text,
                 head.complete(),
                 running ? vouched(dirMillis) : dirMillis,
-                BuildJournal.scanString(text, "id"),
-                BuildJournal.scanLong(text, "requestId"),
+                Jsonl.str(text, "id"),
+                Jsonl.longValue(text, "requestId", 0),
                 sort,
                 running,
-                BuildRecord.isSyntheticTrigger(BuildJournal.scanString(text, "trigger")));
+                BuildRecord.isSyntheticTrigger(Jsonl.str(text, "trigger")));
     }
 
     private void rebuild() {

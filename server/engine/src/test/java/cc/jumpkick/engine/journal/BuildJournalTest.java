@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.builds.ProjectBuilds;
 import cc.jumpkick.builds.ProjectStore;
+import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.wire.runtime.ModuleWorkCost;
 import cc.jumpkick.wire.runtime.WorkModel;
 import java.io.IOException;
@@ -134,7 +135,7 @@ class BuildJournalTest {
         List<String> raw = j.rawRecords(9);
         assertThat(raw).hasSize(1);
         assertThat(raw.getFirst()).doesNotContain("calibrate").doesNotContain("synthetic");
-        assertThat(BuildJournal.scanString(raw.getFirst(), "trigger")).isEqualTo("cli");
+        assertThat(Jsonl.str(raw.getFirst(), "trigger")).isEqualTo("cli");
     }
 
     /**
@@ -807,6 +808,36 @@ class BuildJournalTest {
         // A torn write (no closing brace) is skipped, not streamed into a JSON array.
         Files.writeString(victim, json.substring(0, json.length() / 2));
         assertThat(j.rawRecords(9)).hasSize(3);
+    }
+
+    /**
+     * The head fields the index reads are the record's own, not a nested object's of the same
+     * name, and a hand-damaged escape in one record does not take the journal down with it.
+     */
+    @Test
+    void head_fields_are_read_off_the_root_object_and_a_bad_escape_is_text() throws Exception {
+        BuildJournal j = new BuildJournal(dir);
+        for (int i = 0; i < 2; i++) {
+            j.append(record(1_700_000_000_000L + i * 1000L, true, "g:a"), new BuildJournal.Snapshot(null, null, null));
+        }
+        List<Path> records;
+        try (var walk = Files.walk(dir)) {
+            records = walk.filter(p -> p.getFileName().toString().equals("record.json"))
+                    .sorted()
+                    .toList();
+        }
+        Path nested = records.getFirst();
+        String json = Files.readString(nested);
+        String id = requireNonNull(Jsonl.str(json, "id"));
+        Files.writeString(nested, json.replaceFirst("\\{", "{\"deep\": {\"id\": \"inner\"},"));
+        Path damaged = records.getLast();
+        Files.writeString(
+                damaged, Files.readString(damaged).replace("\"trigger\": \"cli\"", "\"trigger\": \"c\\uZZZZ\""));
+
+        BuildJournal reopened = new BuildJournal(dir);
+        assertThat(reopened.rawRecords(9)).hasSize(2);
+        assertThat(reopened.rawRecord(id)).isPresent();
+        assertThat(reopened.rawRecord("inner")).isEmpty();
     }
 
     @Test

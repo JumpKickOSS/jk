@@ -8,6 +8,7 @@ import cc.jumpkick.engine.api.HttpLive;
 import cc.jumpkick.engine.api.JsonOut;
 import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.engine.listen.EventRedaction;
+import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.jsonl.MiniJson;
 import com.sun.net.httpserver.HttpExchange;
 import java.io.IOException;
@@ -110,7 +111,7 @@ final class HttpHistoryApi {
 
     /** Whether the record head {@code head} is a run still going or one that finished after {@code since}. */
     static boolean newerThan(String head, long since) {
-        return BuildJournal.scanTrue(head, "running") || BuildJournal.scanLong(head, "finishedAt") > since;
+        return Jsonl.bool(head, "running", false) || Jsonl.longValue(head, "finishedAt", 0) > since;
     }
 
     /**

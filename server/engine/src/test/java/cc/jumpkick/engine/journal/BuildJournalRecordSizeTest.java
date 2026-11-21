@@ -5,6 +5,7 @@ import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.builds.ProjectBuilds;
+import cc.jumpkick.jsonl.Jsonl;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -120,7 +121,7 @@ class BuildJournalRecordSizeTest {
         assertThat(Files.size(file)).isLessThan(BuildJournal.DIAGNOSTICS_BUDGET + 64 * 1024);
         assertThat(spill).isRegularFile();
         String json = Files.readString(file, StandardCharsets.UTF_8);
-        assertThat(BuildJournal.scanString(json, "diagnosticsSpill")).isEqualTo(BuildJournal.DIAGNOSTICS_SPILL);
+        assertThat(Jsonl.str(json, "diagnosticsSpill")).isEqualTo(BuildJournal.DIAGNOSTICS_SPILL);
 
         BuildRecord whole = j.get(locator).orElseThrow();
         assertThat(messages(whole.diagnostics())).isEqualTo(messages(all));
@@ -142,7 +143,7 @@ class BuildJournalRecordSizeTest {
         raws.add(j.rawRecord(id).orElseThrow());
         raws.add(j.rawRecord(locator).orElseThrow());
         assertThat(raws).hasSize(4).allSatisfy(raw -> {
-            assertThat(BuildJournal.scanString(raw, "diagnosticsSpill")).isNull();
+            assertThat(Jsonl.str(raw, "diagnosticsSpill")).isNull();
             assertThat(messages(Json.read(raw).diagnostics())).isEqualTo(messages(all));
         });
     }

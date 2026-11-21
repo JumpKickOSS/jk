@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.builds.ProjectBuilds;
 import cc.jumpkick.engine.jobs.JobOutcome;
+import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.testing.Symlinks;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -60,7 +61,7 @@ class BuildJournalCompleteScopeTest {
 
         Path dir = journal.runDir("g:a", real.toString(), 3).orElseThrow();
         assertThat(journal.get(locator).orElseThrow().running()).isFalse();
-        assertThat(BuildJournal.scanString(Files.readString(dir.resolve(ProjectBuilds.RECORD)), "running"))
+        assertThat(Jsonl.str(Files.readString(dir.resolve(ProjectBuilds.RECORD)), "running"))
                 .isNotEqualTo("true");
     }
 

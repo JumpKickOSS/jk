@@ -12,6 +12,7 @@ import cc.jumpkick.host.Log;
 import cc.jumpkick.host.OwnerOnlyFiles;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.time.Clock;
+import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.runtime.base.RunMeasures;
 import java.io.IOException;
@@ -731,7 +732,7 @@ public final class BuildJournal {
     /** The whole record when its head carries {@code requestId} and says it finished. */
     private Optional<String> readFinished(Path dir, long requestId) {
         String head = rawHead(dir);
-        if (head == null || scanLong(head, "requestId") != requestId || scanTrue(head, "running")) {
+        if (head == null || Jsonl.longValue(head, "requestId", 0) != requestId || Jsonl.bool(head, "running", false)) {
             return Optional.empty();
         }
         return readRaw(dir);
@@ -779,7 +780,7 @@ public final class BuildJournal {
     private static @Nullable String readSpill(Path dir, String json) throws IOException {
         int cut = Json.tailStart(json);
         String head = cut < 0 ? json : json.substring(0, cut);
-        if (!DIAGNOSTICS_SPILL.equals(scanString(head, "diagnosticsSpill"))) return null;
+        if (!DIAGNOSTICS_SPILL.equals(Jsonl.str(head, "diagnosticsSpill"))) return null;
         Path spill = dir.resolve(DIAGNOSTICS_SPILL);
         return Files.isRegularFile(spill) ? Files.readString(spill, StandardCharsets.UTF_8) : null;
     }
@@ -787,7 +788,7 @@ public final class BuildJournal {
     /** {@link #get}'s record as its whole raw JSON, as {@link #rawRecords} returns each row. */
     public Optional<String> rawRecord(String idOrLocator) {
         return switch (kindOf(idOrLocator)) {
-            case RECORD_ID -> readById(idOrLocator, this::readRaw, raw -> scanString(raw, "id"));
+            case RECORD_ID -> readById(idOrLocator, this::readRaw, raw -> Jsonl.str(raw, "id"));
             case RUN_NUMBER, JOB_DIR -> findRunDir(idOrLocator).flatMap(this::readRaw);
             case INVALID -> Optional.empty();
         };
@@ -856,83 +857,6 @@ public final class BuildJournal {
             out.add(new RawLoaded(e.head(), e.dir(), e.sortKey()));
         }
         return out;
-    }
-
-    /** First {@code "name": <integer>} occurrence, lexically; 0 when absent or not a number. */
-    public static long scanLong(String json, String name) {
-        int start = scanValueStart(json, name);
-        if (start < 0) return 0;
-        int end = start;
-        while (end < json.length() && (Character.isDigit(json.charAt(end)) || json.charAt(end) == '-')) end++;
-        if (end == start) return 0;
-        try {
-            return Long.parseLong(json.substring(start, end));
-        } catch (NumberFormatException e) {
-            return 0;
-        }
-    }
-
-    /**
-     * First {@code "name": "<value>"} occurrence, lexically, unescaped; null when absent or not a
-     * string.
-     */
-    static @Nullable String scanString(String json, String name) {
-        int start = scanValueStart(json, name);
-        if (start < 0 || start >= json.length() || json.charAt(start) != '"') return null;
-        StringBuilder value = new StringBuilder();
-        int at = start + 1;
-        while (at < json.length()) {
-            char c = json.charAt(at);
-            if (c == '"') return value.toString();
-            if (c != '\\' || at + 1 >= json.length()) {
-                value.append(c);
-                at++;
-                continue;
-            }
-            char e = json.charAt(at + 1);
-            if (e == 'u' && at + 6 <= json.length()) {
-                value.append((char) Integer.parseInt(json.substring(at + 2, at + 6), 16));
-                at += 6;
-                continue;
-            }
-            value.append(
-                    switch (e) {
-                        case 'n' -> '\n';
-                        case 't' -> '\t';
-                        case 'r' -> '\r';
-                        case 'b' -> '\b';
-                        case 'f' -> '\f';
-                        default -> e;
-                    });
-            at += 2;
-        }
-        return null;
-    }
-
-    /** True when {@code "name": true} occurs, lexically. */
-    public static boolean scanTrue(String json, String name) {
-        int start = scanValueStart(json, name);
-        return start >= 0 && json.startsWith("true", start);
-    }
-
-    /**
-     * Index just past {@code "name" <ws> : <ws>}, or -1. Records are pretty-printed
-     * ({@code MiniJson.writePretty}), so the whitespace around the colon is real.
-     */
-    private static int scanValueStart(String json, String name) {
-        String quoted = '"' + name + '"';
-        int at = json.indexOf(quoted);
-        while (at >= 0) {
-            int i = at + quoted.length();
-            while (i < json.length() && Character.isWhitespace(json.charAt(i))) i++;
-            if (i < json.length() && json.charAt(i) == ':') {
-                i++;
-                while (i < json.length() && Character.isWhitespace(json.charAt(i))) i++;
-                return i;
-            }
-            at = json.indexOf(quoted, at + 1);
-        }
-        return -1;
     }
 
     public Optional<Path> artifact(String idOrLocator, String name) {

@@ -8,6 +8,7 @@ import cc.jumpkick.builds.ProjectBuilds;
 import cc.jumpkick.config.JkHistoryConfig;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.jobs.JobSessions;
+import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.runtime.base.BuildMetrics;
 import java.nio.file.Files;
@@ -143,7 +144,7 @@ class NoopJournalTest {
                 .isTrue();
 
         assertThat(theirs).isEqualTo(ours);
-        assertThat(BuildJournal.scanString(Files.readString(theirDir.resolve(ProjectBuilds.RECORD)), "dir"))
+        assertThat(Jsonl.str(Files.readString(theirDir.resolve(ProjectBuilds.RECORD)), "dir"))
                 .isEqualTo(other.toString());
         assertThat(journal.runDir("g:a", project.toString(), 7)).isPresent();
     }
