@@ -110,15 +110,15 @@ class KmpRedirectsMemoTest {
         ExecutorService pool = Executors.newFixedThreadPool(2);
         try {
             // Two separate instances: the shared layer is the process memo, not the local cache.
-            Future<Optional<KmpRedirects.Selection>> first = pool.submit(
-                    () -> new KmpRedirects(repos, "standard-jvm").selectionFor("com.example.kmpdemo:widget", "1.0.0"));
+            Future<Optional<KmpRedirects.Selection>> first = pool.submit(() ->
+                    new KmpRedirects(repos, "standard-jvm", 25).selectionFor("com.example.kmpdemo:widget", "1.0.0"));
             assertThat(heldArrived.await(10, TimeUnit.SECONDS)).isTrue();
             CountDownLatch secondStarted = new CountDownLatch(1);
             AtomicReference<Thread> secondThread = new AtomicReference<>();
             Future<Optional<KmpRedirects.Selection>> second = pool.submit(() -> {
                 secondThread.set(Thread.currentThread());
                 secondStarted.countDown();
-                return new KmpRedirects(repos, "standard-jvm").selectionFor("com.example.kmpdemo:widget", "1.0.0");
+                return new KmpRedirects(repos, "standard-jvm", 25).selectionFor("com.example.kmpdemo:widget", "1.0.0");
             });
             assertThat(secondStarted.await(10, TimeUnit.SECONDS)).isTrue();
             // "Started" is not "parked on the in-flight future", and the gap between them was
@@ -145,7 +145,7 @@ class KmpRedirectsMemoTest {
             // A third, fresh instance after completion answers from the memo — zero new requests.
             int pomHits = requireNonNull(hits.get("/com/example/kmpdemo/widget/1.0.0/widget-1.0.0.pom"))
                     .get();
-            assertThat(new KmpRedirects(repos, "standard-jvm").selectionFor("com.example.kmpdemo:widget", "1.0.0"))
+            assertThat(new KmpRedirects(repos, "standard-jvm", 25).selectionFor("com.example.kmpdemo:widget", "1.0.0"))
                     .isPresent();
             assertThat(hits.get("/com/example/kmpdemo/widget/1.0.0/widget-1.0.0.pom"))
                     .hasValue(pomHits);
@@ -160,7 +160,7 @@ class KmpRedirectsMemoTest {
         registerKmpRoot("com.example.slow", "molasses", "1.0.0");
         registerKmpRoot("com.example.fast", "zippy", "1.0.0");
         RepoGroup repos = repoGroup(tmp);
-        KmpRedirects kmp = new KmpRedirects(repos, "standard-jvm");
+        KmpRedirects kmp = new KmpRedirects(repos, "standard-jvm", 25);
 
         heldPathPrefix = "/com/example/slow/molasses/1.0.0/molasses-1.0.0.pom";
         ExecutorService pool = Executors.newFixedThreadPool(1);
@@ -191,12 +191,12 @@ class KmpRedirectsMemoTest {
                 RepoGroup.of(new MavenRepo("test", base, Http.failFast(), cas, RepoCredential.ANONYMOUS, false));
         failingPath = "/com/example/flaky/widget/1.0.0/widget-1.0.0.module";
 
-        assertThat(new KmpRedirects(repos, "standard-jvm").selectionFor("com.example.flaky:widget", "1.0.0"))
+        assertThat(new KmpRedirects(repos, "standard-jvm", 25).selectionFor("com.example.flaky:widget", "1.0.0"))
                 .as("a 503 reads as the plain-Maven view this time")
                 .isEmpty();
 
         failingPath = null;
-        assertThat(new KmpRedirects(repos, "standard-jvm").selectionFor("com.example.flaky:widget", "1.0.0"))
+        assertThat(new KmpRedirects(repos, "standard-jvm", 25).selectionFor("com.example.flaky:widget", "1.0.0"))
                 .as("and is asked again, not remembered as no module metadata")
                 .isPresent();
     }
@@ -206,17 +206,47 @@ class KmpRedirectsMemoTest {
         registerKmpRoot("com.example.forced", "widget", "1.0.0");
         RepoGroup repos = repoGroup(tmp);
 
-        new KmpRedirects(repos, "standard-jvm").selectionFor("com.example.forced:widget", "1.0.0");
+        new KmpRedirects(repos, "standard-jvm", 25).selectionFor("com.example.forced:widget", "1.0.0");
         GradleMarkerAnswers.drop();
         assertThat(KmpRedirects.dropProcessMemo()).as("the lookup was memoized").isPositive();
 
-        new KmpRedirects(repos, "standard-jvm").selectionFor("com.example.forced:widget", "1.0.0");
+        new KmpRedirects(repos, "standard-jvm", 25).selectionFor("com.example.forced:widget", "1.0.0");
         MavenMetadataCache.withForceRevalidate(() -> null);
         GradleMarkerAnswers.drop();
         assertThat(KmpRedirects.dropProcessMemo()).isZero();
     }
 
     // --- fixtures ----------------------------------------------------------
+
+    @Test
+    void the_memo_answers_each_java_level_with_its_own_variant(@TempDir Path tmp) {
+        String dir = "/com/example/perjvm/widget/1.0.0/";
+        publish(dir + "widget-1.0.0.pom", """
+                <?xml version="1.0"?>
+                <!-- do_not_remove: published-with-gradle-metadata -->
+                <project><groupId>com.example.perjvm</groupId><artifactId>widget</artifactId>
+                <version>1.0.0</version></project>
+                """.getBytes(StandardCharsets.UTF_8));
+        publish(dir + "widget-1.0.0.module", """
+                { "formatVersion": "1.1", "variants": [ {
+                    "name": "jdk21RuntimeElements",
+                    "attributes": { "org.gradle.usage": "java-runtime", "org.gradle.jvm.version": 21 },
+                    "available-at": { "group": "com.example.perjvm", "module": "widget-jdk21", "version": "1.0.0" }
+                  }, {
+                    "name": "jdk11RuntimeElements",
+                    "attributes": { "org.gradle.usage": "java-runtime", "org.gradle.jvm.version": 11 },
+                    "available-at": { "group": "com.example.perjvm", "module": "widget-jdk11", "version": "1.0.0" }
+                } ] }
+                """.getBytes(StandardCharsets.UTF_8));
+        RepoGroup repos = repoGroup(tmp);
+
+        assertThat(new KmpRedirects(repos, "standard-jvm", 25).selectionFor("com.example.perjvm:widget", "1.0.0"))
+                .map(s -> s.target().module())
+                .hasValue("widget-jdk21");
+        assertThat(new KmpRedirects(repos, "standard-jvm", 17).selectionFor("com.example.perjvm:widget", "1.0.0"))
+                .map(s -> s.target().module())
+                .hasValue("widget-jdk11");
+    }
 
     private RepoGroup repoGroup(Path tmp) {
         Cas cas = new Cas(tmp.resolve("cas"));

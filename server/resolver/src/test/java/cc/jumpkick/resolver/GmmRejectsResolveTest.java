@@ -80,8 +80,8 @@ class GmmRejectsResolveTest {
 
     @Test
     void a_rejected_release_is_never_picked(@TempDir Path tmp) throws Exception {
-        Resolution result =
-                resolver(tmp, new KmpRedirects(repoGroup(tmp), "standard-jvm")).resolve(roots("guard", "bumper"));
+        Resolution result = resolver(tmp, new KmpRedirects(repoGroup(tmp), "standard-jvm", 25))
+                .resolve(roots("guard", "bumper"));
 
         assertThat(version(result, "lib")).isEqualTo("1.4");
     }
@@ -95,7 +95,7 @@ class GmmRejectsResolveTest {
 
     @Test
     void a_graph_that_needs_only_the_rejected_release_fails_naming_the_rejecting_module(@TempDir Path tmp) {
-        PubGrubResolver resolver = resolver(tmp, new KmpRedirects(repoGroup(tmp), "standard-jvm"));
+        PubGrubResolver resolver = resolver(tmp, new KmpRedirects(repoGroup(tmp), "standard-jvm", 25));
 
         assertThatThrownBy(() -> resolver.resolve(roots("guard", "strict")))
                 .hasMessageContaining(GROUP + ":guard")

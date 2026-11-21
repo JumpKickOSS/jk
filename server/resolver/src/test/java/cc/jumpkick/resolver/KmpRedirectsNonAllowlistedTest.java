@@ -74,7 +74,7 @@ class KmpRedirectsNonAllowlistedTest {
 
         Cas cas = new Cas(tmp.resolve("cas"));
         RepoGroup repos = new RepoGroup(List.of(new MavenRepo("local", repo.toUri(), new Http(), cas)));
-        KmpRedirects kmp = new KmpRedirects(repos, "standard-jvm");
+        KmpRedirects kmp = new KmpRedirects(repos, "standard-jvm", 25);
 
         var sel = kmp.selectionFor(g + ":" + a, v);
         assertThat(sel).isPresent();

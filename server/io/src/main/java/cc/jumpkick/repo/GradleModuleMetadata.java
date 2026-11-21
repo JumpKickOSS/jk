@@ -112,14 +112,29 @@ public final class GradleModuleMetadata {
     /**
      * The runtime redirect for {@code jvmEnvironment} ({@code "android"} / {@code "standard-jvm"}),
      * falling back to the other environment, or empty when this module publishes its runtime
-     * in-place (no {@code available-at} on the matching variant).
+     * in-place (no {@code available-at} on the chosen variant). {@code javaLevel} is the consumer's
+     * {@code java}: see {@link #runtimeVariant} for how it narrows the choice.
      */
-    public Optional<Redirect> runtimeRedirect(String jvmEnvironment) {
-        String fallback = "android".equals(jvmEnvironment) ? "standard-jvm" : "android";
-        return runtimeRedirectFor(jvmEnvironment).or(() -> runtimeRedirectFor(fallback));
+    public Optional<Redirect> runtimeRedirect(String jvmEnvironment, int javaLevel) {
+        return Optional.ofNullable(runtimeVariant(jvmEnvironment, javaLevel)).map(GradleModuleMetadata::availableAt);
     }
 
-    private Optional<Redirect> runtimeRedirectFor(String jvmEnvironment) {
+    /**
+     * The library {@code java-runtime} variant for {@code jvmEnvironment}, else for the other
+     * environment, as Gradle chooses it: a variant whose {@code org.gradle.jvm.version} is above
+     * {@code javaLevel} is not compatible, and of the rest the highest {@code jvm.version} wins, an
+     * absent one ranking lowest. Variants that tie keep publication order, so a module's main
+     * variant stays ahead of its later feature variants. Null when none matches.
+     */
+    private @Nullable Map<String, Object> runtimeVariant(String jvmEnvironment, int javaLevel) {
+        String fallback = "android".equals(jvmEnvironment) ? "standard-jvm" : "android";
+        Map<String, Object> chosen = runtimeVariantFor(jvmEnvironment, javaLevel);
+        return chosen != null ? chosen : runtimeVariantFor(fallback, javaLevel);
+    }
+
+    private @Nullable Map<String, Object> runtimeVariantFor(String jvmEnvironment, int javaLevel) {
+        Map<String, Object> chosen = null;
+        int chosenLevel = -1;
         for (Map<String, Object> variant : variants) {
             if (!(variant.get("attributes") instanceof Map<?, ?> attrs)) continue;
             if (!"java-runtime".equals(attrs.get("org.gradle.usage"))) continue;
@@ -132,12 +147,28 @@ public final class GradleModuleMetadata {
             Object env = attrs.get("org.gradle.jvm.environment");
             boolean matches = env == null ? "standard-jvm".equals(jvmEnvironment) : env.equals(jvmEnvironment);
             if (!matches) continue;
-            // The FIRST matching runtime variant decides. In-place files (no available-at) mean
-            // this module ships its own jar — scanning on would misread later FEATURE variants
-            // (grails-core's cliRuntimeElements → grails-core-cli) as a KMP-root redirect.
-            return Optional.ofNullable(availableAt(variant));
+            int level = jvmVersion(attrs.get("org.gradle.jvm.version"));
+            if (level > javaLevel || level <= chosenLevel) continue;
+            // In-place files (no available-at) mean this module ships its own jar — a later
+            // FEATURE variant at the same level (grails-core's cliRuntimeElements →
+            // grails-core-cli) must not read as a KMP-root redirect.
+            chosen = variant;
+            chosenLevel = level;
         }
-        return Optional.empty();
+        return chosen;
+    }
+
+    /** An {@code org.gradle.jvm.version} value; 0 when absent or not a number, which every consumer accepts. */
+    private static int jvmVersion(@Nullable Object value) {
+        if (value instanceof Number n) return n.intValue();
+        if (value instanceof String s) {
+            try {
+                return Integer.parseInt(s.trim());
+            } catch (NumberFormatException notANumber) {
+                return 0;
+            }
+        }
+        return 0;
     }
 
     /** A dependency on another module's test fixtures: that module's {@code test-fixtures} classifier jar. */
@@ -149,30 +180,21 @@ public final class GradleModuleMetadata {
      * {@code test-fixtures} classifier and a POM cannot express. Same variant choice as {@link
      * #runtimeRedirect}; empty when the module publishes none.
      */
-    public List<FixtureDependency> testFixtureDependencies(String jvmEnvironment) {
+    public List<FixtureDependency> testFixtureDependencies(String jvmEnvironment, int javaLevel) {
         List<FixtureDependency> out = new ArrayList<>();
-        for (Map<String, Object> variant : variants) {
-            if (!(variant.get("attributes") instanceof Map<?, ?> attrs)) continue;
-            if (!"java-runtime".equals(attrs.get("org.gradle.usage"))) continue;
-            Object category = attrs.get("org.gradle.category");
-            if (category != null && !"library".equals(category)) continue;
-            Object env = attrs.get("org.gradle.jvm.environment");
-            if (env != null && !env.equals(jvmEnvironment)) continue;
-            if (!(variant.get("dependencies") instanceof List<?> deps)) return out;
-            for (Object entry : deps) {
-                if (!(entry instanceof Map<?, ?> d)) continue;
-                if (!(d.get("group") instanceof String group) || !(d.get("module") instanceof String module)) continue;
-                if (!(d.get("requestedCapabilities") instanceof List<?> caps)) continue;
-                boolean fixtures = caps.stream()
-                        .anyMatch(c -> c instanceof Map<?, ?> cap
-                                && group.equals(cap.get("group"))
-                                && (module + "-test-fixtures").equals(cap.get("name")));
-                if (!fixtures || !(d.get("version") instanceof Map<?, ?> version)) continue;
-                Object requires = version.get("strictly") instanceof String strict ? strict : version.get("requires");
-                if (requires instanceof String v && !v.isBlank())
-                    out.add(new FixtureDependency(group, module, v.trim()));
-            }
-            return out;
+        Map<String, Object> variant = runtimeVariant(jvmEnvironment, javaLevel);
+        if (variant == null || !(variant.get("dependencies") instanceof List<?> deps)) return out;
+        for (Object entry : deps) {
+            if (!(entry instanceof Map<?, ?> d)) continue;
+            if (!(d.get("group") instanceof String group) || !(d.get("module") instanceof String module)) continue;
+            if (!(d.get("requestedCapabilities") instanceof List<?> caps)) continue;
+            boolean fixtures = caps.stream()
+                    .anyMatch(c -> c instanceof Map<?, ?> cap
+                            && group.equals(cap.get("group"))
+                            && (module + "-test-fixtures").equals(cap.get("name")));
+            if (!fixtures || !(d.get("version") instanceof Map<?, ?> version)) continue;
+            Object requires = version.get("strictly") instanceof String strict ? strict : version.get("requires");
+            if (requires instanceof String v && !v.isBlank()) out.add(new FixtureDependency(group, module, v.trim()));
         }
         return out;
     }
@@ -197,16 +219,17 @@ public final class GradleModuleMetadata {
      * its own version and back). Library variants with {@code java-api} or {@code java-runtime}
      * usage whose environment matches contribute, under the same absent-means-standard-jvm rule as
      * the redirect; the other environment stands in when none matches. One constraint per module:
-     * the first variant to name it speaks for it. An entry with only a {@code prefers} is soft and
+     * the first variant to name it speaks for it. A variant whose {@code org.gradle.jvm.version} is
+     * above {@code javaLevel} contributes nothing. An entry with only a {@code prefers} is soft and
      * contributes nothing; one with only {@code rejects} excludes those versions and requires none.
      */
-    public List<Constraint> dependencyConstraints(String jvmEnvironment) {
+    public List<Constraint> dependencyConstraints(String jvmEnvironment, int javaLevel) {
         String fallback = "android".equals(jvmEnvironment) ? "standard-jvm" : "android";
-        List<Constraint> matched = constraintsFor(jvmEnvironment);
-        return matched.isEmpty() ? constraintsFor(fallback) : matched;
+        List<Constraint> matched = constraintsFor(jvmEnvironment, javaLevel);
+        return matched.isEmpty() ? constraintsFor(fallback, javaLevel) : matched;
     }
 
-    private List<Constraint> constraintsFor(String jvmEnvironment) {
+    private List<Constraint> constraintsFor(String jvmEnvironment, int javaLevel) {
         Map<String, Constraint> byModule = new LinkedHashMap<>();
         for (Map<String, Object> variant : variants) {
             if (!(variant.get("attributes") instanceof Map<?, ?> attrs)) continue;
@@ -216,7 +239,7 @@ public final class GradleModuleMetadata {
             if (category != null && !"library".equals(category)) continue;
             Object env = attrs.get("org.gradle.jvm.environment");
             boolean matches = env == null ? "standard-jvm".equals(jvmEnvironment) : env.equals(jvmEnvironment);
-            if (!matches) continue;
+            if (!matches || jvmVersion(attrs.get("org.gradle.jvm.version")) > javaLevel) continue;
             if (!(variant.get("dependencyConstraints") instanceof List<?> entries)) continue;
             for (Object entry : entries) {
                 Constraint c = constraint(entry);

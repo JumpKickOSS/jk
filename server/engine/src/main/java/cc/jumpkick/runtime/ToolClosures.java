@@ -85,7 +85,9 @@ final class ToolClosures {
             Coordinate bom = PluginBuild.resolveCoordinate(repos, dep.managedBySpec());
             managedByResolved = bom.group() + ":" + bom.artifact() + ":" + bom.version();
         }
-        KmpRedirects kmp = new KmpRedirects(repos, "standard-jvm");
+        // A tool runs in a worker on the engine's own JDK.
+        KmpRedirects kmp =
+                new KmpRedirects(repos, "standard-jvm", Runtime.version().feature());
         Resolution resolution = resolve(roots, managedByResolved, repos, kmp);
         return new Resolved(
                 roots.getFirst(), roots.subList(1, roots.size()), managedByResolved, jars(roots, resolution, kmp));

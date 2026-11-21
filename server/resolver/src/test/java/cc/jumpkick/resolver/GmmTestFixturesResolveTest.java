@@ -74,7 +74,7 @@ class GmmTestFixturesResolveTest {
     @Test
     void the_fixtures_jar_a_runtime_variant_requests_joins_the_graph(@TempDir Path tmp) throws Exception {
         PubGrubResolver resolver =
-                new PubGrubResolver(repos(tmp), Map.of(), Map.of(), new KmpRedirects(repos(tmp), "standard-jvm"));
+                new PubGrubResolver(repos(tmp), Map.of(), Map.of(), new KmpRedirects(repos(tmp), "standard-jvm", 25));
 
         Resolution result = resolver.resolve(roots());
 

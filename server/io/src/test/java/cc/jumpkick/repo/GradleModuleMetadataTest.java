@@ -65,8 +65,9 @@ class GradleModuleMetadataTest {
         Path module = Files.writeString(dir.resolve("m.module"), KMP_ROOT);
         var gmm = GradleModuleMetadata.parse(module);
 
-        assertThat(gmm.runtimeRedirect("android").orElseThrow().module()).isEqualTo("runtime-annotation-android");
-        assertThat(gmm.runtimeRedirect("standard-jvm").orElseThrow().module()).isEqualTo("runtime-annotation-jvm");
+        assertThat(gmm.runtimeRedirect("android", 25).orElseThrow().module()).isEqualTo("runtime-annotation-android");
+        assertThat(gmm.runtimeRedirect("standard-jvm", 25).orElseThrow().module())
+                .isEqualTo("runtime-annotation-jvm");
     }
 
     @Test
@@ -76,7 +77,7 @@ class GradleModuleMetadataTest {
         Path module = Files.writeString(dir.resolve("m.module"), jvmOnly);
         var gmm = GradleModuleMetadata.parse(module);
 
-        assertThat(gmm.runtimeRedirect("android").orElseThrow().module()).isEqualTo("runtime-annotation-jvm");
+        assertThat(gmm.runtimeRedirect("android", 25).orElseThrow().module()).isEqualTo("runtime-annotation-jvm");
     }
 
     @Test
@@ -113,7 +114,7 @@ class GradleModuleMetadataTest {
                 } ] }
                 """);
 
-        assertThat(GradleModuleMetadata.parse(module).testFixtureDependencies("standard-jvm"))
+        assertThat(GradleModuleMetadata.parse(module).testFixtureDependencies("standard-jvm", 25))
                 .containsExactly(new GradleModuleMetadata.FixtureDependency("g", "web", "8.0.0"));
     }
 
@@ -138,8 +139,8 @@ class GradleModuleMetadataTest {
         Path module = Files.writeString(dir.resolve("m.module"), featureVariants);
         var gmm = GradleModuleMetadata.parse(module);
 
-        assertThat(gmm.runtimeRedirect("standard-jvm")).isEmpty();
-        assertThat(gmm.runtimeRedirect("android")).isEmpty();
+        assertThat(gmm.runtimeRedirect("standard-jvm", 25)).isEmpty();
+        assertThat(gmm.runtimeRedirect("android", 25)).isEmpty();
     }
 
     @Test
@@ -154,7 +155,7 @@ class GradleModuleMetadataTest {
         Path module = Files.writeString(dir.resolve("m.module"), inPlace);
         var gmm = GradleModuleMetadata.parse(module);
 
-        assertThat(gmm.runtimeRedirect("standard-jvm")).isEmpty();
+        assertThat(gmm.runtimeRedirect("standard-jvm", 25)).isEmpty();
         assertThat(gmm.redirectTargetModules()).isEmpty();
     }
     /** androidx's plain-Android shape: no jvm.environment attribute, api + runtime variants. */
@@ -198,13 +199,13 @@ class GradleModuleMetadataTest {
 
         // No environment attribute reads as standard-jvm; an android build falls back to it.
         for (String env : List.of("standard-jvm", "android")) {
-            assertThat(gmm.dependencyConstraints(env))
+            assertThat(gmm.dependencyConstraints(env, 25))
                     .as(env)
                     .containsExactly(
                             new GradleModuleMetadata.Constraint("androidx.core", "core", "1.19.0", false),
                             new GradleModuleMetadata.Constraint("androidx.core", "core-strict", "[1.0,2.0)", true));
         }
-        assertThat(gmm.runtimeRedirect("android")).isEmpty();
+        assertThat(gmm.runtimeRedirect("android", 25)).isEmpty();
     }
 
     @Test
@@ -225,10 +226,10 @@ class GradleModuleMetadataTest {
         Path module = Files.writeString(dir.resolve("m.module"), perEnvironment);
         var gmm = GradleModuleMetadata.parse(module);
 
-        assertThat(gmm.dependencyConstraints("android"))
+        assertThat(gmm.dependencyConstraints("android", 25))
                 .extracting(GradleModuleMetadata.Constraint::version)
                 .containsExactly("1");
-        assertThat(gmm.dependencyConstraints("standard-jvm"))
+        assertThat(gmm.dependencyConstraints("standard-jvm", 25))
                 .extracting(GradleModuleMetadata.Constraint::version)
                 .containsExactly("2");
     }
@@ -245,7 +246,7 @@ class GradleModuleMetadataTest {
                 """;
         Path module = Files.writeString(dir.resolve("m.module"), inPlace);
 
-        assertThat(GradleModuleMetadata.parse(module).dependencyConstraints("standard-jvm"))
+        assertThat(GradleModuleMetadata.parse(module).dependencyConstraints("standard-jvm", 25))
                 .isEmpty();
     }
 
@@ -264,9 +265,81 @@ class GradleModuleMetadataTest {
                 """;
         Path module = Files.writeString(dir.resolve("m.module"), json);
 
-        assertThat(GradleModuleMetadata.parse(module).dependencyConstraints("standard-jvm"))
+        assertThat(GradleModuleMetadata.parse(module).dependencyConstraints("standard-jvm", 25))
                 .containsExactly(
                         new GradleModuleMetadata.Constraint("g", "x", "1.2", false, List.of("1.3", "[2.0,3.0)")),
                         new GradleModuleMetadata.Constraint("g", "y", "", false, List.of("4.0")));
+    }
+
+    /** A runtime variant for JVM {@code level} and up, redirecting to {@code lib-jdk<level>}, constraining x to {@code x}. */
+    private static String perJvmVariant(int level, String x) {
+        return """
+                { "name": "jdk%1$dRuntimeElements",
+                  "attributes": { "org.gradle.category": "library", "org.gradle.usage": "java-runtime",
+                    "org.gradle.jvm.version": %1$d },
+                  "available-at": { "group": "g", "module": "lib-jdk%1$d", "version": "1.0" },
+                  "dependencyConstraints": [ { "group": "g", "module": "x", "version": { "requires": "%2$s" } } ] }
+                """.formatted(level, x);
+    }
+
+    /** One runtime variant per JVM line, the newer listed first. */
+    private static final String PER_JVM = """
+            { "formatVersion": "1.1", "variants": [ %s, %s ] }
+            """.formatted(perJvmVariant(21, "2.0"), perJvmVariant(11, "1.0"));
+
+    @Test
+    void a_variant_that_needs_a_newer_jvm_than_the_consumer_is_passed_over(@TempDir Path dir) throws Exception {
+        var gmm = GradleModuleMetadata.parse(Files.writeString(dir.resolve("m.module"), PER_JVM));
+
+        assertThat(gmm.runtimeRedirect("standard-jvm", 17).orElseThrow().module())
+                .isEqualTo("lib-jdk11");
+        assertThat(gmm.dependencyConstraints("standard-jvm", 17))
+                .containsExactly(new GradleModuleMetadata.Constraint("g", "x", "1.0", false));
+    }
+
+    @Test
+    void the_highest_compatible_jvm_variant_wins_whatever_its_place(@TempDir Path dir) throws Exception {
+        var newerFirst = GradleModuleMetadata.parse(Files.writeString(dir.resolve("a.module"), PER_JVM));
+        String olderFirstJson = """
+                { "formatVersion": "1.1", "variants": [ %s, %s ] }
+                """.formatted(perJvmVariant(11, "1.0"), perJvmVariant(21, "2.0"));
+        var olderFirst = GradleModuleMetadata.parse(Files.writeString(dir.resolve("b.module"), olderFirstJson));
+
+        assertThat(newerFirst.runtimeRedirect("standard-jvm", 25).orElseThrow().module())
+                .isEqualTo("lib-jdk21");
+        assertThat(olderFirst.runtimeRedirect("standard-jvm", 25).orElseThrow().module())
+                .isEqualTo("lib-jdk21");
+        assertThat(olderFirst.runtimeRedirect("standard-jvm", 21).orElseThrow().module())
+                .isEqualTo("lib-jdk21");
+    }
+
+    @Test
+    void no_variant_runs_on_a_jvm_older_than_every_one_published(@TempDir Path dir) throws Exception {
+        var gmm = GradleModuleMetadata.parse(Files.writeString(dir.resolve("m.module"), PER_JVM));
+
+        assertThat(gmm.runtimeRedirect("standard-jvm", 8)).isEmpty();
+        assertThat(gmm.dependencyConstraints("standard-jvm", 8)).isEmpty();
+    }
+
+    @Test
+    void the_test_fixtures_come_from_the_variant_the_consumer_runs(@TempDir Path dir) throws Exception {
+        Path module = Files.writeString(dir.resolve("f.module"), """
+                { "formatVersion": "1.1", "variants": [ {
+                    "name": "jdk21RuntimeElements",
+                    "attributes": { "org.gradle.category": "library", "org.gradle.usage": "java-runtime",
+                      "org.gradle.jvm.version": 21 },
+                    "dependencies": [ { "group": "g", "module": "web", "version": { "requires": "2.0" },
+                      "requestedCapabilities": [ { "group": "g", "name": "web-test-fixtures" } ] } ]
+                  }, {
+                    "name": "jdk17RuntimeElements",
+                    "attributes": { "org.gradle.category": "library", "org.gradle.usage": "java-runtime",
+                      "org.gradle.jvm.version": 17 },
+                    "dependencies": [ { "group": "g", "module": "web", "version": { "requires": "1.0" },
+                      "requestedCapabilities": [ { "group": "g", "name": "web-test-fixtures" } ] } ]
+                } ] }
+                """);
+
+        assertThat(GradleModuleMetadata.parse(module).testFixtureDependencies("standard-jvm", 17))
+                .containsExactly(new GradleModuleMetadata.FixtureDependency("g", "web", "1.0"));
     }
 }

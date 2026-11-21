@@ -25,14 +25,14 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * What a module's Gradle {@code .module} metadata says for this build's {@code
- * org.gradle.jvm.environment}: a KMP root's redirect — the root becomes a POM-only alias and the
+ * org.gradle.jvm.environment} and {@code java} level: a KMP root's redirect — the root becomes a POM-only alias and the
  * platform target is the classpath artifact — and the version constraints its variants publish.
  * Missing/unparseable metadata → no redirect, no constraints (plain Maven).
  */
 public final class KmpRedirects {
 
     /** No-op instance for callers with no repo context (git/path-only locks). */
-    public static final KmpRedirects NONE = new KmpRedirects(null, "standard-jvm");
+    public static final KmpRedirects NONE = new KmpRedirects(null, "standard-jvm", Integer.MAX_VALUE);
 
     /** A resolved root: the runtime target plus every platform sibling the POM must not follow. */
     public record Selection(GradleModuleMetadata.Redirect target, Set<String> allTargets) {}
@@ -47,13 +47,14 @@ public final class KmpRedirects {
 
     private final @Nullable RepoGroup repos;
     private final String jvmEnvironment;
+    private final int javaLevel;
     private final Map<String, ModuleFacts> cache = new ConcurrentHashMap<>();
 
     /**
      * Process-wide selection memo: Gradle module metadata is immutable per GAV on disk, and the
-     * redirect for a given {@code jvmEnvironment} does not change mid-process. Warm re-locks
-     * (and the three scope solves) would otherwise re-parse hundreds of {@code .module} files.
-     * Keyed by the repositories asked <em>and</em> {@code env + module@version} — which {@code
+     * redirect for a given {@code jvmEnvironment} and {@code java} level does not change mid-process.
+     * Warm re-locks (and the three scope solves) would otherwise re-parse hundreds of {@code .module}
+     * files. Keyed by the repositories asked <em>and</em> {@code env + level + module@version} — which {@code
      * .module} is fetched depends on the repo set. No TTL: release GAV content is immutable; force
      * / {@link #clearProcessCache} drop the memo.
      *
@@ -101,9 +102,14 @@ public final class KmpRedirects {
         return Collections.unmodifiableMap(droppedSiblings);
     }
 
-    public KmpRedirects(@Nullable RepoGroup repos, String jvmEnvironment) {
+    /**
+     * @param javaLevel the consumer's {@code java}: a variant that needs a newer JVM is not
+     *     compatible ({@code org.gradle.jvm.version})
+     */
+    public KmpRedirects(@Nullable RepoGroup repos, String jvmEnvironment, int javaLevel) {
         this.repos = repos;
         this.jvmEnvironment = jvmEnvironment == null || jvmEnvironment.isBlank() ? "standard-jvm" : jvmEnvironment;
+        this.javaLevel = javaLevel;
     }
 
     /** The redirect selection for {@code module}:{@code version}, or empty when none applies. */
@@ -139,7 +145,7 @@ public final class KmpRedirects {
             local.redirect().ifPresent(this::rememberDropped);
             return local;
         }
-        String processKey = repos.processIdentity() + "\0" + jvmEnvironment + "\0" + gaKey;
+        String processKey = repos.processIdentity() + "\0" + jvmEnvironment + "\0" + javaLevel + "\0" + gaKey;
         // Single-flight: concurrent PubGrub prefetches must not re-parse the same .module.
         long t0 = ResolveProfile.on() ? System.nanoTime() : 0L;
         ModuleFacts found = processMemoized(processKey, module, version);
@@ -240,13 +246,13 @@ public final class KmpRedirects {
             }
 
             GradleModuleMetadata gmm = GradleModuleMetadata.parse(moduleFile.cachePath());
-            Optional<Selection> redirect = gmm.runtimeRedirect(jvmEnvironment)
+            Optional<Selection> redirect = gmm.runtimeRedirect(jvmEnvironment, javaLevel)
                     .map(target -> new Selection(target, gmm.redirectTargetModules()));
             return new Answer(
                     new ModuleFacts(
                             redirect,
-                            gmm.dependencyConstraints(jvmEnvironment),
-                            gmm.testFixtureDependencies(jvmEnvironment)),
+                            gmm.dependencyConstraints(jvmEnvironment, javaLevel),
+                            gmm.testFixtureDependencies(jvmEnvironment, javaLevel)),
                     true);
         } catch (IOException | InterruptedException | RuntimeException e) {
             if (e instanceof InterruptedException) Thread.currentThread().interrupt();

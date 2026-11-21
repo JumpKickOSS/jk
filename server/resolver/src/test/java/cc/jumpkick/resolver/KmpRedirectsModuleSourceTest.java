@@ -57,7 +57,7 @@ class KmpRedirectsModuleSourceTest {
                 new MavenRepo("plain", plain.base(), new Http(), cas, RepoCredential.ANONYMOUS, false),
                 new MavenRepo("home", home.base(), new Http(), cas, RepoCredential.ANONYMOUS, false)));
 
-        var selection = new KmpRedirects(repos, "standard-jvm").selectionFor(GROUP + ":widget", "1.0.0");
+        var selection = new KmpRedirects(repos, "standard-jvm", 25).selectionFor(GROUP + ":widget", "1.0.0");
 
         assertThat(selection).isPresent();
         assertThat(selection.get().target().module()).isEqualTo("widget-jvm");

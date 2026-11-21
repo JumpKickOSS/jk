@@ -313,6 +313,11 @@ names the plain module. JumpKick reads the runtime variant's request and adds th
 `grails-testing-support-web` brings `grails-web-common-<version>-test-fixtures.jar` as it does
 under Gradle (a Maven build has to declare it by hand).
 
+**A module that publishes a runtime variant per JVM** in its `.module` file is locked to the one
+your `java` can run: a variant whose `org.gradle.jvm.version` is above it is passed over, and of
+the rest the newest JVM wins, as Gradle chooses. One lock serves a whole workspace, so it is chosen
+for the lowest `java` any member declares.
+
 **Ranges in dependency POMs and Gradle module metadata** read in Maven's spelling (`[1.0,2.0)`,
 `(,2.0]`, `[1.0]`) and in the ISO spelling Gradle publishes (`[1.0,2.0[` is exclusive above,
 `]1.0,2.0]` exclusive below). A bracket that points at the version includes it; one that points

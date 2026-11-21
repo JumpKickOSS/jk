@@ -802,6 +802,19 @@ public final class LockOrchestrator {
             KmpRedirects kmp) {}
 
     /**
+     * The {@code java} level Gradle variants are chosen for: the lowest any module this lock serves
+     * declares, since one lock serves every workspace member; the engine's JDK when none declares one.
+     */
+    private int javaLevel(JkBuild project) {
+        int lowest = project.project().javaRelease();
+        for (Member m : members) {
+            int level = m.manifest().project().javaRelease();
+            if (level > 0 && (lowest <= 0 || level < lowest)) lowest = level;
+        }
+        return lowest > 0 ? lowest : Runtime.version().feature();
+    }
+
+    /**
      * @param sourceDir the directory whose source trees say which language runtimes the manifest's
      *     graph carries: the project's, or a workspace member's own
      * @param constraints the manifest's platform table, collected by the caller; the solve edits it
@@ -847,7 +860,7 @@ public final class LockOrchestrator {
             floors = JupiterLine.onTrain(floors, jupiterTrain);
         }
 
-        KmpRedirects kmp = new KmpRedirects(repos, jvmEnvironment);
+        KmpRedirects kmp = new KmpRedirects(repos, jvmEnvironment, javaLevel(project));
         // Shared package source across main/test/processor so version/deps caches survive scope splits.
         MavenPackageSource sharedSource = resolverOverride != null
                 ? null

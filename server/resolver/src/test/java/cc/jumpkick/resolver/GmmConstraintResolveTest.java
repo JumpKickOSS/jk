@@ -71,7 +71,8 @@ class GmmConstraintResolveTest {
     void same_group_modules_align_on_the_version_their_metadata_constrains(@TempDir Path tmp) throws Exception {
         RepoGroup repos = repoGroup(tmp);
         // An Android build: the plain-Android variants carry no environment attribute and stand in.
-        PubGrubResolver resolver = new PubGrubResolver(repos, Map.of(), Map.of(), new KmpRedirects(repos, "android"));
+        PubGrubResolver resolver =
+                new PubGrubResolver(repos, Map.of(), Map.of(), new KmpRedirects(repos, "android", 25));
 
         Resolution result = resolver.resolve(roots());
 
