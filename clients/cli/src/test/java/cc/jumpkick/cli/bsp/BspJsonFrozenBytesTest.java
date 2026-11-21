@@ -14,9 +14,12 @@ class BspJsonFrozenBytesTest {
     void initialize_result_names_the_three_providers() {
         String provider = "{\"languageIds\":[\"java\",\"scala\"]}";
         assertThat(BspServer.initializeResultJson(List.of("java", "scala")))
-                .isEqualTo("{\"displayName\":\"jk\",\"version\":\"" + JkVersion.VERSION + "\",\"bspVersion\":\"2.1.0\","
-                        + "\"capabilities\":{\"compileProvider\":" + provider + ",\"testProvider\":" + provider
-                        + ",\"runProvider\":" + provider + ",\"canReload\":true}}");
+                .isEqualTo(
+                        "{\"displayName\":\"jk\",\"version\":\"" + JkVersion.VERSION + "\",\"bspVersion\":\"2.1.0\","
+                                + "\"capabilities\":{\"compileProvider\":" + provider + ",\"testProvider\":" + provider
+                                + ",\"runProvider\":" + provider
+                                + ",\"inverseSourcesProvider\":true,\"resourcesProvider\":true,"
+                                + "\"jvmRunEnvironmentProvider\":true,\"jvmTestEnvironmentProvider\":true,\"canReload\":true}}");
     }
 
     @Test

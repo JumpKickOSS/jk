@@ -16,7 +16,8 @@ import org.jspecify.annotations.Nullable;
  * The per-target answers a Scala-aware BSP client (Metals) asks for beside the build targets:
  * {@code buildTarget/scalacOptions} and {@code buildTarget/javacOptions} — the compiler
  * arguments jk's Zinc session passes, the compile classpath and the class directory —
- * {@code buildTarget/dependencySources}, and the Scala main and test class listings. Every
+ * {@code buildTarget/dependencySources}, the Scala main and test class listings, and the JVM
+ * environments {@code buildTarget/jvmRunEnvironment} and {@code jvmTestEnvironment}. Every
  * answer is built from the engine's {@link IdeWireModel}; the target ids are the ones
  * {@code workspace/buildTargets} handed out.
  */
@@ -147,12 +148,18 @@ final class BspTargetOptions {
      * in the model's order; every library with a jar when the model carries no per-module rows.
      */
     static List<Integer> libraries(IdeWireModel model, int i) {
+        return libraries(model, i, true);
+    }
+
+    /** As {@link #libraries(IdeWireModel, int)}; {@code test} false leaves out a library only tests use. */
+    static List<Integer> libraries(IdeWireModel model, int i, boolean test) {
         Set<String> declared = null;
         if (model.libEntries() != null && !model.libEntries().isEmpty() && model.libNames() != null) {
             declared = new HashSet<>();
             for (String row : model.libEntries()) {
                 String[] parts = row.split("\\|", 3);
-                if (parts.length >= 2 && Integer.parseInt(parts[0]) == i) declared.add(parts[1]);
+                if (parts.length < 2 || Integer.parseInt(parts[0]) != i) continue;
+                if (test || parts.length < 3 || !testOnly(parts[2])) declared.add(parts[1]);
             }
         }
         List<String> jars = model.libJars() != null ? model.libJars() : List.of();
@@ -171,6 +178,138 @@ final class BspTargetOptions {
     static Path libraryJar(IdeWireModel model, int j) {
         String jar = model.libJars().get(j);
         return Path.of(jar.contains("|") ? jar.substring(jar.lastIndexOf('|') + 1) : jar);
+    }
+
+    /** The scopes a library row lists that put it on the test classpath alone. */
+    private static final Set<String> TEST_SCOPES = Set.of("TEST", "TEST_DEV", "TEST_PROCESSOR");
+
+    /** Whether every scope of a library row's comma-joined {@code scopes} is a test one. */
+    static boolean testOnly(String scopes) {
+        for (String scope : scopes.split(",")) {
+            if (!TEST_SCOPES.contains(scope.trim())) return false;
+        }
+        return true;
+    }
+
+    /**
+     * One {@code JvmEnvironmentItem} per target in {@code requested}, every module's when it is
+     * empty; a suite's target gets its module's test environment. {@code rootUri} is the project's
+     * URI the target ids start with.
+     */
+    static List<String> jvmEnvironmentItems(
+            List<String> requested, @Nullable IdeWireModel model, Path projectDir, String rootUri, boolean test) {
+        List<String> items = new ArrayList<>();
+        if (model == null) return items;
+        for (int i = 0; i < moduleCount(model); i++) {
+            String tid = rootUri + "#" + targetName(model, i);
+            for (String asked : requested.isEmpty() ? List.of(tid) : requested) {
+                String suite = BspServer.suiteOf(asked);
+                boolean ofSuite = test
+                        && suite != null
+                        && tid.equals(asked.substring(
+                                0, asked.length() - suite.length() - BspServer.SUITE_SEPARATOR.length()));
+                if (asked.equals(tid) || ofSuite) {
+                    items.add(jvmEnvironmentItem(asked, model, i, moduleDir(model, i, projectDir), test));
+                }
+            }
+        }
+        return items;
+    }
+
+    /** How many module targets the model has: one per module, or the single root target. */
+    static int moduleCount(IdeWireModel model) {
+        return model.moduleDirs() == null || model.moduleDirs().isEmpty()
+                ? 1
+                : model.moduleDirs().size();
+    }
+
+    /** The name after {@code #} in module {@code i}'s target id; {@code root} when the model names no modules. */
+    static String targetName(IdeWireModel model, int i) {
+        List<String> dirs = model.moduleDirs() != null ? model.moduleDirs() : List.of();
+        if (dirs.isEmpty()) return "root";
+        List<String> names = model.names() != null ? model.names() : List.of();
+        return i < names.size()
+                ? names.get(i)
+                : Path.of(dirs.get(i)).getFileName().toString();
+    }
+
+    /** Module {@code i}'s directory; {@code projectDir} when the model names no modules. */
+    static Path moduleDir(IdeWireModel model, int i, Path projectDir) {
+        List<String> dirs = model.moduleDirs() != null ? model.moduleDirs() : List.of();
+        return i < dirs.size() ? Path.of(dirs.get(i)) : projectDir;
+    }
+
+    /**
+     * {@code JvmEnvironmentItem}: the classpath ({@link #runtimeClasspath}) and working directory
+     * ({@code dir}, the module's) a JVM running module {@code i}'s main needs, or with {@code test}
+     * its tests; the main class when the module declares one and {@code test} is false.
+     */
+    static String jvmEnvironmentItem(String tid, IdeWireModel model, int i, Path dir, boolean test) {
+        JsonFields item = BspServer.itemFor(tid)
+                .array("classpath", runtimeClasspath(model, i, test))
+                .array("jvmOptions", List.of())
+                .string("workingDirectory", uri(dir))
+                .token("environmentVariables", JsonFields.object().finish());
+        String main = test || i >= model.mainClasses().size()
+                ? null
+                : model.mainClasses().get(i);
+        if (main != null && !main.isBlank()) {
+            String mainClass = JsonFields.object()
+                    .string("className", main)
+                    .array("arguments", List.of())
+                    .finish();
+            item.token("mainClasses", "[" + mainClass + "]");
+        }
+        return item.finish();
+    }
+
+    /**
+     * The classpath, as URIs, of a JVM running module {@code i}: with {@code test} its test classes
+     * first, then its classes; the classes of every workspace module it depends on, transitively,
+     * a test-scoped one (and the test classes a {@code kind = "tests"} dependency adds) only with
+     * {@code test}; the Scala library of each; and the libraries of each, the ones only tests use
+     * only for module {@code i}'s own tests.
+     */
+    static List<String> runtimeClasspath(IdeWireModel model, int i, boolean test) {
+        Set<String> out = new LinkedHashSet<>();
+        if (test) addDir(out, model.testClassesDirs(), i);
+        addDir(out, model.classesDirs(), i);
+        List<Integer> modules = new ArrayList<>(List.of(i));
+        Set<Integer> seen = new HashSet<>(modules);
+        for (int k = 0; k < modules.size(); k++) {
+            int m = modules.get(k);
+            boolean ownTests = test && m == i;
+            for (String row : model.siblingRefs()) {
+                String[] parts = row.split("\\|", 3);
+                if (parts.length < 3 || Integer.parseInt(parts[0]) != m) continue;
+                String scope = parts[2];
+                boolean main =
+                        scope.equals(IdeWireModel.SCOPE_COMPILE) || scope.equals(IdeWireModel.SCOPE_COMPILE_TEST_KIND);
+                int j = model.names().indexOf(parts[1]);
+                if (j < 0 || !(main || ownTests)) continue;
+                boolean testsKind = scope.equals(IdeWireModel.SCOPE_TEST_KIND)
+                        || scope.equals(IdeWireModel.SCOPE_COMPILE_TEST_KIND);
+                if (ownTests && testsKind) addDir(out, model.testClassesDirs(), j);
+                if (seen.add(j)) modules.add(j);
+            }
+        }
+        for (int m : modules) {
+            if (m != i) addDir(out, model.classesDirs(), m);
+        }
+        for (int m : modules) {
+            for (Path jar : rowsOf(model.scalaJars(), m)) {
+                String name = jar.getFileName().toString();
+                if (name.startsWith("scala-library") || name.startsWith("scala3-library_3")) out.add(uri(jar));
+            }
+        }
+        for (int m : modules) {
+            for (int j : libraries(model, m, test && m == i)) out.add(uri(libraryJar(model, j)));
+        }
+        return new ArrayList<>(out);
+    }
+
+    private static void addDir(Set<String> out, List<String> dirs, int i) {
+        if (i < dirs.size() && dirs.get(i) != null && !dirs.get(i).isBlank()) out.add(uri(Path.of(dirs.get(i))));
     }
 
     /** {@code ScalaMainClassesItem}: the module's main class when it declares one. */

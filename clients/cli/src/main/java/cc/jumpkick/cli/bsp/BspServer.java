@@ -48,9 +48,10 @@ import org.jspecify.annotations.Nullable;
 /**
  * BSP 2.x JSON-RPC over Content-Length framing (stdio). Wire-only via {@link IdeEngineClient}.
  *
- * <p>Targets, sources (incl. resources), dependency modules (with sources jars when present),
- * dependency sources, output paths, scalac and javac options, compile/test/run by target URI,
- * workspace/reload, {@code $/cancelRequest}, and publishDiagnostics after every compile. A module
+ * <p>Targets, sources (incl. resources) and the targets a source belongs to, resources, dependency
+ * modules (with sources jars when present), dependency sources, output paths, scalac and javac
+ * options, the JVM environments to run a target's main or its tests in, compile/test/run by target
+ * URI, workspace/reload, {@code $/cancelRequest}, and publishDiagnostics after every compile. A module
  * that compiles Scala is a Scala build target ({@link BspTargetOptions}), which is how Metals
  * imports a mixed Java/Scala module. Compile, test and run queue on a worker, one at a time in
  * request order, so the stdio loop keeps reading and a {@code $/cancelRequest} reaches a running or
@@ -161,6 +162,17 @@ public final class BspServer {
                     frames.respond(id, "null");
                 }
                 case "buildTarget/sources" -> frames.respond(id, sourcesJson(json));
+                case "buildTarget/inverseSources" ->
+                    frames.respond(id, BspSources.inverseSources(message, model(), ide.projectDir()));
+                case "buildTarget/resources" ->
+                    frames.respond(
+                            id,
+                            perTargetItems(
+                                    json,
+                                    (tid, m, i) -> BspSources.resourcesItem(
+                                            tid, BspTargetOptions.moduleDir(m, i, ide.projectDir()))));
+                case "buildTarget/jvmRunEnvironment" -> frames.respond(id, jvmEnvironmentJson(json, false));
+                case "buildTarget/jvmTestEnvironment" -> frames.respond(id, jvmEnvironmentJson(json, true));
                 case "buildTarget/dependencyModules" ->
                     frames.respond(id, perTargetItems(json, BspServer::dependencyModulesItem));
                 case "buildTarget/outputPaths" -> frames.respond(id, outputPathsJson(json));
@@ -544,7 +556,7 @@ public final class BspServer {
         return client + " " + SESSION_ID;
     }
 
-    /** The {@code build/initialize} result: server identity and the three provider capabilities. */
+    /** The {@code build/initialize} result: server identity and what it serves beyond the core requests. */
     static String initializeResultJson(List<String> languages) {
         String provider = JsonFields.object().array("languageIds", languages).finish();
         return JsonFields.object()
@@ -557,6 +569,10 @@ public final class BspServer {
                                 .token("compileProvider", provider)
                                 .token("testProvider", provider)
                                 .token("runProvider", provider)
+                                .bool("inverseSourcesProvider", true)
+                                .bool("resourcesProvider", true)
+                                .bool("jvmRunEnvironmentProvider", true)
+                                .bool("jvmTestEnvironmentProvider", true)
                                 .bool("canReload", true)
                                 .finish())
                 .finish();
@@ -573,7 +589,7 @@ public final class BspServer {
     }
 
     /** A JSON array of already-encoded objects. */
-    private static String arrayOf(List<String> encodedObjects) {
+    static String arrayOf(List<String> encodedObjects) {
         return "[" + String.join(",", encodedObjects) + "]";
     }
 
@@ -592,53 +608,25 @@ public final class BspServer {
                 String tid = rootUri + "#" + name;
                 if (!requested.isEmpty() && !requested.contains(tid)) continue;
                 Path mod = Path.of(dirs.get(i));
-                items.add(sourcesItem(tid, mod, model, i));
+                items.add(BspSources.sourcesItem(tid, mod, model, i));
             }
         } else {
             String tid = rootUri + "#root";
             if (requested.isEmpty() || requested.contains(tid)) {
-                items.add(sourcesItem(tid, ide.projectDir(), model, 0));
+                items.add(BspSources.sourcesItem(tid, ide.projectDir(), model, 0));
             }
         }
         return JsonFields.object().token("items", arrayOf(items)).finish();
     }
 
-    private static String sourcesItem(String tid, Path mod, IdeWireModel model, int moduleIndex) {
-        List<String> srcs = new ArrayList<>();
-        // same roots as jk ide (all TestSuites + main + resources).
-        for (IdeSourceRoots.Root root : IdeSourceRoots.of(mod)) {
-            Path s = mod.resolve(root.relative());
-            if (Files.isDirectory(s)) srcs.add(sourceItemJson(pathUri(s), false));
-        }
-        // Generated sources from the engine model when present.
-        if (model != null) {
-            addGenRoot(srcs, model.genSrcDirs(), moduleIndex);
-            addGenRoot(srcs, model.genTestSrcDirs(), moduleIndex);
-        }
-        return JsonFields.object()
-                .token("target", uriJson(tid))
-                .token("sources", arrayOf(srcs))
-                .finish();
-    }
-
     /** BSP's {@code SourceItemKind} and {@code OutputPathItemKind} for a directory; 1 is a file. */
     static final int DIRECTORY = 2;
 
-    private static String sourceItemJson(String uri, boolean generated) {
-        return JsonFields.object()
-                .string("uri", uri)
-                .number("kind", DIRECTORY)
-                .bool("generated", generated)
-                .finish();
-    }
-
-    private static void addGenRoot(List<String> srcs, List<String> dirs, int index) {
-        if (dirs == null || index < 0 || index >= dirs.size()) return;
-        String d = dirs.get(index);
-        if (d == null || d.isBlank()) return;
-        Path p = Path.of(d);
-        if (!Files.isDirectory(p)) return;
-        srcs.add(sourceItemJson(pathUri(p), true));
+    /** {@code buildTarget/jvmRunEnvironment} ({@code test} false) or {@code jvmTestEnvironment}. */
+    private String jvmEnvironmentJson(String requestJson, boolean test) throws IOException {
+        List<String> items = BspTargetOptions.jvmEnvironmentItems(
+                extractTargetUris(requestJson), model(), ide.projectDir(), pathUri(ide.projectDir()), test);
+        return JsonFields.object().token("items", arrayOf(items)).finish();
     }
 
     /** {@code DependencyModulesItem}: module {@code i}'s own libraries, each with its sources jar when the model holds one. */

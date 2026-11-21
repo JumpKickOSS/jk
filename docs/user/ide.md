@@ -58,7 +58,10 @@ pinned jar is verified against it.
 |------------|--------|
 | `workspace/buildTargets`, sources, dependency modules | yes; a module's target lists the workspace modules it depends on (main or test scope) as its `dependencies`, its dependency modules are the libraries that module declares, not the whole workspace's, and every source item is a directory (`kind` 2) |
 | Dependency **sources** jars | yes (classifier `sources` when present), for the target's own libraries |
+| `buildTarget/inverseSources` | yes: the module target whose source or resource directories hold the file (never a suite target) |
+| `buildTarget/resources` | yes: the module's main and test resource directories that exist |
 | `buildTarget/outputPaths` | yes (main + test classes dirs, `kind` 2) |
+| `buildTarget/jvmRunEnvironment`, `jvmTestEnvironment` | yes: the classpath (the module's classes, those of the workspace modules it depends on, transitively, and their libraries; the test environment adds the test classes, test-scoped dependencies and libraries only tests use), the module directory as working directory, and for a run the declared main class. A suite target gets its module's test environment. No JVM options or environment variables: `jk run` and `jk test` read `jvm-args` and `[env]` themselves |
 | `buildTarget/scalacOptions`, `buildTarget/javacOptions` | yes: `-java-output-version N` / `--release N` for the module's Java level, the compile classpath (library jars, the Scala library, sibling classes) and the class directory |
 | Scala targets | a module that compiles Scala is a `scala` build target (`scalaVersion`, `scalaBinaryVersion`, the compiler jars a build fetched, the JDK); every other module carries `jvm` data naming its JDK |
 | Target tags | a module whose manifest names an `[application] main` is tagged `application`, every other `library` |

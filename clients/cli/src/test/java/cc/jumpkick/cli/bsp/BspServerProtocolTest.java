@@ -365,6 +365,75 @@ class BspServerProtocolTest {
         assertThat(server.isAlive()).isFalse();
     }
 
+    @Test
+    @SuppressWarnings("unchecked")
+    void a_source_maps_back_to_its_target_and_resources_are_listed(@TempDir Path dir) throws Exception {
+        Path app = module(dir, "app");
+        Path core = module(dir, "core");
+        Path java = Files.createDirectories(app.resolve("src/main/java/t"));
+        Files.createDirectories(core.resolve("src/main/java"));
+        Path resources = Files.createDirectories(app.resolve("src/main/resources"));
+        Path testResources = Files.createDirectories(app.resolve("src/test/resources"));
+        IdeEngineClient ide = fake(dir, model(dir, List.of("app", "core"), List.of()));
+        String main = BspServer.pathUri(java.resolve("Main.java"));
+        String elsewhere = BspServer.pathUri(dir.resolve("notes/Readme.java"));
+
+        List<Map<String, Object>> frames = serve(
+                ide,
+                request(2, "buildTarget/inverseSources", "{\"textDocument\":{\"uri\":\"" + main + "\"}}"),
+                request(3, "buildTarget/inverseSources", "{\"textDocument\":{\"uri\":\"" + elsewhere + "\"}}"),
+                request(4, "buildTarget/resources", target(dir, "app")));
+
+        assertThat((List<Map<String, Object>>) result(frames, 2).get("targets"))
+                .containsExactly(Map.of("uri", BspServer.pathUri(dir) + "#app"));
+        assertThat((List<Object>) result(frames, 3).get("targets")).isEmpty();
+        assertThat((List<Object>) itemOf(result(frames, 4)).get("resources"))
+                .containsExactly(BspServer.pathUri(resources), BspServer.pathUri(testResources));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void the_jvm_environments_name_the_classpath_the_directory_and_the_main_class(@TempDir Path dir) throws Exception {
+        Path app = module(dir, "app");
+        module(dir, "core");
+        String classes = dir.resolve("app/target/classes").toString();
+        String testClasses = dir.resolve("app/target/test-classes").toString();
+        String coreClasses = dir.resolve("core/target/classes").toString();
+        IdeWireModel model = IdeWireModel.decode("{"
+                + array(
+                        "moduleDirs",
+                        List.of(app.toString(), dir.resolve("core").toString())) + ","
+                + array("names", List.of("app", "core")) + ","
+                + array("mainClasses", List.of("t.Main", "")) + ","
+                + array("classesDirs", List.of(classes, coreClasses)) + ","
+                + array(
+                        "testClassesDirs",
+                        List.of(
+                                testClasses,
+                                dir.resolve("core/target/test-classes").toString()))
+                + "," + array("siblingRefs", List.of("0|core|COMPILE")) + "}");
+        String suite = BspServer.pathUri(dir) + "#app" + BspServer.SUITE_SEPARATOR + "integration";
+
+        List<Map<String, Object>> frames = serve(
+                fake(dir, model),
+                request(2, "buildTarget/jvmRunEnvironment", target(dir, "app")),
+                request(3, "buildTarget/jvmTestEnvironment", "{\"targets\":[{\"uri\":\"" + suite + "\"}]}"));
+
+        Map<String, Object> run = itemOf(result(frames, 2));
+        assertThat((List<Object>) run.get("classpath"))
+                .containsExactly(BspServer.pathUri(Path.of(classes)), BspServer.pathUri(Path.of(coreClasses)));
+        assertThat(run).containsEntry("workingDirectory", BspServer.pathUri(app));
+        assertThat((List<Object>) run.get("mainClasses"))
+                .containsExactly(Map.of("className", "t.Main", "arguments", List.of()));
+        Map<String, Object> test = itemOf(result(frames, 3));
+        assertThat(test).containsEntry("target", Map.of("uri", suite)).doesNotContainKey("mainClasses");
+        assertThat((List<Object>) test.get("classpath"))
+                .containsExactly(
+                        BspServer.pathUri(Path.of(testClasses)),
+                        BspServer.pathUri(Path.of(classes)),
+                        BspServer.pathUri(Path.of(coreClasses)));
+    }
+
     private static Path module(Path ws, String name) throws IOException {
         Path dir = Files.createDirectories(ws.resolve(name));
         Files.writeString(dir.resolve("jk.toml"), "name = \"" + name + "\"\nversion = \"0.0.1\"\njava = 25\n");
