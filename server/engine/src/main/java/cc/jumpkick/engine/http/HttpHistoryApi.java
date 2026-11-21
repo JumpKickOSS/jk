@@ -81,7 +81,7 @@ final class HttpHistoryApi {
                 HISTORY_LIST_LIMIT, head -> isBuildLikeHistoryJson(head) && (since < 0 || newerThan(head, since)));
         exchange.sendResponseHeaders(200, 0);
         Map<String, SecretRedactor> redactors = new HashMap<>();
-        try (var out = exchange.getResponseBody()) {
+        try (var out = HttpResponses.body(exchange)) {
             out.write('[');
             int sent = 0;
             for (String r : raw) {

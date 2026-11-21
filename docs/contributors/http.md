@@ -117,7 +117,11 @@ engine becomes a 502, so a stale pairing never makes the dashboard drop the fron
 path is forwarded as the browser sent it, and one that could route otherwise at the engine (a dot or
 empty segment, an escaped `/`, `\`, `?`, `#` or `%`, a control character) is a 404. The response
 streams back as it comes, so an event stream flows through; a proxied stream draws on the
-event-stream budget, not RPC admission. Before forwarding, the front door asks the pairing's port for
+event-stream budget, not RPC admission. An engine that sends nothing for 30 s, before its answer or
+within it, is asked for its identity (5 s to answer); one that does not answer with its id has
+stopped, and the front door gives up on it (`UpstreamWatch`): a 502 before the answer started, a
+dropped connection within it, so a cut-short answer never reads as a whole one. A busy engine that
+still answers is waited on, as a direct client would wait. Before forwarding, the front door asks the pairing's port for
 its identity and refuses (502) unless it answers with the pairing's id; the answer is trusted for
 two seconds. `/engines/<id>` without the slash redirects to it, since the dashboard's asset links are
 relative. The dashboard reads its prefix from its own path (`BASE` in `api.js`) and puts it on every
@@ -1119,9 +1123,12 @@ streams, so the engine learns that a page went away only when a write to its str
 stream writes a `: heartbeat` comment every second (`SseEndpoint`), and the second write after the
 page closes fails, which frees the stream's slot and its vitals subscriber within two seconds. A
 client that keeps the connection but stops reading fills the socket, and a write blocks instead of
-failing: every write to a dashboard or MCP event stream, to an MCP call answered as an event stream
-and to a front-door proxied answer goes through `WriteDeadline`, so one blocked for 30 s closes the
-connection and ends the stream. Time between writes does not count, so a quiet stream lives on. The
+failing: every response body, plain answers (`HttpResponses`, the log tail, the history list) and
+static files as well as event streams, MCP calls answered as event streams and front-door proxied
+answers, goes through `WriteDeadline`, so one write blocked for 30 s closes the connection and ends
+the response, letting go of its admission permit. Time between writes does not count, so a quiet
+stream lives on, and a large write goes out in 64 KiB slices, each with its own 30 s, so a slow
+client that keeps reading gets the whole body. The
 samplers run while a dashboard stream has joined and not left, attached or still connecting: a tick
 that finds no attached dashboard skips its sample and never stops them. A comment line wakes no handler in the page, so an idle tab costs a dozen bytes a second. The page
 closes its `EventSource` on `pagehide` and reopens it on a back/forward-cache `pageshow`, so a

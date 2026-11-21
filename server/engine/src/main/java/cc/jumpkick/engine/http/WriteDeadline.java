@@ -5,6 +5,7 @@ import java.io.FilterOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.time.Duration;
+import java.util.Objects;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
@@ -14,14 +15,22 @@ import org.jspecify.annotations.Nullable;
  * A response body whose every write must finish within {@link #PER_WRITE}. A client that stops
  * reading fills the socket's send buffer and would hold the handler thread, and its admission
  * permit, forever; past the deadline a watchdog interrupts the writing thread, which closes the
- * connection under it, and the write throws. Time between writes does not count.
+ * connection under it, and the write throws. Time between writes does not count; a large write is
+ * cut into slices, each with its own deadline.
  */
 final class WriteDeadline extends FilterOutputStream {
 
     /** How long one write may wait for the client to take its bytes. */
     static final Duration PER_WRITE = Duration.ofSeconds(30);
 
-    private static final ScheduledThreadPoolExecutor WATCHDOG = watchdog();
+    /**
+     * The most one write hands the stream under it at once. A slow client that keeps reading takes
+     * a slice well inside the deadline, where a whole large body in one write would outlast it.
+     */
+    static final int SLICE = 64 * 1024;
+
+    /** Runs every deadline of the HTTP layer; its tasks must not block. */
+    static final ScheduledThreadPoolExecutor WATCHDOG = watchdog();
 
     /** One daemon thread shared by every response; a cancelled deadline leaves the queue at once. */
     private static ScheduledThreadPoolExecutor watchdog() {
@@ -39,6 +48,7 @@ final class WriteDeadline extends FilterOutputStream {
     private @Nullable Thread writer;
     private @Nullable ScheduledFuture<?> deadline;
     private boolean expired;
+    private boolean closed;
     /** Counts writes, so a deadline that fires as its write ends never expires the next one. */
     private long writes;
 
@@ -49,37 +59,55 @@ final class WriteDeadline extends FilterOutputStream {
 
     @Override
     public void write(int b) throws IOException {
-        arm();
-        try {
-            out.write(b);
-        } catch (IOException e) {
-            throw disarm() ? expired(e) : e;
-        } catch (RuntimeException | Error e) {
-            disarm();
-            throw e;
-        }
-        if (disarm()) throw expired(null);
+        bounded(() -> out.write(b));
     }
 
+    /** Writes in slices of at most {@link #SLICE} bytes, each under its own deadline. */
     @Override
     public void write(byte[] b, int off, int len) throws IOException {
-        arm();
-        try {
-            out.write(b, off, len);
-        } catch (IOException e) {
-            throw disarm() ? expired(e) : e;
-        } catch (RuntimeException | Error e) {
-            disarm();
-            throw e;
+        Objects.checkFromIndexSize(off, len, b.length);
+        for (int at = off, end = off + len; at < end; ) {
+            int from = at;
+            int n = Math.min(SLICE, end - at);
+            bounded(() -> out.write(b, from, n));
+            at += n;
         }
-        if (disarm()) throw expired(null);
     }
 
     @Override
     public void flush() throws IOException {
+        bounded(out::flush);
+    }
+
+    /**
+     * Flushes and closes the stream under it, each under a deadline; after a failed flush the
+     * connection is already gone, so the close cannot block.
+     */
+    @Override
+    public void close() throws IOException {
+        if (closed) return;
+        closed = true;
+        try {
+            flush();
+        } catch (IOException e) {
+            try {
+                out.close();
+            } catch (IOException suppressed) {
+                e.addSuppressed(suppressed);
+            }
+            throw e;
+        }
+        bounded(out::close);
+    }
+
+    private interface Write {
+        void run() throws IOException;
+    }
+
+    private void bounded(Write write) throws IOException {
         arm();
         try {
-            out.flush();
+            write.run();
         } catch (IOException e) {
             throw disarm() ? expired(e) : e;
         } catch (RuntimeException | Error e) {

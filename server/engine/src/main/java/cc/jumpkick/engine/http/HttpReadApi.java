@@ -127,7 +127,9 @@ final class HttpReadApi {
             return;
         }
         exchange.sendResponseHeaders(200, bytes.length);
-        exchange.getResponseBody().write(bytes);
+        try (var out = HttpResponses.body(exchange)) {
+            out.write(bytes);
+        }
     }
 
     /** Last {@code lines} lines of {@code file}, reading at most the final 256 KiB of it. */

@@ -92,6 +92,12 @@ public final class FrontDoor {
 
     private static final Duration UPSTREAM_CONNECT = Duration.ofSeconds(2);
 
+    /** How long a proxied engine may send nothing before it is asked whether it is still there. */
+    private static final Duration UPSTREAM_SILENCE = Duration.ofSeconds(30);
+
+    /** How long that question waits; generous, so a busy engine is not taken for a stopped one. */
+    private static final Duration STILL_THERE = Duration.ofSeconds(5);
+
     /** How long a guest's answer to {@code /api/identity} on its paired port is trusted. */
     private static final long VERIFIED_FOR_MS = 2_000;
 
@@ -136,6 +142,9 @@ public final class FrontDoor {
 
     /** How long one write to the browser may stay blocked before the proxied exchange is closed. */
     private volatile Duration writeLimit = WriteDeadline.PER_WRITE;
+
+    /** How long a proxied engine may send nothing before the proxy asks whether it is still there. */
+    private volatile Duration upstreamSilence = UPSTREAM_SILENCE;
 
     /**
      * @param guests the directory guests write their pairing to ({@link GuestPairing})
@@ -394,8 +403,9 @@ public final class FrontDoor {
     /**
      * Forwards {@code exchange} to paired engine {@code target.id()}, streaming the answer back as it
      * comes, so an event stream flows through; a browser that stops reading is cut off once one write
-     * waits past {@link WriteDeadline#PER_WRITE}, which closes the engine's answer too. {@code
-     * authorized} says the browser presented this engine's token in the shape {@code kind} takes it;
+     * waits past {@link WriteDeadline#PER_WRITE}, which closes the engine's answer too, and an engine
+     * that goes silent and then fails to answer whether it is there is given up on ({@link
+     * UpstreamWatch}). {@code authorized} says the browser presented this engine's token in the shape {@code kind} takes it;
      * only then does the request carry the target engine's token, in that same shape. A body is read,
      * under the cap the engine itself puts on that path, before the engine is asked anything. An answer's {@code Location} is put back under
      * {@code /engines/<id>/}; one that leads elsewhere, or any header that carries the engine's token,
@@ -455,17 +465,43 @@ public final class FrontDoor {
                 }
             }
         });
+        UpstreamWatch watch = UpstreamWatch.start(upstreamSilence, () -> stillThere(pair));
         HttpResponse<InputStream> resp;
         try {
             resp = client.send(req.build(), HttpResponse.BodyHandlers.ofInputStream());
         } catch (InterruptedException e) {
+            if (watch.end()) {
+                HttpResponses.sendText(exchange, 502, "engine " + target.id() + " stopped answering\n");
+                return;
+            }
             Thread.currentThread().interrupt();
             HttpResponses.sendText(exchange, 502, "proxy interrupted\n");
             return;
         } catch (IOException e) {
+            watch.end();
             HttpResponses.sendText(exchange, 502, "engine " + target.id() + " did not answer\n");
             return;
         }
+        watch.heard();
+        try {
+            relay(exchange, resp, target, kind, authorized, uri, pair, method, watch);
+        } finally {
+            watch.end();
+        }
+    }
+
+    /** Passes the engine's answer {@code resp} on to the browser, its headers checked, its body as it comes. */
+    private void relay(
+            HttpExchange exchange,
+            HttpResponse<InputStream> resp,
+            Target target,
+            Kind kind,
+            boolean authorized,
+            URI uri,
+            GuestPairing.Pair pair,
+            String method,
+            UpstreamWatch watch)
+            throws IOException {
         if (resp.statusCode() == 401 && authorized) {
             // The engine refused its own token from the pairing: a stale pairing, never the browser's
             // fault. A 401 here would make the dashboard drop the front door's token.
@@ -504,11 +540,13 @@ public final class FrontDoor {
                 OutputStream out = new WriteDeadline(exchange.getResponseBody(), writeLimit)) {
             byte[] buf = new byte[8192];
             for (int n; (n = in.read(buf)) >= 0; ) {
+                watch.heard();
                 out.write(buf, 0, n);
                 out.flush();
             }
         } catch (IOException closed) {
-            // The browser left or stopped reading, or the engine closed its stream: the exchange ends.
+            // The browser left or stopped reading, or the engine closed or stopped its stream: the
+            // exchange ends.
         }
     }
 
@@ -582,6 +620,17 @@ public final class FrontDoor {
     /** Says in each heartbeat that this front door raises the paired engines' notifications. */
     public void relays(boolean relays) {
         this.relays = relays;
+    }
+
+    /** Test seam: shrink how long an engine may send nothing before the proxy asks whether it is there. */
+    void upstreamSilence(Duration silence) {
+        this.upstreamSilence = silence;
+    }
+
+    /** Whether the engine {@code pair} names still answers as itself; never blocks. */
+    private CompletableFuture<Boolean> stillThere(GuestPairing.Pair pair) {
+        return identityAsync(pair.port(), STILL_THERE)
+                .thenApply(id -> id != null && pair.id().equals(id.get("id")));
     }
 
     /** Test seam: shrink how long one write may stay blocked on a browser that stopped reading. */

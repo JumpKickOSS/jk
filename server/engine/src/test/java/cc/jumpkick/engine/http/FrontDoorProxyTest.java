@@ -3,6 +3,7 @@ package cc.jumpkick.engine.http;
 
 import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.host.Guest;
 import cc.jumpkick.host.time.Clock;
@@ -33,6 +34,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
@@ -72,6 +74,11 @@ class FrontDoorProxyTest extends HttpEngineServerHarness {
     /** Counted down when the guest's endless answer to {@code /api/flood} is cut off. */
     private final CountDownLatch floodCutOff = new CountDownLatch(1);
 
+    /** Set when the guest stops: its identity then fails and its open answers hang until the test ends. */
+    private volatile boolean guestStopped;
+
+    private final CountDownLatch testOver = new CountDownLatch(1);
+
     /** A header the guest adds to every answer, {@code name: value}; none when blank. */
     private volatile String extraHeader = "";
 
@@ -80,6 +87,10 @@ class FrontDoorProxyTest extends HttpEngineServerHarness {
         guest = HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0);
         int guestPort = guest.getAddress().getPort();
         guest.createContext("/api/identity", ex -> {
+            if (guestStopped) {
+                send(ex, 503, "stopped");
+                return;
+            }
             identityAsked.add(
                     ex.getRequestMethod() + " auth=" + ex.getRequestHeaders().getFirst("Authorization"));
             send(ex, 200, "{\"id\":\"" + GUEST_ID + "\",\"label\":\"WSL Ubuntu\",\"port\":" + guestPort + "}");
@@ -119,6 +130,29 @@ class FrontDoorProxyTest extends HttpEngineServerHarness {
                 }
                 return;
             }
+            if (path.equals("/api/stops-before-answering")) {
+                guestStopped = true;
+                hang();
+                return;
+            }
+            if (path.equals("/api/stops-mid-answer")) {
+                ex.sendResponseHeaders(200, 0);
+                OutputStream out = ex.getResponseBody();
+                out.write("first".getBytes(StandardCharsets.UTF_8));
+                out.flush();
+                guestStopped = true;
+                hang();
+                return;
+            }
+            if (path.equals("/api/thinks")) {
+                try {
+                    Thread.sleep(1_500);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+                send(ex, 200, "thought");
+                return;
+            }
             if (path.equals("/api/flood")) {
                 ex.sendResponseHeaders(200, 0);
                 byte[] chunk = new byte[64 * 1024];
@@ -148,7 +182,16 @@ class FrontDoorProxyTest extends HttpEngineServerHarness {
 
     @AfterEach
     void stopGuest() {
+        testOver.countDown();
         guest.stop(0);
+    }
+
+    private void hang() {
+        try {
+            testOver.await();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     private static void send(HttpExchange ex, int status, String body) throws IOException {
@@ -482,5 +525,50 @@ class FrontDoorProxyTest extends HttpEngineServerHarness {
                     .as("the proxied request let go of its admission permit")
                     .isEqualTo(free);
         }
+    }
+
+    @Test
+    @Timeout(30)
+    void an_engine_that_stops_before_answering_is_a_502() throws Exception {
+        requireNonNull(server.frontDoor()).upstreamSilence(Duration.ofMillis(200));
+        HttpResponse<String> answer =
+                send(prefix() + "/api/stops-before-answering", "Authorization", "Bearer " + token());
+        assertThat(answer.statusCode()).isEqualTo(502);
+        assertThat(answer.body()).isEqualTo("engine " + GUEST_ID + " stopped answering\n");
+    }
+
+    @Test
+    @Timeout(30)
+    void an_engine_that_stops_mid_answer_has_its_answer_cut_short() throws Exception {
+        requireNonNull(server.frontDoor()).upstreamSilence(Duration.ofMillis(200));
+        int free = server.admission().rpc().availablePermits();
+        HttpResponse<InputStream> answer = client.send(
+                HttpRequest.newBuilder(URI.create(baseUrl + prefix().substring(1) + "/api/stops-mid-answer"))
+                        .header("Authorization", "Bearer " + token())
+                        .build(),
+                HttpResponse.BodyHandlers.ofInputStream());
+        assertThat(answer.statusCode()).isEqualTo(200);
+        byte[] got = new byte[5];
+        try (InputStream in = answer.body()) {
+            assertThat(in.readNBytes(got, 0, 5)).isEqualTo(5);
+            assertThat(new String(got, StandardCharsets.UTF_8)).isEqualTo("first");
+            // A cut-short answer must not read as a whole one: the connection drops, no last chunk.
+            assertThatThrownBy(in::readAllBytes).isInstanceOf(IOException.class);
+        }
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+        while (server.admission().rpc().availablePermits() != free && System.nanoTime() < deadline) {
+            Thread.sleep(10);
+        }
+        assertThat(server.admission().rpc().availablePermits())
+                .as("the proxied request let go of its admission permit")
+                .isEqualTo(free);
+    }
+
+    @Test
+    void an_engine_that_is_silent_but_still_there_is_waited_on() throws Exception {
+        requireNonNull(server.frontDoor()).upstreamSilence(Duration.ofMillis(200));
+        HttpResponse<String> answer = send(prefix() + "/api/thinks", "Authorization", "Bearer " + token());
+        assertThat(answer.statusCode()).isEqualTo(200);
+        assertThat(answer.body()).isEqualTo("thought");
     }
 }
