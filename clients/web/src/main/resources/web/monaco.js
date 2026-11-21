@@ -220,9 +220,10 @@ export function viewerOptions({ content, lang, readOnly = false } = {}) {
 
 /**
  * Preview renderers (unpkg only; never self-hosted).
- * marked + DOMPurify load as ESM via dynamic import() so we never park Monaco's AMD {@code define}
- * during README Preview (parking races Monaco's on-demand markdown grammar → "define is not a function").
- * Mermaid / viz / asciidoctor still use classic UMD + noAmd, and only when that diagram kind is needed.
+ * marked, DOMPurify and Asciidoctor load as ESM via dynamic import() so we never park Monaco's AMD
+ * {@code define} for them (parking races Monaco's on-demand markdown grammar → "define is not a
+ * function"). Asciidoctor's browser build is an ES module; its .min.js is a transpile of it that sets
+ * no global. Mermaid and viz still use classic UMD + noAmd, and only when that diagram kind is needed.
  */
 const CDN = {
   markedEsm: {
@@ -233,6 +234,10 @@ const CDN = {
     src: 'https://unpkg.com/dompurify@3.2.5/dist/purify.es.mjs',
     integrity: 'sha384-2G1R+xYUzDJWsgWNyUeZC4h+GvYt3MJG5zXKiLD7fxMkwT5y7P45szixzpn8OHFa',
   },
+  asciidoctorEsm: {
+    src: 'https://unpkg.com/@asciidoctor/core@3.0.4/dist/browser/asciidoctor.js',
+    integrity: 'sha384-fwlQOIqOHAsoHascvSa46N5VKhblRqQaixjCpwWq+cC/B8DO2bnUUmbvN6wC1JtN',
+  },
   mermaid: {
     src: 'https://unpkg.com/mermaid@11.6.0/dist/mermaid.min.js',
     integrity: 'sha384-zkWMJO4sgpPUzyuOgDx8HB/K55glbAwajEpk1Go2NWRuPkPA/wIhoEJTuSkmOYrV',
@@ -241,10 +246,6 @@ const CDN = {
     src: 'https://unpkg.com/@viz-js/viz@3.11.0/lib/viz-standalone.js',
     integrity: 'sha384-6ECxW8G4FmLMEr8fKkk617NsYhxb7AhsiyyT6Gey/Sru4R+lyRpVM12ekzlOD08g',
   },
-  asciidoctor: {
-    src: 'https://unpkg.com/@asciidoctor/core@3.0.4/dist/browser/asciidoctor.min.js',
-    integrity: 'sha384-Rd2/5b41kZm7C1w7DbZXiNbMElh62qr8urCNwxmNaYVvL06PjEwpmw1PRGqAwOZP',
-  },
 };
 
 const previewLoaders = Object.create(null);
@@ -252,7 +253,7 @@ const previewLoaders = Object.create(null);
 /**
  * An ES module from the CDN, verified before it runs: import() takes no integrity, so the bytes
  * are fetched with one (the browser refuses a mismatch) and imported from a blob: URL. The
- * sanitizer is among these, and the page's token can write files and start builds. Both pinned
+ * sanitizer is among these, and the page's token can write files and start builds. The pinned
  * modules import nothing of their own, which a blob: URL could not resolve.
  */
 export async function importVerified(pin, fetchImpl = fetch) {
@@ -266,38 +267,40 @@ export async function importVerified(pin, fetchImpl = fetch) {
   }
 }
 
+/** How each ESM preview library is fetched, verified and turned into its renderer. */
+const ESM_LOADERS = {
+  async marked() {
+    const m = await importVerified(CDN.markedEsm);
+    const api = m.marked || m.default || m;
+    if (api == null) throw new Error('marked ESM export missing');
+    return api;
+  },
+  async purify() {
+    // purify.es.mjs exports a ready DOMPurify instance as default.
+    const m = await importVerified(CDN.purifyEsm);
+    const api = m.default || m.DOMPurify || m;
+    if (api == null || typeof api.sanitize !== 'function') throw new Error('DOMPurify ESM export missing');
+    return api;
+  },
+  async asciidoctor() {
+    // The default export is a factory; one processor serves every preview.
+    const m = await importVerified(CDN.asciidoctorEsm);
+    if (typeof m.default !== 'function') throw new Error('Asciidoctor ESM export missing');
+    const api = m.default();
+    if (api == null || typeof api.convert !== 'function') throw new Error('Asciidoctor processor missing');
+    return api;
+  },
+};
+
 export async function ensureCdn(name) {
   if (previewLoaders[name]) return previewLoaders[name];
 
-  if (name === 'marked') {
-    previewLoaders.marked = importVerified(CDN.markedEsm)
-      .then((m) => {
-        const api = m.marked || m.default || m;
-        if (api == null) throw new Error('marked ESM export missing');
-        return api;
-      })
-      .catch((e) => {
-        delete previewLoaders.marked;
-        throw e;
-      });
-    return previewLoaders.marked;
-  }
-
-  if (name === 'purify') {
-    previewLoaders.purify = importVerified(CDN.purifyEsm)
-      .then((m) => {
-        // purify.es.mjs exports a ready DOMPurify instance as default.
-        const api = m.default || m.DOMPurify || m;
-        if (api == null || typeof api.sanitize !== 'function') {
-          throw new Error('DOMPurify ESM export missing');
-        }
-        return api;
-      })
-      .catch((e) => {
-        delete previewLoaders.purify;
-        throw e;
-      });
-    return previewLoaders.purify;
+  if (Object.hasOwn(ESM_LOADERS, name)) {
+    previewLoaders[name] = ESM_LOADERS[name]().catch((e) => {
+      delete previewLoaders[name];
+      throw e;
+    });
+    return previewLoaders[name];
   }
 
   const pin = CDN[name];
@@ -305,14 +308,7 @@ export async function ensureCdn(name) {
   // UMD diagram libs only: park define for the load so they attach globals (Monaco claims AMD).
   previewLoaders[name] = loadScript({ ...pin, noAmd: true })
     .then(() => {
-      const global =
-        name === 'mermaid'
-          ? globalThis.mermaid
-          : name === 'viz'
-            ? globalThis.Viz
-            : name === 'asciidoctor'
-              ? globalThis.Asciidoctor
-              : null;
+      const global = name === 'mermaid' ? globalThis.mermaid : name === 'viz' ? globalThis.Viz : null;
       if (global == null) {
         delete previewLoaders[name];
         throw new Error(name + ' CDN script loaded but global was not set');

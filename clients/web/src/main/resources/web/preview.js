@@ -277,10 +277,8 @@ export const previewMethods = {
         const svg = viz.renderSVGElement(this.currentContent()).outerHTML;
         this.previewHtml = diagramHtml(sanitizeDiagramSvg(purify, svg));
       } else if (kind === 'asciidoc') {
-        const Asciidoctor = await ensureCdn('asciidoctor');
-        const purify = await ensureCdn('purify');
+        const [adoc, purify] = await Promise.all([ensureCdn('asciidoctor'), ensureCdn('purify')]);
         if (gen !== this._previewGen) return;
-        const adoc = typeof Asciidoctor === 'function' ? Asciidoctor() : Asciidoctor;
         const html = adoc.convert(this.currentContent(), { safe: 'secure', attributes: { showtitle: true } });
         this.previewHtml = purify.sanitize(html, { FORBID_TAGS: PREVIEW_FORBID_TAGS });
       } else {

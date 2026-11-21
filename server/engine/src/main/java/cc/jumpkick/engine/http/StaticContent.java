@@ -78,20 +78,21 @@ final class StaticContent {
      * The unpkg packages the shipped client loads as scripts, each by its exact versioned prefix (a
      * source ending in {@code /} matches by prefix): Vue and ECharts ({@code index.html}), Monaco (its
      * loader, editor chunks, and the worker bundles its Blob workers {@code importScripts}), and the
-     * UMD preview renderers mermaid, viz-js and Asciidoctor ({@code monaco.js}). A published npm
+     * UMD preview renderers mermaid and viz-js ({@code monaco.js}). A published npm
      * version never changes, so nobody but these packages can put a script under them; any other
      * package on unpkg is refused. {@code ShellPolicyTest} reads the client's files and fails unless
      * every unpkg URL in them is covered here and every prefix here is used.
      */
     private static final String UNPKG_SCRIPTS = "https://unpkg.com/vue@3.5.39/ https://unpkg.com/echarts@5.5.1/ "
             + "https://unpkg.com/monaco-editor@0.56.0/ https://unpkg.com/mermaid@11.6.0/ "
-            + "https://unpkg.com/@viz-js/viz@3.11.0/ https://unpkg.com/@asciidoctor/core@3.0.4/";
+            + "https://unpkg.com/@viz-js/viz@3.11.0/";
 
     /**
-     * marked and DOMPurify: {@code importVerified} fetches them with their integrity hash and imports
+     * marked, DOMPurify and Asciidoctor: {@code importVerified} fetches them with their integrity hash and imports
      * the verified bytes from a {@code blob:} URL, so they are a connect-src load, never a script one.
      */
-    private static final String UNPKG_FETCHED = "https://unpkg.com/marked@15.0.12/ https://unpkg.com/dompurify@3.2.5/";
+    private static final String UNPKG_FETCHED = "https://unpkg.com/marked@15.0.12/ https://unpkg.com/dompurify@3.2.5/ "
+            + "https://unpkg.com/@asciidoctor/core@3.0.4/";
 
     /** Monaco's {@code editor.main.css}, which its loader links itself. */
     private static final String UNPKG_STYLES = "https://unpkg.com/monaco-editor@0.56.0/";
@@ -100,10 +101,10 @@ final class StaticContent {
      * The shipped shell's policy. Its only external resources: the unpkg packages above (all lazy but
      * Vue and ECharts; SRI on every tag where possible) and the JetBrains Mono webfonts from Google
      * Fonts (CSS on fonts.googleapis.com, font files on fonts.gstatic.com). connect-src is the
-     * dashboard's own API and event stream ('self') plus the two fetched modules.
+     * dashboard's own API and event stream ('self') plus the three fetched modules.
      *
      * <p>'unsafe-eval' is Vue's runtime template compiler (and viz-js compiling its WebAssembly).
-     * blob: in script-src also imports the two fetched modules. The rest is Monaco, and each piece was
+     * blob: in script-src also imports the three fetched modules. The rest is Monaco, and each piece was
      * verified against a real browser (a missing one degrades to a blank/broken pane): blob: in
      * script-src + worker-src — it spawns language workers from a generated Blob that importScripts
      * the unpkg bundle; 'unsafe-inline' in style-src — the editor positions every view line, cursor

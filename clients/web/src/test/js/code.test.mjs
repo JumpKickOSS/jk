@@ -773,6 +773,37 @@ test('a CDN module is fetched with its pinned integrity and a failed fetch is no
   assert.equal(asked[0].opts.integrity, 'sha384-abc');
 });
 
+test('each document renderer is fetched as a verified ES module, and a failed load retries', async () => {
+  // Asciidoctor's browser build is an ES module: its .min.js run as a classic script set no global,
+  // so the AsciiDoc preview failed every time. Headless node cannot import a blob: URL, so a refused
+  // fetch shows the path: which file is asked for, with which integrity, and that a failure does
+  // not latch.
+  const { ensureCdn } = await spa('monaco.js');
+  const saved = globalThis.fetch;
+  const asked = [];
+  globalThis.fetch = async (url, opts) => {
+    asked.push({ url, opts });
+    return { ok: false, status: 503 };
+  };
+  try {
+    const expected = {
+      marked: 'https://unpkg.com/marked@15.0.12/lib/marked.esm.js',
+      purify: 'https://unpkg.com/dompurify@3.2.5/dist/purify.es.mjs',
+      asciidoctor: 'https://unpkg.com/@asciidoctor/core@3.0.4/dist/browser/asciidoctor.js',
+    };
+    for (const [name, src] of Object.entries(expected)) {
+      asked.length = 0;
+      await assert.rejects(ensureCdn(name), (e) => e.message === 'could not load ' + src + ' (503)', name);
+      assert.equal(asked.length, 1, name);
+      assert.match(asked[0].opts.integrity, /^sha384-/, name);
+      await assert.rejects(ensureCdn(name), undefined, name);
+      assert.equal(asked.length, 2, name + ' retries after a failed load');
+    }
+  } finally {
+    globalThis.fetch = saved;
+  }
+});
+
 test('a document preview never renders style, link, meta, base or form tags', async () => {
   const { PREVIEW_FORBID_TAGS } = await spa('preview.js');
   for (const tag of ['style', 'link', 'meta', 'base', 'form']) assert.ok(PREVIEW_FORBID_TAGS.includes(tag), tag);
