@@ -84,7 +84,7 @@ public final class JavacRunner {
                             null,
                             -1,
                             -1,
-                            "javac " + WorkerContainment.failure(exit, "exited with code " + exit)
+                            "javac " + WorkerContainment.failure(process.pid(), exit, "exited with code " + exit)
                                     + (stray.isEmpty() ? " and no diagnostics" : ":\n" + String.join("\n", stray))));
                 }
                 return new CompileResult(exit == 0 && !hasErrors(diagnostics), diagnostics);

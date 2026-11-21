@@ -9,8 +9,8 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.WorkspaceClasspath;
 import cc.jumpkick.engine.plugin.PluginClient;
 import cc.jumpkick.engine.plugin.PluginJar;
-import cc.jumpkick.engine.plugin.WorkerContainment;
 import cc.jumpkick.engine.plugin.WorkerEnv;
+import cc.jumpkick.engine.plugin.WorkerExit;
 import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.JkDirs;
@@ -961,11 +961,11 @@ public final class PluginBuild {
                     else collected.add(line);
                 })
                 .onOther(collected::add);
-        int exit = fork(active, cache, spec, client, env);
+        WorkerExit exit = fork(active, cache, spec, client, env);
         if (error[0] != null) {
             throw new IOException(error[0]);
         }
-        if (exit != 0) {
+        if (exit.code() != 0) {
             throw new IOException(failure(active, exit, client));
         }
         return collected;
@@ -977,7 +977,7 @@ public final class PluginBuild {
      * worker's own downloads on the run's board. Every fork of a code plugin — describe, step,
      * command — goes through here, so they all launch on one classpath.
      */
-    static int fork(ActivePlugin active, Path cache, Path spec, PluginClient client, WorkerEnv env)
+    static WorkerExit fork(ActivePlugin active, Path cache, Path spec, PluginClient client, WorkerEnv env)
             throws IOException, InterruptedException {
         Path jar = workerJarFor(active, cache);
         List<String> command = PluginLaunch.javaCommand(jar, spec, code(active).protocolPrefix(), sdkFloor(active));
@@ -987,14 +987,14 @@ public final class PluginBuild {
     }
 
     /**
-     * The message for a worker that exited {@code exit} (non-zero) without a protocol error: its
+     * The message for a worker that ended with a non-zero {@code exit} without a protocol error: its
      * fate, then the tail of its output — stderr is merged there, so a worker that died before it
      * spoke (a missing class, a crash in {@code main}) says why.
      */
-    static String failure(ActivePlugin active, int exit, PluginClient client) {
+    static String failure(ActivePlugin active, WorkerExit exit, PluginClient client) {
         List<String> tail = client.tail();
         String detail = tail.isEmpty() ? "" : "\n" + String.join("\n", tail);
-        return "plugin worker " + active.manifest().id() + " "
-                + WorkerContainment.failure(exit, "failed (exit " + exit + ")") + detail;
+        return "plugin worker " + active.manifest().id() + " " + exit.failure("failed (exit " + exit.code() + ")")
+                + detail;
     }
 }

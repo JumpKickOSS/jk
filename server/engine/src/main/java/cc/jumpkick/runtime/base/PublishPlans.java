@@ -252,7 +252,8 @@ public final class PublishPlans {
                         })
                         .on(PluginProtocol.ERROR, json -> error[0] = Jsonl.str(json, PluginProtocol.MESSAGE))
                         .passthrough(line -> workerDiag.append(line).append('\n'))
-                        .run(PluginLaunch.javaCommand(workerJar, spec));
+                        .run(PluginLaunch.javaCommand(workerJar, spec))
+                        .code();
                 if (exit != 0) {
                     String diag =
                             workerDiag.length() > 0 ? workerDiag.toString().trim() : null;

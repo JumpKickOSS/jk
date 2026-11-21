@@ -7,6 +7,7 @@ import static org.assertj.core.api.Assertions.catchThrowableOfType;
 
 import cc.jumpkick.config.Request;
 import cc.jumpkick.engine.plugin.PluginProcess;
+import cc.jumpkick.engine.plugin.WorkerExit;
 import cc.jumpkick.plugin.protocol.JUnitUniqueIds;
 import cc.jumpkick.run.SessionCancel;
 import cc.jumpkick.run.TestFailureInfo;
@@ -33,7 +34,7 @@ class JUnitLauncherAggregatorTest {
     /** The summary of a fork that ran its plan to the end and exited 0, as the runner does. */
     private static TestSummary completed(ResultAggregator agg) {
         agg.accept(PLAN_FINISHED);
-        return agg.toResult(0);
+        return agg.toResult(WorkerExit.noWorker(0));
     }
 
     @Test
@@ -208,7 +209,7 @@ class JUnitLauncherAggregatorTest {
         agg.accept("{\"event\":\"plan_finished\",\"duration_ms\":100}");
         agg.accept("{\"event\":\"finished\",\"id\":\"a\",\"type\":\"TEST\",\"status\":\"SUCCESSFUL\"}");
 
-        assertThat(agg.toResult(0).total()).isEqualTo(1);
+        assertThat(agg.toResult(WorkerExit.noWorker(0)).total()).isEqualTo(1);
     }
 
     /**
@@ -223,7 +224,7 @@ class JUnitLauncherAggregatorTest {
         agg.accept("{\"event\":\"finished\",\"id\":\"a\",\"type\":\"TEST\",\"status\":\"SUCCESSFUL\"}");
         agg.accept("{\"event\":\"finished\",\"id\":\"b\",\"type\":\"TEST\",\"status\":\"SUCCESSFUL\"}");
 
-        var result = agg.toResult(0);
+        var result = agg.toResult(WorkerExit.noWorker(0));
 
         assertThat(result.allPassed()).isFalse();
         assertThat(result.total()).isEqualTo(3);
@@ -246,7 +247,7 @@ class JUnitLauncherAggregatorTest {
             agg.accept("{\"event\":\"finished\",\"id\":\"a\",\"type\":\"TEST\",\"status\":\"SUCCESSFUL\"}");
             agg.accept("{\"event\":\"finished\",\"id\":\"b\",\"type\":\"TEST\",\"status\":\"FAILED\"}");
 
-            var result = agg.toResult(exit);
+            var result = agg.toResult(WorkerExit.noWorker(exit));
 
             assertThat(result.failures())
                     .as("exit %d with no plan_finished", exit)
@@ -257,7 +258,7 @@ class JUnitLauncherAggregatorTest {
     @Test
     void a_fork_that_exits_0_with_no_event_and_no_plan_is_a_launcher_failure() {
         var agg = new ResultAggregator();
-        assertThatThrownBy(() -> agg.toResult(0, "", List.of("java", "-cp", "x", "Main")))
+        assertThatThrownBy(() -> agg.toResult(WorkerExit.noWorker(0), "", List.of("java", "-cp", "x", "Main")))
                 .isInstanceOfSatisfying(TestLauncherFailure.class, f -> {
                     assertThat(f.exit()).isZero();
                     assertThat(f.phase()).isEqualTo("test runner");
@@ -427,7 +428,7 @@ class JUnitLauncherAggregatorTest {
                 () -> handler.accept("{\"event\":\"warning\",\"code\":\"jupiter-parallel\"}", convo));
         PluginProcess.HandlerFailure end = new PluginProcess.HandlerFailure(thrown);
 
-        TestFailureInfo row = WorkerFailureRow.of("m", 2, -1, lastClass.get(), "", end.handler());
+        TestFailureInfo row = WorkerFailureRow.of("m", 2, WorkerExit.noWorker(-1), lastClass.get(), "", end.handler());
         assertThat(row.method()).isEqualTo("(test run)");
         assertThat(row.exceptionClass()).isEqualTo("java.lang.IllegalStateException");
         assertThat(row.message())
@@ -437,7 +438,7 @@ class JUnitLauncherAggregatorTest {
         assertThat(row.stack()).contains("IllegalStateException").contains("decoder choked");
         assertThat(row.worker()).isEqualTo(2);
 
-        TestFailureInfo died = WorkerFailureRow.of("m", 2, 137, "com.acme.BTest", "killed", null);
+        TestFailureInfo died = WorkerFailureRow.of("m", 2, WorkerExit.noWorker(137), "com.acme.BTest", "killed", null);
         assertThat(died.method()).isEqualTo("(worker 2)");
         assertThat(died.message()).isEqualTo("test worker exited 137 mid-run (last class: com.acme.BTest)");
         assertThat(died.stack()).isEqualTo("killed");
@@ -473,7 +474,7 @@ class JUnitLauncherAggregatorTest {
         assertThat(done).isTrue();
         assertThat(sent).containsExactly("RUN com.acme.ATest", "DONE", "<eof>");
 
-        TestFailureInfo quit = WorkerFailureRow.of("m", 2, 0, "com.acme.ATest", "", null);
+        TestFailureInfo quit = WorkerFailureRow.of("m", 2, WorkerExit.noWorker(0), "com.acme.ATest", "", null);
         assertThat(quit.method()).isEqualTo("(worker 2)");
         assertThat(quit.className()).isEqualTo("com.acme.ATest");
         assertThat(quit.message())
@@ -562,7 +563,7 @@ class JUnitLauncherAggregatorTest {
             assertThat(row.stack()).contains("decoder choked on totals");
         });
         // A clean listing with a shutdown blemish keeps its verdict: the list survives a non-zero exit.
-        assertThat(new Discovery(List.of("com.acme.ATest"), true, 1, "", List.of()).crashed())
+        assertThat(new Discovery(List.of("com.acme.ATest"), true, WorkerExit.noWorker(1), "", List.of()).crashed())
                 .isFalse();
     }
 
@@ -579,7 +580,7 @@ class JUnitLauncherAggregatorTest {
         handler.accept("{\"event\":\"discovered\",\"class\":\"com.acme.BTest\"}");
         assertThat(listing.complete()).isFalse();
 
-        Discovery cutShort = listing.ended(0, "", List.of("java", "Main"));
+        Discovery cutShort = listing.ended(WorkerExit.noWorker(0), "", List.of("java", "Main"));
         assertThat(cutShort.classes()).containsExactly("com.acme.ATest", "com.acme.BTest");
         assertThat(cutShort.crashed()).isTrue();
         assertThatThrownBy(() -> cutShort.verdict("m")).isInstanceOfSatisfying(TestLauncherFailure.class, f -> {
@@ -589,14 +590,16 @@ class JUnitLauncherAggregatorTest {
                     .startsWith(
                             "test discovery exited 0 before announcing its total (2 classes named, none of them run)");
         });
-        assertThat(listing.ended(137, "", List.of()).crashed()).isTrue();
+        assertThat(listing.ended(WorkerExit.noWorker(137), "", List.of()).crashed())
+                .isTrue();
 
         handler.accept("{\"event\":\"discovery_total\",\"classes\":2,\"tests\":5}");
         assertThat(listing.complete()).isTrue();
-        assertThat(listing.ended(0, "", List.of()).crashed()).isFalse();
+        assertThat(listing.ended(WorkerExit.noWorker(0), "", List.of()).crashed())
+                .isFalse();
 
         // Nothing named and no total: the existing launcher failure, with the fork's exit.
-        Discovery empty = new Discovery.Listing().ended(3, "boom", List.of());
+        Discovery empty = new Discovery.Listing().ended(WorkerExit.noWorker(3), "boom", List.of());
         assertThatThrownBy(() -> empty.verdict("m")).isInstanceOfSatisfying(TestLauncherFailure.class, f -> {
             assertThat(f.exit()).isEqualTo(3);
             assertThat(f.getMessage()).startsWith("test discovery exited 3 before any test ran");
@@ -646,7 +649,7 @@ class JUnitLauncherAggregatorTest {
     void a_non_zero_exit_after_a_pass_is_not_green() {
         var agg = new ResultAggregator();
         agg.accept("{\"event\":\"finished\",\"id\":\"method\",\"type\":\"TEST\",\"status\":\"SUCCESSFUL\"}");
-        var result = agg.toResult(137);
+        var result = agg.toResult(WorkerExit.noWorker(137));
         assertThat(result.allPassed()).isFalse();
         assertThat(result.failed()).isEqualTo(1);
     }
@@ -656,15 +659,15 @@ class JUnitLauncherAggregatorTest {
         var finished = new ResultAggregator();
         finished.accept("{\"event\":\"finished\",\"id\":\"method\",\"type\":\"TEST\",\"status\":\"SUCCESSFUL\"}");
         finished.accept(PLAN_FINISHED);
-        assertThat(finished.toResult(0).allPassed()).isTrue();
-        assertThat(finished.toResult(0).failed()).isZero();
+        assertThat(finished.toResult(WorkerExit.noWorker(0)).allPassed()).isTrue();
+        assertThat(finished.toResult(WorkerExit.noWorker(0)).failed()).isZero();
 
         SessionCancel.bind(() -> true);
         try {
             var cancelled = new ResultAggregator();
             cancelled.accept("{\"event\":\"discovery_total\",\"classes\":1,\"tests\":1}");
             cancelled.accept("{\"event\":\"finished\",\"id\":\"method\",\"type\":\"TEST\",\"status\":\"SUCCESSFUL\"}");
-            var result = cancelled.toResult(137);
+            var result = cancelled.toResult(WorkerExit.noWorker(137));
             assertThat(result.allPassed()).isTrue();
             assertThat(result.failed()).isZero();
         } finally {
@@ -677,7 +680,7 @@ class JUnitLauncherAggregatorTest {
         var agg = new ResultAggregator();
         String crash = "Exception in thread \"main\" java.lang.NoClassDefFoundError: Missing\n"
                 + "\tat cc.jumpkick.Boot.main(Boot.java:1)";
-        assertThatThrownBy(() -> agg.toResult(1, crash, List.of())) // no events, non-zero exit
+        assertThatThrownBy(() -> agg.toResult(WorkerExit.noWorker(1), crash, List.of())) // no events, non-zero exit
                 .isInstanceOfSatisfying(TestLauncherFailure.class, f -> {
                     assertThat(f.exit()).isEqualTo(1);
                     assertThat(f.phase()).isEqualTo("test runner");

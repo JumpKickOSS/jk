@@ -10,7 +10,7 @@ import static cc.jumpkick.test.TestEventFields.xmlName;
 
 import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.SecretRedactor;
-import cc.jumpkick.engine.plugin.WorkerContainment;
+import cc.jumpkick.engine.plugin.WorkerExit;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.plugin.protocol.JUnitUniqueIds;
 import cc.jumpkick.run.SessionCancel;
@@ -329,12 +329,12 @@ final class ResultAggregator {
         return FailureClip.stack(s);
     }
 
-    synchronized TestSummary toResult(int exitCode) {
-        return toResult(exitCode, "", List.of());
+    synchronized TestSummary toResult(WorkerExit exit) {
+        return toResult(exit, "", List.of());
     }
 
     /**
-     * As {@link #toResult(int)}. A fork that ended before running its plan to the end ({@link
+     * As {@link #toResult(WorkerExit)}. A fork that ended before running its plan to the end ({@link
      * #incomplete}) with no test event at all is a {@link TestLauncherFailure} carrying {@code
      * crashOutput} (the worker's captured stdout/stderr) and {@code command} (how the worker was
      * started): the launcher never ran a test, so the step fails on that instead of counting one
@@ -342,12 +342,12 @@ final class ResultAggregator {
      * crashOutput}: the passes reported before the end are not the suite, and counting them green
      * would stamp the run and skip it next build.
      */
-    synchronized TestSummary toResult(int exitCode, String crashOutput, List<String> command) {
+    synchronized TestSummary toResult(WorkerExit exit, String crashOutput, List<String> command) {
         long total = succeeded + failed + skipped;
-        String why = incomplete(exitCode, total);
+        String why = incomplete(exit, total);
         if (why != null) {
             String crash = crashOutput == null ? "" : crashOutput;
-            if (total == 0) throw TestLauncherFailure.runner(moduleLabel, exitCode, crash, command);
+            if (total == 0) throw TestLauncherFailure.runner(moduleLabel, exit, crash, command);
             failed++;
             total++;
             // The fork's own output rides as the row's detail: what it died of — its heap, say —
@@ -373,10 +373,11 @@ final class ResultAggregator {
      * lost some on the way. A cancel that arrived after every discovered test was reported did
      * finish: that one stays green.
      */
-    private @Nullable String incomplete(int exitCode, long reported) {
+    private @Nullable String incomplete(WorkerExit exit, long reported) {
         if (cancelAfterEveryTest(reported)) return null;
+        int exitCode = exit.code();
         if (exitCode != 0 && !(exitCode == 1 && failed > 0 && planFinished)) {
-            return "worker " + WorkerContainment.failure(exitCode, "exited " + exitCode);
+            return "worker " + exit.failure("exited " + exitCode);
         }
         if (!planFinished) {
             String reportedOf = discoveredTests < 0

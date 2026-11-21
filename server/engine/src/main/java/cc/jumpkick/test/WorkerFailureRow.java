@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.test;
 
-import cc.jumpkick.engine.plugin.WorkerContainment;
+import cc.jumpkick.engine.plugin.WorkerExit;
 import cc.jumpkick.run.TestFailureInfo;
 import cc.jumpkick.run.TestSummary;
 import java.io.PrintWriter;
@@ -29,15 +29,15 @@ final class WorkerFailureRow {
     static TestFailureInfo of(
             String moduleLabel,
             int workerId,
-            int exit,
+            WorkerExit exit,
             String lastClass,
             String output,
             @Nullable RuntimeException handler) {
         String dispatched = lastClass.isBlank() ? "" : " (last class: " + lastClass + ")";
         if (handler != null) return handlerRow(moduleLabel, "test protocol handler", dispatched, workerId, handler);
-        String why = exit == 0
+        String why = exit.code() == 0
                 ? "test worker exited 0 mid-run" + dispatched + "; something called System.exit or Runtime.halt"
-                : "test worker " + WorkerContainment.failure(exit, "exited " + exit + " mid-run") + dispatched;
+                : "test worker " + exit.failure("exited " + exit.code() + " mid-run") + dispatched;
         return new TestFailureInfo(moduleLabel, "", lastClass, "(worker " + workerId + ")", "", why, output, workerId);
     }
 
@@ -47,7 +47,7 @@ final class WorkerFailureRow {
      * what fails the run; the exit code of the kill the parent asked for is not consulted.
      */
     static TestSummary singleFork(ResultAggregator aggregator, String moduleLabel, RuntimeException handler) {
-        TestFailureInfo row = of(moduleLabel, SINGLE_WORKER, -1, "", "", handler);
+        TestFailureInfo row = of(moduleLabel, SINGLE_WORKER, WorkerExit.noWorker(-1), "", "", handler);
         return JUnitLauncher.merge(aggregator.snapshot(), new TestSummary(1, 0, 1, 0, List.of(row)));
     }
 

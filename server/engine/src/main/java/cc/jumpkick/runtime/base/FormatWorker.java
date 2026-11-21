@@ -168,7 +168,7 @@ public final class FormatWorker {
             last = HeapScope.fork(key, () -> tally.attempt(launch.command(heap), spec, key));
             WorkerFate.Cause cause = last.exit() == 0 || last.exit() == 1
                     ? WorkerFate.Cause.OTHER
-                    : WorkerFate.classify(last.exit(), last.output());
+                    : WorkerFate.classify(last.pid(), last.exit(), last.output());
             if (cause == WorkerFate.Cause.KILLED_FOR_MEMORY) {
                 HeapNotes.note(HeapNotes.line(heap, heap, true));
                 last = HeapScope.fullLease(
@@ -200,15 +200,15 @@ public final class FormatWorker {
         ctx.put(ERRORS, tally.errors.get());
         ctx.put(WORKER_EXIT, last.exit());
         int reported = preClean + tally.changed.get() + tally.clean.get() + tally.errors.get();
-        String incomplete = exhausted != null ? exhausted : reconcile(reported, total, last.exit());
+        String incomplete = exhausted != null ? exhausted : reconcile(reported, total, last.pid(), last.exit());
         if (incomplete != null) {
             ctx.error("format", incomplete);
             throw new IllegalStateException(incomplete);
         }
     }
 
-    /** One attempt's exit and the tail of what its worker printed besides the protocol. */
-    private record Attempt(int exit, String output) {}
+    /** One attempt's exit, the tail of what its worker printed besides the protocol, and its pid. */
+    private record Attempt(int exit, String output, long pid) {}
 
     /** The output kept per attempt: enough for the JVM's last words, not a whole run's chatter. */
     static final int OUTPUT_TAIL_CHARS = 16 * 1024;
@@ -261,7 +261,7 @@ public final class FormatWorker {
                         }
                     },
                     ctx::cancelled);
-            return new Attempt(outcome.exit(), tail.toString());
+            return new Attempt(outcome.exit(), tail.toString(), outcome.pid());
         }
 
         private void file(String json) {
@@ -306,7 +306,7 @@ public final class FormatWorker {
      * <em>after</em> the last file event, tallies balanced. Without it the wedge prints green while
      * the CLI hands the shell a 139 — the same contradiction, one file later.
      */
-    static @Nullable String reconcile(int reported, int total, int exit) {
+    static @Nullable String reconcile(int reported, int total, long pid, int exit) {
         if (reported < total) {
             return "format worker stopped after " + reported + " of " + total + " files, worker exit " + exit
                     + "; the next jk format retries the other " + (total - reported);
@@ -315,7 +315,7 @@ public final class FormatWorker {
             return "format worker reported " + reported + " results for " + total + " files, worker exit " + exit;
         }
         if (exit != 0 && exit != 1) {
-            if (WorkerContainment.killedForMemory(exit)) {
+            if (WorkerContainment.killedForMemory(pid, exit)) {
                 return "format worker killed for memory after reporting on all " + total + " files";
             }
             return "format worker crashed with exit " + exit + " after all " + total + " files";

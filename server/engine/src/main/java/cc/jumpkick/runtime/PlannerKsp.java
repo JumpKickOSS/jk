@@ -765,7 +765,7 @@ public final class PlannerKsp {
         }
         String output = captured.get();
         if (exit != 0) {
-            String killed = WorkerContainment.failure(exit, "");
+            String killed = WorkerContainment.failure(proc.pid(), exit, "");
             String body = output.isBlank() ? (killed.isEmpty() ? "KSP exited " + exit : "KSP " + killed) : output;
             if (!output.isBlank() && !killed.isEmpty()) body = killed + "\n" + output;
             ctx.error(TaskNames.KSP, body);

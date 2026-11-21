@@ -15,6 +15,7 @@ import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.engine.plugin.PluginLoader;
 import cc.jumpkick.engine.plugin.PluginProcess;
 import cc.jumpkick.engine.plugin.WorkerEnv;
+import cc.jumpkick.engine.plugin.WorkerExit;
 import cc.jumpkick.engine.plugin.WorkerFate;
 import cc.jumpkick.engine.plugin.WorkerLaunchClasspath;
 import cc.jumpkick.host.Classpaths;
@@ -780,7 +781,7 @@ public final class JUnitLauncher {
             throws IOException, InterruptedException {
         HeapScope.Key key = filledKey(javaHome);
         try {
-            int exit = key == null
+            WorkerExit exit = key == null
                     ? launch(javaHome, classpath, flags, args, aggregator, crash)
                     : HeapScope.call(key, () -> launch(javaHome, classpath, flags, args, aggregator, crash));
             return aggregator.toResult(exit, crash.text(), PluginLoader.command(javaHome, classpath, flags, args));
@@ -794,7 +795,7 @@ public final class JUnitLauncher {
         }
     }
 
-    private int launch(
+    private WorkerExit launch(
             Path javaHome,
             String classpath,
             List<String> flags,
@@ -1171,7 +1172,7 @@ public final class JUnitLauncher {
         var crash = new CaptureBuffer();
         List<String> flags = jvmFlags(JvmRole.DISCOVERY, 1, testTmpDir);
         List<String> args = withTagArgs(List.of("--list-only", "--scan-classpath=" + testClassesDir), List.of());
-        int exit;
+        WorkerExit exit;
         try {
             exit = SuiteRetry.listing(
                     filledKey(javaHome),

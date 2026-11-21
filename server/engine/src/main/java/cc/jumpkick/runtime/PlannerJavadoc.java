@@ -314,7 +314,7 @@ final class PlannerJavadoc {
     static List<String> errorLines(String tool, JavadocTool.Result r) {
         if (!r.errors().isEmpty()) return r.errors();
         return List.of(tool + " "
-                + WorkerContainment.failure(r.exit(), "exited " + r.exit())
+                + WorkerContainment.failure(r.pid(), r.exit(), "exited " + r.exit())
                 + (r.output().isBlank() ? "" : "\n" + r.output()));
     }
 

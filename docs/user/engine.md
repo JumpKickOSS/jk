@@ -450,7 +450,9 @@ three quarters of the worker budget (never below the worker's own lease) and
 rest of the build and the host keep the last quarter. A worker killed there is reported as
 `killed for memory at its worker cap of 10.1 GiB; the memory was outside the heap, so a
 larger -Xmx does not help`, and it is not
-retried. The engine log names the worker and its cap. The group is removed once the worker
+retried. Only that worker is: another worker that ends by SIGKILL at the same moment, say one
+stopped by `jk cancel`, is not reported as killed for memory. The engine log names the worker
+and its cap. The group is removed once the worker
 and anything it started have exited. Where the memory controller cannot be handed down
 below `workers`, workers share that one group. `jk engine status` reads
 `cgroup (max 13.5 GiB, 10.1 GiB per worker)` when each worker has its own group, naming the

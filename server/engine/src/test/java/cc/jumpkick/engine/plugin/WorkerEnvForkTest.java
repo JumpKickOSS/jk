@@ -45,10 +45,9 @@ class WorkerEnvForkTest {
         Map<String, String> engine = new LinkedHashMap<>(System.getenv());
         engine.put(SECRET, "x");
         AtomicReference<@Nullable String> seen = new AtomicReference<>();
-        int exit = WorkerEnv.withEngineEnvironment(
-                engine,
-                () -> PluginProcess.run(
-                        cmd("env", SECRET), env, "##T:", json -> seen.set(Jsonl.str(json, SECRET)), null));
+        int exit = WorkerEnv.withEngineEnvironment(engine, () -> PluginProcess.run(
+                        cmd("env", SECRET), env, "##T:", json -> seen.set(Jsonl.str(json, SECRET)), null)
+                .code());
         assertThat(exit).isZero();
         return Objects.requireNonNull(seen.get(), "the worker reported no env event");
     }

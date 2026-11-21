@@ -94,7 +94,9 @@ class WarmWorkersTest {
     void runs_of_one_launch_share_a_worker_and_another_launch_gets_its_own() throws Exception {
         WarmWorkers.Outcome[] out = new WarmWorkers.Outcome[1];
         Seen first = run(launch("a"), "ok", out);
-        assertThat(out[0]).isEqualTo(new WarmWorkers.Outcome(2, false));
+        assertThat(out[0])
+                .extracting(WarmWorkers.Outcome::exit, WarmWorkers.Outcome::died)
+                .containsExactly(2, false);
         assertThat(first.output).contains("chatter for ok");
         Seen second = run(launch("a"), "okay", out);
         assertThat(out[0].exit()).isEqualTo(4);
@@ -164,7 +166,9 @@ class WarmWorkersTest {
         WarmWorkers.Outcome[] out = new WarmWorkers.Outcome[1];
         Seen first = run(launch("a"), "ok", out);
         Seen dead = run(launch("a"), "oom", out);
-        assertThat(out[0]).isEqualTo(new WarmWorkers.Outcome(3, true));
+        assertThat(out[0])
+                .extracting(WarmWorkers.Outcome::exit, WarmWorkers.Outcome::died)
+                .containsExactly(3, true);
         assertThat(WorkerFate.heapExhausted(out[0].exit(), String.join("\n", dead.output)))
                 .isTrue();
         Seen next = run(launch("a"), "ok", out);
@@ -175,7 +179,9 @@ class WarmWorkersTest {
     void a_retiring_run_ends_its_worker() throws Exception {
         WarmWorkers.Outcome[] out = new WarmWorkers.Outcome[1];
         Seen retired = run(launch("a"), "retire", out);
-        assertThat(out[0]).isEqualTo(new WarmWorkers.Outcome(6, false));
+        assertThat(out[0])
+                .extracting(WarmWorkers.Outcome::exit, WarmWorkers.Outcome::died)
+                .containsExactly(6, false);
         assertThat(WarmWorkers.idleCount()).isZero();
         assertThat(ProcessHandle.of(retired.pid).map(ProcessHandle::isAlive).orElse(false))
                 .isFalse();
@@ -348,11 +354,15 @@ class WarmWorkersTest {
     void a_step_that_reads_stdin_reads_its_end_and_the_next_run_reaches_the_worker() throws Exception {
         WarmWorkers.Outcome[] out = new WarmWorkers.Outcome[1];
         Seen reader = run(launch("a"), "stdin", out);
-        assertThat(out[0]).isEqualTo(new WarmWorkers.Outcome(5, false));
+        assertThat(out[0])
+                .extracting(WarmWorkers.Outcome::exit, WarmWorkers.Outcome::died)
+                .containsExactly(5, false);
         assertThat(reader.output).contains("stdin gave 0 bytes");
 
         Seen next = run(launch("a"), "ok", out);
-        assertThat(out[0]).isEqualTo(new WarmWorkers.Outcome(2, false));
+        assertThat(out[0])
+                .extracting(WarmWorkers.Outcome::exit, WarmWorkers.Outcome::died)
+                .containsExactly(2, false);
         assertThat(next.pid).isEqualTo(reader.pid);
         assertThat(next.output).contains("chatter for ok");
     }
@@ -362,11 +372,15 @@ class WarmWorkersTest {
     void a_child_that_inherits_the_workers_stdin_reads_its_end_and_the_next_run_reaches_the_worker() throws Exception {
         WarmWorkers.Outcome[] out = new WarmWorkers.Outcome[1];
         Seen parent = run(launch("a"), "child", out);
-        assertThat(out[0]).isEqualTo(new WarmWorkers.Outcome(5, false));
+        assertThat(out[0])
+                .extracting(WarmWorkers.Outcome::exit, WarmWorkers.Outcome::died)
+                .containsExactly(5, false);
         assertThat(parent.output).contains("child stdin gave 0 bytes", "child exited 0");
 
         Seen next = run(launch("a"), "ok", out);
-        assertThat(out[0]).isEqualTo(new WarmWorkers.Outcome(2, false));
+        assertThat(out[0])
+                .extracting(WarmWorkers.Outcome::exit, WarmWorkers.Outcome::died)
+                .containsExactly(2, false);
         assertThat(next.pid).isEqualTo(parent.pid);
     }
 

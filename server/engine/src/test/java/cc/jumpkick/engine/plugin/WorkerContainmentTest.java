@@ -33,6 +33,9 @@ class WorkerContainmentTest {
 
     private static final long SELF = 4242L;
 
+    /** A pid no worker group was made for. */
+    private static final long NOT_A_WORKER = 99_999_999L;
+
     @TempDir
     Path root;
 
@@ -169,16 +172,20 @@ class WorkerContainmentTest {
         Files.writeString(workers.resolve("memory.current"), "10\n");
         Files.writeString(workers.resolve("memory.max"), "100\n");
         try {
-            assertThat(WorkerContainment.failure(137, "exited 137")).isEqualTo("exited 137");
+            assertThat(WorkerContainment.failure(NOT_A_WORKER, 137, "exited 137"))
+                    .isEqualTo("exited 137");
             WorkerContainment.armForTest(workers, 100, 0);
-            assertThat(WorkerContainment.failure(1, "exited 1")).isEqualTo("exited 1");
-            assertThat(WorkerContainment.failure(137, "exited 137")).isEqualTo("exited 137");
+            assertThat(WorkerContainment.failure(NOT_A_WORKER, 1, "exited 1")).isEqualTo("exited 1");
+            assertThat(WorkerContainment.failure(NOT_A_WORKER, 137, "exited 137"))
+                    .isEqualTo("exited 137");
             Files.writeString(workers.resolve("memory.events"), "oom_kill 2\n");
-            assertThat(WorkerContainment.failure(137, "exited 137")).isEqualTo("killed for memory");
-            assertThat(WorkerContainment.failure(137, "exited 137")).isEqualTo("exited 137");
+            assertThat(WorkerContainment.failure(NOT_A_WORKER, 137, "exited 137"))
+                    .isEqualTo("killed for memory");
+            assertThat(WorkerContainment.failure(NOT_A_WORKER, 137, "exited 137"))
+                    .isEqualTo("exited 137");
             Files.writeString(workers.resolve("memory.current"), "100\n");
-            assertThat(WorkerContainment.killedForMemory(137)).isTrue();
-            TestLauncherFailure failure = TestLauncherFailure.runner("app", 137, "");
+            assertThat(WorkerContainment.killedForMemory(NOT_A_WORKER, 137)).isTrue();
+            TestLauncherFailure failure = TestLauncherFailure.runner("app", WorkerExit.noWorker(137), "");
             assertThat(failure.getMessage()).contains("killed for memory").doesNotContain("exited 137");
         } finally {
             WorkerContainment.resetForTest();
@@ -223,16 +230,16 @@ class WorkerContainmentTest {
             assertThat(Files.readString(own.resolve("memory.max")).trim()).isEqualTo("750");
             assertThat(Files.readString(own.resolve("cgroup.procs")).trim()).isEqualTo(Long.toString(child.pid()));
 
-            assertThat(WorkerContainment.memoryKill(137).killed()).isFalse();
+            assertThat(WorkerContainment.memoryKill(child.pid(), 137).killed()).isFalse();
             child.destroyForcibly();
             child.waitFor(5, TimeUnit.SECONDS);
             Files.writeString(own.resolve("memory.events"), "oom 1\noom_kill 1\n");
             Files.writeString(workers.resolve("memory.events"), "oom_kill 1\n");
 
-            WorkerContainment.MemoryKill kill = WorkerContainment.memoryKill(137);
+            WorkerContainment.MemoryKill kill = WorkerContainment.memoryKill(child.pid(), 137);
             assertThat(kill.atCap()).isTrue();
             assertThat(kill.capBytes()).isEqualTo(750);
-            assertThat(WorkerContainment.memoryKill(137).killed())
+            assertThat(WorkerContainment.memoryKill(child.pid(), 137).killed())
                     .as("the group's own oom_kill was this cap kill, already counted")
                     .isFalse();
             assertThat(WorkerContainment.capPhrase(3L * GIB))
@@ -406,7 +413,7 @@ class WorkerContainmentTest {
                     .as(groupState(bench, hog, err))
                     .isTrue();
             int exit = hog.exitValue();
-            String how = awaitKilledForMemory(exit);
+            String how = awaitKilledForMemory(hog.pid(), exit);
             assertThat(exit).as(groupState(bench, hog, err)).isEqualTo(WorkerContainment.SIGKILL_EXIT);
             assertThat(how).as(groupState(bench, hog, err)).isEqualTo(WorkerContainment.KILLED_FOR_MEMORY);
             assertThat(ProcessHandle.current().isAlive()).isTrue();
@@ -418,6 +425,50 @@ class WorkerContainmentTest {
             }
             bench.close();
             Files.deleteIfExists(err);
+            WorkerContainment.resetForTest();
+            WorkerContainment.install();
+        }
+    }
+
+    /**
+     * Two workers end by SIGKILL at once, one at its cap and one stopped by a cancel: whichever is
+     * asked about first, the cap kill is the capped worker's and the cancelled one was not killed
+     * for memory.
+     */
+    @Test
+    @EnabledOnOs(OS.LINUX)
+    void a_cap_kill_is_attributed_to_the_worker_it_killed() throws Exception {
+        Path workers = root.resolve("workers");
+        Files.createDirectories(workers);
+        Files.writeString(workers.resolve("memory.events"), "oom_kill 0\n");
+        Files.writeString(workers.resolve("memory.current"), "10\n");
+        Files.writeString(workers.resolve("memory.max"), "1000\n");
+        Process capped = new ProcessBuilder("sleep", "30").start();
+        Process cancelled = new ProcessBuilder("sleep", "30").start();
+        try {
+            WorkerContainment.armForTest(workers, 1000, 0, true);
+            for (Process p : List.of(capped, cancelled)) {
+                Path own = workers.resolve(WorkerContainment.CHILD_PREFIX + p.pid());
+                Files.createDirectories(own);
+                Files.writeString(own.resolve("memory.max"), "max\n");
+                Files.writeString(own.resolve("cgroup.procs"), "");
+                WorkerContainment.contain(p, 750, "test JVM");
+            }
+            capped.destroyForcibly().waitFor(5, TimeUnit.SECONDS);
+            cancelled.destroyForcibly().waitFor(5, TimeUnit.SECONDS);
+            Path cappedGroup = workers.resolve(WorkerContainment.CHILD_PREFIX + capped.pid());
+            Files.writeString(cappedGroup.resolve("memory.events"), "oom 1\noom_kill 1\n");
+            Files.writeString(workers.resolve("memory.events"), "oom_kill 1\n");
+
+            assertThat(WorkerContainment.memoryKill(cancelled.pid(), 137).killed())
+                    .as("the cancelled worker, asked about first")
+                    .isFalse();
+            WorkerContainment.MemoryKill kill = WorkerContainment.memoryKill(capped.pid(), 137);
+            assertThat(kill.atCap()).isTrue();
+            assertThat(kill.capBytes()).isEqualTo(750);
+        } finally {
+            capped.destroyForcibly();
+            cancelled.destroyForcibly();
             WorkerContainment.resetForTest();
             WorkerContainment.install();
         }
@@ -449,11 +500,11 @@ class WorkerContainmentTest {
                     .isTrue();
             int exit = hog.exitValue();
             assertThat(exit).as(groupState(bench, hog, err)).isEqualTo(WorkerContainment.SIGKILL_EXIT);
-            WorkerContainment.MemoryKill kill = WorkerContainment.memoryKill(exit);
+            WorkerContainment.MemoryKill kill = WorkerContainment.memoryKill(hog.pid(), exit);
             long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
             while (!kill.killed() && System.nanoTime() < deadline) {
                 Thread.sleep(50);
-                kill = WorkerContainment.memoryKill(exit);
+                kill = WorkerContainment.memoryKill(hog.pid(), exit);
             }
             assertThat(kill.atCap()).as(groupState(bench, hog, err)).isTrue();
             assertThat(kill.capBytes()).isEqualTo(bench.maxBytes);
@@ -546,11 +597,11 @@ class WorkerContainmentTest {
     }
 
     /** The counter can land just after the exit status. */
-    private static String awaitKilledForMemory(int exit) throws Exception {
+    private static String awaitKilledForMemory(long pid, int exit) throws Exception {
         String how = "exited " + exit;
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
         while (!WorkerContainment.KILLED_FOR_MEMORY.equals(how) && System.nanoTime() < deadline) {
-            how = WorkerContainment.failure(exit, "exited " + exit);
+            how = WorkerContainment.failure(pid, exit, "exited " + exit);
             if (!WorkerContainment.KILLED_FOR_MEMORY.equals(how)) Thread.sleep(50);
         }
         return how;

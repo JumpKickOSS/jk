@@ -29,13 +29,14 @@ class PluginProcessWatchdogTest {
         // sleep is a child of sh and inherits stdout; killing only the shell would leave
         // readLine blocked until sleep exits — the watchdog must tear down the whole tree.
         int exit = PluginProcess.converse(
-                List.of(sh.toString(), "-c", "echo '##JKT:{\"event\":\"hello\"}'; sleep 30"),
-                WorkerEnv.strict(),
-                null,
-                "##JKT:",
-                (json, convo) -> {},
-                null,
-                400L);
+                        List.of(sh.toString(), "-c", "echo '##JKT:{\"event\":\"hello\"}'; sleep 30"),
+                        WorkerEnv.strict(),
+                        null,
+                        "##JKT:",
+                        (json, convo) -> {},
+                        null,
+                        400L)
+                .code();
 
         assertThat(exit).isNotZero();
         // LIVENESS, not performance: the watchdog was given 400ms and the child would otherwise
@@ -54,14 +55,15 @@ class PluginProcessWatchdogTest {
         // The single suite JVM is a one-shot run, not a conversation; it has the same watchdog.
         Instant start = Instant.now();
         int exit = PluginProcess.run(
-                List.of(sh.toString(), "-c", "echo '##JKT:{\"event\":\"hello\"}'; sleep 30"),
-                WorkerEnv.strict(),
-                null,
-                "##JKT:",
-                json -> {},
-                null,
-                400L,
-                LearnedHeaps.engine());
+                        List.of(sh.toString(), "-c", "echo '##JKT:{\"event\":\"hello\"}'; sleep 30"),
+                        WorkerEnv.strict(),
+                        null,
+                        "##JKT:",
+                        json -> {},
+                        null,
+                        400L,
+                        LearnedHeaps.engine())
+                .code();
 
         assertThat(exit).isNotZero();
         // LIVENESS: 15s is a hang detector for a 400ms watchdog, not a budget.
@@ -82,12 +84,13 @@ class PluginProcessWatchdogTest {
         // the production default; the path taken is the same.
         Instant start = Instant.now();
         int exit = PluginProcess.converse(
-                List.of(sh.toString(), "-c", "echo '##JKT:{\"event\":\"hello\"}'; sleep 30 & exit 0"),
-                WorkerEnv.strict(),
-                "##JKT:",
-                (json, convo) -> {},
-                0L,
-                200L);
+                        List.of(sh.toString(), "-c", "echo '##JKT:{\"event\":\"hello\"}'; sleep 30 & exit 0"),
+                        WorkerEnv.strict(),
+                        "##JKT:",
+                        (json, convo) -> {},
+                        0L,
+                        200L)
+                .code();
 
         assertThat(exit).isZero();
         // LIVENESS, not performance: with no watchdog (0L) the guard being tested is that an orphan
@@ -103,13 +106,17 @@ class PluginProcessWatchdogTest {
         assumeTrue(Files.isExecutable(sh), "POSIX shell required");
 
         int exit = PluginProcess.converse(
-                List.of(sh.toString(), "-c", "for i in 1 2 3 4; do echo '##JKT:{\"event\":\"tick\"}'; sleep 0.2; done"),
-                WorkerEnv.strict(),
-                null,
-                "##JKT:",
-                (json, convo) -> {},
-                null,
-                600L);
+                        List.of(
+                                sh.toString(),
+                                "-c",
+                                "for i in 1 2 3 4; do echo '##JKT:{\"event\":\"tick\"}'; sleep 0.2; done"),
+                        WorkerEnv.strict(),
+                        null,
+                        "##JKT:",
+                        (json, convo) -> {},
+                        null,
+                        600L)
+                .code();
 
         assertThat(exit).isZero();
     }

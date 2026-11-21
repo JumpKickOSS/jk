@@ -15,6 +15,7 @@ import cc.jumpkick.engine.plugin.WarmLinger;
 import cc.jumpkick.engine.plugin.WorkerAotCache;
 import cc.jumpkick.engine.plugin.WorkerContainment;
 import cc.jumpkick.engine.plugin.WorkerEnv;
+import cc.jumpkick.engine.plugin.WorkerExit;
 import cc.jumpkick.engine.plugin.WorkerFate;
 import cc.jumpkick.engine.plugin.WorkerLeases;
 import cc.jumpkick.engine.plugin.WorkerScope;
@@ -205,7 +206,7 @@ public final class JavaCompilerHost {
                 tuning,
                 heap.xmxBytes());
         List<String> command = PluginLoader.command(home, workerCp, jvmFlags, List.of("--pull"));
-        int exit = PluginProcess.converseOnChannel(
+        WorkerExit ended = PluginProcess.converseOnChannel(
                 command,
                 env,
                 (pb, choice) -> {
@@ -226,9 +227,10 @@ public final class JavaCompilerHost {
                 worker::attach,
                 worker::onFrame,
                 worker::output);
+        int exit = ended.code();
         // A worker told to finish exits on its own; a kill we asked for says nothing about it.
         if (exit != 0 && !(worker.retiring() && worker.inflight.isEmpty())) {
-            WorkerFate.Cause cause = WorkerFate.classify(exit, worker.transcript.render());
+            WorkerFate.Cause cause = WorkerFate.classify(ended.pid(), exit, worker.transcript.render());
             if (cause == WorkerFate.Cause.HEAP_EXHAUSTED) worker.ranOutOfHeap();
             throw new IOException("zinc worker " + WorkerFate.phrase(cause, "exited with status " + exit));
         }

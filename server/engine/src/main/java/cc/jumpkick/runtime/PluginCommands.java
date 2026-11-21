@@ -5,6 +5,7 @@ import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.engine.plugin.PluginClient;
 import cc.jumpkick.engine.plugin.WorkerEnv;
+import cc.jumpkick.engine.plugin.WorkerExit;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jsonl.Jsonl;
@@ -104,14 +105,15 @@ public final class PluginCommands {
                         .onOther(line -> {
                             // labels/done — not part of the command's user-facing output
                         });
-                int exit = PluginBuild.fork(active, cache, spec, client, WorkerEnv.strict());
+                WorkerExit worker = PluginBuild.fork(active, cache, spec, client, WorkerEnv.strict());
+                int exit = worker.code();
                 String failure = error[0];
                 if (failure != null) return PluginCommandReport.error(failure);
                 // A non-zero exit the command did not explain — the worker died before it spoke,
                 // or wrote only to stderr — fails with that stderr; a command that printed its
                 // own lines and chose its exit keeps both.
                 if (exit != 0 && (output.isEmpty() || !client.tail().isEmpty())) {
-                    return new PluginCommandReport(PluginBuild.failure(active, exit, client), true, exit, output);
+                    return new PluginCommandReport(PluginBuild.failure(active, worker, client), true, exit, output);
                 }
                 return new PluginCommandReport(null, true, exit, output);
             } finally {

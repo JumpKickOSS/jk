@@ -5,7 +5,7 @@ import cc.jumpkick.audit.AuditReport;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.engine.plugin.PluginClient;
 import cc.jumpkick.engine.plugin.PluginJar;
-import cc.jumpkick.engine.plugin.WorkerContainment;
+import cc.jumpkick.engine.plugin.WorkerExit;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.lock.LockfileReader;
@@ -138,7 +138,7 @@ public final class AuditPlans {
                 // Bounded: a worker that fails by printing megabytes must not be the reason the
                 // engine runs out of heap reporting it.
                 Deque<String> tail = new ArrayDeque<>();
-                int exit = new PluginClient("##JKAU:")
+                WorkerExit exit = new PluginClient("##JKAU:")
                         .on(PluginProtocol.FINDING, json -> {
                             AuditReport.Finding finding = finding(json);
                             if (finding != null) observer.accept(finding);
@@ -153,10 +153,9 @@ public final class AuditPlans {
                 if (error[0] != null) {
                     throw new RuntimeException("audit worker: " + error[0] + withTail(tail));
                 }
-                if (exit != 0) {
-                    throw new RuntimeException("audit worker "
-                            + WorkerContainment.failure(exit, "exited with code " + exit)
-                            + withTail(tail));
+                if (exit.code() != 0) {
+                    throw new RuntimeException(
+                            "audit worker " + exit.failure("exited with code " + exit.code()) + withTail(tail));
                 }
             } finally {
                 Files.deleteIfExists(spec);

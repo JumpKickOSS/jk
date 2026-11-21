@@ -12,6 +12,7 @@ import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.engine.plugin.PluginClient;
 import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.engine.plugin.WorkerContainment;
+import cc.jumpkick.engine.plugin.WorkerExit;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.image.ImageConfig;
@@ -483,18 +484,19 @@ public final class ImagePlans {
                         .on(PluginProtocol.ERROR, json -> workerError[0] = Jsonl.str(json, PluginProtocol.MESSAGE))
                         .on(PluginProtocol.DIAGNOSTIC, said)
                         .passthrough(ln -> diag.append(ln).append('\n'));
-                int exit;
+                WorkerExit exit;
                 // Base layers the worker pulls are the run's downloads like any other.
                 try (PluginTransfers ignored = PluginTransfers.relay(client)) {
                     exit = client.run(PluginLaunch.javaCommand(workerJar, spec));
                 }
                 if (workerError[0] != null) throw new RuntimeException("image worker: " + workerError[0]);
-                if (exit != 0) {
+                if (exit.code() != 0) {
                     String d = diag.length() > 0 ? diag.toString().trim() : null;
-                    if (WorkerContainment.killedForMemory(exit)) {
+                    if (WorkerContainment.killedForMemory(exit.pid(), exit.code())) {
                         throw new RuntimeException("image worker killed for memory" + (d != null ? ": " + d : ""));
                     }
-                    throw new RuntimeException("image worker failed" + (d != null ? ": " + d : " (exit " + exit + ")"));
+                    throw new RuntimeException(
+                            "image worker failed" + (d != null ? ": " + d : " (exit " + exit.code() + ")"));
                 }
                 String built = ref[0];
                 return built != null ? built : "";
@@ -567,7 +569,7 @@ public final class ImagePlans {
                     + " "
                     + cmd.get(1)
                     + " "
-                    + WorkerContainment.failure(exit, "failed (exit " + exit + ")"));
+                    + WorkerContainment.failure(p.pid(), exit, "failed (exit " + exit + ")"));
         }
     }
 

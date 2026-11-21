@@ -100,9 +100,15 @@ public final class WarmWorkers {
 
     /**
      * How a run ended. {@code exit} is the plugin's answer, or the worker's exit status when it did
-     * not answer: it died, or was stopped for a cancel.
+     * not answer: it died, or was stopped for a cancel. {@code pid} is the worker's.
      */
-    public record Outcome(int exit, boolean died) {}
+    public record Outcome(int exit, boolean died, long pid) {
+
+        /** {@link WorkerContainment#failure} for this run's worker. */
+        public String failure(String otherwise) {
+            return WorkerContainment.failure(pid, exit, otherwise);
+        }
+    }
 
     /** How often a waiting run looks at its cancel probe and at the worker's life. */
     private static final Duration POLL = Duration.ofMillis(50);
@@ -521,7 +527,7 @@ public final class WarmWorkers {
                     if (PluginProtocol.EXITED.equals(t)) {
                         retire = Jsonl.bool(json, "retire", false);
                         served = true;
-                        return new Outcome(Jsonl.intValue(json, "code", 1), false);
+                        return new Outcome(Jsonl.intValue(json, "code", 1), false, process.pid());
                     }
                     listener.protocol(json);
                 }
@@ -563,7 +569,7 @@ public final class WarmWorkers {
         private Outcome died() throws InterruptedException {
             if (!process.waitFor(EXIT_GRACE.toMillis(), TimeUnit.MILLISECONDS)) kill();
             LIVE.remove(this);
-            return new Outcome(process.isAlive() ? 1 : process.exitValue(), true);
+            return new Outcome(process.isAlive() ? 1 : process.exitValue(), true, process.pid());
         }
 
         void armReaper() {

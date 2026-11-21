@@ -27,12 +27,13 @@ class PluginProcessStragglerTest {
         Process straggler = new ProcessBuilder("sleep", "60").start();
         try {
             int exit = PluginProcess.converseOnChannel(
-                    EXIT_AT_ONCE,
-                    WorkerEnv.strict(),
-                    (pb, heap) -> new LeavesADescendant(pb.start(), straggler.toHandle()),
-                    convo -> {},
-                    frame -> {},
-                    null);
+                            EXIT_AT_ONCE,
+                            WorkerEnv.strict(),
+                            (pb, heap) -> new LeavesADescendant(pb.start(), straggler.toHandle()),
+                            convo -> {},
+                            frame -> {},
+                            null)
+                    .code();
             assertThat(exit).isZero();
             assertThat(straggler.waitFor(5, TimeUnit.SECONDS))
                     .as("the worker's straggler was stopped")

@@ -3,6 +3,7 @@ package cc.jumpkick.test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.engine.plugin.WorkerExit;
 import cc.jumpkick.host.Classpaths;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -20,7 +21,8 @@ class TestLauncherFailureTest {
 
     @Test
     void reads_the_exception_the_engine_and_the_causes_off_the_runner_output() {
-        TestLauncherFailure f = TestLauncherFailure.discovery("com.example:app", 70, ENGINE_COULD_NOT_START);
+        TestLauncherFailure f =
+                TestLauncherFailure.discovery("com.example:app", WorkerExit.noWorker(70), ENGINE_COULD_NOT_START);
 
         assertThat(f.getMessage())
                 .isEqualTo("test discovery exited 70 before any test ran"
@@ -54,7 +56,8 @@ class TestLauncherFailureTest {
 
     @Test
     void a_class_discovery_could_not_load_is_named_with_its_causes_and_first_frames() {
-        TestLauncherFailure f = TestLauncherFailure.discovery("com.acme:app", 70, CLASS_NOT_LOADABLE);
+        TestLauncherFailure f =
+                TestLauncherFailure.discovery("com.acme:app", WorkerExit.noWorker(70), CLASS_NOT_LOADABLE);
 
         assertThat(f.getMessage())
                 .isEqualTo("test discovery exited 70 before any test ran"
@@ -75,7 +78,8 @@ class TestLauncherFailureTest {
 
     @Test
     void frames_belong_to_the_first_cause_not_to_a_trace_printed_after_it() {
-        TestLauncherFailure f = TestLauncherFailure.discovery("com.example:app", 70, ENGINE_COULD_NOT_START);
+        TestLauncherFailure f =
+                TestLauncherFailure.discovery("com.example:app", WorkerExit.noWorker(70), ENGINE_COULD_NOT_START);
         assertThat(f.droppedClasses()).isEmpty();
         assertThat(f.frames())
                 .as("the cause line has no frames under it; the trailing trace is not its")
@@ -85,7 +89,8 @@ class TestLauncherFailureTest {
     /** A line the failure cannot classify is still the fork's last word, so it rides in the message. */
     @Test
     void a_jvm_that_never_reached_the_runner_has_an_exit_and_its_last_output() {
-        TestLauncherFailure f = TestLauncherFailure.runner("m", 1, "Error: could not create the Java Virtual Machine");
+        TestLauncherFailure f = TestLauncherFailure.runner(
+                "m", WorkerExit.noWorker(1), "Error: could not create the Java Virtual Machine");
 
         assertThat(f.getMessage())
                 .isEqualTo("test runner exited 1 before any test ran — the fork's last output:\n"
@@ -104,7 +109,7 @@ class TestLauncherFailureTest {
     void a_jvm_refused_its_heap_reservation_names_the_refusal() {
         String out = "Error occurred during initialization of VM\n"
                 + "Could not reserve enough space for 1048576000000 KB object heap";
-        TestLauncherFailure f = TestLauncherFailure.runner("guard root", 1, out);
+        TestLauncherFailure f = TestLauncherFailure.runner("guard root", WorkerExit.noWorker(1), out);
 
         assertThat(f.getMessage())
                 .isEqualTo("test runner exited 1 before any test ran"
@@ -121,7 +126,7 @@ class TestLauncherFailureTest {
         String out = "Invalid initial heap size: -Xms4g -Xmx1g\n"
                 + "Error: Could not create the Java Virtual Machine.\n"
                 + "Error: A fatal exception has occurred. Program will exit.";
-        TestLauncherFailure f = TestLauncherFailure.discovery("g:app", 1, out);
+        TestLauncherFailure f = TestLauncherFailure.discovery("g:app", WorkerExit.noWorker(1), out);
 
         assertThat(f.getMessage())
                 .isEqualTo("test discovery exited 1 before any test ran — Invalid initial heap size: -Xms4g -Xmx1g");
@@ -138,7 +143,7 @@ class TestLauncherFailureTest {
                 + "# Native memory allocation (mmap) failed to map 2147483648 bytes. Error detail: G1 virtual space\n"
                 + "# An error report file with more information is saved as:\n"
                 + "# /ws/app/hs_err_pid4242.log";
-        TestLauncherFailure f = TestLauncherFailure.runner("g:app", 1, out);
+        TestLauncherFailure f = TestLauncherFailure.runner("g:app", WorkerExit.noWorker(1), out);
 
         assertThat(f.getMessage())
                 .isEqualTo("test runner exited 1 before any test ran"
@@ -158,35 +163,46 @@ class TestLauncherFailureTest {
                 classpath,
                 "cc.jumpkick.plugin.Worker",
                 "--pull");
-        TestLauncherFailure f = TestLauncherFailure.runner("g:app", 137, "", command);
+        TestLauncherFailure f = TestLauncherFailure.runner("g:app", WorkerExit.noWorker(137), "", command);
 
         assertThat(f.command()).isEqualTo(command);
         assertThat(f.commandLine())
                 .isEqualTo("/jdk/bin/java -Xmx512m '-javaagent:/agents/jacoco.jar=destfile=/ws/target/cov exec'"
                         + " -cp <3 entries> cc.jumpkick.plugin.Worker --pull");
-        assertThat(TestLauncherFailure.discovery("g:app", 1, "", List.of("/jdk/bin/java", "-cp", "/lib/a.jar", "M"))
+        assertThat(TestLauncherFailure.discovery(
+                                "g:app", WorkerExit.noWorker(1), "", List.of("/jdk/bin/java", "-cp", "/lib/a.jar", "M"))
                         .commandLine())
                 .isEqualTo("/jdk/bin/java -cp <1 entry> M");
-        assertThat(TestLauncherFailure.runner("g:app", 1, "").command()).isEmpty();
-        assertThat(TestLauncherFailure.runner("g:app", 1, "").commandLine()).isEmpty();
+        assertThat(TestLauncherFailure.runner("g:app", WorkerExit.noWorker(1), "")
+                        .command())
+                .isEmpty();
+        assertThat(TestLauncherFailure.runner("g:app", WorkerExit.noWorker(1), "")
+                        .commandLine())
+                .isEmpty();
     }
 
     /** A fork the kernel or a neighbour killed: the exit is 128 plus the signal, and the signal is named. */
     @Test
     void a_signal_exit_with_nothing_printed_names_the_signal_and_the_silence() {
-        TestLauncherFailure f = TestLauncherFailure.runner("guard root", 137, "");
+        TestLauncherFailure f = TestLauncherFailure.runner("guard root", WorkerExit.noWorker(137), "");
 
         assertThat(f.getMessage())
                 .isEqualTo("test runner exited 137 (SIGKILL) before any test ran — the fork printed nothing");
         assertThat(f.signal()).isEqualTo("SIGKILL");
         assertThat(f.lastLines()).isEmpty();
         assertThat(f.jvmRefused()).isFalse();
-        assertThat(TestLauncherFailure.runner("m", 134, "").signal()).isEqualTo("SIGABRT");
-        assertThat(TestLauncherFailure.runner("m", 139, "").signal()).isEqualTo("SIGSEGV");
-        assertThat(TestLauncherFailure.runner("m", 143, "").signal()).isEqualTo("SIGTERM");
-        assertThat(TestLauncherFailure.runner("m", 128 + 27, "").signal()).isEqualTo("signal 27");
-        assertThat(TestLauncherFailure.runner("m", 1, "").signal()).isNull();
-        assertThat(TestLauncherFailure.runner("m", 1, "").getMessage())
+        assertThat(TestLauncherFailure.runner("m", WorkerExit.noWorker(134), "").signal())
+                .isEqualTo("SIGABRT");
+        assertThat(TestLauncherFailure.runner("m", WorkerExit.noWorker(139), "").signal())
+                .isEqualTo("SIGSEGV");
+        assertThat(TestLauncherFailure.runner("m", WorkerExit.noWorker(143), "").signal())
+                .isEqualTo("SIGTERM");
+        assertThat(TestLauncherFailure.runner("m", WorkerExit.noWorker(128 + 27), "")
+                        .signal())
+                .isEqualTo("signal 27");
+        assertThat(TestLauncherFailure.runner("m", WorkerExit.noWorker(1), "").signal())
+                .isNull();
+        assertThat(TestLauncherFailure.runner("m", WorkerExit.noWorker(1), "").getMessage())
                 .isEqualTo("test runner exited 1 before any test ran — the fork printed nothing");
     }
 
@@ -195,7 +211,7 @@ class TestLauncherFailureTest {
     void unclassified_output_rides_along_as_the_forks_last_lines() {
         String out =
                 "Picked up JAVA_TOOL_OPTIONS: -Dfoo=bar\n\nline two\n\nline three\nline four\nline five\nline six\nline seven";
-        TestLauncherFailure f = TestLauncherFailure.runner("m", 2, out);
+        TestLauncherFailure f = TestLauncherFailure.runner("m", WorkerExit.noWorker(2), out);
 
         assertThat(f.lastLines()).containsExactly("line three", "line four", "line five", "line six", "line seven");
         assertThat(f.getMessage())
@@ -227,7 +243,7 @@ class TestLauncherFailureTest {
 
     @Test
     void a_jvm_that_ran_out_of_memory_names_the_error_and_the_first_traces_root_cause() {
-        TestLauncherFailure f = TestLauncherFailure.discovery("g:app", 3, JVM_OUT_OF_METASPACE);
+        TestLauncherFailure f = TestLauncherFailure.discovery("g:app", WorkerExit.noWorker(3), JVM_OUT_OF_METASPACE);
 
         assertThat(f.getMessage())
                 .isEqualTo("test discovery exited 3 before any test ran — java.lang.OutOfMemoryError: Metaspace");
@@ -248,7 +264,7 @@ class TestLauncherFailureTest {
     void a_bare_stack_trace_names_its_first_exception() {
         String out = "com.acme.Boot: could not start\n\tat com.acme.Boot.run(Boot.java:3)\n"
                 + "Caused by: java.io.IOException: port 8080 in use\n\tat java.base/sun.nio.ch.Net.bind(Net.java:1)";
-        TestLauncherFailure f = TestLauncherFailure.runner("g:app", 1, out);
+        TestLauncherFailure f = TestLauncherFailure.runner("g:app", WorkerExit.noWorker(1), out);
 
         assertThat(f.getMessage())
                 .isEqualTo("test runner exited 1 before any test ran — com.acme.Boot: could not start");
@@ -260,7 +276,7 @@ class TestLauncherFailureTest {
     @Test
     void the_launcher_missing_from_the_classpath_keeps_the_runner_sentence_as_headline() {
         String out = "jk-test-runner: the JUnit Platform Launcher is not on the test classpath;" + " run jk lock";
-        TestLauncherFailure f = TestLauncherFailure.runner("m", 2, out);
+        TestLauncherFailure f = TestLauncherFailure.runner("m", WorkerExit.noWorker(2), out);
 
         assertThat(f.exceptionClass()).isEmpty();
         assertThat(f.headline()).startsWith("the JUnit Platform Launcher is not on the test classpath");

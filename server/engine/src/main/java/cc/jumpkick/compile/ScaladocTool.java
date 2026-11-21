@@ -66,7 +66,7 @@ public final class ScaladocTool {
             Process proc = JobWorkers.start(pb);
             Processes.Captured c = Processes.capture(proc, Duration.ofMinutes(TIMEOUT_MINUTES));
             if (c.timedOut()) throw new IOException("scaladoc timed out after " + TIMEOUT_MINUTES + " minutes");
-            return new JavadocTool.Result(c.exit(), warnings(c.output()), List.of(), c.output());
+            return new JavadocTool.Result(c.exit(), warnings(c.output()), List.of(), c.output(), proc.pid());
         } finally {
             Files.deleteIfExists(argfile);
         }

@@ -54,13 +54,13 @@ public final class PluginClient {
         return this;
     }
 
-    /** Fork {@code command}, dispatch its protocol stream, and return the process exit code. */
-    public int run(List<String> command) throws IOException, InterruptedException {
+    /** Fork {@code command}, dispatch its protocol stream, and return how the process exited. */
+    public WorkerExit run(List<String> command) throws IOException, InterruptedException {
         return PluginProcess.run(command, prefix, this::dispatch, this::passthroughLine);
     }
 
     /** As {@link #run(List)} with the child's {@link WorkerEnv}. */
-    public int run(List<String> command, WorkerEnv env) throws IOException, InterruptedException {
+    public WorkerExit run(List<String> command, WorkerEnv env) throws IOException, InterruptedException {
         return PluginProcess.run(command, env, prefix, this::dispatch, this::passthroughLine);
     }
 
@@ -78,7 +78,7 @@ public final class PluginClient {
      * in this mode (the caller dispatches on the message itself). The memory lease is taken when the
      * process starts and held until it exits.
      */
-    public int converseNoSlot(
+    public WorkerExit converseNoSlot(
             List<String> command, WorkerEnv env, BiConsumer<String, PluginProcess.Conversation> onMessage)
             throws IOException, InterruptedException {
         return PluginProcess.converseNoSlot(command, env, prefix, onMessage, this::passthroughLine);

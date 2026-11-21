@@ -315,7 +315,8 @@ final class KtsSession {
                     reply = replies.poll(EXIT_GRACE.toMillis(), TimeUnit.MILLISECONDS);
                     if (reply == null) {
                         int exit = process.exitValue();
-                        throw new SessionDied(WorkerContainment.failure(exit, "exited " + exit) + " without replying");
+                        throw new SessionDied(
+                                WorkerContainment.failure(process.pid(), exit, "exited " + exit) + " without replying");
                     }
                     break;
                 }

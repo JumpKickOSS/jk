@@ -37,7 +37,8 @@ class PluginProcessTest {
         var events = new ArrayList<String>();
         var chatter = new ArrayList<String>();
 
-        int exit = PluginProcess.run(cmd("oneshot"), "##T:", json -> events.add(Jsonl.str(json, "e")), chatter::add);
+        int exit = PluginProcess.run(cmd("oneshot"), "##T:", json -> events.add(Jsonl.str(json, "e")), chatter::add)
+                .code();
 
         assertThat(exit).isZero();
         assertThat(events).containsExactly("a", "b");
@@ -48,7 +49,8 @@ class PluginProcessTest {
     void a_protocol_line_glued_to_unterminated_chatter_is_still_an_event() throws Exception {
         var events = new ArrayList<String>();
         var chatter = new ArrayList<String>();
-        int exit = PluginProcess.run(cmd("glued"), "##T:", json -> events.add(Jsonl.str(json, "e")), chatter::add);
+        int exit = PluginProcess.run(cmd("glued"), "##T:", json -> events.add(Jsonl.str(json, "e")), chatter::add)
+                .code();
         assertThat(exit).isZero();
         assertThat(events).containsExactly("a", "b");
         assertThat(chatter).contains("progress 42%");
@@ -57,7 +59,8 @@ class PluginProcessTest {
     @Test
     void run_drops_passthrough_when_sink_is_null() throws Exception {
         var events = new ArrayList<String>();
-        int exit = PluginProcess.run(cmd("oneshot"), "##T:", json -> events.add(Jsonl.str(json, "e")), null);
+        int exit = PluginProcess.run(cmd("oneshot"), "##T:", json -> events.add(Jsonl.str(json, "e")), null)
+                .code();
         assertThat(exit).isZero();
         assertThat(events).containsExactly("a", "b");
     }
@@ -69,23 +72,24 @@ class PluginProcessTest {
         var chatter = new ArrayList<String>();
 
         int exit = PluginProcess.converse(
-                cmd(),
-                "##T:",
-                (json, convo) -> {
-                    String event = Jsonl.str(json, "e");
-                    if ("ready".equals(event)) {
-                        String next = queue.pollFirst();
-                        if (next != null) {
-                            convo.send("RUN " + next);
-                        } else {
-                            convo.send("DONE");
-                            convo.closeInput();
-                        }
-                    } else if ("ran".equals(event)) {
-                        ran.add(Jsonl.str(json, "what"));
-                    }
-                },
-                chatter::add);
+                        cmd(),
+                        "##T:",
+                        (json, convo) -> {
+                            String event = Jsonl.str(json, "e");
+                            if ("ready".equals(event)) {
+                                String next = queue.pollFirst();
+                                if (next != null) {
+                                    convo.send("RUN " + next);
+                                } else {
+                                    convo.send("DONE");
+                                    convo.closeInput();
+                                }
+                            } else if ("ran".equals(event)) {
+                                ran.add(Jsonl.str(json, "what"));
+                            }
+                        },
+                        chatter::add)
+                .code();
 
         assertThat(exit).isZero();
         assertThat(ran).containsExactly("alpha", "beta", "gamma");
@@ -98,9 +102,7 @@ class PluginProcessTest {
         // session bound to the thread that started the conversation, so the pump must carry it.
         var marked = SessionContext.current().withRequestedTestWorkers(41);
         var seen = new ArrayList<Integer>();
-        int exit = SessionContext.where(
-                marked,
-                () -> PluginProcess.converse(
+        int exit = SessionContext.where(marked, () -> PluginProcess.converse(
                         cmd(),
                         "##T:",
                         (json, convo) -> {
@@ -110,7 +112,8 @@ class PluginProcessTest {
                                 convo.closeInput();
                             }
                         },
-                        null));
+                        null)
+                .code());
         assertThat(exit).isZero();
         assertThat(seen).isNotEmpty().allMatch(w -> w == 41);
     }
@@ -120,17 +123,18 @@ class PluginProcessTest {
         // First ready → empty queue → DONE/closeInput, no RUN ever sent.
         var ran = new ArrayList<String>();
         int exit = PluginProcess.converse(
-                cmd(),
-                "##T:",
-                (json, convo) -> {
-                    if ("ready".equals(Jsonl.str(json, "e"))) {
-                        convo.send("DONE");
-                        convo.closeInput();
-                    } else if ("ran".equals(Jsonl.str(json, "e"))) {
-                        ran.add(Jsonl.str(json, "what"));
-                    }
-                },
-                null);
+                        cmd(),
+                        "##T:",
+                        (json, convo) -> {
+                            if ("ready".equals(Jsonl.str(json, "e"))) {
+                                convo.send("DONE");
+                                convo.closeInput();
+                            } else if ("ran".equals(Jsonl.str(json, "e"))) {
+                                ran.add(Jsonl.str(json, "what"));
+                            }
+                        },
+                        null)
+                .code();
         assertThat(exit).isZero();
         assertThat(ran).isEmpty();
     }
@@ -159,7 +163,8 @@ class PluginProcessTest {
                 }));
             }
             try {
-                exit.set(PluginProcess.run(cmd("burst", Integer.toString(burst)), "##T:", events::add, null));
+                exit.set(PluginProcess.run(cmd("burst", Integer.toString(burst)), "##T:", events::add, null)
+                        .code());
             } catch (Throwable t) {
                 failure.set(t);
             } finally {
@@ -182,12 +187,13 @@ class PluginProcessTest {
     @Test
     void a_handler_that_throws_ends_the_conversation_with_a_diagnostic_naming_the_exception() {
         assertThatThrownBy(() -> PluginProcess.converse(
-                        cmd(),
-                        "##T:",
-                        (json, convo) -> {
-                            throw new IllegalStateException("handler boom");
-                        },
-                        null))
+                                cmd(),
+                                "##T:",
+                                (json, convo) -> {
+                                    throw new IllegalStateException("handler boom");
+                                },
+                                null)
+                        .code())
                 .isInstanceOf(PluginProcess.HandlerFailure.class)
                 .hasMessageContaining("handler boom")
                 .hasCauseInstanceOf(IllegalStateException.class)

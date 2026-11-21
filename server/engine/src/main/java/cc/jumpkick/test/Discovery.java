@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.test;
 
+import cc.jumpkick.engine.plugin.WorkerExit;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.run.TestSummary;
 import java.util.ArrayList;
@@ -18,12 +19,12 @@ import org.jspecify.annotations.Nullable;
 record Discovery(
         List<String> classes,
         boolean complete,
-        int exit,
+        WorkerExit exit,
         String output,
         List<String> command,
         @Nullable RuntimeException handler) {
 
-    Discovery(List<String> classes, boolean complete, int exit, String output, List<String> command) {
+    Discovery(List<String> classes, boolean complete, WorkerExit exit, String output, List<String> command) {
         this(classes, complete, exit, output, command, null);
     }
 
@@ -69,7 +70,7 @@ record Discovery(
         }
 
         /** The fork's verdict once it exited {@code exit} with {@code output} printed outside the protocol. */
-        Discovery ended(int exit, String output, List<String> command) {
+        Discovery ended(WorkerExit exit, String output, List<String> command) {
             return new Discovery(classes(), complete, exit, output, command);
         }
 
@@ -85,7 +86,7 @@ record Discovery(
      * decoder could not finish reading, so none of it is trusted.
      */
     static Discovery handlerFailed(List<String> classes, String output, RuntimeException handler) {
-        return new Discovery(classes, false, -1, output, List.of(), handler);
+        return new Discovery(classes, false, WorkerExit.noWorker(-1), output, List.of(), handler);
     }
 
     /**

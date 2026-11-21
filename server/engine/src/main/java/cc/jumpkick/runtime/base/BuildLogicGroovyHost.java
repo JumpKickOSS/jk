@@ -128,7 +128,7 @@ public final class BuildLogicGroovyHost {
             // The compiler dump is the message, verbatim: its first error line already names file
             // and line. A kernel memory kill is named even when the dump is empty.
             String detail = log.strip();
-            if (WorkerContainment.killedForMemory(exit)) {
+            if (WorkerContainment.killedForMemory(p.pid(), exit)) {
                 throw new IllegalStateException(
                         detail.isEmpty() ? "groovy killed for memory" : "groovy killed for memory\n" + detail);
             }

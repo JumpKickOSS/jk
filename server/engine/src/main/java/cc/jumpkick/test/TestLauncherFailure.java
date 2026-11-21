@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.test;
 
-import cc.jumpkick.engine.plugin.WorkerContainment;
+import cc.jumpkick.engine.plugin.WorkerExit;
 import cc.jumpkick.host.Classpaths;
 import java.util.ArrayList;
 import java.util.List;
@@ -86,7 +86,8 @@ public final class TestLauncherFailure extends RuntimeException {
     private final String output;
     private final List<String> command;
 
-    private TestLauncherFailure(String moduleLabel, String phase, int exit, String output, List<String> command) {
+    private TestLauncherFailure(
+            String moduleLabel, String phase, WorkerExit exit, String output, List<String> command) {
         this(moduleLabel, phase, exit, output, command, null);
     }
 
@@ -95,24 +96,29 @@ public final class TestLauncherFailure extends RuntimeException {
      * {@code null} keeps the headline built from the exit.
      */
     private TestLauncherFailure(
-            String moduleLabel, String phase, int exit, String output, List<String> command, @Nullable String message) {
+            String moduleLabel,
+            String phase,
+            WorkerExit exit,
+            String output,
+            List<String> command,
+            @Nullable String message) {
         super(
                 message != null
                         ? message
                         : phase + " "
-                                + WorkerContainment.failure(exit, "exited " + exit + signalSuffix(exit))
+                                + exit.failure("exited " + exit.code() + signalSuffix(exit.code()))
                                 + " before any test ran"
                                 + headlineSuffix(output));
         this.moduleLabel = moduleLabel == null ? "" : moduleLabel;
         this.phase = phase;
-        this.exit = exit;
+        this.exit = exit.code();
         this.output = output == null ? "" : output;
         this.command = List.copyOf(command);
     }
 
     /** A planned suite ran out of heap, including after the one retry. {@code message} is the whole report. */
     static TestLauncherFailure heap(String moduleLabel, int exit, String output, List<String> command, String message) {
-        return new TestLauncherFailure(moduleLabel, "test runner", exit, output, command, message);
+        return new TestLauncherFailure(moduleLabel, "test runner", WorkerExit.noWorker(exit), output, command, message);
     }
 
     /**
@@ -121,9 +127,9 @@ public final class TestLauncherFailure extends RuntimeException {
      * did name are not the suite.
      */
     static TestLauncherFailure discoveryCutShort(
-            String moduleLabel, int exit, String output, List<String> command, int named) {
+            String moduleLabel, WorkerExit exit, String output, List<String> command, int named) {
         String headline = "test discovery "
-                + WorkerContainment.failure(exit, "exited " + exit + signalSuffix(exit))
+                + exit.failure("exited " + exit.code() + signalSuffix(exit.code()))
                 + " before announcing its total ("
                 + named
                 + (named == 1 ? " class" : " classes")
@@ -133,22 +139,23 @@ public final class TestLauncherFailure extends RuntimeException {
     }
 
     /** The list-only discovery fork died with nothing named; the command it was started with is not at hand. */
-    public static TestLauncherFailure discovery(String moduleLabel, int exit, String output) {
+    public static TestLauncherFailure discovery(String moduleLabel, WorkerExit exit, String output) {
         return discovery(moduleLabel, exit, output, List.of());
     }
 
     /** The list-only discovery fork, started as {@code command}, died with nothing named. */
-    public static TestLauncherFailure discovery(String moduleLabel, int exit, String output, List<String> command) {
+    public static TestLauncherFailure discovery(
+            String moduleLabel, WorkerExit exit, String output, List<String> command) {
         return new TestLauncherFailure(moduleLabel, "test discovery", exit, output, command);
     }
 
     /** A suite-running fork died before its first event; the command it was started with is not at hand. */
-    public static TestLauncherFailure runner(String moduleLabel, int exit, String output) {
+    public static TestLauncherFailure runner(String moduleLabel, WorkerExit exit, String output) {
         return runner(moduleLabel, exit, output, List.of());
     }
 
     /** A suite-running fork (the single runner or a pool worker), started as {@code command}, died before its first event. */
-    public static TestLauncherFailure runner(String moduleLabel, int exit, String output, List<String> command) {
+    public static TestLauncherFailure runner(String moduleLabel, WorkerExit exit, String output, List<String> command) {
         return new TestLauncherFailure(moduleLabel, "test runner", exit, output, command);
     }
 

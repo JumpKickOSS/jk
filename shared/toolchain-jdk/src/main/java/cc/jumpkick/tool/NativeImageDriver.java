@@ -104,6 +104,9 @@ public final class NativeImageDriver {
          *     analysis…})
          */
         void onStep(int current, int total, String label);
+
+        /** Called once, on the thread that called {@link #run}, with the started process's id. */
+        default void onStarted(long pid) {}
     }
 
     /** {@code [N/M] Some label...} — native-image step header (optional trailing timing columns). */
@@ -179,6 +182,7 @@ public final class NativeImageDriver {
             if (effective.workingDir() != null)
                 pb.directory(effective.workingDir().toFile());
             Process process = Forks.start(pb);
+            if (listener != null) listener.onStarted(process.pid());
             try {
                 Thread fwdOut = forwardStdout(process.getInputStream(), listener, sink);
                 Thread fwdErr = forwardStream(process.getErrorStream(), sink);

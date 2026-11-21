@@ -6,7 +6,6 @@ import cc.jumpkick.engine.plugin.PluginClient;
 import cc.jumpkick.engine.plugin.PluginLoader;
 import cc.jumpkick.engine.plugin.WarmWorkers;
 import cc.jumpkick.engine.plugin.WorkerAotCache;
-import cc.jumpkick.engine.plugin.WorkerContainment;
 import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.Log;
@@ -120,7 +119,7 @@ public final class KotlincSnapshots {
             if (exit != 0) {
                 Log.warn(
                         "kotlinc snapshot worker "
-                                + WorkerContainment.failure(exit, "exited " + exit)
+                                + ran.failure("exited " + exit)
                                 + "; keying "
                                 + (entries.size() - digests.size())
                                 + " classpath entries on content",

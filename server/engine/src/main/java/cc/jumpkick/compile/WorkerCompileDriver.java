@@ -279,7 +279,7 @@ public final class WorkerCompileDriver {
             int exit = ran.exit();
             boolean success = exit == 0 && "COMPILATION_SUCCESS".equals(status[0]);
             String output = String.join("\n", chatter);
-            WorkerFate.Cause cause = success ? WorkerFate.Cause.OTHER : WorkerFate.classify(exit, output);
+            WorkerFate.Cause cause = success ? WorkerFate.Cause.OTHER : WorkerFate.classify(ran.pid(), exit, output);
             if (!success && diagnostics.isEmpty() && !chatter.isEmpty()) {
                 String how = WorkerFate.phrase(cause, "exited " + exit + " without diagnostics");
                 StringBuilder tail = new StringBuilder(job.tool() + " worker " + how + "; last output:");

@@ -8,6 +8,7 @@ import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.engine.plugin.PluginLoader;
 import cc.jumpkick.engine.plugin.PluginProcess;
 import cc.jumpkick.engine.plugin.WorkerEnv;
+import cc.jumpkick.engine.plugin.WorkerExit;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.run.SessionCancel;
 import cc.jumpkick.run.TestFailureInfo;
@@ -89,8 +90,8 @@ final class PullWorkerPool {
         var aggregators = new ArrayList<ResultAggregator>();
         var workerThreads = new ArrayList<Thread>();
         // A worker whose thread never stored an exit — its body threw — is a death, not a clean 0.
-        int[] exits = new int[actualWorkers];
-        Arrays.fill(exits, -1);
+        WorkerExit[] exits = new WorkerExit[actualWorkers];
+        Arrays.fill(exits, WorkerExit.noWorker(-1));
         var dones = new ArrayList<AtomicBoolean>();
         var captures = new ArrayList<CaptureBuffer>();
         var lastClasses = new ArrayList<AtomicReference<String>>();
@@ -129,12 +130,12 @@ final class PullWorkerPool {
         // returns its exit code once stdout is fully drained and the process
         // has exited. Join them and take the worst exit.
         for (Thread t : workerThreads) t.join();
-        int worstExit = 0;
+        WorkerExit worstExit = WorkerExit.noWorker(0);
         boolean[] incomplete = new boolean[actualWorkers];
         boolean anyIncomplete = false;
         for (int i = 0; i < actualWorkers; i++) {
-            if (exits[i] != 0) worstExit = exits[i];
-            incomplete[i] = exits[i] != 0 || !dones.get(i).get();
+            if (exits[i].code() != 0) worstExit = exits[i];
+            incomplete[i] = exits[i].code() != 0 || !dones.get(i).get();
             anyIncomplete |= incomplete[i];
         }
         // Merge per-worker aggregators into one TestSummary.
@@ -241,7 +242,7 @@ final class PullWorkerPool {
      * {@code -1} and leaves its exception in {@code handlerFailure} for the summary to name; any
      * other parent-side throw ends it with {@code -1} and its stack in the worker's output.
      */
-    private int driveWorker(
+    private WorkerExit driveWorker(
             int workerId,
             int totalWorkers,
             List<String> args,
@@ -303,20 +304,20 @@ final class PullWorkerPool {
         } catch (PluginProcess.HandlerFailure e) {
             handlerFailure.set(e.handler());
             listener.onUserOutput(workerId, Objects.requireNonNull(e.getMessage()));
-            return -1;
+            return WorkerExit.noWorker(-1);
         } catch (IOException e) {
             listener.onUserOutput(workerId, "reader error: " + e.getMessage());
-            return -1;
+            return WorkerExit.noWorker(-1);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            return -1;
+            return WorkerExit.noWorker(-1);
         } catch (RuntimeException e) {
             StringWriter stack = new StringWriter();
             e.printStackTrace(new PrintWriter(stack, true));
             String text = "test worker driver failed: " + stack;
             crash.add(text);
             listener.onUserOutput(workerId, text);
-            return -1;
+            return WorkerExit.noWorker(-1);
         }
     }
 }

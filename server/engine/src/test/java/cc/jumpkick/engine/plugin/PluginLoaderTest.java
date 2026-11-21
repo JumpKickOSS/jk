@@ -39,13 +39,14 @@ class PluginLoaderTest {
         // nonexistent spec file — it must exit non-zero, proving the
         // `-cp <jar> PluginMain` dispatch actually reached the plugin.
         int code = PluginLoader.run(
-                javaHome(),
-                jar.toString(),
-                List.of(),
-                "##JKJC:",
-                List.of("@/nonexistent/spec.txt"),
-                protocol::add,
-                passthrough::add);
+                        javaHome(),
+                        jar.toString(),
+                        List.of(),
+                        "##JKJC:",
+                        List.of("@/nonexistent/spec.txt"),
+                        protocol::add,
+                        passthrough::add)
+                .code();
         assertThat(code).isNotEqualTo(0);
     }
 }

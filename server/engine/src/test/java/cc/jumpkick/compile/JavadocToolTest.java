@@ -3,6 +3,7 @@ package cc.jumpkick.compile;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.engine.plugin.WorkerExit;
 import cc.jumpkick.model.JavadocMode;
 import cc.jumpkick.testing.ShortTempDirs;
 import java.nio.file.Path;
@@ -62,7 +63,7 @@ class JavadocToolTest {
                 "src/com/example/Two.java:3: error: malformed HTML",
                 "3 warnings",
                 "1 error");
-        JavadocTool.Result r = JavadocTool.parse(1, output);
+        JavadocTool.Result r = JavadocTool.parse(1, output, WorkerExit.NO_PID);
         assertThat(r.success()).isFalse();
         assertThat(r.warnings())
                 .containsExactly(

@@ -34,8 +34,11 @@ public final class JavadocTool {
 
     private JavadocTool() {}
 
-    /** Exit status, located warnings and errors in first-seen order, and the whole output. */
-    public record Result(int exit, List<String> warnings, List<String> errors, String output) {
+    /**
+     * Exit status, located warnings and errors in first-seen order, the whole output, and the
+     * tool's process id.
+     */
+    public record Result(int exit, List<String> warnings, List<String> errors, String output, long pid) {
         public boolean success() {
             return exit == 0;
         }
@@ -81,14 +84,14 @@ public final class JavadocTool {
             Process proc = JobWorkers.start(pb);
             Processes.Captured c = Processes.capture(proc, Duration.ofMinutes(TIMEOUT_MINUTES));
             if (c.timedOut()) throw new IOException("javadoc timed out after " + TIMEOUT_MINUTES + " minutes");
-            return parse(c.exit(), c.output());
+            return parse(c.exit(), c.output(), proc.pid());
         } finally {
             Files.deleteIfExists(argfile);
         }
     }
 
     /** Split {@code output} into deduplicated located warnings and errors. */
-    static Result parse(int exit, String output) {
+    static Result parse(int exit, String output, long pid) {
         Set<String> warnings = new LinkedHashSet<>();
         Set<String> errors = new LinkedHashSet<>();
         for (String line : output.split("\\R")) {
@@ -97,7 +100,7 @@ public final class JavadocTool {
             if ("error".equals(m.group(3))) errors.add(line);
             else warnings.add(line);
         }
-        return new Result(exit, List.copyOf(warnings), List.copyOf(errors), output);
+        return new Result(exit, List.copyOf(warnings), List.copyOf(errors), output, pid);
     }
 
     static List<String> argfileLines(Path outDir, List<Path> sources, List<Path> classpath, List<String> options) {

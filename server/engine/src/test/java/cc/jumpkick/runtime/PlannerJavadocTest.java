@@ -4,6 +4,7 @@ package cc.jumpkick.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.compile.JavadocTool;
+import cc.jumpkick.engine.plugin.WorkerExit;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.model.JavadocMode;
 import java.nio.file.Files;
@@ -25,8 +26,8 @@ class PlannerJavadocTest {
     private static final String MALFORMED =
             "src/main/java/com/xxl/job/admin/core/trigger/JobTrigger.java:52:" + " error: malformed HTML";
 
-    private static final JavadocTool.Result MALFORMED_HTML =
-            new JavadocTool.Result(1, List.of(), List.of(MALFORMED), MALFORMED + "\n * a < b\n1 error\n");
+    private static final JavadocTool.Result MALFORMED_HTML = new JavadocTool.Result(
+            1, List.of(), List.of(MALFORMED), MALFORMED + "\n * a < b\n1 error\n", WorkerExit.NO_PID);
 
     @Test
     void a_lenient_javadoc_error_is_a_warning_and_the_jar_is_what_javadoc_wrote() {
@@ -47,10 +48,14 @@ class PlannerJavadocTest {
 
     @Test
     void a_clean_exit_documents_and_a_source_set_without_api_is_the_readme_jar_in_both_modes() {
-        JavadocTool.Result clean =
-                new JavadocTool.Result(0, List.of("Foo.java:6: warning: unknown tag"), List.of(), "");
+        JavadocTool.Result clean = new JavadocTool.Result(
+                0, List.of("Foo.java:6: warning: unknown tag"), List.of(), "", WorkerExit.NO_PID);
         JavadocTool.Result noApi = new JavadocTool.Result(
-                1, List.of(), List.of(), "javadoc: error - No public or protected classes found to document.\n");
+                1,
+                List.of(),
+                List.of(),
+                "javadoc: error - No public or protected classes found to document.\n",
+                WorkerExit.NO_PID);
 
         assertThat(PlannerJavadoc.verdict(JavadocMode.LENIENT, clean, true))
                 .isEqualTo(PlannerJavadoc.Verdict.DOCUMENTED);
@@ -74,7 +79,8 @@ class PlannerJavadocTest {
     /** A failure javadoc did not locate still names its exit and shows its output. */
     @Test
     void an_unlocated_failure_reports_the_exit_and_the_output() {
-        JavadocTool.Result crashed = new JavadocTool.Result(2, List.of(), List.of(), "javadoc: error - cannot read");
+        JavadocTool.Result crashed =
+                new JavadocTool.Result(2, List.of(), List.of(), "javadoc: error - cannot read", WorkerExit.NO_PID);
 
         assertThat(PlannerJavadoc.errorLines("javadoc", crashed))
                 .containsExactly("javadoc exited 2\njavadoc: error - cannot read");

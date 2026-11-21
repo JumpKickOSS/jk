@@ -40,17 +40,17 @@ public final class WorkerFate {
     }
 
     /**
-     * Classify {@code exit} and {@code output}. Probes {@link WorkerContainment#killedForMemory}
-     * once.
+     * Classify how the worker {@code pid} ended: {@code exit} and {@code output}. Probes {@link
+     * WorkerContainment#memoryKill} once.
      */
-    public static Cause classify(int exit, @Nullable String output) {
-        WorkerContainment.MemoryKill kill = WorkerContainment.memoryKill(exit);
+    public static Cause classify(long pid, int exit, @Nullable String output) {
+        WorkerContainment.MemoryKill kill = WorkerContainment.memoryKill(pid, exit);
         if (kill.atCap()) return Cause.OVER_WORKER_CAP;
         return classify(exit, output, kill.killed());
     }
 
     /**
-     * As {@link #classify(int, String)} when the caller already knows {@code killedForMemory}
+     * As {@link #classify(long, int, String)} when the caller already knows {@code killedForMemory}
      * (the probe consumes one {@code oom_kill}). {@code output} naming {@link
      * WorkerContainment#KILLED_AT_CAP} makes that kill {@link Cause#OVER_WORKER_CAP}.
      */

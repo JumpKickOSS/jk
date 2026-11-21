@@ -129,7 +129,7 @@ final class CoverageTools {
         String output = c.timedOut() ? "timed out after " + REPORT_TIMEOUT.toMinutes() + " minutes" : c.output();
         if (exit != 0 || !Files.isRegularFile(xml)) {
             throw new IOException("jacoco report "
-                    + WorkerContainment.failure(exit, "exited " + exit)
+                    + WorkerContainment.failure(process.pid(), exit, "exited " + exit)
                     + " for "
                     + name
                     + ":\n"

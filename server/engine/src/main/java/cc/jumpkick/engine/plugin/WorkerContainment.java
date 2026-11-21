@@ -12,7 +12,6 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
-import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
@@ -63,7 +62,7 @@ public final class WorkerContainment {
     /** Under {@code workers}, the group a worker joins when its own could not be made. */
     static final String SHARED_CHILD = "shared";
 
-    /** Cap kills {@link #memoryKill} has not yet attributed; older ones are dropped. */
+    /** Cap kills {@link #memoryKill} has not yet been asked about; older ones are dropped. */
     private static final int MAX_PENDING_CAP_KILLS = 16;
 
     /**
@@ -387,12 +386,13 @@ public final class WorkerContainment {
     }
 
     /**
-     * {@link #KILLED_FOR_MEMORY} when {@code exit} is SIGKILL and this workers group has seen an
-     * {@code oom_kill} or is at {@code memory.max}; {@link #capPhrase} when a worker was killed at
-     * its own cap; otherwise {@code otherwise}. One observation consumes one kill.
+     * {@link #capPhrase} when the worker {@code pid} was killed at its own cap; {@link
+     * #KILLED_FOR_MEMORY} when {@code exit} is SIGKILL and this workers group has seen a new {@code
+     * oom_kill} or is at {@code memory.max}; otherwise {@code otherwise}. One observation consumes
+     * one kill.
      */
-    public static String failure(int exit, String otherwise) {
-        MemoryKill kill = memoryKill(exit);
+    public static String failure(long pid, int exit, String otherwise) {
+        MemoryKill kill = memoryKill(pid, exit);
         if (kill.atCap()) return capPhrase(kill.capBytes());
         return kill.killed() ? KILLED_FOR_MEMORY : otherwise;
     }
@@ -403,9 +403,9 @@ public final class WorkerContainment {
         return KILLED_AT_CAP + size + OUTSIDE_HEAP;
     }
 
-    /** True when {@code exit} is a cgroup memory kill of a worker. Score-only mode has no signal. */
-    public static boolean killedForMemory(int exit) {
-        return memoryKill(exit).killed();
+    /** True when {@code exit} is a cgroup memory kill of the worker {@code pid}. Score-only mode has no signal. */
+    public static boolean killedForMemory(long pid, int exit) {
+        return memoryKill(pid, exit).killed();
     }
 
     /**
@@ -422,18 +422,19 @@ public final class WorkerContainment {
     }
 
     /**
-     * Classify a SIGKILL. A worker group that counted an {@code oom_kill} is a kill at that
-     * worker's cap; otherwise a new {@code oom_kill} on {@code workers}, or {@code workers} at its
-     * {@code memory.max}, is a group kill. Score-only mode has no signal.
+     * Classify a SIGKILL of the worker {@code pid}. Its own group having counted an {@code
+     * oom_kill} is a kill at its cap; otherwise a new {@code oom_kill} on {@code workers}, or {@code
+     * workers} at its {@code memory.max}, is a group kill. Another worker's cap kill is never this
+     * one's. Score-only mode has no signal.
      */
-    public static MemoryKill memoryKill(int exit) {
+    public static MemoryKill memoryKill(long pid, int exit) {
         if (exit != SIGKILL_EXIT) return MemoryKill.NONE;
         State s = state;
         Path workers = s == null ? null : s.workers;
         if (s == null || s.mode != Mode.CGROUP || workers == null) return MemoryKill.NONE;
         synchronized (s) {
             sweep(s);
-            Long cap = s.capKills.pollFirst();
+            Long cap = s.capKills.remove(pid);
             if (cap != null) return new MemoryKill(true, cap);
             long now = readCounter(workers.resolve("memory.events"), "oom_kill");
             boolean increased = now >= 0 && now > s.oomKills;
@@ -444,7 +445,7 @@ public final class WorkerContainment {
 
     /**
      * Settle the groups of workers that have exited. A group whose {@code memory.events} counts an
-     * {@code oom_kill} is a cap kill: logged, and queued for {@link #memoryKill}. An empty group is
+     * {@code oom_kill} is a cap kill: logged, and kept by pid for {@link #memoryKill}. An empty group is
      * removed; one a lingering descendant still occupies is tried again on the next sweep.
      */
     public static void sweep() {
@@ -469,8 +470,10 @@ public final class WorkerContainment {
                 if (kills > 0) {
                     // memory.events is hierarchical: the same kill shows on workers, already counted here.
                     s.oomKills += kills;
-                    if (s.capKills.size() >= MAX_PENDING_CAP_KILLS) s.capKills.pollFirst();
-                    s.capKills.addLast(child.capBytes);
+                    if (s.capKills.size() >= MAX_PENDING_CAP_KILLS) {
+                        s.capKills.remove(s.capKills.keySet().iterator().next());
+                    }
+                    s.capKills.put(pid, child.capBytes);
                     Log.warn("jk engine: " + child.what + " pid " + pid + " " + capPhrase(child.capBytes));
                 }
             }
@@ -785,8 +788,8 @@ public final class WorkerContainment {
         /** Per-worker groups by pid, until a sweep removes them. */
         final Map<Long, Child> children = new LinkedHashMap<>();
 
-        /** Caps of workers killed at their cap, oldest first, not yet attributed to an exit. */
-        final ArrayDeque<Long> capKills = new ArrayDeque<>();
+        /** The cap of each worker killed at it, by pid, oldest first, not yet asked about. */
+        final Map<Long, Long> capKills = new LinkedHashMap<>();
 
         private State(
                 Mode mode, String reason, long max, @Nullable Path workers, long oomKills, BudgetSource budgetSource) {

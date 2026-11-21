@@ -53,7 +53,7 @@ public final class PluginLoader {
     }
 
     /**
-     * Fork a plugin and stream its events. Returns the plugin's exit code.
+     * Fork a plugin and stream its events. Returns how the plugin exited.
      *
      * @param javaHome the JDK to launch under (the project-pinned one) — the HOME, not its
      *     launcher: the worker needs both the {@code java} to run and a {@code JAVA_HOME} to
@@ -64,7 +64,7 @@ public final class PluginLoader {
      * @param prefix the protocol-line marker the plugin emits (its manifest prefix)
      * @param args program args passed after {@code PluginMain}
      */
-    public static int run(
+    public static WorkerExit run(
             Path javaHome,
             String classpath,
             List<String> jvmFlags,
@@ -84,7 +84,7 @@ public final class PluginLoader {
      * that, a forked test JVM inherits the engine's environment and reads the developer's real
      * {@code JK_HOME} / platform product layout.
      */
-    public static int run(
+    public static WorkerExit run(
             Path javaHome,
             String classpath,
             List<String> jvmFlags,
@@ -98,7 +98,7 @@ public final class PluginLoader {
     }
 
     /** As {@link #run} with an optional working directory for the child process. */
-    public static int run(
+    public static WorkerExit run(
             Path javaHome,
             String classpath,
             List<String> jvmFlags,
@@ -128,7 +128,7 @@ public final class PluginLoader {
      * recording learned peaks on {@code heaps}; a child silent for {@code idleTimeoutMs} (when
      * positive) is killed.
      */
-    public static int run(
+    public static WorkerExit run(
             Path javaHome,
             String classpath,
             List<String> jvmFlags,
@@ -157,7 +157,7 @@ public final class PluginLoader {
      * with a {@link PluginProcess.Conversation} the caller can use to send commands back to the
      * plugin over its {@link WorkerCommands} channel.
      */
-    public static int converse(
+    public static WorkerExit converse(
             Path javaHome,
             String classpath,
             List<String> jvmFlags,
@@ -170,7 +170,7 @@ public final class PluginLoader {
     }
 
     /** As {@link #converse(Path, String, List, String, List, BiConsumer, Consumer)} with the child's {@link WorkerEnv}. */
-    public static int converse(
+    public static WorkerExit converse(
             Path javaHome,
             String classpath,
             List<String> jvmFlags,
@@ -184,7 +184,7 @@ public final class PluginLoader {
     }
 
     /** As {@link #converse} with optional working directory. */
-    public static int converse(
+    public static WorkerExit converse(
             Path javaHome,
             String classpath,
             List<String> jvmFlags,
@@ -208,7 +208,7 @@ public final class PluginLoader {
      * As {@link #converse} with an inactivity watchdog (see {@link PluginProcess#converse}),
      * recording learned peaks on {@code heaps}.
      */
-    public static int converse(
+    public static WorkerExit converse(
             Path javaHome,
             String classpath,
             List<String> jvmFlags,

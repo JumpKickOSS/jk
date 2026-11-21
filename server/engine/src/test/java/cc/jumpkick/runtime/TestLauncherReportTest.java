@@ -3,6 +3,7 @@ package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.engine.plugin.WorkerExit;
 import cc.jumpkick.test.TestLauncherFailure;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -15,7 +16,8 @@ class TestLauncherReportTest {
                 + "\tat io.quarkus.builder.Execution.run(Execution.java:139)\n"
                 + "Caused by: java.lang.IllegalStateException: A synthetic bean is already registered\n"
                 + "Terminating due to java.lang.OutOfMemoryError: Metaspace";
-        String message = TestLauncherReport.message(TestLauncherFailure.discovery("g:app", 3, out), null);
+        String message =
+                TestLauncherReport.message(TestLauncherFailure.discovery("g:app", WorkerExit.noWorker(3), out), null);
 
         assertThat(message)
                 .startsWith("test discovery exited 3 before any test ran — java.lang.OutOfMemoryError: Metaspace\n"
@@ -31,7 +33,8 @@ class TestLauncherReportTest {
     @Test
     void a_framework_failure_the_runner_never_reported_is_named_by_its_root_cause() {
         String out = "com.acme.Boot: could not start\nCaused by: java.io.IOException: port 8080 in use";
-        String message = TestLauncherReport.message(TestLauncherFailure.runner("g:app", 1, out), null);
+        String message =
+                TestLauncherReport.message(TestLauncherFailure.runner("g:app", WorkerExit.noWorker(1), out), null);
 
         assertThat(message).startsWith("test runner exited 1 before any test ran — com.acme.Boot: could not start");
         assertThat(message)
@@ -50,7 +53,8 @@ class TestLauncherReportTest {
                         + "    at java.base/java.lang.ClassLoader.defineClass(ClassLoader.java:1027)\n"
                         + "  caused by: java.lang.ClassNotFoundException: com.acme.Base\n"
                         + "    at java.base/jdk.internal.loader.BuiltinClassLoader.loadClass(BuiltinClassLoader.java:641)\n";
-        String message = TestLauncherReport.message(TestLauncherFailure.discovery("g:app", 70, out), null);
+        String message =
+                TestLauncherReport.message(TestLauncherFailure.discovery("g:app", WorkerExit.noWorker(70), out), null);
 
         assertThat(message)
                 .startsWith("test discovery exited 70 before any test ran"
@@ -69,7 +73,9 @@ class TestLauncherReportTest {
     @Test
     void a_jvm_that_printed_nothing_usable_keeps_the_generic_fix() {
         String message = TestLauncherReport.message(
-                TestLauncherFailure.runner("g:app", 1, "Error: could not create the Java Virtual Machine"), null);
+                TestLauncherFailure.runner(
+                        "g:app", WorkerExit.noWorker(1), "Error: could not create the Java Virtual Machine"),
+                null);
         assertThat(message).contains("Fix: see the runner output above; rerun with -v for the full output");
     }
 
@@ -77,7 +83,8 @@ class TestLauncherReportTest {
     void a_jvm_refused_its_heap_names_the_refusal_and_the_flags_that_size_the_fork() {
         String out = "Error occurred during initialization of VM\n"
                 + "Could not reserve enough space for 1048576000000 KB object heap";
-        String message = TestLauncherReport.message(TestLauncherFailure.runner("g:app", 1, out), null);
+        String message =
+                TestLauncherReport.message(TestLauncherFailure.runner("g:app", WorkerExit.noWorker(1), out), null);
 
         assertThat(message)
                 .startsWith("test runner exited 1 before any test ran"
@@ -94,27 +101,31 @@ class TestLauncherReportTest {
         List<String> command =
                 List.of("/jdk/bin/java", "-Xmx256m", "-cp", "/lib/a.jar", "cc.jumpkick.plugin.Worker", "--list-only");
 
-        String silent = TestLauncherReport.message(TestLauncherFailure.discovery("g:app", 1, "", command), null);
+        String silent = TestLauncherReport.message(
+                TestLauncherFailure.discovery("g:app", WorkerExit.noWorker(1), "", command), null);
         assertThat(silent)
                 .startsWith("test discovery exited 1 before any test ran — the fork printed nothing\n"
                         + "command: /jdk/bin/java -Xmx256m -cp <1 entry> cc.jumpkick.plugin.Worker --list-only")
                 .contains("Fix: the test JVM printed nothing");
 
-        String killed = TestLauncherReport.message(TestLauncherFailure.runner("g:app", 137, "", command), null);
+        String killed = TestLauncherReport.message(
+                TestLauncherFailure.runner("g:app", WorkerExit.noWorker(137), "", command), null);
         assertThat(killed)
                 .contains("\ncommand: /jdk/bin/java -Xmx256m -cp <1 entry> cc.jumpkick.plugin.Worker --list-only")
                 .contains("Fix: the test runner JVM was killed by SIGKILL");
 
-        String spoke = TestLauncherReport.message(TestLauncherFailure.runner("g:app", 1, "a last line", command), null);
+        String spoke = TestLauncherReport.message(
+                TestLauncherFailure.runner("g:app", WorkerExit.noWorker(1), "a last line", command), null);
         assertThat(spoke).contains("the fork's last output:").doesNotContain("command: ");
-        assertThat(TestLauncherReport.message(TestLauncherFailure.runner("g:app", 1, ""), null))
+        assertThat(TestLauncherReport.message(TestLauncherFailure.runner("g:app", WorkerExit.noWorker(1), ""), null))
                 .as("no command recorded, none shown")
                 .doesNotContain("command: ");
     }
 
     @Test
     void a_signal_exit_names_the_signal_and_what_sends_it() {
-        String message = TestLauncherReport.message(TestLauncherFailure.runner("g:app", 137, ""), null);
+        String message =
+                TestLauncherReport.message(TestLauncherFailure.runner("g:app", WorkerExit.noWorker(137), ""), null);
 
         assertThat(message)
                 .startsWith("test runner exited 137 (SIGKILL) before any test ran — the fork printed nothing");

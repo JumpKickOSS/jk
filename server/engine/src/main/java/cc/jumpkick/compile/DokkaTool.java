@@ -59,7 +59,7 @@ public final class DokkaTool {
             Process proc = JobWorkers.start(pb);
             Processes.Captured c = Processes.capture(proc, Duration.ofMinutes(TIMEOUT_MINUTES));
             if (c.timedOut()) throw new IOException("dokka timed out after " + TIMEOUT_MINUTES + " minutes");
-            return new JavadocTool.Result(c.exit(), List.of(), List.of(), c.output());
+            return new JavadocTool.Result(c.exit(), List.of(), List.of(), c.output(), proc.pid());
         } finally {
             Files.deleteIfExists(config);
         }

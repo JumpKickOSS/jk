@@ -15,6 +15,7 @@ import cc.jumpkick.engine.plugin.HeapScope;
 import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.engine.plugin.LearnedHeaps;
 import cc.jumpkick.engine.plugin.NativeHeap;
+import cc.jumpkick.engine.plugin.WorkerExit;
 import cc.jumpkick.engine.plugin.WorkerFate;
 import cc.jumpkick.engine.plugin.WorkerLeases;
 import cc.jumpkick.host.Errors;
@@ -54,6 +55,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -691,10 +693,19 @@ public final class PlannerNative {
         // (ctx.progress after run returns) = 10. Without [N/M] headers (older GraalVM, --quiet)
         // the final tick is the only one.
         AtomicBoolean preambleDone = new AtomicBoolean(false);
-        NativeImageDriver.ProgressListener listener = (current, total, label) -> {
-            if (ticks && preambleDone.compareAndSet(false, true)) ctx.progress(1);
-            ctx.label("[" + current + "/" + total + "] " + label);
-            if (ticks) ctx.progress(1);
+        AtomicLong pid = new AtomicLong(WorkerExit.NO_PID);
+        NativeImageDriver.ProgressListener listener = new NativeImageDriver.ProgressListener() {
+            @Override
+            public void onStep(int current, int total, String label) {
+                if (ticks && preambleDone.compareAndSet(false, true)) ctx.progress(1);
+                ctx.label("[" + current + "/" + total + "] " + label);
+                if (ticks) ctx.progress(1);
+            }
+
+            @Override
+            public void onStarted(long started) {
+                pid.set(started);
+            }
         };
         // Run the framework's list; jk's classpath and [application] main describe a
         // different image entirely (Quarkus enters through a generated --features
@@ -719,7 +730,8 @@ public final class PlannerNative {
                     log.add(line);
                     ctx.output(line);
                 }));
-        WorkerFate.Cause cause = exit == 0 ? WorkerFate.Cause.OTHER : WorkerFate.classify(exit, String.join("\n", log));
+        WorkerFate.Cause cause =
+                exit == 0 ? WorkerFate.Cause.OTHER : WorkerFate.classify(pid.get(), exit, String.join("\n", log));
         return new Attempt(exit, cause, List.copyOf(log));
     }
 

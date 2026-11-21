@@ -72,7 +72,7 @@ public final class PluginProcess {
     }
 
     /**
-     * Fork {@code command}, stream its output, and return the process exit code. The parent only
+     * Fork {@code command}, stream its output, and return how the process exited. The parent only
      * reads — there is no stdin interaction.
      *
      * @param command full process command line (java exe, classpath/jar, main, args)
@@ -80,14 +80,14 @@ public final class PluginProcess {
      * @param onProtocol receives each protocol line with the prefix stripped
      * @param onPassthrough receives each non-protocol line verbatim; may be {@code null} to drop them
      */
-    public static int run(
+    public static WorkerExit run(
             List<String> command, String prefix, Consumer<String> onProtocol, @Nullable Consumer<String> onPassthrough)
             throws IOException, InterruptedException {
         return run(command, WorkerEnv.strict(), prefix, onProtocol, onPassthrough);
     }
 
     /** As {@link #run(List, String, Consumer, Consumer)} with the child's {@link WorkerEnv}. */
-    public static int run(
+    public static WorkerExit run(
             List<String> command,
             WorkerEnv env,
             String prefix,
@@ -104,7 +104,7 @@ public final class PluginProcess {
      * (e.g. {@code jk self nuke} without {@code -y}) deadlocks under {@code jk test}/{@code jk
      * build}.
      */
-    public static int run(
+    public static WorkerExit run(
             List<String> command,
             WorkerEnv env,
             @Nullable Path workDir,
@@ -120,7 +120,7 @@ public final class PluginProcess {
      * {@code heaps}, with the inactivity watchdog of {@link #converse} when {@code idleTimeoutMs} is
      * positive.
      */
-    public static int run(
+    public static WorkerExit run(
             List<String> command,
             WorkerEnv env,
             @Nullable Path workDir,
@@ -157,7 +157,7 @@ public final class PluginProcess {
      *
      * @param onPassthrough receives each non-protocol line; may be {@code null} to drop
      */
-    public static int converse(
+    public static WorkerExit converse(
             List<String> command,
             String prefix,
             BiConsumer<String, Conversation> onProtocol,
@@ -167,7 +167,7 @@ public final class PluginProcess {
     }
 
     /** As {@link #converse(List, String, BiConsumer, Consumer)} with the child's {@link WorkerEnv}. */
-    public static int converse(
+    public static WorkerExit converse(
             List<String> command,
             WorkerEnv env,
             String prefix,
@@ -181,7 +181,7 @@ public final class PluginProcess {
      * As {@link #converse(List, WorkerEnv, String, BiConsumer, Consumer)} with an optional working
      * directory (Quarkus {@code @QuarkusTest} resolves the project from the process cwd).
      */
-    public static int converse(
+    public static WorkerExit converse(
             List<String> command,
             WorkerEnv env,
             @Nullable Path workDir,
@@ -197,7 +197,7 @@ public final class PluginProcess {
      * keeps the process for many exchanges. The memory lease is still taken when the process is
      * forked and held until it exits; an idle compiler lane exits when another fork is waiting.
      */
-    public static int converseNoSlot(
+    public static WorkerExit converseNoSlot(
             List<String> command,
             WorkerEnv env,
             String prefix,
@@ -222,7 +222,7 @@ public final class PluginProcess {
      * only callers whose protocol guarantees a heartbeat-ish cadence (the test runner's
      * per-test events) should pass a window.
      */
-    public static int converse(
+    public static WorkerExit converse(
             List<String> command,
             WorkerEnv env,
             @Nullable Path workDir,
@@ -235,7 +235,7 @@ public final class PluginProcess {
     }
 
     /** As {@link #converse(List, WorkerEnv, Path, String, BiConsumer, Consumer, long)}, recording learned peaks on {@code heaps}. */
-    public static int converse(
+    public static WorkerExit converse(
             List<String> command,
             WorkerEnv env,
             @Nullable Path workDir,
@@ -251,7 +251,7 @@ public final class PluginProcess {
     }
 
     /** As the watchdog overload with the orphan drain grace given in millis (tests). */
-    static int converse(
+    static WorkerExit converse(
             List<String> command,
             WorkerEnv env,
             String prefix,
@@ -281,7 +281,7 @@ public final class PluginProcess {
      * line the worker writes back on it goes to {@code onFrame}, from a platform thread of its own
      * that does nothing else, so a caller that never blocks in {@code onFrame} always hears the
      * worker. Everything on stdout and stderr is {@code onPassthrough}'s. {@code starter} forks and
-     * leases the process. Returns the exit code once the process and its output have ended.
+     * leases the process. Returns how it exited once the process and its output have ended.
      *
      * <p>{@code env} is composed when the fork happens. A caller forking on a thread of its own for
      * a request composes the request's environment on the request's thread and passes it whole
@@ -290,7 +290,7 @@ public final class PluginProcess {
      * <p>A frame handler that throws ends the conversation as a {@link HandlerFailure}: the worker is
      * stopped, because nobody would read what it answers next.
      */
-    public static int converseOnChannel(
+    public static WorkerExit converseOnChannel(
             List<String> command,
             WorkerEnv env,
             Starter starter,
@@ -304,7 +304,7 @@ public final class PluginProcess {
         onOpen.accept(commands);
         AtomicReference<RuntimeException> frameError = new AtomicReference<>();
         try {
-            int exit = fork(
+            WorkerExit exit = fork(
                     pb,
                     "\u0000",
                     line -> {
@@ -370,7 +370,7 @@ public final class PluginProcess {
     }
 
     /** Open the conversation's channel, name it in the worker's arguments, and fork the worker. */
-    private static int converse(
+    private static WorkerExit converse(
             ProcessBuilder pb,
             String prefix,
             BiConsumer<String, Conversation> onProtocol,
@@ -398,11 +398,11 @@ public final class PluginProcess {
     }
 
     /**
-     * Fork {@code pb} with its stdin closed, pump its output until it ends, and return its exit code.
+     * Fork {@code pb} with its stdin closed, pump its output until it ends, and return how it exited.
      * {@code commands}, when the worker has a channel, is closed when the pump ends, so a worker that
      * waits for its next command reads end-of-input and exits.
      */
-    private static int fork(
+    private static WorkerExit fork(
             ProcessBuilder pb,
             String prefix,
             Consumer<String> onProtocol,
@@ -533,7 +533,7 @@ public final class PluginProcess {
                 // Worker died or pipe closed mid-stream: bare "closed"). Prefer a
                 // waitFor exit code over an opaque IOException when the process is already gone.
                 if (isPipeClosed(e) && !process.isAlive()) {
-                    return process.waitFor();
+                    return new WorkerExit(process.pid(), process.waitFor());
                 }
                 if (isPipeClosed(e)) {
                     forceStop(process);
@@ -546,7 +546,8 @@ public final class PluginProcess {
                                 "plugin pipe closed while waiting (interrupted); partial exit unknown", e);
                     }
                     throw new IOException(
-                            "plugin pipe closed (worker " + WorkerContainment.failure(exit, "exit " + exit) + "): "
+                            "plugin pipe closed (worker "
+                                    + WorkerContainment.failure(process.pid(), exit, "exit " + exit) + "): "
                                     + e.getMessage(),
                             e);
                 }
@@ -571,7 +572,7 @@ public final class PluginProcess {
                 argfile.delete();
             }
         }
-        return process.waitFor();
+        return new WorkerExit(process.pid(), process.waitFor());
     }
 
     /** Give {@code process} end-of-input on its stdin; commands never travel there. */
