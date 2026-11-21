@@ -786,14 +786,14 @@ public final class Http {
     /**
      * As {@link #put}, the body streamed from {@code file} with its size as {@code Content-Length},
      * so an upload holds a fixed buffer and never the file: the upload primitive for blobs too large
-     * for the heap (a fat jar, a native image). A retry reads the file again from its start.
+     * for the heap (a fat jar, a native image). A retry reads the file again from its start, and the
+     * file is closed however the upload ends ({@link FileBody}).
      */
     public HttpResponse<byte[]> putFile(URI uri, Path file, Map<String, String> headers)
             throws IOException, InterruptedException {
         checkOffline(uri);
-        HttpRequest.Builder builder = HttpRequest.newBuilder(uri)
-                .PUT(HttpRequest.BodyPublishers.ofFile(file))
-                .timeout(Duration.ofMinutes(15));
+        HttpRequest.Builder builder =
+                HttpRequest.newBuilder(uri).PUT(FileBody.of(file)).timeout(Duration.ofMinutes(15));
         for (Map.Entry<String, String> e : headers.entrySet()) {
             builder.header(e.getKey(), e.getValue());
         }

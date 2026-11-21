@@ -3,6 +3,7 @@ package cc.jumpkick.plugin.publish;
 
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.host.time.Clock;
+import cc.jumpkick.http.FileBody;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.model.RepositorySpec;
@@ -240,7 +241,7 @@ public final class CentralPortal {
         byte[] tail = ("\r\n--" + boundary + "--\r\n").getBytes(StandardCharsets.UTF_8);
         return HttpRequest.BodyPublishers.concat(
                 HttpRequest.BodyPublishers.ofByteArray(head),
-                HttpRequest.BodyPublishers.ofFile(content),
+                FileBody.of(content),
                 HttpRequest.BodyPublishers.ofByteArray(tail));
     }
 
