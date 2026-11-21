@@ -101,7 +101,8 @@ class TestWorkerEnvTest {
             assertThat(w.get("JK_CACHE_DIR")).isEqualTo(home.resolve("cache").toString());
         }
         // An engine stop claims what names a path inside its home or state dir: a sibling's must not.
-        assertThat(Path.of(w1.get("JK_HOME")).startsWith(Path.of(w0.get("JK_HOME")))).isFalse();
+        assertThat(Path.of(w1.get("JK_HOME")).startsWith(Path.of(w0.get("JK_HOME"))))
+                .isFalse();
         assertThat(Path.of(w0.get("JK_STORE_DIR")).startsWith(Path.of(w0.get("JK_HOME"))))
                 .as("the shared store lies outside every worker's home")
                 .isFalse();
