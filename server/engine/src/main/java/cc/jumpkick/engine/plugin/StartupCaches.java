@@ -69,6 +69,8 @@ public final class StartupCaches {
 
     private StartupCaches() {}
 
+    private static volatile @Nullable String pinnedVersion;
+
     /** Under a snapshot jk, a cache not mapped for this long goes. */
     static final Duration SNAPSHOT_UNUSED = Duration.ofHours(12);
 
@@ -155,17 +157,29 @@ public final class StartupCaches {
         try {
             Set<Path> held = inUse(WorkerLeases.engine(), OTHER_PROCESSES);
             touch(held);
-            Report r = sweep(JkDirs.state(), JkVersion.VERSION, held, Clock.SYSTEM.millis(), DELETE, RECORDERS);
+            String running = running();
+            Report r = sweep(JkDirs.state(), running, held, Clock.SYSTEM.millis(), DELETE, RECORDERS);
             if (r.deleted() > 0) {
                 log.accept("jk engine: removed " + r.deleted() + " startup cache file(s) (" + (r.freedBytes() >> 20)
                         + " MiB)"
-                        + (Versions.isSnapshot(JkVersion.VERSION)
+                        + (Versions.isSnapshot(running)
                                 ? " of another version or unused for " + SNAPSHOT_UNUSED.toHours() + " h"
                                 : " of another version"));
             }
         } catch (RuntimeException e) {
             Log.debug("StartupCaches.sweep: best-effort", e);
         }
+    }
+
+    /** The jk version whose caches this engine names and keeps: this build's, unless a test pins one. */
+    static String running() {
+        String pinned = pinnedVersion;
+        return pinned != null ? pinned : JkVersion.VERSION;
+    }
+
+    /** Test seam: name and sweep caches as jk {@code version} would; null goes back to this build's. */
+    static void pinVersionForTests(@Nullable String version) {
+        pinnedVersion = version;
     }
 
     /**

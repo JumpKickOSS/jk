@@ -15,7 +15,6 @@ import cc.jumpkick.host.ProcessEnv;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkVendor;
-import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.util.StoreWriteGate;
 import java.io.IOException;
 import java.io.InputStream;
@@ -133,7 +132,7 @@ public final class WorkerAotCache {
                 .append(workerClasspath);
         for (String flag : jvmFlags) key.append('\n').append(flag);
         String hash = Hashing.sha256Hex(key.toString()).substring(0, 16);
-        return dir().resolve(tool + "-" + JkVersion.VERSION + "-" + jdkTag(host) + "-" + hash + ".aot");
+        return dir().resolve(tool + "-" + StartupCaches.running() + "-" + jdkTag(host) + "-" + hash + ".aot");
     }
 
     /** Eight hex characters naming the JDK a cache was recorded under. */

@@ -12,7 +12,6 @@ import cc.jumpkick.jdk.JdkVendor;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.testing.Sleepers;
 import cc.jumpkick.testing.Symlinks;
-import cc.jumpkick.version.Versions;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
@@ -37,6 +36,12 @@ class WorkerAotCacheTest {
     private static final WorkerAotCache.Host HOTSPOT_25 =
             new WorkerAotCache.Host(Path.of("/jdk/temurin-25"), JdkVendor.TEMURIN, "25.0.4.1");
 
+    /** A contributor's or CI's jk: every cache unmapped for 12 h goes. */
+    private static final String SNAPSHOT = "9.9.9-SNAPSHOT";
+
+    /** A user's jk: a cache of its own version stays until jk is replaced or the disk is nearly full. */
+    private static final String RELEASE = "9.9.9";
+
     @BeforeEach
     void fresh() {
         WorkerAotCache.forgetFailuresForTests();
@@ -54,6 +59,7 @@ class WorkerAotCacheTest {
         pins.forEach(DiskGuard.Pin::close);
         pins.clear();
         WorkerAotCache.forgetFailuresForTests();
+        StartupCaches.pinVersionForTests(null);
         System.clearProperty("jk.worker.aot");
         Settled.aheadForTests(null);
     }
@@ -180,12 +186,13 @@ class WorkerAotCacheTest {
     }
 
     /**
-     * When a cache lands, the sweep runs; a cache a live worker of this engine maps stays, however
-     * long ago it was last touched (on a snapshot jk the age rule would take it otherwise), and is
+     * When a cache lands on a snapshot jk, the sweep runs; a cache a live worker of this engine maps
+     * stays, however long ago it was last touched (the age rule would take it otherwise), and is
      * touched again.
      */
     @Test
     void a_landing_cache_sweeps_but_spares_what_this_process_maps(@TempDir Path dir) throws Exception {
+        StartupCaches.pinVersionForTests(SNAPSHOT);
         Path state = Files.createDirectories(dir.resolve("state"));
         roomy(dir);
         System.setProperty("jk.env.JK_STATE_DIR", state.toString());
@@ -206,7 +213,7 @@ class WorkerAotCacheTest {
         Files.setLastModifiedTime(mapped, longAgo);
         Path unmapped = Files.writeString(
                 mapped.resolveSibling(
-                        "kotlinc-" + JkVersion.VERSION + "-" + WorkerAotCache.jdkTag(host) + "-0123456789abcdef.aot"),
+                        "kotlinc-" + SNAPSHOT + "-" + WorkerAotCache.jdkTag(host) + "-0123456789abcdef.aot"),
                 "a key nobody maps");
         Files.setLastModifiedTime(unmapped, longAgo);
         Path otherVersion = Files.writeString(
@@ -230,11 +237,7 @@ class WorkerAotCacheTest {
                 .as("and the sweep says so")
                 .isGreaterThan(longAgo);
         assertThat(otherVersion).as("another jk version's never maps again").doesNotExist();
-        if (Versions.isSnapshot(JkVersion.VERSION)) {
-            assertThat(unmapped).as("a snapshot's cache unmapped for 12 h").doesNotExist();
-        } else {
-            assertThat(unmapped).as("a release deletes nothing by age").exists();
-        }
+        assertThat(unmapped).as("a snapshot's cache unmapped for 12 h").doesNotExist();
     }
 
     /** A recording is a heavy write: none while the state volume is critical. */
@@ -264,25 +267,54 @@ class WorkerAotCacheTest {
 
     /**
      * A miss records into a temp sibling that is moved into place on a clean exit; the build that
-     * missed gets no flag, the next one maps the file, and the tool's older cache is gone.
+     * missed gets no flag, the next one maps the file, and on a snapshot jk the tool's key unmapped
+     * for 12 h goes.
      */
     @Test
-    void a_miss_records_once_the_next_call_maps_and_the_tools_other_cache_goes(@TempDir Path dir) throws Exception {
+    void on_a_snapshot_a_miss_records_once_the_next_call_maps_and_the_tools_unused_key_goes(@TempDir Path dir)
+            throws Exception {
+        Recorded r = missThenMap(dir, SNAPSHOT);
+        assertThat(r.older()).as("a snapshot's key unmapped for 12 h goes").doesNotExist();
+        assertThat(r.left())
+                .as("no temp sibling outlives the recording")
+                .containsExactlyInAnyOrder(name(r.cache()), name(r.otherTool()));
+    }
+
+    /** The same miss on a release jk, which deletes nothing by age: the tool's unused key stays. */
+    @Test
+    void on_a_release_a_miss_records_once_the_next_call_maps_and_the_tools_unused_key_stays(@TempDir Path dir)
+            throws Exception {
+        Recorded r = missThenMap(dir, RELEASE);
+        assertThat(r.older()).as("a release deletes nothing by age").exists();
+        assertThat(r.left())
+                .as("no temp sibling outlives the recording")
+                .containsExactlyInAnyOrder(name(r.cache()), name(r.older()), name(r.otherTool()));
+    }
+
+    /** What a recording under one jk version left in {@code state/aot}, by file name. */
+    private record Recorded(Path cache, Path older, Path otherTool, List<String> left) {}
+
+    /**
+     * Under jk {@code version}, beside the tool's key unmapped for 13 h and another tool's cache: a
+     * miss runs cold and records, and the next call maps what it recorded.
+     */
+    private Recorded missThenMap(Path dir, String version) throws Exception {
         WorkerAotCache.Host engine = WorkerAotCache.engineHost();
         Assumptions.assumeTrue(engine != null && engine.eligible(), "this JVM cannot record a cache");
+        StartupCaches.pinVersionForTests(version);
         Path state = Files.createDirectories(dir.resolve("state"));
         roomy(dir);
         System.setProperty("jk.env.JK_STATE_DIR", state.toString());
         Path aot = Files.createDirectories(state.resolve("aot"));
         String tag = WorkerAotCache.jdkTag(requireNonNull(engine));
         Path older = Files.writeString(
-                aot.resolve("kotlinc-" + JkVersion.VERSION + "-" + tag + "-0123456789abcdef.aot"), "an older key");
+                aot.resolve("kotlinc-" + version + "-" + tag + "-0123456789abcdef.aot"), "an older key");
         Files.setLastModifiedTime(
                 older,
                 FileTime.fromMillis(
                         System.currentTimeMillis() - Duration.ofHours(13).toMillis()));
         Path otherTool = Files.writeString(
-                aot.resolve("java-compiler-" + JkVersion.VERSION + "-" + tag + "-0123456789abcdef.aot"), "other tool");
+                aot.resolve("java-compiler-" + version + "-" + tag + "-0123456789abcdef.aot"), "other tool");
 
         Path home = JavaHomes.runningJavaHome();
         List<String> first = WorkerAotCache.flags(
@@ -293,23 +325,20 @@ class WorkerAotCacheTest {
         Path cache = WorkerAotCache.cacheFile("kotlinc", engine, "/w/a.jar", List.of());
         assertThat(cache).isRegularFile();
         assertThat(Files.size(cache)).isGreaterThan(0);
-        if (Versions.isSnapshot(JkVersion.VERSION)) {
-            assertThat(older).as("a snapshot's key unmapped for 12 h goes").doesNotExist();
-        } else {
-            assertThat(older).as("a release deletes nothing by age").exists();
-        }
         assertThat(otherTool)
                 .as("another tool's cache is not this tool's business")
                 .exists();
+        List<String> left;
         try (var files = Files.list(aot)) {
-            assertThat(files.map(p -> p.getFileName().toString()))
-                    .as("no temp sibling outlives the recording")
-                    .containsExactlyInAnyOrder(
-                            cache.getFileName().toString(),
-                            otherTool.getFileName().toString());
+            left = files.map(WorkerAotCacheTest::name).toList();
         }
         assertThat(WorkerAotCache.flags("kotlinc", home, "/w/a.jar", List.of(), (out, scratch) -> List.of()))
                 .containsExactly("-XX:AOTCache=" + cache, "-Xlog:aot=off");
+        return new Recorded(cache, older, otherTool, left);
+    }
+
+    private static String name(Path p) {
+        return p.getFileName().toString();
     }
 
     /** A recording that fails is logged and left alone for the rest of this process. */
