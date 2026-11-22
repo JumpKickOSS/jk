@@ -998,6 +998,48 @@ final class ParityRules {
         v.population(population);
     }
 
+    // ---- G165 --------------------------------------------------------------------------------
+
+    /** The banked rows, each naming the host that measured it. */
+    private static final String BOARD = "scoreboard.toml";
+
+    private static final Pattern BOARD_HOST = Pattern.compile("^host-id\\s*=\\s*\"([^\"]+)\"");
+
+    /** The published copy: the README, the user docs and the website. */
+    private static final List<String> PUBLIC_COPY =
+            List.of("README.md", "docs/user/**/*.md", "hosting/**/*.html", "hosting/**/*.md");
+
+    @Guard(
+            id = "public-copy-names-no-host",
+            why = "a host id or name in the published pages identifies a machine of ours to every reader",
+            instead =
+                    "describe the hardware (CPU, cores, RAM, OS), as the wall table's footer does; the host id stays in scoreboard.toml")
+    @Fixture("server/guard/fixtures/public-copy-names-no-host")
+    void publicCopyNamesNoHost(Text text, Violations v) {
+        String board = textOrNull(text, BOARD);
+        if (board == null) return;
+        Set<String> hosts = new TreeSet<>();
+        for (String line : board.split("\n")) {
+            Matcher m = BOARD_HOST.matcher(line.strip());
+            if (m.find()) hosts.add(m.group(1));
+        }
+        if (hosts.isEmpty()) return;
+        Pattern named = Pattern.compile("(?<![\\w-])(?:"
+                + String.join("|", hosts.stream().map(Pattern::quote).toList()) + ")(?![\\w-])");
+        int population = 0;
+        Set<String> pages = new TreeSet<>();
+        for (String glob : PUBLIC_COPY) pages.addAll(text.files(glob));
+        for (String page : pages) {
+            population++;
+            List<String> lines = text.lines(page);
+            for (int i = 0; i < lines.size(); i++) {
+                Matcher m = named.matcher(lines.get(i));
+                if (m.find()) v.add(new TextSite(page, i + 1, m.group()), "names the host `" + m.group() + "`");
+            }
+        }
+        v.population(population);
+    }
+
     // ---- G63 ---------------------------------------------------------------------------------
 
     private static final String REGISTRY = "curated-integration.txt";

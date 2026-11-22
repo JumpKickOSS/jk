@@ -131,13 +131,13 @@ def cells(rows: list[dict]) -> dict[tuple[str, str], dict]:
 
 
 def footer(rows: list[dict]) -> str:
-    """Every number names its commit and conditions: the bankings, then each tool's conditions."""
+    """Every number names its hardware, commit and conditions, never the host that took it."""
     bankings: dict[tuple[str, str], set[str]] = {}
     for r in rows:
         bankings.setdefault((pub(r, "date"), pub(r, "commit")), set()).add(NAMES[r["tool"]])
     versions = "; ".join(sorted({shown_version(pub(r, "tool-version")) for r in rows}))
     walls = [r for r in rows if r.get("unit") == "s"]
-    return (f"Measured on {rows[0].get('host', '')} (host `{rows[0]['host-id']}`); project "
+    return (f"Measured on {rows[0].get('host', '')}; project "
             f"spring-projects/spring-petclinic; {versions}; {pub(walls[0] if walls else rows[0], 'runs')} timed "
             f"runs per cell. Banked "
             + "; ".join(f"{date} at JumpKick tree {commit}" + ("" if len(bankings) == 1 else f" ({', '.join(sorted(t))})")

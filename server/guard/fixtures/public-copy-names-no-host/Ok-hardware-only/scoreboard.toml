@@ -1,0 +1,11 @@
+[[row]]
+dim = "wall"
+subject = "wall.noop"
+value = 0.21
+host-id = "d7ad360c1bc7"
+
+[[row]]
+dim = "agents"
+subject = "agents.questions"
+value = 4
+host-id = "lab-runner"

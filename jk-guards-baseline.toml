@@ -1357,6 +1357,9 @@ population = { files = 90 }
 "shared/toolchain-jdk" = { classes = 168, sites = 8506 }
 "shared/wire" = { classes = 246, sites = 12211 }
 
+[public-copy-names-no-host]
+population = { examined = 60 }
+
 [published-installer-ps1]
 population = { left = 1095, right = 1095 }
 
