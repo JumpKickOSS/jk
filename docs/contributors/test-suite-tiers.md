@@ -22,6 +22,7 @@ the heart of the Full tier ([gate tiers](#gate-tiers)). The house rules run unde
 |---------|--------|----------|------------|
 | `jk test` | what no suite claims | — | yes |
 | `jk test -s integration` | `integration` | `slow`, `network`, `release`, `live`, `bench` | yes |
+| `jk test -s docs` | `docs` | `integration`, `slow`, `network`, `release`, `live`, `bench` | yes |
 | `jk test -s slow` | `slow` | `network`, `release`, `live`, `bench` | yes |
 | `jk test -s network` | `network` | `release`, `live`, `bench` | yes |
 | `jk test -s release` | `release` | `live`, `bench` | yes |
@@ -47,6 +48,7 @@ Tag new heavy tests at class level:
 @Tag("release")     // worth running once per release: a real browser (CI on the release tag)
 @Tag("live")        // writes to this machine's own services (the OS keychain); desktop, on demand
 @Tag("bench")       // microbench only (never PR)
+@Tag("docs")        // walks the doc tree (docs/, the root Markdown); every gate tier runs it alone
 ```
 
 **The fast tier cannot hang, and cannot reach an engine.** The root's `fast-method-budget` is 5s:
@@ -92,10 +94,10 @@ the last commit it passed.
 | Tier | Command | What runs | When | Blocks |
 |------|---------|-----------|------|--------|
 | Branch | `scripts/queue/branch-tier.sh` | `jk guard`, then `jk build -e <merge-base>`: the fast tier of the modules the branch changed and their dependents | Before a branch is submitted to the merge queue | The submission |
-| Queue | `GATE_TIER=queue scripts/gate/run.sh <n> <sha>` | `jk guard`; `jk install -S` (the reinstall without tests, so every test runs under the batch's own engine); one `jk install -c` (every module's fast tier, then the reinstall); the integration suite of each module the batch changed (`scripts/gate/changed-modules.sh`); the [curated lane](#the-curated-integration-lane)'s classes in every other module; the shell fixtures | Every batch the merge queue gates | The push to `origin/main` |
-| Full | `scripts/gate/full-loop.sh`, each cycle `GATE_TIER=full scripts/gate/gate.sh <n> <sha>` | `jk guard`; `jk install -S`; `jk install -g -c` (the fast tier once, with every `integration` and `e2e` class); `jk test -s release`; `jk test -s slow` when a plugin (a member under `plugins/`) or a root build file changed since `green` (`GATE_BASE`); the shell fixtures; the release notes | Back to back on the newest `main`, on the queue's gate host and under its lock ([the Full tier loop](self-host.md#the-full-tier-loop)) | A release: it is cut from `green`. `main` may be red on it for a cycle or two: a confirmed culprit commit is reverted through the queue, and after two red cycles the queue lands only the fix |
+| Queue | `GATE_TIER=queue scripts/gate/run.sh <n> <sha>` | `jk guard`; `jk install -S` (the reinstall without tests, so every test runs under the batch's own engine); one `jk install -c` (every module's fast tier, then the reinstall); the integration suite of each module the batch changed (`scripts/gate/changed-modules.sh`); the [curated lane](#the-curated-integration-lane)'s classes in every other module; `jk test -s docs`; the shell fixtures | Every batch the merge queue gates | The push to `origin/main` |
+| Full | `scripts/gate/full-loop.sh`, each cycle `GATE_TIER=full scripts/gate/gate.sh <n> <sha>` | `jk guard`; `jk install -S`; `jk install -g -c` (the fast tier once, with every `integration` and `e2e` class); `jk test -s docs`; `jk test -s release`; `jk test -s slow` when a plugin (a member under `plugins/`) or a root build file changed since `green` (`GATE_BASE`); the shell fixtures; the release notes | Back to back on the newest `main`, on the queue's gate host and under its lock ([the Full tier loop](self-host.md#the-full-tier-loop)) | A release: it is cut from `green`. `main` may be red on it for a cycle or two: a confirmed culprit commit is reverted through the queue, and after two red cycles the queue lands only the fix |
 | Nightly | `ci-nightly.yml` | `integration`, `slow`, `network`, `bench`, the coverage ratchet, the examples | Its schedule, when the workflow is enabled | Nothing |
-| Release | `ci.yml` on the release tag | The fast tier, the curated lane, `release`, the whole `integration` tier, Windows and macOS | `jk release` pushes a tag | The release |
+| Release | `ci.yml` on the release tag | The fast tier, `docs`, the curated lane, `release`, the whole `integration` tier, Windows and macOS | `jk release` pushes a tag | The release |
 
 **What the Queue tier calls a changed module.** `changed-modules.sh` maps every file the batch
 changed since `origin/main` onto the workspace member that holds it (the deepest one, so a rule
@@ -107,9 +109,15 @@ suites run with `--exclusive`: a module's dependents are not run, which is what 
 for. In the other modules a curated class runs alone, so no class runs twice.
 
 **A docs-only batch skips the Queue tier.** When every file a batch changed is a doc that no test
-reads ([docs-only](self-host.md#docs-only-changes)), the queue gates it with `GATE_TIER=docs`:
-`jk guard` and `bench/scoreboard --render --check`, no install and no test. The Full tier still runs
-everything on it.
+reads but those of the docs suite ([docs-only](self-host.md#docs-only-changes)), the queue gates
+it with `GATE_TIER=docs`: `jk guard`, `bench/scoreboard --render --check` and `jk test -s docs`, no
+install and no other test. The Full tier still runs everything on it.
+
+**The docs suite runs in every gate tier.** `jk test -s docs` holds the tests that walk the doc tree.
+They hold the docs to the code, so the Queue tier runs them after its integration runs, the Full tier
+beside the release suite, and CI's self-host job after the fast tier; each runs the suite alone,
+since a run of several suites records what they read as one
+([docs suite](self-host.md#docs-only-changes)).
 
 **Quarantine and re-run.** A run of the Queue tier that is red only in classes
 `scripts/gate/flaky.sh` holds in quarantine passes. A run red in other classes, and in nothing but

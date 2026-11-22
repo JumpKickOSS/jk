@@ -9,11 +9,12 @@
 # members a range changed (none for docs and scripts, every one for a root build file), the
 # reinstall without tests and then, under the engine it installed, one install that runs the fast
 # tier (red at the reinstall when it fails, before any test), the integration suite of the changed
-# members and the curated lane in the others, a red run excused only when it failed in quarantine,
-# and none of the Full tier's steps.
-# In the same workspace, the Full tier runs the slow tier only when a plugin changed since its base,
-# and is red when a suite was seen reading a doc that scripts/gate/test-reads.txt does not list. The
-# docs tier runs guard and the scoreboard check alone, and is red over a range that is not docs-only.
+# members and the curated lane in the others, then the docs suite, a red run excused only when it
+# failed in quarantine, and none of the Full tier's steps. In the same workspace, the Full tier runs
+# the docs suite on its own and the slow tier only when a plugin changed since its base, and is red
+# when a suite other than the docs suite run alone was seen reading a doc that
+# scripts/gate/test-reads.txt does not list. The docs tier runs guard, the scoreboard check and the
+# docs suite alone, and is red over a range that is not docs-only or when the docs suite is.
 # Last of all it runs itself once more under a gate's environment, as the gate's own fixture run
 # does, and must pass there too.
 set -euo pipefail
@@ -22,7 +23,7 @@ set -euo pipefail
 # log directory, its checkout), and gate.sh and flaky.sh would read them in place of the defaults
 # each case here is written against. Neither the settings nor the stand-ins' switches carry in.
 unset "${!GATE_@}" "${!FLAKY_@}" "${!PRE_@}" POST_SCRIPTS FAIL_PUSHGATE FAIL_REINSTALL FAIL_INTEG \
-  FAIL_SLOW FAIL_INTEG_ONCE FAIL_INSTALL_ONCE RESULTS_FIRST RERUN_JSONL JK_CALLS KA_STATE FAIL_SCOREBOARD \
+  FAIL_SLOW FAIL_DOCS FAIL_INTEG_ONCE FAIL_INSTALL_ONCE RESULTS_FIRST RERUN_JSONL JK_CALLS KA_STATE FAIL_SCOREBOARD \
   JK_CACHE_DIR
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -141,7 +142,8 @@ flaky $((t0 + 43 * day)) review >/dev/null
 # --- the gate, against a stand-in jk ---
 # The stand-in logs each call, fails the push gate's first run when FAIL_PUSHGATE is set, the
 # reinstall without tests when FAIL_REINSTALL is set, an exclusive test run when FAIL_INTEG is set
-# (the first one only under FAIL_INTEG_ONCE), the slow tier when FAIL_SLOW is set and the first
+# (the first one only under FAIL_INTEG_ONCE), the slow tier when FAIL_SLOW is set, the docs suite
+# when FAIL_DOCS is set and the first
 # `install -c` under FAIL_INSTALL_ONCE,
 # prints $RESULTS_FIRST as the first run's transcript and $RERUN_JSONL as any later one's, and
 # reports the checkout's HEAD as the engine's commit.
@@ -162,6 +164,7 @@ case "$1" in
     ;;
   test)
     [[ -n "${FAIL_SLOW:-}" && " $* " == *" -s slow "* ]] && { echo "FAIL a.AndroidE2eTest"; exit 4; }
+    [[ -n "${FAIL_DOCS:-}" && " $* " == *" -s docs "* ]] && { echo "FAIL a.DocsTest"; exit 4; }
     if [[ " $* " == *" -X "* ]]; then
       [[ -n "${FAIL_INTEG:-}" ]] && { echo "FAIL a.FlakyTest"; exit 4; }
       [[ -n "${FAIL_INTEG_ONCE:-}" && "$(grep -c -- ' -X ' "$JK_CALLS")" -eq 1 ]] && { echo "FAIL b.NewTest"; exit 4; }
@@ -222,6 +225,7 @@ want:
 $want"
 [[ ! -f "$WORK/logs/flaky-history.tsv" ]] || fail "a green gate recorded flaky classes"
 if grep -q -- '-s slow' "$WORK/calls-1"; then fail "a Full tier with no base ran the slow tier: $(cat "$WORK/calls-1")"; fi
+grep -qx 'test -s docs -c --no-ansi' "$WORK/calls-1" || fail "the Full tier did not run the docs suite alone: $(cat "$WORK/calls-1")"
 
 gate 2 FAIL_PUSHGATE=1
 [[ "$(verdict 2)" == "RED" ]] || fail "a push gate green only on its re-run was not red: $(cat "$WORK/logs/integ-gate-2.log")"
@@ -296,7 +300,7 @@ gate 5 GATE_TIER=queue GATE_BASE="$qbase"
 got="$(sed -n '/^install /,$p' "$WORK/calls-5" | grep -E '^(install|engine stop|test)')"
 want="$(printf '%s\n' 'install -S' 'engine stop' 'install -c' 'engine stop' \
   'test -s integration -c -X --no-ansi -m mod/a -m mod/a/packs/p' \
-  'test -s integration --no-ansi -m mod/b --class b.CuratedBTest')"
+  'test -s integration --no-ansi -m mod/b --class b.CuratedBTest' 'test -s docs -c --no-ansi')"
 [[ "$got" == "$want" ]] || fail "the Queue tier ran:
 $got
 want:
@@ -319,6 +323,9 @@ gate 7 GATE_TIER=queue GATE_BASE="$qbase" FAIL_INTEG=1 RERUN_JSONL="$WORK/red-ot
 [[ "$(verdict 7)" == "RED" ]] || fail "a run red outside the quarantine was not red: $(cat "$WORK/logs/integ-gate-7.log")"
 grep -q '^INTEG changed EXIT=4' "$WORK/logs/integ-gate-7.log" || fail "the log does not name the red run"
 [[ "$(grep -c -- ' -X ' "$WORK/calls-7")" -eq 1 ]] || fail "a run red with a compile error ran again: $(cat "$WORK/calls-7")"
+gate 24 GATE_TIER=queue GATE_BASE="$qbase" FAIL_DOCS=1 RERUN_JSONL="$WORK/red-other.jsonl"
+[[ "$(verdict 24)" == "RED" ]] || fail "a red docs suite did not make the Queue tier red: $(cat "$WORK/logs/integ-gate-24.log")"
+grep -q '^DOCS_SUITE_EXIT=4' "$WORK/logs/integ-gate-24.log" || fail "the log does not name the red docs suite"
 
 # Red in a class that passes when run once more: green, and the class is recorded as flaky.
 gate 10 GATE_TIER=queue GATE_BASE="$qbase" FAIL_INTEG_ONCE=1 RESULTS_FIRST="$WORK/red-new.jsonl" \
@@ -346,7 +353,8 @@ tip="$qroot"
 gate 8 GATE_TIER=queue GATE_BASE="$qtip"
 [[ "$(verdict 8)" == "GREEN $tip" ]] || fail "the Queue tier over a root change was not green: $(cat "$WORK/logs/integ-gate-8.log")"
 got="$(grep -E '^test' "$WORK/calls-8")"
-[[ "$got" == 'test -s integration -c --no-ansi' ]] || fail "a root change ran: $got"
+[[ "$got" == "$(printf '%s\n' 'test -s integration -c --no-ansi' 'test -s docs -c --no-ansi')" ]] ||
+  fail "a root change ran: $got"
 
 # The Full tier: no slow tier when no plugin changed since its base; the slow tier when one did,
 # and the gate is red when it is.
@@ -369,6 +377,9 @@ grep -q '^SLOW_EXIT=0 (changed since .*: plugins/x)' "$WORK/logs/integ-gate-15.l
 gate 16 GATE_TIER=full GATE_BASE="$qroot" FAIL_SLOW=1
 [[ "$(verdict 16)" == "RED" ]] || fail "a red slow tier was not red: $(cat "$WORK/logs/integ-gate-16.log")"
 grep -q '^SLOW_EXIT=4' "$WORK/logs/integ-gate-16.log" || fail "the log does not name the red slow tier"
+gate 22 GATE_TIER=full GATE_BASE="$qroot" FAIL_DOCS=1
+[[ "$(verdict 22)" == "RED" ]] || fail "a red docs suite did not make the Full tier red: $(cat "$WORK/logs/integ-gate-22.log")"
+grep -q '^DOCS_SUITE_EXIT=4' "$WORK/logs/integ-gate-22.log" || fail "the log does not name the red docs suite"
 
 # A suite of mod/b was seen reading docs/d.md, which the list does not hold: the Full tier is red
 # naming it, and `write` lists it.
@@ -377,6 +388,9 @@ tag="$(printf '%s\n%s' p1 mod/b | { sha256sum 2>/dev/null || shasum -a 256; } | 
 mkdir -p "$cache/projects/m-$tag/suite-reads"
 printf '%s\n' 'file ws:docs/d.md' 'file ws:mod/b/B.java' 'file ws:docs/gone.md' 'command proc:git' \
   >"$cache/projects/m-$tag/suite-reads/test-inputs-0123456789ab"
+# What `jk test -s docs` alone read is the docs tier's, and never in the list.
+docsel="$(printf '%s' 'suites=docs;+tag=;-tag=' | { sha256sum 2>/dev/null || shasum -a 256; } | cut -c1-12)"
+printf '%s\n' 'file ws:README.md' 'file ws:docs/d.md' >"$cache/projects/m-$tag/suite-reads/test-inputs-$docsel"
 gate 21 GATE_TIER=full GATE_BASE="$qroot" JK_CACHE_DIR="$cache"
 [[ "$(verdict 21)" == "RED" ]] || fail "a doc read and not listed was not red: $(cat "$WORK/logs/integ-gate-21.log")"
 grep -q 'a test reads docs/d.md, which test-reads.txt does not list' "$WORK/logs/integ-gate-21.log" ||
@@ -387,18 +401,22 @@ grep -q 'a test reads docs/d.md, which test-reads.txt does not list' "$WORK/logs
   fail "the list written was not current: $(cat "$q/scripts/gate/test-reads.txt")"
 git -C "$q" checkout -q -- scripts/gate/test-reads.txt
 
-# The docs tier: guard and the scoreboard check over a docs-only range, and nothing else.
+# The docs tier: guard, the scoreboard check and the docs suite over a docs-only range, and nothing
+# else.
 dbase="$tip"
 echo 3 >"$q/docs/d.md" && echo 3 >"$q/README.md" && qc docs-only
 tip="$(git -C "$q" rev-parse HEAD)"
 gate 17 GATE_TIER=docs GATE_BASE="$dbase"
 [[ "$(verdict 17)" == "GREEN $tip" ]] || fail "a docs-only range was not green: $(cat "$WORK/logs/integ-gate-17.log")"
 got="$(grep -vE '^(--version|engine status)' "$WORK/calls-17")"
-[[ "$got" == guard ]] || fail "the docs tier ran: $got"
+[[ "$got" == "$(printf '%s\n' guard 'test -s docs -c --no-ansi')" ]] || fail "the docs tier ran: $got"
 grep -q '^SCOREBOARD_EXIT=0' "$WORK/logs/integ-gate-17.log" || fail "the docs tier did not check the scoreboard"
 gate 18 GATE_TIER=docs GATE_BASE="$dbase" FAIL_SCOREBOARD=1
 [[ "$(verdict 18)" == "RED" ]] || fail "a stale scoreboard block was not red: $(cat "$WORK/logs/integ-gate-18.log")"
 grep -q 'stale: docs/d.md' "$WORK/logs/integ-gate-18.log" || fail "the log does not say what is stale"
+gate 23 GATE_TIER=docs GATE_BASE="$dbase" FAIL_DOCS=1
+[[ "$(verdict 23)" == "RED" ]] || fail "a red docs suite passed the docs tier: $(cat "$WORK/logs/integ-gate-23.log")"
+grep -q '^DOCS_SUITE_EXIT=4' "$WORK/logs/integ-gate-23.log" || fail "the log does not name the red docs suite"
 gate 19 GATE_TIER=docs GATE_BASE="$qroot"
 [[ "$(verdict 19)" == "RED (not docs-only since $qroot)" ]] || fail "a range with code passed the docs tier: $(cat "$WORK/logs/integ-gate-19.log")"
 echo 2 >"$q/docs/read.md" && qc read
@@ -419,4 +437,4 @@ if [[ -z "${TEST_GATE_NESTED:-}" ]]; then
     fail "under a Queue-tier gate's environment: $(cat "$WORK/nested.log")"
 fi
 
-echo "test-gate: ok (flaky record and quarantine; 22 gate runs; again under a gate's environment)"
+echo "test-gate: ok (flaky record and quarantine; 25 gate runs; again under a gate's environment)"

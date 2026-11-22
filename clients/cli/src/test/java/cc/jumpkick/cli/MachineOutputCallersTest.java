@@ -23,6 +23,7 @@ import java.util.Set;
 import java.util.TreeSet;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -33,6 +34,7 @@ import org.junit.jupiter.api.Test;
  * would answer it with a usage error, which is how {@code jk web -O jsonl} broke the VS Code
  * extension.
  */
+@Tag("docs")
 class MachineOutputCallersTest {
 
     /** Where callers live, from the checkout root; every one must exist so the scan cannot go blind. */

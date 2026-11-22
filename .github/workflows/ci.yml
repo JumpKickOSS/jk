@@ -216,6 +216,11 @@ jobs:
       - name: Self-host fast test tier
         run: jk test --no-ansi
 
+      # The tests that scan the doc tree, which the fast tier no longer runs: they hold the docs to
+      # the code, so a change to either can break them.
+      - name: Docs test suite
+        run: jk test -s docs --no-ansi
+
       # The boundary lane: the integration classes curated-integration.txt names, module by module,
       # under the same engine, workers and home the fast tier just ran with. The full integration
       # suite is nightly; this subset is the only integration coverage a pull request gets, so

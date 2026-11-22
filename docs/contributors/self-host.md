@@ -28,17 +28,19 @@ the tier `GATE_TIER` names ([tiers](test-suite-tiers.md#gate-tiers)). It takes t
 - **`GATE_TIER=queue`**, the push gate the [merge queue](#the-merge-queue) runs on every batch:
   `jk install -S` (the reinstall without tests), then under a freshly started engine
   `jk install -c` (every module's fast tier, then the reinstall), the integration suite of each
-  module changed since `GATE_BASE` (`scripts/gate/changed-modules.sh`) and the curated lane's
-  classes in the other modules.
+  module changed since `GATE_BASE` (`scripts/gate/changed-modules.sh`), the curated lane's
+  classes in the other modules, and the docs suite (`jk test -s docs`), which holds the docs to
+  the code.
 - **`GATE_TIER=full`** (the default): `jk install -S` (the reinstall without tests), `jk install -g`
   under a freshly started engine (the one run of the fast tier, with the gated tiers), then
-  `jk test -s release`, `jk test -s slow` when a member under `plugins/` or a root build file
+  `jk test -s docs`, `jk test -s release`, `jk test -s slow` when a member under `plugins/` or a root build file
   changed since `GATE_BASE` (none without it), the release notes, and
   `scripts/gate/docs-only.sh check`: red when a suite was seen reading a doc that
   `scripts/gate/test-reads.txt` does not list.
 - **`GATE_TIER=docs`**, which the queue runs in place of the Queue tier when everything since
-  `GATE_BASE` is [docs-only](#docs-only-changes): `jk guard` and `bench/scoreboard --render --check`,
-  no install and no test. It is red over a range that is not docs-only.
+  `GATE_BASE` is [docs-only](#docs-only-changes): `jk guard`, `bench/scoreboard --render --check`
+  and `jk test -s docs`, no install and no other test. It is red over a range that is not
+  docs-only.
 
 Both reinstall before any test runs, because a test's verdict is keyed by the engine that ran it:
 a batch that changes the engine reruns every suite under its own engine, and the next gate reuses
@@ -132,14 +134,22 @@ settings, and `scripts/test-queue.sh` holds it to the rules above in scratch rep
 ### Docs-only changes
 
 A change is docs-only when every file it touches is a doc (a file under `docs/` or `hosting/`, or a
-Markdown file at the root) that no test reads; `scripts/gate/docs-only.sh range <base> <tip>` says
-whether a range is. The docs tests read are `scripts/gate/test-reads.txt`. Nobody writes it by
-hand: JumpKick records every file a suite reads ([discovered inputs](../user/test.md#what-a-suite-read-discovered-inputs)),
-and `scripts/gate/docs-only.sh write` collects the docs among them for every workspace member from
-JumpKick's cache. Run it after a run of every suite and commit the result. The Full tier runs
-`scripts/gate/docs-only.sh check` once all its suites ran, and is red naming each doc a suite read
-that the list lacks. A test that scans a directory of docs reads every file in it, so a doc stays
-out of the docs-only set until no test scans it.
+Markdown file at the root) that no test reads but those of the docs suite, which the docs tier
+runs; `scripts/gate/docs-only.sh range <base> <tip>` says whether a range is. The docs tests read
+are `scripts/gate/test-reads.txt`. Nobody writes it by hand: JumpKick records every file a suite
+reads ([discovered inputs](../user/test.md#what-a-suite-read-discovered-inputs)), one record per
+module and selection, and `scripts/gate/docs-only.sh write` collects the docs among them for every
+workspace member from JumpKick's cache, leaving out the record of `jk test -s docs`. Run it after a
+run of every suite and commit the result. The Full tier runs `scripts/gate/docs-only.sh check` once
+all its suites ran, and is red naming each doc a suite read that the list lacks.
+
+**The docs suite** holds the tests that scan the doc tree: `MachineOutputCallersTest` (every
+`-O json` caller, in the docs too) and `PluginDefaultDocsTest` (every built-in plugin default a page
+quotes). A test that walks a directory of docs reads every file in it, so outside this suite it
+would keep every doc out of the docs-only set; tag it `@Tag("docs")`. A test that reads a few named
+docs stays in its tier, and those docs stay in the list. The suite runs alone, never in a run of
+several suites (`jk install -g`), because such a run records what all of them read as one, and
+the docs it reads would land in the list again.
 
 `jk install` must not rewrite the committed `jk-lock.toml`: the manifests pin exactly, so a build
 that moves the lock means a pin drifted or the lock writer put something non-deterministic in the

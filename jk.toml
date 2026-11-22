@@ -144,6 +144,8 @@ modules = [
 #                          (`jk install`) runs it.
 #   jk test -g             test + integration + e2e (guard-suites). The Full tier (`jk install -g`)
 #                          runs them.
+#   jk test -s docs        tests that scan the doc tree. The docs, Queue and Full tiers run it on
+#                          its own, so what it reads stays out of scripts/gate/test-reads.txt.
 #   jk test -s slow        framework and language e2e. Nightly, never gating.
 #   jk test -s network     talks to a real remote. Nightly, never gating.
 #   jk test -s release     a real browser or other cost worth paying once per release. CI on the tag.
@@ -171,6 +173,14 @@ tags = ["integration"]
 exclude-tags = ["slow", "network", "release", "live", "bench"]
 timeout = "5m"
 env = { JK_HTTP_DENY_HOSTS = "jumpkick.build" }
+
+# The tests that scan the doc tree (every page under docs/, the root Markdown): what they read is
+# the doc tree itself, so a docs-only change runs this suite and nothing else, and a doc only it reads
+# is docs-only (scripts/gate/docs-only.sh). A test that reads a few named docs stays where it is.
+# Off guard-suites: a run of several suites records their reads as one, so it runs alone.
+[test.suites.docs]
+tags = ["docs"]
+exclude-tags = ["integration", "slow", "network", "release", "live", "bench"]
 
 # Framework / language end-to-end: does an Android / Grails / Scala / KSP / Protobuf
 # project still build all the way through. Off the gate: what it asserts breaks when a

@@ -290,13 +290,15 @@ that commit and fast-forwards `origin/main` to it; it never force-pushes.
 and nothing else: the queue lands the batch on the new `origin/main` without gating it again when
 everything that came in is docs-only, and applies and gates it again otherwise. A change is
 **docs-only** when every file it touches is a doc (under `docs/` or `hosting/`, or Markdown at the
-root) that no test reads. The docs tests read are `scripts/gate/test-reads.txt`, written by
+root) that no test reads but those of the docs suite (`jk test -s docs`, the tests that scan the
+doc tree). The docs tests read are `scripts/gate/test-reads.txt`, written by
 `scripts/gate/docs-only.sh write` from what the suites were seen reading; the Full tier is red while
-a read is missing from it. Tests read `docs/user/skill.md`, `machine-output.md`, `why.md`, the
-examples under `docs/user/examples/` and most other pages, so a change to one is not docs-only. A
-docs-only batch skips the Queue tier and runs the docs checks alone (`GATE_TIER=docs`: `jk guard`,
-which holds the link check, and `bench/scoreboard --render --check`); the Full tier still runs
-everything.
+a read is missing from it. Tests read `docs/user/skill.md`, `machine-output.md`, `why.md` and the
+examples under `docs/user/examples/`, so a change to one is not docs-only. A docs-only batch skips
+the Queue tier and runs the docs checks alone (`GATE_TIER=docs`: `jk guard`, which holds the link
+check, `bench/scoreboard --render --check` and the docs suite); every code batch runs the docs suite
+too, and the Full tier still runs everything. A new test that walks a directory of docs is tagged
+`@Tag("docs")`.
 
 A branch that conflicts, or that is
 red alone, is ejected with the reason and the failing classes, which the queue also writes on its

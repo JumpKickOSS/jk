@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
-# Which changes are docs-only: every file they touch is a doc that no test reads. A doc is a file
-# under docs/ or hosting/, or a Markdown file at the root. The docs tests read are
-# scripts/gate/test-reads.txt, derived from what the suites were seen reading: jk records each file a
-# suite reads (docs/user/test.md, "What a suite read: discovered inputs") in its cache, under the
-# module, and `write` collects those of every [workspace] member. A test that scans a directory of
-# docs reads every file in it, so each of them is in the list.
+# Which changes are docs-only: every file they touch is a doc that no test reads, other than the docs
+# suite's (`jk test -s docs`), which the docs tier runs. A doc is a file under docs/ or hosting/, or a
+# Markdown file at the root. The docs tests read are scripts/gate/test-reads.txt, derived from what
+# the suites were seen reading: jk records each file a suite reads (docs/user/test.md, "What a suite
+# read: discovered inputs") in its cache, under the module and the selection that ran, and `write`
+# collects those of every [workspace] member, leaving out what `jk test -s docs` alone read. A test
+# that scans a directory of docs reads every file in it, so it belongs in the docs suite.
 #
 # Usage: scripts/gate/docs-only.sh range <base> [<tip>]   exit 0 when base..tip is docs-only
 #        scripts/gate/docs-only.sh reads                  the docs the recordings show tests read
@@ -41,17 +42,22 @@ members() {
   ' "$root/jk.toml"
 }
 
-# The tracked docs some suite of a member was recorded reading. A member's recordings are under
-# projects/m-<tag>, the tag the first 12 hex of sha256("<project-id>\n<member path>").
+sha12() { { sha256sum 2>/dev/null || shasum -a 256; } | cut -c1-12; }
+
+# The tracked docs some suite of a member was recorded reading, but for the docs suite run alone. A
+# member's recordings are under projects/m-<tag>, the tag the first 12 hex of
+# sha256("<project-id>\n<member path>"), one file per selection: test-inputs-<sel>, <sel> the first 12
+# hex of sha256 of the selection's identity, "suites=docs;+tag=;-tag=" for `jk test -s docs`.
 reads() {
-  local id cache m tag
+  local id cache m tag docs
   id="$(sed -n 's/^project-id *= *"\([^"]*\)".*/\1/p' "$root/jk-lock.toml" 2>/dev/null | head -1)"
   [ -n "$id" ] || return 0
   cache="${JK_CACHE_DIR:-${JK_HOME:-$HOME/.jk}/cache}"
+  docs="test-inputs-$(printf '%s' 'suites=docs;+tag=;-tag=' | sha12)"
   for m in $(members); do
-    tag="$(printf '%s\n%s' "$id" "$m" | { sha256sum 2>/dev/null || shasum -a 256; } | cut -c1-12)"
+    tag="$(printf '%s\n%s' "$id" "$m" | sha12)"
     for f in "$cache/projects/m-$tag/suite-reads/"test-inputs-*; do
-      if [ -f "$f" ]; then sed -n 's/^file ws://p' "$f"; fi
+      if [ -f "$f" ] && [ "${f##*/}" != "$docs" ]; then sed -n 's/^file ws://p' "$f"; fi
     done
   done | sort -u | comm -12 - <(git -C "$root" ls-files | is_doc | sort)
 }

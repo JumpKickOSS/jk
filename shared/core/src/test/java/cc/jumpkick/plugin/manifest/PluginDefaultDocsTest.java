@@ -14,12 +14,14 @@ import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 /**
  * Every release a docs/user page quotes as a built-in plugin's default is the one its manifest
  * defaults to, so a bumped tool default cannot leave a page naming the old one.
  */
+@Tag("docs")
 class PluginDefaultDocsTest {
 
     private static final Pattern VERSION = Pattern.compile("\\d+(\\.\\d+)+");
