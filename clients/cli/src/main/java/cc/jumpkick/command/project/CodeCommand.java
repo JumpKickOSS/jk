@@ -38,7 +38,7 @@ public final class CodeCommand extends GroupCommand {
 
     final GraphOpCommand usages = op(
             "usages",
-            "Every use of a method, field, type or anchor, with file:line",
+            "Each use of a method, field, type or anchor, at file:line",
             scoped(
                     Opt.flag("Also their callers, and theirs: all that reach it.", "-t", "--transitive"),
                     Opt.value("<n>", "Most hops with -t (default 8).", "-L", "--max-hops"),
@@ -82,7 +82,7 @@ public final class CodeCommand extends GroupCommand {
 
     final GraphOpCommand read = op(
             "read",
-            "A symbol's source or a type's members, in the view that fits",
+            "A symbol's source or a type's members, sized to fit",
             scoped(
                     Opt.value("<view>", "content, structure or headline (default: what fits).", "-w", "--view"),
                     BUDGET,
@@ -91,7 +91,7 @@ public final class CodeCommand extends GroupCommand {
 
     final GraphOpCommand find = op(
             "find",
-            "Declarations by kind, visibility, supertype, annotation, name",
+            "Declarations by kind, supertype, annotation and name glob",
             scoped(
                     Opt.value("<kinds>", "class, interface, method, ... (type, member).", "-t", "--kind"),
                     Opt.value("<vis>", "public, protected, internal, package, private.", "-p", "--visibility"),
@@ -113,24 +113,24 @@ public final class CodeCommand extends GroupCommand {
                 rename,
                 op(
                         "delete",
-                        "Delete a method, field or type nothing uses; else list what does",
+                        "Delete what nothing uses; else list what uses it",
                         List.of(
                                 Opt.value("<kind>", "method, field or type (default: what it names).", "-t", "--kind"),
                                 BUDGET),
                         List.of(Param.of("symbol", Arity.ONE, "Type.method (every overload), Type.field or Type"))),
                 op(
                         "move",
-                        "Move a static method or field to another type, editing every use",
+                        "Move a static method or field, editing every use",
                         List.of(BUDGET),
                         List.of(MEMBER, Param.of("type", Arity.ONE, "the class, enum or record it moves to"))),
                 op(
                         "pull-up",
-                        "Move an instance method or field up to the class its type extends",
+                        "Move an instance member up to the parent class",
                         List.of(BUDGET),
                         List.of(MEMBER, Param.of("type", Arity.ZERO_OR_ONE, "the class its type extends (default)"))),
                 op(
                         "extract-interface",
-                        "Create an interface from a class's methods; the class implements it",
+                        "Create an interface a class implements, from its methods",
                         List.of(BUDGET),
                         List.of(
                                 Param.of("class", Arity.ONE, "the class, enum or record"),
@@ -138,7 +138,7 @@ public final class CodeCommand extends GroupCommand {
                                 Param.of(
                                         "methods",
                                         Arity.ZERO_OR_ONE,
-                                        "a,b,c (every overload; default: each public one overriding nothing)"))),
+                                        "a,b,c (every overload; default: public ones overriding nothing)"))),
                 op(
                         "rules",
                         "The guard rules and NOTE/WHY comments that govern a file",
