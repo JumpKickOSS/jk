@@ -229,6 +229,99 @@ class InstanceMoveTest {
     }
 
     @Test
+    void aGenericConstructorOrTypeArgumentsAreReadAsOneReceiverAndOneArgument(@TempDir Path dir) throws IOException {
+        Map<String, String> files =
+                RenameFixture.files(SHOP + "Customer.java", CUSTOMER, SHOP + "Box.java", """
+                package org.acme.shop;
+
+                public class Box<K, V> {
+
+                    final Customer customer;
+
+                    K key;
+
+                    public Box(Customer customer) {
+                        this.customer = customer;
+                    }
+
+                    public static <K, V> Box<K, V> of(Customer c) {
+                        return new Box<>(c);
+                    }
+
+                    public String tag(Customer c, Object o) {
+                        return c.name() + key + o;
+                    }
+                }
+                """, SHOP + "Desk.java", """
+                package org.acme.shop;
+
+                class Desk {
+                    String made(Customer c) {
+                        return new Box<String, Integer>(c).tag(c, new Box<String, Integer>(c));
+                    }
+
+                    String built(Customer c, int n) {
+                        return Box.<String, Integer>of(c).tag(c, n > 1 ? "many" : "one");
+                    }
+                }
+                """);
+        RenameFixture f = new RenameFixture(dir, files);
+
+        assertThat(f.move("Box.tag", "Customer"))
+                .contains("  r1  through the field Box.customer (2 of 2 calls cannot)")
+                .contains(SHOP + "Desk.java:5  cannot: its receiver would run twice")
+                .contains(SHOP + "Desk.java:5  c.tag(new Box<String, Integer>(c), new Box<String, Integer>(c))")
+                .contains(SHOP + "Desk.java:9  c.tag(Box.<String, Integer>of(c), n > 1 ? \"many\" : \"one\")");
+        assertThat(f.move("Box.tag", "Customer", "via=r2")).startsWith("Moved Box.tag() to ");
+
+        assertThat(f.read(SHOP + "Desk.java"))
+                .contains("return c.tag(new Box<String, Integer>(c), new Box<String, Integer>(c));")
+                .contains("return c.tag(Box.<String, Integer>of(c), n > 1 ? \"many\" : \"one\");");
+        assertThat(f.checkMove()).startsWith("Proven: it compiles, and Customer.tag has the 3 references");
+    }
+
+    @Test
+    void aCallFromAClassInsideTheSourceIsRefused(@TempDir Path dir) throws IOException {
+        Map<String, String> files = shop();
+        String order = ORDER.replace("    public String line() {", """
+                    class Copy {
+                        final Customer customer = new Customer("copy");
+
+                        String hello() {
+                            return greeting();
+                        }
+                    }
+
+                    Runnable greeter() {
+                        return new Runnable() {
+                            public void run() {
+                                System.out.println(greeting());
+                            }
+                        };
+                    }
+
+                    String later() {
+                        java.util.function.Supplier<String> s = () -> greeting();
+                        return s.get();
+                    }
+
+                    public String line() {""");
+        files.put(SHOP + "Order.java", order);
+        RenameFixture f = new RenameFixture(dir, files);
+
+        assertThat(f.move("Order.greeting", "Customer"))
+                .startsWith("Not moved, nothing is written: moving Order.greeting() to org.acme.shop.Customer"
+                        + " through r1 would break or change:")
+                .contains("a call from a nested or anonymous class, where this is another instance  " + SHOP
+                        + "Order.java:22")
+                .contains("a call from a nested or anonymous class, where this is another instance  " + SHOP
+                        + "Order.java:29")
+                .contains(SHOP + "Order.java:35  this.customer.greeting()")
+                .doesNotContain("type arguments");
+        assertThat(f.read(SHOP + "Order.java")).isEqualTo(order);
+    }
+
+    @Test
     void inAnotherPackageTheSourceTypeIsImportedAndADocLinkNamesTheNewSignature(@TempDir Path dir) throws IOException {
         Map<String, String> files = RenameFixture.files(
                 CRM + "Customer.java",

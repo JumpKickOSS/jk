@@ -58,6 +58,9 @@ final class InstanceMove {
     private static final Pattern NESTED = Pattern.compile(
             "\\bnew\\s+[\\w$.]+\\s*(?:<[^;{}]*?>)?\\s*\\([^;{}]*\\)\\s*\\{|\\b(?:class|interface|enum|record)\\s+[A-Za-z_$]");
 
+    /** The header of a named class body: a nested one's {@code this} is not its enclosing instance. */
+    private static final Pattern CLASS = Pattern.compile("(?<![\\w$.])(?:class|interface|enum|record)\\s+[A-Za-z_$]");
+
     private static final Set<String> OBJECT = Set.of("equals", "hashCode", "toString", "clone", "finalize");
 
     /** Calls quoted under each route before the rest are counted. */
@@ -124,7 +127,7 @@ final class InstanceMove {
                 open,
                 close,
                 end,
-                split(code, open, close, true),
+                split(text, code, open, close, true),
                 descriptors(sig.substring(1, sig.indexOf(')'))),
                 sig.substring(sig.indexOf(')') + 1));
         if (head.params().size() != head.desc().size()) {
@@ -360,10 +363,10 @@ final class InstanceMove {
                     continue;
                 }
                 if (code == null) code = code(f.text);
-                int k = before(f.text, s.start());
-                char c = k < 0 ? ' ' : f.text.charAt(k);
+                int k = before(code, s.start());
+                char c = k < 0 ? ' ' : code.charAt(k);
                 int o = after(code, s.end());
-                if (c == ':' || c == '>' || o >= code.length() || code.charAt(o) != '(') {
+                if (c == ':' || c == '>' && typeArguments(code, k) || o >= code.length() || code.charAt(o) != '(') {
                     p.h.add("reference", "  a method reference or type arguments this move cannot rewrite  " + where);
                     continue;
                 }
@@ -373,7 +376,13 @@ final class InstanceMove {
                     p.h.add("receiver", "  a call this move cannot read  " + where);
                     continue;
                 }
-                calls.add(new Call(f, s, recv, c == '.' ? k : -1, o, cl, split(code, o, cl, false)));
+                if (c != '.' && nested(f, code, s.start(), p.fromBin)) {
+                    p.h.add(
+                            "nested",
+                            "  a call from a nested or anonymous class, where this is another instance  " + where);
+                    continue;
+                }
+                calls.add(new Call(f, s, recv, c == '.' ? k : -1, o, cl, split(f.text, code, o, cl, false)));
             }
         }
     }
@@ -730,23 +739,27 @@ final class InstanceMove {
     }
 
     /**
-     * The items between the parentheses at {@code open} and {@code close}, each {@code [start, end)}
-     * trimmed; {@code angles} also nests {@code <>}, for a declaration's parameter types.
+     * The items between the parentheses at {@code open} and {@code close} of blanked {@code code},
+     * each {@code [start, end)} trimmed in {@code text}; {@code angles} nests every {@code <>}, for a
+     * declaration's parameter types, else only type arguments do.
      */
-    static List<int[]> split(String code, int open, int close, boolean angles) {
+    static List<int[]> split(String text, String code, int open, int close, boolean angles) {
         List<int[]> out = new ArrayList<>();
-        if (code.substring(open + 1, close).isBlank()) return out;
+        if (text.substring(open + 1, close).isBlank()) return out;
         int depth = 0;
+        int angle = 0;
         int from = open + 1;
         for (int i = open + 1; i <= close; i++) {
             char c = i == close ? ',' : code.charAt(i);
-            if (c == '(' || c == '[' || c == '{' || angles && c == '<') depth++;
-            else if (c == ')' || c == ']' || c == '}' || angles && c == '>') depth--;
-            else if (c == ',' && depth == 0) {
+            if (c == '(' || c == '[' || c == '{') depth++;
+            else if (c == ')' || c == ']' || c == '}') depth--;
+            else if (c == '<' && (angles || angle > 0 || opensTypeArguments(code, i))) angle++;
+            else if (c == '>' && angle > 0) angle--;
+            else if (c == ',' && depth == 0 && angle == 0) {
                 int s = from;
                 int e = i;
-                while (s < e && Character.isWhitespace(code.charAt(s))) s++;
-                while (e > s && Character.isWhitespace(code.charAt(e - 1))) e--;
+                while (s < e && Character.isWhitespace(text.charAt(s))) s++;
+                while (e > s && Character.isWhitespace(text.charAt(e - 1))) e--;
                 out.add(new int[] {s, e});
                 from = i + 1;
             }
@@ -772,8 +785,9 @@ final class InstanceMove {
     }
 
     /**
-     * The start of the receiver before the dot at {@code dot}: a chain of names, calls, array reads
-     * and parenthesized expressions, with a {@code new} before it; -1 when it cannot be read.
+     * The start of the receiver before the dot at {@code dot}: a chain of names, calls, array reads,
+     * parenthesized expressions and type arguments, with a {@code new} before it; -1 when it cannot
+     * be read.
      */
     private static int receiverStart(String code, int dot) {
         int i = before(code, dot);
@@ -784,6 +798,10 @@ final class InstanceMove {
                 int o = opening(code, i);
                 if (o < 0) return -1;
                 int k = before(code, o);
+                if (c == ')' && k > 0 && code.charAt(k) == '>' && code.charAt(k - 1) != '-') {
+                    int lt = angleOpen(code, k);
+                    return lt < 0 ? -1 : created(code, before(code, lt));
+                }
                 if (k >= 0 && (Character.isJavaIdentifierPart(code.charAt(k)) || c == ']' && code.charAt(k) == ')')) {
                     i = k;
                     continue;
@@ -800,6 +818,10 @@ final class InstanceMove {
                 i = before(code, k);
                 continue;
             }
+            if (k >= 0 && code.charAt(k) == '>' && typeArguments(code, k)) {
+                i = before(code, before(code, angleOpen(code, k)));
+                continue;
+            }
             if (k >= 2
                     && code.startsWith("new", k - 2)
                     && (k < 3 || !Character.isJavaIdentifierPart(code.charAt(k - 3)))) {
@@ -808,5 +830,101 @@ final class InstanceMove {
             return unit;
         }
         return -1;
+    }
+
+    /** Whether the {@code >} at {@code gt} closes the explicit type arguments of a call, {@code a.<T>b()}. */
+    private static boolean typeArguments(String code, int gt) {
+        if (gt > 0 && code.charAt(gt - 1) == '-') return false;
+        int lt = angleOpen(code, gt);
+        int dot = lt < 0 ? -1 : before(code, lt);
+        return dot >= 0 && code.charAt(dot) == '.';
+    }
+
+    /**
+     * Whether the {@code <} at {@code lt} opens type arguments: after a dot, {@code a.<T>b()}, or
+     * after the type a {@code new} names, {@code new Box<K, V>()}; else it compares.
+     */
+    private static boolean opensTypeArguments(String code, int lt) {
+        int k = before(code, lt);
+        return k >= 0 && (code.charAt(k) == '.' || created(code, k) >= 0);
+    }
+
+    /** The {@code <} matching the {@code >} at {@code gt} over what type arguments can hold, or -1. */
+    private static int angleOpen(String code, int gt) {
+        int depth = 0;
+        for (int i = gt; i >= 0; i--) {
+            char c = code.charAt(i);
+            if (c == '>') depth++;
+            else if (c == '<') {
+                if (--depth == 0) return i;
+            } else if (!Character.isJavaIdentifierPart(c) && !Character.isWhitespace(c) && ".,?[]@".indexOf(c) < 0) {
+                return -1;
+            }
+        }
+        return -1;
+    }
+
+    /** The start of the {@code new} before the type name that ends at {@code end}, or -1 when none is there. */
+    private static int created(String code, int end) {
+        int i = end;
+        while (i >= 0 && Character.isJavaIdentifierPart(code.charAt(i))) {
+            while (i > 0 && Character.isJavaIdentifierPart(code.charAt(i - 1))) i--;
+            int k = before(code, i);
+            if (k >= 0 && code.charAt(k) == '.') {
+                i = before(code, k);
+                continue;
+            }
+            boolean made = k >= 2
+                    && code.startsWith("new", k - 2)
+                    && (k < 3 || !Character.isJavaIdentifierPart(code.charAt(k - 3)));
+            return made ? k - 2 : -1;
+        }
+        return -1;
+    }
+
+    /**
+     * Whether offset {@code at} of {@code f} sits in a class nested in another that is not the source
+     * type: an unqualified call there runs on that class's enclosing instance, not on {@code this}.
+     */
+    private static boolean nested(FileEdit f, String code, int at, String fromBin) {
+        List<Integer> bodies = new ArrayList<>();
+        int depth = 0;
+        for (int i = at - 1; i >= 0; i--) {
+            char c = code.charAt(i);
+            if (c == '}') depth++;
+            else if (c == '{' && depth > 0) depth--;
+            else if (c == '{' && classBody(code, i)) bodies.add(i);
+        }
+        if (bodies.size() < 2) return false;
+        int brace = bodies.getFirst();
+        int head = statementStart(code, brace);
+        for (ReferenceIndex.Span s : f.spans) {
+            if (s.kind() == 'd' && s.symbol().equals("T " + fromBin) && s.start() >= head && s.start() < brace) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /** Whether the brace at {@code brace} opens a class body, a named class's or an anonymous one's. */
+    private static boolean classBody(String code, int brace) {
+        int k = before(code, brace);
+        if (k >= 0 && code.charAt(k) == ')') {
+            int o = opening(code, k);
+            int n = o < 0 ? -1 : before(code, o);
+            if (n > 0 && code.charAt(n) == '>') {
+                int lt = angleOpen(code, n);
+                n = lt < 0 ? -1 : before(code, lt);
+            }
+            if (n >= 0 && created(code, n) >= 0) return true;
+        }
+        return CLASS.matcher(code.substring(statementStart(code, brace), brace)).find();
+    }
+
+    /** The offset just past the semicolon or brace before {@code at}. */
+    private static int statementStart(String code, int at) {
+        int i = at - 1;
+        while (i >= 0 && ";{}".indexOf(code.charAt(i)) < 0) i--;
+        return i + 1;
     }
 }
