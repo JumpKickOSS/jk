@@ -18,7 +18,7 @@ import org.junit.jupiter.api.Test;
 class CodeGraphToolArgsTest {
 
     private static final Map<String, Object> EVERY_SETTING = Map.of(
-            "address", "A.b", "to", "c", "token_budget", 50_000, "max_hops", 40, "scope", "src", "transitive", true);
+            "address", "A.b", "to", "c", "token_budget", 20_000, "max_hops", 40, "scope", "src", "transitive", true);
 
     @Test
     void rename_reads_no_graph_setting_its_card_does_not_declare() {
@@ -36,10 +36,20 @@ class CodeGraphToolArgsTest {
 
         assertThat(request.op()).isEqualTo("usages");
 
-        assertThat(request.budget()).isEqualTo(50_000);
+        assertThat(request.budget()).isEqualTo(20_000);
         assertThat(request.maxHops()).isEqualTo(40);
         assertThat(request.scope()).isEqualTo("src");
         assertThat(request.options()).contains("transitive=true");
+    }
+
+    @Test
+    void every_tool_clamps_token_budget_to_the_mcp_maximum() {
+        for (String tool : List.of("usages", "query", "read", "find")) {
+            assertThat(request(tool, Map.of("address", "A.b", "question", "q", "token_budget", 100_000))
+                            .budget())
+                    .as(tool)
+                    .isEqualTo(32_000);
+        }
     }
 
     @Test

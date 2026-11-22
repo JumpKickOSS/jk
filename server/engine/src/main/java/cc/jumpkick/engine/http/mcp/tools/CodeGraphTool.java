@@ -29,6 +29,12 @@ import org.jspecify.annotations.Nullable;
  */
 public final class CodeGraphTool implements McpTool {
 
+    /**
+     * The most {@code token_budget} an agent may ask for: one answer past it would fill much of an
+     * agent's context. A larger ask is clamped, and the answer is cut there and says how to narrow.
+     */
+    static final int MAX_TOKEN_BUDGET = 32_000;
+
     private final Spec spec;
     private final String op;
     private final Function<McpCall, List<String>> args;
@@ -300,7 +306,7 @@ public final class CodeGraphTool implements McpTool {
                 args.apply(in),
                 "bfs",
                 3,
-                declared("token_budget") ? in.count("token_budget", 2000, 100, 100_000) : 2000,
+                declared("token_budget") ? in.count("token_budget", 2000, 100, MAX_TOKEN_BUDGET) : 2000,
                 List.of(),
                 false,
                 declared("max_hops") ? in.count("max_hops", 8, 1, 50) : 8,
