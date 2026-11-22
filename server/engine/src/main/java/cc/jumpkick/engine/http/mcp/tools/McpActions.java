@@ -126,7 +126,8 @@ final class McpActions {
                     case "usages", "read", "delete" -> name + " " + orEmpty(call.str("address"));
                     case "find" -> "find " + orEmpty(call.str("name"));
                     case "rename", "move", "pull_up" ->
-                        name + " " + orEmpty(call.str("address")) + " → " + orEmpty(call.str("to"));
+                        name + " " + orEmpty(call.str("address"))
+                                + (orEmpty(call.str("to")).isBlank() ? "" : " → " + call.str("to"));
                     case "deps" ->
                         "deps " + call.action("add").toLowerCase(Locale.ROOT) + " "
                                 + String.join(", ", call.strings("coords"))

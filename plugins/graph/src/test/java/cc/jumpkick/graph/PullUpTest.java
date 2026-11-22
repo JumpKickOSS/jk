@@ -258,4 +258,17 @@ class PullUpTest {
         assertThat(f.pullUp("Book.label", "Item")).startsWith("Pulled up Book.label() to org.acme.base.Item: ");
         assertThat(f.checkMove()).startsWith("Proven: it compiles, and Item.label has the 4 references");
     }
+
+    @Test
+    void aPullUpThatNamesNoClassGoesToTheOneItsTypeExtends(@TempDir Path dir) throws IOException {
+        Map<String, String> files = shop();
+        // The import names the superclass; a class of the same name in Book's own package is not it.
+        files.put(SHOP + "Item.java", "package org.acme.shop;\n\nclass Item {}\n");
+        RenameFixture f = new RenameFixture(dir, files);
+
+        assertThat(f.pullUp("org.acme.base.Item.name"))
+                .isEqualTo("Not pulled up: org.acme.base.Item extends no class.");
+        assertThat(f.pullUp("Book.label")).startsWith("Pulled up Book.label() to org.acme.base.Item: ");
+        assertThat(f.checkMove()).startsWith("Proven: it compiles, and Item.label has the 4 references");
+    }
 }

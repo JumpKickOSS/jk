@@ -53,10 +53,9 @@ class McpActionsTest {
                 tool("deps", in -> in.error("no such artifact org.postgresql:postgresql\n")),
                 tool("status", in -> in.text("ok\n"))));
 
-        // A call by the released name is logged as the tool that answers it.
         tools.call(
                 ctx,
-                call("callers", Map.of("dir", project.toString(), "address", "PricingRules.weekendUplift")),
+                call("usages", Map.of("dir", project.toString(), "address", "PricingRules.weekendUplift")),
                 connection,
                 null);
         tools.call(
@@ -130,12 +129,15 @@ class McpActionsTest {
                 call("pull_up", Map.of("dir", project.toString(), "address", "Book.label", "to", "Item")),
                 connection,
                 null);
+        tools.call(ctx, call("pull_up", Map.of("dir", project.toString(), "address", "Book.title")), connection, null);
 
         SessionLog.Page page = log.session(id, 0, 10).orElseThrow();
-        assertThat(page.actions()).singleElement().satisfies(a -> assertThat(a)
+        assertThat(page.actions())
+                .extracting(a -> a.get("summary"))
+                .containsExactly("pull_up Book.label → Item", "pull_up Book.title");
+        assertThat(page.actions().getFirst())
                 .containsEntry("kind", "pull_up")
-                .containsEntry("summary", "pull_up Book.label → Item")
-                .containsEntry("headline", "Pulled Book.label() up to Item"));
+                .containsEntry("headline", "Pulled Book.label() up to Item");
     }
 
     @Test

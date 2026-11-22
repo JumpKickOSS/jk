@@ -88,7 +88,7 @@ class KotlinCallersTest {
         GraphTools tools = tools();
         String answer = tools.callers("Api.greet", 1, 2000);
         assertThat(answer)
-                .startsWith("Callers of greet(): 1 in main sources, 0 in tests.")
+                .startsWith("Usages of greet(): 1 in main sources, 0 in tests.")
                 .contains("Complete from the compiled classes")
                 .contains("Use.c()  src/main/kotlin/demo/Use.kt:6");
         assertThat(tools.callers("ApiKt.greet", 1, 2000)).isEqualTo(answer);
@@ -98,14 +98,14 @@ class KotlinCallersTest {
     @Test
     void a_function_renamed_by_jvm_name_is_called_by_that_name() {
         assertThat(tools().callers("Api.total", 1, 2000))
-                .startsWith("Callers of total(): 1 in main sources, 0 in tests.")
+                .startsWith("Usages of total(): 1 in main sources, 0 in tests.")
                 .contains("Use.e()  src/main/kotlin/demo/Use.kt:8");
     }
 
     @Test
     void an_inline_function_is_never_complete_and_lists_its_calls_by_name() {
         assertThat(tools().callers("twice", 1, 2000))
-                .startsWith("Callers of twice(): 0 in main sources, 0 in tests.")
+                .startsWith("Usages of twice(): 0 in main sources, 0 in tests.")
                 .contains("Not complete: twice() is a Kotlin inline function")
                 .contains(
                         "inferred:\n  Use.a()  src/main/kotlin/demo/Use.kt:4 (inferred)\n      L4| fun a() = twice { 1 }")

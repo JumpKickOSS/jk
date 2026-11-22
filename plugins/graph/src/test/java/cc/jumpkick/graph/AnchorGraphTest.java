@@ -193,7 +193,7 @@ class AnchorGraphTest {
                 .contains("Shop  src/main/java/com/acme/shop/Shop.java:", "No file defines it.");
         assertThat(new GraphTools(g).callers("shop.currency", 1, 2000))
                 .as("a bare label a symbol also answers to is the symbol's: Shop.currency()")
-                .startsWith("Callers of Shop.currency()");
+                .startsWith("Usages of Shop.currency()");
         assertThat(new GraphTools(g).callers("config:shop.currency", 1, 2000))
                 .startsWith("config:shop.currency: 1 definition, 1 use (1 inferred).")
                 .contains("Shop.currency()  src/main/java/com/acme/shop/Shop.java:13 (inferred)");

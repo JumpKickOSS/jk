@@ -563,7 +563,7 @@ final class GraphUses {
         main.sort(order);
         test.sort(order);
         List<String> lines = new ArrayList<>();
-        lines.add("Callers of " + subject + "'s constructors: " + main.size() + " in main sources, " + test.size()
+        lines.add("Usages of " + subject + "'s constructors: " + main.size() + " in main sources, " + test.size()
                 + " in tests.");
         lines.add(
                 w.uncompiled().isEmpty()

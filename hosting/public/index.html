@@ -809,7 +809,7 @@
     .cache b { display: block; font: 800 13px var(--mono); color: var(--ok); margin-bottom: 0.25rem; }
     .cache span { font-size: 11px; color: var(--mu); }
 
-    /* viz 2: graph callers */
+    /* viz 2: code usages */
     .term {
       font: 12px/1.7 var(--mono);
       color: var(--tx);
@@ -1369,12 +1369,12 @@ We asked coding agents from 6 vendors questions like "who calls this method?" Wi
 <!-- agents-claims:end --></p>
         </div>
         <div class="viz" aria-hidden="true">
-          <div class="viz-title">jk graph · built in, nothing to install</div>
-          <div class="term"><span class="p">$</span> jk graph callers OwnerService.find
+          <div class="viz-title">jk code · built in, nothing to install</div>
+          <div class="term"><span class="p">$</span> jk code usages OwnerService.find
 <span class="y">OwnerController</span>.processFind()   <span class="d">OwnerController.java:88</span>
 <span class="y">OwnerRestApi</span>.search()           <span class="d">OwnerRestApi.java:41</span>
 <span class="y">VisitService</span>.ownerVisits()      <span class="d">VisitService.java:57</span>
-<span class="d">3 callers · complete</span></div>
+<span class="d">3 usages · complete</span></div>
           <div class="graph-map">
             <svg viewBox="0 0 400 110">
               <line x1="200" y1="55" x2="70" y2="22"/><line x1="200" y1="55" x2="70" y2="90"/>

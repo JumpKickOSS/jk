@@ -70,6 +70,7 @@ class CodeGraphToolArgsTest {
         assertThat(request.args()).containsExactly("Book.label", "Item");
         assertThat(request.options()).isEmpty();
         assertThat(request.scope()).isNull();
+        assertThat(request("pull_up", Map.of("address", "Book.label")).args()).containsExactly("Book.label");
     }
 
     private static GraphRequest request(String tool) {

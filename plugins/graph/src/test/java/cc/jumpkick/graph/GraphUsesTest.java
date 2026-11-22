@@ -247,7 +247,7 @@ class GraphUsesTest {
         Path root = workspace(dir);
         String answer = callers(root, "Box.Box");
         assertThat(answer)
-                .startsWith("Callers of Box's constructors: 1 in main sources, 0 in tests.")
+                .startsWith("Usages of Box's constructors: 1 in main sources, 0 in tests.")
                 .contains("Use.make()  src/main/java/com/acme/shop/Use.java:12", "L12| return new Box(3);");
         assertThat(callers(root, "Box.new")).isEqualTo(answer);
     }
@@ -297,6 +297,6 @@ class GraphUsesTest {
     @Test
     void aMethodAddressIsStillAnsweredWithItsCallers(@TempDir Path dir) throws IOException {
         Path root = workspace(dir);
-        assertThat(callers(root, "Use.make")).startsWith("Callers of Use.make()");
+        assertThat(callers(root, "Use.make")).startsWith("Usages of Use.make()");
     }
 }

@@ -14,8 +14,8 @@ import java.util.List;
 
 /**
  * {@code jk code}: questions about the code and edits to it, answered from the code graph: who uses
- * a symbol, its source, declarations by shape, and renames, deletes and moves that edit every use
- * and prove the result compiles. Each refreshes the graph first. See {@code docs/user/graph.md}.
+ * a symbol, its source, declarations by shape, what governs a file, and renames, deletes and moves
+ * that edit every use and prove the result compiles. Each refreshes the graph first. See {@code docs/user/graph.md}.
  */
 public final class CodeCommand extends GroupCommand {
 
@@ -126,6 +126,11 @@ public final class CodeCommand extends GroupCommand {
                         "pull-up",
                         "Move an instance method or field up to the class its type extends",
                         List.of(BUDGET),
-                        List.of(MEMBER, Param.of("type", Arity.ONE, "the class its type extends"))));
+                        List.of(MEMBER, Param.of("type", Arity.ZERO_OR_ONE, "the class its type extends (default)"))),
+                op(
+                        "rules",
+                        "The guard rules and NOTE/WHY comments that govern a file",
+                        List.of(NO_REFRESH),
+                        List.of(Param.of("file", Arity.ONE, "a path from the workspace root"))));
     }
 }

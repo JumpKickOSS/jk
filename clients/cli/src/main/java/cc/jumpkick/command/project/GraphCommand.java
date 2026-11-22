@@ -39,7 +39,6 @@ public final class GraphCommand extends GroupCommand {
 
     @Override
     public List<CliCommand> subcommands() {
-        CodeCommand code = new CodeCommand();
         return List.of(
                 build,
                 op(
@@ -63,22 +62,7 @@ public final class GraphCommand extends GroupCommand {
                                         "--relation"),
                                 BUDGET,
                                 NO_REFRESH),
-                        List.of(Param.of("name", Arity.ONE, "label or node id"))),
-                op(
-                        "rules",
-                        "The guard rules and NOTE/WHY comments that govern a file",
-                        List.of(NO_REFRESH),
-                        List.of(Param.of("file", Arity.ONE, "a path from the workspace root"))),
-                moved("callers", "usages", code.usages),
-                moved("rename", "rename", code.rename),
-                moved("query", "query", code.query),
-                moved("read", "read", code.read),
-                moved("find", "find", code.find));
-    }
-
-    /** Released {@code jk graph <was>}, now {@code jk code <now>}. */
-    private static MovedCommand moved(String was, String now, CliCommand target) {
-        return new MovedCommand(was, "jk graph " + was, "jk code " + now, target);
+                        List.of(Param.of("name", Arity.ONE, "label or node id"))));
     }
 
     @Override

@@ -93,7 +93,7 @@ class GroovyCallersTest {
     void a_static_caller_is_exact_and_a_dynamic_one_is_inferred_and_never_complete() {
         String answer = new GraphTools(graph(ALL), Scope.ALL, ALL::get, true).callers("Store.put", 1, 2000);
         assertThat(answer)
-                .startsWith("Callers of Store.put(): 1 in main sources, 0 in tests.")
+                .startsWith("Usages of Store.put(): 1 in main sources, 0 in tests.")
                 .contains("Not complete: dynamic Groovy (1 source that can see it, not @CompileStatic)")
                 .contains("  Typed.fill()  src/main/groovy/demo/Typed.groovy:8\n")
                 .contains("inferred:\n  Dyn.fill()  src/main/groovy/demo/Dyn.groovy:5 (inferred)")

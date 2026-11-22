@@ -29,8 +29,7 @@ import org.jspecify.annotations.Nullable;
  * and a native image must be able to see it at build time.
  *
  * <p>{@code tools/list} and {@code tools/call} both read this one map, so a name cannot be
- * advertised without a body or answered without being advertised; the one exception is an {@link
- * #ALIASES alias}, answered by the tool it names and never listed.
+ * advertised without a body or answered without being advertised.
  *
  * <p>The default {@code tools/list} is {@link #LOOP}. A client asks for the rest by sending {@code
  * tools/list} with {@code extended: true}, or by setting {@code [mcp] tools = "all"} so every list
@@ -48,9 +47,6 @@ public final class McpTools {
      * for. Every card is paid on every turn.
      */
     public static final List<String> LOOP = List.of("run", "diagnostics", "deps", "usages", "rename", "skill");
-
-    /** Released tool names a call may still use, each answered by the tool it maps to; never listed. */
-    public static final Map<String, String> ALIASES = Map.of("callers", "usages");
 
     /** Which rows {@code tools/list} answers. */
     public enum Surface {
@@ -191,9 +187,9 @@ public final class McpTools {
         return new McpTools(tools, LOOP);
     }
 
-    /** The tool registered as {@code name}, or the one it is an alias of; null for none. */
+    /** The tool registered as {@code name}; null for none. */
     public @Nullable McpTool tool(String name) {
-        return byName.get(ALIASES.getOrDefault(name, name));
+        return byName.get(name);
     }
 
     /** Every tool name, in registration order. */
@@ -279,9 +275,8 @@ public final class McpTools {
             @Nullable McpConnection connection,
             @Nullable McpOutbound outbound) {
         Object rawName = params.get("name");
-        String asked = rawName == null ? null : String.valueOf(rawName);
-        if (asked == null || asked.isBlank()) throw new McpError(-32602, "tools/call requires name");
-        String name = ALIASES.getOrDefault(asked, asked);
+        String name = rawName == null ? null : String.valueOf(rawName);
+        if (name == null || name.isBlank()) throw new McpError(-32602, "tools/call requires name");
         McpTool tool = byName.get(name);
         if (tool == null) throw new McpError(-32602, "unknown tool: " + name);
         Map<String, Object> args = params.get("arguments") instanceof Map<?, ?> a ? (Map<String, Object>) a : Map.of();

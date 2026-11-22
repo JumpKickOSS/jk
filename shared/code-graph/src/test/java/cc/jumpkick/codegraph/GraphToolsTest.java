@@ -154,8 +154,7 @@ class GraphToolsTest {
     void callers_are_counted_split_main_from_test_and_said_to_be_complete() {
         String out = new GraphTools(release()).callers("Info.name", 1, 2000);
         assertThat(out)
-                .startsWith(
-                        "Callers of Info.name(): 2 in main sources, 1 in tests.\nComplete from the compiled classes")
+                .startsWith("Usages of Info.name(): 2 in main sources, 1 in tests.\nComplete from the compiled classes")
                 .contains("main:\n  Release.Plan.label()  src/main/java/a/Release.java:21\n"
                         + "  Release.publish()  src/main/java/a/Release.java:10,12\n"
                         + "test:\n  InfoTest.names()  src/test/java/a/InfoTest.java:10")
@@ -229,7 +228,7 @@ class GraphToolsTest {
         assertThat(new GraphTools(release()).callers("Main.main", 1, 2000))
                 .startsWith("No method, field or type 'Main.main'. Pass Type.method, Type.field (or Type#field), Type,"
                         + " @Annotation, or an anchor (column:t.c, route:GET /x).")
-                .doesNotContain("Callers of");
+                .doesNotContain("Usages of");
         assertThat(new GraphTools(release()).callers("Info#name", 1, 2000))
                 .as("Type#member, as javadoc writes it")
                 .isEqualTo(new GraphTools(release()).callers("Info.name", 1, 2000));
@@ -264,7 +263,7 @@ class GraphToolsTest {
     @Test
     void a_call_to_the_interface_method_an_implementation_overrides_counts_as_reaching_it() {
         assertThat(new GraphTools(dispatch()).callers("Spec.home", 1, 2000))
-                .startsWith("Callers of Spec.home(): 1 in main sources, 0 in tests.")
+                .startsWith("Usages of Spec.home(): 1 in main sources, 0 in tests.")
                 .contains("  Step.run()  src/main/java/a/Step.java:6  through Exec.home()");
         assertThat(new GraphTools(dispatch()).callers("Spec.home", 8, 2000))
                 .contains("  hop 2:\n  Step.main()  src/main/java/a/Step.java:10  -> Step.run()");
@@ -363,7 +362,7 @@ class GraphToolsTest {
     @Test
     void callers_take_a_nested_type_by_its_binary_name() {
         assertThat(new GraphTools(release()).callers("a.Release$Plan.label", 1, 2000))
-                .startsWith("Callers of Release.Plan.label(): ");
+                .startsWith("Usages of Release.Plan.label(): ");
     }
 
     @Test

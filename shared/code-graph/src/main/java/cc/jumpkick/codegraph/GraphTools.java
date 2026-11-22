@@ -238,7 +238,7 @@ public final class GraphTools {
         String subject =
                 graph.display(named.getFirst()) + (named.size() > 1 ? " (" + named.size() + " overloads)" : "");
         List<String> lines = new ArrayList<>();
-        lines.add((transitive ? "Every method that reaches " : "Callers of ") + subject + ": " + main.size()
+        lines.add((transitive ? "Every method that reaches " : "Usages of ") + subject + ": " + main.size()
                 + " in main sources, " + test.size() + " in tests"
                 + (!transitive
                         ? "."

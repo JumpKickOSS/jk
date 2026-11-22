@@ -129,16 +129,18 @@ class McpToolRegistryTest {
                 .findFirst()
                 .orElseThrow();
         assertThat(row).doesNotContainKey("annotations");
-        assertThat(row.get("inputSchema")).asString().contains("address", "to", "required");
+        Map<String, Object> schema = object(row, "inputSchema");
+        assertThat(object(schema, "properties")).containsKeys("address", "to");
+        assertThat(schema.get("required")).isEqualTo(List.of("address"));
     }
 
     @Test
-    void callers_is_answered_by_usages_and_never_listed() {
+    void usages_has_no_other_name() {
         McpTools tools = McpTools.standard();
-        assertThat(tools.tool("callers")).isSameAs(tools.tool("usages")).isNotNull();
-        assertThat(names(tools.listing(McpTools.Surface.ALL)))
-                .contains("usages")
-                .doesNotContain("callers");
+        assertThat(tools.tool("usages")).isNotNull();
+        assertThat(tools.tool("callers")).isNull();
+        assertThatThrownBy(() -> tools.call(context(), Map.of("name", "callers")))
+                .hasMessageContaining("unknown tool: callers");
     }
 
     @Test

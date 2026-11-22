@@ -23,7 +23,7 @@ import org.tomlj.TomlArray;
 import org.tomlj.TomlTable;
 
 /**
- * The guard rules whose reach covers one file, for {@code jk graph rules}: the rule's module scope
+ * The guard rules whose reach covers one file, for {@code jk code rules}: the rule's module scope
  * holds the file's module and no {@code allow} entry names the file or a directory above it. Rules
  * about the build rather than its sources (dependencies, toolchain, outputs, commits, parity) are
  * left out. The graph worker narrows further by source set, {@code files} globs and languages.

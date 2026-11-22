@@ -265,7 +265,7 @@ These commands print their own rows, one envelope object each, and nothing else 
 | `explain-step` | `explain` | `module`, `step`, `status` (`cached`, `full`, `partial`, `run`), `detail`, `key` |
 | `explain` | `explain` | `modules`, `dirty`, `etaMillis`, `fullEtaMillis`, `criticalPath` (step names) |
 | `graph` | `graph build` | `op`, `nodes`, `edges`, `files`, `read`, `classes`, `dir`, `millis` |
-| `graph` | `graph path`, `neighbors`, `rules` | `op`, `found`, `text` (the answer as the engine wrote it) |
+| `graph` | `graph path`, `neighbors` | `op`, `found`, `text` (the answer as the engine wrote it) |
 | `code` | every `code` command | `op`, `found`, `text` (the answer as the engine wrote it) |
 | `task` | `tasks` | `module`, `name`, `stage`, `description` |
 | `task-output` | `tasks show` | `task`, `module`, `moduleDir`, `output`, `onDisk` |

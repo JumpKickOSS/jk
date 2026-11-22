@@ -17,7 +17,7 @@ import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
 /**
- * {@code jk graph rules <file>}: what governs a file before an agent edits it. The guard rules whose
+ * {@code jk code rules <file>}: what governs a file before an agent edits it. The guard rules whose
  * reach covers it (the engine has already matched module scope and {@code allow} entries; this
  * narrows by source set, {@code files} globs, languages and a generated block's target) and the
  * {@code NOTE:}/{@code WHY:} rationale comments the graph holds for it.

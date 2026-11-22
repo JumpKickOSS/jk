@@ -48,8 +48,8 @@ HOME = benchtools.scratch("AGENT_LOOP_HOME", "agent-loop") / "change-tasks"
 
 # jk's graph calls, on the extended tools/list; an arm that hides the graph drops them from every list.
 JK_GRAPH_TOOLS = ["usages", "rename", "query", "read", "find", "delete", "move", "pull_up"]
-# Released names of graph tools the engine still answers, never listed: an arm that hides the graph refuses them too.
-JK_GRAPH_ALIASES = ["callers"]
+# What a released jk (the jk-before arm) calls a graph tool the tree names otherwise: usages was callers.
+JK_RELEASED_GRAPH_TOOLS = ["callers"]
 # jk's default tools/list without its one graph card, usages.
 JK_LOOP_TOOLS = ["run", "diagnostics", "deps", "skill"]
 # graphify's MCP server (`graphify-mcp`, from the `graphifyy[mcp]` tool install).
@@ -61,10 +61,10 @@ GROK_RULES = """---
 description: JumpKick (jk) and its MCP tools
 alwaysApply: true
 ---
-jk's MCP tools are on the `jk` server: call them with use_tool, tool_name `jk__callers`,
+jk's MCP tools are on the `jk` server: call them with use_tool, tool_name `jk__usages`,
 `jk__rename`, `jk__run`, `jk__diagnostics`. No search_tool or skill call is needed first.
 
-- Who calls `T.m`: `jk__callers` once. Its list is complete; write it as it is.
+- Who calls `T.m`: `jk__usages` once. Its list is complete; write it as it is.
 - Rename `T.m`: `jk__rename` once, nothing before it. Its answer lists every edit and any comment
   or doc line still naming the old method; change only those you judge refer to it, without
   searching for more, then `jk__run` with the `only` it names.
@@ -75,10 +75,10 @@ jk's MCP tools are on the `jk` server: call them with use_tool, tool_name `jk__c
 AGY_RULES = """---
 trigger: always_on
 ---
-jk's MCP answers are compiled facts; they are final. `callers` and `rename` take `Type.method` as
+jk's MCP answers are compiled facts; they are final. `usages` and `rename` take `Type.method` as
 the task names it: no file needs finding or opening first.
 
-- Who calls `T.m`: call_mcp_tool jk `callers` once and write its list as the answer. Opening the
+- Who calls `T.m`: call_mcp_tool jk `usages` once and write its list as the answer. Opening the
   files it names costs turns and changes nothing: do not.
 - Rename `T.m`: jk `rename` once. It runs the edited tests and guard itself; when its answer says
   the task is done, reply, without searching for the old name or re-reading files (another type's
@@ -89,19 +89,19 @@ the task names it: no file needs finding or opening first.
 
 # arm: build tool, extra MCP servers, jk graph tools hidden, hooks installed in the sandbox, prompt addition
 ARMS = {
-    # jk as it ships: the default MCP list carries one graph card, callers.
+    # jk as it ships: the default MCP list carries one graph card, usages.
     "jk": dict(tool="jk", extra=[], hide_graph=False, hooks=None, prompt=""),
-    # The no-graph baseline: callers (and every other graph tool) gone from the list and refused.
+    # The no-graph baseline: usages (and every other graph tool) gone from the list and refused.
     "jk-nograph": dict(tool="jk", extra=[], hide_graph=True, hooks=None, prompt=""),
     # The graph as it was: another jk (a release) in its own home, from $JK_BEFORE_HOME (its bin/jk is the
     # client). Against jk it says whether new graph work is a net gain, not only a gain over no graph.
     "jk-before": dict(tool="jk", extra=[], hide_graph=False, hooks=None, prompt="", before=True),
-    # No graph tool on MCP and no callers line in AGENTS.md: with --shell, what jk graph callers adds
+    # No graph tool on MCP and no usages line in AGENTS.md: with --shell, what jk code usages adds
     # when the only pointer to it is AGENTS.md (against jk-nograph, which keeps the line).
-    # jk as shipped plus a callers line in the sandbox's AGENTS.md section: whether a line that says
-    # callers is complete moves an agent that reads AGENTS.md but checks every answer by hand.
+    # jk as shipped plus a usages line in the sandbox's AGENTS.md section: whether a line that says
+    # usages is complete moves an agent that reads AGENTS.md but checks every answer by hand.
     "jk-agentsline": dict(tool="jk", extra=[], hide_graph=False, hooks=None, prompt="", agents_line=(
-        "- Who calls `Type.method`: MCP `callers` (`transitive=true` for everything that reaches it). Its answer"
+        "- Who calls `Type.method`: MCP `usages` (`transitive=true` for everything that reaches it). Its answer"
         " is complete, from the compiled classes: write it as it is, without checking it by hand.")),
     # jk as shipped plus grok's own rules file (.grok/rules/, which only grok reads): the grok prescription.
     "jk-grokrules": dict(tool="jk", extra=[], hide_graph=False, hooks=None, prompt="", files={
@@ -136,7 +136,7 @@ NAV_TEXT = {"Grep", "Glob", "Read", "read_file", "grep", "list_dir", "view_file"
             "search"}
 EDITS = {"Edit", "Write", "MultiEdit", "search_replace", "replace_file_content", "multi_replace_file_content",
          "write_to_file", "edit_file", "write_file"}
-GRAPH = set(JK_GRAPH_TOOLS) | set(JK_GRAPH_ALIASES) | {"query_graph", "read_symbol", "get_neighbors", "find_symbols", "get_node",
+GRAPH = set(JK_GRAPH_TOOLS) | set(JK_RELEASED_GRAPH_TOOLS) | {"query_graph", "read_symbol", "get_neighbors", "find_symbols", "get_node",
                                "get_community", "god_nodes", "graph_stats", "shortest_path", "rules_for"}
 
 SYSTEM_PROMPT = """You are working in a {tool_label} project at {sandbox}.
@@ -359,7 +359,7 @@ def preflight(spec: dict, tool: str, sandbox: Path, server: dict | None, edges: 
                 problems.append(f"tools/list shows hidden graph tools {sorted(shown)}")
             elif spec.get("extended") and shown != set(JK_GRAPH_TOOLS):
                 problems.append(f"tools/list lacks graph tools {sorted(set(JK_GRAPH_TOOLS) - shown)}")
-            elif not spec["hide_graph"] and not names & {"usages", *JK_GRAPH_ALIASES}:
+            elif not spec["hide_graph"] and not names & {"usages", *JK_RELEASED_GRAPH_TOOLS}:
                 problems.append("tools/list has no usages")
     if problems:
         raise RuntimeError("preflight: " + "; ".join(problems))
@@ -387,7 +387,7 @@ def mcp_servers(tool: str, extra: list[str], hide_graph: bool, sandbox: Path,
     if hide_graph:
         # One proxy for every driver: the graph tools are gone from tools/list and refused if called.
         cfg = {"type": "stdio", "command": str(HERE / "wrappers" / "mcp-filter"),
-               "args": ["--drop", ",".join(JK_GRAPH_TOOLS + JK_GRAPH_ALIASES), "--", cfg["command"], *cfg["args"]]}
+               "args": ["--drop", ",".join(JK_GRAPH_TOOLS + JK_RELEASED_GRAPH_TOOLS), "--", cfg["command"], *cfg["args"]]}
     servers = {server: cfg}
     if "graphify" in extra:
         servers["graphify"] = {"type": "stdio", "command": str(GRAPHIFY_MCP),
@@ -797,7 +797,7 @@ def _run_one(name: str, task: dict, arm: str, run_no: int, ns, run_root: Path) -
                 kept, dropping = [], False
                 for line in agents_md.read_text().splitlines(keepends=True):
                     if line.startswith("- "):
-                        dropping = "jk code usages" in line or "jk graph callers" in line
+                        dropping = "jk code usages" in line
                     elif not line.startswith("  "):
                         dropping = False
                     if not dropping:

@@ -69,7 +69,7 @@ def for_grep(cwd: str, pattern: str) -> str:
             owner, member = name.rsplit(".", 1)
             if owner[:1].isupper() and member[:1].islower():
                 callers = jk(cwd, "usages", name, "-b", str(BUDGET))
-                if useful(callers) and callers.startswith("Callers of"):
+                if useful(callers) and callers.startswith("Usages of"):
                     parts.append(callers)
                     continue
         if re.search(rf"\b(extends|implements)\b[^|]*\b{re.escape(name)}\b", pattern) or (name[:1].isupper() and "." not in name):
@@ -88,7 +88,7 @@ def for_grep(cwd: str, pattern: str) -> str:
                 answered = []
                 for owner in owners:
                     callers = jk(cwd, "usages", owner, "-b", str(BUDGET // len(owners)))
-                    if useful(callers) and callers.startswith("Callers of"):
+                    if useful(callers) and callers.startswith("Usages of"):
                         answered.append(callers)
                 if answered:
                     parts.append(f"Declarations named {name}:\n{decls}\n\n" + "\n\n".join(answered))

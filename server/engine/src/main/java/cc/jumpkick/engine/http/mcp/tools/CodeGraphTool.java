@@ -140,7 +140,7 @@ public final class CodeGraphTool implements McpTool {
 
     /**
      * {@code pull_up}: an instance method (every overload) or instance field moved to the class its
-     * type extends, as {@code jk code pull-up} does: its uses bind there as written, then it is
+     * type extends, named by {@code to} or found when it is left out, as {@code jk code pull-up} does: its uses bind there as written, then it is
      * compiled and proven, or undone whole; what would break or change without a compile error
      * writes nothing and is listed. It writes, so it is not read-only.
      */
@@ -148,13 +148,21 @@ public final class CodeGraphTool implements McpTool {
         return new CodeGraphTool(
                 new Spec(
                         "pull_up",
-                        "Pull instance Type.method (every overload) or Type.field up to `to`, the class Type extends;"
+                        "Pull instance Type.method (every overload) or Type.field up to the class Type extends;"
                                 + " proves it, or writes nothing and lists the hazards.",
                         McpSchemas.object(
-                                props(Map.of("address", McpSchemas.string(), "to", McpSchemas.string())),
-                                List.of("address", "to"))),
+                                props(Map.of(
+                                        "address",
+                                        McpSchemas.string(),
+                                        "to",
+                                        McpSchemas.string("The class Type extends; the default."))),
+                                List.of("address"))),
                 "pull-up",
-                in -> List.of(required(in, "address"), required(in, "to")));
+                in -> {
+                    String to = in.str("to");
+                    String address = required(in, "address");
+                    return to == null || to.isBlank() ? List.of(address) : List.of(address, to);
+                });
     }
 
     /** {@code query}: the symbols and connections a question is about, as {@code jk code query} answers it. */

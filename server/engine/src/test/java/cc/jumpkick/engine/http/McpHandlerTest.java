@@ -560,11 +560,11 @@ class McpHandlerTest {
         assertThat(tool)
                 .as("a graph tool's name answers with the graph page, which has its address forms and also")
                 .contains(
-                        "`usages` is an MCP tool: call it directly. Its page, topic graph:",
+                        "`usages` is an MCP tool: call it directly. Its page, topic code:",
                         "`Type.field`",
                         "column:t.c",
                         "also=c1,c3",
-                        "Topics: graph, dependencies");
+                        "Topics: code, dependencies");
         assertThat(tool).doesNotContain("\"isError\":true", "\"error\"");
         String hidden = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":37,\"method\":\"tools/call\","
                 + "\"params\":{\"name\":\"skill\",\"arguments\":{\"topic\":\"explain\"}}}");
@@ -574,7 +574,7 @@ class McpHandlerTest {
                 .doesNotContain("call it directly");
         String none = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":36,\"method\":\"tools/call\","
                 + "\"params\":{\"name\":\"skill\",\"arguments\":{\"topic\":\"nope\"}}}");
-        assertThat(none).contains("No skill topic `nope`", "Topics: graph, dependencies");
+        assertThat(none).contains("No skill topic `nope`", "Topics: code, dependencies");
     }
 
     @Test

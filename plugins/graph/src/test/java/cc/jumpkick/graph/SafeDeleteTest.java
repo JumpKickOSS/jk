@@ -135,7 +135,7 @@ class SafeDeleteTest {
 
         assertThat(answer)
                 .startsWith("Not deleted, nothing is written: Order.label() is still used.")
-                .contains("Callers of Order.label(): 1 in main sources, 0 in tests.")
+                .contains("Usages of Order.label(): 1 in main sources, 0 in tests.")
                 .contains("Checkout.total()  " + DIR + "Checkout.java:6");
         assertThat(f.read(DIR + "Order.java")).isEqualTo(ORDER);
     }

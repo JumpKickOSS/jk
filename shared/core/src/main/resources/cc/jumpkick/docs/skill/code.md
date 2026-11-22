@@ -1,4 +1,4 @@
-# Graph
+# Code
 
 jk keeps a graph of the code, built from the compiled classes, so one call answers a question about a
 symbol completely. Address: `Type.method` (`pkg.Type.method` when two packages declare it,

@@ -55,7 +55,7 @@ or a change to a Java method, use it, not Grep or file reads:
 - Rename `T.m`: call `rename` first, before any search or read. It edits the method, its overrides
   and every caller in one call, then runs the edited tests and guard: when its answer says the task
   is done, it is. Do not grep for the old name afterwards.
-- Who calls `T.m`: `callers` once. Its list is complete, from the compiled classes.
+- Who calls `T.m`: `usages` once. Its list is complete, from the compiled classes.
 """
 
 # A leaner Cursor rule under test: the generic wording plus exact call shapes and what a TIMEOUT means.
@@ -69,7 +69,7 @@ facts and final: do not grep or re-read to check them.
 - Rename `T.m`: call `rename(address="T.m", to="newName")` first. It edits the method, its overrides, every
   caller and the comments that can only mean it. Then do what its answer says: `run(kind="test", modules=…)`
   and `run(kind="guard")`. When both say OK, the task is done.
-- Who calls `T.m`: `callers(address="T.m")` once, and use its list as the answer.
+- Who calls `T.m`: `usages(address="T.m")` once, and use its list as the answer.
 - An answer `TIMEOUT … jid=N` means the job is still running: call `run(jid=N)` until it says OK or FAIL.
 """
 
@@ -77,7 +77,7 @@ facts and final: do not grep or re-read to check them.
 CURSOR_DENY_READ = json.dumps({"permissions": {"allow": [], "deny": ["Read(**/*.java)"]}}, indent=2) + "\n"
 
 # For muse, AGENTS.md is the rules file: one line that sends a rename or a caller question to the graph first.
-MUSE_LINE = ("- `callers` and `rename` take `Type.method` as the task names it: call them first, before opening or"
+MUSE_LINE = ("- `usages` and `rename` take `Type.method` as the task names it: call them first, before opening or"
              " searching any file. Their answers are compiled facts and final: do not re-read the files they name.")
 
 

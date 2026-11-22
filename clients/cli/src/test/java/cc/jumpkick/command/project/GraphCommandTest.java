@@ -4,15 +4,13 @@ package cc.jumpkick.command.project;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.wire.protocol.GraphAck;
 import cc.jumpkick.wire.protocol.GraphRequest;
 import java.nio.file.Path;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
-import java.util.Objects;
 import org.junit.jupiter.api.Test;
 
 class GraphCommandTest {
@@ -23,7 +21,7 @@ class GraphCommandTest {
             if (c.name().equals(name)) return (GraphOpCommand) c;
         }
         for (CliCommand c : new GraphCommand().subcommands()) {
-            if (c.name().equals(name) && c instanceof GraphOpCommand g) return g;
+            if (c.name().equals(name)) return (GraphOpCommand) c;
         }
         throw new AssertionError("no operation " + name);
     }
@@ -34,9 +32,9 @@ class GraphCommandTest {
                 .isNotNull()
                 .extracting(CliCommand::name)
                 .isEqualTo("build");
-        assertThat(new GraphCommand().subcommands().stream().filter(c -> !c.hidden()))
+        assertThat(new GraphCommand().subcommands())
                 .extracting(CliCommand::name)
-                .containsExactly("build", "path", "neighbors", "rules");
+                .containsExactly("build", "path", "neighbors");
         assertThat(op("build").options()).isEmpty();
     }
 
@@ -45,7 +43,7 @@ class GraphCommandTest {
         assertThat(new CodeCommand().defaultSubcommand()).isNull();
         assertThat(new CodeCommand().subcommands())
                 .extracting(CliCommand::name)
-                .containsExactly("usages", "find", "read", "query", "rename", "delete", "move", "pull-up");
+                .containsExactly("usages", "find", "read", "query", "rename", "delete", "move", "pull-up", "rules");
         for (String name : List.of("usages", "delete", "move", "pull-up")) {
             Invocation in = Invocation.builder()
                     .addPositional("Book.label")
@@ -61,18 +59,11 @@ class GraphCommandTest {
     }
 
     @Test
-    void theReleasedGraphNamesAreHiddenAndSayTheNewOne() {
-        Map<String, MovedCommand> moved = new LinkedHashMap<>();
-        for (CliCommand c : new GraphCommand().subcommands()) {
-            if (c instanceof MovedCommand m) moved.put(m.name(), m);
-        }
-        assertThat(moved).containsOnlyKeys("callers", "rename", "query", "read", "find");
-        assertThat(moved.values()).allMatch(CliCommand::hidden);
-        MovedCommand callers = Objects.requireNonNull(moved.get("callers"));
-        assertThat(callers.notice()).isEqualTo("jk graph callers is now jk code usages");
-        assertThat(Objects.requireNonNull(moved.get("read")).notice()).isEqualTo("jk graph read is now jk code read");
-        assertThat(callers.options()).isEqualTo(op("usages").options());
-        assertThat(callers.parameters()).isEqualTo(op("usages").parameters());
+    void aPullUpNamesItsTargetOrLeavesItToTheParentClass() {
+        assertThat(op("pull-up").parameters().get(1).arity()).isEqualTo(Arity.ZERO_OR_ONE);
+        Invocation bare = Invocation.builder().addPositional("Book.label").build();
+        assertThat(op("pull-up").request(Path.of("/w"), bare, false).args()).containsExactly("Book.label");
+        assertThat(op("move").parameters().get(1).arity()).isEqualTo(Arity.ONE);
     }
 
     @Test

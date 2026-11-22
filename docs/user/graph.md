@@ -16,9 +16,9 @@ jk code usages OrderService.total        # who calls it, every overload, complet
 jk code usages OrderService.total -t     # everything that reaches it
 jk code usages Order.status              # every read and write of a field, at its line
 jk code usages Order                     # every use of a type (@Audited for an annotation)
+jk code rules src/main/java/com/acme/shop/OrderService.java
 jk graph neighbors OrderService            # its direct connections
 jk graph path OrderService PriceCalculator -U
-jk graph rules src/main/java/com/acme/shop/OrderService.java
 ```
 
 A name is a node id, a label, or `Type.member` (qualify the type, `shop.OrderService.total`, when
@@ -481,7 +481,7 @@ jk code find -l '*Mapper' -t class
 
 ## Before editing a file
 
-`jk graph rules <file>` lists the guard rules from `jk-guards.toml` whose reach covers the file (its
+`jk code rules <file>` lists the guard rules from `jk-guards.toml` whose reach covers the file (its
 module, its source set, the rule's `files` and `languages`, no `allow` entry for it), each with the
 sanctioned alternative and why, and the `NOTE:`/`WHY:` comments the file carries.
 
@@ -736,7 +736,7 @@ until they answer for it, rename reports it as a candidate or hazard as above.
 ```bash
 jk code delete OrderService.legacyTotal          # only if nothing uses it; else lists what does
 jk code move PriceMath.round Money               # a static method or field, every use edited
-jk code pull-up Book.label Item                  # an instance member up to the class Book extends
+jk code pull-up Book.label                       # an instance member up to the class Book extends
 ```
 
 `delete` removes a method (every overload), a field or a type only when nothing uses it: no call or
@@ -745,7 +745,8 @@ point, no doc link or string naming it. Otherwise it writes nothing and lists th
 does, and each framework annotation that keeps it at the `file:line` that writes it. `move` takes a
 static Java method (every overload) or static field to another class, enum or record and edits
 every use javac bound; `pull-up` takes an instance method or field to the class its type extends,
-where its uses bind as written. Both write nothing and list what would break or change
+where its uses bind as written. Naming that class is optional; a class the type does not extend is
+refused. Both write nothing and list what would break or change
 behaviour without a compile error (state the target does not have, a `super` call, a member one side
 cannot see, an override). Like `rename`, each then compiles the modules it touched and undoes the
 edit whole when they do not compile.
@@ -785,6 +786,5 @@ We asked coding agents from 6 vendors questions like "who calls this method?" Wi
 
 `query`, `read`, `find`, `delete`, `move` and `pull_up` (`jk code pull-up`) answer as their
 `jk code` subcommands do and are on the extended list (`tools/list` with `extended: true`, or
-`[mcp] tools = "all"`); every tool is callable by name either way, and `callers`, the name
-`usages` had before, still answers as `usages`. `neighbors`, `path` and `rules` are shell commands
-alone. See [MCP](mcp.md).
+`[mcp] tools = "all"`); every tool is callable by name either way. `neighbors`, `path` and
+`rules` are shell commands alone. See [MCP](mcp.md).

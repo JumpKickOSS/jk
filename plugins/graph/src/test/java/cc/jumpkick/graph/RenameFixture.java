@@ -150,6 +150,11 @@ final class RenameFixture {
         return ask("pull-up", List.of(address, target), 8000);
     }
 
+    /** A pull-up of {@code address} to the class its type extends, named by nobody. */
+    String pullUp(String address) throws IOException {
+        return ask("pull-up", List.of(address), 8000);
+    }
+
     /** The engine's check after a move: compile, then the proof, or the undo when the compile failed. */
     String checkMove() throws IOException {
         String errors = compile();

@@ -23,7 +23,7 @@ Run, read the verdict, edit, rerun. The verdict is the whole answer; scrape noth
 | why this version | `jk why g:a` | `why`* |
 | every problem, with lines | `jk results -A` | `diagnostics()` |
 | who calls or uses a symbol, complete (`-t`: all reaching it) | `jk code usages T.m` | `usages(address=T.m)` |
-| rename a method, field, type or package (topic graph) | `jk code rename T.m new` | `rename(address=T.m, to=new)` |
+| rename a method, field, type or package (topic code) | `jk code rename T.m new` | `rename(address=T.m, to=new)` |
 | one skill topic | `jk skill <topic>` | `skill(topic=…)` |
 
 A sibling project that must see your edits to a library gets them through `jk -a install`: the project is installed in JumpKick's store as `<version>-SNAPSHOT`, replaced each run, like a Maven snapshot; the sibling depends on `g:a:<version>-SNAPSHOT`. `jk release` cuts a version.
@@ -45,4 +45,4 @@ One line per problem: `E path:line:col message` (project-relative), `T Class#met
 
 ## Topics
 
-graph, dependencies, tests, workspaces, lockfile, imports, plugins, guards, layout, jdk, engine.
+code, dependencies, tests, workspaces, lockfile, imports, plugins, guards, layout, jdk, engine.

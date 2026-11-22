@@ -113,22 +113,23 @@ final class MoveMember {
             return GraphService.Reply.of(w, undo(root, out, options.getOrDefault("why", "the code does not compile")));
         }
         List<String> a = r.args();
-        if (a.size() < 2 || a.get(0).isBlank() || a.get(1).isBlank()) {
+        boolean upOnly = "pull-up".equals(r.op());
+        String target = a.size() < 2 || a.get(1).isBlank() ? null : a.get(1).strip();
+        if (a.isEmpty() || a.get(0).isBlank() || target == null && !upOnly) {
             throw new IllegalArgumentException("needs the member to move and the type to move it to");
         }
         // Type#member, as javadoc writes it, is Type.member.
         String address = a.get(0).strip().replace('#', '.');
-        boolean upOnly = "pull-up".equals(r.op());
         try {
-            return GraphService.Reply.of(w, move(w, graph, address, a.get(1).strip(), upOnly, r.budget()));
+            return GraphService.Reply.of(w, move(w, graph, address, target, upOnly, r.budget()));
         } catch (RenameRefusal refused) {
             return GraphService.Reply.of(w, String.valueOf(refused.getMessage()));
         }
     }
 
-    /** Moves {@code address} to {@code target}; with {@code upOnly}, only up to the class its type extends. */
+    /** Moves {@code address} to {@code target}, or with {@code upOnly} (null: the class its type extends). */
     private static String move(
-            GraphService.Workspace w, CodeGraph g, String address, String target, boolean upOnly, int budget)
+            GraphService.Workspace w, CodeGraph g, String address, @Nullable String target, boolean upOnly, int budget)
             throws IOException {
         String stale = SafeDelete.edited(w.indexes(), "Not moved", "move");
         if (stale != null) throw new RenameRefusal(stale);
@@ -198,7 +199,8 @@ final class MoveMember {
         /** The uses of the moved symbols left outside the moved code, by file. */
         final Map<String, Integer> outside = new TreeMap<>();
 
-        Plan(GraphService.Workspace w, CodeGraph g, String address, String target) {
+        /** A null {@code target} is the class the member's type extends. */
+        Plan(GraphService.Workspace w, CodeGraph g, String address, @Nullable String target) {
             this.w = w;
             this.g = g;
             if (address.contains("(")) {
@@ -211,7 +213,7 @@ final class MoveMember {
             }
             types = types(g);
             fromType = oneType(g, address.substring(0, dot));
-            toType = oneType(g, target);
+            toType = target == null ? parent(w.root(), g, fromType) : oneType(g, target);
             name = address.substring(dot + 1);
             fromBin = qualified(fromType);
             toBin = qualified(toType);
@@ -937,6 +939,29 @@ final class MoveMember {
                     "'" + name + "' names " + types.size() + " types; qualify it:\n" + String.join("\n", shown));
         }
         return types.getFirst();
+    }
+
+    /**
+     * The workspace class {@code type} extends, as its declaration names it: qualified, or a simple
+     * name resolved as javac does, through the file's imports before its own package.
+     */
+    private static GraphNode parent(Path root, CodeGraph g, GraphNode type) {
+        String self = canonical(qualified(type));
+        List<String> ext = Decl.superclass(type);
+        if (ext.isEmpty()) throw new RenameRefusal("Not pulled up: " + self + " extends no class.");
+        String raw = ext.getFirst().replaceFirst("<.*", "").strip();
+        List<GraphNode> named = GraphUses.types(g, Scope.ALL, raw);
+        if (named.isEmpty()) {
+            throw new RenameRefusal("Not pulled up: " + self + " extends " + raw + ", which is not in the workspace.");
+        }
+        if (named.size() > 1) {
+            String text = RenameText.read(root, type.sourceFile());
+            Matcher imported = Pattern.compile("(?m)^\\s*import\\s+([\\w.]+)\\." + Pattern.quote(raw) + "\\s*;")
+                    .matcher(text == null ? "" : text);
+            String meant = (imported.find() ? imported.group(1) : pkg(qualified(type))) + "." + raw;
+            for (GraphNode t : named) if (canonical(qualified(t)).equals(meant)) return t;
+        }
+        return oneType(g, raw);
     }
 
     static String qualified(GraphNode type) {

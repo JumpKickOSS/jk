@@ -24,7 +24,7 @@ The same bytes are the MCP tool **`skill`** (`topic` optional) and the resource 
 default directory is `<project>/.agents/skills`, the project-level location clients share. The
 skill's `name` matches the `jk/` directory it is installed into.
 
-Topics: `graph`, `dependencies`, `tests`, `workspaces`, `lockfile`, `imports`, `plugins`, `guards`,
+Topics: `code`, `dependencies`, `tests`, `workspaces`, `lockfile`, `imports`, `plugins`, `guards`,
 `layout`, `jdk`, `engine`.
 
 ## What an agent does

@@ -91,14 +91,14 @@ class InitializerCallersTest {
     @Test
     void aStaticFieldsInitializerIsACallerUnderItsType(@TempDir Path dir) throws IOException {
         assertThat(callers(dir, "Calc.compute"))
-                .startsWith("Callers of Calc.compute(): 1 in main sources, 0 in tests.")
+                .startsWith("Usages of Calc.compute(): 1 in main sources, 0 in tests.")
                 .contains("  Holder  src/main/java/com/acme/shop/Holder.java:6", "L6| static final int VALUE");
     }
 
     @Test
     void aLambdaInAStaticBlockOrAConstructorCallsForItsType(@TempDir Path dir) throws IOException {
         assertThat(callers(dir, "Calc.twice"))
-                .startsWith("Callers of Calc.twice(): 1 in main sources, 0 in tests.")
+                .startsWith("Usages of Calc.twice(): 1 in main sources, 0 in tests.")
                 .contains("  Holder  src/main/java/com/acme/shop/Holder.java:")
                 .contains("L9| IntSupplier later = () -> Calc.twice();", "L15| deferred = () -> Calc.twice();");
     }
