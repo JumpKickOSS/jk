@@ -111,9 +111,9 @@ ARMS = {
     # jk as shipped plus agy's own workspace rule (.agents/rules/, which agy loads): the agy prescription.
     "jk-agyrules": dict(tool="jk", extra=[], hide_graph=False, hooks=None, prompt="", files={
         ".agents/rules/jk.md": AGY_RULES}),
-    # jk as shipped, its AGENTS.md section without the callers line: what that line costs or saves.
-    "jk-noline": dict(tool="jk", extra=[], hide_graph=False, hooks=None, prompt="", strip_callers=True),
-    "jk-nograph-noline": dict(tool="jk", extra=[], hide_graph=True, hooks=None, prompt="", strip_callers=True),
+    # jk as shipped, its AGENTS.md section without the usages line: what that line costs or saves.
+    "jk-noline": dict(tool="jk", extra=[], hide_graph=False, hooks=None, prompt="", strip_usages=True),
+    "jk-nograph-noline": dict(tool="jk", extra=[], hide_graph=True, hooks=None, prompt="", strip_usages=True),
     # The graph tools' cards on the MCP list (the extended list): the graph for a driver without hooks.
     "jk-graph": dict(tool="jk", extra=[], hide_graph=False, extended=True, hooks=None, prompt=""),
     "jk-hooks": dict(tool="jk", extra=[], hide_graph=False, hooks="jk", prompt=""),
@@ -793,7 +793,7 @@ def _run_one(name: str, task: dict, arm: str, run_no: int, ns, run_root: Path) -
                 target = sandbox / rel
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_text(text)
-            if spec.get("strip_callers"):
+            if spec.get("strip_usages"):
                 agents_md = sandbox / "AGENTS.md"
                 # The whole bullet: its first line names jk code usages, and its indented lines continue it.
                 kept, dropping = [], False

@@ -774,9 +774,9 @@ Copilot CLI, which counts a whole session at its end) by its own count, read fro
 [{ model, input, cacheWrite, cacheRead, output, total }] }`, a `model` that does not look like a
 model id reading `unknown` and `wholeSession` true for a count of a whole session. An action is `{ seq, at, kind, summary, headline?, outcome, millis,
 episode, project?, buildNumber? }`: `kind` is `run` or the MCP tool (`query`, `usages`, `read`,
-`find`, `rename`, `deps`, `update`, `workspace`), `summary` one line of what it asked (`callers
-PricingRules.weekendUplift`), `headline` the first line of its answer (`3 callers`), `outcome`
-`ok`/`error` for an action and `green`/`red`/`cancelled` for a run. `summary` and `headline` are
+`find`, `rename`, `deps`, `update`, `workspace`), `summary` one line of what it asked (`usages
+PricingRules.weekendUplift`), `headline` the first line of its answer (`Usages of
+PricingRules.weekendUplift: 3 in main sources, 0 in tests.`), `outcome` `ok`/`error` for an action and `green`/`red`/`cancelled` for a run. `summary` and `headline` are
 masked like a run record's free text (the `.env` secrets of the action's project and the
 repository credentials its build resolved) before they are written, so `actions.jsonl`, this
 route and the SSE `action` event all carry the masked form. An id that is not one path

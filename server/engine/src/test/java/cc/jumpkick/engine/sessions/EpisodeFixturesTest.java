@@ -19,7 +19,7 @@ import org.junit.jupiter.params.provider.ValueSource;
  *
  * <pre>
  * +m:ss run &lt;project&gt; green|red [&lt;N&gt;s] [Class#method ...]
- * +m:ss query|callers|read|find &lt;project&gt; &lt;text&gt;
+ * +m:ss query|usages|read|find &lt;project&gt; &lt;text&gt;
  * +m:ss rename &lt;project&gt; &lt;T.m&gt;
  * +m:ss add|remove|pin &lt;project&gt; &lt;g:a&gt; ...
  * +m:ss update &lt;project&gt; &lt;pins&gt;
@@ -89,7 +89,7 @@ class EpisodeFixturesTest {
                 }
                 yield Fact.run(at, millis, project, t[2], ok, tests);
             }
-            case "query", "callers", "read", "find" ->
+            case "query", "usages", "read", "find" ->
                 Fact.action(at, 0, project, Fact.Kind.GRAPH, true, String.join(" ", rest), 0);
             case "rename" -> Fact.action(at, 0, project, Fact.Kind.RENAME, true, rest.getFirst(), 0);
             case "add" -> Fact.action(at, 0, project, Fact.Kind.ADD, true, rest.getFirst(), rest.size());

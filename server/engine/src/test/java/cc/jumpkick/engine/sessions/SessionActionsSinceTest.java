@@ -43,9 +43,9 @@ class SessionActionsSinceTest {
                 LABEL,
                 "claude-code",
                 Fact.action(T + 1, 4, "/ws/app", Fact.Kind.GRAPH, true, "", 0),
-                "callers",
-                "callers PricingRules.weekendUplift",
-                "3 callers",
+                "usages",
+                "usages PricingRules.weekendUplift",
+                "Usages of PricingRules.weekendUplift: 3 in main sources, 0 in tests.",
                 0);
         now.set(T + 10_000);
         log.action(
@@ -70,7 +70,7 @@ class SessionActionsSinceTest {
                 assertThat(a.projectId()).isEqualTo("p-app");
             });
         }
-        assertThat(log.actionsSince(0)).extracting(a -> a.action().kind()).containsExactly("callers", "deps");
+        assertThat(log.actionsSince(0)).extracting(a -> a.action().kind()).containsExactly("usages", "deps");
     }
 
     @Test

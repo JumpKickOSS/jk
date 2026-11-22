@@ -205,7 +205,7 @@ test('session, episode and action frames fold into the rail and the selected pag
   assert.deepEqual(detail.episodes.map((e) => e.number), [2, 1], 'newest first, as the engine serves them');
   assert.equal(detail.session.episode, 'mcp-3f9a.2');
   assert.equal(currentEpisode(detail).id, 'mcp-3f9a.2');
-  const action = { seq: 4, at: NOW, kind: 'usages', summary: 'usages PricingRules.weekendUplift', headline: '3 callers', outcome: 'ok', millis: 40, episode: 'mcp-3f9a.2' };
+  const action = { seq: 4, at: NOW, kind: 'usages', summary: 'usages PricingRules.weekendUplift', headline: 'Usages of PricingRules.weekendUplift: 3 in main sources, 0 in tests.', outcome: 'ok', millis: 40, episode: 'mcp-3f9a.2' };
   detail = foldIntoDetail(detail, 'action', { session: 'mcp-3f9a', action });
   detail = foldIntoDetail(detail, 'action', { session: 'mcp-3f9a', action });
   assert.equal(detail.actions.length, 1, 'an action folds once by its seq');

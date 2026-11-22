@@ -64,7 +64,7 @@ class SessionLogTest {
     @Test
     void an_mcp_session_journals_its_episodes_runs_and_actions() throws Exception {
         String id = log.open("mcp", "claude-code", LABEL, "/ws/app");
-        callers(T + 1_000);
+        usages(T + 1_000);
         String episode = Objects.requireNonNull(log.placeRun("mcp", LABEL, "test", "/ws/app", T + 2_000));
         assertThat(episode).isEqualTo(id + ".1");
         log.runFinished(run(episode, 27, T + 2_000, false));
@@ -89,7 +89,7 @@ class SessionLogTest {
         List<String> lines =
                 Files.readAllLines(root.resolve("sessions").resolve(id).resolve("actions.jsonl"));
         assertThat(lines).hasSize(2);
-        assertThat(lines.get(0)).contains("\"kind\":\"callers\"", "\"summary\":\"callers PricingRules.weekendUplift\"");
+        assertThat(lines.get(0)).contains("\"kind\":\"usages\"", "\"summary\":\"usages PricingRules.weekendUplift\"");
         assertThat(lines.get(1)).contains("\"kind\":\"run\"", "\"summary\":\"test #27\"", "\"outcome\":\"red\"");
         assertThat(events)
                 .containsExactly("session:started", "episode:started", "session:episode", "action:", "episode:title");
@@ -106,7 +106,7 @@ class SessionLogTest {
     @Test
     void actions_page_newest_first_by_sequence() {
         String id = log.open("mcp", "claude-code", LABEL, "/ws/app");
-        for (int i = 0; i < 5; i++) callers(T + i);
+        for (int i = 0; i < 5; i++) usages(T + i);
         SessionLog.Page newest = log.session(id, 0, 2).orElseThrow();
         assertThat(newest.actions()).extracting(a -> a.get("seq")).containsExactly(4L, 5L);
         assertThat(newest.next()).isEqualTo(4);
@@ -128,7 +128,7 @@ class SessionLogTest {
         assertThat(log.session(shell, 0, 1).orElseThrow().session()).containsEntry("state", "idle");
         assertThat(events).contains("session:idle").doesNotContain("session:ended");
 
-        callers(now.get());
+        usages(now.get());
         assertThat(log.session(mcp, 0, 1).orElseThrow().session()).containsEntry("state", "live");
         assertThat(events).contains("session:live");
         assertThat(sessionOf(log.placeRun("cli", null, "build", "/ws/app", now.get())))
@@ -419,7 +419,7 @@ class SessionLogTest {
     void a_session_a_dead_engine_left_open_is_adopted_survives_the_idle_gap_and_ends_at_the_expiry() {
         String id = log.open("mcp", "claude-code", LABEL, "/ws/app");
         log.saveConnection("mcp", LABEL, Map.of("id", "3f9a"));
-        callers(T + 1_000);
+        usages(T + 1_000);
 
         SessionLog next = newLog();
         next.adopt();
@@ -474,10 +474,10 @@ class SessionLogTest {
         successor.adopt();
         primary.set(false);
         log.runFinished(run(episode, 27, T + 1_000, false));
-        callers(T + 2_000);
+        usages(T + 2_000);
         primary.set(true);
         log.sweep();
-        callers(T + 3_000);
+        usages(T + 3_000);
 
         assertThat(Files.readString(dir.resolve("session.json")))
                 .as("once displaced, never again")
@@ -705,7 +705,7 @@ class SessionLogTest {
     @Test
     void the_list_carries_live_and_ended_sessions_newest_first_with_their_current_episode() {
         String first = log.open("mcp", "claude-code", LABEL, "/ws/app");
-        callers(T + 1);
+        usages(T + 1);
         log.end("mcp", LABEL);
         now.set(T + 5_000);
         String second = log.open("mcp", "cursor", "cursor 9c01", "/ws/lib");
@@ -852,15 +852,15 @@ class SessionLogTest {
         return new ArrayList<>(byId.values());
     }
 
-    private void callers(long at) {
+    private void usages(long at) {
         log.action(
                 "mcp",
                 LABEL,
                 "claude-code",
                 Fact.action(at, 4, "/ws/app", Fact.Kind.GRAPH, true, "", 0),
-                "callers",
-                "callers PricingRules.weekendUplift",
-                "3 callers",
+                "usages",
+                "usages PricingRules.weekendUplift",
+                "Usages of PricingRules.weekendUplift: 3 in main sources, 0 in tests.",
                 0);
     }
 
