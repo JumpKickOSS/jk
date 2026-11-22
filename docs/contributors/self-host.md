@@ -140,8 +140,19 @@ that passed; before there is a `green`, it always does. Then:
 - **Red** finds the batch that made it red among the queue's batches landed since `green`
   (`queue-batches.log`). It bisects them: it gates batch tips with the Full tier until it knows the
   first red one, and gates no commit twice. It names that batch, with its branches and the log of
-  its red gate, in `full-runs.log`, and comments once on each ticket its commits name (a subject
-  `<ticket>: …`). Revert the batch's commits or fix forward, through the queue.
+  its red gate, in `full-runs.log`.
+- **A confirmed culprit is reverted**, once per batch. The loop runs the classes the batch's red gate
+  failed again (`scripts/gate/rerun-classes.sh`: the reinstall without tests, then those classes
+  alone): they must fail at the batch's tip and pass at its base, and a bisect of the batch's
+  commits finds the one they fail with and pass without. It reverts that commit on top of the red
+  tip, passes the revert through the Branch tier and submits it to the queue as
+  `full-revert/<ticket>-<sha>`, which gates it like any branch; it never pushes `main`. It comments
+  on the commit's ticket and reopens it (a ticket `done` or in `review` goes back to `ready`), so its
+  worker fixes forward on top of the revert and submits again.
+- **Otherwise it reverts nothing**: when the red gate failed outside a test class, the classes pass
+  when run again, they fail before the batch too, or the revert conflicts with later work. It
+  comments once on each ticket the batch's commits name (a subject `<ticket>: …`), saying why;
+  revert the batch's commits or fix forward, through the queue.
 - **Two red cycles in a row** (`FULL_HOLD_AFTER`) write `full-hold` in the queue's repository: the
   batch's tickets (`ticket <id>`) and commits (`commit <sha>`). While it exists the queue lands only
   a fix, a branch with a commit for one of those tickets or one that reverts one of those commits;
@@ -155,8 +166,10 @@ FULL_CHECKOUT=~/src/jk-full-checkout scripts/gate/full-loop.sh
 ```
 
 Its gate logs are `integ-gate-f<n>.log` beside the queue's, so the two share one flaky history.
-The header of `scripts/gate/full-loop.sh` lists its settings; `scripts/test-full-loop.sh` holds it
-and the queue's hold to the rules above in scratch repositories.
+The re-runs of a culprit and its revert's Branch tier log to `full-<batch>.log` beside them. The
+header of `scripts/gate/full-loop.sh` lists its settings; `scripts/test-full-loop.sh` holds it and
+the queue's hold to the rules above in scratch repositories, and `scripts/test-rerun-classes.sh`
+holds the re-run.
 
 ## CI
 

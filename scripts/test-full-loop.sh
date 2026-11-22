@@ -2,9 +2,12 @@
 # Fixtures for the Full tier's loop, scripts/gate/full-loop.sh, beside the merge queue in scratch
 # repositories with a stand-in `jk`, `ka` and gate. A green tip of origin/main moves origin's green
 # branch to it, and a tip already judged is not gated again. A red tip names the batch that made it
-# red, found by bisecting the batches landed since green with each commit gated once, and comments
-# once on its ticket. After two red cycles the queue lands only the fix (a revert of the batch's
-# commit, or a commit for its ticket) and holds the rest, until a green cycle lifts the hold.
+# red, found by bisecting the batches landed since green with each commit gated once. When the
+# classes it failed fail with one of its commits and pass on that commit's parent, the loop submits
+# the commit's revert to the queue, comments on its ticket and reopens it; when they pass on a
+# re-run, or the revert conflicts with later work, it reverts nothing and comments on the batch's
+# tickets why. After two red cycles the queue lands only the fix (a revert of the batch's commit, or
+# a commit for its ticket) and holds the rest, until a green cycle lifts the hold.
 set -euo pipefail
 
 unset "${!GATE_@}" "${!FULL_@}" "${!QUEUE_@}"
@@ -19,14 +22,17 @@ fail() {
   exit 1
 }
 
-# The stand-in jk passes the Branch tier; ka logs each call. The stand-in gate passes the Queue
-# tier always and the Full tier unless the tip carries red.txt, and logs each Full gate's tip and base.
+# The stand-in jk passes the Branch tier; ka logs each call and says every ticket is done. The
+# stand-in gate passes the Queue tier always and the Full tier unless the tip carries red.txt or
+# flaky.txt, when cc.example.RedTest fails, and logs each Full gate's tip and base. The stand-in
+# re-run fails that class on a commit that carries red.txt, and logs each commit it runs on.
 mkdir -p "$WORK/bin"
 printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$WORK/bin/jk"
 cat >"$WORK/bin/ka" <<'KA'
 #!/usr/bin/env bash
 printf '%s|' "$@" >>"$KA_LOG"
 echo >>"$KA_LOG"
+[ "$1" != show ] || echo '{"status":"done"}'
 KA
 chmod +x "$WORK/bin/jk" "$WORK/bin/ka"
 export PATH="$WORK/bin:$PATH" KA_LOG="$WORK/ka.log"
@@ -41,13 +47,21 @@ n="$1" tip="$2"
 L="$GATE_LOG_DIR/integ-gate-$n.log"
 cd "$GATE_CHECKOUT" && git checkout -q --detach "$tip"
 [ "$GATE_TIER" = full ] && echo "$tip" >>"$GATE_LOG_DIR/full-gated" && echo "$GATE_BASE" >>"$GATE_LOG_DIR/full-bases"
-if [ "$GATE_TIER" = full ] && git ls-tree -r --name-only HEAD | grep -qx red.txt; then
+if [ "$GATE_TIER" = full ] && git ls-tree -r --name-only HEAD | grep -qxE '(red|flaky).txt'; then
   { echo "FAIL cc.example.RedTest"; echo "RED"; } >"$L"
+  echo '{"type":"error","code":"test-failure","module":"core","testClass":"cc.example.RedTest$Inner"}' >"$GATE_LOG_DIR/g$n-rerun.jsonl"
 else
   echo "GREEN $(git rev-parse HEAD)" >"$L"
 fi
 echo "GATE$n DONE" >>"$L"
 GATE
+cat >"$WORK/rerun.sh" <<'RERUN'
+#!/usr/bin/env bash
+grep -qx 'core cc.example.RedTest' "$2" || exit 2
+echo "$1" >>"$GATE_LOG_DIR/reruns"
+git -C "$GATE_CHECKOUT" ls-tree -r --name-only "$1" | grep -qx red.txt && exit 1
+exit 0
+RERUN
 
 export GIT_AUTHOR_NAME=dev GIT_AUTHOR_EMAIL=dev@example.invalid
 export GIT_COMMITTER_NAME=dev GIT_COMMITTER_EMAIL=dev@example.invalid
@@ -92,11 +106,13 @@ queue() {
 }
 full() {
   FULL_CHECKOUT="$WORK/fco" FULL_GATE="$WORK/gate.sh" FULL_LOG_DIR="$logs" FULL_KA=ka \
+    FULL_RERUN="$WORK/rerun.sh" GATE_LOG_DIR="$logs" \
     bash "$ROOT/scripts/gate/full-loop.sh" --once
 }
 origin() { git -C "$WORK/origin.git" rev-parse -q --verify "$1"; }
 gated() { wc -l <"$logs/full-gated" | tr -d ' '; }
 runs() { cat "$QUEUE_REPO/full-runs.log"; }
+reruns() { cat "$logs/reruns" 2>/dev/null; }
 
 # --- green: the tip passes and green names it; the same tip is not gated twice ---
 land a a.txt "TK-AAAA1: a"
@@ -108,10 +124,17 @@ full || fail "a cycle with nothing new failed"
 [[ "$(head -1 "$logs/full-bases")" == "$(git hash-object -t tree /dev/null)" ]] || fail "the first gate's base was $(head -1 "$logs/full-bases")"
 
 # --- red: bisect the batches since green, name the one that made it red (a group of a split here),
-# comment on its ticket ---
+# confirm the commit of it the failing class fails with, submit its revert and reopen its ticket ---
 land b b.txt "TK-BBBB1: b"
-land r red.txt "TK-RRRR1: breaks the Full tier" 1.2
-culprit="$(origin main)"
+git -C "$dev" fetch -q && git -C "$dev" checkout -q -b r origin/main
+commit "$dev" r.txt "TK-RRRR1: prepare"
+commit "$dev" red.txt "TK-RRRR1: breaks the Full tier"
+submit r
+echo "waiting $(git -C "$dev" rev-parse HEAD) group 1.2: batch 1 was red" >"$QUEUE_REPO/queue-state/r"
+queue || fail "the queue did not run for r"
+[[ "$(status r)" == "r: landed "* ]] || fail "r did not land: $(status r)"
+culprit="$(origin main)" prep="$(origin main~1)" before_r="$(origin main~2)"
+bad="$culprit"
 grep -q "group 1.2 LANDED r@" "$QUEUE_REPO/queue-batches.log" || fail "r did not land as a group: $(cat "$QUEUE_REPO/queue-batches.log")"
 land c c.txt "TK-CCCC1: c"
 green="$(origin green)"
@@ -121,17 +144,41 @@ full || fail "the red cycle failed"
 runs | grep -q "RED culprit batch [0-9]* ($(git -C "$dev" rev-parse --short=12 "$culprit"): r@" \
   || fail "the red cycle did not name r's batch: $(runs)"
 [[ "$(gated)" -eq 4 ]] || fail "the red cycle gated $(gated) commits in all, want 4: a, then the tip, r and b"
+[[ "$(reruns | tr '\n' ' ')" == "$culprit $before_r $prep " ]] \
+  || fail "the re-runs were not the batch's tip, its base, then its first commit: $(reruns)"
+rb="full-revert/TK-RRRR1-$(git -C "$dev" rev-parse --short=12 "$bad")"
+revert="$(git --git-dir="$QUEUE_REPO" rev-parse -q --verify "refs/queue/$rb")" || fail "no revert waits in the queue: $(runs)"
+git --git-dir="$QUEUE_REPO" log -1 --format=%B "$revert" | grep -qx "This reverts commit $bad." || fail "the revert does not revert $bad"
+[[ "$(git --git-dir="$QUEUE_REPO" rev-parse "$revert^")" == "$(origin main)" ]] || fail "the revert is not on the red tip"
+[[ -z "$(git -C "$WORK/fco" status --porcelain)" ]] || fail "the revert left the Full checkout dirty"
+git -C "$WORK/fco" rev-parse -q --verify "refs/heads/$rb" >/dev/null && fail "the revert's branch was left in the Full checkout"
 [[ "$(grep -c '^comment|TK-RRRR1|' "$KA_LOG")" -eq 1 ]] || fail "the culprit's ticket got no comment: $(cat "$KA_LOG")"
-grep -q -- 'Full tier is red' "$KA_LOG" || fail "the comment does not say the Full tier is red: $(cat "$KA_LOG")"
+grep -q -- "submitted its revert to the merge queue as \`$rb\`" "$KA_LOG" || fail "the comment does not name the revert: $(cat "$KA_LOG")"
+[[ "$(grep -c '^move|TK-RRRR1|ready|' "$KA_LOG")" -eq 1 ]] || fail "the culprit's ticket was not reopened: $(cat "$KA_LOG")"
 grep -q 'TK-[BC]' "$KA_LOG" && fail "a ticket of a green batch got a comment: $(cat "$KA_LOG")"
 [[ -f "$QUEUE_REPO/full-hold" ]] && fail "one red cycle held the queue"
+queue || fail "the queue did not run for the revert"
+[[ "$(status "$rb")" == "$rb: landed "* ]] || fail "the revert did not land: $(status "$rb")"
+full || fail "the cycle after the revert failed"
+[[ "$(origin green)" == "$(origin main)" ]] || fail "the reverted tip did not pass: $(runs)"
 
-# --- a second red cycle holds the queue; the culprit is not gated or commented again ---
+# --- a class that passes when run again is not a confirmed culprit: nothing is reverted, the batch's
+# ticket is told why; a second red cycle holds the queue, and the culprit is not gated or told again ---
+: >"$KA_LOG"
+land s flaky.txt "TK-SSSS1: fails the Full tier now and then"
+culprit="$(origin main)"
+full || fail "the unconfirmed red cycle failed"
+runs | grep -q "reverts nothing: the classes its gate failed pass when run again" || fail "the loop did not say why it reverted nothing: $(runs)"
+[[ "$(grep -c '^comment|TK-SSSS1|.*reverts nothing, because the classes its gate failed pass' "$KA_LOG")" -eq 1 ]] \
+  || fail "the batch's ticket was not told why nothing was reverted: $(cat "$KA_LOG")"
+grep -q '^move|' "$KA_LOG" && fail "an unconfirmed culprit's ticket was reopened"
+git --git-dir="$QUEUE_REPO" for-each-ref refs/queue/full-revert | grep -q . && fail "an unconfirmed culprit was reverted"
+n="$(gated)"
 land d d.txt "TK-DDDD1: d"
 full || fail "the second red cycle failed"
-[[ "$(gated)" -eq 5 ]] || fail "the second red cycle gated $(gated) commits in all, want 5: only its tip is new"
-[[ "$(grep -c '^comment|TK-RRRR1|' "$KA_LOG")" -eq 1 ]] || fail "the culprit's ticket was commented on twice"
-grep -qx 'ticket TK-RRRR1' "$QUEUE_REPO/full-hold" || fail "the hold does not name the ticket: $(cat "$QUEUE_REPO/full-hold")"
+[[ "$(gated)" -eq $((n + 1)) ]] || fail "the second red cycle gated $(($(gated) - n)) commits, want 1: only its tip is new"
+[[ "$(grep -c '^comment|TK-SSSS1|' "$KA_LOG")" -eq 1 ]] || fail "the culprit's ticket was commented on twice"
+grep -qx 'ticket TK-SSSS1' "$QUEUE_REPO/full-hold" || fail "the hold does not name the ticket: $(cat "$QUEUE_REPO/full-hold")"
 grep -qx "commit $culprit" "$QUEUE_REPO/full-hold" || fail "the hold does not name the commit"
 
 # --- held: a revert and a commit for the ticket land, an unrelated branch waits, even in a group ---
@@ -140,7 +187,7 @@ git -C "$dev" checkout -q -b e origin/main && commit "$dev" e.txt "TK-EEEE1: e" 
 # e waits in a group of a red split, which is gated before anything else; held, it leaves the group.
 echo "waiting $(git -C "$dev" rev-parse HEAD) group 7.1: batch 7 was red" >"$QUEUE_REPO/queue-state/e"
 git -C "$dev" checkout -q -b fix origin/main && tick && git -C "$dev" revert --no-edit "$culprit" >/dev/null && submit fix
-git -C "$dev" checkout -q -b fwd origin/main && commit "$dev" f.txt "TK-RRRR1: also note the fix" && submit fwd
+git -C "$dev" checkout -q -b fwd origin/main && commit "$dev" f.txt "TK-SSSS1: also note the fix" && submit fwd
 queue || fail "the held queue did not run"
 status e | grep -q '^e: waiting .* held:' || fail "an unrelated branch was not held: $(status e)"
 [[ "$(status fix)" == "fix: landed "* ]] || fail "the revert did not land: $(status fix)"
@@ -156,4 +203,15 @@ runs | tail -1 | grep -q 'GREEN green; the queue.s hold is lifted' || fail "the 
 queue || fail "the queue did not run after the hold"
 [[ "$(status e)" == "e: landed "* ]] || fail "the held branch did not land after the hold: $(status e)"
 
-echo "test-full-loop: ok ($(gated) Full gates)"
+# --- a confirmed culprit whose revert conflicts with a later batch is not reverted ---
+: >"$KA_LOG"
+land x red.txt "TK-XXXX1: x"
+land y red.txt "TK-YYYY1: y builds on x"
+full || fail "the conflicting red cycle failed"
+runs | grep -q "reverts nothing: its revert of [0-9a-f]* conflicts with later work" || fail "the loop did not say the revert conflicts: $(runs)"
+grep -q '^comment|TK-XXXX1|.*conflicts with later work' "$KA_LOG" || fail "x's ticket was not told the revert conflicts: $(cat "$KA_LOG")"
+grep -q '^move|' "$KA_LOG" && fail "a culprit that was not reverted had its ticket reopened"
+[[ -z "$(git -C "$WORK/fco" status --porcelain)" ]] || fail "the conflicting revert left the Full checkout dirty"
+[[ "$(git --git-dir="$QUEUE_REPO" for-each-ref refs/queue/full-revert)" == "" ]] || fail "a conflicting revert was submitted"
+
+echo "test-full-loop: ok ($(gated) Full gates, $(reruns | wc -l | tr -d ' ') re-runs)"

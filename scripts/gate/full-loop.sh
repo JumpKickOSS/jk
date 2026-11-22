@@ -7,8 +7,15 @@
 # GREEN pushes the tip to origin's `green` branch as a fast-forward: releases are cut from it.
 # RED looks for the batch of the merge queue that made it red among those landed since `green`
 # (queue-batches.log): it bisects them, gating batch tips with the Full tier until the first red one
-# is known (each commit is gated once; full-verdicts keeps every verdict). It names that batch in
-# full-runs.log and comments once on each ticket its commits name (a subject `<ticket>: ...`).
+# is known (each commit is gated once; full-verdicts keeps every verdict), and names it in
+# full-runs.log. Once per batch it then tries to confirm one commit of it: the classes that failed
+# its red gate fail again at its tip and pass at its base, and a bisect of its commits with those
+# classes finds the one they fail with and pass without (scripts/gate/rerun-classes.sh). It reverts
+# that commit on top of the red tip, puts the revert through the Branch tier and submits it to the
+# merge queue as full-revert/<ticket>-<sha>, which gates it like any branch; and it comments on the
+# commit's ticket and reopens it, so its worker fixes forward and submits again. When no commit is
+# confirmed, or its revert conflicts with later work, it reverts nothing and comments on each
+# ticket the batch's commits name (a subject `<ticket>: ...`), saying why.
 # After FULL_HOLD_AFTER red cycles in a row it writes <QUEUE_REPO>/full-hold, which names the
 # batch's tickets and commits; while that file exists the queue lands only a fix: a branch with a
 # commit for one of those tickets, or one that reverts one of those commits. The next GREEN removes
@@ -19,14 +26,16 @@
 #
 #   QUEUE_REPO       the merge queue's repository (default ~/src/jk-queue.git): its queue-batches.log
 #                    is read, and this loop's state is written beside it: full-runs.log (one line per
-#                    cycle), full-verdicts (`<sha> GREEN|RED <gate>`), full-reds, full-filed, full-hold
+#                    cycle), full-verdicts (`<sha> GREEN|RED <gate>`), full-reds, full-filed, full-hold;
+#                    the re-runs and the revert's Branch tier log to full-<batch>.log beside the gate logs
 #   FULL_CHECKOUT    the clean checkout the Full tier runs in; its origin holds main and green
 #                    (required; not the queue's checkout)
 #   FULL_GATE        the gate, run as <gate> <n> <sha> (default scripts/gate/gate.sh of the checkout)
 #   FULL_LOG_DIR     the gate logs, integ-gate-f<n>.log (default the queue's, so one flaky history
 #                    serves both: ${QUEUE_LOG_DIR:-/var/tmp/jk-queue})
 #   FULL_HOLD_AFTER  red cycles in a row after which the queue lands only the fix (default 2)
-#   FULL_KA          the ka command that comments on tickets (default ka)
+#   FULL_KA          the ka command that comments on tickets and reopens them (default ka)
+#   FULL_RERUN       re-runs failed classes, as <rerun> <sha> <classes> (default scripts/gate/rerun-classes.sh)
 #   FULL_POLL        seconds between looks when origin/main has not moved (default 300)
 #   FULL_YIELD       seconds to wait after a cycle, so a waiting queue batch takes the lock (default 10)
 #   GATE_LOCK        the lock every gate on this host takes (default /var/tmp/fleet-gate.lock)
@@ -38,12 +47,16 @@
   co="${FULL_CHECKOUT:?FULL_CHECKOUT: the checkout the Full tier runs in}"
   D="${FULL_LOG_DIR:-${QUEUE_LOG_DIR:-/var/tmp/jk-queue}}"
 
+  H="$(cd "$(dirname "$0")" && pwd)" # this script's directory, which holds the scripts it runs
+
   if [ "${1:-}" != --cycle ]; then
-    mkdir -p "$repo" "$D" || exit 2
-    # Run a copy, so a commit that changes this script changes the loop only when it is restarted.
-    cp "$0" "$D/full-loop-running.sh" || exit 2
+    mkdir -p "$repo" "$D/full-loop/queue" || exit 2
+    # Run a copy, so a commit that changes these scripts changes the loop only when it is restarted.
+    cp "$0" "$D/full-loop/full-loop.sh" || exit 2
+    cp "$H/rerun-classes.sh" "$H/flaky.sh" "$D/full-loop/" || exit 2
+    cp "$H/../queue/branch-tier.sh" "$H/../queue/submit.sh" "$H/../queue/common.sh" "$D/full-loop/queue/" || exit 2
     while :; do
-      flock -w 7200 "${GATE_LOCK:-/var/tmp/fleet-gate.lock}" bash "$D/full-loop-running.sh" --cycle
+      flock -w 7200 "${GATE_LOCK:-/var/tmp/fleet-gate.lock}" bash "$D/full-loop/full-loop.sh" --cycle
       rc=$?
       [ "$rc" -eq 0 ] || [ "$rc" -eq 3 ] || exit "$rc"
       [ "${1:-}" = --once ] && exit 0
@@ -141,6 +154,68 @@
     [ "$hi" -lt "${#batches[@]}" ] && culprit="${batches[$hi]}"
   fi
 
+  # confirm: narrow the culprit batch to one commit, $bad, by re-running the classes its red gate
+  # failed (in $classes): they must fail at its tip and pass at its base, and a bisect of its
+  # commits finds the first they fail with. Else $why says what stopped it.
+  confirm() {
+    local lo hi mid list=() c
+    classes="$D/full-$cn-classes"
+    bash "$H/flaky.sh" failed "$D/g$(gate_of "$ctip")-rerun.jsonl" >"$classes" 2>/dev/null && [ -s "$classes" ] \
+      || { why="its red gate failed outside a test class, or names none to run again"; return 1; }
+    rerun "$ctip"
+    case $? in
+      1) ;;
+      0) why="the classes its gate failed pass when run again at $(short "$ctip")" && return 1 ;;
+      *) why="the classes its gate failed could not run again at $(short "$ctip")" && return 1 ;;
+    esac
+    rerun "$cbase"
+    case $? in
+      0) ;;
+      1) why="the classes its gate failed fail before it too, at $(short "$cbase")" && return 1 ;;
+      *) why="the classes its gate failed could not run at $(short "$cbase")" && return 1 ;;
+    esac
+    for c in $commits; do list+=("$c"); done
+    lo=-1 hi=$((${#list[@]} - 1))
+    while [ $((hi - lo)) -gt 1 ]; do
+      mid=$(((lo + hi) / 2))
+      rerun "${list[$mid]}"
+      case $? in
+        0) lo=$mid ;;
+        1) hi=$mid ;;
+        *) why="the classes its gate failed could not run at $(short "${list[$mid]}")" && return 1 ;;
+      esac
+    done
+    bad="${list[$hi]}"
+  }
+  rerun() { # <sha>: 0 when the classes pass there, 1 when one fails, else they could not run
+    echo "== $1" >>"$D/full-$cn.log"
+    GATE_CHECKOUT="$co" bash "${FULL_RERUN:-$H/rerun-classes.sh}" "$1" "$classes" >>"$D/full-$cn.log" 2>&1 </dev/null
+  }
+  # revert: revert $bad on top of the red tip as branch $rb, pass the Branch tier and submit it to
+  # the merge queue, which gates it like any branch. Else $why says what stopped it.
+  revert() {
+    local t
+    t="$(git log -1 --format=%s "$bad" | sed -nE 's/^([A-Z][A-Z0-9]*-[A-Z0-9]+): .*/\1/p')"
+    rb="full-revert/${t:+$t-}$(short "$bad")"
+    git checkout -q --detach "$tip" || { why="the checkout could not detach at $(short "$tip")"; return 1; }
+    if ! git revert --no-commit "$bad" >/dev/null 2>&1; then
+      git revert --abort >/dev/null 2>&1
+      git reset -q --hard "$tip"
+      why="its revert of $(short "$bad") conflicts with later work on origin/main"
+      return 1
+    fi
+    git commit -q -m "Revert \"$(git log -1 --format=%s "$bad")\"" -m "This reverts commit $bad." \
+      -m "The Full tier on origin/main is red from it: these classes fail with it and pass on its parent." \
+      -m "$(sed 's/^/    /' "$classes")" || { git reset -q --hard "$tip"; why="the revert could not be committed"; return 1; }
+    git checkout -q -B "$rb" || { git reset -q --hard "$tip"; why="no branch $rb could be made"; return 1; }
+    echo "== branch tier and submit of $rb" >>"$D/full-$cn.log"
+    (bash "$H/queue/branch-tier.sh" && JK_QUEUE_REMOTE="$repo" bash "$H/queue/submit.sh" "$rb") \
+      >>"$D/full-$cn.log" 2>&1 </dev/null
+    t=$?
+    git reset -q --hard && git checkout -q --detach "$tip" && git branch -q -D "$rb"
+    [ "$t" -eq 0 ] || { why="its revert of $(short "$bad") did not pass the Branch tier or was not submitted (see $D/full-$cn.log)"; return 1; }
+  }
+
   if [ -z "$culprit" ]; then
     why="the queue landed no batch since green"
     [ "${#batches[@]}" -eq 0 ] || why="every batch landed since green passes at its own tip"
@@ -149,6 +224,7 @@
     hold_lines=("# The Full tier is red on $(short "$tip") and no batch was named: add a" "# \`ticket <id>\` or \`commit <sha>\` line to let a fix through.")
   else
     read -r cn cbase ctip <<<"$culprit"
+    cbase="$(git rev-parse "$cbase^{commit}")" || exit 2
     members="$(awk -v b="$cn" '$1 == "batch" && $2 == b { for (i = 8; i <= 10; i++) if ($i == "LANDED") { for (j = i + 1; j <= NF; j++) printf " %s", $j; exit } }' "$repo/queue-batches.log")"
     commits="$(git rev-list --reverse "$cbase..$ctip")"
     tickets="$(git log --format=%s "$cbase..$ctip" | sed -nE 's/^([A-Z][A-Z0-9]*-[A-Z0-9]+): .*/\1/p' | sort -u)"
@@ -156,10 +232,30 @@
     log "full $n $stamp $(short "$tip") RED culprit batch $cn ($(short "$ctip"):$members) tickets $(tr '\n' ' ' <<<"${tickets:-<none>}" | sed 's/ $//'); red cycles $reds; log $cl"
     if ! grep -qx "$cn" "$repo/full-filed" 2>/dev/null; then
       fails="$(grep -aE '^(FAIL|E |T )|FAILED |^GUARD_EXIT=[1-9]|^RED|^FIXTURE FAIL|^ENGINE NOT' "$cl" 2>/dev/null | head -8 | tr '\n' ';' | sed 's/;$//')"
-      for t in $tickets; do
-        "${FULL_KA:-ka}" comment "$t" --type progress -m "The Full tier is red on origin/main from batch $cn of the merge queue, which landed this ticket's commits as $(short "$ctip"):$members. The first red gate: ${fails:-see the log}. Log: $cl on $(hostname). Revert them or fix forward through the queue; after ${FULL_HOLD_AFTER:-2} red cycles the queue lands only the fix." </dev/null >/dev/null 2>&1 \
-          || log "full $n could not comment on $t"
-      done
+      if confirm && revert; then
+        subject="$(git log -1 --format=%s "$bad")"
+        told="$(sed -nE 's/^([A-Z][A-Z0-9]*-[A-Z0-9]+): .*/\1/p' <<<"$subject")"
+        log "full $n confirmed $(short "$bad") of batch $cn: its failing classes fail with it and pass without; its revert $rb is submitted to the queue"
+        for t in ${told:-$tickets}; do
+          # shellcheck disable=SC2016 # the backticks are Markdown, for the ticket
+          "${FULL_KA:-ka}" comment "$t" --type progress -m "$(printf 'The Full tier is red on origin/main from %s (`%s`), which batch %s of the merge queue landed: %s fail with it and pass on its parent. The Full loop submitted its revert to the merge queue as `%s`. Fix forward on top of the revert, then run scripts/queue/branch-tier.sh and submit again. Log: %s on %s.' \
+            "$(short "$bad")" "$subject" "$cn" "$(awk '{ print $2 }' "$classes" | tr '\n' ' ' | sed 's/ $//')" "$rb" "$cl" "$(hostname)")" </dev/null >/dev/null 2>&1 \
+            || log "full $n could not comment on $t"
+          status="$("${FULL_KA:-ka}" show "$t" -json </dev/null 2>/dev/null | jq -r '.status // empty' 2>/dev/null)"
+          case "$status" in
+            done | review)
+              "${FULL_KA:-ka}" move "$t" ready -m "The Full tier is red from $(short "$bad"); its revert is in the merge queue" </dev/null >/dev/null 2>&1 \
+                || log "full $n could not reopen $t"
+              ;;
+          esac
+        done
+      else
+        log "full $n reverts nothing: $why"
+        for t in $tickets; do
+          "${FULL_KA:-ka}" comment "$t" --type progress -m "The Full tier is red on origin/main from batch $cn of the merge queue, which landed this ticket's commits as $(short "$ctip"):$members. The first red gate: ${fails:-see the log}. Log: $cl on $(hostname). The Full loop reverts nothing, because $why. Revert them or fix forward through the queue; after ${FULL_HOLD_AFTER:-2} red cycles the queue lands only the fix." </dev/null >/dev/null 2>&1 \
+            || log "full $n could not comment on $t"
+        done
+      fi
       echo "$cn" >>"$repo/full-filed"
     fi
     hold_lines=("# The Full tier is red since batch $cn ($(short "$ctip")): only a fix of it lands.")
