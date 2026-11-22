@@ -53,13 +53,13 @@
   while read -r module; do
     dir="$(module_dir "$module")" || cant "no module $module here"
     args=()
-    for class in $(awk -v m="$module" '$1 == m { print $2 }' "$list"); do
+    while read -r class; do
       if git ls-files "$dir" | grep -qE "/${class//.//}\.(java|kt|groovy)$"; then
         args+=(--class "$class")
       else
         echo "SKIP $class: not in $dir here"
       fi
-    done
+    done < <(awk -v m="$module" '$1 == m { print $2 }' "$list")
     [ "${#args[@]}" -gt 0 ] || continue
     jk test -A -c --no-ansi -m "$dir" "${args[@]}" >"$out/test.log" 2>&1 </dev/null
     e=$?
