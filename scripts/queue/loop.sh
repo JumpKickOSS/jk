@@ -2,9 +2,11 @@
 # The merge queue, the only writer to origin/main. Each batch, under the host's gate lock: fetch
 # origin/main, cherry-pick every waiting branch onto it in submission order (a branch that
 # conflicts or carries a merge commit is ejected), gate that commit with the Queue tier of
-# scripts/gate/gate.sh and, when it is GREEN, push it to origin/main as a fast-forward. It never
-# force-pushes: when origin/main moved during the gate the push is refused, the batch waits again
-# and is applied to the new origin/main. The gate has already run the failed classes once more (a
+# scripts/gate/gate.sh (its docs tier when the batch is docs-only: scripts/gate/docs-only.sh) and,
+# when it is GREEN, push it to origin/main as a fast-forward. It never force-pushes: when origin/main
+# moved during the gate the push is refused; when what moved it is docs-only, the verdict holds and
+# the batch is applied to the new origin/main and pushed, else the batch waits again and is applied
+# to the new origin/main next time. The gate has already run the failed classes once more (a
 # flake passes there and is recorded), so a red batch is red for a cause: a red batch of one branch
 # ejects it; a red batch of several is split in two groups, gated one after the other before
 # anything else waiting. When the gate names failed classes (`FAILED <module> <class>`), the
@@ -31,8 +33,8 @@
 #   QUEUE_REPO      the queue's bare repository (default ~/src/jk-queue.git); created when missing
 #   QUEUE_CHECKOUT  the clean checkout batches are built and gated in; its origin holds main (required)
 #   QUEUE_GATE      the gate, run as <gate> <n> <sha> (default scripts/gate/gate.sh of the batch)
-#   QUEUE_TIER      the gate's tier, its GATE_TIER: queue (default) or full; GATE_BASE is the batch's
-#                   origin/main
+#   QUEUE_TIER      the gate's tier, its GATE_TIER: queue (default; docs for a docs-only batch) or
+#                   full; GATE_BASE is the batch's origin/main
 #   QUEUE_LOG_DIR   the gate logs (default /var/tmp/jk-queue)
 #   QUEUE_POLL      seconds between looks at an empty queue (default 60)
 #   QUEUE_KA        the ka command that tells an ejected branch's ticket (default ka)
@@ -192,20 +194,47 @@
     record "${members[$i]}" "gating ${msha[$i]} batch $n on origin/main $(short "$base") with ${#members[@]} branches, since $(date -u +%H:%M:%SZ)"
   done
 
+  # A batch that touches only docs no test reads runs the docs checks alone.
+  tier="${QUEUE_TIER:-queue}"
+  if [ "$tier" = queue ] && bash "$co/scripts/gate/docs-only.sh" range "$base" "$tip" >/dev/null 2>&1; then
+    tier=docs
+    line+=" docs-only"
+  fi
   gate="${QUEUE_GATE:-$co/scripts/gate/gate.sh}"
-  GATE_CHECKOUT="$co" GATE_LOG_DIR="$D" GATE_TIER="${QUEUE_TIER:-queue}" GATE_BASE="$base" \
+  GATE_CHECKOUT="$co" GATE_LOG_DIR="$D" GATE_TIER="$tier" GATE_BASE="$base" \
     bash "$gate" "$n" "$tip" </dev/null >/dev/null 2>&1
   L="$D/integ-gate-$n.log"
   verdict="$(grep -aE '^(GREEN |RED|CHECKOUT |NO CHECKOUT)' "$L" 2>/dev/null | tail -1)"
 
   case "$verdict" in
     "GREEN $tip")
-      if git push -q origin "$tip:refs/heads/main"; then
+      pushed="$tip" how=""
+      if ! git push -q origin "$tip:refs/heads/main"; then
+        # Someone else wrote origin/main. When all they wrote is docs-only, the verdict still holds
+        # for the batch applied on top of it.
+        pushed=""
+        if git fetch -q origin main; then
+          now="$(git rev-parse refs/remotes/origin/main)"
+          # shellcheck disable=SC2207 # commit ids, one word each
+          picks=($(git rev-list --reverse "$base..$tip"))
+          if git merge-base --is-ancestor "$base" "$now" \
+            && bash "$co/scripts/gate/docs-only.sh" range "$base" "$now" >/dev/null 2>&1 \
+            && git checkout -q --detach "$now" \
+            && git cherry-pick --empty=drop "${picks[@]}" >/dev/null 2>&1 \
+            && git push -q origin "HEAD:refs/heads/main"; then
+            pushed="$(git rev-parse HEAD)"
+            how=" after docs-only commits moved origin/main to $(short "$now")"
+          else
+            git cherry-pick --abort >/dev/null 2>&1
+          fi
+        fi
+      fi
+      if [ -n "$pushed" ]; then
         for i in "${!members[@]}"; do
-          record "${members[$i]}" "landed ${msha[$i]} on origin/main as $(short "$tip") in batch $n"
+          record "${members[$i]}" "landed ${msha[$i]} on origin/main as $(short "$pushed") in batch $n$how"
           unqueue "${members[$i]}" "${msha[$i]}"
         done
-        echo "$line LANDED$members_text" >>"$repo/queue-batches.log"
+        echo "$line LANDED${how:+ as $(short "$pushed")$how}$members_text" >>"$repo/queue-batches.log"
       else
         # Someone else wrote origin/main: the verdict is for a tree nobody will push.
         for i in "${!members[@]}"; do

@@ -33,9 +33,9 @@ the heart of the Full tier ([gate tiers](#gate-tiers)). The house rules run unde
 source a module has: `jk test -s integration` runs `e2e/cli`'s `src/e2e` integration test
 (`E2eSuiteEngineTest`) beside every `src/test` integration class, and the `jk test -s integration`
 step of `ci.yml` (release tag) and `ci-nightly.yml` is its CI run. A directory suite keeps what no
-tag suite claims, and `e2e` is in `guard-suites`, so the push gate runs whatever `src/e2e` holds untagged. The
-ci-cadence guard holds that every suite `--all` runs is run by a CI step (`jk test -s <name>`) or by
-the push gate. Members carry no `[test.suites.*]` of their own for these tiers: the root's tables
+tag suite claims, and `e2e` is in `guard-suites`, so the Full tier (`jk install -g`) runs whatever `src/e2e` holds untagged. The
+ci-cadence guard holds that every suite `--all` runs is run by a CI step (`jk test -s <name>`) or is
+one of the `guard-suites` the Full tier runs. Members carry no `[test.suites.*]` of their own for these tiers: the root's tables
 are the only routing, and a member may only add settings to them.
 
 Tag new heavy tests at class level:
@@ -105,6 +105,11 @@ other file outside every member (the root `jk.toml`, `jk-lock.toml`, `.jk/`, `te
 selects them all, and the Queue tier runs the whole `integration` suite. The changed modules'
 suites run with `--exclusive`: a module's dependents are not run, which is what the curated lane is
 for. In the other modules a curated class runs alone, so no class runs twice.
+
+**A docs-only batch skips the Queue tier.** When every file a batch changed is a doc that no test
+reads ([docs-only](self-host.md#docs-only-changes)), the queue gates it with `GATE_TIER=docs`:
+`jk guard` and `bench/scoreboard --render --check`, no install and no test. The Full tier still runs
+everything on it.
 
 **Quarantine and re-run.** A run of the Queue tier that is red only in classes
 `scripts/gate/flaky.sh` holds in quarantine passes. A run red in other classes, and in nothing but

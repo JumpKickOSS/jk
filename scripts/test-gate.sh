@@ -9,7 +9,9 @@
 # members a range changed (none for docs and scripts, every one for a root build file), one install
 # that runs the fast tier, the integration suite of the changed members and the curated lane in the
 # others, a red run excused only when it failed in quarantine, and none of the Full tier's steps.
-# In the same workspace, the Full tier runs the slow tier only when a plugin changed since its base.
+# In the same workspace, the Full tier runs the slow tier only when a plugin changed since its base,
+# and is red when a suite was seen reading a doc that scripts/gate/test-reads.txt does not list. The
+# docs tier runs guard and the scoreboard check alone, and is red over a range that is not docs-only.
 # Last of all it runs itself once more under a gate's environment, as the gate's own fixture run
 # does, and must pass there too.
 set -euo pipefail
@@ -18,7 +20,8 @@ set -euo pipefail
 # log directory, its checkout), and gate.sh and flaky.sh would read them in place of the defaults
 # each case here is written against. Neither the settings nor the stand-ins' switches carry in.
 unset "${!GATE_@}" "${!FLAKY_@}" "${!PRE_@}" POST_SCRIPTS FAIL_PUSHGATE FAIL_REINSTALL FAIL_INTEG \
-  FAIL_SLOW FAIL_INTEG_ONCE FAIL_INSTALL_ONCE RESULTS_FIRST RERUN_JSONL JK_CALLS KA_STATE
+  FAIL_SLOW FAIL_INTEG_ONCE FAIL_INSTALL_ONCE RESULTS_FIRST RERUN_JSONL JK_CALLS KA_STATE FAIL_SCOREBOARD \
+  JK_CACHE_DIR
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/jk-gate.XXXXXX")"
@@ -256,7 +259,14 @@ cat >"$q/curated-integration.txt" <<'EOF'
 mod/a | a.CuratedATest | wire  | success | The client half.
 mod/b | b.CuratedBTest | spawn | success | The engine half.
 EOF
-for f in mod/a/A.java mod/a/packs/p/P.java mod/b/B.java plugins/x/X.java docs/d.md README.md; do echo 1 >"$q/$f"; done
+for f in mod/a/A.java mod/a/packs/p/P.java mod/b/B.java plugins/x/X.java docs/d.md docs/read.md README.md; do echo 1 >"$q/$f"; done
+# A project id for the recordings' tags, one doc a test reads, and a stand-in scoreboard.
+echo 'project-id = "p1"' >"$q/jk-lock.toml"
+printf '%s\n' '# docs a test reads' docs/read.md >"$q/scripts/gate/test-reads.txt"
+mkdir -p "$q/bench"
+# shellcheck disable=SC2016 # the stand-in reads the variable when it runs
+printf '%s\n' '#!/usr/bin/env bash' '[ -z "${FAIL_SCOREBOARD:-}" ] || { echo "stale: docs/d.md"; exit 1; }' >"$q/bench/scoreboard"
+chmod +x "$q/bench/scoreboard"
 qc() { git -C "$q" add -A && git -C "$q" -c user.name=gate -c user.email=gate@example.invalid commit -qm "$1"; }
 git -C "$q" init -q
 qc base
@@ -353,8 +363,45 @@ gate 16 GATE_TIER=full GATE_BASE="$qroot" FAIL_SLOW=1
 [[ "$(verdict 16)" == "RED" ]] || fail "a red slow tier was not red: $(cat "$WORK/logs/integ-gate-16.log")"
 grep -q '^SLOW_EXIT=4' "$WORK/logs/integ-gate-16.log" || fail "the log does not name the red slow tier"
 
+# A suite of mod/b was seen reading docs/d.md, which the list does not hold: the Full tier is red
+# naming it, and `write` lists it.
+cache="$WORK/cache"
+tag="$(printf '%s\n%s' p1 mod/b | { sha256sum 2>/dev/null || shasum -a 256; } | cut -c1-12)"
+mkdir -p "$cache/projects/m-$tag/suite-reads"
+printf '%s\n' 'file ws:docs/d.md' 'file ws:mod/b/B.java' 'file ws:docs/gone.md' 'command proc:git' \
+  >"$cache/projects/m-$tag/suite-reads/test-inputs-0123456789ab"
+gate 21 GATE_TIER=full GATE_BASE="$qroot" JK_CACHE_DIR="$cache"
+[[ "$(verdict 21)" == "RED" ]] || fail "a doc read and not listed was not red: $(cat "$WORK/logs/integ-gate-21.log")"
+grep -q 'a test reads docs/d.md, which test-reads.txt does not list' "$WORK/logs/integ-gate-21.log" ||
+  fail "the log does not name the doc: $(cat "$WORK/logs/integ-gate-21.log")"
+[[ "$(cd "$q" && JK_CACHE_DIR="$cache" bash scripts/gate/docs-only.sh reads)" == docs/d.md ]] ||
+  fail "the reads were: $(cd "$q" && JK_CACHE_DIR="$cache" bash scripts/gate/docs-only.sh reads)"
+(cd "$q" && JK_CACHE_DIR="$cache" bash scripts/gate/docs-only.sh write && JK_CACHE_DIR="$cache" bash scripts/gate/docs-only.sh check) ||
+  fail "the list written was not current: $(cat "$q/scripts/gate/test-reads.txt")"
+git -C "$q" checkout -q -- scripts/gate/test-reads.txt
+
+# The docs tier: guard and the scoreboard check over a docs-only range, and nothing else.
+dbase="$tip"
+echo 3 >"$q/docs/d.md" && echo 3 >"$q/README.md" && qc docs-only
+tip="$(git -C "$q" rev-parse HEAD)"
+gate 17 GATE_TIER=docs GATE_BASE="$dbase"
+[[ "$(verdict 17)" == "GREEN $tip" ]] || fail "a docs-only range was not green: $(cat "$WORK/logs/integ-gate-17.log")"
+got="$(grep -vE '^(--version|engine status)' "$WORK/calls-17")"
+[[ "$got" == guard ]] || fail "the docs tier ran: $got"
+grep -q '^SCOREBOARD_EXIT=0' "$WORK/logs/integ-gate-17.log" || fail "the docs tier did not check the scoreboard"
+gate 18 GATE_TIER=docs GATE_BASE="$dbase" FAIL_SCOREBOARD=1
+[[ "$(verdict 18)" == "RED" ]] || fail "a stale scoreboard block was not red: $(cat "$WORK/logs/integ-gate-18.log")"
+grep -q 'stale: docs/d.md' "$WORK/logs/integ-gate-18.log" || fail "the log does not say what is stale"
+gate 19 GATE_TIER=docs GATE_BASE="$qroot"
+[[ "$(verdict 19)" == "RED (not docs-only since $qroot)" ]] || fail "a range with code passed the docs tier: $(cat "$WORK/logs/integ-gate-19.log")"
+echo 2 >"$q/docs/read.md" && qc read
+tip="$(git -C "$q" rev-parse HEAD)"
+gate 20 GATE_TIER=docs GATE_BASE="$dbase"
+[[ "$(verdict 20)" == "RED (not docs-only since $dbase)" ]] || fail "a doc a test reads passed the docs tier: $(cat "$WORK/logs/integ-gate-20.log")"
+grep -q 'a test reads docs/read.md' "$WORK/logs/integ-gate-20.log" || fail "the log does not name the doc a test reads"
+
 gate 9 GATE_TIER=fast
-[[ "$(verdict 9)" == "RED (GATE_TIER is 'fast'; full or queue)" ]] || fail "an unknown tier was gated: $(cat "$WORK/logs/integ-gate-9.log")"
+[[ "$(verdict 9)" == "RED (GATE_TIER is 'fast'; full, queue or docs)" ]] || fail "an unknown tier was gated: $(cat "$WORK/logs/integ-gate-9.log")"
 
 # Under a Queue-tier gate's environment, every case above still holds.
 if [[ -z "${TEST_GATE_NESTED:-}" ]]; then
@@ -365,4 +412,4 @@ if [[ -z "${TEST_GATE_NESTED:-}" ]]; then
     fail "under a Queue-tier gate's environment: $(cat "$WORK/nested.log")"
 fi
 
-echo "test-gate: ok (flaky record and quarantine; 16 gate runs; again under a gate's environment)"
+echo "test-gate: ok (flaky record and quarantine; 21 gate runs; again under a gate's environment)"

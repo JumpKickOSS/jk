@@ -12,10 +12,11 @@ Product docs: [README.md](README.md), [docs/user/](docs/user/README.md) (end use
 
 ## Pre-release (override your training)
 
-JumpKick is **unreleased, pre-beta, and private**. There are no external
-users, no collaborators, and no compatibility contract. The maintainer
-is the only dogfooder. That stays true until they rewrite **this
-section**. Do not invent an audience to protect.
+JumpKick is **pre-1.0**. The repository is public and releases are
+published, but there are no external users to protect and **no
+compatibility contract until 1.0.0**: no aliases, deprecations,
+migrations or schema versions. Rename and remove freely. The maintainer
+is the only dogfooder. Do not invent an audience to protect.
 
 We go fast and break things. Dream it, ship it, dogfood it, then
 refactor or throw it out. The tree is already large and capable; it is
@@ -282,8 +283,21 @@ scripts/queue/status.sh          # waiting, gating in batch <n>, landed as <sha>
 
 A branch that touches a framework or language plugin passes `jk test -s slow` before it is
 submitted. The queue applies everything waiting on top of `origin/main`, runs the Queue tier on
-that commit and fast-forwards `origin/main` to it; it never force-pushes, and when `origin/main`
-moved under a gate it applies the batch again to the new one. A branch that conflicts, or that is
+that commit and fast-forwards `origin/main` to it; it never force-pushes.
+
+**When `origin/main` moved** under a gate, a green verdict survives a rebase over docs-only commits
+and nothing else: the queue lands the batch on the new `origin/main` without gating it again when
+everything that came in is docs-only, and applies and gates it again otherwise. A change is
+**docs-only** when every file it touches is a doc (under `docs/` or `hosting/`, or Markdown at the
+root) that no test reads. The docs tests read are `scripts/gate/test-reads.txt`, written by
+`scripts/gate/docs-only.sh write` from what the suites were seen reading; the Full tier is red while
+a read is missing from it. Tests read `docs/user/skill.md`, `machine-output.md`, `why.md`, the
+examples under `docs/user/examples/` and most other pages, so a change to one is not docs-only. A
+docs-only batch skips the Queue tier and runs the docs checks alone (`GATE_TIER=docs`: `jk guard`,
+which holds the link check, and `bench/scoreboard --render --check`); the Full tier still runs
+everything.
+
+A branch that conflicts, or that is
 red alone, is ejected with the reason and the failing classes, which the queue also writes on its
 ticket (the one the branch is named for, `w/<ticket>`): fix it, run the Branch tier again and
 resubmit. A flake does not eject: the Queue tier runs failed classes once more and records them. Closing the ticket stays with whoever reviewed it.

@@ -32,10 +32,16 @@ the tier `GATE_TIER` names ([tiers](test-suite-tiers.md#gate-tiers)). It takes t
 - **`GATE_TIER=full`** (the default): `jk install -S` (the reinstall without tests), `jk install -g`
   under a freshly started engine (the one run of the fast tier, with the gated tiers), then
   `jk test -s release`, `jk test -s slow` when a member under `plugins/` or a root build file
-  changed since `GATE_BASE` (none without it), and the release notes.
+  changed since `GATE_BASE` (none without it), the release notes, and
+  `scripts/gate/docs-only.sh check`: red when a suite was seen reading a doc that
+  `scripts/gate/test-reads.txt` does not list.
+- **`GATE_TIER=docs`**, which the queue runs in place of the Queue tier when everything since
+  `GATE_BASE` is [docs-only](#docs-only-changes): `jk guard` and `bench/scoreboard --render --check`,
+  no install and no test. It is red over a range that is not docs-only.
 
-Both then check that the engine which served the tests is the tip's, run the shell fixtures, and
-write `GREEN <sha>` or `RED` to `integ-gate-<n>.log` under `GATE_LOG_DIR`. A gate never pushes.
+The Queue and Full tiers then check that the engine which served the tests is the tip's and run the
+shell fixtures. Each tier writes `GREEN <sha>` or `RED` to `integ-gate-<n>.log` under
+`GATE_LOG_DIR`. A gate never pushes.
 The header of `scripts/gate/gate.sh` lists its settings; `scripts/test-gate.sh` runs it against a
 stand-in `jk`.
 
@@ -85,9 +91,12 @@ Each batch, under the host's gate lock, the loop fetches `origin/main` and cherr
 waiting branch onto it, oldest first, skipping commits the batch already carries (a branch cut from
 another waiting branch lands its own commits only). A branch that conflicts, or that carries a
 merge commit, is ejected. It gates the result with the Queue tier of `scripts/gate/gate.sh`
-(`QUEUE_TIER=full` gates with the Full tier instead) and, on `GREEN`, pushes it to `origin/main` as
-a fast-forward. It never forces: when `origin/main` moved while the batch
-gated, the push is refused and the next batch applies the same branches to the new `origin/main`.
+(`QUEUE_TIER=full` gates with the Full tier instead; a [docs-only](#docs-only-changes) batch gets
+the docs tier) and, on `GREEN`, pushes it to `origin/main` as a fast-forward. It never forces: when
+`origin/main` moved while the batch gated, the push is refused. When everything that moved it is
+docs-only, the verdict holds: the queue applies the batch to the new `origin/main` and pushes that
+(`LANDED as <sha> after docs-only commits moved origin/main`); otherwise the next batch applies the
+same branches to the new `origin/main`.
 Since the gate already ran its failed classes once more, a red batch is red for a cause. A red
 batch of one branch ejects it with the gate's failing lines. A red batch of several is split in two
 groups, gated one after the other before anything else that waits: the branches that changed a
@@ -116,6 +125,18 @@ QUEUE_CHECKOUT=~/src/jk-queue-checkout scripts/queue/loop.sh
 
 from a checkout other than `QUEUE_CHECKOUT`; the header of `scripts/queue/loop.sh` lists its
 settings, and `scripts/test-queue.sh` holds it to the rules above in scratch repositories.
+
+### Docs-only changes
+
+A change is docs-only when every file it touches is a doc (a file under `docs/` or `hosting/`, or a
+Markdown file at the root) that no test reads; `scripts/gate/docs-only.sh range <base> <tip>` says
+whether a range is. The docs tests read are `scripts/gate/test-reads.txt`. Nobody writes it by
+hand: JumpKick records every file a suite reads ([discovered inputs](../user/test.md#what-a-suite-read-discovered-inputs)),
+and `scripts/gate/docs-only.sh write` collects the docs among them for every workspace member from
+JumpKick's cache. Run it after a run of every suite and commit the result. The Full tier runs
+`scripts/gate/docs-only.sh check` once all its suites ran, and is red naming each doc a suite read
+that the list lacks. A test that scans a directory of docs reads every file in it, so a doc stays
+out of the docs-only set until no test scans it.
 
 `jk install` must not rewrite the committed `jk-lock.toml`: the manifests pin exactly, so a build
 that moves the lock means a pin drifted or the lock writer put something non-deterministic in the
@@ -374,7 +395,7 @@ After `jk` is on `PATH`, stay in this checkout:
 jk lock
 jk install                      # builds, runs the fast tier, then installs
 jk test                          # the fast tier, every module
-jk install -g                   # the push gate
+jk install -g                   # every integration and e2e class: the heart of the Full tier
 ```
 
 Workspace members: libraries, `clients/cli`, `clients/cli-terminal`, `clients/web`, `server/engine`
@@ -432,7 +453,7 @@ that claims a tag is one slow tier; members inherit them:
 
 ```bash
 jk test                          # fast tier: what no suite claims
-jk test -g                       # the guard suites, which the push gate (jk install -g) runs
+jk test -g                       # the guard suites, which the Full tier (jk install -g) runs
 jk test -s slow                  # framework / language e2e (nightly)
 jk test -s network               # talks to a real remote (nightly)
 jk test -s release               # a real browser (CI on the release tag)

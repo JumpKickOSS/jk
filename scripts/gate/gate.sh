@@ -1,12 +1,15 @@
 #!/usr/bin/env bash
-# The gate a tip must pass, in one of two tiers. Both detach a checkout at the tip, run `jk guard`,
-# check that the engine which served the tests is the tip's, run the shell fixtures, and never push.
+# The gate a tip must pass, in one of three tiers. Each detaches a checkout at the tip, runs
+# `jk guard` and never pushes; the Full and Queue tiers then check that the engine which served the
+# tests is the tip's and run the shell fixtures.
 #
 # The Full tier (GATE_TIER=full, the default): the reinstall without tests (`jk install -S`), then
 # `jk install -g -c` (the fast tier with the gated tiers, run once) under a freshly started engine,
 # the release suite, the slow tier when a plugin (a member under plugins/) or a root build file
-# changed since GATE_BASE, and the release notes. A red `jk install -g` runs once more, only to
-# record the classes that pass on that re-run as flaky (scripts/gate/flaky.sh); its verdict stays red.
+# changed since GATE_BASE, the release notes, and a check that scripts/gate/test-reads.txt lists every
+# doc the suites were seen reading (scripts/gate/docs-only.sh check). A red `jk install -g` runs once
+# more, only to record the classes that pass on that re-run as flaky (scripts/gate/flaky.sh); its
+# verdict stays red.
 #
 # The Queue tier (GATE_TIER=queue), the one that blocks a push from the merge queue: one install
 # that runs every module's fast tier (`jk install -c`), then, under a freshly started engine, the
@@ -16,6 +19,11 @@
 # in other classes runs them once more under the same inputs, and passes when they pass there,
 # recorded as flaky. Each class still red is a `FAILED <module> <class>` line of the log, its
 # failure in g<n>-failures.txt.
+#
+# The docs tier (GATE_TIER=docs), which the merge queue runs in place of the Queue tier when
+# everything since GATE_BASE is docs-only (scripts/gate/docs-only.sh range): `jk guard`, which holds
+# the link check and the Markdown rules, and `bench/scoreboard --render --check`. It installs
+# nothing and runs no test, and is red when the range is not docs-only.
 #
 # Its log is $GATE_LOG_DIR/integ-gate-<n>.log: one line per step, the verdict `GREEN <sha>`
 # or a line starting `RED` (or the checkout's refusal), and `GATE<n> DONE` last. Per-step output
@@ -27,10 +35,10 @@
 #   GATE_CHECKOUT     checkout to detach at the tip (default: the one holding this script); clean
 #   GATE_LOG_DIR      where the logs go (default /var/tmp/jk-gate)
 #   GATE_BRANCH       fetch this branch from origin before the checkout (default: no fetch)
-#   GATE_TIER         full (default) or queue
+#   GATE_TIER         full (default), queue or docs
 #   GATE_BASE         the Queue tier's changed modules are those changed since this commit
-#                     (default origin/main); in the Full tier, the slow tier runs when a plugin
-#                     changed since it (default: no slow tier)
+#                     (default origin/main), and the docs tier's range starts there; in the Full
+#                     tier, the slow tier runs when a plugin changed since it (default: no slow tier)
 #   PRE_MODULES       modules whose whole suites run first; PRE_MODULE_SUITES their suites
 #   PRE_SCRIPTS       scripts that must pass before guard; POST_SCRIPTS after the fixtures
 #   PRE_REDO          non-empty: the pre-run ignores cached verdicts (`jk test -r`)
@@ -62,8 +70,8 @@
 
   tier="${GATE_TIER:-full}"
   case "$tier" in
-    full | queue) ;;
-    *) red "RED (GATE_TIER is '$tier'; full or queue)" ;;
+    full | queue | docs) ;;
+    *) red "RED (GATE_TIER is '$tier'; full, queue or docs)" ;;
   esac
   cd "$checkout" || red "NO CHECKOUT"
   [ -n "$(git status --porcelain)" ] && red "CHECKOUT DIRTY"
@@ -108,7 +116,23 @@
     red "RED (guard)"
   fi
 
-  m=0 s=0 r=0 rn=0 sl=0
+  if [ "$tier" = docs ]; then
+    base="${GATE_BASE:-origin/main}"
+    bash scripts/gate/docs-only.sh range "$base" HEAD 2>>"$L" || red "RED (not docs-only since $base)"
+    bench/scoreboard --render --check >"$D/g$n-scoreboard.log" 2>&1
+    sb=$?
+    echo "SCOREBOARD_EXIT=$sb $(date +%H:%M:%S)" >>"$L"
+    [ "$sb" -eq 0 ] || grep -v 'left alone$' "$D/g$n-scoreboard.log" | tail -8 >>"$L"
+    git status --porcelain >>"$L"
+    if [ "$sb" -eq 0 ] && [ -z "$(git status --porcelain)" ]; then
+      echo "GREEN $(git rev-parse HEAD)" >>"$L"
+    else
+      echo "RED" >>"$L"
+    fi
+    done_gate
+  fi
+
+  m=0 s=0 r=0 rn=0 sl=0 dr=0
   if [ "$tier" = queue ]; then
     # tested <label> <excusable> <jk args...>: one jk run that runs tests, its exit in $e. A red run
     # is excused when <excusable> is set and it failed only in quarantined classes. Otherwise a run
@@ -256,6 +280,10 @@
         echo "SLOW skipped: no plugin or root build file changed since $GATE_BASE" >>"$L"
       fi
     fi
+    # Every suite has now run: the docs they were seen reading are what a docs-only change may not touch.
+    bash scripts/gate/docs-only.sh check >>"$L" 2>&1
+    dr=$?
+    echo "TEST_READS_EXIT=$dr $(date +%H:%M:%S)" >>"$L"
   fi
 
   ff=0
@@ -280,7 +308,7 @@
   git status --porcelain >>"$L"
 
   if [ "$eng" -eq 0 ] && [ "$m" -eq 0 ] && [ "$s" -eq 0 ] && [ "$r" -eq 0 ] && [ "$sl" -eq 0 ] && [ "$ff" -eq 0 ] \
-    && [ "$rn" -eq 0 ] && [ -z "$(git status --porcelain)" ]; then
+    && [ "$rn" -eq 0 ] && [ "$dr" -eq 0 ] && [ -z "$(git status --porcelain)" ]; then
     echo "GREEN $(git rev-parse HEAD)" >>"$L"
   else
     echo "RED" >>"$L"

@@ -7,7 +7,9 @@
 # class is in when there is one and in halves when there is not, so the good branches land and the
 # bad one is ejected with the failing class, which its ticket is told along with the failure; a
 # branch that leaves the queue any other way is recorded as dropped; when origin/main moves during a
-# gate the queue does not force its push, and lands the batch on the new origin/main next time.
+# gate the queue does not force its push, and lands the batch on the new origin/main next time, or
+# at once when what moved it is docs-only. A batch that touches only docs no test reads is gated
+# with the docs tier; one that touches a doc a test reads, or code, with the Queue tier.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -22,8 +24,9 @@ fail() {
 
 # The stand-in jk passes every Branch-tier step. The stand-in gate is red for a tip carrying a
 # red.txt, naming its failed class as in the module red.txt holds, and with the failure beside the
-# log; when MOVE_ORIGIN is set it pushes to origin/main itself before it says GREEN, and when
-# DROP_REF is set it deletes that branch's submission. The stand-in ka logs each comment.
+# log; when MOVE_ORIGIN is set it pushes a commit of MOVE_FILE (default mod/a/moved.txt) to
+# origin/main itself before it says GREEN, and when DROP_REF is set it deletes that branch's
+# submission. It logs the tier it was asked for. The stand-in ka logs each comment.
 mkdir -p "$WORK/bin"
 printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$WORK/bin/jk"
 chmod +x "$WORK/bin/jk"
@@ -37,6 +40,7 @@ cat >"$WORK/gate.sh" <<'GATE'
 #!/usr/bin/env bash
 n="$1" tip="$2"
 L="$GATE_LOG_DIR/integ-gate-$n.log"
+echo "$n $GATE_TIER" >>"$GATE_LOG_DIR/tiers.log"
 cd "$GATE_CHECKOUT" && git checkout -q --detach "$tip"
 [ -z "${DROP_REF:-}" ] || git --git-dir="$DROP_IN" update-ref -d "refs/queue/$DROP_REF"
 red="$(git ls-tree -r --name-only HEAD | grep -E '(^|/)red\.txt$' | head -1)"
@@ -47,7 +51,9 @@ if [ -n "$red" ]; then
 else
   if [ -n "${MOVE_ORIGIN:-}" ]; then
     git -C "$MOVE_ORIGIN" fetch -q origin && git -C "$MOVE_ORIGIN" reset -q --hard origin/main
-    git -C "$MOVE_ORIGIN" commit -q --allow-empty -m "written past the queue"
+    mf="${MOVE_FILE:-mod/a/moved.txt}"
+    mkdir -p "$MOVE_ORIGIN/$(dirname "$mf")" && echo moved >"$MOVE_ORIGIN/$mf"
+    git -C "$MOVE_ORIGIN" add "$mf" && git -C "$MOVE_ORIGIN" commit -q -m "written past the queue"
     git -C "$MOVE_ORIGIN" push -q origin HEAD:main
   fi
   echo "GREEN $(git rev-parse HEAD)" >"$L"
@@ -75,12 +81,14 @@ commit() { # <repo> <file> <content>: one commit, a second later than the one be
 
 git init -q --bare -b main "$WORK/origin.git"
 git clone -q "$WORK/origin.git" "$WORK/seed" 2>/dev/null
-# A workspace of two members, jk-a and jk-b, and the script that maps a change onto them.
+# A workspace of two members, jk-a and jk-b, the script that maps a change onto them, and the one
+# that tells a docs-only change, with one doc a test reads.
 mkdir -p "$WORK/seed/mod/a" "$WORK/seed/mod/b" "$WORK/seed/scripts/gate"
 printf '%s\n' '[workspace]' 'modules = ["mod/a", "mod/b"]' >"$WORK/seed/jk.toml"
 echo 'name = "jk-a"' >"$WORK/seed/mod/a/jk.toml"
 echo 'name = "jk-b"' >"$WORK/seed/mod/b/jk.toml"
-cp "$ROOT/scripts/gate/changed-modules.sh" "$WORK/seed/scripts/gate/"
+cp "$ROOT/scripts/gate/changed-modules.sh" "$ROOT/scripts/gate/docs-only.sh" "$WORK/seed/scripts/gate/"
+printf '%s\n' '# docs a test reads' docs/read.md >"$WORK/seed/scripts/gate/test-reads.txt"
 git -C "$WORK/seed" add -A
 commit "$WORK/seed" base.txt base
 git -C "$WORK/seed" push -q origin HEAD:main
@@ -187,6 +195,40 @@ grep -q ' MOVED f@' "$WORK/queue.git/queue-batches.log" || fail "the batch log d
 queue || fail "the batch after the move did not run"
 holds docs/f.txt || fail "f did not land after origin/main moved"
 git -C "$WORK/origin.git" merge-base --is-ancestor "$moved" main || fail "the landing dropped the commit that moved origin/main"
+
+# --- a docs-only batch runs the docs tier; a doc a test reads, or code, the Queue tier ---
+tier_of() { awk -v n="$1" '$1 == n { print $2 }' "$WORK/logs/tiers.log"; }
+batch_n() { cat "$WORK/queue.git/queue-batch-n"; }
+git -C "$dev" fetch -q
+branch k origin/main docs/k.md k
+submit k || fail "submitting k failed"
+queue || fail "the docs-only batch did not run"
+holds docs/k.md || fail "the docs-only branch did not land: $(status k)"
+[[ "$(tier_of "$(batch_n)")" == docs ]] || fail "a docs-only batch was not gated with the docs tier: $(cat "$WORK/logs/tiers.log")"
+tail -1 "$WORK/queue.git/queue-batches.log" | grep -q ' docs-only LANDED' || fail "the batch log does not say docs-only: $(tail -1 "$WORK/queue.git/queue-batches.log")"
+git -C "$dev" fetch -q
+branch l origin/main docs/read.md l
+submit l || fail "submitting l failed"
+queue || fail "the batch of a doc a test reads did not run"
+[[ "$(tier_of "$(batch_n)")" == queue ]] || fail "a doc a test reads skipped the Queue tier: $(cat "$WORK/logs/tiers.log")"
+git -C "$dev" fetch -q
+branch m origin/main docs/m.md m
+commit "$dev" mod/b/M.java m
+(cd "$dev" && bash "$Q/branch-tier.sh" >/dev/null) || fail "the Branch tier refused m"
+submit m || fail "submitting m failed"
+queue || fail "the batch of docs and code did not run"
+[[ "$(tier_of "$(batch_n)")" == queue ]] || fail "a batch with code skipped the Queue tier: $(cat "$WORK/logs/tiers.log")"
+
+# --- origin/main moved by docs-only commits during the gate: the verdict holds, the batch lands ---
+git -C "$dev" fetch -q
+branch o origin/main mod/a/O.java o
+submit o || fail "submitting o failed"
+queue MOVE_ORIGIN="$WORK/other" MOVE_FILE=docs/moved.md 2>/dev/null || fail "the batch with a docs-only move did not run"
+moved="$(git -C "$WORK/other" rev-parse HEAD)"
+holds mod/a/O.java || fail "o did not land over a docs-only move: $(status o)"
+git -C "$WORK/origin.git" merge-base --is-ancestor "$moved" main || fail "the landing dropped the docs-only commit"
+status o | grep -q '^o: landed .* after docs-only commits moved origin/main' || fail "o's record does not say why it landed: $(status o)"
+[[ "$(git -C "$WORK/origin.git" rev-list --count "$moved..main")" -eq 1 ]] || fail "o landed other than once on the new main"
 
 # --- nothing waits: no batch ---
 lines="$(wc -l <"$WORK/queue.git/queue-batches.log")"
