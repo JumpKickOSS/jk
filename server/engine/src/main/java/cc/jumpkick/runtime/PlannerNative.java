@@ -44,6 +44,7 @@ import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.task.InputGuard;
 import cc.jumpkick.task.JdkToolchain;
 import cc.jumpkick.task.KeyOwner;
+import cc.jumpkick.task.NativeLinkCode;
 import cc.jumpkick.task.RecordToolchain;
 import cc.jumpkick.tool.GraalHomeLookup;
 import cc.jumpkick.tool.NativeImageDriver;
@@ -533,7 +534,11 @@ public final class PlannerNative {
         // must miss the cache.
         for (Path dir : metadataDirs) nativeTokens.add("metadata:" + ClasspathFingerprint.entry(dir));
         String nTask = ActionKey.qualifiedTaskId(TaskNames.NATIVE_IMAGE, out);
-        String nKey = ActionKey.forArtifact(nTask, cc.jumpkick.model.BuildIdentity.cacheKeyVersion(), nativeTokens);
+        // The producer is the code that runs native-image, not the whole engine: a reinstall links
+        // under the previous engine, and the next build under the new one restores that image.
+        String producer = NativeLinkCode.id();
+        String nKey = ActionKey.forArtifact(
+                nTask, cc.jumpkick.model.BuildIdentity.keyVersion(producer), producer, nativeTokens);
         return new ImageKey(nTask, nKey, nativeTokens);
     }
 

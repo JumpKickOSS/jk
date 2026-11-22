@@ -601,7 +601,11 @@ and exclusions stay GA-scoped.
    `cc.jumpkick.test` and of the classes named for tests, suites or JUnit. The runner, JDK,
    classpath, flags, environment and selection are keyed by content, so an engine edit elsewhere
    replays every green suite; guard G164 (`suite-code-keyed`) keeps the selection and launch types
-   inside that code.
+   inside that code. A native image's key names only the code that runs native-image
+   (`NativeLinkCode`: `NativeImageDriver`, which spells the command line around the args) as its
+   producer: GraalVM, the classpath, the args, the main class and the metadata are keyed by content,
+   so the client a reinstall linked under the previous engine restores under the engine it just
+   installed instead of linking again.
    A compile key and the freshness stamp's instant are both taken before the compiler reads its
    first source. A source whose bytes move while the compiler runs is re-read afterwards: the
    compile is reported and not recorded, its incremental analysis is dropped, and the stamp reads

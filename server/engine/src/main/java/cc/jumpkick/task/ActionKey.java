@@ -501,10 +501,19 @@ public final class ActionKey {
      * carry it: their producers are the compiler workers, which those keys already hash.
      */
     public static String forArtifact(String taskId, String jkVersion, List<String> inputTokens) {
+        return forArtifact(taskId, jkVersion, BuildIdentity.keyId(), inputTokens);
+    }
+
+    /**
+     * As {@link #forArtifact(String, String, List)} for an artifact an outside tool produces, whose
+     * {@code producer} is the identity of the engine code that runs it rather than the whole
+     * engine's: the tool and everything the engine hands it are keyed as tokens.
+     */
+    public static String forArtifact(String taskId, String jkVersion, String producer, List<String> inputTokens) {
         StringBuilder sb = new StringBuilder();
         sb.append("task:").append(taskId).append('\n');
         sb.append("jk:").append(jkVersion).append('\n');
-        sb.append("producer:").append(BuildIdentity.keyId()).append('\n');
+        sb.append("producer:").append(producer).append('\n');
         List<String> sorted = new ArrayList<>(inputTokens);
         sorted.sort(Comparator.naturalOrder());
         for (String t : sorted) sb.append("in:").append(t).append('\n');

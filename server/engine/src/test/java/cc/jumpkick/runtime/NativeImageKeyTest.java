@@ -5,9 +5,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.task.ClasspathFingerprint;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -231,6 +233,39 @@ class NativeImageKeyTest {
             if (first == null) first = key.key();
             else assertThat(key.key()).isEqualTo(first);
         }
+    }
+
+    /**
+     * A reinstall links the image under the engine that was installed, and the next build runs
+     * under the engine it just installed: the image is the same, and so is its key.
+     */
+    @Test
+    void another_engine_keys_the_same_image(@TempDir Path tmp) throws Exception {
+        Path javaHome = Files.createDirectories(tmp.resolve("graal"));
+        Files.writeString(javaHome.resolve("release"), "JAVA_VERSION=\"25\"\n");
+        Path jar = Files.writeString(tmp.resolve("app.jar"), "app");
+        Path out = tmp.resolve("target/native/app");
+        List<String> keys = new ArrayList<>();
+        try {
+            for (String engine : List.of("engine-one-0001", "engine-two-0002")) {
+                BuildIdentity.overrideBuildIdForTests(engine);
+                keys.add(PlannerNative.imageKey(
+                                javaHome,
+                                List.of(jar),
+                                List.of(),
+                                "app.Main",
+                                false,
+                                out,
+                                null,
+                                null,
+                                List.of(),
+                                ClasspathFingerprint.ON_DISK)
+                        .key());
+            }
+        } finally {
+            BuildIdentity.overrideBuildIdForTests(null);
+        }
+        assertThat(keys.get(1)).isEqualTo(keys.get(0));
     }
 
     @Test
