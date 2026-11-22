@@ -80,6 +80,38 @@ class DocsCheckTest {
     }
 
     @Test
+    void the_prose_view_of_a_web_page_reads_its_text_and_skips_its_markup_code_and_mock_ups(@TempDir Path root)
+            throws Exception {
+        Files.writeString(root.resolve(GuardsPresence.RULES_FILE), """
+                [guards.product-name]
+                kind = "text"
+                files = ["**/*.md", "site/*.html"]
+                languages = ["prose", "html"]
+                blank = "prose"
+                pattern = '\\bwidget\\b'
+                hit = "the widget is fast"
+                miss = "run `widget build`"
+                instead = "Widgetron"
+                why = "the product has a name"
+                """);
+        Files.createDirectories(root.resolve("site"));
+        Files.writeString(root.resolve("site/index.html"), """
+                <html><body class="widget">
+                <p>Run <code>widget build</code>.</p>
+                <div aria-hidden="true"><div class="term">$ widget test</div></div>
+                </body></html>
+                """);
+        LoadResult load = GuardRules.load(root, GuardsConfig.ABSENT);
+        assertThat(load.hasErrors()).as(load.problems().toString()).isFalse();
+        assertThat(DocsCheck.check(root, load.rules(), Baseline.EMPTY).text()).isEqualTo("OK guard docs · 1 rules");
+
+        Files.writeString(
+                root.resolve("site/index.html"), "<html><body>\n<p>The widget keeps 186 MiB.</p>\n</body></html>\n");
+        assertThat(DocsCheck.check(root, load.rules(), Baseline.EMPTY).text())
+                .contains("GUARD product-name", "site/index.html:2");
+    }
+
+    @Test
     void the_code_view_reads_markdown_whole_and_the_prose_view_reads_a_source_files_comments(@TempDir Path root)
             throws Exception {
         Files.writeString(root.resolve(GuardsPresence.RULES_FILE), """

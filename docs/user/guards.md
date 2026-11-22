@@ -148,7 +148,10 @@ A `text` rule's `blank` picks the view its pattern reads. `comments` (the defaul
 `comments+strings` read code, `code` reads only a source file's comments, and `none` reads every
 file as written. `prose` reads what a person wrote as language: a source file's comments, and in
 Markdown the text outside fenced blocks, code spans, HTML, link targets and URLs, so a rule about
-wording can cover Java and the docs at once. The four code views read Markdown as written.
+wording can cover Java and the docs at once. In HTML it reads the text outside tags and their
+attributes, comments, `pre`, `code`, `kbd`, `samp`, `svg`, scripts, styles and any element marked
+`aria-hidden="true"`, so a page's terminal and dashboard mock-ups are left out. The four code views
+read Markdown and HTML as written.
 
 A rule that needs a newer JumpKick than some of its readers carry says so with
 `requires-jk = "0.50.5"`. An older `jk` reads that key before any other, leaves the rule out and
@@ -214,7 +217,7 @@ key can hold a rule back: one older than the key refuses it like any unknown key
 | text | hit |  | string | a snippet the pattern must match through the chosen view — the bite proof |
 | text | miss |  | string | a snippet the pattern must not match |
 | text | files |  | string list | file globs; default the module source trees |
-| text | blank |  | string | the view: comments blanked (default), comments+strings, none, code (comments only), or prose (comments, and Markdown outside its code) [comments \| comments+strings \| none \| code \| prose] |
+| text | blank |  | string | the view: comments blanked (default), comments+strings, none, code (comments only), or prose (comments, and Markdown or HTML outside its code) [comments \| comments+strings \| none \| code \| prose] |
 | text | count |  | table | { exactly \| min \| max, per = file \| tree \| match } |
 | text | owner |  | string or list | files where a match is legal |
 | text | languages |  | string list | restrict to these source languages |

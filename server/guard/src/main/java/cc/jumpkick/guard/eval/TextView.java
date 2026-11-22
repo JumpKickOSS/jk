@@ -7,8 +7,8 @@ import org.jspecify.annotations.Nullable;
 /**
  * A text rule's {@code blank}: the view of a file its pattern reads. The four code views are {@link
  * CodeText}'s and read Markdown whole. {@link #PROSE} is the human-language text of any file: a
- * source file's comments, Markdown outside its code. It has a name of its own so that no code
- * view's spelling means one thing in a source file and another in a document.
+ * source file's comments, Markdown outside its code, HTML outside its markup. It has a name of its
+ * own so that no code view's spelling means one thing in a source file and another in a document.
  */
 enum TextView {
     /** Comments blanked; code and literals kept. The default. */
@@ -21,7 +21,8 @@ enum TextView {
     CODE("code", CodeText.Blank.CODE),
     /**
      * What a person wrote as language: comments in source, and in Markdown the text outside fences,
-     * code spans, HTML, link targets and URLs ({@link MarkdownProse}). Config files read whole.
+     * code spans, HTML, link targets and URLs ({@link MarkdownProse}); in HTML the text outside tags,
+     * code and pictures ({@link HtmlProse}). Config files read whole.
      */
     PROSE("prose", CodeText.Blank.CODE);
 
@@ -52,11 +53,12 @@ enum TextView {
     }
 
     /**
-     * {@code text} through this view, unsquashed: Markdown's prose for {@link #PROSE} over a prose
-     * file, the lexer's blanking over a lexable file, and the text as written otherwise.
+     * {@code text} through this view, unsquashed: Markdown's or HTML's prose for {@link #PROSE} over
+     * a prose or HTML file, the lexer's blanking over a lexable file, and the text as written otherwise.
      */
     String apply(String text, TextFiles.Language lang) {
         if (this == PROSE && lang == TextFiles.Language.PROSE) return MarkdownProse.blank(text);
+        if (this == PROSE && lang == TextFiles.Language.HTML) return HtmlProse.blank(text);
         if (!lang.lexable || this == NONE) return text;
         return CodeText.blank(text, blank, lang == TextFiles.Language.JS);
     }

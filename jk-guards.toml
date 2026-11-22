@@ -727,9 +727,11 @@ reason = "names the banned narration phrases as the policy"
 
 # G123. The product is JumpKick; `jk` is the command. Public prose that says "jk" for the product
 # reads as a command name where the other tools get their product names: the docs, the skill an
-# agent reads and the READMEs a template writes into a new project. The prose view of Markdown blanks
-# fenced blocks, code spans, link targets and URLs, so `jk build`, `~/.jk` and jk.toml pass; the
-# skill's `name: jk` is its folder's name. An older jk has no prose view and holds the rule back.
+# agent reads, the READMEs a template writes into a new project and the website. The prose view of
+# Markdown blanks fenced blocks, code spans, link targets and URLs, so `jk build`, `~/.jk` and jk.toml
+# pass; of HTML it blanks tags, code and the aria-hidden mock-ups of a terminal or the dashboard. The
+# skill's `name: jk` is its folder's name. An older jk has no prose view and holds the rule back; one
+# without the HTML view knows no `html` language and leaves the website out.
 [guards.product-name-in-docs]
 kind        = "text"
 requires-jk = "0.52.0"
@@ -737,9 +739,9 @@ files       = [
   "README.md", "CONTRIBUTING.md", "AGENTS.md", "SECURITY.md", "docs/**/*.md", "clients/*/README.md",
   "shared/core/src/main/resources/cc/jumpkick/docs/skill/*.md",
   "templates/**/README.md", "plugins/*/src/main/resources/templates/**/README.md",
-  "server/engine/src/main/resources/cc/jumpkick/giter8/shipped/**/README.md",
+  "server/engine/src/main/resources/cc/jumpkick/giter8/shipped/**/README.md", "hosting/public/*.html",
 ]
-languages   = ["prose"]
+languages   = ["prose", "html"]
 blank       = "prose"
 pattern     = '(?m)(?<![\w./~\\-]|^name: )jk(?![\w/\\-]|\.\w)'
 hit         = "Between builds jk keeps 186 MiB resident."

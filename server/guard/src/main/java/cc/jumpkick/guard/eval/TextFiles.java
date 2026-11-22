@@ -43,6 +43,8 @@ final class TextFiles {
         SCALA(false, true),
         /** Markdown, text, AsciiDoc: scanned whole, except that the {@code prose} view blanks Markdown's code. */
         PROSE(false, false),
+        /** HTML: scanned whole, except that the {@code prose} view blanks its markup and code. */
+        HTML(false, false),
         /** TOML, YAML, JSON, XML, properties, shell: not lexed; scanned whole under every mode. */
         CONFIG(false, false),
         UNKNOWN(false, false);
@@ -173,6 +175,7 @@ final class TextFiles {
             case "groovy", "gradle" -> Language.GROOVY;
             case "scala", "sc" -> Language.SCALA;
             case "md", "txt", "adoc", "rst" -> Language.PROSE;
+            case "html", "htm" -> Language.HTML;
             case "toml",
                     "yml",
                     "yaml",
@@ -185,7 +188,6 @@ final class TextFiles {
                     "ps1",
                     "cmd",
                     "bat",
-                    "html",
                     "css",
                     "svg",
                     "sql",
