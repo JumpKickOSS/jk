@@ -60,16 +60,27 @@ class FlakyToolTest {
     @Test
     void show_needs_a_class_it_knows() throws IOException {
         assertThat(FlakyTool.show(state, root, null)).containsEntry("error", "show requires class");
-        assertThat(FlakyTool.show(state, root, "a.OkTest"))
-                .containsEntry("error", "not flaky or quarantined: a.OkTest");
+        assertThat(FlakyTool.show(state, root, "a.Nope"))
+                .containsEntry("error", "no history or quarantine entry: a.Nope");
         assertThat(FlakyTool.show(state, root, "FlakyTest")).containsKey("classes");
     }
 
     @Test
-    void release_deletes_the_entry_once() throws IOException {
-        assertThat(FlakyTool.release(root, "FlakyTest"))
+    void release_deletes_the_entry_once_and_resets_the_count() throws IOException {
+        assertThat(FlakyTool.release(state, root, "FlakyTest"))
                 .isEqualTo(Map.of("released", List.of(Map.of("class", "a.FlakyTest", "module", "app"))));
         assertThat(TestQuarantine.read(root).entries()).isEmpty();
-        assertThat(FlakyTool.release(root, "FlakyTest")).containsEntry("error", "not quarantined: FlakyTest");
+        assertThat(FlakyTool.list(state, root).get("classes"))
+                .asInstanceOf(InstanceOfAssertFactories.LIST)
+                .as("its re-run passes were before the release")
+                .isEmpty();
+        assertThat(FlakyTool.show(state, root, "FlakyTest").get("classes"))
+                .asInstanceOf(InstanceOfAssertFactories.LIST)
+                .singleElement()
+                .asInstanceOf(InstanceOfAssertFactories.MAP)
+                .containsEntry("history", "F.R.R|")
+                .containsEntry("flakes", 0)
+                .containsEntry("runs", 0);
+        assertThat(FlakyTool.release(state, root, "FlakyTest")).containsEntry("error", "not quarantined: FlakyTest");
     }
 }

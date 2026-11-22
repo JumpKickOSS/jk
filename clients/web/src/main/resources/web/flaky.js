@@ -9,16 +9,25 @@ const MARKS = {
   '.': { kind: 'pass', tip: 'passed' },
   R: { kind: 'rerun', tip: 'passed on a re-run' },
   F: { kind: 'fail', tip: 'failed' },
+  '|': { kind: 'released', tip: 'released from quarantine: the runs before it no longer count' },
 };
+
+/** How many runs a history holds: a release is not one. */
+export function runCount(history) {
+  return String(history || '').replaceAll('|', '').length;
+}
 
 /** The notice kind the engine adds when a run quarantines a class (QuarantineNotice). */
 export const QUARANTINE_NOTICE = 'quarantine';
 
-/** One cell per run, oldest first; a class with fewer runs than the window is padded on the left. */
+/**
+ * One cell per run, oldest first, and a thin one where the class was released; a class with fewer
+ * runs than the window is padded on the left.
+ */
 export function historyCells(history, runs) {
   const marks = String(history || '');
   const cells = [];
-  for (let i = marks.length; i < runs; i++) cells.push({ kind: 'none', tip: 'no run' });
+  for (let i = runCount(marks); i < runs; i++) cells.push({ kind: 'none', tip: 'no run' });
   for (const m of marks) cells.push(MARKS[m] || { kind: 'none', tip: 'unknown' });
   return cells;
 }
@@ -48,7 +57,7 @@ export function flakyModel(body) {
       module: c.module || 'every module',
       cells: historyCells(c.history, runs),
       flakes: c.flakes || 0,
-      runs: String(c.history || '').length,
+      runs: runCount(c.history),
       quarantined: !!q,
       reason: (q && q.reason) || '',
       since: (q && q.since) || '',

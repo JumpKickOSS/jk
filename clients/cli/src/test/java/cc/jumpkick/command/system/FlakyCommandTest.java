@@ -73,10 +73,25 @@ class FlakyCommandTest {
     }
 
     @Test
-    void show_of_a_steady_class_fails_naming_it() {
+    void show_of_a_steady_class_says_so_and_of_an_unknown_one_fails_naming_it() {
+        assertThat(Capture.stdout(() -> FlakyCommand.show(state, root, "a.OkTest", false)))
+                .contains("state:    not flaky", "history:  .....");
         Capture.Streams s = Capture.both(() ->
-                assertThat(FlakyCommand.show(state, root, "a.OkTest", false)).isEqualTo(1));
-        assertThat(s.out() + s.err()).contains("not flaky or quarantined: a.OkTest");
+                assertThat(FlakyCommand.show(state, root, "a.Nope", false)).isEqualTo(1));
+        assertThat(s.out() + s.err()).contains("no history or quarantine entry: a.Nope");
+    }
+
+    @Test
+    void release_resets_the_count_and_show_still_prints_the_old_history() {
+        assertThat(FlakyCommand.release(state, root, "FlakyTest", false)).isZero();
+
+        assertThat(Capture.stdout(() -> FlakyCommand.list(state, root, false)))
+                .as("its re-run passes were before the release")
+                .doesNotContain("a.FlakyTest");
+        assertThat(Capture.stdout(() -> FlakyCommand.show(state, root, "FlakyTest", false)))
+                .contains("state:    released")
+                .contains("last 0 since release:  0 passed on a re-run, 0 failed, 0 passed")
+                .contains("history:  ..F.R..R|");
     }
 
     @Test

@@ -10,8 +10,9 @@ import java.util.Map;
 import org.jspecify.annotations.Nullable;
 
 /**
- * A workspace's flaky and quarantined test classes: every entry of {@value TestQuarantine#FILE}, and
- * every class whose history has a re-run pass in the policy's window, each with its history.
+ * A workspace's test classes as its quarantine sees them: every entry of {@value
+ * TestQuarantine#FILE}, and every class with a history, each with that history. {@link #listed} are
+ * the flaky and the quarantined.
  */
 public record TestQuarantineReport(TestQuarantine.Policy policy, List<Row> rows) {
 
@@ -30,9 +31,14 @@ public record TestQuarantineReport(TestQuarantine.Policy policy, List<Row> rows)
             return entry != null;
         }
 
-        /** Runs in the last {@code runs} of its history that passed on a re-run. */
+        /** Runs in the last {@code runs} of its history, since its last release, that passed on a re-run. */
         public int flakes(int runs) {
             return TestHistory.flakes(history, runs);
+        }
+
+        /** The runs of the last {@code runs} of its history, since its last release, that a count looks at. */
+        public int counted(int runs) {
+            return TestHistory.counted(history, runs).length();
         }
     }
 
@@ -46,7 +52,6 @@ public record TestQuarantineReport(TestQuarantine.Policy policy, List<Row> rows)
             String module = TestQuarantine.moduleKey(root, h.moduleDir());
             for (Map.Entry<String, String> c : h.classes().entrySet()) {
                 TestQuarantine.Entry entry = quarantine.find(module, c.getKey());
-                if (entry == null && TestHistory.flakes(c.getValue(), policy.runs()) == 0) continue;
                 rows.add(new Row(c.getKey(), module, entry, c.getValue()));
                 if (entry != null) shown.add(entry);
             }
@@ -58,7 +63,14 @@ public record TestQuarantineReport(TestQuarantine.Policy policy, List<Row> rows)
         return new TestQuarantineReport(policy, rows);
     }
 
-    /** The rows of the class {@code name} names ({@link TestQuarantine#names}). */
+    /** The quarantined rows, and the others that passed on a re-run in the policy's window since their last release. */
+    public List<Row> listed() {
+        return rows.stream()
+                .filter(r -> r.quarantined() || r.flakes(policy.runs()) > 0)
+                .toList();
+    }
+
+    /** The rows of the class {@code name} names ({@link TestQuarantine#names}), flaky or not. */
     public List<Row> named(String name) {
         return rows.stream()
                 .filter(r -> TestQuarantine.names(name, r.className()))

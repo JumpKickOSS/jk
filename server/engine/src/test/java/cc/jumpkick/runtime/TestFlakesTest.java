@@ -112,6 +112,26 @@ class TestFlakesTest {
     }
 
     @Test
+    void a_released_class_needs_the_whole_threshold_again_and_keeps_its_history() throws IOException {
+        run(RED);
+        run(RERUN_PASS);
+        run(RED);
+        run(RERUN_PASS);
+        assertThat(TestQuarantine.release(state, root, "a.FlakyTest")).hasSize(1);
+
+        run(RED);
+        run(RERUN_PASS);
+        assertThat(quarantine().entries())
+                .as("the re-run passes before the release do not count")
+                .isEmpty();
+        assertThat(TestHistory.read(TestHistory.file(state, module))).containsEntry("a.FlakyTest", "FRFR|FR");
+
+        run(RED);
+        run(RERUN_PASS);
+        assertThat(quarantine().entries()).hasSize(1);
+    }
+
+    @Test
     void the_root_can_turn_it_off_and_the_history_is_still_kept() throws IOException {
         Files.writeString(root.resolve("jk.toml"), "name = \"ws\"\n[test]\nquarantine = false\n");
         for (int i = 0; i < 5; i++) {

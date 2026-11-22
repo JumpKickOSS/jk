@@ -59,7 +59,7 @@ public final class FlakyCommand extends GroupCommand {
                 .string("module", r.module())
                 .bool("quarantined", r.quarantined())
                 .number("flakes", r.flakes(window))
-                .number("runs", Math.min(window, r.history().length()))
+                .number("runs", r.counted(window))
                 .string("history", r.history())
                 .optionalNonBlankString("since", e == null ? null : e.since())
                 .optionalNonBlankString("reason", e == null ? null : e.reason())
@@ -77,16 +77,16 @@ public final class FlakyCommand extends GroupCommand {
         }
         int window = report.policy().runs();
         if (json) {
-            for (TestQuarantineReport.Row r : report.rows()) JsonlShape.row("flaky", fields(r, window));
+            for (TestQuarantineReport.Row r : report.listed()) JsonlShape.row("flaky", fields(r, window));
             return 0;
         }
-        if (report.rows().isEmpty()) {
+        if (report.listed().isEmpty()) {
             CliOutput.out("(no flaky or quarantined test classes)");
             return 0;
         }
         Table table = new Table("Flaky and quarantined tests").columns("Class", "Module", "State", "Re-run passes");
-        for (TestQuarantineReport.Row r : report.rows()) {
-            table.row(r.className(), r.module(), state(r), flakes(r, window));
+        for (TestQuarantineReport.Row r : report.listed()) {
+            table.row(r.className(), r.module(), state(r, window), flakes(r, window));
         }
         table.print();
         return 0;
@@ -105,7 +105,7 @@ public final class FlakyCommand extends GroupCommand {
             return 1;
         }
         if (rows.isEmpty()) {
-            CommandWedge.printFail(TITLE, "not flaky or quarantined: " + name);
+            CommandWedge.printFail(TITLE, "no history or quarantine entry: " + name);
             return 1;
         }
         for (TestQuarantineReport.Row r : rows) {
@@ -114,7 +114,7 @@ public final class FlakyCommand extends GroupCommand {
                 continue;
             }
             CliOutput.out(r.className() + "  " + (r.module().isEmpty() ? "every module" : r.module()));
-            CliOutput.out("  state:    " + state(r));
+            CliOutput.out("  state:    " + state(r, window));
             TestQuarantine.Entry e = r.entry();
             if (e != null && !e.reason().isEmpty()) CliOutput.out("  reason:   " + e.reason());
             if (e != null && e.issue() != null && !e.issue().isBlank()) CliOutput.out("  issue:    " + e.issue());
@@ -123,21 +123,23 @@ public final class FlakyCommand extends GroupCommand {
                 CliOutput.out("  history:  none on this machine");
                 continue;
             }
-            int runs = Math.min(window, h.length());
-            CliOutput.out("  last " + runs + ":  " + TestHistory.flakes(h, runs) + " passed on a re-run, "
-                    + TestHistory.count(h, runs, TestHistory.FAILED) + " failed, "
-                    + TestHistory.count(h, runs, TestHistory.PASSED) + " passed");
+            String counted =
+                    r.counted(window) + (TestHistory.released(TestHistory.last(h, window)) ? " since release" : "");
+            CliOutput.out("  last " + counted + ":  " + TestHistory.flakes(h, window) + " passed on a re-run, "
+                    + TestHistory.count(h, window, TestHistory.FAILED) + " failed, "
+                    + TestHistory.count(h, window, TestHistory.PASSED) + " passed");
             CliOutput.out("  history:  " + h);
-            CliOutput.out("            oldest first; . passed, F failed, R passed on a re-run");
+            CliOutput.out("            oldest first; . passed, F failed, R passed on a re-run,");
+            CliOutput.out("            | released");
         }
         return 0;
     }
 
     /** {@code jk flaky release <class>}. */
-    static int release(Path root, String name, boolean json) {
+    static int release(Path stateDir, Path root, String name, boolean json) {
         List<TestQuarantine.Entry> released;
         try {
-            released = TestQuarantine.release(root, name);
+            released = TestQuarantine.release(stateDir, root, name);
         } catch (IOException | IllegalArgumentException e) {
             CommandWedge.printFail(TITLE, e.getMessage());
             return 1;
@@ -158,14 +160,17 @@ public final class FlakyCommand extends GroupCommand {
         return 0;
     }
 
-    private static String state(TestQuarantineReport.Row r) {
+    private static String state(TestQuarantineReport.Row r, int window) {
         TestQuarantine.Entry e = r.entry();
-        if (e == null) return "flaky";
+        if (e == null) {
+            if (r.flakes(window) > 0) return "flaky";
+            return TestHistory.released(r.history()) ? "released" : "not flaky";
+        }
         return e.since().isEmpty() ? "quarantined" : "quarantined since " + e.since();
     }
 
     private static String flakes(TestQuarantineReport.Row r, int window) {
-        int runs = Math.min(window, r.history().length());
+        int runs = r.counted(window);
         return runs == 0 ? "-" : r.flakes(window) + " of " + runs;
     }
 
@@ -253,7 +258,7 @@ public final class FlakyCommand extends GroupCommand {
 
         @Override
         public int run(Invocation in) {
-            return release(root(in), in.positionals().getFirst(), GlobalOptions.outputIsJson(in));
+            return release(JkDirs.state(), root(in), in.positionals().getFirst(), GlobalOptions.outputIsJson(in));
         }
     }
 }

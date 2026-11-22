@@ -119,18 +119,19 @@ class TestQuarantineTest {
                 .with(new TestQuarantine.Entry("b.OtherTest", "app", "", "", null))
                 .write(root);
 
-        assertThat(TestQuarantine.release(root, "FlakyTest"))
+        assertThat(TestQuarantine.release(root.resolve("state"), root, "FlakyTest"))
                 .extracting(TestQuarantine.Entry::module)
                 .containsExactly("app", "lib");
         assertThat(TestQuarantine.read(root).classNames()).containsExactly("b.OtherTest");
-        assertThat(TestQuarantine.release(root, "a.FlakyTest"))
+        assertThat(TestQuarantine.release(root.resolve("state"), root, "a.FlakyTest"))
                 .as("released already")
                 .isEmpty();
-        assertThat(TestQuarantine.release(root, "ther.OtherTest"))
+        assertThat(TestQuarantine.release(root.resolve("state"), root, "ther.OtherTest"))
                 .as("only a whole name part")
                 .isEmpty();
 
-        assertThat(TestQuarantine.release(root, "b.OtherTest")).hasSize(1);
+        assertThat(TestQuarantine.release(root.resolve("state"), root, "b.OtherTest"))
+                .hasSize(1);
         assertThat(TestQuarantine.file(root))
                 .as("the last release deletes the file")
                 .doesNotExist();
@@ -143,7 +144,7 @@ class TestQuarantineTest {
                 .with(new TestQuarantine.Entry("b.FlakyTest", "app", "", "", null))
                 .write(root);
 
-        assertThatThrownBy(() -> TestQuarantine.release(root, "FlakyTest"))
+        assertThatThrownBy(() -> TestQuarantine.release(root.resolve("state"), root, "FlakyTest"))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessage("FlakyTest names several classes: a.FlakyTest, b.FlakyTest");
         assertThat(TestQuarantine.read(root).entries()).hasSize(2);

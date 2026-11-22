@@ -2820,6 +2820,7 @@ details.earlier .tl { margin-top: 6px; }
 .flaky-cell.pass { background: var(--okc); }
 .flaky-cell.rerun { background: var(--warn); }
 .flaky-cell.fail { background: var(--err); }
+.flaky-cell.released { width: 2px; background: var(--mu); }
 .flaky-issue { margin-left: 8px; color: var(--cn); }
 .proj-session .sess-host { text-decoration: none; }
 .ep-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }

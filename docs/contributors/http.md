@@ -474,9 +474,9 @@ directory for the modules at or under `dir`
 quarantined?: { reason, since, issue? } }] }`
 
 `classes` lists every class the file holds, then every other class that passed on a re-run in its
-last `policy.runs` runs, the quarantined first and then by `flakes`, the re-run passes in that
-window. `history` is that window, oldest first, one character a run: `.` passed, `R` passed on a
-re-run, `F` failed; empty for a class the file holds that no history records. `module` is the
+last `policy.runs` runs since its last release, the quarantined first and then by `flakes`, the
+re-run passes in that window. `history` is that window, oldest first, one character a run: `.`
+passed, `R` passed on a re-run, `F` failed, with a `|` where `jk flaky release` released it; empty for a class the file holds that no history records. `module` is the
 entry's module key (`.` for the root; empty when the entry holds the class in every module).
 `policy.flakes` is 0 when the root's `[test] quarantine = false`. A file that cannot be read lists no
 entry and says why in `error`. A missing `dir` is a **400**, one that is not a directory a **404**.

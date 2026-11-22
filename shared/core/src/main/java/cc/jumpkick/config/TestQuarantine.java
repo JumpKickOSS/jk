@@ -216,8 +216,9 @@ public record TestQuarantine(List<Entry> entries) {
      * Release the class {@code name} names ({@link #names}) from {@code root}'s quarantine, in every
      * module, and answer the entries released; none when it holds no such class. A simple name that
      * names two classes releases nothing and is an {@link IllegalArgumentException} naming both.
+     * Its histories under {@code stateDir} are kept and marked released ({@link TestHistory#release}).
      */
-    public static List<Entry> release(Path root, String name) throws IOException {
+    public static List<Entry> release(Path stateDir, Path root, String name) throws IOException {
         List<Entry> released = new ArrayList<>();
         edit(root, q -> {
             List<Entry> named =
@@ -231,6 +232,7 @@ public record TestQuarantine(List<Entry> entries) {
             kept.removeAll(named);
             return new TestQuarantine(kept);
         });
+        if (!released.isEmpty()) TestHistory.release(stateDir, root, released);
         return released;
     }
 }

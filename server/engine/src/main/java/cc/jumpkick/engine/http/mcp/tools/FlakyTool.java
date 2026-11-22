@@ -48,7 +48,7 @@ public final class FlakyTool implements McpTool {
             data = switch (action) {
                 case "list" -> list(JkDirs.state(), root);
                 case "show" -> show(JkDirs.state(), root, in.str("class"));
-                case "release" -> release(root, in.str("class"));
+                case "release" -> release(JkDirs.state(), root, in.str("class"));
                 default -> Map.of("error", "unknown action `" + action + "`");
             };
         } catch (IOException | RuntimeException e) {
@@ -62,7 +62,7 @@ public final class FlakyTool implements McpTool {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("flakes", report.policy().flakes());
         out.put("runs", report.policy().runs());
-        out.put("classes", rows(report.rows(), report.policy().runs()));
+        out.put("classes", rows(report.listed(), report.policy().runs()));
         return out;
     }
 
@@ -70,13 +70,13 @@ public final class FlakyTool implements McpTool {
         if (name == null || name.isBlank()) return Map.of("error", "show requires class");
         TestQuarantineReport report = TestQuarantineReport.of(stateDir, root);
         List<TestQuarantineReport.Row> named = report.named(name);
-        if (named.isEmpty()) return Map.of("error", "not flaky or quarantined: " + name);
+        if (named.isEmpty()) return Map.of("error", "no history or quarantine entry: " + name);
         return Map.of("classes", rows(named, report.policy().runs()));
     }
 
-    static Map<String, Object> release(Path root, @Nullable String name) throws IOException {
+    static Map<String, Object> release(Path stateDir, Path root, @Nullable String name) throws IOException {
         if (name == null || name.isBlank()) return Map.of("error", "release requires class");
-        List<TestQuarantine.Entry> released = TestQuarantine.release(root, name);
+        List<TestQuarantine.Entry> released = TestQuarantine.release(stateDir, root, name);
         if (released.isEmpty()) return Map.of("error", "not quarantined: " + name);
         List<Object> rows = new ArrayList<>();
         for (TestQuarantine.Entry e : released) rows.add(Map.of("class", e.className(), "module", e.module()));
@@ -84,8 +84,8 @@ public final class FlakyTool implements McpTool {
     }
 
     /**
-     * Each row as {@code class}, {@code module}, {@code quarantined}, {@code flakes} in the last
-     * {@code runs} of its {@code history} (oldest first), and the entry's {@code since}, {@code
+     * Each row as {@code class}, {@code module}, {@code quarantined}, {@code flakes} in the {@code
+     * runs} of its {@code history} (oldest first) a count looks at, and the entry's {@code since}, {@code
      * reason} and {@code issue} when it has them.
      */
     private static List<Object> rows(List<TestQuarantineReport.Row> rows, int window) {
@@ -96,7 +96,7 @@ public final class FlakyTool implements McpTool {
             row.put("module", r.module());
             row.put("quarantined", r.quarantined());
             row.put("flakes", r.flakes(window));
-            row.put("runs", Math.min(window, r.history().length()));
+            row.put("runs", r.counted(window));
             row.put("history", r.history());
             TestQuarantine.Entry e = r.entry();
             if (e != null) {

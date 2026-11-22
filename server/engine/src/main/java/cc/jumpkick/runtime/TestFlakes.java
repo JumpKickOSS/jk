@@ -3,14 +3,12 @@ package cc.jumpkick.runtime;
 
 import cc.jumpkick.config.TestHistory;
 import cc.jumpkick.config.TestQuarantine;
-import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TestFailureInfo;
 import cc.jumpkick.run.TestSummary;
 import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
@@ -61,9 +59,6 @@ public final class TestFlakes {
             return a.compareTo(b) >= 0 ? a : b;
         }
     }
-
-    /** Held while this engine reads and rewrites a history file. */
-    private static final Object LOCK = new Object();
 
     /** jk has just put {@code classes} of the module at {@code module} (a quarantine module key) under {@code root} in quarantine. */
     public record Quarantined(Path root, String module, List<String> classes) {}
@@ -189,23 +184,15 @@ public final class TestFlakes {
     /**
      * Append {@code outcomes} to {@code file} and answer the classes that passed on a re-run in this
      * run and have now done so {@code policy.flakes()} times in their last {@code policy.runs()}
-     * runs; none when the policy is off.
+     * runs since their last release; none when the policy is off.
      */
     static List<String> append(Path file, Path moduleDir, Map<String, Outcome> outcomes, TestQuarantine.Policy policy)
             throws IOException {
-        Map<String, String> rows;
-        synchronized (LOCK) {
-            rows = TestHistory.read(file);
+        Map<String, String> rows = TestHistory.edit(file, moduleDir, old -> {
             outcomes.forEach((cls, o) ->
-                    rows.merge(cls, String.valueOf(o.mark), (old, now) -> TestHistory.last(old + now, KEEP)));
-            StringBuilder sb = new StringBuilder("# ")
-                    .append(moduleDir.toAbsolutePath().normalize())
-                    .append('\n');
-            rows.forEach(
-                    (cls, marks) -> sb.append(cls).append('\t').append(marks).append('\n'));
-            Files.createDirectories(file.getParent());
-            AtomicWrites.replace(file, sb.toString());
-        }
+                    old.merge(cls, String.valueOf(o.mark), (was, now) -> TestHistory.last(was + now, KEEP)));
+            return old;
+        });
         List<String> due = new ArrayList<>();
         if (policy.off()) return due;
         outcomes.forEach((cls, o) -> {

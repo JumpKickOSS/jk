@@ -189,7 +189,7 @@ first, with the episodes it spent here (title, outcome, runs, actions, wall, whe
 (`#project/<id>/flaky`) lists the checkout's quarantined test classes, with the reason, the date and
 the issue from `.jk/test/quarantine.toml`, and every other class that passed on a re-run in its last runs,
 each with those runs as a row of cells, oldest first: green passed, amber passed on a re-run, red
-failed ([quarantine](test.md#flaky-tests-are-quarantined-jk-flaky)). **Build** in the header
+failed, and a thin grey one where it was released ([quarantine](test.md#flaky-tests-are-quarantined-jk-flaky)). **Build** in the header
 starts a build of the checkout the page shows; the page then follows it.
 
 ### What JumpKick saved

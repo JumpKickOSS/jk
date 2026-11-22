@@ -289,7 +289,7 @@ These commands print their own rows, one envelope object each, and nothing else 
 | `verify-artifact` | `verify` | `artifact`, `match`, `existing`, `rebuilt` (sha256, null when absent) |
 | `clean` | `clean` | `files`, `bytes`, `millis`, `keepArtifacts` |
 | `library` | `library list`, `library search` | `name`, `coordinates`, `layer` |
-| `flaky` | `flaky list`, `flaky show` | `class`, `module` (the module's directory, `.` for the root, empty for an entry that holds every module), `quarantined`, `flakes` (re-run passes in the last `runs` runs, the root's `[test] quarantine` window), `runs`, `history` (every run kept, oldest first: `.` passed, `F` failed, `R` passed on a re-run), then the entry's `since`, `reason` and `issue` when it has them |
+| `flaky` | `flaky list`, `flaky show` | `class`, `module` (the module's directory, `.` for the root, empty for an entry that holds every module), `quarantined`, `flakes` (re-run passes in the `runs` runs that count: the root's `[test] quarantine` window, since the class's last release), `runs`, `history` (every run kept, oldest first: `.` passed, `F` failed, `R` passed on a re-run, `\|` released), then the entry's `since`, `reason` and `issue` when it has them |
 | `flaky-released` | `flaky release` | `class`, `module` |
 | `library-update` | `library update` | `libraries`, `fetched`, `added`, `removed`, `changed` |
 | `auth` | `auth status` | `provider`, `host` (null when it needs `--host`), `authenticated`, `source` |

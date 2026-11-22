@@ -76,15 +76,19 @@ class TestQuarantineReportTest {
         TestQuarantineReport report = TestQuarantineReport.of(state, root);
 
         assertThat(report.policy()).isEqualTo(TestQuarantine.Policy.DEFAULT);
-        assertThat(report.rows())
+        assertThat(report.listed())
                 .extracting(r -> r.module() + " " + r.className() + " " + r.quarantined() + " " + r.history())
                 .containsExactly(
                         "app a.FlakyTest true ..F.R..R", "app a.OnceTest false R.....", "lib b.GoneTest true ");
-        assertThat(report.rows().getFirst().flakes(20)).isEqualTo(2);
+        assertThat(report.listed().getFirst().flakes(20)).isEqualTo(2);
         assertThat(report.named("FlakyTest"))
                 .extracting(TestQuarantineReport.Row::className)
                 .containsExactly("a.FlakyTest");
         assertThat(report.named("a.Nope")).isEmpty();
+        assertThat(report.named("OkTest"))
+                .as("a steady class is not listed but still shown")
+                .extracting(TestQuarantineReport.Row::history)
+                .containsExactly("....");
     }
 
     @Test
@@ -92,8 +96,50 @@ class TestQuarantineReportTest {
         Files.writeString(root.resolve("jk.toml"), "name = \"ws\"\n[test]\nquarantine = { flakes = 1, runs = 3 }\n");
         history(root, Map.of("a.OldTest", "R...", "a.NewTest", "..R"));
 
-        assertThat(TestQuarantineReport.of(state, root).rows())
+        assertThat(TestQuarantineReport.of(state, root).listed())
                 .extracting(r -> r.module() + " " + r.className())
                 .containsExactly(". a.NewTest");
+    }
+
+    @Test
+    void a_count_does_not_look_past_the_last_release() {
+        assertThat(TestHistory.flakes("R.R|..R", 20)).isEqualTo(1);
+        assertThat(TestHistory.counted("R.R|..R", 20)).isEqualTo("..R");
+        assertThat(TestHistory.counted("R.R|..R", 2))
+                .as("the window is shorter")
+                .isEqualTo(".R");
+        assertThat(TestHistory.count("RF|F.", 20, TestHistory.FAILED)).isEqualTo(1);
+        assertThat(TestHistory.flakes("RR|", 20)).as("nothing ran since").isZero();
+    }
+
+    @Test
+    void the_last_runs_keep_the_releases_among_them_and_a_release_is_not_a_run() {
+        assertThat(TestHistory.last("R.|R.", 3)).isEqualTo(".|R.");
+        assertThat(TestHistory.last("R.|R.", 2)).isEqualTo("R.");
+        assertThat(TestHistory.last("..", 5)).isEqualTo("..");
+    }
+
+    @Test
+    void release_marks_the_released_class_in_its_modules_and_keeps_its_history() throws IOException {
+        history(root.resolve("app"), Map.of("a.FlakyTest", "R.R", "a.OkTest", "..."));
+        history(root.resolve("lib"), Map.of("a.FlakyTest", "R"));
+        TestQuarantine.NONE
+                .with(new TestQuarantine.Entry("a.FlakyTest", "app", "", "", null))
+                .write(root);
+
+        assertThat(TestQuarantine.release(state, root, "FlakyTest")).hasSize(1);
+
+        assertThat(TestHistory.read(TestHistory.file(state, root.resolve("app"))))
+                .containsExactly(Map.entry("a.FlakyTest", "R.R|"), Map.entry("a.OkTest", "..."));
+        assertThat(TestHistory.read(TestHistory.file(state, root.resolve("lib"))))
+                .as("the entry held only app")
+                .containsExactly(Map.entry("a.FlakyTest", "R"));
+        TestQuarantineReport report = TestQuarantineReport.of(state, root);
+        assertThat(report.listed())
+                .extracting(r -> r.module() + " " + r.className())
+                .containsExactly("lib a.FlakyTest");
+        assertThat(report.named("FlakyTest"))
+                .extracting(TestQuarantineReport.Row::history)
+                .containsExactly("R.R|", "R");
     }
 }

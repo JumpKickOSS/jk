@@ -873,16 +873,19 @@ OK test orders · 1 of 40 failed · 2.1s — quarantined flaky test failed, not 
 
 A failure in any other class, or one no class owns (a test JVM that died), fails the run as before.
 A build or test run through MCP takes the same steps and honours the quarantine too. Fix the test,
-then release it with `jk flaky release` or by deleting its entry; you can also add an entry by
-hand.
+then release it with `jk flaky release`; you can also add or delete an entry by hand.
 
 `jk flaky list` lists every quarantined class and every class that passed on a re-run in its
 last 20 runs (the threshold's window), with the re-run passes. `jk flaky show <class>` prints
 one with its entry and its whole history, oldest first (`.` passed, `F` failed, `R` passed on a
-re-run); `jk flaky release <class>` deletes its entry in every module, and the file with the
-last one. A class is its fully qualified name or its simple name. The history is this machine's,
-and a release keeps it: a released class that passes on a re-run again while its window still holds
-the threshold is quarantined again.
+re-run, `|` released); `jk flaky release <class>` deletes its entry in every module, and the file
+with the last one. A class is its fully qualified name or its simple name.
+
+A release resets the class's count: the runs before it no longer count toward the threshold, so a
+released class goes back into quarantine only when it passes on a re-run 2 more times. Its history
+stays, with a `|` where it was released, and `jk flaky show` still prints it. The history is this
+machine's, and so is the reset: deleting an entry by hand, or releasing it on another machine,
+leaves this machine's count as it was.
 
 ```text
 $ jk flaky show OrdersTest
@@ -891,7 +894,8 @@ com.acme.OrdersTest  orders
   reason:   failed, then passed on a re-run with nothing changed, in 2 of its last 20 runs
   last 20:  2 passed on a re-run, 0 failed, 18 passed
   history:  ......R.........R.....
-            oldest first; . passed, F failed, R passed on a re-run
+            oldest first; . passed, F failed, R passed on a re-run,
+            | released
 ```
 
 `-O jsonl` prints a `flaky` row per class and a `flaky-released` row per entry released

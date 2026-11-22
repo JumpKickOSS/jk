@@ -36,6 +36,14 @@ test('each run is a cell, oldest first, padded on the left to the window', () =>
   assert.deepEqual(historyCells('', 2).map((c) => c.tip), ['no run', 'no run']);
 });
 
+test('a release is a cell of its own and not a run', () => {
+  assert.deepEqual(
+    historyCells('R|.', 3).map((c) => c.kind),
+    ['none', 'rerun', 'released', 'pass'],
+  );
+  assert.equal(flakyModel({ classes: [{ name: 'a.T', module: '.', history: 'R|.R', flakes: 1 }] }).rows[0].runs, 3);
+});
+
 test('the policy line says the threshold, or that jk adds none on its own', () => {
   assert.equal(policyLine({ flakes: 2, runs: 20 }), 'quarantined at 2 re-run passes in 20 runs');
   assert.match(policyLine({ flakes: 0, runs: 20 }), /quarantine = false/);
