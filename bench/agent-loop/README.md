@@ -351,6 +351,18 @@ model version and kind of token, `agents.<driver>.<questions|renames>.<kind>-tok
 `prices.toml` and writes the cost per task with and without the graph into the headline claim and
 [why.md](../../docs/user/why.md#what-it-costs), so a new price re-prices every claim and fails no row.
 
+For the tools' authors, every row also records `first_tool` (the agent's first call), `searches` and
+`reads` (its text navigation, split into searches and file reads), `text_after_code_tool` (searches and
+reads after its first code-tool call, a fallback to grep and reading; null when it called none),
+`tool_errors` (failed tool calls, from the transcripts of Claude Code, Codex, Copilot and agy, which mark
+them; null for the others) and `turn_cap` (the run hit its turn budget). `code_tool` names the JumpKick
+code tool that is the right move for the task, when the arm offers it: `usages` for a question,
+`rename` for a rename, the refactoring's own tool for a delete, move, pull-up or extract-interface (on
+`jk-graph`, whose extended list carries them); a task sets another with `code_tool` in `tasks.toml`, and
+a kind with no one right tool, or a no-code-tools arm, records null. `code_tool_calls` counts its calls
+over MCP or as `jk code <tool>` in a shell; the tool hit rate is the cells with a call over the cells
+with a `code_tool`.
+
 `graph-counterfactual` prices a search hook offline from runs already made: it replays each search
 in the transcripts against the graph and counts the reads of never-edited files an earlier graph
 answer named (what a hook could have saved) against the answers it would have attached (what it
@@ -358,7 +370,7 @@ would have cost), each as tokens times the API calls that carried them.
 
 ## A night of benches
 
-`scripts/bench-night.sh` runs what the agent bench owes on the gate host, in order, until a deadline,
+`scripts/bench-night.sh` runs what the agent bench owes on the gate host, in order, every step to its end,
 every agent on its pinned model and effort, one run per cell and no repetitions. Its plan is
 `night-plan plan`, in the tiers of [agent-bench.md](../../docs/contributors/agent-bench.md#the-standard):
 tier 0 is `smoke-test`, tier 1 the screen (`night-plan`'s `TIER1`: a caller and an impact question, a
@@ -371,14 +383,15 @@ for a refactoring, whose tools only the extended list carries; "no-code-tools" i
 | 1 | the new agent (`$NIGHT_FIRST`, default `copilot`) alone, tiers 0, 1 and 2 with the code tools, so a problem with it shows first |
 | 2 | no-code-tools: every task of tiers 1 and 2, every agent (`NIGHT_NOGRAPH=0` leaves the step out) |
 | 3 | with the code tools: tiers 0, 1 and 2, every agent but the new one |
-| 4 | the commands in `$NIGHT_EXTRA`, while time is left |
+| 4 | the commands in `$NIGHT_EXTRA` |
 
 ```bash
 scripts/bench-night.sh prepare                          # every corpus repository at its pin, built (no agent)
 scripts/bench-night.sh smoke                            # tier 0 now, every agent, one PASS or FAIL line each
-scripts/bench-night.sh run --until 07:00 --dry-run      # every cell, minutes per step, what misses the deadline
+scripts/bench-night.sh run --until 07:00 --dry-run      # every cell, minutes per step, when it ends
 scripts/bench-night.sh pause                            # stop the merge queue and Full loops between gates
 scripts/bench-night.sh run --until 07:00                # the night, under systemd-inhibit
+scripts/bench-night.sh status                           # from another shell: done, running, left, ETA, tables
 scripts/bench-night.sh resume                           # start both loops again as they were
 ```
 
@@ -389,13 +402,25 @@ written into `/var/tmp/jk-bench-night/skip` (one per line) does the same for eve
 A cell's expected time is the median of its newest series' baseline, warmup, agent and verification
 seconds in `results/*/rows.jsonl` (the run's own model first); a cell never run takes its driver and
 arm's runs on the same repository, then other agents' runs of the task or of its repository, and the
-dry run says which; a smoke cell takes the smoke rows'. A cell starts only when it fits before the
-deadline; one still running at the deadline is stopped. An agent CLI that is not logged in, a
+dry run says which; a smoke cell takes the smoke rows'. `--until` is a soft deadline: every cell runs,
+and none is stopped. Past it, each cell's start logs how far past, what is done and left, and the
+estimate for the rest; `status` prints the same for the night, running or ended (cells done, the one
+running with its time so far, cells left, the time they are expected to take and the clock time the
+night ends), then its tables so far. An agent CLI that is not logged in, a
 corpus repository not set up, and an agent whose two cells in a row end in an error row have their
 cells skipped and named. A real run refuses when the installed jk is not the tree's version or lacks
 an MCP tool a step calls, when a loop runs, or when a gate holds the gate lock, which it then holds to
 the end. Rows land in `results/<date>-change-tasks/`, where the scoreboard reads them; nothing is
 banked or rendered: that is a separate, reviewed step.
+
+The night ends with its tables, from `night-summary --since <the night's date>`, computed from its rows
+(change-tasks runs 100 to 399 and the smoke rows, from that date on, the newest row of a cell run
+twice): per agent and arm (cells, green, tool hit rate as `3 of 7`, wall, turns, tokens, dollars,
+fallbacks after the tool, tool errors, turn caps), per task and its code tool (hit rate and the agents
+that did not call it), per task and agent with the code tools against without, and every cell (outcome,
+code tool and hit, wall, turns, tokens by kind, dollars, first tool, code-tool calls, searches, reads,
+text after the tool, tool errors, turn cap). Dollars are the tokens at the API list prices of
+`prices.toml`, whose `published` date the header names. A no-code-tools cell's hit is `n/a`.
 
 `pause` takes the gate lock (`/var/tmp/fleet-gate.lock`), so a batch or Full cycle in flight finishes
 first, saves each loop's command line, directory, output and environment under

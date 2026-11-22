@@ -26,7 +26,7 @@ tools only the extended list carries; "without" is jk-nograph, no JumpKick code 
     3  with the tools: tiers 0, 1 and 2, every agent but the new one, which step 1 ran
 
 Within a step, tier 1 comes before tier 2 and each task runs every agent before the next task, so a
-deadline cuts tasks, not agents. Step 4 has no cells here: bench-night.sh runs its commands from a file.
+night stopped early has whole tasks, not some agents. Step 4 has no cells here: bench-night.sh runs its commands from a file.
 
 `est_s` is the cell's seconds: the median of baseline, warmup, agent and verification seconds over the
 newest series of that cell in results/*/rows.jsonl, the model's own runs first; without one, the median

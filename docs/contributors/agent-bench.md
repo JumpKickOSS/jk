@@ -48,10 +48,13 @@ bench/agent-loop/screen-ff --series 33 --task petclinic-rename-addvisit …   # 
 bench/agent-loop/screen-ff --series 33 --confirm --task …                  # rerun only what surprised
 ```
 
-A night on the gate host runs the tiers in order until a deadline, with the merge queue paused:
-`scripts/bench-night.sh` ([README](../../bench/agent-loop/README.md#a-night-of-benches)). A new agent
-goes first and alone through tiers 0 to 2, so a problem with it shows early; then the no-code-tools
-baseline; then every other agent with the code tools.
+A night on the gate host runs the tiers in order, every step to its end, with the merge queue paused:
+`scripts/bench-night.sh` ([README](../../bench/agent-loop/README.md#a-night-of-benches)). Its `--until`
+is a soft deadline: past it the night logs what is done and left and its estimate for the rest, and
+`scripts/bench-night.sh status` says the same at any time. A new agent goes first and alone through
+tiers 0 to 2, so a problem with it shows early; then the no-code-tools baseline; then every other agent
+with the code tools. It ends with a table per agent and per task of the tool hit rate, wall time,
+turns, tokens, dollars and diagnostics, with the code tools against without.
 
 **Fail fast.** Read the verdict as soon as the first agents finish. Stop a screen the moment the change
 is plainly worse or plainly irrelevant; never let a run go long to "be sure". Change one thing per

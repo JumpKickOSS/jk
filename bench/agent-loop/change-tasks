@@ -182,8 +182,20 @@ When the task is done and the build and tests pass, reply with one line: DONE. I
 """
 
 # Shell commands by family, for a run with --shell.
-SHELL_GRAPH = re.compile(r"^\s*(?:\S*/)?(?:graphify\b|jk\b.*\bgraph\b)")
+SHELL_GRAPH = re.compile(r"^\s*(?:\S*/)?(?:graphify\b|jk\b(?:\s+-\S+)*\s+(?:graph|code)\b)")
 SHELL_TEXT = re.compile(r"^\s*(?:\S*/)?(?:grep|rg|ag|find|cat|head|tail|sed|awk|less|ls|tree|wc)\b")
+# Of the text navigation, the calls that read a file rather than search for one.
+READS = {"Read", "read_file", "view_file"}
+SHELL_READ = re.compile(r"^\s*(?:\S*/)?(?:cat|head|tail|sed|less)\b")
+# The JumpKick code tool that is the right move for a task of each kind; a task names another with `code_tool`.
+# A kind not here (a fix, an anchor rename, a new field) has no one right tool.
+CODE_TOOL = {"question": "usages", "rename": "rename", "rename-colliding": "rename", "delete": "delete",
+             "move": "move", "pull-up": "pull_up", "extract-interface": "extract_interface"}
+# The code tools jk's default tools/list carries; the others only the extended list (jk-graph).
+DEFAULT_CODE_TOOLS = {"usages", "rename"}
+# What a released jk calls a code tool the tree names otherwise.
+RELEASED_NAMES = {"callers": "usages"}
+SHELL_CODE = re.compile(r"^\s*(?:\S*/)?jk\b(?:\s+-\S+)*\s+code\s+([a-z-]+)")
 
 TOOL_LABEL = {"jk": "JumpKick (jk)", "mvn": "Maven", "gradle": "Gradle"}
 
@@ -450,10 +462,13 @@ def navigation(summary: list[dict], sandbox: Path | None = None) -> dict:
     counts = {"graph": 0, "text": 0, "edits": 0, "build": 0, "outside": 0, "own": 0, "other": 0}
     names: dict[str, int] = {}
     written: set[str] = set()
+    first = None
+    reads = after_graph = 0
     for entry in summary:
         if "tool_use" not in entry:
             continue
         name = called(entry)
+        first = first or name
         if name.split("__")[-1] in EDITS:
             written.update(call_paths(entry))
         names[name] = names.get(name, 0) + 1
@@ -466,14 +481,15 @@ def navigation(summary: list[dict], sandbox: Path | None = None) -> dict:
                 command = str(entry.get("input") or "")
         if short in GRAPH or name.startswith("mcp__graphify__") or SHELL_GRAPH.search(command):
             counts["graph"] += 1
-        elif SHELL_TEXT.search(command):
+        elif SHELL_TEXT.search(command) or (short in NAV_TEXT and not outside(entry, sandbox)
+                                            and not (written and set(call_paths(entry) or ["-"]) <= written)):
             counts["text"] += 1
+            reads += short in READS or bool(SHELL_READ.search(command))
+            after_graph += counts["graph"] > 0
         elif short in NAV_TEXT and outside(entry, sandbox):
             counts["outside"] += 1
-        elif short in NAV_TEXT and written and set(call_paths(entry) or ["-"]) <= written:
-            counts["own"] += 1
         elif short in NAV_TEXT:
-            counts["text"] += 1
+            counts["own"] += 1
         elif short in EDITS:
             counts["edits"] += 1
         elif name.startswith(("mcp__jk__", "mcp__results__")) or short in ("build", "run", "diagnostics", "deps", "why",
@@ -482,7 +498,74 @@ def navigation(summary: list[dict], sandbox: Path | None = None) -> dict:
         else:
             counts["other"] += 1
     nav = counts["graph"] + counts["text"]
-    return {**counts, "graph_share": counts["graph"] / nav if nav else None, "tool_calls": names}
+    # Diagnostics for the tools' authors: the first move, text navigation split into searches and file
+    # reads, and the text navigation after the first code-tool call (a fallback to grep and reading).
+    return {**counts, "graph_share": counts["graph"] / nav if nav else None, "tool_calls": names,
+            "first_tool": first, "searches": counts["text"] - reads, "reads": reads,
+            "text_after_code_tool": after_graph if counts["graph"] else None}
+
+
+def code_tool(task: dict, arm: str) -> str | None:
+    """The JumpKick code tool that is the right move for the task, when the arm offers it; else None, and
+    the cell does not count toward the tool hit rate."""
+    spec = ARMS[arm]
+    tool = task.get("code_tool") or CODE_TOOL.get(task.get("kind", ""))
+    if tool is None or spec["tool"] != "jk" or spec["hide_graph"]:
+        return None
+    return tool if tool in DEFAULT_CODE_TOOLS or spec.get("extended") else None
+
+
+def code_tool_calls(summary: list[dict], tool: str) -> int:
+    """Calls of one code tool in a transcript spine: over MCP, by the name a released jk gives it, or as
+    `jk code <tool>` in a shell."""
+    n = 0
+    for entry in summary:
+        if "tool_use" not in entry:
+            continue
+        short = called(entry).split("__")[-1]
+        command = ""
+        if short == "Bash":
+            try:
+                command = str(json.loads(entry.get("input") or "{}").get("command") or "")
+            except (json.JSONDecodeError, AttributeError):
+                command = str(entry.get("input") or "")
+        shell = SHELL_CODE.match(command)
+        n += RELEASED_NAMES.get(short, short) == tool or bool(shell and shell.group(1).replace("-", "_") == tool)
+    return n
+
+
+# Drivers whose transcripts mark a failed tool call: Claude Code's tool_result is_error, codex's failed
+# mcp_tool_call item, copilot's unsuccessful tool.execution_complete, agy's tool step in state ERROR.
+ERROR_MARKED = {"claude-code", "codex", "copilot", "agy"}
+
+
+def tool_errors(transcript: Path, driver: str) -> int | None:
+    """Tool calls that failed, from the raw transcript; None for a driver whose events do not mark a failure."""
+    if driver not in ERROR_MARKED:
+        return None
+    try:
+        lines = transcript.read_text(errors="replace").splitlines()
+    except OSError:
+        return None
+    n = 0
+    for line in lines:
+        try:
+            ev = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(ev, dict):
+            continue
+        message = ev.get("message")
+        for block in (message.get("content") or []) if isinstance(message, dict) else []:
+            n += isinstance(block, dict) and block.get("type") == "tool_result" and bool(block.get("is_error"))
+        item = ev.get("item") if isinstance(ev.get("item"), dict) else {}
+        n += (ev.get("type") == "item.completed" and item.get("type") == "mcp_tool_call"
+              and (item.get("status") == "failed" or bool(item.get("error"))))
+        data = ev.get("data") if isinstance(ev.get("data"), dict) else {}
+        n += ev.get("type") == "tool.execution_complete" and data.get("success") is False
+        step = ev.get("step_update") if isinstance(ev.get("step_update"), dict) else {}
+        n += step.get("step_type") == "tool" and step.get("state") == "ERROR"
+    return n
 
 
 def answer_key(line: str) -> str:
@@ -868,6 +951,11 @@ def _run_one(name: str, task: dict, arm: str, run_no: int, ns, run_root: Path) -
             cost_usd=None if res.cost_usd is None else round(res.cost_usd, 4),
             claimed=bool(re.search(r"(?m)^\s*DONE\b", reply)), reply=reply[:300],
             agent_finding=res.finding, jk_calls=jk_calls(res.transcript), **navigation(res.transcript, sandbox))
+        right = code_tool(task, arm)
+        row.update(code_tool=right, code_tool_calls=code_tool_calls(res.transcript, right) if right else None,
+                   tool_errors=tool_errors(transcript, ns.driver),
+                   turn_cap=(res.finding or "").startswith("turn budget exhausted")
+                   or res.extra.get("subtype") == "error_max_turns")
         # A router (copilot's Fusion) answers with models of its own choosing: the row names them.
         for key in ("routed_models", "copilot_aiu"):
             if res.extra.get(key) is not None:

@@ -1,25 +1,30 @@
 #!/usr/bin/env bash
-# A night of agent benches on the gate host, run in order until a deadline, with the merge queue and
-# the Full loop paused. Every agent runs its pinned model and effort, one run a cell. The plan is
+# A night of agent benches on the gate host, every step run to its end, with the merge queue and the
+# Full loop paused. Every agent runs its pinned model and effort, one run a cell. The plan is
 # bench/agent-loop/night-plan's, in tiers (0 smoke-test, 1 a screen, 2 a sliver of the claims' tasks):
 # step 1 the new agent ($NIGHT_FIRST, copilot) alone through tiers 0, 1 and 2 with JumpKick's code
 # tools; step 2 every agent without them (no-code-tools, arm jk-nograph) on every task of tiers 1 and 2;
 # step 3 every other agent with them through tiers 0, 1 and 2; step 4 the commands in $NIGHT_EXTRA, one
-# per line, only with time left. Each cell is one smoke-test (tier 0) or change-tasks invocation,
-# started only when its expected time fits before the deadline and stopped at the deadline otherwise.
-# Rows land where the scoreboard reads them, bench/agent-loop/results/<date>-change-tasks/ (smoke rows
-# under $AGENT_LOOP_HOME/smoke/); nothing is banked or rendered.
+# per line. Each cell is one smoke-test (tier 0) or change-tasks invocation. --until is a soft
+# deadline: no cell is skipped or stopped for it; past it, each cell's start logs how far past, what is
+# done and left, and the estimate for the rest. Rows land where the scoreboard reads them,
+# bench/agent-loop/results/<date>-change-tasks/ (smoke rows under $AGENT_LOOP_HOME/smoke/); nothing is
+# banked or rendered. At the end the night prints its tables (bench/agent-loop/night-summary): per
+# agent and arm, per task and code tool, per task and agent with the tools against without, and every
+# cell, with the tool hit rate, wall time, turns, tokens by kind, dollars and diagnostics.
 #
 # Usage:
 #   scripts/bench-night.sh run --until 01:00 [--dry-run]   # the night; --dry-run lists it, runs no agent
+#   scripts/bench-night.sh status                          # the night's done, running, left, ETA and tables
 #   scripts/bench-night.sh smoke                           # tier 0 for every agent now, one line each
 #   scripts/bench-night.sh pause                           # stop the queue and Full loops between gates
 #   scripts/bench-night.sh resume                          # start them again as they were
 #   scripts/bench-night.sh prepare                         # set up and build the corpus repositories
 #
-# The dry run prints each step's cells and minutes, and the cells that would not start before the
-# deadline. To cut an agent from steps 2 and 3, start with NIGHT_SKIP=copilot, or during the night
-# write its name into $NIGHT_STATE/skip (one per line): each cell reads it before it starts.
+# The dry run prints each step's cells and minutes, when the night would end, and the cells that would
+# start past the soft deadline. To cut an agent from steps 2 and 3, start with NIGHT_SKIP=copilot, or
+# during the night write its name into $NIGHT_STATE/skip (one per line): each cell reads it before it
+# starts. `status` reads the night's progress under $NIGHT_STATE/night, running or ended.
 #
 # `run` checks first, and refuses a real run on any failure: the installed jk is this tree's version
 # and lists every MCP tool a step calls; the queue and Full loops are not running; no gate holds the
@@ -34,13 +39,14 @@
 # `bash scripts/gate/full-loop.sh` in $NIGHT_RUNNER; no other process is touched.
 #
 #   NIGHT_RUNNER    the checkout the loops run from (default ~/src/jk-queue-runner)
-#   NIGHT_STATE     saved loops and the night's log (default /var/tmp/jk-bench-night)
-#   NIGHT_EXTRA     step 3's file of commands, run from this tree (default none)
+#   NIGHT_STATE     saved loops, the night's progress and its log (default /var/tmp/jk-bench-night)
+#   NIGHT_EXTRA     step 4's file of commands, run from this tree (default none)
+#   NIGHT_HARNESS   the directory of smoke-test and change-tasks, from this tree (default bench/agent-loop)
 #   GATE_LOCK       the lock every gate on this host takes (default /var/tmp/fleet-gate.lock)
 #   QUEUE_CHECKOUT, FULL_CHECKOUT
 #                   what `resume` gives a loop whose environment could not be saved (default
 #                   ~/src/jk-queue-checkout, ~/src/jk-full-checkout)
-#   NIGHT_DRIVERS, NIGHT_FIRST, NIGHT_SKIP, NIGHT_NOGRAPH, NIGHT_MAX_MINUTES
+#   NIGHT_DRIVERS, NIGHT_FIRST, NIGHT_SKIP, NIGHT_NOGRAPH, NIGHT_MAX_MINUTES, NIGHT_RESULTS
 #                   the plan's (bench/agent-loop/night-plan)
 set -uo pipefail
 
@@ -49,6 +55,10 @@ RUNNER="${NIGHT_RUNNER:-$HOME/src/jk-queue-runner}"
 STATE="${NIGHT_STATE:-/var/tmp/jk-bench-night}"
 LOCK="${GATE_LOCK:-/var/tmp/fleet-gate.lock}"
 PLAN="$ROOT/bench/agent-loop/night-plan"
+NIGHT="$STATE/night"
+RESULTS="${NIGHT_RESULTS:-$ROOT/bench/agent-loop/results}"
+HARNESS="${NIGHT_HARNESS:-bench/agent-loop}"
+SUMMARY="$ROOT/bench/agent-loop/night-summary"
 CORPUS="$("$PLAN" corpus)" || exit 2
 LOOPS=(queue full)
 declare -A LOOP_SCRIPT=([queue]=scripts/queue/loop.sh [full]=scripts/gate/full-loop.sh)
@@ -229,7 +239,7 @@ run() {
       *) die "unknown argument: $1" ;;
     esac
   done
-  [ -n "$until" ] || die "run needs --until <time>, the deadline (01:00, or a date and time)"
+  [ -n "$until" ] || die "run needs --until <time>, the soft deadline (01:00, or a date and time)"
   local now deadline
   now="$(date +%s)"
   deadline="$(date -d "$until" +%s 2>/dev/null)" || die "--until $until is not a time"
@@ -277,8 +287,19 @@ run() {
   [ "$dry" -eq 1 ] || [ ${#problems[@]} -eq 0 ] || die "nothing ran"
 
   start=$now at=$now full=0
-  n=0 ran=0 skipped=0 stopped=0 late=0
+  n=0 ran=0 skipped=0 late=0
   declare -A fails=() step_n=() step_s=() step_late=()
+  if [ "$dry" -eq 0 ]; then
+    # The night's progress, for the past-the-deadline lines and `status`: its cells with their expected
+    # seconds, and a line as each starts, ends or is skipped.
+    { rm -rf "$NIGHT" && mkdir -p "$NIGHT"; } || die "cannot write $NIGHT"
+    printf '%s\t%s\t%s\t%s\n' "$$" "$start" "$deadline" "$LOG" >"$NIGHT/info"
+    awk -F'\t' -v OFS='\t' '$1 != "" {print ++i, $11, "step " $1 " tier " $2 ": " $3 " " $4 " " $5}' <<<"$plan" >"$NIGHT/cells"
+    local planned
+    planned="$(wc -l <"$NIGHT/cells")"
+    extra_lines | awk -v OFS='\t' -v n="$planned" '{print n + NR, "-", "step 4: " $0}' >>"$NIGHT/cells"
+    : >"$NIGHT/progress"
+  fi
   cells <<<"$plan"
   extra
   if [ "$dry" -eq 1 ]; then
@@ -286,13 +307,14 @@ run() {
     for step in 1 2 3; do
       [ -n "${step_n[$step]:-}" ] || continue
       echo "step $step, $(step_name "$step"): ${step_n[$step]} cells, ~$(clock "${step_s[$step]}") (h:mm)$(
-        [ -z "${step_late[$step]:-}" ] || echo "; ${step_late[$step]} of them do not fit before $(hm "$deadline")")"
+        [ -z "${step_late[$step]:-}" ] || echo "; ${step_late[$step]} of them past $(hm "$deadline")")"
     done
-    echo "$n cells, ~$(clock "$full") (h:mm) for all of them; those not skipped ~$(clock $((at - start))), deadline $(hm "$deadline") in $(clock $((deadline - start)))"
-    [ "$late" -eq 0 ] || echo "does not fit before $(hm "$deadline"): $late cells, marked [after the deadline] above"
+    echo "$n cells, ~$(clock "$full") (h:mm) for all of them; those not skipped ~$(clock $((at - start))), ending ~$(hm "$at"); soft deadline $(hm "$deadline") in $(clock $((deadline - start)))"
+    [ "$late" -eq 0 ] || echo "past the soft deadline $(hm "$deadline"): $late cells, marked [after the deadline] above; they still run"
     return 0
   fi
-  say "$(date +%H:%M) done: $ran cells ran, $skipped skipped. Rows: bench/agent-loop/results/$(date +%F)-change-tasks/; log: $LOG"
+  say "$(date +%H:%M) done: $ran cells ran, $skipped skipped$([ "$(date +%s)" -le "$deadline" ] || echo ", past the soft deadline $(hm "$deadline")"). Rows: $RESULTS/<date>-change-tasks/; log: $LOG"
+  "$SUMMARY" --since "$(date -d "@$start" +%F)" 2>&1 | tee -a "$LOG"
   say "Nothing is banked. Review the rows, then bank and re-render the claims as a separate step."
 }
 
@@ -309,16 +331,70 @@ cut_by_file() {
   [ -f "$STATE/skip" ] && grep -qx -- "$1" "$STATE/skip" && echo "cut by $STATE/skip"
 }
 
+# mark <cell number> <start|end|skip>: one line of the night's progress.
+mark() { printf '%s\t%s\t%s\n' "$1" "$2" "$(date +%s)" >>"$NIGHT/progress"; }
+
+# progress: done, running, left and the estimate for the rest of the night in $NIGHT, in one line.
+progress() {
+  awk -F'\t' -v now="$(date +%s)" '
+    FNR == NR { est[$1] = $2; what[$1] = $3; total++; next }
+    $2 == "start" { started[$1] = $3 }
+    $2 == "end" || $2 == "skip" { finished[$1] = 1 }
+    END {
+      for (c in est) {
+        if (c in finished) { done++; continue }
+        if (c in started) {
+          running++; spent = now - started[c]
+          run = run sprintf("%s%s, %d:%02d of ~%s", run == "" ? "" : "; ", what[c], spent / 3600, spent % 3600 / 60,
+                            est[c] == "-" ? "unknown" : sprintf("%d:%02d", est[c] / 3600, est[c] % 3600 / 60))
+          if (est[c] != "-" && est[c] > spent) rest += est[c] - spent
+          continue
+        }
+        left++
+        if (est[c] == "-") unknown++; else rest += est[c]
+      }
+      printf "%d done, %d running%s, %d left; ~%d:%02d (h:mm) more, ending ~%s", done, running,
+        running ? " (" run ")" : "", left, rest / 3600, rest % 3600 / 60, strftime("%H:%M", now + rest)
+      if (unknown) printf " (and %d step-4 command%s without an estimate)", unknown, unknown == 1 ? "" : "s"
+      printf "\n"
+    }' "$NIGHT/cells" "$NIGHT/progress"
+}
+
+# past: when the soft deadline is past, one line saying so, with the night's progress.
+past() {
+  local now
+  now="$(date +%s)"
+  [ "$now" -le "$deadline" ] || say "$(date +%H:%M) past the soft deadline $(hm "$deadline") by $(clock $((now - deadline))): $(progress)"
+}
+
+# status: the night in $NIGHT, running or ended, its progress and its tables so far.
+status() {
+  [ -f "$NIGHT/info" ] || die "no night has started (no $NIGHT/info)"
+  local pid start deadline log state
+  IFS=$'\t' read -r pid start deadline log <"$NIGHT/info"
+  if kill -0 "$pid" 2>/dev/null && grep -q 'bench-night' "/proc/$pid/cmdline" 2>/dev/null; then
+    state="running (pid $pid)"
+  else
+    state="not running"
+  fi
+  echo "bench night started $(date -d "@$start" '+%F %H:%M'), soft deadline $(hm "$deadline"), $state; log: $log"
+  [ "$(date +%s)" -le "$deadline" ] || echo "past the soft deadline by $(clock $(($(date +%s) - deadline)))"
+  progress
+  echo
+  "$SUMMARY" --since "$(date -d "@$start" +%F)"
+}
+
 # cells: run (or, dry, list) the plan lines on stdin, in order; run's locals are this function's too.
+# Every cell runs, the soft deadline past or not; past it, each start logs what is done and left.
 cells() {
-  local step tier driver arm task repo runs first model effort est source cmd why rc last when
+  local step tier driver arm task repo runs first model effort est source cmd why last when
   while IFS=$'\t' read -r step tier driver arm task repo runs first model effort est source; do
     [ -n "$step" ] || continue
     n=$((n + 1))
     if [ "$tier" = 0 ]; then
-      cmd=(bench/agent-loop/smoke-test --driver "$driver" --arm "$arm" --model "$model" --effort "$effort")
+      cmd=("$HARNESS/smoke-test" --driver "$driver" --arm "$arm" --model "$model" --effort "$effort")
     else
-      cmd=(bench/agent-loop/change-tasks --driver "$driver" --arm "$arm" --task "$task" --runs "$runs"
+      cmd=("$HARNESS/change-tasks" --driver "$driver" --arm "$arm" --task "$task" --runs "$runs"
         --first-run "$first" --model "$model" --effort "$effort")
     fi
     why="${skip[$driver]:-${skip[$repo]:-}}"
@@ -341,29 +417,21 @@ cells() {
         "${cmd[*]}" "$why" "$source"
       continue
     fi
-    if [ "$stopped" -eq 1 ] || [ -n "$why" ]; then
-      say "skip: ${cmd[*]} (${why:-deadline})"
+    if [ -n "$why" ]; then
+      say "skip: ${cmd[*]} ($why)"
       skipped=$((skipped + 1))
+      mark "$n" skip
       continue
     fi
-    now="$(date +%s)"
-    if [ $((now + est)) -gt "$deadline" ]; then
-      say "skip: ${cmd[*]} (needs ~$(mins "$est"), $(mins $((deadline - now))) left)"
-      skipped=$((skipped + 1))
-      continue
-    fi
+    past
     say "$(date +%H:%M) step $step tier $tier ~$(mins "$est"): ${cmd[*]}"
-    (cd "$ROOT" && timeout --kill-after=60 $((deadline - now)) "${cmd[@]}") >>"$LOG" 2>&1
-    rc=$?
+    mark "$n" start
+    (cd "$ROOT" && "${cmd[@]}") >>"$LOG" 2>&1
+    mark "$n" end
     ran=$((ran + 1))
-    if [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; then
-      say "stopped at the deadline: ${cmd[*]}"
-      stopped=1
-      continue
-    fi
     # A smoke run's rows are its own; its FAIL is a result, not an error row.
     [ "$tier" != 0 ] || continue
-    last="$(tail -n 1 "$ROOT/bench/agent-loop/results/$(date +%F)-change-tasks/rows.jsonl" 2>/dev/null)"
+    last="$(tail -n 1 "$RESULTS/$(date +%F)-change-tasks/rows.jsonl" 2>/dev/null)"
     if grep -q '"outcome": "error"' <<<"$last"; then
       fails[$driver.$step]=$((${fails[$driver.$step]:-0} + 1))
     else
@@ -372,23 +440,28 @@ cells() {
   done
 }
 
-# extra: step 4, the commands in $NIGHT_EXTRA, each while time is left and stopped at the deadline.
+# extra_lines: step 4's commands, from $NIGHT_EXTRA, one per line.
+extra_lines() {
+  [ -z "${NIGHT_EXTRA:-}" ] || grep -v '^[[:space:]]*\(#\|$\)' "$NIGHT_EXTRA"
+}
+
+# extra: step 4, the commands in $NIGHT_EXTRA, each run to its end like every cell.
 extra() {
-  local lines=() line
-  [ -z "${NIGHT_EXTRA:-}" ] || mapfile -t lines < <(grep -v '^[[:space:]]*\(#\|$\)' "$NIGHT_EXTRA")
+  local lines=() line i
+  mapfile -t lines < <(extra_lines)
   if [ "$dry" -eq 1 ]; then
     for line in "${lines[@]}"; do printf 'step 4  ~unknown (no earlier runs)  %s\n' "$line"; done
     [ ${#lines[@]} -gt 0 ] || echo "step 4  nothing: NIGHT_EXTRA names no commands"
     return 0
   fi
+  i=$n
   for line in "${lines[@]}"; do
-    now="$(date +%s)"
-    if [ "$stopped" -eq 1 ] || [ "$now" -ge "$deadline" ]; then
-      say "skip: $line (deadline)"
-      continue
-    fi
+    i=$((i + 1))
+    past
     say "$(date +%H:%M) step 4: $line"
-    (cd "$ROOT" && timeout --kill-after=60 $((deadline - now)) bash -c "$line") >>"$LOG" 2>&1 || true
+    mark "$i" start
+    (cd "$ROOT" && bash -c "$line") >>"$LOG" 2>&1 || true
+    mark "$i" end
   done
 }
 
@@ -398,5 +471,6 @@ case "${1:-}" in
   pause) pause ;;
   resume) resume ;;
   prepare) prepare ;;
+  status) status ;;
   *) sed -n '2,/^set -uo/p' "$0" | sed '$d' | sed 's/^# \{0,1\}//' >&2; exit 2 ;;
 esac
