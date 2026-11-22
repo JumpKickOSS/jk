@@ -249,9 +249,10 @@ work on something else and read answers with `ka inbox`. Stopping without finish
 |---------|-----------|------|
 | `jk guard` | Formats every changed source, then every house-rule lane, the tree lane and the fixture proofs included | Every commit that touches code, and every local merge |
 | `jk guard docs` | The text rules that read Markdown, no build | A docs-only commit |
+| `jk test -s docs` | The tests that walk the doc tree (`@Tag("docs")`): `-O json` callers, plugin defaults a page quotes | A commit that changes a doc or a command's machine output; every gate tier |
 | `jk install` | Exactly what `jk build` runs (every module compiled and packaged, its fast tier, the model/module/workspace/output lanes), then the reinstall | Every local merge |
 | `scripts/queue/branch-tier.sh` | `jk guard`, then the fast tier of the modules the branch changed | Before submitting a branch to the merge queue |
-| `GATE_TIER=queue scripts/gate/run.sh <n> <sha>` | The Queue tier: guard, the reinstall without tests, one install, the changed modules' integration suites, the curated lane, the shell fixtures | Every batch the merge queue lands (the push gate) |
+| `GATE_TIER=queue scripts/gate/run.sh <n> <sha>` | The Queue tier: guard, the reinstall without tests, one install, the changed modules' integration suites, the curated lane, the docs suite, the shell fixtures | Every batch the merge queue lands (the push gate) |
 | `jk install -g` | Engine/CLI e2e, workers, install, lock: every integration class | The Full tier, back to back behind the queue (`scripts/gate/full-loop.sh`) |
 | `jk test -s slow` | Framework and language e2e (Android, Grails, Scala, KSP, Protobuf) | Before submitting a plugin or toolchain change; the Full tier when a plugin changed since `green`; nightly |
 
