@@ -2,6 +2,7 @@
 package cc.jumpkick.config;
 
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.host.PathUtil;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -61,8 +62,8 @@ public record TestHistory(Path moduleDir, Map<String, String> classes) {
     }
 
     /**
-     * The history of every module at or under {@code root}, by module directory. A file whose first
-     * line names no directory is skipped.
+     * The history of every module at or under {@code root}, by module directory. A file that cannot
+     * be read, or whose first line names no directory, is skipped.
      */
     public static List<TestHistory> under(Path stateDir, Path root) throws IOException {
         Path dir = dir(stateDir);
@@ -71,7 +72,13 @@ public record TestHistory(Path moduleDir, Map<String, String> classes) {
         List<TestHistory> out = new ArrayList<>();
         for (Path file : PathUtil.childFiles(dir)) {
             if (!file.toString().endsWith(".tsv")) continue;
-            List<String> lines = Files.readAllLines(file);
+            List<String> lines;
+            try {
+                lines = Files.readAllLines(file);
+            } catch (IOException e) {
+                Log.debug("test history not read: " + file, e);
+                continue;
+            }
             if (lines.isEmpty() || !lines.getFirst().startsWith("# ")) continue;
             Path module = Path.of(lines.getFirst().substring(2).trim()).normalize();
             if (module.startsWith(base)) out.add(new TestHistory(module, rows(lines)));

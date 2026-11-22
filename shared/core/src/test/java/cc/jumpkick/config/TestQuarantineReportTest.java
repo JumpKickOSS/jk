@@ -50,6 +50,16 @@ class TestQuarantineReportTest {
     }
 
     @Test
+    void a_history_that_cannot_be_read_is_skipped_and_the_others_still_are() throws IOException {
+        history(root.resolve("app"), Map.of("a.OkTest", "..."));
+        Path broken = TestHistory.file(state, root.resolve("lib"));
+        Files.write(broken, new byte[] {'#', ' ', (byte) 0xC3, (byte) 0x28, '\n'});
+
+        assertThat(TestHistory.under(state, root)).singleElement().satisfies(h -> assertThat(h.classes())
+                .containsOnlyKeys("a.OkTest"));
+    }
+
+    @Test
     void lists_quarantined_and_flaky_classes_with_their_history_and_skips_steady_ones() throws IOException {
         history(
                 root.resolve("app"),
