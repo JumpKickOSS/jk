@@ -96,7 +96,22 @@ printf '%s\n' '{"type": "assistant", "message": {"content": [{"type": "tool_use"
   '{"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": "a", "is_error": true}]}}' \
   '{"type": "item.completed", "item": {"type": "mcp_tool_call", "status": "failed"}}' \
   '{"type": "tool.execution_complete", "data": {"toolCallId": "b", "success": false}}' >"$WORK/transcript.jsonl"
-python3 -I - "$ROOT/bench/agent-loop/change-tasks" "$WORK/transcript.jsonl" <<'PY' || fail "the row's diagnostics are wrong"
+# grok marks a failure as Claude Code does; cursor by a result case other than success (or an MCP success
+# with isError); muse by a tool.result whose correlated outcome is a failure or a timeout, not cancelled.
+printf '%s\n' '{"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": "a", "is_error": true}]}}' \
+  '{"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": "b", "is_error": false}]}}' >"$WORK/grok.jsonl"
+printf '%s\n' '{"type": "tool_call", "subtype": "started", "tool_call": {"readToolCall": {"args": {}}}}' \
+  '{"type": "tool_call", "subtype": "completed", "tool_call": {"readToolCall": {"result": {"fileNotFound": {}}}}}' \
+  '{"type": "tool_call", "subtype": "completed", "tool_call": {"mcpToolCall": {"result": {"success": {"isError": true}}}}}' \
+  '{"type": "tool_call", "subtype": "completed", "tool_call": {"mcpToolCall": {"result": {"rejected": {}}}}}' \
+  '{"type": "tool_call", "subtype": "completed", "tool_call": {"mcpToolCall": {"result": {"success": {"isError": false}}}}}' \
+  '{"type": "tool_call", "subtype": "completed", "tool_call": {"editToolCall": {"result": {"success": {}}}, "hookAdditionalContexts": []}}' \
+  '{"type": "result", "subtype": "success", "is_error": false}' >"$WORK/cursor.jsonl"
+printf '%s\n' '{"payload_type": "tool.result", "payload": {"correlation_facts": {"outcome": "failure", "tool_name": "read_file"}}}' \
+  '{"payload_type": "tool.result", "payload": {"correlation_facts": {"outcome": "timeout", "tool_name": "mcp__jk__usages"}}}' \
+  '{"payload_type": "tool.result", "payload": {"correlation_facts": {"outcome": "cancelled", "tool_name": "write_file"}}}' \
+  '{"payload_type": "tool.result", "payload": {"correlation_facts": {"outcome": "success", "tool_name": "mcp__jk__rename"}}}' >"$WORK/muse.jsonl"
+python3 -I - "$ROOT/bench/agent-loop/change-tasks" "$WORK/transcript.jsonl" "$WORK" <<'PY' || fail "the row's diagnostics are wrong"
 import importlib.machinery, importlib.util, sys
 from pathlib import Path
 loader = importlib.machinery.SourceFileLoader("change_tasks", sys.argv[1])
@@ -124,7 +139,10 @@ assert ct.code_tool({"kind": "question", "code_tool": "find"}, "jk-graph") == "f
 assert ct.code_tool_calls(spine, "usages") == 2
 assert ct.code_tool_calls([{"tool_use": "Bash", "input": '{"command": "jk code pull-up A.b"}'}], "pull_up") == 1
 assert ct.tool_errors(Path(sys.argv[2]), "claude-code") == 3
-assert ct.tool_errors(Path(sys.argv[2]), "cursor") is None
+assert ct.tool_errors(Path(sys.argv[2]), "gemini") is None
+assert ct.tool_errors(Path(sys.argv[3]) / "grok.jsonl", "grok") == 1
+assert ct.tool_errors(Path(sys.argv[3]) / "cursor.jsonl", "cursor") == 3
+assert ct.tool_errors(Path(sys.argv[3]) / "muse.jsonl", "muse") == 2
 PY
 
 # A dry run: every cell of the plan, each with its expected time; the agents not logged in named.

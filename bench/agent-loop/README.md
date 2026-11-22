@@ -354,8 +354,9 @@ model version and kind of token, `agents.<driver>.<questions|renames>.<kind>-tok
 For the tools' authors, every row also records `first_tool` (the agent's first call), `searches` and
 `reads` (its text navigation, split into searches and file reads), `text_after_code_tool` (searches and
 reads after its first code-tool call, a fallback to grep and reading; null when it called none),
-`tool_errors` (failed tool calls, from the transcripts of Claude Code, Codex, Copilot and agy, which mark
-them; null for the others) and `turn_cap` (the run hit its turn budget). `code_tool` names the JumpKick
+`tool_errors` (failed tool calls, as every driver's transcript marks them: a tool result flagged as an
+error, a failed or unsuccessful call, a cursor result other than a success, a muse outcome of failure
+or timeout; null for a driver whose transcript marks none) and `turn_cap` (the run hit its turn budget). `code_tool` names the JumpKick
 code tool that is the right move for the task, when the arm offers it: `usages` for a question,
 `rename` for a rename, the refactoring's own tool for a delete, move, pull-up or extract-interface (on
 `jk-graph`, whose extended list carries them); a task sets another with `code_tool` in `tasks.toml`, and

@@ -548,9 +548,26 @@ def code_tool_calls(summary: list[dict], tool: str) -> int:
     return n
 
 
-# Drivers whose transcripts mark a failed tool call: Claude Code's tool_result is_error, codex's failed
-# mcp_tool_call item, copilot's unsuccessful tool.execution_complete, agy's tool step in state ERROR.
-ERROR_MARKED = {"claude-code", "codex", "copilot", "agy"}
+# Drivers whose transcripts mark a failed tool call: Claude Code's and grok's tool_result is_error, codex's
+# failed mcp_tool_call item, copilot's unsuccessful tool.execution_complete, agy's tool step in state ERROR,
+# cursor's completed tool_call whose result is not a success (or an MCP success with isError), muse's
+# tool.result whose correlated outcome is a failure or a timeout.
+ERROR_MARKED = {"claude-code", "grok", "codex", "copilot", "agy", "cursor", "muse"}
+# The cases of a cursor tool result that are not a failure; every other case (error, rejected,
+# permissionDenied, fileNotFound, timeout, ...) is one.
+CURSOR_OK = {"success", "approved", "async", "registered", "read", "uploaded", "needsConfirmation"}
+
+
+def cursor_failed(ev: dict) -> bool:
+    """A cursor ``tool_call`` ``completed`` event whose result is a failure."""
+    if ev.get("type") != "tool_call" or ev.get("subtype") != "completed" or not isinstance(ev.get("tool_call"), dict):
+        return False
+    for call in ev["tool_call"].values():
+        result = call.get("result") if isinstance(call, dict) else None
+        if isinstance(result, dict) and result:
+            success = result.get("success")
+            return not CURSOR_OK & result.keys() or isinstance(success, dict) and success.get("isError") is True
+    return False
 
 
 def tool_errors(transcript: Path, driver: str) -> int | None:
@@ -579,6 +596,10 @@ def tool_errors(transcript: Path, driver: str) -> int | None:
         n += ev.get("type") == "tool.execution_complete" and data.get("success") is False
         step = ev.get("step_update") if isinstance(ev.get("step_update"), dict) else {}
         n += step.get("step_type") == "tool" and step.get("state") == "ERROR"
+        n += cursor_failed(ev)
+        payload = ev.get("payload") if isinstance(ev.get("payload"), dict) else {}
+        facts = payload.get("correlation_facts") if isinstance(payload.get("correlation_facts"), dict) else {}
+        n += ev.get("payload_type") == "tool.result" and facts.get("outcome") in ("failure", "timeout")
     return n
 
 
