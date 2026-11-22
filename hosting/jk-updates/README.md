@@ -8,6 +8,7 @@ fetches only what changed. How the engine reads it: [Updates](https://github.com
 | File | What it is | Who writes it |
 |------|------------|---------------|
 | `prices.toml` | Model API list prices, USD per million tokens | A person, by pull request |
+| `rates.json` | The tokens one code-graph call saves each agent, per agent, model and effort level, as the agent benchmark measured them | A person, by pull request, from `bench/scoreboard --render` output |
 | `libraries.toml` | Copy of the library registry ([jk-libraries](https://github.com/JumpKickOSS/jk-libraries)) | `scripts/refresh.sh` |
 | `jdks.json` | Copy of the JetBrains JDK feed | `scripts/refresh.sh` |
 | `pins.json` | The jk-templates `main` revision, and the current stable JumpKick release with the SHA-256 of its signed `SHA256SUMS` | `scripts/refresh.sh` |
@@ -39,6 +40,40 @@ source = "<the vendor's pricing page>"
 retrieved = "2026-11-22"
 ```
 
+## Changing the savings rates
+
+`bench/scoreboard --render` in a JumpKick checkout writes
+`server/engine/src/main/resources/cc/jumpkick/engine/savings/rates.json` from the agent benchmark's
+banked rows, with a `published` instant it moves forward whenever a rate changes. Copy that file
+here as `rates.json` and open a pull request. An engine keeps a file only when it was published
+after the rates it has (the ones built into its JumpKick included), so the publish refuses a
+changed file whose `published` did not move. Once merged, every engine credits code answers and
+refactorings at the new rates after its next check, sessions it recorded before included. The
+shape:
+
+```json
+{
+  "published": "2026-11-22T18:00:00Z",
+  "measured": "2026-11-20",
+  "rates": [
+    {
+      "agent": "claude-code",
+      "model": "claude-sonnet-5-5",
+      "effort": "medium",
+      "measured": "2026-11-20",
+      "cacheWrite1h": true,
+      "question": {"tasks": 8, "graphCalls": 10, "input": 11, "output": 3666, "cacheRead": 179026,
+                   "cacheWrite": 17174, "sizes": [{"loc": 3635, "input": 4, "...": 0}]},
+      "rename": {"...": 0}
+    }
+  ]
+}
+```
+
+One row per agent, model and effort level the benchmark ran; `question` and `rename` are the tokens
+one graph call saved in the code-question and rename tasks, over every task and per repository
+size (`sizes`, with the repository's lines of code).
+
 ## How it publishes
 
 `.github/workflows/publish.yml`, on a push to `main`, every three hours, and by hand:
@@ -47,7 +82,7 @@ retrieved = "2026-11-22"
    release pin is taken from the signed `releases/latest/LATEST` pointer on jumpkick.build and
    checked against the signature beside that release's `SHA256SUMS`.
 2. `scripts/assemble.sh` writes `updates.json` and signs it with the release key. It refuses a
-   price table whose `published` did not move forward, a manifest older than the one before it,
+   price table or rates file whose `published` did not move forward, a manifest older than the one before it,
    and any key but the one in `release-key.spki`. When nothing changed it signs nothing.
 3. The signed manifest is committed to `main`, which is the GitHub copy engines fall back to.
 4. The listed files, then the signature, then the manifest are uploaded to
@@ -74,7 +109,8 @@ them here. The data files live only here.
 1. Create `JumpKickOSS/jk-updates` (public), with `main` as its default branch.
 2. Copy `hosting/jk-updates/` from a JumpKick checkout into it, with `.github/`.
 3. Copy the price table built into JumpKick as the first `prices.toml`:
-   `shared/client-io/src/main/resources/cc/jumpkick/prices/prices.toml`.
+   `shared/client-io/src/main/resources/cc/jumpkick/prices/prices.toml`, and its savings rates as
+   the first `rates.json`: `server/engine/src/main/resources/cc/jumpkick/engine/savings/rates.json`.
 4. Create the environment `publish` (deployment branches: `main`; no required reviewer) with the
    secrets `JK_RELEASE_RSA_SIGNING_KEY`, `JK_RELEASE_GCS_BUCKET` and `JK_RELEASE_GCS_SA_JSON`, the
    same values as the JumpKick repository's `release` environment (or make them organization

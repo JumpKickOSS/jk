@@ -84,8 +84,8 @@ test('the tokens and dollars saved say they are an estimate, of which bench runs
   assert.equal(tokensSaved({}).tip, 'Estimate from bench runs, at API list prices');
   assert.equal(tokensSaved({ ...all, tokensUnpriced: 2_500 }).tip,
     'Estimate from bench runs of 2026-11-04, at API list prices of 2026-11-17; 3k tokens on models with no price');
-  assert.equal(tokensSaved({ ...all, callsNotMeasured: 1 }).tip,
-    'Estimate from bench runs of 2026-11-04, at API list prices of 2026-11-17; 1 call not measured by the bench, not counted');
+  assert.equal(tokensSaved({ ...all, ratesMatched: [{ step: 5, match: 'best-guess', calls: 1 }] }).tip,
+    'Estimate from bench runs of 2026-11-04, at API list prices of 2026-11-17', 'how the rates matched stays out of the tip');
   assert.equal(savingsTiles(all).find((t) => t.key === 'tokens').href, TOKENS_METHOD, 'the method is one click away');
   assert.equal(savingsTiles(all).filter((t) => t.href).length, 1);
   assert.equal(tokensSaved(null), null);

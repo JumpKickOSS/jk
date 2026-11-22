@@ -123,7 +123,9 @@ class AgentUsageTest {
                 claudeLine(T + 3_000, "msg_c", "claude-opus-5-5", 1, 1, 1, 1));
 
         assertThat(usage().models("claude-code", PROJECT, T))
-                .containsExactly(Map.entry(T + 1_000, "claude-sonnet-5-5"), Map.entry(T + 3_000, "claude-opus-5-5"));
+                .containsExactly(
+                        Map.entry(T + 1_000, new AgentUsage.Ran("claude-sonnet-5-5", null)),
+                        Map.entry(T + 3_000, new AgentUsage.Ran("claude-opus-5-5", null)));
         assertThat(usage(new AtomicBoolean(false)).models("claude-code", PROJECT, T))
                 .as("nothing is read while reading is off")
                 .isEmpty();
@@ -158,7 +160,7 @@ class AgentUsageTest {
         String meta = "{\"timestamp\":\"" + at(T) + "\",\"type\":\"session_meta\",\"payload\":{\"id\":\"x\",\"cwd\":\""
                 + PROJECT + "\",\"instructions\":\"be brief\"}}";
         String turn = "{\"timestamp\":\"" + at(T) + "\",\"type\":\"turn_context\",\"payload\":{\"cwd\":\"" + PROJECT
-                + "\",\"model\":\"gpt-5.1-codex\"}}";
+                + "\",\"model\":\"gpt-5.1-codex\",\"effort\":\"high\"}}";
         write(
                 codex().resolve("sessions/2026/11/21/rollout-a.jsonl"),
                 meta,
@@ -181,6 +183,9 @@ class AgentUsageTest {
         // 1,500 more input of which 1,200 more cached; 80 more output.
         assertThat(tokens.byModel()).containsOnlyKeys("gpt-5.1-codex");
         assertThat(tokens.byModel().get("gpt-5.1-codex")).isEqualTo(new AgentTokens.Counts(300, 0, 1_200, 80));
+        assertThat(usage().models("codex-mcp-client", PROJECT, T).values())
+                .as("Codex names its reasoning effort in each turn")
+                .containsOnly(new AgentUsage.Ran("gpt-5.1-codex", "high"));
     }
 
     static String tokenCount(long at, long input, long cached, long output) {

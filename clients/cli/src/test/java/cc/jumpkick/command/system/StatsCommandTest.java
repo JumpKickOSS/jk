@@ -80,9 +80,9 @@ class StatsCommandTest {
                         + "\"pricesRetrieved\":\"2026-11-17\"}"))
                 .as("tokens on a model the price table does not know are left out of the dollars, and say so")
                 .isEqualTo("~13k, ~$0.001 (estimate, API list prices of 2026-11-17; 3k on models with no price)");
-        assertThat(StatsCommand.tokens("{\"tokensSaved\":950,\"callsNotMeasured\":4}"))
-                .as("calls from agents the bench never ran are left out of the total, and counted")
-                .isEqualTo("~950, ~$0.000 (estimate, API list prices; 4 calls not measured by the bench, not counted)");
+        assertThat(StatsCommand.tokens("{\"tokensSaved\":950,\"ratesMatched\":[{\"step\":5,\"calls\":4}]}"))
+                .as("how the rates matched is machine output only, never printed")
+                .isEqualTo("~950, ~$0.000 (estimate, API list prices)");
     }
 
     @Test

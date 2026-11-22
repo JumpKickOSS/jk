@@ -99,7 +99,7 @@ public record EpisodeReceipt(
                 episodes,
                 runs,
                 actions,
-                SavingsRates.shipped(),
+                SavingsRates.current(),
                 new AgentModels(usage),
                 ProjectLines.counted(),
                 client);
@@ -184,8 +184,8 @@ public record EpisodeReceipt(
                     + (s.suitesSkipped() > 0 ? " (" + s.suitesSkipped() + " test suites)" : ""));
         }
         if (s.testClassesNotRerun() > 0) lines.add("Test classes not re-run: " + s.testClassesNotRerun());
-        if (s.tokens().total() != 0 || s.callsNotMeasured() != 0) {
-            lines.add("Tokens saved: " + s.tokens().text(PriceTables.current(), s.callsNotMeasured()));
+        if (s.tokens().total() != 0) {
+            lines.add("Tokens saved: " + s.tokens().text(PriceTables.current()));
         }
         if (s.graphCalls() > 0) lines.add("Code questions answered: " + s.graphCalls());
         if (s.refactorings() > 0) lines.add("Refactorings applied: " + s.refactorings());

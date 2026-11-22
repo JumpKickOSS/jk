@@ -5,6 +5,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
+import cc.jumpkick.engine.savings.SavingsRates;
+import cc.jumpkick.engine.sessions.ActionRecord;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Processes;
 import cc.jumpkick.http.Http;
@@ -126,9 +128,14 @@ class UpdateCheckTest {
         return dir.resolve("store/prices.toml");
     }
 
+    private Path ratesFile() {
+        return dir.resolve("store/rates.json");
+    }
+
     private UpdateCheck check(boolean offline, URI... manifests) {
         Map<String, UpdateCheck.Applier> appliers = Map.of(
                 "prices", (entry, file) -> UpdateCheck.applyPrices(file.bytes(), pricesFile(), logs::add),
+                "rates", (entry, file) -> UpdateCheck.applyRates(file.bytes(), ratesFile(), logs::add),
                 "libraries", (entry, file) -> catalogs.add(new String(file.bytes(), StandardCharsets.UTF_8)));
         return new UpdateCheck(
                 logs::add,
@@ -184,6 +191,103 @@ class UpdateCheckTest {
                 Map.of("prices.toml", prices));
     }
 
+    /** Savings rates published {@code days} after the built-in ones, measuring Antigravity on a model none names. */
+    private static byte[] rates(long days) {
+        Instant published = SavingsRates.shipped().published().plusSeconds(days * 86_400);
+        return ("{\"published\": \"" + published + "\", \"measured\": \"2026-12-01\", \"rates\": [\n"
+                        + "  {\"agent\": \"agy\", \"model\": \"" + NEW_MODEL + "\", \"effort\": \"high\","
+                        + " \"measured\": \"2026-12-01\", \"question\": {\"input\": 4242}}]}\n")
+                .getBytes(StandardCharsets.UTF_8);
+    }
+
+    private static long agyQuestionOnTheNewModel(SavingsRates rates) {
+        ActionRecord query = new ActionRecord(1, 0, "query", "query", null, ActionRecord.OK, 5, "s.1", "/ws", 0, 0);
+        SavingsRates.Credit credit = rates.saved(query, "antigravity", NEW_MODEL, "high", 0);
+        return credit.match() != null && credit.match().step() == 1
+                ? credit.tokens().byModel().values().iterator().next().input()
+                : -1;
+    }
+
+    @Test
+    void a_running_engine_credits_with_rates_from_a_newer_published_file_after_one_check() throws Exception {
+        assertThat(agyQuestionOnTheNewModel(SavingsRates.current(ratesFile())))
+                .as("the built-in rates never measured it")
+                .isEqualTo(-1);
+        byte[] rates = rates(3);
+        publish(
+                "/",
+                manifest(later(3), entry("rates", "r3", "rates.json", rates)),
+                releaseKey,
+                Map.of("rates.json", rates));
+
+        checkAndApply();
+
+        assertThat(agyQuestionOnTheNewModel(SavingsRates.current(ratesFile()))).isEqualTo(4242);
+        assertThat(SavingsRates.current(ratesFile()).measured()).isEqualTo("2026-12-01");
+        assertThat(logs).singleElement().asString().contains("savings rates updated (measured 2026-12-01)");
+        assertThat(state().applied()).containsEntry("rates", "r3");
+    }
+
+    @Test
+    void the_built_in_rates_stay_the_floor_and_an_older_or_unverified_file_is_ignored() throws Exception {
+        byte[] same = rates(0);
+        publish(
+                "/",
+                manifest(later(3), entry("rates", "r0", "rates.json", same)),
+                releaseKey,
+                Map.of("rates.json", same));
+        checkAndApply();
+        assertThat(ratesFile())
+                .as("a file not published after the built-in rates is not kept")
+                .doesNotExist();
+        assertThat(SavingsRates.current(ratesFile())).isEqualTo(SavingsRates.shipped());
+
+        byte[] newer = rates(5);
+        publish(
+                "/",
+                manifest(later(4), entry("rates", "r5", "rates.json", newer)),
+                releaseKey,
+                Map.of("rates.json", rates(6)));
+        checkAndApply();
+        assertThat(ratesFile())
+                .as("bytes that do not match the manifest's SHA-256 are not kept")
+                .doesNotExist();
+        assertThat(state().pending()).containsEntry("rates", "r5");
+
+        publish(
+                "/",
+                manifest(later(5), entry("rates", "r5", "rates.json", newer)),
+                otherKey,
+                Map.of("rates.json", newer));
+        checkAndApply();
+        assertThat(ratesFile())
+                .as("a manifest the release key did not sign is not trusted")
+                .doesNotExist();
+
+        publish(
+                "/",
+                manifest(later(6), entry("rates", "r5", "rates.json", newer)),
+                releaseKey,
+                Map.of("rates.json", newer));
+        checkAndApply();
+        assertThat(agyQuestionOnTheNewModel(SavingsRates.current(ratesFile()))).isEqualTo(4242);
+
+        byte[] older = rates(2);
+        publish(
+                "/",
+                manifest(later(7), entry("rates", "r2", "rates.json", older)),
+                releaseKey,
+                Map.of("rates.json", older));
+        checkAndApply();
+        assertThat(Files.readAllBytes(ratesFile()))
+                .as("an older file never replaces a newer one")
+                .isEqualTo(newer);
+        Files.writeString(ratesFile(), "{\"published\": \"not a time\"}");
+        assertThat(SavingsRates.current(ratesFile()))
+                .as("a store copy that does not parse leaves the built-in rates in use")
+                .isEqualTo(SavingsRates.shipped());
+    }
+
     private static byte[] sign(byte[] content, KeyPair key) throws GeneralSecurityException {
         Signature signer = Signature.getInstance("SHA256withRSA");
         signer.initSign(key.getPrivate());
@@ -232,6 +336,7 @@ class UpdateCheckTest {
         assumeTrue(runs("python3", "--version") && runs("openssl", "version"), "python3 and openssl on PATH");
         Path repo = Files.createDirectories(dir.resolve("jk-updates"));
         Files.write(repo.resolve("prices.toml"), table(later(5), 15.0));
+        Files.write(repo.resolve("rates.json"), rates(5));
         Path key = dir.resolve("release-key.pem");
         Files.writeString(
                 key,
@@ -244,7 +349,7 @@ class UpdateCheckTest {
         Processes.Captured assembled = Processes.capture(
                 List.of("bash", assemble.toString(), repo.toString(), key.toString()), Duration.ofMinutes(1));
         assertThat(assembled.ok()).as(assembled.output()).isTrue();
-        for (String name : List.of("updates.json", "updates.json.sig", "prices.toml")) {
+        for (String name : List.of("updates.json", "updates.json.sig", "prices.toml", "rates.json")) {
             replies.put("/" + name, new Reply(200, Files.readAllBytes(repo.resolve(name))));
         }
 
@@ -252,6 +357,10 @@ class UpdateCheckTest {
 
         assertThat(newModelPriced()).isTrue();
         assertThat(state().applied()).containsEntry("prices", later(5).toString());
+        assertThat(agyQuestionOnTheNewModel(SavingsRates.current(ratesFile())))
+                .as("the rates the scripts signed credit after the same check")
+                .isEqualTo(4242);
+        assertThat(state().applied()).containsKey("rates");
     }
 
     private static boolean runs(String... command) {

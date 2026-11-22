@@ -182,7 +182,8 @@ are compulsory. Details: [Install](install.md#updates).
 ## Updates
 
 A running engine keeps its data current between JumpKick releases: the model price table it prices
-an agent's tokens with, the library registry, the JDK catalog and the official template catalog. It
+an agent's tokens with, the [savings rates](web.md#tokens-and-dollars-saved) it estimates them
+with, the library registry, the JDK catalog and the official template catalog. It
 reads one small manifest, `https://jumpkick.build/updates.json` (the same file on GitHub when that
 does not answer), that names the current version of each, and fetches only what changed. None of it
 changes what a build produces: the JDK a lock pins stays pinned, and a newer catalog only changes
@@ -213,7 +214,8 @@ check = false
 ```
 
 Tokens are kept by model and priced when shown, so a model the price table does not know yet is
-priced once a table that knows it arrives.
+priced once a table that knows it arrives. The tokens saved are worked out from the recorded calls
+when shown too, so newer savings rates re-estimate the sessions recorded before they arrived.
 
 ## Engine
 

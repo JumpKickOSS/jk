@@ -10,10 +10,12 @@
 # dir defaults to the checkout this script sits in.
 #
 # Refused (exit 1, nothing written):
-#   - a prices.toml without a published date-time or models, a libraries.toml that is not TOML,
-#     a jdks.json that is not the JDK feed (an object whose jdks is an array), a malformed pins.json;
-#   - a prices.toml whose bytes changed while its published date did not move past the table the
-#     current updates.json lists: an engine keeps a table only when it is newer than its own;
+#   - a prices.toml without a published date-time or models, a rates.json without a published
+#     instant or rates (each naming its agent and model), a libraries.toml that is not TOML, a
+#     jdks.json that is not the JDK feed (an object whose jdks is an array), a malformed pins.json;
+#   - a prices.toml or rates.json whose bytes changed while its published date did not move past
+#     the one the current updates.json lists: an engine keeps a file only when it is newer than its
+#     own;
 #   - under JK_UPDATES_REQUIRE_TRUSTED_KEY=1, a key whose public half is not release-key.spki
 #     (JK_UPDATES_RELEASE_SPKI overrides that file).
 # When every entry and the release are the ones updates.json already lists, and it is signed,
@@ -116,6 +118,27 @@ data["prices"] = {"version": iso(published), "file": "prices.toml", "sha256": sh
 was = (held or {}).get("data", {}).get("prices")
 if was and was.get("sha256") != data["prices"]["sha256"] and not published > instant(was["version"]):
     fail(f"prices.toml changed but published {iso(published)} is not after {was['version']}; move it forward")
+
+rates = read("rates.json")
+if rates is not None:
+    try:
+        savings = json.loads(rates)
+    except ValueError as e:
+        fail(f"rates.json is not JSON: {e}")
+    try:
+        rates_published = instant(savings["published"])
+    except (ValueError, KeyError, TypeError, AttributeError):
+        fail("rates.json: published must be an ISO-8601 instant")
+    if rates_published.tzinfo is None:
+        fail("rates.json: published must carry its offset (Z)")
+    rows = savings.get("rates")
+    if (not isinstance(rows, list) or not rows
+            or not all(isinstance(r, dict) and r.get("agent") and r.get("model") for r in rows)):
+        fail("rates.json has no rates, each with its agent and model")
+    data["rates"] = {"version": iso(rates_published), "file": "rates.json", "sha256": sha256(rates)}
+    was = (held or {}).get("data", {}).get("rates")
+    if was and was.get("sha256") != data["rates"]["sha256"] and not rates_published > instant(was["version"]):
+        fail(f"rates.json changed but published {iso(rates_published)} is not after {was['version']}; move it forward")
 
 libraries = read("libraries.toml")
 if libraries is not None:

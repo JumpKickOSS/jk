@@ -2,8 +2,8 @@
 # Fixture test for the jk-updates repository's scripts (hosting/jk-updates/scripts), with a
 # throwaway key and local sources: refresh pins the templates revision and a release whose pointer
 # and SHA256SUMS verify, and keeps the pin when they do not; assemble signs a manifest the key
-# verifies, signs nothing when nothing changed, refuses a changed price table whose published date
-# did not move forward, a manifest older than the one held, a JDK file that is not the feed and a
+# verifies, signs nothing when nothing changed, refuses a changed price table or savings rates file
+# whose published date did not move forward, a rates file with no rates, a manifest older than the one held, a JDK file that is not the feed and a
 # key that is not the release key; verify-served passes the served copy and fails a stale or
 # tampered one. The trusted key there is the one the installers carry.
 set -euo pipefail
@@ -78,6 +78,16 @@ input = 3.0
 output = 15.0
 retrieved = "2026-11-21"
 EOF
+cat >"$REPO/rates.json" <<'EOF'
+{
+  "published": "2026-11-21T19:00:00Z",
+  "measured": "2026-11-21",
+  "rates": [
+    {"agent": "claude-code", "model": "claude-opus-5-5", "effort": "medium", "measured": "2026-11-21",
+     "cacheWrite1h": true, "question": {"input": 10, "output": 20, "cacheRead": 30, "cacheWrite": 40}}
+  ]
+}
+EOF
 
 passes "a refresh from sources that answer" bash "$UPDATES/scripts/refresh.sh" "$REPO"
 cmp -s "$SRC/libraries.toml" "$REPO/libraries.toml" || fail "refresh did not copy the registry"
@@ -108,6 +118,8 @@ openssl dgst -sha256 -verify "$WORK/public.pem" -signature "$WORK/sig.bin" "$REP
 [[ "$(field "$REPO/updates.json" published)" == 2026-11-22T04:00:00Z ]] || fail "published is not the one asked for"
 [[ "$(field "$REPO/updates.json" data.prices.version)" == 2026-11-21T18:00:00Z ]] || fail "prices is not versioned by its published date"
 [[ "$(field "$REPO/updates.json" data.prices.sha256)" == "$(sha "$REPO/prices.toml")" ]] || fail "prices sha256 is wrong"
+[[ "$(field "$REPO/updates.json" data.rates.version)" == 2026-11-21T19:00:00Z ]] || fail "rates is not versioned by its published instant"
+[[ "$(field "$REPO/updates.json" data.rates.sha256)" == "$(sha "$REPO/rates.json")" ]] || fail "rates sha256 is wrong"
 [[ "$(field "$REPO/updates.json" data.jdks.sha256)" == "$(sha "$REPO/jdks.json")" ]] || fail "jdks sha256 is wrong"
 [[ "$(field "$REPO/updates.json" data.libraries.file)" == libraries.toml ]] || fail "libraries is not listed"
 [[ "$(field "$REPO/updates.json" data.templates.version)" == "$templates_commit" ]] || fail "templates is not listed"
@@ -125,6 +137,15 @@ refuses_naming "a changed table with the same published date" "move it forward" 
 cmp -s "$WORK/manifest.before" "$REPO/updates.json" || fail "a refused table changed updates.json"
 
 sed -i.bak 's/^published = .*/published = 2026-11-22T09:00:00Z/' "$REPO/prices.toml"
+cp "$REPO/rates.json" "$WORK/rates.before"
+sed -i.bak 's/"input": 10,/"input": 11,/' "$REPO/rates.json"
+refuses_naming "changed rates with the same published instant" "rates.json changed but published" \
+  env JK_UPDATES_PUBLISHED=2026-11-22T05:00:00Z bash "$UPDATES/scripts/assemble.sh" "$REPO" "$WORK/key.pem"
+printf '{"published": "2026-11-22T09:30:00Z", "rates": []}\n' >"$REPO/rates.json"
+refuses_naming "a rates file with no rates" "rates.json has no rates" \
+  env JK_UPDATES_PUBLISHED=2026-11-22T05:00:00Z bash "$UPDATES/scripts/assemble.sh" "$REPO" "$WORK/key.pem"
+cmp -s "$WORK/manifest.before" "$REPO/updates.json" || fail "refused rates changed updates.json"
+sed 's/"input": 10,/"input": 11,/; s/2026-11-21T19:00:00Z/2026-11-22T09:30:00Z/' "$WORK/rates.before" >"$REPO/rates.json"
 refuses_naming "a manifest published before the one held" "is not after the current manifest's" \
   env JK_UPDATES_PUBLISHED=2026-11-22T03:00:00Z bash "$UPDATES/scripts/assemble.sh" "$REPO" "$WORK/key.pem"
 passes "a table whose published date moved forward, signed by the key in the environment" \
@@ -132,10 +153,11 @@ passes "a table whose published date moved forward, signed by the key in the env
   JK_RELEASE_RSA_SIGNING_KEY="$(openssl pkey -in "$WORK/key.pem" -outform DER | openssl base64 -A)" \
   bash "$UPDATES/scripts/assemble.sh" "$REPO"
 [[ "$(field "$REPO/updates.json" data.prices.version)" == 2026-11-22T09:00:00Z ]] || fail "the new table is not listed"
+[[ "$(field "$REPO/updates.json" data.rates.version)" == 2026-11-22T09:30:00Z ]] || fail "the new rates are not listed"
 
 passes "the served copy" env JK_UPDATES_VERIFY_TRIES=1 \
   bash "$UPDATES/scripts/verify-served.sh" "file://$REPO/updates.json" 2026-11-22T10:00:00Z
-grep -qF "3 files match" "$WORK/last.log" || fail "verify-served did not check every listed file"
+grep -qF "4 files match" "$WORK/last.log" || fail "verify-served did not check every listed file"
 refuses_naming "a stale served copy" "expected 2026-11-22T11:00:00Z" \
   env JK_UPDATES_VERIFY_TRIES=1 bash "$UPDATES/scripts/verify-served.sh" "file://$REPO/updates.json" 2026-11-22T11:00:00Z
 printf '# edited after signing\n' >>"$REPO/libraries.toml"

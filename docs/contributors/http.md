@@ -981,12 +981,15 @@ then the tokens the code questions and refactorings saved: `tokensSaved`, `token
 (one object per model id: `model`, `input`, `output`, `cacheRead`, `cacheWrite`, `cacheWrite1h`,
 so rows from many projects or machines add up and can be priced again), `usdSavedMicros`
 (millionths of a dollar at the price table in effect, `PriceTables.current()`), `tokensUnpriced`
-(tokens on a model that table has no row for, left out of the dollars), `callsNotMeasured` (code
-answers and refactorings the bench has no rate for, by their agent or kind, left out of
-`tokensSaved`), `ratesMeasured` and
-`pricesRetrieved`, the dates of the bench runs and of the newest price behind the dollars. Those are
-an estimate from `SavingsRates`
-(`rates.json`, written by `bench/scoreboard --render`; [web](../user/web.md#tokens-and-dollars-saved)).
+(tokens on a model that table has no row for, left out of the dollars), `ratesMeasured` and
+`pricesRetrieved`, the dates of the bench runs and of the newest price behind the dollars, and
+`ratesMatched`: the code answers and refactorings behind `tokensSaved` counted by how they were
+priced, one object per match, the most calls first, with `step` (1 to 5), `match` (`exact`,
+`model-effort`, `model`, `agent`, `best-guess`), `measurements` (each `agent/model/effort/measured`
+whose median priced them), `unknown` (the session fields JumpKick could not read: `agent`, `model`,
+`effort`) and `calls`. It is for diagnosis; no screen shows it. Those are an estimate from
+`SavingsRates.current()` (`rates.json`, written by `bench/scoreboard --render`, built in or the newer
+signed copy the update check fetched; [web](../user/web.md#tokens-and-dollars-saved)).
 `SavingsLedger` adds them up from `BuildJournal.finishedSince` and `SessionLog.actionsSince`; the
 socket's `stats` rows (`jk stats -O jsonl`) carry the same fields.
 

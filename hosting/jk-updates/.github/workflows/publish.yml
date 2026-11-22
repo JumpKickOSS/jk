@@ -3,13 +3,14 @@
 # not answer.
 #
 # Trigger:
-#   push to main      — a change to prices.toml (or any data file) publishes as it is
+#   push to main      — a change to prices.toml or rates.json (or any data file) publishes as it is
 #   schedule          — first refreshes the copies of other sources (scripts/refresh.sh: the library
 #                       registry, the JDK feed, the jk-templates revision, the current release)
 #   workflow_dispatch — the same refresh, and uploads even when nothing changed, to repair the bucket
 #
 # The chain: assemble and sign updates.json with the release key (scripts/assemble.sh refuses a
-# prices.toml whose published date did not move forward, and any key but the release key), commit
+# prices.toml or rates.json whose published date did not move forward, and any key but the release
+# key), commit
 # it to main, upload the files to the bucket behind jumpkick.build with the manifest last, and
 # check the served copy is the one just signed (scripts/verify-served.sh). A run that changes
 # nothing commits and uploads nothing.

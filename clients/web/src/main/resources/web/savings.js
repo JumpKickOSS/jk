@@ -68,20 +68,18 @@ export const TOKENS_METHOD = 'https://github.com/JumpKickOSS/jk/blob/main/docs/u
 
 /**
  * The tokens and dollars a row saved the agents, marked as the estimate they are, with the date of
- * the bench runs behind the tokens, of the API list prices behind the dollars, the calls left out
- * because the bench has not measured their agent or kind, and the link to the method; null for no row.
+ * the bench runs behind the tokens, of the API list prices behind the dollars, and the link to the
+ * method; null for no row.
  */
 export function tokensSaved(row) {
   if (!row) return null;
   const bench = row.ratesMeasured ? ' of ' + row.ratesMeasured : '';
   const date = row.pricesRetrieved ? ' of ' + row.pricesRetrieved : '';
   const unpriced = row.tokensUnpriced ? '; ' + fmtTokens(row.tokensUnpriced) + ' tokens on models with no price' : '';
-  const n = row.callsNotMeasured || 0;
-  const notMeasured = n ? '; ' + n + (n === 1 ? ' call' : ' calls') + ' not measured by the bench, not counted' : '';
   return {
     tokens: '~' + fmtTokens(row.tokensSaved),
     usd: '~' + fmtUsd(row.usdSavedMicros),
-    tip: 'Estimate from bench runs' + bench + ', at API list prices' + date + unpriced + notMeasured,
+    tip: 'Estimate from bench runs' + bench + ', at API list prices' + date + unpriced,
     method: TOKENS_METHOD,
   };
 }

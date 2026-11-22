@@ -41,7 +41,7 @@ public final class SavingsLedger {
         return fold(
                 journal.finishedSince(since),
                 sessions == null ? List.of() : sessions.actionsSince(since),
-                SavingsRates.shipped(),
+                SavingsRates.current(),
                 new AgentModels(usage),
                 ProjectLines.counted(),
                 since,
@@ -146,7 +146,7 @@ public final class SavingsLedger {
                 violations,
                 violations.isEmpty() ? 0 : 1,
                 TokensSaved.NONE,
-                0);
+                Map.of());
     }
 
     /**
@@ -172,21 +172,22 @@ public final class SavingsLedger {
 
     /**
      * The tokens {@code a} saved its agent, on the model {@code models} finds it was on, at the rate
-     * for its project's size; null when the bench has no rate for its agent and kind ({@link
+     * for its project's size, matched on the effort level too where its files say it ({@link
      * SavingsRates#saved}).
      */
-    static @Nullable TokensSaved saved(
+    static SavingsRates.Credit saved(
             ActionRecord a, @Nullable String client, SavingsRates rates, AgentModels models, ProjectLines lines) {
-        if (!savesTokens(a)) return TokensSaved.NONE;
-        return rates.saved(a, client, models.at(client, a.project(), a.at()), lines.of(a.project()));
+        if (!savesTokens(a)) return SavingsRates.Credit.NONE;
+        AgentUsage.Ran ran = models.ran(client, a.project(), a.at());
+        return rates.saved(
+                a, client, ran == null ? null : ran.model(), ran == null ? null : ran.effort(), lines.of(a.project()));
     }
 
     /**
      * One action's contribution: a question answered, a refactoring applied, edits made, or nothing,
-     * with the {@code tokens} it saved, or null when the bench has no rate for it: then it is a call
-     * not measured.
+     * with the tokens {@code credit} says it saved.
      */
-    static Savings of(ActionRecord a, @Nullable TokensSaved tokens) {
+    static Savings of(ActionRecord a, SavingsRates.Credit credit) {
         boolean ok = ActionRecord.OK.equals(a.outcome());
         long graph = ok && ActionRecord.GRAPH.contains(a.kind()) ? 1 : 0;
         long refactoring = ok && ActionRecord.REFACTORINGS.contains(a.kind()) ? 1 : 0;
@@ -210,7 +211,7 @@ public final class SavingsLedger {
                 ok ? a.edits() : 0,
                 Set.of(),
                 0,
-                tokens == null ? TokensSaved.NONE : tokens,
-                tokens == null ? 1 : 0);
+                credit.tokens(),
+                credit.match() == null ? Map.of() : Map.of(credit.match(), 1L));
     }
 }

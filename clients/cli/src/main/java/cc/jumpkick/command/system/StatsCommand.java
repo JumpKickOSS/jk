@@ -207,8 +207,7 @@ public final class StatsCommand implements CliCommand {
 
     /**
      * The tokens the code questions and refactorings saved the agents, and their dollars, marked as
-     * the estimate they are: {@code ~1.2M, ~$0.840 (estimate, API list prices of 2026-11-17)}, with
-     * the calls left out because the bench has not measured their agent or kind.
+     * the estimate they are: {@code ~1.2M, ~$0.840 (estimate, API list prices of 2026-11-17)}.
      */
     static String tokens(String row) {
         long micros = Jsonl.longValue(row, "usdSavedMicros", 0);
@@ -218,14 +217,9 @@ public final class StatsCommand implements CliCommand {
                 : String.format(Locale.ROOT, "$%,.2f", usd);
         String date = Jsonl.str(row, "pricesRetrieved");
         long unpriced = Jsonl.longValue(row, "tokensUnpriced", 0);
-        long notMeasured = Jsonl.longValue(row, "callsNotMeasured", 0);
         return "~" + compact(Jsonl.longValue(row, "tokensSaved", 0)) + ", ~" + dollars + " (estimate, API list prices"
                 + (date == null || date.isEmpty() ? "" : " of " + date)
                 + (unpriced == 0 ? "" : "; " + compact(unpriced) + " on models with no price")
-                + (notMeasured == 0
-                        ? ""
-                        : "; " + notMeasured + (notMeasured == 1 ? " call" : " calls")
-                                + " not measured by the bench, not counted")
                 + ")";
     }
 

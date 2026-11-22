@@ -29,16 +29,18 @@ class SavingsLedgerTest {
 
     /** Two agents' rates per graph call, in the shape the bench writes. */
     static final SavingsRates RATES = SavingsRates.parse("""
-            {"measured": "2026-11-04",
-             "agents": {
-               "claude-code": {"model": "claude-sonnet-5-5", "cacheWrite1h": true,
-                 "question": {"tasks": 8, "graphCalls": 10, "input": 10, "output": 1000, "cacheRead": 200000,
-                              "cacheWrite": 20000},
-                 "rename": {"tasks": 7, "graphCalls": 7, "input": 5, "output": 500, "cacheRead": 50000,
-                            "cacheWrite": 5000}},
-               "codex": {"model": "gpt-6.1-terra", "cacheWrite1h": false,
-                 "question": {"tasks": 8, "graphCalls": 9, "input": 20000, "output": 600, "cacheRead": 200000,
-                              "cacheWrite": 0}}}}
+            {"published": "2026-11-04T00:00:00Z", "measured": "2026-11-04",
+             "rates": [
+               {"agent": "claude-code", "model": "claude-sonnet-5-5", "effort": "medium", "measured": "2026-11-04",
+                "cacheWrite1h": true,
+                "question": {"tasks": 8, "graphCalls": 10, "input": 10, "output": 1000, "cacheRead": 200000,
+                             "cacheWrite": 20000},
+                "rename": {"tasks": 7, "graphCalls": 7, "input": 5, "output": 500, "cacheRead": 50000,
+                           "cacheWrite": 5000}},
+               {"agent": "codex", "model": "gpt-6.1-terra", "effort": "medium", "measured": "2026-11-03",
+                "cacheWrite1h": false,
+                "question": {"tasks": 8, "graphCalls": 9, "input": 20000, "output": 600, "cacheRead": 200000,
+                             "cacheWrite": 0}}]}
             """);
 
     /** Prices per million tokens: input, cache read, 5-minute and 1-hour cache write, output. */
@@ -177,22 +179,22 @@ class SavingsLedgerTest {
     @Test
     void an_action_counts_a_question_answered_a_refactoring_applied_or_its_edits_and_a_failed_one_nothing() {
         assertThat(SavingsLedger.of(
-                                acted("usages", ActionRecord.OK, "/ws", 0, null).action(), TokensSaved.NONE)
+                                acted("usages", ActionRecord.OK, "/ws", 0, null).action(), SavingsRates.Credit.NONE)
                         .graphCalls())
                 .isEqualTo(1);
         assertThat(SavingsLedger.of(
-                                acted("rename", ActionRecord.OK, "/ws", 0, null).action(), TokensSaved.NONE)
+                                acted("rename", ActionRecord.OK, "/ws", 0, null).action(), SavingsRates.Credit.NONE)
                         .refactorings())
                 .isEqualTo(1);
         assertThat(SavingsLedger.of(
-                                acted("deps", ActionRecord.OK, "/ws", 2, null).action(), TokensSaved.NONE)
+                                acted("deps", ActionRecord.OK, "/ws", 2, null).action(), SavingsRates.Credit.NONE)
                         .edits())
                 .isEqualTo(2);
         Savings failed = SavingsLedger.of(
-                acted("query", ActionRecord.ERROR, "/ws", 0, null).action(), TokensSaved.NONE);
+                acted("query", ActionRecord.ERROR, "/ws", 0, null).action(), SavingsRates.Credit.NONE);
         assertThat(failed.nothing()).isTrue();
         Savings failedRename = SavingsLedger.of(
-                acted("rename", ActionRecord.ERROR, "/ws", 0, null).action(), TokensSaved.NONE);
+                acted("rename", ActionRecord.ERROR, "/ws", 0, null).action(), SavingsRates.Credit.NONE);
         assertThat(failedRename.refactorings()).isZero();
     }
 
@@ -340,8 +342,8 @@ class SavingsLedgerTest {
                         "tokensSavedByModel",
                         "usdSavedMicros",
                         "tokensUnpriced",
-                        "callsNotMeasured",
                         "ratesMeasured",
+                        "ratesMatched",
                         "pricesRetrieved")
                 .containsEntry("scope", "all")
                 .containsEntry("since", 5L);
@@ -352,11 +354,11 @@ class SavingsLedgerTest {
         TokensSaved.Counts question = new TokensSaved.Counts(10, 1000, 200_000, 0, 20_000);
         TokensSaved.Counts rename = new TokensSaved.Counts(5, 500, 50_000, 0, 5_000);
         TokensSaved.Counts codexQuestion = new TokensSaved.Counts(20_000, 600, 200_000, 0, 0);
-        assertThat(Objects.requireNonNull(RATES.agents().get("claude-code"))
-                        .question()
-                        .all())
+        assertThat(RATES.saved(acted("usages", ActionRecord.OK, "/ws", 0, null).action(), "claude-code", null, null, 0)
+                        .tokens()
+                        .byModel())
                 .as("Claude Code writes its cache for an hour")
-                .isEqualTo(question);
+                .containsEntry("claude-sonnet-5-5", question);
         List<SessionLog.Acted> actions = List.of(
                 acted("usages", ActionRecord.OK, "/ws/app", 0, "p-app", "claude-code"),
                 acted("rename", ActionRecord.OK, "/ws/app", 0, "p-app", "claude-code"),
@@ -387,85 +389,221 @@ class SavingsLedgerTest {
     void the_model_the_agent_was_on_prices_its_tokens_and_a_model_without_a_price_is_left_out_and_said() {
         ActionRecord usages = acted("usages", ActionRecord.OK, "/ws/app", 0, "p-app", "claude-code")
                 .action();
-        TokensSaved onOpus = Objects.requireNonNull(RATES.saved(usages, "claude-code", "claude-opus-5-5", 0));
+        TokensSaved onOpus =
+                RATES.saved(usages, "claude-code", "claude-opus-5-5", null, 0).tokens();
         assertThat(onOpus.byModel()).containsOnlyKeys("claude-opus-5-5");
         assertThat(onOpus.priced(PRICES).usdMicros())
                 .as("the bench's tokens at the model jk read the agent was on: Opus, not Sonnet")
                 .isEqualTo(40 + 20_000 + 40_000 + 160_000);
         assertThat(onOpus.priced(PRICES).retrieved()).hasToString("2026-11-16");
-        TokensSaved unknown = Objects.requireNonNull(RATES.saved(usages, "claude-code", "claude-next-7", 0));
+        TokensSaved unknown =
+                RATES.saved(usages, "claude-code", "claude-next-7", null, 0).tokens();
         assertThat(unknown.priced(PRICES)).isEqualTo(new TokensSaved.Priced(0, unknown.total(), null));
-        assertThat(unknown.text(PRICES, 0))
+        assertThat(unknown.text(PRICES))
                 .isEqualTo("~221k, ~$0.000 (estimate, API list prices; 221k on models with no price)");
-        assertThat(onOpus.plus(unknown).text(PRICES, 0))
+        assertThat(onOpus.plus(unknown).text(PRICES))
                 .isEqualTo("~442k, ~$0.220 (estimate, API list prices of 2026-11-16; 221k on models with no price)");
     }
 
+    /** Three agents on two models at two efforts, one rate each, so each step's pick shows in the input. */
+    static final SavingsRates STEPS = SavingsRates.parse("""
+            {"published": "2026-11-20T00:00:00Z", "measured": "2026-11-20",
+             "rates": [
+               {"agent": "claude-code", "model": "claude-opus-5-5", "effort": "medium", "measured": "2026-11-20",
+                "cacheWrite1h": true, "question": {"input": 100}, "rename": {"input": 1000}},
+               {"agent": "claude-code", "model": "claude-sonnet-5-5", "effort": "low", "measured": "2026-11-19",
+                "cacheWrite1h": true, "question": {"input": 200}},
+               {"agent": "cursor", "model": "claude-opus-5-5", "effort": "high", "measured": "2026-11-18",
+                "question": {"input": 300}},
+               {"agent": "codex", "model": "gpt-6.1-terra", "effort": "medium", "measured": "2026-11-17",
+                "question": {"input": 700}}]}
+            """);
+
+    private static SavingsRates.Credit question(
+            SavingsRates rates, @Nullable String client, @Nullable String model, @Nullable String effort) {
+        return rates.saved(acted("query", ActionRecord.OK, "/ws", 0, null).action(), client, model, effort, 0);
+    }
+
+    private static SavingsRates.Match match(SavingsRates.Credit c) {
+        return Objects.requireNonNull(c.match());
+    }
+
+    private static long input(SavingsRates.Credit c) {
+        return c.tokens().byModel().values().stream()
+                .mapToLong(TokensSaved.Counts::input)
+                .sum();
+    }
+
     @Test
-    void a_call_the_bench_has_no_rate_for_is_credited_nothing_and_counted_as_not_measured() {
+    void a_session_is_priced_by_the_closest_measurement_in_five_steps_and_a_tie_takes_the_median() {
+        SavingsRates.Credit exact = question(STEPS, "claude-code", "claude-opus-5-5", "medium");
+        assertThat(exact.match())
+                .isEqualTo(
+                        new SavingsRates.Match(1, List.of("claude-code/claude-opus-5-5/medium/2026-11-20"), List.of()));
+        assertThat(input(exact)).isEqualTo(100);
+
+        SavingsRates.Credit modelEffort = question(STEPS, "cursor-agent", "claude-opus-5-5", "medium");
+        assertThat(modelEffort.match())
+                .extracting(SavingsRates.Match::step, SavingsRates.Match::name)
+                .containsExactly(2, "model-effort");
+        assertThat(input(modelEffort))
+                .as("cursor on Opus at medium: Claude Code's Opus medium")
+                .isEqualTo(100);
+
+        SavingsRates.Credit model = question(STEPS, "antigravity", "claude-opus-5-5", "xhigh");
+        assertThat(match(model).step()).isEqualTo(3);
+        assertThat(match(model).measurements())
+                .containsExactly(
+                        "claude-code/claude-opus-5-5/medium/2026-11-20", "cursor/claude-opus-5-5/high/2026-11-18");
+        assertThat(input(model))
+                .as("every Opus measurement, the mean of the middle two")
+                .isEqualTo(200);
+
+        SavingsRates.Credit agent = question(STEPS, "Claude Code", "claude-haiku-5-5", "low");
+        assertThat(match(agent).step()).isEqualTo(4);
+        assertThat(input(agent))
+                .as("Claude Code's two measurements on other models")
+                .isEqualTo(150);
+        assertThat(agent.tokens().byModel()).as("priced at the model it was on").containsOnlyKeys("claude-haiku-5-5");
+
+        SavingsRates.Credit guess = question(STEPS, "some-new-agent", "a-new-model", "medium");
+        assertThat(guess.match())
+                .extracting(SavingsRates.Match::step, SavingsRates.Match::name)
+                .containsExactly(5, "best-guess");
+        assertThat(match(guess).measurements()).hasSize(4);
+        assertThat(input(guess)).as("the median over every measurement").isEqualTo(250);
+
+        SavingsRates.Credit rename = renameCredit(STEPS, "some-new-agent");
+        assertThat(match(rename).measurements())
+                .as("only measurements with a rename rate price a rename")
+                .containsExactly("claude-code/claude-opus-5-5/medium/2026-11-20");
+    }
+
+    private static SavingsRates.Credit renameCredit(SavingsRates rates, String client) {
+        return rates.saved(acted("rename", ActionRecord.OK, "/ws", 0, null).action(), client, null, null, 0);
+    }
+
+    @Test
+    void a_field_jk_cannot_read_skips_the_steps_that_need_it_and_the_match_says_so() {
+        SavingsRates.Credit noEffort = question(STEPS, "claude-code", "claude-opus-5-5", null);
+        assertThat(match(noEffort).step())
+                .as("no effort: steps 1 and 2 are skipped")
+                .isEqualTo(3);
+        assertThat(match(noEffort).unknown()).containsExactly("effort");
+
+        SavingsRates.Credit noModel = question(STEPS, "claude-code", null, null);
+        assertThat(match(noModel).step()).isEqualTo(4);
+        assertThat(match(noModel).unknown()).containsExactly("model", "effort");
+        assertThat(noModel.tokens().byModel())
+                .as("no model read: priced at the first matched measurement's model, its cache writes for an hour")
+                .containsOnlyKeys("claude-opus-5-5")
+                .containsEntry("claude-opus-5-5", new TokensSaved.Counts(150, 0, 0, 0, 0));
+
+        SavingsRates.Credit nothing = question(STEPS, null, null, null);
+        assertThat(match(nothing).step()).isEqualTo(5);
+        assertThat(match(nothing).unknown()).containsExactly("agent", "model", "effort");
+    }
+
+    @Test
+    void dated_or_suffixed_ids_of_one_model_match() {
+        assertThat(SavingsRates.normalized("claude-opus-5-5-20261101")).isEqualTo("claude-opus-5-5");
+        assertThat(SavingsRates.normalized("Claude-Opus-5.5")).isEqualTo("claude-opus-5-5");
+        assertThat(SavingsRates.normalized("anthropic/claude-opus-5-5@20261101"))
+                .isEqualTo("claude-opus-5-5");
+        assertThat(SavingsRates.normalized("claude-opus-5-5[1m]")).isEqualTo("claude-opus-5-5");
+        assertThat(SavingsRates.normalized("gpt-6.1-terra-2026-10-01")).isEqualTo("gpt-6-1-terra");
+        assertThat(SavingsRates.normalized("gpt-6.1-terra-latest")).isEqualTo("gpt-6-1-terra");
+        assertThat(SavingsRates.normalized("claude-sonnet-5-5"))
+                .isNotEqualTo(SavingsRates.normalized("claude-opus-5-5"));
+        assertThat(match(question(STEPS, "claude-code", "claude-opus-5.5-20261101", "Medium"))
+                        .step())
+                .isEqualTo(1);
+    }
+
+    @Test
+    void every_code_answer_and_refactoring_is_credited_and_the_rows_say_which_measurements_priced_them() {
         ActionRecord rename = acted("rename", ActionRecord.OK, "/ws", 0, null).action();
         assertThat(RATES.agentOf("Codex-MCP-Client")).isEqualTo("codex");
         assertThat(RATES.agentOf("Claude Code")).isEqualTo("claude-code");
         assertThat(SavingsRates.shipped().agentOf("antigravity-cli")).isEqualTo("agy");
         assertThat(RATES.agentOf("Some-New-Agent"))
-                .as("an agent the bench never ran is not credited at another agent's rates")
-                .isNull();
+                .as("its own name, which matches no measurement")
+                .isEqualTo("somenewagent");
         assertThat(RATES.agentOf(null)).isNull();
-        assertThat(RATES.saved(rename, "a-new-agent", null, 0)).isNull();
-        assertThat(RATES.saved(rename, "codex", null, 0))
-                .as("the bench has no codex rename")
-                .isNull();
+        assertThat(RATES.saved(rename, "codex", null, null, 0).match())
+                .as("the bench has no codex rename: Claude Code's is the only one, a best guess")
+                .extracting(SavingsRates.Match::step)
+                .isEqualTo(5);
         assertThat(RATES.saved(
-                        acted("rename", ActionRecord.ERROR, "/ws", 0, null).action(), "a-new-agent", null, 0))
-                .as("a failed call saves nothing, measured or not")
-                .isEqualTo(TokensSaved.NONE);
-        assertThat(RATES.saved(acted("deps", ActionRecord.OK, "/ws", 1, null).action(), "a-new-agent", null, 0))
+                        acted("rename", ActionRecord.ERROR, "/ws", 0, null).action(), "codex", null, null, 0))
+                .as("a failed call saves nothing")
+                .isEqualTo(SavingsRates.Credit.NONE);
+        assertThat(RATES.saved(acted("deps", ActionRecord.OK, "/ws", 1, null).action(), "codex", null, null, 0))
                 .as("the bench measures no tokens for a dependency edit")
-                .isEqualTo(TokensSaved.NONE);
+                .isEqualTo(SavingsRates.Credit.NONE);
 
         List<SessionLog.Acted> actions = List.of(
                 acted("usages", ActionRecord.OK, "/ws/app", 0, "p-app", "claude-code"),
                 acted("usages", ActionRecord.OK, "/ws/app", 0, "p-app", "some-new-agent"),
                 acted("query", ActionRecord.OK, "/ws/lib", 0, "p-lib", "some-new-agent"),
-                acted("rename", ActionRecord.OK, "/ws/lib", 0, "p-lib", "codex"),
                 acted("query", ActionRecord.ERROR, "/ws/lib", 0, "p-lib", "some-new-agent"));
-        List<Savings> rows =
-                SavingsLedger.fold(List.of(), actions, RATES, benchModels(), ProjectLines.NONE, T - 1, T + 10);
+        Savings all = SavingsLedger.fold(List.of(), actions, RATES, benchModels(), ProjectLines.NONE, T - 1, T + 10)
+                .getFirst();
 
-        Savings all = rows.getFirst();
-        TokensSaved.Counts question = Objects.requireNonNull(RATES.agents().get("claude-code"))
-                .question()
-                .all();
-        assertThat(all.tokens())
-                .as("only the measured agent's call")
-                .isEqualTo(TokensSaved.of("claude-sonnet-5-5", question));
-        assertThat(all.graphCalls()).as("every answer still counts as answered").isEqualTo(3);
-        assertThat(all.callsNotMeasured()).isEqualTo(3);
-        assertThat(rows.subList(1, rows.size()))
-                .extracting(Savings::projectId, Savings::callsNotMeasured)
-                .containsExactlyInAnyOrder(tuple("p-app", 1L), tuple("p-lib", 2L));
-        assertThat(all.toMap()).containsEntry("callsNotMeasured", 3L);
-        assertThat(all.tokens().text(PRICES, all.callsNotMeasured()))
-                .isEqualTo("~221k, ~$0.110 (estimate, API list prices of 2026-11-17; "
-                        + "3 calls not measured by the bench, not counted)");
-        assertThat(TokensSaved.NONE.text(PRICES, 1))
-                .isEqualTo("~0, ~$0.000 (estimate, API list prices; 1 call not measured by the bench, not counted)");
+        assertThat(all.graphCalls()).isEqualTo(3);
+        assertThat(all.tokens().total())
+                .as("an agent the bench never ran is priced too")
+                .isPositive();
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> matched =
+                (List<Map<String, Object>>) Objects.requireNonNull(all.toMap().get("ratesMatched"));
+        assertThat(matched)
+                .extracting(m -> m.get("step"), m -> m.get("match"), m -> m.get("calls"))
+                .containsExactly(tuple(5, "best-guess", 2L), tuple(4, "agent", 1L));
+        assertThat(matched.getFirst())
+                .containsEntry(
+                        "measurements",
+                        List.of(
+                                "claude-code/claude-sonnet-5-5/medium/2026-11-04",
+                                "codex/gpt-6.1-terra/medium/2026-11-03"))
+                .containsEntry("unknown", List.of("model", "effort"));
+        assertThat(all.tokens().text(PRICES)).doesNotContain("measured").startsWith("~");
+    }
+
+    @Test
+    void a_total_is_priced_from_the_recorded_actions_with_the_rates_in_effect_when_read() {
+        List<SessionLog.Acted> actions = List.of(acted("usages", ActionRecord.OK, "/ws/app", 0, "p-app", "agy"));
+        long before = SavingsLedger.fold(List.of(), actions, RATES, benchModels(), ProjectLines.NONE, T - 1, T + 10)
+                .getFirst()
+                .tokens()
+                .total();
+        SavingsRates later = SavingsRates.parse("""
+                {"published": "2026-12-01T00:00:00Z", "measured": "2026-12-01",
+                 "rates": [{"agent": "agy", "model": "gemini-4-pro", "effort": "high", "measured": "2026-12-01",
+                            "question": {"input": 7}}]}
+                """);
+        Savings after = SavingsLedger.fold(List.of(), actions, later, benchModels(), ProjectLines.NONE, T - 1, T + 10)
+                .getFirst();
+        assertThat(after.tokens().byModel())
+                .as("the same recorded call, re-priced by a table that measured its agent")
+                .containsExactly(Map.entry("gemini-4-pro", new TokensSaved.Counts(7, 0, 0, 0, 0)));
+        assertThat(before).isNotEqualTo(7);
     }
 
     @Test
     void a_call_is_credited_the_rate_measured_in_the_repository_nearest_its_projects_size(@TempDir Path ws)
             throws IOException {
         SavingsRates rates = SavingsRates.parse("""
-                {"measured": "2026-11-04",
-                 "agents": {
-                   "codex": {"model": "gpt-6.1-terra", "cacheWrite1h": false,
-                     "question": {"tasks": 3, "graphCalls": 3, "input": 2000, "output": 0, "cacheRead": 0,
-                                  "cacheWrite": 0,
-                                  "sizes": [
-                                    {"loc": 100, "tasks": 1, "graphCalls": 1, "input": 100, "output": 0,
-                                     "cacheRead": 0, "cacheWrite": 0},
-                                    {"loc": 10000, "tasks": 2, "graphCalls": 2, "input": 5000, "output": 0,
-                                     "cacheRead": 0, "cacheWrite": 0}]}}}}
+                {"published": "2026-11-04T00:00:00Z", "measured": "2026-11-04",
+                 "rates": [
+                   {"agent": "codex", "model": "gpt-6.1-terra", "effort": "medium", "measured": "2026-11-04",
+                    "question": {"tasks": 3, "graphCalls": 3, "input": 2000, "output": 0, "cacheRead": 0,
+                                 "cacheWrite": 0,
+                                 "sizes": [
+                                   {"loc": 100, "tasks": 1, "graphCalls": 1, "input": 100, "output": 0,
+                                    "cacheRead": 0, "cacheWrite": 0},
+                                   {"loc": 10000, "tasks": 2, "graphCalls": 2, "input": 5000, "output": 0,
+                                    "cacheRead": 0, "cacheWrite": 0}]}}]}
                 """);
         Path small = Files.createDirectories(ws.resolve("small/src/main/java"));
         Files.writeString(small.resolve("A.java"), "class A {\n\n  int x;\n}\n".repeat(50));
@@ -492,16 +630,22 @@ class SavingsLedgerTest {
     void the_shipped_table_credits_every_agent_it_names_and_the_built_in_prices_know_claude_codes_model() {
         SavingsRates shipped = SavingsRates.shipped();
         assertThat(shipped.measured()).matches("\\d{4}-\\d{2}-\\d{2}");
-        assertThat(shipped.agents().values())
+        assertThat(shipped.published()).isNotNull();
+        assertThat(shipped.rates())
                 .allSatisfy(a -> assertThat(a.question().all().total()).isPositive());
-        assertThat(shipped.agents().values())
+        assertThat(shipped.rates()).as("every agent, model and effort is named").allSatisfy(a -> assertThat(
+                        List.of(a.agent(), a.model(), a.effort(), a.measured()))
+                .allSatisfy(f -> assertThat(f).isNotBlank()));
+        assertThat(shipped.rates())
                 .as("every agent's question rate is measured by repository size, smallest first")
                 .allSatisfy(a -> assertThat(a.question().sizes())
                         .isNotEmpty()
                         .isSortedAccordingTo(Comparator.comparingLong(SavingsRates.Sized::lines)));
         assertThat(shipped.largest()).isPositive();
-        assertThat(shipped.agents().get("claude-code"))
-                .satisfies(
+        assertThat(shipped.rates())
+                .filteredOn(a -> a.agent().equals("claude-code"))
+                .isNotEmpty()
+                .allSatisfy(
                         a -> assertThat(PriceTable.builtIn().price(a.model())).isPresent());
     }
 

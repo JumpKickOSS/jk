@@ -34,6 +34,7 @@ A subtype question is not counted: it is answered from declarations, and grep is
 
 from __future__ import annotations
 
+import datetime
 import json
 import re
 import statistics
@@ -365,15 +366,41 @@ def _by_size(jk: dict, off: dict, both: list[str], repos: dict) -> list[dict]:
     return sorted(out, key=lambda r: r["loc"])
 
 
-def rates(by: dict) -> str:
-    """Tokens one graph call saved in the question tasks and in the rename tasks, per agent on its
-    default model, as JSON, with the model and whether its cache writes are priced at the 1-hour rate:
-    over every task, and per repository size under `sizes`. No prices: the engine prices the tokens
-    with the product's price table when it shows them."""
+def rate_cells() -> dict[tuple[str, str, str], dict[tuple[str, str, str], list[dict]]]:
+    """Every (driver, model, effort) the change tasks ran, to its (driver, arm, task) cells from the
+    newest series of each, every run kept: the rows each savings rate is measured from."""
+    tasks = tomllib.loads((RESULTS.parent / "tasks.toml").read_text())["tasks"]
+    newest: dict[tuple[str, str, str, str, str], dict[tuple[str, int], list[dict]]] = {}
+    for f in sorted(RESULTS.glob("*/rows.jsonl")):
+        for line in f.read_text().splitlines():
+            if not line.strip():
+                continue
+            r = json.loads(line)
+            if r.get("task") not in tasks or not r.get("model") or "accepted" not in r:
+                continue
+            r["kind"] = tasks[r["task"]].get("kind", r.get("kind", ""))
+            key = (r["driver"], r["model"], str(r.get("effort") or ""), r["arm"], r["task"])
+            newest.setdefault(key, {}).setdefault(series(r), []).append(r)
+    out: dict[tuple[str, str, str], dict[tuple[str, str, str], list[dict]]] = {}
+    for (driver, model, effort, arm, task), by_series in newest.items():
+        out.setdefault((driver, model, effort), {})[(driver, arm, task)] = by_series[max(by_series)]
+    return out
+
+
+def rates(measured_by: dict, held: str | None = None, now: str | None = None) -> str:
+    """Tokens one graph call saved in the question tasks and in the rename tasks, one row per agent,
+    model and effort level the change tasks ran both ways, as JSON, with whether the agent's cache
+    writes are priced at the 1-hour rate: over every task, and per repository size under `sizes`.
+    Each agent's claimed model comes first, then its others. No prices: the engine prices the tokens
+    with the product's price table when it shows them. `published` stays `held`'s while no rate
+    changed, else it is `now`: an engine keeps a published copy only when it is newer than its own."""
     repos = {t: spec["repo"] for t, spec in tomllib.loads((RESULTS.parent / "tasks.toml").read_text())["tasks"].items()}
-    agents, measured = {}, set()
-    for driver in LABELS:
-        entry = {}
+    order = {d: i for i, d in enumerate(LABELS)}
+    rows = []
+    for (driver, model, effort), by in sorted(
+            measured_by.items(),
+            key=lambda e: (order.get(e[0][0], len(order)), (e[0][1], e[0][2]) != CLAIMED.get(e[0][0]), e[0][1:])):
+        entry, measured = {}, set()
         for kind, action in (("questions", "question"), ("renames", "rename")):
             p = _pair(by, driver, kind)
             if not p:
@@ -384,12 +411,20 @@ def rates(by: dict) -> str:
                 continue
             entry[action] = {**rate, "sizes": _by_size(jk, off, both, repos)}
             measured.update(str(r.get("date", "")) for cells in (jk, off) for t in both for r in cells[t])
-        model = next((rs[0].get("model") for (d, _, _), rs in by.items() if d == driver), None)
-        if not entry or not model:
-            continue
-        agents[driver] = {"model": model, "cacheWrite1h": driver in cost.CACHE_1H, **entry}
-    table = {"measured": max(measured - {""}, default=""), "agents": agents}
-    return json.dumps(table, indent=2) + "\n"
+        if entry:
+            rows.append({"agent": driver, "model": model, "effort": effort,
+                         "measured": max(measured - {""}, default=""),
+                         "cacheWrite1h": driver in cost.CACHE_1H, **entry})
+    body = {"measured": max((r["measured"] for r in rows), default=""), "rates": rows}
+    published = now or datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    if held:
+        try:
+            was = json.loads(held)
+            if {k: v for k, v in was.items() if k != "published"} == body and was.get("published"):
+                published = was["published"]
+        except ValueError:
+            pass
+    return json.dumps({"published": published, **body}, indent=2) + "\n"
 
 
 def _loc(repo: str) -> int | None:
@@ -559,8 +594,9 @@ def render(board: list[dict], host: str) -> None:
         _splice(doc, "renames", comparison_table(renames, "renames"))
         _splice(doc, "curve", curve_table(points))
         _splice(doc, "dollars", dollars(by, questions, renames))
-    table = rates(by)
-    if not RATES.is_file() or RATES.read_text(encoding="utf-8") != table:
+    held = RATES.read_text(encoding="utf-8") if RATES.is_file() else None
+    table = rates(rate_cells(), held)
+    if held != table:
         RATES.parent.mkdir(parents=True, exist_ok=True)
         RATES.write_text(table, encoding="utf-8", newline="\n")
         print(f"rendered {RATES.relative_to(JK_TREE)}")

@@ -54,6 +54,11 @@
         "type": 302
       },
       {
+        "source": "/rates.json",
+        "destination": "https://storage.googleapis.com/jumpkick/updates/rates.json",
+        "type": 302
+      },
+      {
         "source": "/libraries.toml",
         "destination": "https://storage.googleapis.com/jumpkick/updates/libraries.toml",
         "type": 302

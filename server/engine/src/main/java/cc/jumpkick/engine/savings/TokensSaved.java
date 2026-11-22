@@ -101,20 +101,14 @@ public record TokensSaved(Map<String, Counts> byModel) {
 
     /**
      * The tokens and dollars as {@code jk stats} prints them, marked as the estimate they are: {@code
-     * ~1.2M, ~$0.840 (estimate, API list prices of 2026-11-17)}, and how many of the calls behind them
-     * the bench has not measured, {@code notMeasured}, so left out.
+     * ~1.2M, ~$0.840 (estimate, API list prices of 2026-11-17)}.
      */
-    public String text(PriceTable table, long notMeasured) {
+    public String text(PriceTable table) {
         Priced p = priced(table);
         return "~" + compact(total()) + ", ~" + dollars(p.usdMicros()) + " (estimate, API list prices"
                 + (p.retrieved() == null ? "" : " of " + p.retrieved())
                 + (p.unpriced() == 0 ? "" : "; " + compact(p.unpriced()) + " on models with no price")
-                + notMeasured(notMeasured) + ")";
-    }
-
-    /** The clause that says {@code n} calls were left out because the bench has not measured them. */
-    static String notMeasured(long n) {
-        return n == 0 ? "" : "; " + n + (n == 1 ? " call" : " calls") + " not measured by the bench, not counted";
+                + ")";
     }
 
     /** {@code n} in a few characters: {@code 950}, {@code 12k}, {@code 1.2M}. */

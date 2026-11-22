@@ -68,8 +68,22 @@ public final class AgentUsage {
         }
     }
 
-    /** A count at one moment: {@code at} epoch millis. */
-    record Entry(long at, String model, AgentTokens.Counts counts) {}
+    /**
+     * A count at one moment: {@code at} epoch millis, on {@code model} at the reasoning {@code effort}
+     * the agent's file names, or null where it names none.
+     */
+    record Entry(long at, String model, @Nullable String effort, AgentTokens.Counts counts) {
+        Entry(long at, String model, AgentTokens.Counts counts) {
+            this(at, model, null, counts);
+        }
+    }
+
+    /**
+     * The model an agent ran on, and the reasoning effort when its files say (only Codex's do).
+     *
+     * @param effort the effort level as the agent names it ({@code medium}), or null
+     */
+    public record Ran(String model, @Nullable String effort) {}
 
     /** One file's counts, as of its {@code size} and {@code modified}; {@code cwd} is the checkout it ran in. */
     record Parsed(long size, long modified, @Nullable String cwd, List<Entry> entries) {}
@@ -145,17 +159,18 @@ public final class AgentUsage {
 
     /**
      * The models the agent {@code client} names ran on working in {@code project} from {@code since}
-     * (epoch millis) on: the time of each count to its model id, without the counts whose model id was
-     * missing. Empty when reading is off or the agent keeps no counts jk reads.
+     * (epoch millis) on: the time of each count to its model id and effort, without the counts whose
+     * model id was missing. Empty when reading is off or the agent keeps no counts jk reads.
      */
-    public NavigableMap<Long, String> models(@Nullable String client, String project, long since) {
+    public NavigableMap<Long, Ran> models(@Nullable String client, String project, long since) {
         Agent agent = agentOf(client);
-        NavigableMap<Long, String> out = new TreeMap<>();
+        NavigableMap<Long, Ran> out = new TreeMap<>();
         if (agent == null || !on.getAsBoolean()) return out;
         Path home = homes.get(agent);
         if (home == null) return out;
         for (Entry e : entries(agent, home, project, since)) {
-            if (e.at() >= since && !AgentTokens.UNKNOWN.equals(e.model())) out.put(e.at(), e.model());
+            if (e.at() >= since && !AgentTokens.UNKNOWN.equals(e.model()))
+                out.put(e.at(), new Ran(e.model(), e.effort()));
         }
         return out;
     }
@@ -308,7 +323,8 @@ public final class AgentUsage {
     }
 
     /**
-     * Codex's file: its checkout from {@code session_meta}, the model from each {@code turn_context},
+     * Codex's file: its checkout from {@code session_meta}, the model and reasoning effort from each
+     * {@code turn_context},
      * and each {@code token_count} event's running {@code total_token_usage}, taken as the growth
      * since the event before so a repeated event counts nothing.
      */
@@ -316,6 +332,7 @@ public final class AgentUsage {
         List<Entry> entries = new ArrayList<>();
         String cwd = null;
         String model = AgentTokens.UNKNOWN;
+        String effort = null;
         long input = 0;
         long cached = 0;
         long output = 0;
@@ -335,6 +352,7 @@ public final class AgentUsage {
                     if (cwd == null) cwd = MiniJson.str(payload, "cwd");
                 } else if ("turn_context".equals(type)) {
                     model = AgentTokens.model(MiniJson.get(payload, "model"));
+                    effort = MiniJson.str(payload, "effort");
                 } else if ("event_msg".equals(type) && "token_count".equals(MiniJson.str(payload, "type"))) {
                     Object total = MiniJson.get(MiniJson.get(payload, "info"), "total_token_usage");
                     if (!(total instanceof Map<?, ?>)) continue;
@@ -357,7 +375,7 @@ public final class AgentUsage {
                     cached = Math.max(cached, cached2);
                     output = Math.max(output, out2);
                     if (dInput + dCached + dOutput > 0) {
-                        entries.add(new Entry(at, model, new AgentTokens.Counts(dInput, 0, dCached, dOutput)));
+                        entries.add(new Entry(at, model, effort, new AgentTokens.Counts(dInput, 0, dCached, dOutput)));
                     }
                 }
             }

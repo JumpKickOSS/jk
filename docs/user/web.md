@@ -230,28 +230,43 @@ graph and without it. For each task it takes each kind of token (input, output, 
 write) the agent spent without the graph less what it spent with it, the median of each, adds those
 up over the tasks and divides by the graph calls the agent made in them with the graph. Each code
 answer (`query`, `usages`, `read`, `find`) is credited what one graph call saved in the code-question
-tasks, and each refactoring what one saved in the rename tasks, at the rates measured for the agent
-whose MCP client asked: Claude Code, Codex, Cursor, Grok, Muse or Antigravity.
+tasks, and each refactoring what one saved in the rename tasks.
 
 A search over a large codebase costs an agent far more than one over a small one, so the benchmark
 also measures that rate in each repository it ran in, from a few hundred lines to several hundred
 thousand. A call is credited the rate of the repository nearest its project's size: the non-blank
 lines of the project's Java, Kotlin and Groovy sources, main and test, outside build output, counted
 at most once an hour. A call whose project JumpKick cannot count is credited the rate over every
-task. A call from an agent
-the benchmark has not run, or of a kind it has not measured for that agent, is not credited at
-another agent's rates and not counted as zero: it is left out of the total, and the figure says how
-many calls were (`not measured by the bench, not counted`).
+task.
+
+The benchmark measures each agent on a model at a reasoning effort level, and a session is credited
+at the closest measurement there is, tried in this order:
+
+1. The same agent, model and effort.
+2. The same model and effort, from another agent.
+3. The same model, from any agent at any effort.
+4. The same agent, on another model or effort.
+5. Every measurement: a best guess.
+
+When a step finds several measurements, their median is used. The model and the effort level matter
+most because they move the baseline, what the agent spends without the graph, and so the saving.
+JumpKick knows the agent from its MCP client's name and the model from the agent's own session files
+while `[agents] read-usage` is on (ids of one model compare equal with a date or a `-latest` suffix).
+Of the agents' files only Codex's say the effort level; for the others the steps that need it are
+skipped. Every figure is
+therefore an estimate, and the API's `ratesMatched` says which step and measurements priced it.
 
 The dollars are those tokens at the API list price of the model the agent was on, which JumpKick reads
-from the agent's own session files while `[agents] read-usage` is on, else the model the benchmark
-ran it on. The price table is the one JumpKick ships with or a newer signed one the engine fetched
+from the agent's own session files while `[agents] read-usage` is on, else the model of the
+measurement that priced it. The price table is the one JumpKick ships with or a newer signed one the engine fetched
 ([config](config.md#updates)); the tip names the date the newest price behind the figure was
 read from its vendor's page. Tokens on a model the table has no price for are counted but left out
 of the dollars, and the tip says how many; they are priced once a table that knows the model
 arrives. An agent on a subscription pays its plan instead. A cached step or a test class not re-run
-saves time but no tokens the benchmark has measured, so it adds none. The rates ship with JumpKick
-and change with a new release; the tip names the date of the newest benchmark run behind them, and
+saves time but no tokens the benchmark has measured, so it adds none. The rates ship with JumpKick,
+and a newer signed copy the engine fetched replaces them ([config](config.md#updates)); the totals
+are worked out from the recorded calls when shown, so newer rates re-estimate past sessions too. The
+tip names the date of the newest benchmark run behind them, and
 **how it is estimated** on the panel, or **est.** in the status bar, opens this section.
 
 Nothing new is recorded for it: the engine adds up the run records and session actions it keeps,

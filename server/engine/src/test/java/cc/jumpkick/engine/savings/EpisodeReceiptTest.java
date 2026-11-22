@@ -7,6 +7,7 @@ import cc.jumpkick.config.SessionExpiry;
 import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.engine.journal.BuildRecord;
 import cc.jumpkick.engine.journal.SessionJournal;
+import cc.jumpkick.engine.sessions.ActionRecord;
 import cc.jumpkick.engine.sessions.EpisodeInference;
 import cc.jumpkick.engine.sessions.Fact;
 import cc.jumpkick.engine.sessions.SessionLog;
@@ -136,9 +137,12 @@ class EpisodeReceiptTest {
 
     /** What one code question saves the session's agent at the shipped rates, on the bench's model. */
     private static TokensSaved claudeQuestion() {
-        SavingsRates.Agent agent =
-                Objects.requireNonNull(SavingsRates.shipped().agents().get("claude-code"));
-        return TokensSaved.of(agent.model(), agent.question().all());
+        return question("claude-code");
+    }
+
+    private static TokensSaved question(String client) {
+        ActionRecord query = new ActionRecord(1, T, "query", "query", null, ActionRecord.OK, 5, "s.1", "/ws/app", 0, 0);
+        return SavingsRates.shipped().saved(query, client, null, null, 0).tokens();
     }
 
     @Test
@@ -183,12 +187,12 @@ class EpisodeReceiptTest {
                         + "- Build and test time avoided: ~2m 05s (estimate, 75% measured)\n"
                         + "- Steps served from the cache: 2 (2 test suites)\n"
                         + "- Tokens saved: "
-                        + claudeQuestion().text(PriceTables.current(), 0) + "\n"
+                        + claudeQuestion().text(PriceTables.current()) + "\n"
                         + "- Code questions answered: 1\n");
     }
 
     @Test
-    void an_agent_the_bench_never_ran_is_credited_no_tokens_and_the_receipt_says_how_many_calls_it_left_out() {
+    void an_agent_the_bench_never_ran_is_credited_at_the_best_guess_and_the_receipt_says_only_estimate() {
         String label = "some-new-agent 5c21";
         log.open("mcp", "some-new-agent", label, "/ws/app");
         act(label, "some-new-agent", T + 1_000, Fact.Kind.GRAPH, "usages");
@@ -199,8 +203,12 @@ class EpisodeReceiptTest {
         String md = Objects.requireNonNull(EpisodeReceipt.markdown(journal, log, AgentUsage.NONE, last));
 
         assertThat(md)
-                .contains("- Tokens saved: ~0, ~$0.000 (estimate, API list prices; "
-                        + "2 calls not measured by the bench, not counted)\n")
+                .contains("- Tokens saved: "
+                        + question("some-new-agent")
+                                .plus(question("some-new-agent"))
+                                .text(PriceTables.current())
+                        + "\n")
+                .doesNotContain("not measured")
                 .contains("- Code questions answered: 2\n");
     }
 

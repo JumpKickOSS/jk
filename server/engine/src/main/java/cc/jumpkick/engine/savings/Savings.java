@@ -2,8 +2,10 @@
 package cc.jumpkick.engine.savings;
 
 import cc.jumpkick.prices.PriceTables;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -40,9 +42,10 @@ import org.jspecify.annotations.Nullable;
  *     many runs it stopped ({@link SavingsLedger#violation}); {@link #guardViolations} counts them
  * @param guardStops runs that stopped on at least one
  * @param tokens the tokens the code questions and refactorings saved the agents, by model: an
- *     estimate at {@link SavingsRates#shipped}'s rates, priced at the price table in effect when shown
- * @param callsNotMeasured code answers and refactorings the bench has no rate for, so left out of
- *     {@code tokens}: those of an agent it never ran, or of a kind it never measured for that agent
+ *     estimate at the rates in effect when read ({@link SavingsRates#current}), priced at the price
+ *     table in effect when shown
+ * @param matched the code answers and refactorings behind {@code tokens}, counted by the {@link
+ *     SavingsRates.Match} that priced them: machine output only, for diagnosis
  */
 public record Savings(
         String scope,
@@ -65,7 +68,7 @@ public record Savings(
         Set<String> violations,
         long guardStops,
         TokensSaved tokens,
-        long callsNotMeasured) {
+        Map<SavingsRates.Match, Long> matched) {
 
     public static final String ALL = "all";
     public static final String PROJECT = "project";
@@ -73,6 +76,7 @@ public record Savings(
 
     public Savings {
         violations = Set.copyOf(violations);
+        matched = Map.copyOf(matched);
     }
 
     /** Nothing saved yet, in {@code scope} over {@code since}..{@code until}. */
@@ -104,7 +108,7 @@ public record Savings(
                 Set.of(),
                 0,
                 TokensSaved.NONE,
-                0);
+                Map.of());
     }
 
     /** This row with {@code o}'s counts added to its own; its identity and period stay. */
@@ -130,7 +134,15 @@ public record Savings(
                 union(violations, o.violations),
                 guardStops + o.guardStops,
                 tokens.plus(o.tokens),
-                callsNotMeasured + o.callsNotMeasured);
+                sum(matched, o.matched));
+    }
+
+    private static Map<SavingsRates.Match, Long> sum(Map<SavingsRates.Match, Long> a, Map<SavingsRates.Match, Long> b) {
+        if (b.isEmpty()) return a;
+        if (a.isEmpty()) return b;
+        Map<SavingsRates.Match, Long> out = new LinkedHashMap<>(a);
+        b.forEach((k, n) -> out.merge(k, n, Long::sum));
+        return out;
     }
 
     /** The guard-rule violations stopped: distinct rule and file pairs, not one per run. */
@@ -177,9 +189,33 @@ public record Savings(
         m.put("tokensSavedByModel", tokens.rows());
         m.put("usdSavedMicros", priced.usdMicros());
         m.put("tokensUnpriced", priced.unpriced());
-        m.put("callsNotMeasured", callsNotMeasured);
-        m.put("ratesMeasured", SavingsRates.shipped().measured());
+        m.put("ratesMeasured", SavingsRates.current().measured());
+        m.put("ratesMatched", matchedRows());
         m.put("pricesRetrieved", Objects.toString(priced.retrieved(), ""));
         return m;
+    }
+
+    /**
+     * {@link #matched} as {@code ratesMatched} carries it: one object per match, the most calls
+     * first, with its step, the step's name, the measurements whose median priced it, the session
+     * fields jk could not read and the calls.
+     */
+    private List<Map<String, Object>> matchedRows() {
+        List<Map<String, Object>> out = new ArrayList<>();
+        matched.entrySet().stream()
+                .sorted(Map.Entry.<SavingsRates.Match, Long>comparingByValue()
+                        .reversed()
+                        .thenComparing(e -> e.getKey().step())
+                        .thenComparing(e -> String.join(",", e.getKey().measurements())))
+                .forEach(e -> {
+                    Map<String, Object> m = new LinkedHashMap<>();
+                    m.put("step", e.getKey().step());
+                    m.put("match", e.getKey().name());
+                    m.put("measurements", e.getKey().measurements());
+                    m.put("unknown", e.getKey().unknown());
+                    m.put("calls", e.getValue());
+                    out.add(m);
+                });
+        return out;
     }
 }

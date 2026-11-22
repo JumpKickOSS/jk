@@ -5,6 +5,7 @@ import cc.jumpkick.compat.UpdatesMirror;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.JkConfigLoader;
 import cc.jumpkick.config.SelfUpdateState;
+import cc.jumpkick.engine.savings.SavingsRates;
 import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.Log;
@@ -122,13 +123,16 @@ public final class UpdateCheck {
     }
 
     /**
-     * The kinds this JumpKick applies: the model price table, the library registry, the JDK catalog
-     * and the official template catalog's revision. Each writes where its reader already looks.
+     * The kinds this JumpKick applies: the model price table, the savings rates, the library
+     * registry, the JDK catalog and the official template catalog's revision. Each writes where its
+     * reader already looks.
      */
     static Map<String, Applier> appliers(Consumer<String> log) {
         return Map.of(
                 "prices",
                 (entry, file) -> applyPrices(file.bytes(), PriceTables.storeFile(), log),
+                "rates",
+                (entry, file) -> applyRates(file.bytes(), SavingsRates.storeFile(), log),
                 "libraries",
                 (entry, file) -> applyLibraries(file.bytes(), JkDirs.libraryRegistry()),
                 "jdks",
@@ -159,6 +163,23 @@ public final class UpdateCheck {
         Files.createDirectories(file.getParent());
         AtomicWrites.replace(file, bytes);
         log.accept("jk engine: price table updated (published " + table.published() + ")");
+    }
+
+    /**
+     * Keep {@code bytes} as the store's savings rates when they parse and were published after the
+     * rates in use, the built-in ones included.
+     */
+    static void applyRates(byte[] bytes, Path file, Consumer<String> log) throws IOException {
+        SavingsRates rates;
+        try {
+            rates = SavingsRates.parse(new String(bytes, StandardCharsets.UTF_8));
+        } catch (RuntimeException e) {
+            throw new IOException("savings rates do not parse", e);
+        }
+        if (!rates.published().isAfter(SavingsRates.current(file).published())) return;
+        Files.createDirectories(file.getParent());
+        AtomicWrites.replace(file, bytes);
+        log.accept("jk engine: savings rates updated (measured " + rates.measured() + ")");
     }
 
     /** Keep {@code bytes} as the library registry when they parse; the registry's own validator no longer matches. */
