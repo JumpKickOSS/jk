@@ -84,7 +84,8 @@ final class InstanceMove {
     /**
      * One call of the method: its receiver ({@code recvStart} -1 when unqualified, {@code sep} the dot
      * before the name), the instance an unqualified one runs on ({@code this} or {@code Order.this}),
-     * its parentheses and each argument's {@code [start, end)}.
+     * its parentheses and each argument's {@code [start, end)}. A method reference is the call in the
+     * lambda it becomes, {@code ref}; {@code sep} is then its {@code ::}.
      */
     private record Call(
             FileEdit f,
@@ -94,20 +95,32 @@ final class InstanceMove {
             String self,
             int open,
             int close,
-            List<int[]> args) {
+            List<int[]> args,
+            @Nullable Lambda ref) {
 
         boolean unqualified() {
             return recvStart < 0;
         }
 
         String recv() {
+            if (ref != null) return ref.recv();
             return unqualified() ? self : f.text.substring(recvStart, sep).strip();
         }
 
+        int count() {
+            return ref != null ? ref.args().size() : args.size();
+        }
+
         String arg(int i) {
-            return f.text.substring(args.get(i)[0], args.get(i)[1]);
+            return ref != null ? ref.args().get(i) : f.text.substring(args.get(i)[0], args.get(i)[1]);
         }
     }
+
+    /**
+     * The lambda a method reference becomes: {@code params -> recv.m(args)}. {@code Order::greeting}
+     * becomes {@code order -> order.greeting()}, {@code this::visit} {@code (c, times) -> this.visit(c, times)}.
+     */
+    private record Lambda(String params, String recv, List<String> args) {}
 
     /** The moved code's edits for one route, whether it needs the source instance, and what it reads of it. */
     private static final class Landing {
@@ -158,7 +171,7 @@ final class InstanceMove {
         List<Call> calls = new ArrayList<>();
         List<FileEdit> links = new ArrayList<>();
         List<ReferenceIndex.Span> linkSpans = new ArrayList<>();
-        callers(p, m, calls, links, linkSpans);
+        callers(p, m, head, calls, links, linkSpans);
         p.h.visibility(p.at, m, p.what, p.toBin, p.toType, p.outside, p.files);
         p.h.collisions(p.to, p.toBin, p.name, false);
         p.h.unindexed(p.w, p.g, p.fromType, p.name);
@@ -361,7 +374,7 @@ final class InstanceMove {
 
     /** Every use of the method outside it: calls to rewrite, doc links, and those a move cannot rewrite as hazards. */
     private static void callers(
-            Plan p, Member m, List<Call> calls, List<FileEdit> links, List<ReferenceIndex.Span> linkSpans) {
+            Plan p, Member m, Head head, List<Call> calls, List<FileEdit> links, List<ReferenceIndex.Span> linkSpans) {
         for (String rel : RenameProof.javaFiles(p.g)) {
             String t = RenameText.read(p.w.root(), rel);
             if (t == null || !t.contains(p.name)) continue;
@@ -392,10 +405,12 @@ final class InstanceMove {
                 int k = before(code, s.start());
                 char c = k < 0 ? ' ' : code.charAt(k);
                 int o = after(code, s.end());
-                if (c == ':' && k > 0 && code.charAt(k - 1) == ':'
-                        || c == '>' && typeArguments(code, k)
-                        || o >= code.length()
-                        || code.charAt(o) != '(') {
+                if (c == ':' && k > 0 && code.charAt(k - 1) == ':') {
+                    Call ref = reference(p, head, f, code, s, k - 1, where);
+                    if (ref != null) calls.add(ref);
+                    continue;
+                }
+                if (c == '>' && typeArguments(code, k) || o >= code.length() || code.charAt(o) != '(') {
                     p.h.add("reference", "  a method reference or type arguments this move cannot rewrite  " + where);
                     continue;
                 }
@@ -413,9 +428,90 @@ final class InstanceMove {
                                     + " instance  " + where);
                     continue;
                 }
-                calls.add(new Call(f, s, recv, c == '.' ? k : -1, self, o, cl, split(f.text, code, o, cl, false)));
+                calls.add(
+                        new Call(f, s, recv, c == '.' ? k : -1, self, o, cl, split(f.text, code, o, cl, false), null));
             }
         }
+    }
+
+    /**
+     * The method reference whose name is {@code s} and whose {@code ::} starts at {@code colons}, as the
+     * call in the lambda it becomes; {@code null}, listed as a hazard, where a lambda would not mean the
+     * same: a {@code super} or varargs reference, or a receiver other than a type, {@code this} or a
+     * local name, which the reference reads once and a lambda would read at each call.
+     */
+    private static @Nullable Call reference(
+            Plan p, Head head, FileEdit f, String code, ReferenceIndex.Span s, int colons, String where) {
+        int start = receiverStart(code, colons);
+        int end = before(code, colons) + 1;
+        String recv = start < 0 ? "" : f.text.substring(start, end);
+        boolean varargs = !head.params().isEmpty()
+                && p.from.text
+                        .substring(head.params().getLast()[0], head.params().getLast()[1])
+                        .contains("...");
+        if (start < 0 || varargs || recv.matches("(?:.*\\.)?super")) {
+            p.h.add("reference", "  a method reference this move cannot rewrite as a lambda  " + where);
+            return null;
+        }
+        boolean bound = recv.matches("(?:.*\\.)?this");
+        boolean type = !bound
+                && f.spans.stream().anyMatch(t -> t.kind() != 'd' && t.symbol().startsWith("T ") && t.end() == end);
+        boolean field =
+                f.spans.stream().anyMatch(t -> t.start() == start && t.symbol().startsWith("F "));
+        if (!bound && !type && (field || !WORD.matcher(recv).matches())) {
+            p.h.add(
+                    "reference",
+                    "  a method reference whose receiver a lambda would read at each call, not once  " + where);
+            return null;
+        }
+        Set<String> taken = new HashSet<>();
+        int[] scope = member(code, start);
+        Matcher w = WORD.matcher(code.substring(0, scope[1]));
+        w.region(scope[0], scope[1]);
+        while (w.find()) taken.add(w.group());
+        List<String> params = new ArrayList<>();
+        String on = recv;
+        if (type) {
+            String simple = recv.substring(recv.lastIndexOf('.') + 1).strip();
+            on = fresh(Character.toLowerCase(simple.charAt(0)) + simple.substring(1), taken);
+            params.add(on);
+        }
+        List<String> args = new ArrayList<>();
+        for (int[] a : head.params()) {
+            Matcher last = Pattern.compile("([A-Za-z_$][\\w$]*)\\s*$").matcher(p.from.text.substring(a[0], a[1]));
+            args.add(fresh(last.find() ? last.group(1) : "a", taken));
+        }
+        params.addAll(args);
+        String list = params.size() == 1 ? params.getFirst() : "(" + String.join(", ", params) + ")";
+        return new Call(f, s, start, colons, "", -1, -1, List.of(), new Lambda(list, on, args));
+    }
+
+    /**
+     * The {@code [start, end)} of the member of the innermost class body around offset {@code at}, its
+     * header included: the names a lambda there may not take. In a field initializer, the statement up to {@code at}.
+     */
+    private static int[] member(String code, int at) {
+        int brace = -1;
+        int depth = 0;
+        for (int i = at - 1; i >= 0; i--) {
+            char c = code.charAt(i);
+            if (c == '}') depth++;
+            else if (c == '{' && depth > 0) depth--;
+            else if (c == '{' && classBody(code, i)) break;
+            else if (c == '{') brace = i;
+        }
+        int end = brace < 0 ? -1 : closing(code, brace);
+        return brace < 0 || end < 0
+                ? new int[] {statementStart(code, at), at}
+                : new int[] {statementStart(code, brace), end + 1};
+    }
+
+    /** {@code base}, or {@code base2}, {@code base3}, ...: the first that is not taken and no keyword; it is taken then. */
+    private static String fresh(String base, Set<String> taken) {
+        String name = base;
+        for (int i = 2; taken.contains(name) || SourceVersion.isKeyword(name); i++) name = base + i;
+        taken.add(name);
+        return name;
     }
 
     /**
@@ -539,7 +635,7 @@ final class InstanceMove {
             if (source && !plain(recv)) return "its receiver would run twice";
             return null;
         }
-        if (c.args().size() != head.params().size()) return "its arguments cannot be read";
+        if (c.count() != head.params().size()) return "its arguments cannot be read";
         String ak = c.arg(r.param()).strip();
         if (ak.equals("null")) return "passes null for " + r.name();
         if (!source && !c.unqualified() && !plain(recv)) return "its receiver would no longer run";
@@ -564,20 +660,32 @@ final class InstanceMove {
         String recv = c.recv();
         List<String> args = new ArrayList<>();
         if (source) args.add(recv);
-        for (int i = 0; i < c.args().size(); i++) {
+        for (int i = 0; i < c.count(); i++) {
             if (i != r.param()) args.add(c.arg(i).strip());
         }
         String lead = r.field() != null
                 ? recv + Objects.requireNonNullElse(reach(p, c, r), "." + r.field())
                 : wrap(c.arg(r.param()).strip());
-        return RenamePlan.clip(lead + "." + p.name + "(" + String.join(", ", args) + ")");
+        String arrow = c.ref() == null ? "" : c.ref().params() + " -> ";
+        return RenamePlan.clip(arrow + lead + "." + p.name + "(" + String.join(", ", args) + ")");
     }
 
     /** The edits of one call for route {@code r}: the receiver, the dropped argument, the source instance passed. */
     private static void apply(Plan p, Head head, Call c, Route r, boolean source, String moved) {
         FileEdit f = c.f();
         int name = c.s().start();
-        if (r.field() != null) {
+        if (c.ref() != null) {
+            List<String> args = new ArrayList<>();
+            if (source) args.add(c.recv());
+            for (int i = 0; i < c.count(); i++) {
+                if (i != r.param()) args.add(c.arg(i));
+            }
+            String lead = r.field() != null
+                    ? c.recv() + Objects.requireNonNullElse(reach(p, c, r), "." + r.field())
+                    : c.arg(r.param());
+            f.ops.add(new Op(c.recvStart(), name, c.ref().params() + " -> " + lead + "."));
+            f.ops.add(new Op(c.s().end(), c.s().end(), "(" + String.join(", ", args) + ")"));
+        } else if (r.field() != null) {
             String via = Objects.requireNonNullElse(reach(p, c, r), "." + r.field());
             f.ops.add(c.unqualified() ? new Op(name, name, c.self() + via + ".") : new Op(c.sep(), c.sep(), via));
         } else {
@@ -588,8 +696,9 @@ final class InstanceMove {
             needs(f, a[0], a[1]);
             if (!c.unqualified()) needs(f, c.recvStart(), c.sep());
         }
-        int left = c.args().size() - (r.param() >= 0 ? 1 : 0);
-        if (source) f.ops.add(new Op(c.open() + 1, c.open() + 1, c.recv() + (left == 0 ? "" : ", ")));
+        int left = c.count() - (r.param() >= 0 ? 1 : 0);
+        if (source && c.ref() == null)
+            f.ops.add(new Op(c.open() + 1, c.open() + 1, c.recv() + (left == 0 ? "" : ", ")));
         f.marks.add(new Mark(name, moved, c.s().kind()));
     }
 

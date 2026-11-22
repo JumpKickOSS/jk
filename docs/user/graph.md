@@ -765,7 +765,11 @@ and when it uses anything else of its old type, that instance is passed in as a 
 parameter (`order.customer.label(order)`). Routes are `f1`, `f2`, ... for fields and `p1`, `p2`,
 ... for parameters. A call from an inner or anonymous class of the type runs on the type's own
 instance, `Order.this.customer.greeting()`; one from a class there that inherits the method is
-listed, and the move writes nothing. A call cannot take a route through a field it cannot see, a
+listed, and the move writes nothing. A method reference becomes the lambda it stands for, whose
+call takes the route: `Pet::typeLabel` becomes `pet -> pet.getType().typeLabel(pet)`, `this::label`
+becomes `() -> this.customer.label(this)`. One whose receiver is an expression or a field, which the
+reference reads once and a lambda would read at each call, is listed, as is a `super` or varargs
+one. A call cannot take a route through a field it cannot see, a
 `null` argument, or a receiver that would run twice or not at all. When exactly one route reaches the target from every
 call, the move runs through it at once, says which, and says why each other route was not taken;
 otherwise it writes nothing and lists each route with what each call would read, and `--via p1`

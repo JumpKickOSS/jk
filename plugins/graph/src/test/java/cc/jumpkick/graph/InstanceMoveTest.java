@@ -394,7 +394,7 @@ class InstanceMoveTest {
     }
 
     @Test
-    void aCallAfterATernaryOrCaseColonIsUnqualifiedAndAMethodReferenceIsRefused(@TempDir Path dir) throws IOException {
+    void aCallAfterATernaryOrCaseColonIsUnqualified(@TempDir Path dir) throws IOException {
         Map<String, String> files = shop();
         files.put(SHOP + "Desk.java", DESK.replace("    String hello(Order order) {", """
                     String pick(Order order, boolean formal) {
@@ -421,15 +421,63 @@ class InstanceMoveTest {
                 .contains("case 1: return this.customer.greeting();");
         assertThat(f.read(SHOP + "Desk.java")).contains("return formal ? order.label() : order.customer.greeting();");
         assertThat(f.checkMove()).startsWith("Proven: it compiles, and Customer.greeting has the 6 references");
+    }
 
-        Map<String, String> refs = shop();
-        refs.put(SHOP + "Desk.java", DESK.replace("return order.greeting();", """
+    @Test
+    void aMethodReferenceBecomesALambdaWhoseCallTakesTheRoute(@TempDir Path dir) throws IOException {
+        Map<String, String> files = shop();
+        files.put(
+                SHOP + "Desk.java",
+                DESK.replace("return order.greeting();", """
                 java.util.function.Function<Order, String> f = Order::greeting;
-                        return f.apply(order);"""));
-        RenameFixture g = new RenameFixture(dir.resolve("ref"), refs);
-        assertThat(g.move("Order.greeting", "Customer"))
+                        return f.apply(order) + java.util.Optional.of(order).map(org.acme.shop.Order::label);""").replace("return order.label() + order.held();", """
+                java.util.function.Supplier<String> s = order::label;
+                        return s.get() + order.held();"""));
+        files.put(SHOP + "Order.java", ORDER.replace("    public String line() {", """
+                    java.util.function.Supplier<String> later() {
+                        return this::label;
+                    }
+
+                    public String line() {"""));
+        RenameFixture f = new RenameFixture(dir, files);
+
+        assertThat(f.move("Order.label", "Customer"))
+                .startsWith("Moved Order.label() to org.acme.shop.Customer: 3 uses ");
+
+        assertThat(f.read(SHOP + "Desk.java"))
+                .contains("java.util.Optional.of(order).map(order2 -> order2.customer.label(order2));")
+                .contains("java.util.function.Supplier<String> s = () -> order.customer.label(order);");
+        assertThat(f.read(SHOP + "Order.java")).contains("return () -> this.customer.label(this);");
+        assertThat(f.checkMove()).startsWith("Proven: it compiles, and Customer.label has the 4 references");
+
+        RenameFixture g = new RenameFixture(dir.resolve("greeting"), files);
+        assertThat(g.move("Order.greeting", "Customer")).startsWith("Moved Order.greeting() to ");
+        assertThat(g.read(SHOP + "Desk.java"))
+                .contains("java.util.function.Function<Order, String> f = order2 -> order2.customer.greeting();");
+        assertThat(g.checkMove()).startsWith("Proven: it compiles");
+    }
+
+    @Test
+    void aMethodReferenceThatReadsItsReceiverOnceIsRefused(@TempDir Path dir) throws IOException {
+        Map<String, String> files = shop();
+        files.put(SHOP + "Desk.java", DESK.replace("    String hello(Order order) {", """
+                    final Order kept = new Order(new Customer("kept"));
+
+                    java.util.function.Supplier<String> later(Customer c) {
+                        java.util.function.Supplier<String> a = kept::greeting;
+                        return new Order(c)::greeting;
+                    }
+
+                    String hello(Order order) {"""));
+        RenameFixture f = new RenameFixture(dir, files);
+
+        assertThat(f.move("Order.greeting", "Customer"))
                 .startsWith("Not moved, nothing is written")
-                .contains("a method reference or type arguments this move cannot rewrite  " + SHOP + "Desk.java:5");
+                .contains("a method reference whose receiver a lambda would read at each call, not once  " + SHOP
+                        + "Desk.java:7")
+                .contains("a method reference whose receiver a lambda would read at each call, not once  " + SHOP
+                        + "Desk.java:8");
+        assertThat(f.read(SHOP + "Desk.java")).isEqualTo(files.get(SHOP + "Desk.java"));
     }
 
     @Test
@@ -588,6 +636,10 @@ class InstanceMoveTest {
                     static List<String> all(List<Pet> pets) {
                         return pets.stream().map(pet -> pet.typeLabel()).toList();
                     }
+
+                    static List<String> sorted(List<Pet> pets) {
+                        return pets.stream().map(Pet::typeLabel).sorted().toList();
+                    }
                 }
                 """,
                 system + "Report.java",
@@ -612,7 +664,9 @@ class InstanceMoveTest {
                         return pet.getName() + " the " + this.getName();
                     }
                 """);
-        assertThat(f.read(SHOP + "Labels.java")).contains("map(pet -> pet.getType().typeLabel(pet))");
+        assertThat(f.read(SHOP + "Labels.java"))
+                .contains("map(pet -> pet.getType().typeLabel(pet)).toList()")
+                .contains("map(pet -> pet.getType().typeLabel(pet)).sorted()");
         assertThat(f.read(system + "Report.java"))
                 .contains("import org.acme.shop.Kind;")
                 .contains("/** One pet, labelled by {@link Kind#typeLabel(Pet)}. */")
