@@ -314,9 +314,9 @@ class InstanceMoveTest {
     }
 
     @Test
-    void aCallFromAClassInsideTheSourceIsRefused(@TempDir Path dir) throws IOException {
+    void aCallFromAClassInsideTheSourceRunsOnTheSourceInstance(@TempDir Path dir) throws IOException {
         Map<String, String> files = shop();
-        String order = ORDER.replace("    public String line() {", """
+        files.put(SHOP + "Order.java", ORDER.replace("    public String line() {", """
                     class Copy {
                         final Customer customer = new Customer("copy");
 
@@ -338,6 +338,46 @@ class InstanceMoveTest {
                         return s.get();
                     }
 
+                    public String line() {"""));
+        RenameFixture f = new RenameFixture(dir, files);
+
+        assertThat(f.move("Order.greeting", "Customer")).startsWith("Moved Order.greeting() to ");
+
+        assertThat(f.read(SHOP + "Order.java"))
+                .contains("return Order.this.customer.greeting();")
+                .contains("System.out.println(Order.this.customer.greeting());")
+                .contains("() -> this.customer.greeting();");
+        assertThat(f.checkMove()).startsWith("Proven: it compiles, and Customer.greeting has the 6 references");
+    }
+
+    @Test
+    void aCallFromAClassInsideTheSourceThatInheritsTheMethodIsRefused(@TempDir Path dir) throws IOException {
+        Map<String, String> files = shop();
+        String order = ORDER.replace("    public String line() {", """
+                    class Copy extends Order {
+                        Copy() {
+                            super(new Customer("copy"));
+                        }
+
+                        String hello() {
+                            return greeting();
+                        }
+                    }
+
+                    Runnable greeter() {
+                        return new Runnable() {
+                            final Order other = new Order(new Customer("other")) {
+                                String hello() {
+                                    return greeting();
+                                }
+                            };
+
+                            public void run() {
+                                System.out.println(greeting());
+                            }
+                        };
+                    }
+
                     public String line() {""");
         files.put(SHOP + "Order.java", order);
         RenameFixture f = new RenameFixture(dir, files);
@@ -345,13 +385,87 @@ class InstanceMoveTest {
         assertThat(f.move("Order.greeting", "Customer"))
                 .startsWith("Not moved, nothing is written: moving Order.greeting() to org.acme.shop.Customer"
                         + " through f1 would break or change:")
-                .contains("a call from a nested or anonymous class, where this is another instance  " + SHOP
-                        + "Order.java:22")
-                .contains("a call from a nested or anonymous class, where this is another instance  " + SHOP
-                        + "Order.java:29")
-                .contains(SHOP + "Order.java:35  this.customer.greeting()")
-                .doesNotContain("type arguments");
+                .contains("a call from a nested or anonymous class that may inherit it, where this is another"
+                        + " instance  " + SHOP + "Order.java:24")
+                .contains("a call from a nested or anonymous class that may inherit it, where this is another"
+                        + " instance  " + SHOP + "Order.java:32")
+                .contains(SHOP + "Order.java:37  Order.this.customer.greeting()");
         assertThat(f.read(SHOP + "Order.java")).isEqualTo(order);
+    }
+
+    @Test
+    void aCallAfterATernaryOrCaseColonIsUnqualifiedAndAMethodReferenceIsRefused(@TempDir Path dir) throws IOException {
+        Map<String, String> files = shop();
+        files.put(SHOP + "Desk.java", DESK.replace("    String hello(Order order) {", """
+                    String pick(Order order, boolean formal) {
+                        return formal ? order.label() : order.greeting();
+                    }
+
+                    String hello(Order order) {"""));
+        files.put(SHOP + "Order.java", ORDER.replace("    public String line() {", """
+                    String either(boolean formal, int kind) {
+                        String s = formal ? status : greeting();
+                        switch (kind) {
+                            case 1: return greeting();
+                            default: return s;
+                        }
+                    }
+
+                    public String line() {"""));
+        RenameFixture f = new RenameFixture(dir, files);
+
+        assertThat(f.move("Order.greeting", "Customer")).startsWith("Moved Order.greeting() to ");
+
+        assertThat(f.read(SHOP + "Order.java"))
+                .contains("String s = formal ? status : this.customer.greeting();")
+                .contains("case 1: return this.customer.greeting();");
+        assertThat(f.read(SHOP + "Desk.java")).contains("return formal ? order.label() : order.customer.greeting();");
+        assertThat(f.checkMove()).startsWith("Proven: it compiles, and Customer.greeting has the 6 references");
+
+        Map<String, String> refs = shop();
+        refs.put(SHOP + "Desk.java", DESK.replace("return order.greeting();", """
+                java.util.function.Function<Order, String> f = Order::greeting;
+                        return f.apply(order);"""));
+        RenameFixture g = new RenameFixture(dir.resolve("ref"), refs);
+        assertThat(g.move("Order.greeting", "Customer"))
+                .startsWith("Not moved, nothing is written")
+                .contains("a method reference or type arguments this move cannot rewrite  " + SHOP + "Desk.java:5");
+    }
+
+    @Test
+    void anOuterInstanceBeforeNewIsPartOfTheReceiver(@TempDir Path dir) throws IOException {
+        Map<String, String> files = RenameFixture.files(
+                SHOP + "Customer.java", CUSTOMER, SHOP + "Order.java", """
+                package org.acme.shop;
+
+                public class Order {
+
+                    public class Line {
+
+                        int count = 1;
+
+                        public String tag(Customer c) {
+                            return c.name() + count;
+                        }
+                    }
+                }
+                """, SHOP + "Desk.java", """
+                package org.acme.shop;
+
+                class Desk {
+                    String tag(Order order, Customer c) {
+                        return order.new Line().tag(c);
+                    }
+                }
+                """);
+        RenameFixture f = new RenameFixture(dir, files);
+
+        assertThat(f.move("Order.Line.tag", "Customer"))
+                .startsWith("Moved Order.Line.tag() to ")
+                .contains("  through p1, the parameter Customer c; a call reads c.tag(order.new Line())");
+
+        assertThat(f.read(SHOP + "Desk.java")).contains("return c.tag(order.new Line());");
+        assertThat(f.checkMove()).startsWith("Proven: it compiles, and Customer.tag has the 2 references");
     }
 
     @Test

@@ -763,8 +763,10 @@ method's type that holds one, or a parameter of the method of the target type. W
 the type's getter (`order.getCustomer().greeting()`) when all that getter does is return it. The moved method reads that field or parameter as `this`,
 and when it uses anything else of its old type, that instance is passed in as a new first
 parameter (`order.customer.label(order)`). Routes are `f1`, `f2`, ... for fields and `p1`, `p2`,
-... for parameters. A call cannot take a route through a field it cannot see, a `null` argument, or a
-receiver that would run twice or not at all. When exactly one route reaches the target from every
+... for parameters. A call from an inner or anonymous class of the type runs on the type's own
+instance, `Order.this.customer.greeting()`; one from a class there that inherits the method is
+listed, and the move writes nothing. A call cannot take a route through a field it cannot see, a
+`null` argument, or a receiver that would run twice or not at all. When exactly one route reaches the target from every
 call, the move runs through it at once, says which, and says why each other route was not taken;
 otherwise it writes nothing and lists each route with what each call would read, and `--via p1`
 (MCP `via`; there is no short form) moves it through the one named. A call through the

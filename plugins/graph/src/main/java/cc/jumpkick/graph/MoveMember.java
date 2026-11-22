@@ -688,7 +688,7 @@ final class MoveMember {
     }
 
     /** {@code roots} and every workspace type that extends one of them, directly or not. */
-    private static Set<String> subtypes(Map<String, GraphNode> types, Set<String> roots) {
+    static Set<String> subtypes(Map<String, GraphNode> types, Set<String> roots) {
         Set<String> out = new TreeSet<>(roots);
         boolean grew = true;
         while (grew) {
