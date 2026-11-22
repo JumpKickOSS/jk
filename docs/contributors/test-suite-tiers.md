@@ -119,10 +119,11 @@ beside the release suite, and CI's self-host job after the fast tier; each runs 
 since a run of several suites records what they read as one
 ([docs suite](self-host.md#docs-only-changes)).
 
-**Quarantine and re-run.** A run of the Queue tier that is red only in classes
-`scripts/gate/flaky.sh` holds in quarantine passes. A run red in other classes, and in nothing but
-classes, runs once more under the same inputs, which runs only those classes: it passes when they
-pass there, and they are recorded as flaky. The Full tier judges every class
+**Quarantine and re-run.** The gate uses JumpKick's own quarantine: a run red only in classes
+`.jk/test/quarantine.toml` holds passes, in every tier, and every tier still runs them. A run of the
+Queue tier red in other classes, and in nothing but classes, runs once more under the same inputs,
+which runs only those classes: it passes when they pass there, and JumpKick records them as flaky.
+The gate files a ticket for each class JumpKick quarantines and submits the file to the merge queue
 ([flaky tests](self-host.md#flaky-tests)).
 
 ## The shared-cache proof

@@ -52,22 +52,28 @@ stand-in `jk`.
 
 ### Flaky tests
 
-In the Full tier, a red `jk install -g` runs once more. Under the same inputs JumpKick re-runs only the classes that
-did not pass, and a class that passes now is flaky: its `test-passed-on-rerun` warning in the
-run's `details.jsonl` becomes a `rerun-pass` row of `flaky-history.tsv` under `GATE_LOG_DIR`. The
-gate stays red. `scripts/gate/flaky.sh` keeps that history:
+The gate uses JumpKick's own [test quarantine](../user/test.md#flaky-tests-are-quarantined-jk-flaky).
+JumpKick keeps each class's runs on the gate's host, and when a class has passed on a re-run with
+nothing changed as often as the root's `[test] quarantine` says, it adds the class to
+`.jk/test/quarantine.toml` in the gate's checkout. Every tier still runs a quarantined class, and a
+run red only in quarantined classes passes. In the Full tier, a red `jk install -g` runs once more
+under the same inputs, which runs only the classes that did not pass; the gate stays red.
 
-| Command | What it does |
-|---|---|
-| `flaky.sh record <details.jsonl> <tip>` | Appends each class the run passed on re-run |
-| `flaky.sh review` | Quarantines a class with two re-run passes in 30 days (`FLAKY_THRESHOLD`, `FLAKY_WINDOW_DAYS`), opening a `flake` ticket that carries its history; releases a class whose ticket is done or canceled, and counts only its passes after that |
-| `flaky.sh list` | The quarantine: `<module> <class> <ticket>` |
-| `flaky.sh excused <details.jsonl>` | Exit 0 when every error of the run is a test failure in a quarantined class |
-| `flaky.sh failed <details.jsonl>` | The run's failed classes, `<module> <class>`; exit 0 when it failed only in test classes, so a re-run can turn it green |
+The gate keeps its checkout clean: once its tests have run (in the docs tier, its docs suite) it
+saves the file JumpKick changed as `g<n>-quarantine.toml` beside its log and restores the tip's,
+before its verdict. Then
+`scripts/gate/flaky.sh review` makes the file `origin/main` should hold and submits it:
 
-Every gate ends with `review`. The Full tier runs every class and judges each, quarantined or not;
-the Queue tier runs them too, but a run red only in quarantined classes passes (`excused`). A class
-that cannot get a ticket is not quarantined.
+- each class JumpKick added, and each entry on `origin/main` with no ticket, gets a `flake` ticket,
+  recorded in `quarantine-tickets.tsv` under `GATE_LOG_DIR` until the queue lands its entry;
+- each entry gets its ticket's id as its `issue`, the id alone (no store URL);
+- an entry whose ticket is done or canceled is taken out.
+
+When that file differs from `origin/main`'s and the queue does not already hold it, the review
+commits it on `origin/main` as the branch `gate/quarantine`, passes the Branch tier and submits it
+to the merge queue (`g<n>-quarantine.log`). A class that cannot get a ticket is not submitted. The
+file is not a build input, so a change to it selects no module in the Queue tier. To release a
+class by hand, close its ticket, or delete its entry with `jk flaky release` and submit that.
 
 The Queue tier does not stay red on a flake. Its install and each of its integration runs, red only
 in test classes, run once more under the same inputs, so only the failed classes run again; the
@@ -199,7 +205,8 @@ On bocabox it runs beside the queue, in a checkout of its own:
 FULL_CHECKOUT=~/src/jk-full-checkout scripts/gate/full-loop.sh
 ```
 
-Its gate logs are `integ-gate-f<n>.log` beside the queue's, so the two share one flaky history.
+Its gate logs are `integ-gate-f<n>.log` beside the queue's, so the two share one ledger of
+quarantine tickets.
 The re-runs of a culprit and its revert's Branch tier log to `full-<batch>.log` beside them. The
 header of `scripts/gate/full-loop.sh` lists its settings; `scripts/test-full-loop.sh` holds it and
 the queue's hold to the rules above in scratch repositories, and `scripts/test-rerun-classes.sh`

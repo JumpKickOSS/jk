@@ -1,20 +1,21 @@
 #!/usr/bin/env bash
-# Fixtures for the gate under scripts/gate/. The flaky record reads the classes a run passed on
-# re-run from its transcript; past the threshold a class is quarantined with a ticket opened for it,
-# leaves quarantine when that ticket closes, and a run red only in quarantined classes is excused.
-# Then the gate runs in a scratch repository against a stand-in `jk`: green on a clean tip, one
-# install that runs tests (the fast tier once, under the engine the reinstall before it installed),
-# a red push gate run once more to record its flaky classes and still red, red at the reinstall
-# when it fails, and refused on a dirty checkout. Last the Queue tier, in a scratch workspace: the
-# members a range changed (none for docs and scripts, every one for a root build file), the
-# reinstall without tests and then, under the engine it installed, one install that runs the fast
-# tier (red at the reinstall when it fails, before any test), the integration suite of the changed
-# members and the curated lane in the others, then the docs suite, a red run excused only when it
-# failed in quarantine, and none of the Full tier's steps. In the same workspace, the Full tier runs
-# the docs suite on its own and the slow tier only when a plugin changed since its base, and is red
-# when a suite other than the docs suite run alone was seen reading a doc that
-# scripts/gate/test-reads.txt does not list. The docs tier runs guard, the scoreboard check and the
-# docs suite alone, and is red over a range that is not docs-only or when the docs suite is.
+# Fixtures for the gate under scripts/gate/. The gate runs in a scratch repository against a
+# stand-in `jk`: green on a clean tip, one install that runs tests (the fast tier once, under the
+# engine the reinstall before it installed), a red push gate run once more and still red, red at
+# the reinstall when it fails, and refused on a dirty checkout. A class the stand-in quarantines
+# leaves the checkout clean, gets a ticket, and goes to a stand-in merge queue in the quarantine
+# file with the ticket's id; it is not filed twice, a closed ticket takes its class out, an entry
+# with no ticket gets one, and a class that cannot get a ticket is not submitted. Last the Queue
+# tier, in a scratch workspace: the members a range changed (none for docs, scripts and the test
+# quarantine, every one for a root build file), the reinstall without tests and then, under the
+# engine it installed, one install that runs the fast tier (red at the reinstall when it fails,
+# before any test), the integration suite of the changed members and the curated lane in the
+# others, then the docs suite, a red run in test classes run once more, and none of the Full
+# tier's steps. In the same workspace, the Full tier runs the docs suite on its own and the slow
+# tier only when a plugin changed since its base, and is red when a suite other than the docs
+# suite run alone was seen reading a doc that scripts/gate/test-reads.txt does not list. The docs
+# tier runs guard, the scoreboard check and the docs suite alone, and is red over a range that is
+# not docs-only or when the docs suite is.
 # Last of all it runs itself once more under a gate's environment, as the gate's own fixture run
 # does, and must pass there too.
 set -euo pipefail
@@ -24,19 +25,18 @@ set -euo pipefail
 # each case here is written against. Neither the settings nor the stand-ins' switches carry in.
 unset "${!GATE_@}" "${!FLAKY_@}" "${!PRE_@}" POST_SCRIPTS FAIL_PUSHGATE FAIL_REINSTALL FAIL_INTEG \
   FAIL_SLOW FAIL_DOCS FAIL_INTEG_ONCE FAIL_INSTALL_ONCE RESULTS_FIRST RERUN_JSONL JK_CALLS KA_STATE FAIL_SCOREBOARD \
-  JK_CACHE_DIR
+  JK_CACHE_DIR JK_QUEUE_REMOTE BRANCH_TIER_BASE QUARANTINE_ADD KA_FAIL
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/jk-gate.XXXXXX")"
 trap 'rm -rf "$WORK"' EXIT
-FLAKY="$ROOT/scripts/gate/flaky.sh"
 
 fail() {
   echo "test-gate: $*" >&2
   exit 1
 }
 
-# --- the flaky record and quarantine ---
+# --- run transcripts and a stand-in ka ---
 # A transcript as jk writes it: classes passed on re-run (a nested class of one among them), and a
 # line that is not JSON.
 cat >"$WORK/rerun.jsonl" <<'EOF'
@@ -44,10 +44,6 @@ cat >"$WORK/rerun.jsonl" <<'EOF'
 not json
 {"schema":1,"type":"warn","task":"run-tests","code":"tests-not-rerun","message":"9 test classes passed earlier","module":"cc.jumpkick:jk-engine"}
 {"schema":1,"type":"warn","task":"run-tests","code":"test-passed-on-rerun","message":"passed on a re-run with no input changed, so flaky or dependent on what ran before: a.FlakyTest, a.FlakyTest$Inner, a.OtherTest","module":"cc.jumpkick:jk-engine"}
-EOF
-cat >"$WORK/red.jsonl" <<'EOF'
-{"schema":1,"type":"error","task":"run-tests","code":"test-failure","module":"cc.jumpkick:jk-engine","testClass":"a.FlakyTest$Inner"}
-{"schema":1,"type":"workspace-finish","success":false}
 EOF
 cat >"$WORK/red-other.jsonl" <<'EOF'
 {"schema":1,"type":"error","task":"run-tests","code":"test-failure","module":"cc.jumpkick:jk-engine","testClass":"a.FlakyTest"}
@@ -61,18 +57,20 @@ EOF
 cat >"$WORK/rerun-new.jsonl" <<'EOF'
 {"schema":1,"type":"warn","task":"run-tests","code":"test-passed-on-rerun","message":"passed on a re-run with no input changed, so flaky or dependent on what ran before: b.NewTest","module":"cc.jumpkick:jk-engine"}
 EOF
-# A stand-in ka: `new` opens fake-<n> and logs its arguments, `show` answers the status written
-# in $KA_STATE/<id>. Each reads its stdin to the end, as a ka that prompts would.
+# A stand-in ka: `new` opens TK-F<n> (or fails under KA_FAIL) and logs its arguments, `show`
+# answers the status written in $KA_STATE/<id>. Each reads its stdin to the end, as a ka that
+# prompts would.
 mkdir -p "$WORK/bin" "$WORK/ka"
 cat >"$WORK/bin/ka" <<'EOF'
 #!/usr/bin/env bash
 case "$1" in
   new)
     cat >/dev/null
-    n=$(($(find "$KA_STATE" -type f | wc -l) + 1))
-    echo ready >"$KA_STATE/fake-$n"
+    [[ -z "${KA_FAIL:-}" ]] || exit 1
+    id="$(printf 'TK-F%04d' $(($(find "$KA_STATE" -type f | wc -l) + 1)))"
+    echo ready >"$KA_STATE/$id"
     printf '%s\n' "$@" >>"$KA_STATE.new.log"
-    echo "{\"id\":\"fake-$n\",\"status\":\"ready\"}"
+    echo "{\"id\":\"$id\",\"status\":\"ready\"}"
     ;;
   show)
     cat >/dev/null
@@ -81,63 +79,7 @@ case "$1" in
 esac
 EOF
 chmod +x "$WORK/bin/ka"
-# flaky <unix time> <args...>: flaky.sh against this fixture's history and stand-in ka.
-flaky() {
-  local now="$1"
-  shift
-  FLAKY_HISTORY="$WORK/history.tsv" FLAKY_KA="$WORK/bin/ka" KA_STATE="$WORK/ka" FLAKY_NOW="$now" \
-    bash "$FLAKY" "$@"
-}
 tickets() { find "$WORK/ka" -type f | wc -l | tr -d ' '; }
-day=86400
-t0=1800000000
-
-flaky $t0 record "$WORK/rerun.jsonl" tip1 >"$WORK/out" || fail "record failed: $(cat "$WORK/out")"
-got="$(cut -f2- "$WORK/history.tsv")"
-want="$(printf 'rerun-pass\tcc.jumpkick:jk-engine\t%s\ttip1\n' a.FlakyTest a.OtherTest)"
-[[ "$got" == "$want" ]] || fail "the history was:
-$got
-want:
-$want"
-
-# One pass each is under the threshold of two: nothing is quarantined and no ticket opens.
-flaky $t0 review >"$WORK/out"
-[[ "$(tickets)" -eq 0 ]] || fail "a ticket opened under the threshold: $(cat "$WORK/out")"
-if flaky $t0 excused "$WORK/red.jsonl" >/dev/null; then fail "a failure in a class not quarantined was excused"; fi
-
-# A second pass 40 days later is outside the 30-day window: still one in it.
-flaky $((t0 + 40 * day)) record "$WORK/rerun.jsonl" tip2 >/dev/null
-flaky $((t0 + 40 * day)) review >/dev/null
-[[ "$(tickets)" -eq 0 ]] || fail "a pass outside the window counted"
-
-# A third within the window quarantines both classes, each with a ticket that carries its history.
-flaky $((t0 + 41 * day)) record "$WORK/rerun.jsonl" tip3 >/dev/null
-flaky $((t0 + 41 * day)) review >"$WORK/out"
-got="$(flaky $t0 list)"
-want="$(printf '%s\n' 'cc.jumpkick:jk-engine a.FlakyTest fake-1' 'cc.jumpkick:jk-engine a.OtherTest fake-2')"
-[[ "$got" == "$want" ]] || fail "the quarantine was:
-$got
-want:
-$want
-review said: $(cat "$WORK/out")"
-grep -q 'Flaky test FlakyTest' "$WORK/ka.new.log" || fail "the ticket does not name the class: $(cat "$WORK/ka.new.log")"
-grep -q 'rerun-pass.*a.FlakyTest.*tip3' "$WORK/ka.new.log" || fail "the ticket does not carry the history"
-flaky $((t0 + 41 * day)) review >/dev/null
-[[ "$(tickets)" -eq 2 ]] || fail "a second review opened another ticket for a quarantined class"
-
-# A run red only in a quarantined class (a nested class of it) is excused; red elsewhere too is not.
-flaky $t0 excused "$WORK/red.jsonl" >"$WORK/out" || fail "a failure only in quarantine was not excused: $(cat "$WORK/out")"
-if flaky $t0 excused "$WORK/red-other.jsonl" >/dev/null; then fail "a compile error was excused"; fi
-if flaky $t0 excused "$WORK/rerun.jsonl" >/dev/null; then fail "a run with no failure was excused"; fi
-
-# Closing a ticket releases its class, and only the passes after that count again.
-echo "done" >"$WORK/ka/fake-1"
-flaky $((t0 + 42 * day)) review >/dev/null
-got="$(flaky $t0 list)"
-[[ "$got" == 'cc.jumpkick:jk-engine a.OtherTest fake-2' ]] || fail "a closed ticket did not release its class: $got"
-flaky $((t0 + 43 * day)) record "$WORK/rerun.jsonl" tip4 >/dev/null
-flaky $((t0 + 43 * day)) review >/dev/null
-[[ "$(tickets)" -eq 2 ]] || fail "passes before the release counted toward a new quarantine"
 
 # --- the gate, against a stand-in jk ---
 # The stand-in logs each call, fails the push gate's first run when FAIL_PUSHGATE is set, the
@@ -146,12 +88,20 @@ flaky $((t0 + 43 * day)) review >/dev/null
 # when FAIL_DOCS is set and the first
 # `install -c` under FAIL_INSTALL_ONCE,
 # prints $RESULTS_FIRST as the first run's transcript and $RERUN_JSONL as any later one's, and
-# reports the checkout's HEAD as the engine's commit.
+# reports the checkout's HEAD as the engine's commit. A run that runs tests quarantines class
+# $QUARANTINE_ADD of mod/a in the checkout, as jk does past its threshold.
 export HOME="$WORK/home"
 mkdir -p "$HOME/.jk/bin"
 cat >"$HOME/.jk/bin/jk" <<'EOF'
 #!/usr/bin/env bash
 echo "$*" >>"$JK_CALLS"
+q=.jk/test/quarantine.toml
+if [[ -n "${QUARANTINE_ADD:-}" && ( "$1" == test || ( "$1" == install && " $* " != *" -S "* ) ) ]] \
+  && ! grep -qs "name = \"$QUARANTINE_ADD\"" "$q"; then
+  mkdir -p .jk/test
+  [[ -f "$q" ]] || echo "# Test classes in quarantine" >"$q"
+  printf '\n[[class]]\nname = "%s"\nmodule = "mod/a"\nreason = "flaky, 2 of 20"\nsince = 2026-11-22\n' "$QUARANTINE_ADD" >>"$q"
+fi
 case "$1" in
   --version) echo "jk 0.0.0" ;;
   engine) [[ "${2:-}" == status ]] && echo "Version  0.0.0 (commit $(git rev-parse --short=12 HEAD))" ;;
@@ -187,11 +137,14 @@ EOF
 chmod +x "$HOME/.jk/bin/jk"
 
 repo="$WORK/repo"
-mkdir -p "$repo/scripts/gate"
+mkdir -p "$repo/scripts/gate" "$repo/scripts/queue"
 cp "$ROOT"/scripts/gate/*.sh "$repo/scripts/gate/"
+cp "$ROOT"/scripts/queue/*.sh "$repo/scripts/queue/"
 printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$repo/scripts/release-notes.sh"
 printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$repo/scripts/test-ok.sh"
 git -C "$repo" init -q
+git -C "$repo" config user.name gate
+git -C "$repo" config user.email gate@example.invalid
 git -C "$repo" add -A
 git -C "$repo" -c user.name=gate -c user.email=gate@example.invalid commit -qm tip
 tip="$(git -C "$repo" rev-parse HEAD)"
@@ -207,7 +160,8 @@ gate() {
   : >"$WORK/calls-$n"
   env JK_CALLS="$WORK/calls-$n" GATE_CHECKOUT="$repo" GATE_LOG_DIR="$WORK/logs" \
     GATE_LOCK="$WORK/gate.lock" RERUN_JSONL="$WORK/rerun.jsonl" FLAKY_KA="$WORK/bin/ka" \
-    KA_STATE="$WORK/ka" "$@" bash "$launcher" "$n" "$tip" >/dev/null 2>&1
+    KA_STATE="$WORK/ka" FLAKY_BASE="$tip" JK_QUEUE_REMOTE="$WORK/queue.git" \
+    "$@" bash "$launcher" "$n" "$tip" >/dev/null 2>&1
   tail -1 "$WORK/logs/integ-gate-$n.log" | grep -qx "GATE$n DONE" || fail "gate $n did not finish: $(cat "$WORK/logs/integ-gate-$n.log")"
 }
 verdict() { grep -E '^(GREEN |RED|CHECKOUT |NO CHECKOUT)' "$WORK/logs/integ-gate-$1.log" | tail -1; }
@@ -223,20 +177,74 @@ want="$(printf '%s\n' 'install -S' 'engine stop' 'install -g -c')"
 $got
 want:
 $want"
-[[ ! -f "$WORK/logs/flaky-history.tsv" ]] || fail "a green gate recorded flaky classes"
+[[ ! -f "$WORK/logs/quarantine-tickets.tsv" ]] || fail "a gate with nothing quarantined opened a ticket"
+grep -q '^FLAKY the quarantine on .* is current' "$WORK/logs/integ-gate-1.log" || fail "the gate did not review the quarantine: $(cat "$WORK/logs/integ-gate-1.log")"
 if grep -q -- '-s slow' "$WORK/calls-1"; then fail "a Full tier with no base ran the slow tier: $(cat "$WORK/calls-1")"; fi
 grep -qx 'test -s docs -c --no-ansi' "$WORK/calls-1" || fail "the Full tier did not run the docs suite alone: $(cat "$WORK/calls-1")"
 
 gate 2 FAIL_PUSHGATE=1
 [[ "$(verdict 2)" == "RED" ]] || fail "a push gate green only on its re-run was not red: $(cat "$WORK/logs/integ-gate-2.log")"
 [[ "$(grep -c '^install -g -c$' "$WORK/calls-2")" -eq 2 ]] || fail "a red push gate did not run once more: $(cat "$WORK/calls-2")"
-grep -q "rerun-pass.*a.FlakyTest.*$tip" "$WORK/logs/flaky-history.tsv" || fail "the gate did not record the class that passed on its re-run: $(cat "$WORK/logs/integ-gate-2.log")"
-grep -q '^FLAKY' "$WORK/logs/integ-gate-2.log" || fail "the gate log does not say what it recorded"
 
 gate 3 FAIL_REINSTALL=1
 [[ "$(verdict 3)" == "RED (reinstall)" ]] || fail "a failed reinstall did not stop the gate: $(cat "$WORK/logs/integ-gate-3.log")"
 grep -q 'compile failed' "$WORK/logs/integ-gate-3.log" || fail "the gate log does not say why the reinstall failed"
 if grep -q '^install -g' "$WORK/calls-3"; then fail "the push gate ran after a failed reinstall"; fi
+
+# --- the quarantine ---
+git init -q --bare "$WORK/queue.git"
+# waiting: the quarantine file the stand-in queue holds; subject: its commit's subject.
+waiting() { git --git-dir="$WORK/queue.git" show "refs/queue/gate/quarantine:.jk/test/quarantine.toml"; }
+subject() { git --git-dir="$WORK/queue.git" log -1 --format=%s refs/queue/gate/quarantine; }
+clean() { [[ -z "$(git -C "$repo" status --porcelain)" ]] || fail "gate $1 left the checkout dirty: $(git -C "$repo" status --porcelain)"; }
+
+# A red push gate whose re-run quarantines a class: still red, the checkout clean, one ticket, and
+# the queue holds the file with the class and the ticket's id, on the base and nothing else.
+gate 30 FAIL_PUSHGATE=1 QUARANTINE_ADD=a.FlakyTest
+[[ "$(verdict 30)" == "RED" ]] || fail "a red push gate was not red: $(cat "$WORK/logs/integ-gate-30.log")"
+clean 30
+[[ "$(tickets)" -eq 1 ]] || fail "one quarantined class opened $(tickets) tickets"
+grep -q 'Flaky test FlakyTest' "$WORK/ka.new.log" || fail "the ticket does not name the class: $(cat "$WORK/ka.new.log")"
+grep -q '^FLAKY a.FlakyTest quarantined: TK-F0001' "$WORK/logs/integ-gate-30.log" || fail "the log does not name the ticket: $(cat "$WORK/logs/integ-gate-30.log")"
+grep -q '^FLAKY submitted' "$WORK/logs/integ-gate-30.log" || fail "the change was not submitted: $(cat "$WORK/logs/integ-gate-30.log") $(cat "$WORK/logs/g30-quarantine.log")"
+waiting | grep -qx 'issue = "TK-F0001"' || fail "the submitted file does not name the ticket: $(waiting)"
+waiting | grep -qx 'name = "a.FlakyTest"' || fail "the submitted file does not hold the class: $(waiting)"
+[[ "$(subject)" == "TK-F0001: a.FlakyTest is quarantined under TK-F0001" ]] || fail "the commit's subject was: $(subject)"
+[[ "$(git --git-dir="$WORK/queue.git" rev-parse refs/queue/gate/quarantine^)" == "$tip" ]] || fail "the change is not on the base alone"
+
+# A green gate that quarantines another class: green, and the queue holds both, the first still
+# unlanded; its ticket is not opened again.
+gate 31 QUARANTINE_ADD=a.OtherTest
+[[ "$(verdict 31)" == "GREEN $tip" ]] || fail "a gate that quarantined a class was not green: $(cat "$WORK/logs/integ-gate-31.log")"
+clean 31
+[[ "$(tickets)" -eq 2 ]] || fail "two quarantined classes opened $(tickets) tickets"
+[[ "$(waiting | grep -c '^\[\[class\]\]')" -eq 2 ]] || fail "the submitted file does not hold both classes: $(waiting)"
+gate 32 QUARANTINE_ADD=a.OtherTest
+[[ "$(tickets)" -eq 2 ]] || fail "a class with an open ticket got another"
+grep -q '^FLAKY the merge queue already holds' "$WORK/logs/integ-gate-32.log" || fail "the same change was submitted again: $(cat "$WORK/logs/integ-gate-32.log")"
+
+# The queue lands it, with an entry added by hand that names no ticket; then the first ticket
+# closes. Its class leaves the quarantine, the hand-added class gets a ticket, the other stays.
+mkdir -p "$repo/.jk/test"
+{ waiting && printf '\n[[class]]\nname = "b.HandTest"   # by hand\nreason = "flaky"\n'; } >"$repo/.jk/test/quarantine.toml"
+git -C "$repo" add -A && git -C "$repo" commit -qm landed
+tip="$(git -C "$repo" rev-parse HEAD)"
+echo done >"$WORK/ka/TK-F0001"
+gate 33
+[[ "$(verdict 33)" == "GREEN $tip" ]] || fail "the gate after the landing was not green: $(cat "$WORK/logs/integ-gate-33.log")"
+clean 33
+grep -q '^FLAKY a.FlakyTest leaves the quarantine: TK-F0001 is done' "$WORK/logs/integ-gate-33.log" || fail "the closed ticket did not release its class: $(cat "$WORK/logs/integ-gate-33.log")"
+if waiting | grep -q a.FlakyTest; then fail "the released class is still in the file: $(waiting)"; fi
+waiting | grep -qx 'issue = "TK-F0002"' || fail "the class still quarantined lost its ticket: $(waiting)"
+waiting | grep -qx 'issue = "TK-F0003"' || fail "the hand-added class got no ticket: $(waiting)"
+[[ "$(subject)" == "TK-F0001: The gate's test quarantine follows its tickets" ]] || fail "the commit's subject was: $(subject)"
+
+# A class that cannot get a ticket is not submitted.
+before="$(git --git-dir="$WORK/queue.git" rev-parse refs/queue/gate/quarantine)"
+gate 34 QUARANTINE_ADD=a.ThirdTest KA_FAIL=1
+clean 34
+grep -q '^FLAKY a.ThirdTest: no ticket opened' "$WORK/logs/integ-gate-34.log" || fail "the log does not say the class got no ticket: $(cat "$WORK/logs/integ-gate-34.log")"
+[[ "$(git --git-dir="$WORK/queue.git" rev-parse refs/queue/gate/quarantine)" == "$before" ]] || fail "a class with no ticket was submitted: $(waiting)"
 
 touch "$repo/stray"
 gate 4
@@ -245,8 +253,9 @@ gate 4
 # --- the Queue tier ---
 # A workspace of three members, one nested in another, and a curated lane over two of them.
 q="$WORK/qrepo"
-mkdir -p "$q/scripts/gate" "$q/mod/a/packs/p" "$q/mod/b" "$q/plugins/x" "$q/docs"
+mkdir -p "$q/scripts/gate" "$q/scripts/queue" "$q/mod/a/packs/p" "$q/mod/b" "$q/plugins/x" "$q/docs" "$q/.jk/test"
 cp "$ROOT"/scripts/gate/*.sh "$q/scripts/gate/"
+cp "$ROOT"/scripts/queue/*.sh "$q/scripts/queue/"
 cp "$ROOT/scripts/curated-integration.sh" "$q/scripts/"
 cp "$repo/scripts/release-notes.sh" "$repo/scripts/test-ok.sh" "$q/scripts/"
 cat >"$q/jk.toml" <<'EOF'
@@ -279,8 +288,8 @@ qc base
 qbase="$(git -C "$q" rev-parse HEAD)"
 changed() { (cd "$q" && bash scripts/gate/changed-modules.sh "$@" | tr '\n' ' '); }
 
-echo 2 >"$q/docs/d.md" && echo 2 >"$q/README.md" && echo 2 >"$q/scripts/notes.txt" && qc docs
-[[ "$(changed "$qbase")" == "" ]] || fail "docs, a root Markdown file and scripts selected members: $(changed "$qbase")"
+echo 2 >"$q/docs/d.md" && echo 2 >"$q/README.md" && echo 2 >"$q/scripts/notes.txt" && echo '# none' >"$q/.jk/test/quarantine.toml" && qc docs
+[[ "$(changed "$qbase")" == "" ]] || fail "docs, a root Markdown file, scripts and the test quarantine selected members: $(changed "$qbase")"
 echo 2 >"$q/mod/a/packs/p/P.java" && qc pack
 [[ "$(changed "$qbase")" == "mod/a/packs/p " ]] || fail "a nested member's file did not select it alone: $(changed "$qbase")"
 echo 2 >"$q/mod/a/A.java" && qc a
@@ -313,12 +322,7 @@ gate 22 GATE_TIER=queue GATE_BASE="$qbase" FAIL_REINSTALL=1
 [[ "$(verdict 22)" == "RED (reinstall)" ]] || fail "a failed reinstall did not stop the Queue tier: $(cat "$WORK/logs/integ-gate-22.log")"
 if grep -qE '^(install -c|test )' "$WORK/calls-22"; then fail "the Queue tier ran tests after a failed reinstall: $(cat "$WORK/calls-22")"; fi
 
-# Red only in a quarantined class: excused, and green. Red in another class too: red, naming the run.
-printf '2000-01-01T00:00:00Z\tquarantined\tcc.jumpkick:jk-engine\ta.FlakyTest\tfake-9\n' >>"$WORK/logs/flaky-history.tsv"
-echo ready >"$WORK/ka/fake-9"
-gate 6 GATE_TIER=queue GATE_BASE="$qbase" FAIL_INTEG=1 RERUN_JSONL="$WORK/red.jsonl"
-[[ "$(verdict 6)" == "GREEN $tip" ]] || fail "a run red only in quarantine was not excused: $(cat "$WORK/logs/integ-gate-6.log")"
-grep -q '^EXCUSED changed' "$WORK/logs/integ-gate-6.log" || fail "the log does not say the run was excused"
+# Red with a compile error beside a failed class: red, naming the run, and not run again.
 gate 7 GATE_TIER=queue GATE_BASE="$qbase" FAIL_INTEG=1 RERUN_JSONL="$WORK/red-other.jsonl"
 [[ "$(verdict 7)" == "RED" ]] || fail "a run red outside the quarantine was not red: $(cat "$WORK/logs/integ-gate-7.log")"
 grep -q '^INTEG changed EXIT=4' "$WORK/logs/integ-gate-7.log" || fail "the log does not name the red run"
@@ -327,13 +331,12 @@ gate 24 GATE_TIER=queue GATE_BASE="$qbase" FAIL_DOCS=1 RERUN_JSONL="$WORK/red-ot
 [[ "$(verdict 24)" == "RED" ]] || fail "a red docs suite did not make the Queue tier red: $(cat "$WORK/logs/integ-gate-24.log")"
 grep -q '^DOCS_SUITE_EXIT=4' "$WORK/logs/integ-gate-24.log" || fail "the log does not name the red docs suite"
 
-# Red in a class that passes when run once more: green, and the class is recorded as flaky.
+# Red in a class that passes when run once more: green.
 gate 10 GATE_TIER=queue GATE_BASE="$qbase" FAIL_INTEG_ONCE=1 RESULTS_FIRST="$WORK/red-new.jsonl" \
   RERUN_JSONL="$WORK/rerun-new.jsonl"
 [[ "$(verdict 10)" == "GREEN $tip" ]] || fail "a run green on its re-run was not green: $(cat "$WORK/logs/integ-gate-10.log")"
 [[ "$(grep -c -- ' -X ' "$WORK/calls-10")" -eq 2 ]] || fail "the red run did not run once more: $(cat "$WORK/calls-10")"
 grep -q '^RERUN changed: .*EXIT=0' "$WORK/logs/integ-gate-10.log" || fail "the log does not say the run ran again"
-grep -q "rerun-pass.*b.NewTest.*$tip" "$WORK/logs/flaky-history.tsv" || fail "the flake was not recorded: $(cat "$WORK/logs/integ-gate-10.log")"
 
 # Red on the re-run too: red, naming the class and keeping its failure.
 gate 11 GATE_TIER=queue GATE_BASE="$qbase" FAIL_INTEG=1 RERUN_JSONL="$WORK/red-new.jsonl"
@@ -402,7 +405,7 @@ grep -q 'a test reads docs/d.md, which test-reads.txt does not list' "$WORK/logs
 git -C "$q" checkout -q -- scripts/gate/test-reads.txt
 
 # The docs tier: guard, the scoreboard check and the docs suite over a docs-only range, and nothing
-# else.
+# else but the quarantine's review.
 dbase="$tip"
 echo 3 >"$q/docs/d.md" && echo 3 >"$q/README.md" && qc docs-only
 tip="$(git -C "$q" rev-parse HEAD)"
@@ -411,6 +414,11 @@ gate 17 GATE_TIER=docs GATE_BASE="$dbase"
 got="$(grep -vE '^(--version|engine status)' "$WORK/calls-17")"
 [[ "$got" == "$(printf '%s\n' guard 'test -s docs -c --no-ansi')" ]] || fail "the docs tier ran: $got"
 grep -q '^SCOREBOARD_EXIT=0' "$WORK/logs/integ-gate-17.log" || fail "the docs tier did not check the scoreboard"
+# A docs suite that quarantines a class: green, the checkout clean, and the class goes to review.
+gate 35 GATE_TIER=docs GATE_BASE="$dbase" QUARANTINE_ADD=a.DocsTest KA_FAIL=1
+[[ "$(verdict 35)" == "GREEN $tip" ]] || fail "a docs tier that quarantined a class was not green: $(cat "$WORK/logs/integ-gate-35.log")"
+[[ -z "$(git -C "$q" status --porcelain)" ]] || fail "the docs tier left the checkout dirty: $(git -C "$q" status --porcelain)"
+grep -q '^FLAKY a.DocsTest: no ticket opened' "$WORK/logs/integ-gate-35.log" || fail "the docs tier did not review the quarantine: $(cat "$WORK/logs/integ-gate-35.log")"
 gate 18 GATE_TIER=docs GATE_BASE="$dbase" FAIL_SCOREBOARD=1
 [[ "$(verdict 18)" == "RED" ]] || fail "a stale scoreboard block was not red: $(cat "$WORK/logs/integ-gate-18.log")"
 grep -q 'stale: docs/d.md' "$WORK/logs/integ-gate-18.log" || fail "the log does not say what is stale"
@@ -431,10 +439,11 @@ gate 9 GATE_TIER=fast
 # Under a Queue-tier gate's environment, every case above still holds.
 if [[ -z "${TEST_GATE_NESTED:-}" ]]; then
   env TEST_GATE_NESTED=1 GATE_TIER=queue GATE_BASE="$qbase" GATE_LOG_DIR="$WORK/outer-logs" \
-    GATE_CHECKOUT="$WORK/outer" GATE_BRANCH=main FLAKY_HISTORY="$WORK/outer-history.tsv" \
-    FLAKY_THRESHOLD=1 PRE_MODULES=mod/a PRE_SCRIPTS=false POST_SCRIPTS=false FAIL_INTEG=1 \
+    GATE_CHECKOUT="$WORK/outer" GATE_BRANCH=main FLAKY_LEDGER="$WORK/outer-ledger.tsv" \
+    FLAKY_BASE=outer JK_QUEUE_REMOTE="$WORK/outer.git" QUARANTINE_ADD=a.OuterTest KA_FAIL=1 \
+    PRE_MODULES=mod/a PRE_SCRIPTS=false POST_SCRIPTS=false FAIL_INTEG=1 \
     bash "$ROOT/scripts/test-gate.sh" >"$WORK/nested.log" 2>&1 ||
     fail "under a Queue-tier gate's environment: $(cat "$WORK/nested.log")"
 fi
 
-echo "test-gate: ok (flaky record and quarantine; 25 gate runs; again under a gate's environment)"
+echo "test-gate: ok (30 gate runs, 5 of them quarantining; again under a gate's environment)"

@@ -31,8 +31,8 @@
 #   FULL_CHECKOUT    the clean checkout the Full tier runs in; its origin holds main and green
 #                    (required; not the queue's checkout)
 #   FULL_GATE        the gate, run as <gate> <n> <sha> (default scripts/gate/gate.sh of the checkout)
-#   FULL_LOG_DIR     the gate logs, integ-gate-f<n>.log (default the queue's, so one flaky history
-#                    serves both: ${QUEUE_LOG_DIR:-/var/tmp/jk-queue})
+#   FULL_LOG_DIR     the gate logs, integ-gate-f<n>.log (default the queue's, so one ledger of
+#                    quarantine tickets serves both: ${QUEUE_LOG_DIR:-/var/tmp/jk-queue})
 #   FULL_HOLD_AFTER  red cycles in a row after which the queue lands only the fix (default 2)
 #   FULL_KA          the ka command that comments on tickets and reopens them (default ka)
 #   FULL_RERUN       re-runs failed classes, as <rerun> <sha> <classes> (default scripts/gate/rerun-classes.sh)
@@ -80,7 +80,7 @@
     fi
     n="f$(($(cat "$repo/full-n" 2>/dev/null || echo 0) + 1))"
     echo "${n#f}" >"$repo/full-n"
-    GATE_CHECKOUT="$co" GATE_LOG_DIR="$D" GATE_TIER=full GATE_BASE="${green:-$empty}" \
+    GATE_CHECKOUT="$co" GATE_LOG_DIR="$D" GATE_TIER=full GATE_BASE="${green:-$empty}" JK_QUEUE_REMOTE="$repo" \
       bash "${FULL_GATE:-$co/scripts/gate/gate.sh}" "$n" "$sha" </dev/null >/dev/null 2>&1
     L="$D/integ-gate-$n.log"
     verdict="$(grep -aE '^(GREEN |RED|CHECKOUT |NO CHECKOUT)' "$L" 2>/dev/null | tail -1)"

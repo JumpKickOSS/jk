@@ -201,7 +201,7 @@
     line+=" docs-only"
   fi
   gate="${QUEUE_GATE:-$co/scripts/gate/gate.sh}"
-  GATE_CHECKOUT="$co" GATE_LOG_DIR="$D" GATE_TIER="$tier" GATE_BASE="$base" \
+  GATE_CHECKOUT="$co" GATE_LOG_DIR="$D" GATE_TIER="$tier" GATE_BASE="$base" JK_QUEUE_REMOTE="$repo" \
     bash "$gate" "$n" "$tip" </dev/null >/dev/null 2>&1
   L="$D/integ-gate-$n.log"
   verdict="$(grep -aE '^(GREEN |RED|CHECKOUT |NO CHECKOUT)' "$L" 2>/dev/null | tail -1)"

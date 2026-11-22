@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # The workspace members a range of commits changed, one per line, as the root jk.toml's
 # `[workspace] modules` names them: the member holding each changed file. A file under docs/,
-# scripts/, .github/ or bench/, or a Markdown file at the root, selects nothing; any other file
-# outside every member (the root jk.toml, jk-lock.toml, .jk/, templates/, ...) selects every member,
-# printed as one `*`. Prints nothing when the range changed no member.
+# scripts/, .github/, bench/ or .jk/test/ (the test quarantine, not a build input), or a Markdown
+# file at the root, selects nothing; any other file outside every member (the root jk.toml,
+# jk-lock.toml, the rest of .jk/, templates/, ...) selects every member, printed as one `*`. Prints
+# nothing when the range changed no member.
 #
 # Usage: scripts/gate/changed-modules.sh <base> [<tip>]   (tip defaults to HEAD; run in the checkout)
 set -euo pipefail
@@ -44,7 +45,7 @@ MEMBERS="$members" awk '
     for (i = 1; i <= n; i++)
       if (index($0, m[i] "/") == 1 && length(m[i]) > length(best)) best = m[i]
     if (best != "") hit[best] = 1
-    else if ($0 !~ /^((docs|scripts|\.github|bench)\/|[^\/]+\.md$)/) all = 1
+    else if ($0 !~ /^((docs|scripts|\.github|bench|\.jk\/test)\/|[^\/]+\.md$)/) all = 1
   }
   END {
     if (all) { print "*"; exit }

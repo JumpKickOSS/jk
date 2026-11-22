@@ -11,18 +11,22 @@
 # docs`, alone), the release suite, the slow tier when a plugin (a member under plugins/) or a root
 # build file changed since GATE_BASE, the release notes, and a check that
 # scripts/gate/test-reads.txt lists every doc the suites were seen reading
-# (scripts/gate/docs-only.sh check). A red `jk install -g` runs once more, only to record the
-# classes that pass on that re-run as flaky (scripts/gate/flaky.sh); its verdict stays red.
+# (scripts/gate/docs-only.sh check). A red `jk install -g` runs once more, so that jk records the
+# classes that pass on that re-run as flaky; its verdict stays red.
 #
 # The Queue tier (GATE_TIER=queue), the one that blocks a push from the merge queue: after the
 # reinstall, one install that runs every module's fast tier (`jk install -c`), then, under a
 # freshly started engine, the integration suite of each module changed since GATE_BASE
 # (scripts/gate/changed-modules.sh; every module when a root build file changed) and the curated
 # lane's classes (curated-integration.txt) in the other modules, then the docs suite (`jk test -s
-# docs`). A run red only in quarantined classes (`flaky.sh excused`) passes; a run red in other
-# classes runs them once more under the same inputs, and passes when they pass there, recorded as
-# flaky. Each class still red is a `FAILED <module> <class>` line of the log, its
-# failure in g<n>-failures.txt.
+# docs`). jk passes a run red only in the classes .jk/test/quarantine.toml holds; a run red in other
+# classes runs them once more under the same inputs, and passes when they pass there. Each class
+# still red is a `FAILED <module> <class>` line of the log, its failure in g<n>-failures.txt.
+#
+# Every tier runs every quarantined class. jk records each class's runs and quarantines a flaky one
+# in the checkout; the gate saves that file, restores the checkout, and then opens a ticket for each
+# class jk added and submits the file, with their tickets and without the classes whose ticket
+# closed, to the merge queue (scripts/gate/flaky.sh review, its output in g<n>-quarantine.log).
 #
 # The docs tier (GATE_TIER=docs), which the merge queue runs in place of the Queue tier when
 # everything since GATE_BASE is docs-only (scripts/gate/docs-only.sh range): `jk guard`, which holds
@@ -48,8 +52,9 @@
 #   PRE_SCRIPTS       scripts that must pass before guard; POST_SCRIPTS after the fixtures
 #   PRE_REDO          non-empty: the pre-run ignores cached verdicts (`jk test -r`)
 #   PRE_SESSION       non-empty: log what scripts/release-session.sh says about the tree
-#   FLAKY_*           the flaky record and quarantine's settings (scripts/gate/flaky.sh); the
-#                     history defaults to $GATE_LOG_DIR/flaky-history.tsv
+#   FLAKY_*           the quarantine review's settings (scripts/gate/flaky.sh); its ledger of
+#                     tickets defaults to $GATE_LOG_DIR/quarantine-tickets.tsv
+#   JK_QUEUE_REMOTE   the merge queue the quarantine change is submitted to (scripts/queue/common.sh)
 #
 # The whole body is one brace group, so bash has read all of it before the checkout below can
 # change this file under it.
@@ -68,7 +73,20 @@
   : >"$D/g$n-failures.txt"
 
   noansi() { sed 's/\x1b\[[0-9;]*m//g' "$@"; }
-  done_gate() { echo "GATE$n DONE" >>"$L"; exit 0; }
+  # Once tests have run, the quarantine file jk changed leaves the checkout, and the review files
+  # its tickets and submits it; each at most once.
+  quarantine_take() {
+    [ -n "${quarantine:-}" ] || return 0
+    bash scripts/gate/flaky.sh take "$D/g$n-quarantine.toml" >>"$L" 2>&1 || echo "QUARANTINE not restored" >>"$L"
+  }
+  quarantine_review() {
+    [ -n "${quarantine:-}" ] || return 0
+    quarantine_take
+    quarantine=""
+    GATE_LOG_DIR="$D" bash scripts/gate/flaky.sh review "$D/g$n-quarantine.toml" "$D/g$n-quarantine.log" >>"$L" 2>&1 \
+      || echo "FLAKY review failed" >>"$L"
+  }
+  done_gate() { quarantine_review; echo "GATE$n DONE" >>"$L"; exit 0; }
   red() { echo "$1" >>"$L"; done_gate; }
   # The FAIL/T/E lines of the pre-run log, then the gate stops red.
   pre_red() { noansi "$D/g$n-pre.log" | grep -aE "^(FAIL|T |E )" | tail -8 >>"$L"; red "RED (pre)"; }
@@ -128,10 +146,13 @@
     sb=$?
     echo "SCOREBOARD_EXIT=$sb $(date +%H:%M:%S)" >>"$L"
     [ "$sb" -eq 0 ] || grep -v 'left alone$' "$D/g$n-scoreboard.log" | tail -8 >>"$L"
+    quarantine=1
+    rm -f "$D/g$n-quarantine.toml"
     jk test -s docs -c --no-ansi >"$D/g$n-docs.log" 2>&1 </dev/null
     ds=$?
     echo "DOCS_SUITE_EXIT=$ds $(date +%H:%M:%S)" >>"$L"
     [ "$ds" -eq 0 ] || noansi "$D/g$n-docs.log" | grep -aE "^(FAIL|T |E )" | tail -8 >>"$L"
+    quarantine_take
     git status --porcelain >>"$L"
     if [ "$sb" -eq 0 ] && [ "$ds" -eq 0 ] && [ -z "$(git status --porcelain)" ]; then
       echo "GREEN $(git rev-parse HEAD)" >>"$L"
@@ -153,38 +174,30 @@
     red "RED (reinstall)"
   fi
   jk engine stop >/dev/null 2>&1
+  quarantine=1
+  rm -f "$D/g$n-quarantine.toml"
 
   m=0 s=0 r=0 rn=0 sl=0 dr=0 ds=0
   if [ "$tier" = queue ]; then
-    # tested <label> <excusable> <jk args...>: one jk run that runs tests, its exit in $e. A red run
-    # is excused when <excusable> is set and it failed only in quarantined classes. Otherwise a run
-    # red only in test classes runs once more under the same stamp, which runs only those classes:
-    # the classes that pass now are recorded as flaky and the second run's verdict counts. A run
-    # still red names each failed class in the log as `FAILED <module> <class>`, and the failures'
-    # messages and stacks go to g<n>-failures.txt, for the merge queue to tell the branch's ticket.
+    # tested <label> <jk args...>: one jk run that runs tests, its exit in $e. A run red only in
+    # test classes runs once more under the same stamp, which runs only those classes: jk records
+    # the classes that pass now as flaky, and the second run's verdict counts. A run still red names
+    # each failed class in the log as `FAILED <module> <class>`, and the failures' messages and
+    # stacks go to g<n>-failures.txt, for the merge queue to tell the branch's ticket.
     tested() {
-      local label="$1" excusable="$2" out="$D/g$n-$1"
-      shift 2
+      local label="$1" out="$D/g$n-$1"
+      shift
       jk "$@" >"$out.log" 2>&1 </dev/null
       e=$?
       [ "$e" -eq 0 ] && return
       jk results -O jsonl >"$out.jsonl" 2>/dev/null </dev/null
-      if [ -n "$excusable" ] && excused "$label" "$out.jsonl"; then
-        e=0
-        return
-      fi
       if bash scripts/gate/flaky.sh failed "$out.jsonl" >/dev/null 2>&1; then
         out="$D/g$n-$label-rerun"
         jk "$@" >"$out.log" 2>&1 </dev/null
         e=$?
         echo "RERUN $label: its failed classes once more under the same inputs, EXIT=$e $(date +%H:%M:%S)" >>"$L"
         jk results -O jsonl >"$out.jsonl" 2>/dev/null </dev/null
-        GATE_LOG_DIR="$D" bash scripts/gate/flaky.sh record "$out.jsonl" "$(git rev-parse HEAD)" >>"$L" 2>&1
         [ "$e" -eq 0 ] && return
-        if [ -n "$excusable" ] && excused "$label" "$out.jsonl"; then
-          e=0
-          return
-        fi
       fi
       noansi "$out.log" | grep -aE "^(FAIL|T |E )|FAILED " | tail -20 >>"$L"
       bash scripts/gate/flaky.sh failed "$out.jsonl" 2>/dev/null | sed 's/^/FAILED /' >>"$L"
@@ -192,27 +205,21 @@
         | "\(.testClass)#\(.method // "?") (\(.module))", ((.stack // .message // "") | split("\n")[:12][] | "    " + .)' \
         "$out.jsonl" >>"$D/g$n-failures.txt" 2>/dev/null
     }
-    # excused <label> <details.jsonl>: the run failed only in quarantined classes.
-    excused() {
-      GATE_LOG_DIR="$D" bash scripts/gate/flaky.sh excused "$2" >>"$L" 2>&1 || return 1
-      echo "EXCUSED $1: red only in quarantined classes" >>"$L"
-    }
-
     # The one install that runs tests: every module's fast tier under the engine just installed,
     # then the reinstall, which installs that same engine again.
-    tested install "" install -c
+    tested install install -c
     m=$e
     echo "INSTALL_EXIT=$m $(date +%H:%M:%S)" >>"$L"
     [ "$m" -eq 0 ] || red "RED (install)"
     # The integration runs below start a fresh engine from the jar just installed.
     jk engine stop >/dev/null 2>&1
 
-    # integ <label> <jk test args...>: one integration run, red unless each failure is in a
-    # quarantined class or passes when run once more.
+    # integ <label> <jk test args...>: one integration run, red unless each failure passes when run
+    # once more.
     integ() {
       local label="$1" e
       shift
-      tested "$label" excusable test "$@"
+      tested "$label" test "$@"
       echo "INTEG $label EXIT=$e $(date +%H:%M:%S)" >>"$L"
       [ "$e" -eq 0 ] || s=1
     }
@@ -234,7 +241,7 @@
       done < <(JK=jk bash scripts/curated-integration.sh --print)
     fi
     # The docs suite checks the docs against the code, so a code change can break it too.
-    tested docs excusable test -s docs -c --no-ansi
+    tested docs test -s docs -c --no-ansi
     ds=$e
     echo "DOCS_SUITE_EXIT=$ds $(date +%H:%M:%S)" >>"$L"
   else
@@ -244,12 +251,11 @@
     [ "$s" -ne 0 ] && noansi "$D/g$n-snapshot.log" | grep -aE "FAILED |OutOfMemory" >>"$L"
     noansi "$D/g$n-snapshot.log" | grep -E "^(FAIL|T |OK|E )" | tail -8 >>"$L"
     # A red `jk install -g` runs once more under the same inputs, which runs only the classes that
-    # did not pass; those that pass now are flaky, and the history keeps them. The verdict stays red.
+    # did not pass; jk records those that pass now as flaky. The verdict stays red.
     if [ "$s" -ne 0 ]; then
       jk install -g -c >"$D/g$n-rerun.log" 2>&1
       echo "RERUN_EXIT=$? $(date +%H:%M:%S)" >>"$L"
       jk results -O jsonl >"$D/g$n-rerun.jsonl" 2>/dev/null
-      GATE_LOG_DIR="$D" bash scripts/gate/flaky.sh record "$D/g$n-rerun.jsonl" "$(git rev-parse HEAD)" >>"$L" 2>&1
     fi
   fi
 
@@ -323,6 +329,7 @@
     w=$(env -u CLAUDECODE -u AI_AGENT jk web -O jsonl 2>/dev/null | head -c 8)
     echo "jk web -O jsonl starts with: $w" >>"$L"
   fi
+  quarantine_take
   git status --porcelain >>"$L"
 
   if [ "$eng" -eq 0 ] && [ "$m" -eq 0 ] && [ "$s" -eq 0 ] && [ "$r" -eq 0 ] && [ "$sl" -eq 0 ] && [ "$ff" -eq 0 ] \
@@ -332,8 +339,7 @@
     echo "RED" >>"$L"
   fi
 
-  # Quarantine the classes past the threshold and release those whose ticket closed.
-  GATE_LOG_DIR="$D" bash scripts/gate/flaky.sh review >>"$L" 2>&1 || echo "FLAKY review failed" >>"$L"
+  quarantine_review
 
   # What a no-op build after the gate would still do: a gate that leaves work behind is a finding.
   [ "$tier" = full ] || done_gate

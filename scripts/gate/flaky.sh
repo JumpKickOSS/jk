@@ -1,144 +1,45 @@
 #!/usr/bin/env bash
-# The gate's flaky-test record and quarantine. A class that failed and then passed on a re-run with
-# no input changed (jk's `test-passed-on-rerun` warning) is appended to the history; past the
-# threshold it is quarantined with an open ticket, and it leaves quarantine when that ticket closes.
-# The Full tier runs every class whatever this says; the Queue tier leaves quarantined classes out.
+# The gate's side of jk's test quarantine. jk keeps each class's history and, past the root's
+# [test] quarantine threshold, adds the class to .jk/test/quarantine.toml in the gate's checkout; a
+# run red only in quarantined classes passes, and every tier still runs them. The gate opens a
+# ticket for each class jk adds, writes the ticket's id as its `issue`, takes it out when the
+# ticket closes, and submits the file to the merge queue, the only writer to origin/main.
 #
 # Usage:
-#   scripts/gate/flaky.sh record <details.jsonl> <tip>   append each class the run passed on re-run
-#   scripts/gate/flaky.sh review                         quarantine past the threshold; release closed
-#   scripts/gate/flaky.sh list                           the quarantine: `<module> <class> <ticket>`
-#   scripts/gate/flaky.sh excused <details.jsonl>        exit 0 when the run failed only in quarantine
-#   scripts/gate/flaky.sh failed <details.jsonl>         `<module> <class>` of each failed class; exit
-#                                                        0 when the run failed only in test classes
+#   scripts/gate/flaky.sh failed <details.jsonl>   `<module> <class>` of each failed class; exit 0
+#                                                  when the run failed only in test classes
+#   scripts/gate/flaky.sh take <saved>             save the quarantine file jk changed in this
+#                                                  checkout to <saved> and restore HEAD's
+#   scripts/gate/flaky.sh review <saved> <log>     open a ticket for each class jk added (in <saved>)
+#                                                  or that has none on FLAKY_BASE, and submit
+#                                                  FLAKY_BASE's file with their tickets and without
+#                                                  the classes whose ticket closed; the Branch tier
+#                                                  and the submit write to <log>
 #
-#   FLAKY_HISTORY     the history (default ${GATE_LOG_DIR:-/var/tmp/jk-gate}/flaky-history.tsv), one
-#                     row per event: `<UTC time> <event> <module> <class> <tip or ticket>`, tab-separated;
-#                     events `rerun-pass`, `quarantined`, `released`
-#   FLAKY_THRESHOLD   re-run passes that quarantine a class (default 2) ...
-#   FLAKY_WINDOW_DAYS ... within this many days, counted since the class last left quarantine (default 30)
-#   FLAKY_KA          the ka command that opens and reads the tickets (default ka)
-#   FLAKY_PROJECT     the ticket project (default jk); FLAKY_PARENT a parent ticket for each (default none)
-#   FLAKY_NOW         the time as Unix seconds (default now)
+#   FLAKY_BASE    the commit the quarantine change is made on (default origin/main)
+#   FLAKY_LEDGER  each ticket the gate opened, `<module> <class> <reason> <since> <ticket>`,
+#                 tab-separated, `-` for empty (default ${GATE_LOG_DIR:-/var/tmp/jk-gate}/quarantine-tickets.tsv);
+#                 it carries a class across gates until the queue lands its entry
+#   FLAKY_BRANCH  the branch submitted to the merge queue (default gate/quarantine)
+#   FLAKY_KA      the ka command that opens and reads the tickets (default ka)
+#   FLAKY_PROJECT the ticket project (default jk); FLAKY_PARENT a parent ticket for each (default none)
+#   JK_QUEUE_REMOTE  the merge queue's repository (scripts/queue/common.sh)
 set -euo pipefail
 
-HISTORY="${FLAKY_HISTORY:-${GATE_LOG_DIR:-/var/tmp/jk-gate}/flaky-history.tsv}"
-THRESHOLD="${FLAKY_THRESHOLD:-2}"
-WINDOW_DAYS="${FLAKY_WINDOW_DAYS:-30}"
+FILE=.jk/test/quarantine.toml
+LEDGER="${FLAKY_LEDGER:-${GATE_LOG_DIR:-/var/tmp/jk-gate}/quarantine-tickets.tsv}"
+BRANCH="${FLAKY_BRANCH:-gate/quarantine}"
 KA="${FLAKY_KA:-ka}"
-NOW="${FLAKY_NOW:-$(date +%s)}"
+HERE="$(cd "$(dirname "$0")" && pwd)"
+TICKET_ID='[A-Z][A-Z0-9]*-[0-9A-Z]{5}'
 
 die() {
   echo "flaky: $*" >&2
   exit 2
 }
 
-# The UTC time of Unix second $1, in the history's format; GNU date, then BSD date.
-utc() { date -u -d "@$1" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -r "$1" +%Y-%m-%dT%H:%M:%SZ; }
-
-append() { printf '%s\t%s\t%s\t%s\t%s\n' "$(utc "$NOW")" "$1" "$2" "$3" "$4" >>"$HISTORY"; }
-
 # The JSON lines of $1; a line that is not JSON is skipped.
 rows() { jq -cR 'fromjson? // empty' "$1"; }
-
-# The quarantine as the history leaves it: `<module> <class> <ticket>`, a class's last
-# `quarantined` row not followed by a `released` one.
-quarantine() {
-  [[ -f "$HISTORY" ]] || return 0
-  awk -F'\t' '
-    $2 == "quarantined" { q[$4] = $3 " " $4 " " $5 }
-    $2 == "released" { delete q[$4] }
-    END { for (c in q) print q[c] }
-  ' "$HISTORY" | sort
-}
-
-record() {
-  local details="${1:?usage: flaky.sh record <details.jsonl> <tip>}" tip="${2:?usage: flaky.sh record <details.jsonl> <tip>}"
-  [[ -f "$details" ]] || die "no run transcript at $details"
-  mkdir -p "$(dirname "$HISTORY")"
-  local module class n=0
-  while IFS=$'\t' read -r module class; do
-    [[ -n "$class" ]] || continue
-    append rerun-pass "$module" "$class" "$tip"
-    echo "FLAKY $module $class passed on a re-run at $tip"
-    n=$((n + 1))
-  done < <(rows "$details" | jq -r '
-    select(.type == "warn" and .code == "test-passed-on-rerun")
-    | .module as $m | .message | sub("^.*: "; "") | split(", ") | map(sub("\\$.*"; "")) | unique[]
-    | [$m, .] | @tsv')
-  [[ "$n" -gt 0 ]] || echo "FLAKY no class passed on a re-run"
-}
-
-# Open a ticket for class $2 of module $1 with its history rows in it; print its id.
-open_ticket() {
-  local module="$1" class="$2" body args
-  body="$(printf '%s\n\n%s\n\n%s\n' \
-    "\`$class\` ($module) failed and then passed on a re-run with no input changed $THRESHOLD times in $WINDOW_DAYS days, so the gate quarantined it: the Queue tier leaves it out and the Full tier still runs it. It leaves quarantine when this ticket closes." \
-    "History (\`scripts/gate/flaky.sh\`):" \
-    "$(awk -F'\t' -v c="$class" '$4 == c { print "    " $0 }' "$HISTORY")")"
-  args=(new -project "${FLAKY_PROJECT:-jk}" -kind bug -priority P2 -label flake -json
-    -t "Flaky test ${class##*.}: it fails and passes on re-run with no input changed"
-    -accept "${class##*.} passes 20 runs in a row under jk test -r" -m "$body")
-  [[ -n "${FLAKY_PARENT:-}" ]] && args+=(-parent "$FLAKY_PARENT")
-  "$KA" "${args[@]}" </dev/null | jq -r '.id // empty'
-}
-
-review() {
-  [[ -f "$HISTORY" ]] || {
-    echo "FLAKY no history at $HISTORY"
-    return 0
-  }
-  command -v "$KA" >/dev/null 2>&1 || die "$KA not found: the quarantine needs it to open and read tickets"
-  local module class ticket status since
-  # Release first, so a class whose ticket closed counts only the passes after it.
-  while read -r module class ticket; do
-    status="$("$KA" show "$ticket" -json </dev/null | jq -r '.status // empty')" || status=""
-    case "$status" in
-      done | canceled)
-        append released "$module" "$class" "$ticket"
-        echo "FLAKY $class left quarantine: $ticket is $status"
-        ;;
-      "") echo "FLAKY $class: $ticket unreadable; still quarantined" ;;
-    esac
-  done < <(quarantine)
-  since="$(utc $((NOW - WINDOW_DAYS * 86400)))"
-  while read -r module class; do
-    ticket="$(open_ticket "$module" "$class")" || ticket=""
-    if [[ -z "$ticket" ]]; then
-      echo "FLAKY $class past the threshold, but no ticket opened; not quarantined"
-      continue
-    fi
-    append quarantined "$module" "$class" "$ticket"
-    echo "FLAKY $class quarantined: $ticket"
-  done < <(awk -F'\t' -v since="$since" -v threshold="$THRESHOLD" '
-    $2 == "rerun-pass" && $1 >= since { n[$4]++; m[$4] = $3 }
-    $2 == "released" { delete n[$4] }
-    $2 == "quarantined" { q[$4] = 1 }
-    $2 == "released" { delete q[$4] }
-    END { for (c in n) if (n[c] >= threshold && !(c in q)) print m[c], c }
-  ' "$HISTORY" | sort)
-}
-
-# Exit 0 when every error of the run is a test failure in a quarantined class, and there is one.
-excused() {
-  local details="${1:?usage: flaky.sh excused <details.jsonl>}" failed held class bad=0
-  [[ -f "$details" ]] || die "no run transcript at $details"
-  failed="$(rows "$details" | jq -r '
-    select(.type == "error") | if .code == "test-failure" and .testClass then .testClass else "-" end' \
-    | sed 's/\$.*//' | sort -u)"
-  [[ -n "$failed" ]] || return 1
-  held="$(quarantine | awk '{ print $2 }')"
-  while read -r class; do
-    if [[ "$class" == "-" ]]; then
-      echo "FLAKY the run failed outside a test class"
-      bad=1
-    elif ! grep -Fxq -- "$class" <<<"$held"; then
-      echo "FLAKY not quarantined: $class"
-      bad=1
-    fi
-  done <<<"$failed"
-  return "$bad"
-}
 
 # The classes the run failed in, `<module> <class>` (a nested class as its outermost one). Exit 0
 # when there is one and every error of the run is a failure in a class: only then can running the
@@ -154,11 +55,221 @@ failed() {
   [[ -n "$all" ]] && ! grep -qx -- - <<<"$all"
 }
 
-case "${1:-}" in
-  record) record "${@:2}" ;;
-  failed) failed "${@:2}" ;;
-  review) review ;;
-  list) quarantine ;;
-  excused) excused "${@:2}" ;;
-  *) die "usage: flaky.sh record <details.jsonl> <tip> | review | list | excused <details.jsonl> | failed <details.jsonl>" ;;
-esac
+take() {
+  local saved="${1:?usage: flaky.sh take <saved>}"
+  [[ -n "$(git status --porcelain -- "$FILE")" ]] || return 0
+  [[ -f "$FILE" ]] && cp "$FILE" "$saved"
+  echo "QUARANTINE jk changed $FILE in this gate; saved as $saved"
+  if git cat-file -e "HEAD:$FILE" 2>/dev/null; then git checkout -q HEAD -- "$FILE"; else rm -f "$FILE"; fi
+}
+
+# The entries of the quarantine file on stdin, `<module> <class> <reason> <since> <issue>`,
+# tab-separated, `-` for empty: module and class bare, the others as the file writes them.
+entries() {
+  awk -v sq="'" '
+    function value(s,   q, i, c, out) {
+      sub(/^[ \t]+/, "", s)
+      q = substr(s, 1, 1)
+      if (q == "\"" || q == sq) {
+        out = q
+        for (i = 2; i <= length(s); i++) {
+          c = substr(s, i, 1)
+          out = out c
+          if (q == "\"" && c == "\\") { i++; out = out substr(s, i, 1); continue }
+          if (c == q) break
+        }
+        return out
+      }
+      sub(/[ \t]*#.*$/, "", s)
+      sub(/[ \t]+$/, "", s)
+      return s
+    }
+    function bare(s,   q) { q = substr(s, 1, 1); return q == "\"" || q == sq ? substr(s, 2, length(s) - 2) : s }
+    function dash(s) { return s == "" ? "-" : s }
+    function flush() {
+      if (inc && f["name"] != "")
+        print dash(bare(f["module"])) "\t" bare(f["name"]) "\t" dash(f["reason"]) "\t" dash(f["since"]) "\t" dash(f["issue"])
+      split("", f)
+      inc = 0
+    }
+    /^[ \t]*\[\[[ \t]*class[ \t]*\]\][ \t]*(#.*)?$/ { flush(); inc = 1; next }
+    /^[ \t]*\[/ { flush(); next }
+    inc && /^[ \t]*(name|module|reason|since|issue)[ \t]*=/ {
+      key = $0
+      sub(/^[ \t]*/, "", key)
+      sub(/[ \t]*=.*/, "", key)
+      v = $0
+      sub(/^[^=]*=/, "", v)
+      f[key] = value(v)
+    }
+    END { flush() }
+  '
+}
+
+# The file holding the entries on stdin, as jk writes it: its header, then one [[class]] table per
+# entry, sorted by module then class.
+render() {
+  cat <<'EOF'
+# Test classes in quarantine: a failure in one does not fail the run, and each still runs.
+# JumpKick adds a class that fails and then passes on a re-run with nothing changed as often
+# as [test] quarantine in jk.toml says. Delete an entry to release its class.
+EOF
+  LC_ALL=C sort -t$'\t' -k1,1 -k2,2 | while IFS=$'\t' read -r module class reason since issue; do
+    printf '\n[[class]]\nname = "%s"\n' "$class"
+    [[ "$module" == - ]] || printf 'module = "%s"\n' "$module"
+    [[ "$reason" == - ]] || printf 'reason = %s\n' "$reason"
+    [[ "$since" == - ]] || printf 'since = %s\n' "$since"
+    [[ "$issue" == - ]] || printf 'issue = %s\n' "$issue"
+  done
+}
+
+# The ticket id an `issue` value names, or nothing.
+ticket_of() { grep -oE "$TICKET_ID" <<<"$1" | tail -1 || true; }
+
+# The status of ticket $1, empty when ka cannot read it.
+status() { "$KA" show "$1" -json </dev/null 2>/dev/null | jq -r '.status // empty' 2>/dev/null || true; }
+
+closed() {
+  case "$(status "$1")" in done | canceled) return 0 ;; *) return 1 ;; esac
+}
+
+# The ticket the gate last opened for class $2 of module $1, or nothing.
+ledger_ticket() {
+  [[ -f "$LEDGER" ]] || return 0
+  awk -F'\t' -v m="$1" -v c="$2" '$1 == m && $2 == c { t = $5 } END { if (t != "") print t }' "$LEDGER"
+}
+
+# Open a ticket for class $2 of module $1, quarantined for reason $3; print its id.
+open_ticket() {
+  local module="$1" class="$2" reason="$3" where body history args
+  where="module $module"
+  [[ "$module" == - ]] && where="every module"
+  [[ "$reason" == - ]] && reason=""
+  history="$(jk flaky show "$class" --no-ansi </dev/null 2>/dev/null || true)"
+  body="$(printf '%s\n\n%s\n\n%s\n' \
+    "\`$class\` ($where) failed and then passed on a re-run with nothing changed often enough that jk quarantined it${reason:+: ${reason//\"/}}. A failure in it no longer fails a run, and every tier still runs it. The gate takes it out of \`$FILE\` when this ticket closes." \
+    "Its history on $(hostname) (\`jk flaky show\`):" \
+    "$(sed 's/^/    /' <<<"${history:-(not available)}")")"
+  args=(new -project "${FLAKY_PROJECT:-jk}" -kind bug -priority P2 -label flake -json
+    -t "Flaky test ${class##*.}: it fails and passes on re-run with nothing changed"
+    -accept "${class##*.} passes 20 runs in a row under jk test -r" -m "$body")
+  [[ -n "${FLAKY_PARENT:-}" ]] && args+=(-parent "$FLAKY_PARENT")
+  "$KA" "${args[@]}" </dev/null 2>/dev/null | jq -r '.id // empty' 2>/dev/null || true
+}
+
+review() {
+  local saved="${1:?usage: flaky.sh review <saved> <log>}" log="${2:?usage: flaky.sh review <saved> <log>}"
+  local base="${FLAKY_BASE:-origin/main}" tip module class reason since issue t ops=() first=""
+  command -v "$KA" >/dev/null 2>&1 || die "$KA not found: the quarantine needs it to open and read tickets"
+  git rev-parse -q --verify "$base^{commit}" >/dev/null || die "no commit $base to make the quarantine change on"
+  tip="$(git rev-parse HEAD)"
+  work="$(mktemp -d "${TMPDIR:-/tmp}/jk-quarantine.XXXXXX")"
+  trap 'rm -rf "$work"' EXIT
+  git show "HEAD:$FILE" 2>/dev/null | entries >"$work/head" || true
+  git show "$base:$FILE" 2>/dev/null | entries >"$work/base" || true
+  : >"$work/now"
+  [[ -f "$saved" ]] && entries <"$saved" >"$work/now"
+
+  # A ticket for each class jk added in this gate, and for each entry on the base that names none.
+  mkdir -p "$(dirname "$LEDGER")"
+  {
+    awk -F'\t' -v head="$work/head" '
+      BEGIN { while ((getline l < head) > 0) { split(l, a, "\t"); held[a[1] "\t" a[2]] = 1 } }
+      !(($1 "\t" $2) in held)' "$work/now"
+    awk -F'\t' -v id="$TICKET_ID" '$5 !~ id' "$work/base"
+  } | while IFS=$'\t' read -r module class reason since issue; do
+    t="$(ledger_ticket "$module" "$class")"
+    if [[ -n "$t" ]] && ! closed "$t"; then continue; fi
+    t="$(open_ticket "$module" "$class" "$reason")"
+    if [[ -z "$t" ]]; then
+      echo "FLAKY $class: no ticket opened, so it stays out of the quarantine"
+      continue
+    fi
+    printf '%s\t%s\t%s\t%s\t%s\n' "$module" "$class" "$reason" "$since" "$t" >>"$LEDGER"
+    echo "FLAKY $class quarantined: $t"
+  done
+
+  # The file the base should hold: its entries, each with its ticket's id and none whose ticket
+  # closed, then each class the gate holds an open ticket for and the base does not.
+  : >"$work/want"
+  while IFS=$'\t' read -r module class reason since issue; do
+    t="$(ticket_of "$issue")"
+    [[ -n "$t" ]] || t="$(ledger_ticket "$module" "$class")"
+    if [[ -n "$t" ]] && closed "$t"; then
+      echo "FLAKY $class leaves the quarantine: $t is $(status "$t")"
+      ops+=("$t	$class leaves the quarantine: $t is closed")
+      continue
+    fi
+    if [[ -n "$t" && -z "$(ticket_of "$issue")" ]]; then
+      issue="\"$t\""
+      ops+=("$t	$class is quarantined under $t")
+    fi
+    printf '%s\t%s\t%s\t%s\t%s\n' "$module" "$class" "$reason" "$since" "$issue" >>"$work/want"
+  done <"$work/base"
+  if [[ -f "$LEDGER" ]]; then
+    while IFS=$'\t' read -r module class reason since t; do
+      awk -F'\t' -v m="$module" -v c="$class" '$1 == m && $2 == c { found = 1 } END { exit !found }' "$work/base" && continue
+      closed "$t" && continue
+      printf '%s\t%s\t%s\t%s\t"%s"\n' "$module" "$class" "$reason" "$since" "$t" >>"$work/want"
+      ops+=("$t	$class is quarantined under $t")
+    done < <(awk -F'\t' '{ last[$1 "\t" $2] = $0 } END { for (k in last) print last[k] }' "$LEDGER" | LC_ALL=C sort)
+  fi
+  if [[ "${#ops[@]}" -eq 0 ]]; then
+    echo "FLAKY the quarantine on $(git rev-parse --short=12 "$base") is current"
+    return 0
+  fi
+  render <"$work/want" >"$work/file"
+  [[ -s "$work/want" ]] || : >"$work/file"
+
+  # Run the queue's scripts from copies, since the checkout moves to the base under them.
+  cp "$HERE/../queue/branch-tier.sh" "$HERE/../queue/submit.sh" "$HERE/../queue/common.sh" "$work/"
+  # shellcheck source=scripts/queue/common.sh
+  . "$work/common.sh"
+  if git fetch -q "$QUEUE_REMOTE" "refs/queue/$BRANCH" 2>/dev/null; then
+    local waiting wanted=none
+    waiting="$(git rev-parse -q --verify "FETCH_HEAD:$FILE" 2>/dev/null || echo none)"
+    [[ -s "$work/want" ]] && wanted="$(git hash-object "$work/file")"
+    if [[ "$waiting" == "$wanted" ]]; then
+      echo "FLAKY the merge queue already holds this quarantine as $BRANCH"
+      return 0
+    fi
+  fi
+
+  if [[ -n "$(git status --porcelain)" ]]; then
+    echo "FLAKY the checkout is not clean, so the quarantine change waits for the next gate"
+    return 1
+  fi
+  first="$(cut -f1 <<<"${ops[0]}")"
+  local subject="$first: The gate's test quarantine follows its tickets"
+  [[ "${#ops[@]}" -eq 1 ]] && subject="$first: $(cut -f2 <<<"${ops[0]}")"
+  git checkout -q --detach "$base" || die "cannot check out $base"
+  mkdir -p "$(dirname "$FILE")"
+  if [[ -s "$work/want" ]]; then cp "$work/file" "$FILE"; else rm -f "$FILE"; fi
+  git add -A -- "$(dirname "$FILE")"
+  git commit -q -m "$subject" -m "$(printf '%s\n' "${ops[@]}" | cut -f2 | sed 's/^/- /')" \
+    -m "jk quarantined these classes on the gate's host, or their tickets closed; scripts/gate/flaky.sh review." \
+    || {
+      git reset -q --hard && git checkout -q --detach "$tip"
+      die "the quarantine change could not be committed"
+    }
+  git checkout -q -B "$BRANCH"
+  local rc=0
+  (BRANCH_TIER_BASE="$base" bash "$work/branch-tier.sh" && bash "$work/submit.sh" "$BRANCH") >>"$log" 2>&1 </dev/null || rc=$?
+  git reset -q --hard && git checkout -q --detach "$tip" && git branch -q -D "$BRANCH"
+  if [[ "$rc" -ne 0 ]]; then
+    echo "FLAKY the quarantine change did not pass the Branch tier or was not submitted (see $log)"
+    return 1
+  fi
+  echo "FLAKY submitted the quarantine change to the merge queue as $BRANCH"
+}
+
+# One brace group, read whole before `review` moves the checkout under this file.
+{
+  case "${1:-}" in
+    failed) failed "${@:2}" ;;
+    take) take "${@:2}" ;;
+    review) review "${@:2}" ;;
+    *) die "usage: flaky.sh failed <details.jsonl> | take <saved> | review <saved> <log>" ;;
+  esac
+  exit
+}
