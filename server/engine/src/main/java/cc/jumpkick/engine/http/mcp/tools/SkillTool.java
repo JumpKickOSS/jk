@@ -17,7 +17,7 @@ public final class SkillTool implements McpTool {
             "How to use jk: the loop and the verdict format. topic= one page (dependencies, tests, lockfile, …).";
 
     /** Tools whose usage a topic covers: asked for by the tool's name, the topic answers. */
-    static final Map<String, String> TOOL_PAGES = Map.of("usages", "code", "rename", "code");
+    static final Map<String, String> TOOL_PAGES = Map.of("usages", "code", "rename", "code", "flaky", "tests");
 
     /** Another registered tool's description by name: agents ask for a tool's name as a topic. */
     private volatile Function<String, @Nullable String> tools = name -> null;
@@ -49,17 +49,17 @@ public final class SkillTool implements McpTool {
         String name = topic.strip();
         String topics = "Topics: " + String.join(", ", JkSkill.TOPICS) + "; no topic gives the core.\n";
         String tool = tools.apply(name);
-        String page = TOOL_PAGES.get(name);
-        if (tool != null && page != null && listed.test(name)) {
-            // grok asks skill(topic=rename) "to confirm the syntax" before nearly every rename: answer with
-            // the page that has it (address forms, also, what to leave unchosen), not the card it already has.
-            return in.text("`" + name + "` is an MCP tool: call it directly. Its page, topic " + page + ":\n\n"
-                    + JkSkill.topic(page) + topics);
-        }
         if (tool != null) {
             String how = listed.test(name)
                     ? "call it directly. "
                     : "call it if your client lists it (tools/list extended=true); otherwise run its jk CLI verb. ";
+            String page = TOOL_PAGES.get(name);
+            if (page != null) {
+                // grok asks skill(topic=rename) "to confirm the syntax" before nearly every rename: answer with
+                // the page that has it (address forms, also, what to leave unchosen), not the card it already has.
+                return in.text("`" + name + "` is an MCP tool: " + how + "Its page, topic " + page + ":\n\n"
+                        + JkSkill.topic(page) + topics);
+            }
             return in.text("`" + name + "` is an MCP tool, not a topic: " + how + tool + "\n" + topics);
         }
         return in.text("No skill topic `" + name + "`. " + topics);

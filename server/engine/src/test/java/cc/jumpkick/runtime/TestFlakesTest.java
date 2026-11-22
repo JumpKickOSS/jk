@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.config.TestHistory;
 import cc.jumpkick.config.TestQuarantine;
 import cc.jumpkick.config.TomlScan;
+import cc.jumpkick.docs.JkSkill;
 import cc.jumpkick.run.BuildPlanKey;
 import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TestFailureInfo;
@@ -184,6 +185,14 @@ class TestFlakesTest {
                 .isEmpty();
         assertThat(TestFlakes.quarantinedFailedMessage(List.of("a.FlakyTest")))
                 .isEqualTo("quarantined flaky test failed, not your change: a.FlakyTest");
+    }
+
+    @Test
+    void the_tests_skill_page_quotes_the_line_a_quarantined_failure_ends_the_verdict_with() {
+        assertThat(JkSkill.topic("tests"))
+                .as("an agent reads what a quarantined failure means, and the commands that list and release it")
+                .contains("`" + TestFlakes.quarantinedFailedMessage(List.of("C")) + "`")
+                .contains(TestQuarantine.FILE, "jk flaky list|show|issue|release", "flaky(action=");
     }
 
     @Test

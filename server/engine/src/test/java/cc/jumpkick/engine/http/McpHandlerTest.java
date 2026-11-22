@@ -572,6 +572,16 @@ class McpHandlerTest {
                 .as("a tool off the default list is not one most clients can call")
                 .contains("`explain` is an MCP tool", "extended=true", "jk CLI verb", "(jk explain)")
                 .doesNotContain("call it directly");
+        String flaky = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":38,\"method\":\"tools/call\","
+                + "\"params\":{\"name\":\"skill\",\"arguments\":{\"topic\":\"flaky\"}}}");
+        assertThat(flaky)
+                .as("the flaky tool's name answers with the tests page, which says what a quarantined failure means")
+                .contains(
+                        "`flaky` is an MCP tool: call it if your client lists it",
+                        "Its page, topic tests:",
+                        "not your change",
+                        "jk flaky list|show|issue|release")
+                .doesNotContain("call it directly", "\"isError\":true");
         String none = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":36,\"method\":\"tools/call\","
                 + "\"params\":{\"name\":\"skill\",\"arguments\":{\"topic\":\"nope\"}}}");
         assertThat(none).contains("No skill topic `nope`", "Topics: code, dependencies");
