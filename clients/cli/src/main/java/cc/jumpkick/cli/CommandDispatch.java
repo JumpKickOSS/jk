@@ -67,6 +67,7 @@ import cc.jumpkick.command.system.DecideCommand;
 import cc.jumpkick.command.system.DoctorCommand;
 import cc.jumpkick.command.system.EngineCommand;
 import cc.jumpkick.command.system.EnvCommand;
+import cc.jumpkick.command.system.FlakyCommand;
 import cc.jumpkick.command.system.HistoryCommand;
 import cc.jumpkick.command.system.HookEnvCommand;
 import cc.jumpkick.command.system.InspectCommand;
@@ -141,6 +142,7 @@ public final class CommandDispatch {
             new SelfCommand(),
             new WrapperCommand(),
             new HistoryCommand(),
+            new FlakyCommand(),
             new StatsCommand(),
             new ActivityCommand(), // name() = jobs; activity/act aliases
             new ResultsCommand(),

@@ -102,7 +102,8 @@ class HttpApiProjectTest extends HttpEngineServerHarness {
         Path ws = stateDir.resolve("flaky-ws");
         Files.createDirectories(ws);
         Files.writeString(ws.resolve("jk.toml"), "name = \"ws\"\n[test]\nquarantine = { flakes = 3, runs = 30 }\n");
-        Files.writeString(ws.resolve("jk-quarantine.toml"), """
+        Files.createDirectories(ws.resolve(".jk/test"));
+        Files.writeString(ws.resolve(".jk/test/quarantine.toml"), """
                 [[class]]
                 name = "com.acme.OrdersTest"
                 module = "orders"
@@ -122,7 +123,7 @@ class HttpApiProjectTest extends HttpEngineServerHarness {
         assertThat(resp.statusCode()).isEqualTo(200);
         assertThat(resp.body())
                 .contains("\"policy\":{\"flakes\":3,\"runs\":30}")
-                .contains("\"file\":\"jk-quarantine.toml\"")
+                .contains("\"file\":\".jk/test/quarantine.toml\"")
                 .contains("\"name\":\"com.acme.OrdersTest\",\"module\":\"orders\",\"history\":\"\",\"flakes\":0")
                 .contains("\"quarantined\":{\"reason\":\"hangs\",\"since\":\"2026-11-20\","
                         + "\"issue\":\"https://example.com/88\"}")

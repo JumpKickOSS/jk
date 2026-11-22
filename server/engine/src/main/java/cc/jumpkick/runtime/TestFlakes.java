@@ -1,12 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import cc.jumpkick.config.TestHistory;
 import cc.jumpkick.config.TestQuarantine;
 import cc.jumpkick.host.AtomicWrites;
-import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.Log;
-import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TestFailureInfo;
 import cc.jumpkick.run.TestSummary;
@@ -24,7 +23,6 @@ import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.function.Consumer;
-import java.util.stream.Stream;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -33,9 +31,7 @@ import org.jspecify.annotations.Nullable;
  * as often as the workspace's {@link TestQuarantine.Policy} says goes into {@value
  * TestQuarantine#FILE}, and the run says so.
  *
- * <p>The history is one file per module under {@code <state>/test-history}, outside the checkout so
- * a clean keeps it: a {@code # <module dir>} line, then {@code <class>\t<outcomes>}, the outcomes
- * one character per run, oldest first ({@link Outcome#mark}), the last {@value #KEEP} kept.
+ * <p>The history is {@link TestHistory}, the last {@value #KEEP} runs of each class kept.
  */
 public final class TestFlakes {
 
@@ -50,9 +46,9 @@ public final class TestFlakes {
 
     /** How one class ended in one run. */
     enum Outcome {
-        PASSED('.'),
-        PASSED_ON_RERUN('R'),
-        FAILED('F');
+        PASSED(TestHistory.PASSED),
+        PASSED_ON_RERUN(TestHistory.PASSED_ON_RERUN),
+        FAILED(TestHistory.FAILED);
 
         final char mark;
 
@@ -66,7 +62,7 @@ public final class TestFlakes {
         }
     }
 
-    /** Held while this engine reads and rewrites a history or the quarantine file. */
+    /** Held while this engine reads and rewrites a history file. */
     private static final Object LOCK = new Object();
 
     /** jk has just put {@code classes} of the module at {@code module} (a quarantine module key) under {@code root} in quarantine. */
@@ -132,7 +128,7 @@ public final class TestFlakes {
             if (!seen) rows.add(new Row(e.className(), e.module(), "", 0, e));
         }
         modules.forEach((module, classes) -> classes.forEach((cls, marks) -> {
-            if (!listed.contains(module + '\t' + cls) && flakes(marks, policy.runs()) > 0)
+            if (!listed.contains(module + '\t' + cls) && TestHistory.flakes(marks, policy.runs()) > 0)
                 rows.add(row(cls, module, marks, policy, null));
         }));
         rows.sort(Comparator.comparing((Row r) -> r.held() == null)
@@ -148,47 +144,24 @@ public final class TestFlakes {
             String marks,
             TestQuarantine.Policy policy,
             TestQuarantine.@Nullable Entry held) {
-        return new Row(cls, module, last(marks, policy.runs()), flakes(marks, policy.runs()), held);
+        return new Row(
+                cls, module, TestHistory.last(marks, policy.runs()), TestHistory.flakes(marks, policy.runs()), held);
     }
 
     /**
      * The histories under {@code stateDir} of the modules at or under {@code root}, by quarantine
-     * module key; a file that cannot be read is left out.
+     * module key; none when they cannot be read.
      */
     static Map<String, Map<String, String>> histories(Path stateDir, Path root) {
         Path top = root.toAbsolutePath().normalize();
         Map<String, Map<String, String>> out = new TreeMap<>();
-        Path dir = stateDir.resolve("test-history");
-        List<Path> files;
         try {
-            files = PathUtil.childFiles(dir).stream()
-                    .filter(f -> f.getFileName().toString().endsWith(".tsv"))
-                    .toList();
-        } catch (IOException e) {
-            Log.debug("test histories not listed", e);
-            return out;
-        }
-        for (Path f : files) {
-            try {
-                String head;
-                try (Stream<String> lines = Files.lines(f)) {
-                    head = lines.findFirst().orElse("");
-                }
-                if (!head.startsWith("# ")) continue;
-                Path module = Path.of(head.substring(2).trim()).normalize();
-                if (!module.startsWith(top)) continue;
-                out.put(TestQuarantine.moduleKey(top, module), read(f));
-            } catch (IOException | RuntimeException e) {
-                Log.debug("test history not read: " + f, e);
-            }
+            for (TestHistory h : TestHistory.under(stateDir, top))
+                out.put(TestQuarantine.moduleKey(top, h.moduleDir()), h.classes());
+        } catch (IOException | RuntimeException e) {
+            Log.debug("test histories not read", e);
         }
         return out;
-    }
-
-    /** The history file of the module at {@code moduleDir}, under {@code stateDir}. */
-    static Path historyFile(Path stateDir, Path moduleDir) {
-        String dir = moduleDir.toAbsolutePath().normalize().toString();
-        return stateDir.resolve("test-history").resolve(Hashing.sha256Hex(dir).substring(0, 16) + ".tsv");
     }
 
     /**
@@ -205,7 +178,7 @@ public final class TestFlakes {
         TestQuarantine.Policy policy = TestQuarantine.Policy.of(root);
         List<String> due;
         try {
-            due = append(historyFile(stateDir, moduleDir), moduleDir, outcomes, policy);
+            due = append(TestHistory.file(stateDir, moduleDir), moduleDir, outcomes, policy);
         } catch (IOException | RuntimeException e) {
             Log.debug("test history not recorded", e);
             return;
@@ -222,8 +195,9 @@ public final class TestFlakes {
             throws IOException {
         Map<String, String> rows;
         synchronized (LOCK) {
-            rows = read(file);
-            outcomes.forEach((cls, o) -> rows.merge(cls, String.valueOf(o.mark), (old, now) -> last(old + now, KEEP)));
+            rows = TestHistory.read(file);
+            outcomes.forEach((cls, o) ->
+                    rows.merge(cls, String.valueOf(o.mark), (old, now) -> TestHistory.last(old + now, KEEP)));
             StringBuilder sb = new StringBuilder("# ")
                     .append(moduleDir.toAbsolutePath().normalize())
                     .append('\n');
@@ -235,33 +209,10 @@ public final class TestFlakes {
         List<String> due = new ArrayList<>();
         if (policy.off()) return due;
         outcomes.forEach((cls, o) -> {
-            if (o == Outcome.PASSED_ON_RERUN && flakes(rows.getOrDefault(cls, ""), policy.runs()) >= policy.flakes())
-                due.add(cls);
+            if (o == Outcome.PASSED_ON_RERUN
+                    && TestHistory.flakes(rows.getOrDefault(cls, ""), policy.runs()) >= policy.flakes()) due.add(cls);
         });
         return due;
-    }
-
-    /** Each class's outcomes in {@code file}, oldest first; empty when there is none. */
-    static Map<String, String> read(Path file) throws IOException {
-        Map<String, String> rows = new TreeMap<>();
-        if (!Files.isRegularFile(file)) return rows;
-        for (String line : Files.readAllLines(file)) {
-            int tab = line.indexOf('\t');
-            if (line.startsWith("#") || tab <= 0) continue;
-            rows.put(line.substring(0, tab), line.substring(tab + 1).trim());
-        }
-        return rows;
-    }
-
-    /** How many of the last {@code runs} outcomes in {@code marks} passed on a re-run. */
-    static int flakes(String marks, int runs) {
-        int n = 0;
-        for (char c : last(marks, runs).toCharArray()) if (c == Outcome.PASSED_ON_RERUN.mark) n++;
-        return n;
-    }
-
-    private static String last(String marks, int n) {
-        return marks.length() <= n ? marks : marks.substring(marks.length() - n);
     }
 
     /**
@@ -308,20 +259,20 @@ public final class TestFlakes {
         String reason = "failed, then passed on a re-run with nothing changed, in " + policy.flakes() + " of its last "
                 + policy.runs() + " runs";
         List<String> added = new ArrayList<>();
-        synchronized (LOCK) {
-            try {
-                TestQuarantine q = TestQuarantine.read(root);
+        try {
+            TestQuarantine.edit(root, q -> {
+                added.clear();
                 for (String cls : classes) {
                     if (q.find(module, cls) != null) continue;
                     q = q.with(new TestQuarantine.Entry(
                             cls, module, reason, LocalDate.now(ZoneOffset.UTC).toString(), null));
                     added.add(cls);
                 }
-                if (!added.isEmpty()) q.write(root);
-            } catch (IOException | RuntimeException e) {
-                ctx.warn(QUARANTINED, TestQuarantine.FILE + " not updated: " + e.getMessage());
-                return;
-            }
+                return q;
+            });
+        } catch (IOException | RuntimeException e) {
+            ctx.warn(QUARANTINED, TestQuarantine.FILE + " not updated: " + e.getMessage());
+            return;
         }
         for (String cls : added) {
             ctx.warn(

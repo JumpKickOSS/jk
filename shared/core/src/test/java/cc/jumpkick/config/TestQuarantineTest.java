@@ -10,7 +10,7 @@ import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-/** {@code jk-quarantine.toml} and the root's {@code [test] quarantine}. */
+/** {@code .jk/test/quarantine.toml} and the root's {@code [test] quarantine}. */
 class TestQuarantineTest {
 
     @TempDir
@@ -29,8 +29,12 @@ class TestQuarantineTest {
                 .with(new TestQuarantine.Entry("c.XTest", "", "", "", null));
         q.write(root);
 
-        String text = Files.readString(root.resolve(TestQuarantine.FILE));
-        assertThat(text).startsWith("# Test classes in quarantine").contains("since = 2026-11-21\n");
+        assertThat(TestQuarantine.file(root)).isEqualTo(root.resolve(".jk/test/quarantine.toml"));
+        String text = Files.readString(TestQuarantine.file(root));
+        assertThat(text)
+                .startsWith("# Test classes in quarantine")
+                .contains("# JumpKick adds a class")
+                .contains("since = 2026-11-21\n");
         TestQuarantine back = TestQuarantine.read(root);
         assertThat(back).isEqualTo(q);
         assertThat(back.entries())
@@ -41,7 +45,8 @@ class TestQuarantineTest {
 
     @Test
     void an_entry_holds_its_module_or_every_module_when_it_names_none() throws IOException {
-        Files.writeString(root.resolve(TestQuarantine.FILE), """
+        Files.createDirectories(TestQuarantine.file(root).getParent());
+        Files.writeString(TestQuarantine.file(root), """
                 [[class]]
                 name = "a.FlakyTest"
                 module = "server/engine"
@@ -59,10 +64,11 @@ class TestQuarantineTest {
 
     @Test
     void a_malformed_file_names_itself() throws IOException {
-        Files.writeString(root.resolve(TestQuarantine.FILE), "[[class]]\nreason = \"no name\"\n");
+        Files.createDirectories(TestQuarantine.file(root).getParent());
+        Files.writeString(TestQuarantine.file(root), "[[class]]\nreason = \"no name\"\n");
         assertThatThrownBy(() -> TestQuarantine.read(root))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessage("jk-quarantine.toml: a [[class]] has no name");
+                .hasMessage(".jk/test/quarantine.toml: a [[class]] has no name");
     }
 
     @Test
@@ -103,5 +109,43 @@ class TestQuarantineTest {
         assertThatThrownBy(() -> parse("quarantine = { after = 2 }\n"))
                 .isInstanceOf(JkBuildParseException.class)
                 .hasMessageContaining("unknown key `after`");
+    }
+
+    @Test
+    void release_takes_a_class_out_of_every_module_by_its_full_or_simple_name() throws IOException {
+        TestQuarantine.NONE
+                .with(new TestQuarantine.Entry("a.FlakyTest", "app", "", "", null))
+                .with(new TestQuarantine.Entry("a.FlakyTest", "lib", "", "", null))
+                .with(new TestQuarantine.Entry("b.OtherTest", "app", "", "", null))
+                .write(root);
+
+        assertThat(TestQuarantine.release(root, "FlakyTest"))
+                .extracting(TestQuarantine.Entry::module)
+                .containsExactly("app", "lib");
+        assertThat(TestQuarantine.read(root).classNames()).containsExactly("b.OtherTest");
+        assertThat(TestQuarantine.release(root, "a.FlakyTest"))
+                .as("released already")
+                .isEmpty();
+        assertThat(TestQuarantine.release(root, "ther.OtherTest"))
+                .as("only a whole name part")
+                .isEmpty();
+
+        assertThat(TestQuarantine.release(root, "b.OtherTest")).hasSize(1);
+        assertThat(TestQuarantine.file(root))
+                .as("the last release deletes the file")
+                .doesNotExist();
+    }
+
+    @Test
+    void a_simple_name_two_classes_share_releases_neither() throws IOException {
+        TestQuarantine.NONE
+                .with(new TestQuarantine.Entry("a.FlakyTest", "app", "", "", null))
+                .with(new TestQuarantine.Entry("b.FlakyTest", "app", "", "", null))
+                .write(root);
+
+        assertThatThrownBy(() -> TestQuarantine.release(root, "FlakyTest"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("FlakyTest names several classes: a.FlakyTest, b.FlakyTest");
+        assertThat(TestQuarantine.read(root).entries()).hasSize(2);
     }
 }

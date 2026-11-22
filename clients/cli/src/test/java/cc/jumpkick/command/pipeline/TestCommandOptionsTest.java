@@ -68,7 +68,8 @@ class TestCommandOptionsTest {
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessage(BuildFlags.NONE_QUARANTINED);
 
-        Files.writeString(root.resolve(TestQuarantine.FILE), """
+        Files.createDirectories(TestQuarantine.file(root).getParent());
+        Files.writeString(TestQuarantine.file(root), """
                 [[class]]
                 name = "b.SlowFlakyTest"
                 module = "app"

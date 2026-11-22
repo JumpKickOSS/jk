@@ -3,6 +3,7 @@ package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.config.TestHistory;
 import cc.jumpkick.config.TestQuarantine;
 import cc.jumpkick.config.TomlScan;
 import cc.jumpkick.run.BuildPlanKey;
@@ -60,10 +61,10 @@ class TestFlakesTest {
         run(RED);
         run(RERUN_PASS);
 
-        Path file = TestFlakes.historyFile(state, module);
+        Path file = TestHistory.file(state, module);
         assertThat(Files.readAllLines(file).getFirst())
                 .isEqualTo("# " + module.toAbsolutePath().normalize());
-        assertThat(TestFlakes.read(file)).containsExactly(Map.entry("a.FlakyTest", ".FR"), Map.entry("a.OkTest", "."));
+        assertThat(TestHistory.read(file)).containsExactly(Map.entry("a.FlakyTest", ".FR"), Map.entry("a.OkTest", "."));
     }
 
     @Test
@@ -117,15 +118,15 @@ class TestFlakesTest {
             run(RED);
             run(RERUN_PASS);
         }
-        assertThat(Files.exists(root.resolve(TestQuarantine.FILE))).isFalse();
-        assertThat(TestFlakes.read(TestFlakes.historyFile(state, module))).containsEntry("a.FlakyTest", "FRFRFRFRFR");
+        assertThat(Files.exists(TestQuarantine.file(root))).isFalse();
+        assertThat(TestHistory.read(TestHistory.file(state, module))).containsEntry("a.FlakyTest", "FRFRFRFRFR");
     }
 
     @Test
     void the_history_keeps_the_last_hundred_runs() throws IOException {
         Files.writeString(root.resolve("jk.toml"), "name = \"ws\"\n[test]\nquarantine = false\n");
         for (int i = 0; i < TestFlakes.KEEP + 5; i++) run(RED);
-        assertThat(TestFlakes.read(TestFlakes.historyFile(state, module)).get("a.FlakyTest"))
+        assertThat(TestHistory.read(TestHistory.file(state, module)).get("a.FlakyTest"))
                 .hasSize(TestFlakes.KEEP);
     }
 
@@ -167,10 +168,14 @@ class TestFlakesTest {
 
     @Test
     void an_unreadable_quarantine_excuses_nothing_and_says_so() throws IOException {
-        Files.writeString(root.resolve(TestQuarantine.FILE), "[[class]\n");
+        Files.createDirectories(TestQuarantine.file(root).getParent());
+        Files.writeString(TestQuarantine.file(root), "[[class]\n");
         assertThat(TestFlakes.quarantinedFailures(ctx, root, module, red(failure("a.FlakyTest"))))
                 .isEmpty();
-        assertThat(ctx.warnings).singleElement().asString().startsWith(TestFlakes.UNREADABLE + " jk-quarantine.toml");
+        assertThat(ctx.warnings)
+                .singleElement()
+                .asString()
+                .startsWith(TestFlakes.UNREADABLE + " .jk/test/quarantine.toml");
     }
 
     @Test
@@ -227,10 +232,11 @@ class TestFlakesTest {
 
     @Test
     void the_report_says_why_an_unreadable_quarantine_lists_nothing() throws IOException {
-        Files.writeString(root.resolve(TestQuarantine.FILE), "[[class]\n");
+        Files.createDirectories(TestQuarantine.file(root).getParent());
+        Files.writeString(TestQuarantine.file(root), "[[class]\n");
         run(RERUN_PASS);
         TestFlakes.Report report = TestFlakes.report(state, root);
-        assertThat(report.error()).startsWith("jk-quarantine.toml unreadable: ");
+        assertThat(report.error()).startsWith(".jk/test/quarantine.toml unreadable: ");
         assertThat(report.rows()).singleElement().satisfies(r -> assertThat(r.held())
                 .isNull());
     }

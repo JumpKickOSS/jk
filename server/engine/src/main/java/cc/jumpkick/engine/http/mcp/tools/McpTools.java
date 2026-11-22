@@ -141,6 +141,7 @@ public final class McpTools {
                 new BindTool(),
                 new ProjectTool(),
                 new HistoryTool(),
+                new FlakyTool(),
                 new DiagnosticsTool(),
                 new DetailsTool(),
                 new BuildTool(),

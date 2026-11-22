@@ -466,9 +466,9 @@ both; `transitive=1` matches `jk tree -t` / `--transitive`.
 ### `GET /api/project/flaky`
 
 The project page's **Flaky tests** tab: `GET /api/project/flaky?dir=<checkout>`. It reads the
-checkout's `jk-quarantine.toml` and the per-class test histories JumpKick keeps under its state
+checkout's `.jk/test/quarantine.toml` and the per-class test histories JumpKick keeps under its state
 directory for the modules at or under `dir`
-([test.md](../user/test.md#flaky-tests-are-quarantined-jk-quarantinetoml)).
+([test.md](../user/test.md#flaky-tests-are-quarantined-jk-flaky)).
 
 `{ dir, policy: { flakes, runs }, file, error?, classes: [{ name, module, history, flakes,
 quarantined?: { reason, since, issue? } }] }`

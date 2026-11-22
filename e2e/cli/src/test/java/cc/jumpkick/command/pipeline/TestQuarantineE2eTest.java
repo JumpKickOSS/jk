@@ -13,9 +13,9 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * {@code jk-quarantine.toml}: a run whose only failures are in quarantined classes succeeds and says
- * so in one line; a failure outside the quarantine still fails it; {@code --quarantined} runs only
- * the quarantined classes.
+ * {@code .jk/test/quarantine.toml}: a run whose only failures are in quarantined classes succeeds and
+ * says so in one line; a failure outside the quarantine still fails it; {@code --quarantined} runs
+ * only the quarantined classes.
  */
 // Network: JUnit from Central; forked test JVMs.
 @Tag("integration")
@@ -31,7 +31,7 @@ class TestQuarantineE2eTest {
                 .as("a failing test fails the run when nothing is quarantined")
                 .isEqualTo(4);
 
-        Files.writeString(project.resolve("jk-quarantine.toml"), """
+        Files.writeString(quarantine(project), """
                 [[class]]
                 name = "com.example.FlakyTest"
                 module = "."
@@ -50,7 +50,7 @@ class TestQuarantineE2eTest {
                 .contains("FlakyTest")
                 .doesNotContain("CalcTest");
 
-        Files.writeString(project.resolve("jk-quarantine.toml"), """
+        Files.writeString(quarantine(project), """
                 [[class]]
                 name = "com.example.FlakyTest"
                 module = "elsewhere"
@@ -58,6 +58,11 @@ class TestQuarantineE2eTest {
         assertThat(run("test", "-C", dir, "--cache-dir", cache))
                 .as("an entry for another module holds nothing here")
                 .isEqualTo(4);
+    }
+
+    /** The project's quarantine file, its directory made. */
+    private static Path quarantine(Path project) throws IOException {
+        return Files.createDirectories(project.resolve(".jk/test")).resolve("quarantine.toml");
     }
 
     /** One class under test, a passing test class and one that always fails; JUnit from Central. */

@@ -10,6 +10,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.function.UnaryOperator;
 import org.jspecify.annotations.Nullable;
 import org.tomlj.Toml;
 import org.tomlj.TomlArray;
@@ -17,7 +18,7 @@ import org.tomlj.TomlParseResult;
 import org.tomlj.TomlTable;
 
 /**
- * The test classes a workspace holds in quarantine, checked in as {@value #FILE} at its root. A
+ * The test classes a workspace holds in quarantine, checked in as {@value #FILE} under its root. A
  * failure in a quarantined class does not fail the run; the class still runs. jk adds a class that
  * fails and then passes on a re-run with nothing changed as often as the root's {@code [test]
  * quarantine} says ({@link Policy}); removing its entry releases it.
@@ -28,16 +29,16 @@ import org.tomlj.TomlTable;
  */
 public record TestQuarantine(List<Entry> entries) {
 
-    /** The file's name at the workspace root. */
-    public static final String FILE = "jk-quarantine.toml";
+    /** The file's path under the workspace root, as messages name it. */
+    public static final String FILE = ".jk/test/quarantine.toml";
 
     /** The empty quarantine. */
     public static final TestQuarantine NONE = new TestQuarantine(List.of());
 
     private static final String HEADER = """
             # Test classes in quarantine: a failure in one does not fail the run, and each still runs.
-            # jk adds a class that fails and then passes on a re-run with nothing changed as often as
-            # [test] quarantine in jk.toml says. Delete an entry to release its class.
+            # JumpKick adds a class that fails and then passes on a re-run with nothing changed as often
+            # as [test] quarantine in jk.toml says. Delete an entry to release its class.
             """;
 
     public TestQuarantine {
@@ -56,6 +57,11 @@ public record TestQuarantine(List<Entry> entries) {
         public boolean holds(String module, String className) {
             return this.className.equals(className) && (this.module.isEmpty() || this.module.equals(module));
         }
+    }
+
+    /** Whether {@code name} names {@code className}: the fully qualified name, or its simple name. */
+    public static boolean names(String name, String className) {
+        return className.equals(name) || className.endsWith("." + name);
     }
 
     /**
@@ -97,9 +103,14 @@ public record TestQuarantine(List<Entry> entries) {
         return key.isEmpty() ? "." : key;
     }
 
+    /** The quarantine file of the workspace at {@code root}. */
+    public static Path file(Path root) {
+        return root.resolve(".jk").resolve("test").resolve("quarantine.toml");
+    }
+
     /** The quarantine checked in at {@code root}; {@link #NONE} when there is no file. */
     public static TestQuarantine read(Path root) throws IOException {
-        Path file = root.resolve(FILE);
+        Path file = file(root);
         if (!Files.isRegularFile(file)) return NONE;
         return parse(Files.readString(file));
     }
@@ -177,8 +188,49 @@ public record TestQuarantine(List<Entry> entries) {
         return since.matches("\\d{4}-\\d{2}-\\d{2}") ? since : MinimalToml.quote(since);
     }
 
-    /** Write this quarantine to {@code root}'s {@value #FILE}, replacing it whole. */
+    /** Write this quarantine to {@code root}'s {@value #FILE}, replacing it whole; no entries deletes it. */
     public void write(Path root) throws IOException {
-        AtomicWrites.replace(root.resolve(FILE), render());
+        Path file = file(root);
+        if (entries.isEmpty()) {
+            Files.deleteIfExists(file);
+            return;
+        }
+        Files.createDirectories(file.getParent());
+        AtomicWrites.replace(file, render());
+    }
+
+    /** Held while this process reads and rewrites a quarantine file. */
+    private static final Object EDITS = new Object();
+
+    /** Read {@code root}'s quarantine, apply {@code edit} and write the result when it changed. */
+    public static TestQuarantine edit(Path root, UnaryOperator<TestQuarantine> edit) throws IOException {
+        synchronized (EDITS) {
+            TestQuarantine before = read(root);
+            TestQuarantine after = edit.apply(before);
+            if (!after.equals(before)) after.write(root);
+            return after;
+        }
+    }
+
+    /**
+     * Release the class {@code name} names ({@link #names}) from {@code root}'s quarantine, in every
+     * module, and answer the entries released; none when it holds no such class. A simple name that
+     * names two classes releases nothing and is an {@link IllegalArgumentException} naming both.
+     */
+    public static List<Entry> release(Path root, String name) throws IOException {
+        List<Entry> released = new ArrayList<>();
+        edit(root, q -> {
+            List<Entry> named =
+                    q.entries.stream().filter(e -> names(name, e.className())).toList();
+            List<String> classes =
+                    named.stream().map(Entry::className).distinct().toList();
+            if (classes.size() > 1)
+                throw new IllegalArgumentException(name + " names several classes: " + String.join(", ", classes));
+            released.addAll(named);
+            List<Entry> kept = new ArrayList<>(q.entries);
+            kept.removeAll(named);
+            return new TestQuarantine(kept);
+        });
+        return released;
     }
 }

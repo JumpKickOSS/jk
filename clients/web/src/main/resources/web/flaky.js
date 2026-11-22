@@ -57,7 +57,7 @@ export function flakyModel(body) {
     };
   });
   return {
-    file: body.file || 'jk-quarantine.toml',
+    file: body.file || '.jk/test/quarantine.toml',
     policy: policyLine(body.policy),
     error: body.error || '',
     quarantined: rows.filter((r) => r.quarantined).length,

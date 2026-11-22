@@ -9,9 +9,12 @@ import cc.jumpkick.cli.testing.Capture;
 import cc.jumpkick.command.project.AddCommand;
 import cc.jumpkick.command.project.ExplainCommand;
 import cc.jumpkick.command.system.AuthStatusCommand;
+import cc.jumpkick.command.system.FlakyCommand;
 import cc.jumpkick.command.system.LibraryListCommand;
 import cc.jumpkick.command.system.TasksCommand;
 import cc.jumpkick.command.toolchain.TrustCommand;
+import cc.jumpkick.config.TestQuarantine;
+import cc.jumpkick.config.TestQuarantineReport;
 import cc.jumpkick.run.TaskForecast;
 import cc.jumpkick.wire.protocol.CatalogReadAck;
 import java.nio.file.Path;
@@ -65,6 +68,22 @@ class CommandRowsFrozenBytesTest {
         assertThat(JsonlShape.line(7, "auth", AuthStatusCommand.fields("gitea", null, null)))
                 .isEqualTo(HEAD + "\"auth\",\"provider\":\"gitea\",\"host\":null,\"authenticated\":false,"
                         + "\"source\":null}");
+    }
+
+    @Test
+    void flaky() {
+        var held = new TestQuarantine.Entry("a.FlakyTest", "app", "flaky", "2026-11-20", null);
+        assertThat(JsonlShape.line(
+                        7,
+                        "flaky",
+                        FlakyCommand.fields(new TestQuarantineReport.Row("a.FlakyTest", "app", held, "F.R.R"), 3)))
+                .isEqualTo(
+                        HEAD + "\"flaky\",\"class\":\"a.FlakyTest\",\"module\":\"app\",\"quarantined\":true,"
+                                + "\"flakes\":2,\"runs\":3,\"history\":\"F.R.R\",\"since\":\"2026-11-20\",\"reason\":\"flaky\"}");
+        assertThat(JsonlShape.line(
+                        7, "flaky", FlakyCommand.fields(new TestQuarantineReport.Row("b.T", ".", null, "R"), 20)))
+                .isEqualTo(HEAD + "\"flaky\",\"class\":\"b.T\",\"module\":\".\",\"quarantined\":false,"
+                        + "\"flakes\":1,\"runs\":1,\"history\":\"R\"}");
     }
 
     @Test

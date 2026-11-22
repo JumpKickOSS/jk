@@ -493,7 +493,7 @@ again`), its counts and `jk results` include the classes not re-run, and once ev
 passed the suite's marker is green and the next run skips it whole. A class that failed and then
 passes with nothing changed is flaky or depends on what ran before it, and the run warns
 `test-passed-on-rerun` naming it; past a threshold it is quarantined
-([Flaky tests](#flaky-tests-are-quarantined-jk-quarantinetoml)). `--redo`, `--debug-jvm`, a coverage run and `--affected` run their
+([Flaky tests](#flaky-tests-are-quarantined-jk-flaky)). `--redo`, `--debug-jvm`, a coverage run and `--affected` run their
 whole selection. A change to any stamp input still re-runs every class.
 
 A suite whose classes share state — a database one class seeds and the next reads, a server the
@@ -841,20 +841,20 @@ agent verdict. A compile error, a test JVM that crashed or a timeout fails the r
 `--test-failures=fail|report` on `jk test` and `jk build`, or `JK_TEST_FAILURES`, overrides every
 module's setting for one run (flag, then environment, then `jk.toml`).
 
-## Flaky tests are quarantined (`jk-quarantine.toml`)
+## Flaky tests are quarantined (`jk flaky`)
 
 A test class that fails and then passes on a re-run with nothing changed is flaky, and one flaky
 class can turn every run red that runs it. JumpKick keeps each class's last 100 runs (pass, fail,
 or passed on a re-run under the same inputs) in its state directory,
 so a `jk clean` keeps them. When a class has passed on a re-run in 2 of its last 20 runs, the run
-adds it to `jk-quarantine.toml` at the workspace root and says so:
+adds it to `.jk/test/quarantine.toml` under the workspace root and says so:
 
 ```text
 ! quarantined com.acme.OrdersTest: passed on a re-run 2 of its last 20 runs
 ```
 
 ```toml
-# jk-quarantine.toml: check it in
+# .jk/test/quarantine.toml: check it in
 [[class]]
 name = "com.acme.OrdersTest"
 module = "orders"                       # the module's directory; leave it out for every module
@@ -873,7 +873,30 @@ OK test orders · 1 of 40 failed · 2.1s — quarantined flaky test failed, not 
 
 A failure in any other class, or one no class owns (a test JVM that died), fails the run as before.
 A build or test run through MCP takes the same steps and honours the quarantine too. Fix the test,
-then delete its entry to release it; you can also add an entry by hand.
+then release it with `jk flaky release` or by deleting its entry; you can also add an entry by
+hand.
+
+`jk flaky list` lists every quarantined class and every class that passed on a re-run in its
+last 20 runs (the threshold's window), with the re-run passes. `jk flaky show <class>` prints
+one with its entry and its whole history, oldest first (`.` passed, `F` failed, `R` passed on a
+re-run); `jk flaky release <class>` deletes its entry in every module, and the file with the
+last one. A class is its fully qualified name or its simple name. The history is this machine's,
+and a release keeps it: a released class that passes on a re-run again while its window still holds
+the threshold is quarantined again.
+
+```text
+$ jk flaky show OrdersTest
+com.acme.OrdersTest  orders
+  state:    quarantined since 2026-11-22
+  reason:   failed, then passed on a re-run with nothing changed, in 2 of its last 20 runs
+  last 20:  2 passed on a re-run, 0 failed, 18 passed
+  history:  ......R.........R.....
+            oldest first; . passed, F failed, R passed on a re-run
+```
+
+`-O jsonl` prints a `flaky` row per class and a `flaky-released` row per entry released
+([Machine output](machine-output.md)). The MCP tool `flaky` answers the same
+(`action=list|show|release`, `class`) ([MCP](mcp.md)).
 
 `jk test --quarantined` runs only the quarantined classes, in every module that has them, to check
 whether a fix holds. It cannot be combined with `--class`; add `-r` to run classes that already

@@ -14,7 +14,7 @@ const { routeFromHash, buildProjectHash } = await spa('route.js');
 const body = {
   dir: '/ws/shop',
   policy: { flakes: 2, runs: 4 },
-  file: 'jk-quarantine.toml',
+  file: '.jk/test/quarantine.toml',
   classes: [
     {
       name: 'com.acme.OrdersTest',
@@ -62,7 +62,7 @@ test('the model keeps the engine order and names what each row needs', () => {
   assert.equal(m.rows[1].issue, 'ACME-9');
   assert.equal(m.rows[2].cells.length, 4);
   assert.equal(flakyModel(null), null);
-  assert.equal(flakyModel({ ...body, error: 'jk-quarantine.toml unreadable: x' }).error, 'jk-quarantine.toml unreadable: x');
+  assert.equal(flakyModel({ ...body, error: '.jk/test/quarantine.toml unreadable: x' }).error, '.jk/test/quarantine.toml unreadable: x');
 });
 
 test('the Flaky tests tab has a route of its own', () => {

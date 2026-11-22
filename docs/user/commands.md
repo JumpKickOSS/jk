@@ -18,6 +18,7 @@ Canonical names. Hidden aliases (Maven/Gradle muscle memory) are listed in
 | `jk compile` | Type-check | [Build](build.md) |
 | `jk build` | Compile + package; a `pom.xml` with no `jk.toml` builds in place | [Build](build.md), [Migration](migration.md#building-a-maven-repository-without-importing) |
 | `jk test` | Run tests (`--affected` / `--affected-since` list ranked classes) | [Test](test.md) |
+| `jk flaky` | Flaky and quarantined test classes: `list`, `show` one with its history, `release` one | [Test](test.md#flaky-tests-are-quarantined-jk-flaky) |
 | `jk guard` | Run the house-rule lanes; `explain`, `freeze`, `hooks`, `commit-msg` | [Guards](guards.md) |
 | `jk run` | Run the app | [Run](run.md) |
 | `jk watch` / `jk dev` | Rebuild on change | [Run](run.md) |
