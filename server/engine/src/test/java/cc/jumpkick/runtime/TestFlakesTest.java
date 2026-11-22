@@ -199,6 +199,19 @@ class TestFlakesTest {
     }
 
     @Test
+    void a_quarantine_that_cannot_be_written_says_so_and_never_that_it_quarantined() throws IOException {
+        Files.createDirectories(TestQuarantine.file(root));
+        run(RED);
+        run(RERUN_PASS);
+        run(RED);
+        run(RERUN_PASS);
+        assertThat(ctx.warnings)
+                .singleElement()
+                .asString()
+                .startsWith(TestFlakes.UNWRITABLE + " .jk/test/quarantine.toml not updated");
+    }
+
+    @Test
     void a_quarantine_is_told_to_the_listener_once_with_the_module_and_its_classes() {
         List<TestFlakes.Quarantined> heard = new CopyOnWriteArrayList<>();
         Path here = root.toAbsolutePath().normalize();

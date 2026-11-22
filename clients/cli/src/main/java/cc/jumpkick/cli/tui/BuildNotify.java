@@ -9,6 +9,7 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.terminal.Ansi;
 import java.io.PrintStream;
 import java.util.ArrayList;
+import java.util.List;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -26,6 +27,9 @@ import org.jspecify.annotations.Nullable;
  * notification is written only to a terminal: to the build's own stream when that is one, else to
  * stderr when stdout is redirected and stderr is still the terminal, else nowhere, so a redirected
  * log never collects one.
+ *
+ * <p>A run that quarantines a flaky test class sends one notification for each class, whatever the
+ * run took: every policy but {@code never} sends it, and the same suppressors hold.
  */
 public final class BuildNotify {
 
@@ -51,17 +55,30 @@ public final class BuildNotify {
      * {@code no-osc}, JSONL) win; else the resolved {@link GlobalOptions#notify} policy applies.
      */
     public static boolean shouldNotify(@Nullable GlobalOptions global, long estimateMs, long elapsedMs) {
-        if (global == null) return false;
-        // Suppress when progress chrome is off, OSC is off, or stdout is JSONL (OSC would corrupt
-        // the machine stream).
-        if (global.noProgress || global.noOsc || global.outputIsJson()) return false;
-        if (SessionContext.current().config().noOscOr(false)) return false;
-        JkConfig.NotifyChoice policy = global.notify == null ? JkConfig.NotifyChoice.AUTO : global.notify;
-        return switch (policy) {
+        if (global == null || suppressed(global)) return false;
+        return switch (policy(global)) {
             case NEVER -> false;
             case ALWAYS -> true;
             case AUTO -> Math.max(0, estimateMs) >= THRESHOLD_MS || Math.max(0, elapsedMs) >= THRESHOLD_MS;
         };
+    }
+
+    /** Whether a quarantine notification may go: not suppressed, and the policy is not {@code never}. */
+    static boolean shouldNotifyQuarantine(@Nullable GlobalOptions global) {
+        return global != null && !suppressed(global) && policy(global) != JkConfig.NotifyChoice.NEVER;
+    }
+
+    /**
+     * No notification at all: progress chrome off, OSC off, or JSONL on stdout, which an OSC
+     * sequence would corrupt.
+     */
+    private static boolean suppressed(GlobalOptions global) {
+        if (global.noProgress || global.noOsc || global.outputIsJson()) return true;
+        return SessionContext.current().config().noOscOr(false);
+    }
+
+    private static JkConfig.NotifyChoice policy(GlobalOptions global) {
+        return global.notify == null ? JkConfig.NotifyChoice.AUTO : global.notify;
     }
 
     /**
@@ -116,6 +133,32 @@ public final class BuildNotify {
         if (terminal == null) return;
         // The terminal check already asked whether that stream may carry ANSI.
         terminal.print(Ansi.desktopNotify(TITLE, message(outcome, groupArtifact, elapsedMs)));
+        terminal.flush();
+    }
+
+    /** The warning a run says for each test class it has just put in quarantine. */
+    public static final String QUARANTINED = "test-quarantined";
+
+    /** Title for the notification of a test class put in quarantine. */
+    public static final String QUARANTINE_TITLE = "JumpKick quarantined a flaky test";
+
+    /**
+     * Body for a class the module {@code coord} put in quarantine: {@code g:n: quarantined
+     * a.FlakyTest: passed on a re-run 2 of its last 20 runs}, the module and the run's own warning.
+     */
+    public static String quarantineMessage(String coord, String warning) {
+        return coord == null || coord.isBlank() ? warning : coord + ": " + warning;
+    }
+
+    /**
+     * Emit one OSC&nbsp;99 for each of {@code bodies} ({@link #quarantineMessage}) when {@link
+     * #shouldNotifyQuarantine} is true, on the terminal hosting the run.
+     */
+    public static void maybeNotifyQuarantined(PrintStream out, @Nullable GlobalOptions global, List<String> bodies) {
+        if (out == null || bodies.isEmpty() || !shouldNotifyQuarantine(global)) return;
+        PrintStream terminal = terminalFor(out);
+        if (terminal == null) return;
+        for (String body : bodies) terminal.print(Ansi.desktopNotify(QUARANTINE_TITLE, body));
         terminal.flush();
     }
 

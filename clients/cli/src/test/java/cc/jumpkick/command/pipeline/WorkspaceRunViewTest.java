@@ -80,6 +80,36 @@ class WorkspaceRunViewTest {
     }
 
     @Test
+    void each_class_a_module_quarantines_is_one_notification_and_a_replayed_warning_is_none() {
+        var run = headlessView();
+        WorkspaceBuildListener lis = run.headless();
+        Path dir = Path.of("/ws/a");
+        String said = "quarantined a.FlakyTest: passed on a re-run 2 of its last 20 runs";
+        Capture.stdout(() -> {
+            lis.onPlan(List.of(module("g:a", dir)));
+            var mod = lis.onModuleStart(module("g:a", dir));
+            mod.warn(TaskNames.RUN_TESTS, "test-quarantined", said, false);
+            mod.warn(TaskNames.RUN_TESTS, "test-quarantined", said, false);
+            mod.warn(TaskNames.RUN_TESTS, "test-quarantined", "quarantined a.OldTest: passed on a re-run", true);
+            mod.warn(TaskNames.RUN_TESTS, "test-quarantine-unwritable", "not updated", false);
+            lis.onModuleFinish(new ModuleOutcome("g:a", dir, true, 0, 5, true));
+        });
+        assertThat(run.quarantined()).containsExactly("g:a: " + said);
+    }
+
+    @Test
+    void a_run_that_quarantines_nothing_has_no_notification() {
+        var run = headlessView();
+        WorkspaceBuildListener lis = run.headless();
+        Path dir = Path.of("/ws/a");
+        Capture.stdout(() -> {
+            var mod = lis.onModuleStart(module("g:a", dir));
+            mod.warn(TaskNames.RUN_TESTS, "test-passed-on-rerun", "a.FlakyTest passed on a re-run", false);
+        });
+        assertThat(run.quarantined()).isEmpty();
+    }
+
+    @Test
     void a_module_with_no_plan_burst_still_numbers_against_itself() {
         var lis = headlessView().headless();
         String out = TestAnsi.strip(

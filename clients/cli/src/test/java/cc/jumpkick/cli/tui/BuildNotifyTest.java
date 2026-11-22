@@ -11,6 +11,7 @@ import cc.jumpkick.config.SessionContext;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 class BuildNotifyTest {
@@ -68,6 +69,52 @@ class BuildNotifyTest {
         assertThat(out).contains("\033]99;");
         assertThat(out).contains(BuildNotify.TITLE);
         assertThat(out).contains("Build complete for cc.jumpkick:jk (took 1m 30s)");
+    }
+
+    @Test
+    void a_quarantine_notifies_under_every_policy_but_never_whatever_the_run_took() {
+        GlobalOptions auto = new GlobalOptions();
+        auto.notify = JkConfig.NotifyChoice.AUTO;
+        assertThat(BuildNotify.shouldNotifyQuarantine(auto)).isTrue();
+        assertThat(BuildNotify.shouldNotifyQuarantine(new GlobalOptions())).isTrue();
+
+        GlobalOptions never = new GlobalOptions();
+        never.notify = JkConfig.NotifyChoice.NEVER;
+        assertThat(BuildNotify.shouldNotifyQuarantine(never)).isFalse();
+
+        GlobalOptions noOsc = new GlobalOptions();
+        noOsc.noOsc = true;
+        assertThat(BuildNotify.shouldNotifyQuarantine(noOsc)).isFalse();
+
+        GlobalOptions noProgress = new GlobalOptions();
+        noProgress.noProgress = true;
+        assertThat(BuildNotify.shouldNotifyQuarantine(noProgress)).isFalse();
+        assertThat(BuildNotify.shouldNotifyQuarantine(null)).isFalse();
+    }
+
+    @Test
+    void each_quarantined_class_is_one_osc99_notification() {
+        var buf = new ByteArrayOutputStream();
+        BuildNotify.maybeNotifyQuarantined(
+                new PrintStream(buf, true, StandardCharsets.UTF_8),
+                new GlobalOptions(),
+                List.of(
+                        BuildNotify.quarantineMessage("g:a", "quarantined a.FlakyTest: passed on a re-run"),
+                        BuildNotify.quarantineMessage("g:b", "quarantined b.OtherTest: passed on a re-run")));
+        String out = buf.toString(StandardCharsets.UTF_8);
+        assertThat(out.split("\033]99;", -1)).as("notification escapes").hasSize(1 + 2 * 2);
+        assertThat(out)
+                .contains(BuildNotify.QUARANTINE_TITLE)
+                .contains("g:a: quarantined a.FlakyTest: passed on a re-run")
+                .contains("g:b: quarantined b.OtherTest: passed on a re-run");
+    }
+
+    @Test
+    void no_quarantine_means_no_notification() {
+        var buf = new ByteArrayOutputStream();
+        BuildNotify.maybeNotifyQuarantined(
+                new PrintStream(buf, true, StandardCharsets.UTF_8), new GlobalOptions(), List.of());
+        assertThat(buf.toString(StandardCharsets.UTF_8)).isEmpty();
     }
 
     @Test

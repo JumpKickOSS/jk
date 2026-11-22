@@ -188,8 +188,13 @@ final class BuildRun {
         return workspaceRequest(entryDir, modules, flags.jobs()).withSpec(spec);
     }
 
-    /** OSC desktop notify when estimate/elapsed ≥ 1m, or {@code --notify} forces it. */
-    void notify(BuildNotify.Outcome outcome, Path entryDir, long estimateMs, long elapsedMs) {
+    /**
+     * OSC desktop notify: one for each test class the run put in quarantine ({@code quarantined},
+     * {@link WorkspaceRunView#quarantined()}), then the build's own when estimate/elapsed ≥ 1m, or
+     * {@code --notify} forces it.
+     */
+    void notify(BuildNotify.Outcome outcome, Path entryDir, long estimateMs, long elapsedMs, List<String> quarantined) {
+        BuildNotify.maybeNotifyQuarantined(CliOutput.stdout(), global(), quarantined);
         BuildNotify.maybeNotify(CliOutput.stdout(), global(), outcome, projectGaLabel(entryDir), estimateMs, elapsedMs);
     }
 

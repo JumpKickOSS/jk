@@ -33,8 +33,11 @@ import org.jspecify.annotations.Nullable;
  */
 public final class TestFlakes {
 
-    /** The warning a class jk has just quarantined carries. */
+    /** The warning a class jk has just quarantined carries, once; the CLI sends a desktop notification for it. */
     static final String QUARANTINED = "test-quarantined";
+
+    /** The warning a quarantine file that cannot be written carries; its classes are not quarantined. */
+    static final String UNWRITABLE = "test-quarantine-unwritable";
 
     /** The warning a quarantine file that cannot be read carries; its failures fail the run. */
     static final String UNREADABLE = "test-quarantine-unreadable";
@@ -258,7 +261,7 @@ public final class TestFlakes {
                 return q;
             });
         } catch (IOException | RuntimeException e) {
-            ctx.warn(QUARANTINED, TestQuarantine.FILE + " not updated: " + e.getMessage());
+            ctx.warn(UNWRITABLE, TestQuarantine.FILE + " not updated: " + e.getMessage());
             return;
         }
         for (String cls : added) {

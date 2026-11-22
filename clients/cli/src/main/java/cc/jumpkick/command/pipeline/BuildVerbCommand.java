@@ -290,13 +290,23 @@ public final class BuildVerbCommand implements CliCommand {
         } catch (JobCancelledException e) {
             view.finishBuildPlanCancelled(List.of());
             if (run.session() != null) run.session().wedge(run.name() + " job was cancelled");
-            run.notify(BuildNotify.Outcome.CANCELLED, entryDir, view.etaEstimateMs(), BuildTails.elapsedMsSince(start));
+            run.notify(
+                    BuildNotify.Outcome.CANCELLED,
+                    entryDir,
+                    view.etaEstimateMs(),
+                    BuildTails.elapsedMsSince(start),
+                    runView.quarantined());
             return 1;
         } catch (IOException e) {
             runView.finishEvent(false, BuildTails.elapsedMsSince(start), e.getMessage());
             view.finishBuildPlanFailure(String.valueOf(e.getMessage()), List.of());
             if (run.session() != null) run.session().error(String.valueOf(e.getMessage()));
-            run.notify(BuildNotify.Outcome.FAILED, entryDir, view.etaEstimateMs(), BuildTails.elapsedMsSince(start));
+            run.notify(
+                    BuildNotify.Outcome.FAILED,
+                    entryDir,
+                    view.etaEstimateMs(),
+                    BuildTails.elapsedMsSince(start),
+                    runView.quarantined());
             return e instanceof EngineWireException ? Exit.CONFIG : Exit.SOFTWARE;
         }
         long elapsed = BuildTails.elapsedMsSince(start);
@@ -307,7 +317,7 @@ public final class BuildVerbCommand implements CliCommand {
                 result,
                 elapsed,
                 verb.tails(run, runView, start),
-                settled -> run.notify(outcome(settled), entryDir, estimate, elapsed));
+                settled -> run.notify(outcome(settled), entryDir, estimate, elapsed, runView.quarantined()));
     }
 
     /** No region ({@code -O jsonl}, {@code --verbose}, a pipe): the same events and the same settle. */
@@ -322,13 +332,19 @@ public final class BuildVerbCommand implements CliCommand {
             result = verb.workspace(run, entryDir, modules, runView.headless());
         } catch (JobCancelledException e) {
             int code = runView.settleHeadlessCancelled(BuildTails.elapsedMsSince(start));
-            run.notify(BuildNotify.Outcome.CANCELLED, entryDir, 0, BuildTails.elapsedMsSince(start));
+            run.notify(
+                    BuildNotify.Outcome.CANCELLED,
+                    entryDir,
+                    0,
+                    BuildTails.elapsedMsSince(start),
+                    runView.quarantined());
             return code;
         } catch (IOException e) {
             runView.finishEvent(false, BuildTails.elapsedMsSince(start), e.getMessage());
             if (!json) CommandWedge.printFail(run.name(), e.getMessage());
             if (run.session() != null) run.session().error(Errors.text(e));
-            run.notify(BuildNotify.Outcome.FAILED, entryDir, 0, BuildTails.elapsedMsSince(start));
+            run.notify(
+                    BuildNotify.Outcome.FAILED, entryDir, 0, BuildTails.elapsedMsSince(start), runView.quarantined());
             return e instanceof EngineWireException ? Exit.CONFIG : Exit.SOFTWARE;
         }
         long elapsed = BuildTails.elapsedMsSince(start);
@@ -336,7 +352,7 @@ public final class BuildVerbCommand implements CliCommand {
                 result,
                 elapsed,
                 verb.tails(run, runView, start),
-                settled -> run.notify(outcome(settled), entryDir, 0, elapsed));
+                settled -> run.notify(outcome(settled), entryDir, 0, elapsed, runView.quarantined()));
     }
 
     private static BuildNotify.Outcome outcome(WorkspaceRunView.Settled settled) {

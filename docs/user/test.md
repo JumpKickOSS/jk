@@ -854,6 +854,10 @@ adds it to `.jk/test/quarantine.toml` under the workspace root and says so:
 ! quarantined com.acme.OrdersTest: passed on a re-run 2 of its last 20 runs
 ```
 
+On a terminal the run also sends one desktop notification for each class it quarantined, **JumpKick
+quarantined a flaky test**, naming the module and the class, however long the run took;
+`notify = "never"` in [Config](config.md) turns it off.
+
 ```toml
 # .jk/test/quarantine.toml: check it in
 [[class]]

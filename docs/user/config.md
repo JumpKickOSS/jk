@@ -53,7 +53,9 @@ the 12-hour refresh of the library registry, the JDK catalog and the official te
 resolve request of the host calibration probe.
 
 **`notify`:** `auto` (default) sends an OSC desktop notification when a build’s ETA **or**
-elapsed time is ≥ 1 minute; `always`/`true` always; `never`/`false` never.
+elapsed time is ≥ 1 minute; `always`/`true` always; `never`/`false` never. A run that puts a
+test class in [quarantine](test.md#flaky-tests-are-quarantined-jk-flaky) sends one notification for each
+class, however long it took, unless `notify` is `never`.
 `--no-progress` and `--no-osc` also suppress notifications. A notification goes only to a
 terminal: with stdout redirected it goes to stderr when that is the terminal, and never into the log.
 

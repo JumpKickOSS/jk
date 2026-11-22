@@ -16,6 +16,7 @@ import cc.jumpkick.cli.run.SessionMirrorListener;
 import cc.jumpkick.cli.run.SlowestTestsBlock;
 import cc.jumpkick.cli.run.TailLines;
 import cc.jumpkick.cli.run.TestFailureHighlight;
+import cc.jumpkick.cli.tui.BuildNotify;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.DurationText;
 import cc.jumpkick.cli.tui.Glyphs;
@@ -34,8 +35,10 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
@@ -163,6 +166,9 @@ final class WorkspaceRunView {
     private final AtomicInteger withSuite = new AtomicInteger();
     private final AtomicInteger notSelected = new AtomicInteger();
 
+    /** A notification body for each class the run put in quarantine, in the order it said them. */
+    private final Set<String> quarantined = Collections.synchronizedSet(new LinkedHashSet<>());
+
     /** The run's slowest tests, ranked when the verb asked for them ({@code jk test}); else null. */
     private volatile @Nullable SlowestTests slowest;
 
@@ -195,6 +201,16 @@ final class WorkspaceRunView {
     /** Modules whose test suite was served from the action cache — its green marker replayed instead of a run. */
     int servedFromCache() {
         return served.get();
+    }
+
+    /**
+     * A desktop notification body ({@link BuildNotify#quarantineMessage}) for each test class this
+     * run put in quarantine, once each; a warning a step replayed from an earlier run is not one.
+     */
+    List<String> quarantined() {
+        synchronized (quarantined) {
+            return List.copyOf(quarantined);
+        }
     }
 
     /** Modules that ran a suite or replayed one; zero means the run tested nothing. */
@@ -328,7 +344,7 @@ final class WorkspaceRunView {
                 var lis = new AggregateModuleListener(agg, m.coord(), m.plan().steps());
                 if (chrome.buffered()) lis.bufferOutputInto(buffer(m.dir()));
                 event(JsonlShape.moduleStart(m.dir().toString(), m.coord()));
-                return withMirror(counting(lis), m.coord());
+                return withMirror(counting(lis, m.coord()), m.coord());
             }
 
             @Override
@@ -420,28 +436,30 @@ final class WorkspaceRunView {
                 if (toStdout) {
                     // Live step/progress events for agents (same shape as the single-module stream).
                     // Workspace member: no aggregate-rider writes (the engine snapshot owns it).
-                    return counting(new JsonlListener(System.out, false, m.coord()));
+                    return counting(new JsonlListener(System.out, false, m.coord()), m.coord());
                 }
                 List<String> buf = buffer(m.dir());
                 return withMirror(
-                        counting(new BuildPlanListener() {
-                            @Override
-                            public synchronized void output(String step, String line) {
-                                buf.add(line);
-                            }
+                        counting(
+                                new BuildPlanListener() {
+                                    @Override
+                                    public synchronized void output(String step, String line) {
+                                        buf.add(line);
+                                    }
 
-                            @Override
-                            public synchronized void warn(String step, String code, String message) {
-                                buf.add("  " + Glyphs.BANG + " " + step + ": " + message);
-                            }
+                                    @Override
+                                    public synchronized void warn(String step, String code, String message) {
+                                        buf.add("  " + Glyphs.BANG + " " + step + ": " + message);
+                                    }
 
-                            @Override
-                            public synchronized void error(String step, String code, @Nullable String message) {
-                                // test-failure renders as the styled output block, not an error line.
-                                if ("test-failure".equals(code)) return;
-                                buf.add("  " + Glyphs.CROSS + " " + step + ": " + message);
-                            }
-                        }),
+                                    @Override
+                                    public synchronized void error(String step, String code, @Nullable String message) {
+                                        // test-failure renders as the styled output block, not an error line.
+                                        if ("test-failure".equals(code)) return;
+                                        buf.add("  " + Glyphs.CROSS + " " + step + ": " + message);
+                                    }
+                                },
+                                m.coord()),
                         m.coord());
             }
 
@@ -721,14 +739,27 @@ final class WorkspaceRunView {
 
     /**
      * {@code lis} with this module's served-from-cache tally beside it ({@link #servedFromCache()}),
-     * and the slowest-tests ranking when the verb keeps one.
+     * the classes the module {@code coord} puts in quarantine ({@link #quarantined()}), and the
+     * slowest-tests ranking when the verb keeps one.
      */
-    private BuildPlanListener counting(BuildPlanListener lis) {
-        BuildPlanListener tally = new ServedTally(served, withSuite, notSelected);
+    private BuildPlanListener counting(BuildPlanListener lis, String coord) {
+        BuildPlanListener tally =
+                CompositeBuildPlanListener.of(new ServedTally(served, withSuite, notSelected), quarantines(coord));
         SlowestTests ranked = slowest;
         if (ranked == null) return CompositeBuildPlanListener.of(lis, tally);
         return CompositeBuildPlanListener.of(
                 lis, CompositeBuildPlanListener.of(tally, SlowestTestsBlock.ranking(ranked)));
+    }
+
+    /** What keeps each class the module {@code coord} says it has just put in quarantine. */
+    private BuildPlanListener quarantines(String coord) {
+        return new BuildPlanListener() {
+            @Override
+            public void warn(String step, String code, String message, boolean replayed) {
+                if (!replayed && BuildNotify.QUARANTINED.equals(code))
+                    quarantined.add(BuildNotify.quarantineMessage(coord, message));
+            }
+        };
     }
 
     /**
