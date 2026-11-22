@@ -20,9 +20,9 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * Every host a fresh engine and {@code jk lock} / {@code jk new} ask has a mirror spelling: with
- * a {@code mirror-of} table for the repositories, {@code [mirrors] libraries} and {@code jdk}
- * for the two feeds and {@code [templates] official} for the template catalog (the isolated
- * home's local copy of {@code templates/}), nothing is dialed
+ * a {@code mirror-of} table for the repositories, {@code [mirrors] libraries}, {@code jdk} and
+ * {@code prices} for the three feeds and {@code [templates] official} for the template catalog (the
+ * isolated home's local copy of {@code templates/}), nothing is dialed
  * past the loopback stub and the local repository. Without the feed mirrors the feeds
  * are optional: their hosts are the only ones dialed, and the commands neither fail nor say so.
  * The user's {@code [network] proxy} is a {@link RecordingProxy}, the request log of everything
@@ -34,9 +34,28 @@ class FreshEngineHostsTest {
 
     static final String REGISTRY = "/libs/libraries.toml";
     static final String JDK_FEED = "/jdk/download.jetbrains.com/jdk/feed/v1/jdks.json";
+    static final String PRICES = "/prices/prices.toml";
 
-    /** The hosts of the two optional feeds: the library registry and the JDK catalog. */
-    static final List<String> FEED_HOSTS = List.of("raw.githubusercontent.com", "download.jetbrains.com");
+    /**
+     * The hosts of the three optional feeds: the library registry and the price table's fallback,
+     * the JDK catalog, and the price table.
+     */
+    static final List<String> FEED_HOSTS =
+            List.of("raw.githubusercontent.com", "download.jetbrains.com", "jumpkick.build");
+
+    /**
+     * The {@code [mirrors]} table that points every feed at {@code mirror}: the paths {@link
+     * #REGISTRY}, {@link #JDK_FEED} and {@link #PRICES} under it.
+     */
+    static String feedMirrors(LoopbackHttp mirror) {
+        return """
+
+                [mirrors]
+                libraries = "%1$slibs/"
+                jdk = "%1$sjdk/"
+                prices = "%1$sprices/"
+                """.formatted(mirror.baseUrl());
+    }
 
     @RegisterExtension
     final LoopbackHttp mirror = new LoopbackHttp();
@@ -49,20 +68,17 @@ class FreshEngineHostsTest {
         UserConfigMirrorTest.publishAll(mirror, "", "", "");
         mirror.serve(REGISTRY, "[libraries]\nfoo = \"com.acme:foo\"\n");
         mirror.serve(JDK_FEED, "[]\n");
-        userConfig("""
-
-                [mirrors]
-                libraries = "%slibs/"
-                jdk = "%sjdk/"
-                """.formatted(mirror.baseUrl(), mirror.baseUrl()));
+        // Unsigned, so refused: the refresh asks the mirror and keeps the table it has.
+        mirror.serve(PRICES, "");
+        userConfig(feedMirrors(mirror));
         UserConfigMirrorTest.manifest(dir);
 
         assertThat(run("lock", "-C", dir.toString())).isZero();
         assertThat(run("new", dir.resolve("made").toString(), "-N")).isZero();
-        // The engine's first maintenance pass reads both feeds too: wait for it to have asked.
-        awaitRequested(REGISTRY, JDK_FEED);
+        // The engine's first maintenance pass reads every feed too: wait for it to have asked.
+        awaitRequested(REGISTRY, JDK_FEED, PRICES);
 
-        assertThat(mirror.requested()).contains(REGISTRY, JDK_FEED);
+        assertThat(mirror.requested()).contains(REGISTRY, JDK_FEED, PRICES);
         // And it clones the official catalog from its mirror, the home's local repository.
         assertThat(awaitCatalogClone())
                 .as("the catalog cloned from [templates] official")
@@ -112,7 +128,8 @@ class FreshEngineHostsTest {
 
         assertThat(exits).containsExactly(0, 0);
         assertThat(proxy.hosts()).isSubsetOf(FEED_HOSTS);
-        for (String host : FEED_HOSTS) assertThat(out).doesNotContain(host);
+        // jumpkick.build is also the repository the lock names, so the price table is looked for by its file.
+        assertThat(out).doesNotContain("raw.githubusercontent.com", "download.jetbrains.com", "prices.toml");
         assertThat(out.toLowerCase(Locale.ROOT)).doesNotContain("warn");
     }
 

@@ -44,7 +44,7 @@ import org.junit.jupiter.params.provider.ValueSource;
  * JUnit defaults jk injects, and on the tier's home that lock reads Central through the store every
  * sandbox on the host shares, so a failed fetch there would fail a success case with {@code
  * Exit.RESOLVE}. Each method gets an {@link IsolatedHome} whose {@code config.toml} mirrors every
- * repository and both feeds to a loopback stub publishing those defaults, and whose {@code [network]
+ * repository and every feed to a loopback stub publishing those defaults, and whose {@code [network]
  * proxy} is a {@link RecordingProxy} that refuses everything; after each method the proxy must have
  * seen nothing.
  */
@@ -66,6 +66,7 @@ class WorkspaceStreamParityTest {
                 .leaf("org.junit.platform", "junit-platform-launcher", DefaultTestDepsFixture.JUNIT_VERSION);
         mirror.serve(FreshEngineHostsTest.REGISTRY, "[libraries]\n");
         mirror.serve(FreshEngineHostsTest.JDK_FEED, "[]\n");
+        mirror.serve(FreshEngineHostsTest.PRICES, "");
         Path config = JkDirs.userConfigFile();
         Files.writeString(
                 config,
@@ -75,14 +76,11 @@ class WorkspaceStreamParityTest {
                 [network]
                 proxy = "%s"
 
-                [mirrors]
-                libraries = "%slibs/"
-                jdk = "%sjdk/"
-
                 [repositories.stub]
                 url = "%s"
                 mirror-of = ["*"]
-                """.formatted(proxy.url(), mirror.baseUrl(), mirror.baseUrl(), mirror.baseUrl()));
+                """.formatted(proxy.url(), mirror.baseUrl())
+                        + FreshEngineHostsTest.feedMirrors(mirror));
     }
 
     @AfterEach
