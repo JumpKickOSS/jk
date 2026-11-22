@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.tui;
 
+import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.terminal.Ansi;
 import cc.jumpkick.terminal.InputMode;
 import cc.jumpkick.terminal.Key;
 import cc.jumpkick.terminal.ModeGuard;
+import cc.jumpkick.terminal.ProgramStatus.Waiting;
 import cc.jumpkick.terminal.RegionPainter;
 import cc.jumpkick.terminal.Style;
 import cc.jumpkick.terminal.Styled;
@@ -99,7 +101,8 @@ public final class Wizard {
         if (!Prompt.rawEligible(tty.isLive(), Theme.active().isAnsi())) {
             return new CookedWizard(this).run(preset);
         }
-        try (ModeGuard raw = tty.enter(InputMode.PROMPT)) {
+        try (var waiting = TerminalStatus.get().blocked(Waiting.QUESTION, CliOutput.stdout());
+                ModeGuard raw = tty.enter(InputMode.PROMPT)) {
             tty.drain(Duration.ofMillis(40));
             var writer = tty.ttyOut();
             writer.print("\r" + CLEAR_TO_END);

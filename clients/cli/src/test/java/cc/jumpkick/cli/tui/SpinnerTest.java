@@ -204,8 +204,7 @@ class SpinnerTest {
         NoAnsi.forcedAnsi(() -> {
             String out = showFrame();
             assertThat(out).contains("\033]9;4;3\007"); // indeterminate
-            assertThat(out).contains("\033]9;4;0\007"); // cleared on close
-            assertThat(out.indexOf("\033]9;4;3\007")).isLessThan(out.indexOf("\033]9;4;0\007"));
+            assertThat(out).doesNotContain("\033]9;4;0\007"); // only the end of the command clears it
             return null;
         });
     }
@@ -254,10 +253,10 @@ class SpinnerTest {
     }
 
     @Test
-    void close_clear_precedes_show_cursor_in_ansi() throws Exception {
+    void close_sends_no_status_while_the_command_goes_on_in_ansi() throws Exception {
         NoAnsi.forcedAnsi(() -> {
             String out = closeFrame();
-            assertThat(out.indexOf("\033]9;4;0\007")).isLessThan(out.indexOf("\033[?25h"));
+            assertThat(out).contains("\033[?25h").doesNotContain("\033]9;4;");
             return null;
         });
     }

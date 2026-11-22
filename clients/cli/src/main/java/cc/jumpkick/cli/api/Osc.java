@@ -8,26 +8,15 @@ import cc.jumpkick.terminal.Ansi;
 /**
  * OSC policy gate. The leaf always constructs the sequence; this type returns empty when {@code
  * --no-osc} or {@code --no-ansi} is set, or stdout may not carry ANSI ({@link StreamCaps}). The
- * terminal-only sequences (taskbar progress, window title, notification) are written only by a live
- * region or a caller that asked {@link StreamCaps#live} for its stream.
+ * terminal-only sequences (window title, notification) are written only by a live region or a
+ * caller that asked {@link StreamCaps#live} for its stream; program status goes through {@code
+ * TerminalStatus}.
  */
 public final class Osc {
     private Osc() {}
 
     public static boolean oscEnabled() {
         return !SessionContext.current().config().noOscOr(false) && StreamCaps.ansi(StreamCaps.Side.OUT);
-    }
-
-    public static String taskbarProgress(int percent) {
-        return oscEnabled() ? Ansi.taskbarProgress(percent) : "";
-    }
-
-    public static String taskbarIndeterminate() {
-        return oscEnabled() ? Ansi.taskbarIndeterminate() : "";
-    }
-
-    public static String taskbarClear() {
-        return oscEnabled() ? Ansi.taskbarClear() : "";
     }
 
     public static String windowTitle(String title) {

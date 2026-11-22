@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.tui;
 
-import cc.jumpkick.cli.api.Osc;
 import cc.jumpkick.cli.theme.PlainAscii;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.config.GlobalConfig;
@@ -181,6 +180,8 @@ public final class JkManager implements AutoCloseable, LiveRegion, DownloadsView
             cm.pane.window().show();
         }
         if (animate && Theme.active().isAnsi()) {
+            // Before the frames and the peek key: the probe reads the terminal's replies itself.
+            TerminalStatus.get().begin(out);
             out.print(Ansi.HIDE_CURSOR);
             out.flush();
             cm.animator.startFrames();
@@ -528,7 +529,6 @@ public final class JkManager implements AutoCloseable, LiveRegion, DownloadsView
             if (Theme.active().isAnsi()) {
                 pane.flushVisibleToScrollback();
                 wipeRegion();
-                out.print(Osc.taskbarClear());
                 out.print(Ansi.SHOW_CURSOR);
             } else {
                 plain.printDone();
@@ -556,7 +556,7 @@ public final class JkManager implements AutoCloseable, LiveRegion, DownloadsView
             }
             if (Theme.active().isAnsi()) {
                 wipeRegion();
-                out.print(Osc.taskbarClear());
+                out.print(TerminalStatus.get().between());
                 out.print(Ansi.SHOW_CURSOR);
             } else {
                 plain.printDone();

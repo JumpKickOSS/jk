@@ -2,7 +2,6 @@
 package cc.jumpkick.cli.tui;
 
 import cc.jumpkick.cli.api.CliOutput;
-import cc.jumpkick.cli.api.Osc;
 import cc.jumpkick.cli.theme.StreamCaps;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.config.SessionContext;
@@ -15,8 +14,8 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * The mechanics of a one-row live terminal region: decide whether to animate at all, open the
- * command envelope, hide the cursor, repaint a frame in place, drive the OS taskbar, and tear down
- * on completion or Ctrl-C.
+ * command envelope, hide the cursor, repaint a frame in place, report its status to the terminal,
+ * and tear down on completion or Ctrl-C.
  *
  * <p><strong>Why this is a type and not a base class or a copy.</strong> Every one of these steps is
  * easy to get individually right and easy to get collectively wrong, and the failure is invisible
@@ -45,7 +44,7 @@ import org.jspecify.annotations.Nullable;
  *     "still working" looks like and how often to say it.
  * <li><b>animating</b> — a real terminal. The row is polled every {@link FrameClock#FRAME_MS} and
  *     painted through a {@link RegionPainter}, which writes only the cells that changed (nothing
- *     when none did); the taskbar is told the region's state when it changes.
+ *     when none did); the terminal is told the region's status when it changes.
  * </ul>
  *
  * <p>A silent or plain region still registers as the active {@link LiveRegion} and still runs the
@@ -61,7 +60,7 @@ final class LiveLine implements AutoCloseable, LiveRegion {
     /** Poll interval of the plain-mode heartbeat; the caller's hook decides whether to say anything. */
     static final long PLAIN_TICK_MS = Math.min(Spinner.FRAME_MS * 10, 5_000L);
 
-    /** Taskbar state before any progress has been reported. */
+    /** Progress before any has been reported. */
     private static final int INDETERMINATE = -1;
 
     private final PrintStream out;
@@ -86,6 +85,7 @@ final class LiveLine implements AutoCloseable, LiveRegion {
         this.settleLine = b.settleLine;
         this.silent = SessionContext.current().config().noProgressOr(false) || CliOutput.scriptMode();
         this.animate = !silent && Theme.active().isAnsi() && drawsOnTerminal(out);
+        if (animate) TerminalStatus.get().begin(out);
     }
 
     /**
@@ -139,7 +139,7 @@ final class LiveLine implements AutoCloseable, LiveRegion {
 
         /**
          * Take over the row: open the envelope, register for Ctrl-C, and — when the stream can carry
-         * it — hide the cursor, tell the taskbar, and start the animator.
+         * it — hide the cursor, tell the terminal it is working, and start the animator.
          */
         LiveLine open() {
             LiveLine line = new LiveLine(this);
@@ -177,7 +177,7 @@ final class LiveLine implements AutoCloseable, LiveRegion {
         return !silent && !animate;
     }
 
-    /** Drive the OS taskbar to {@code percent} (0–100), on the next frame. No-op unless animating. */
+    /** Report {@code percent} (0–100) done to the terminal, on the next frame. No-op unless animating. */
     synchronized void progress(int percent) {
         this.percent = Math.max(0, Math.min(100, percent));
     }
@@ -232,7 +232,7 @@ final class LiveLine implements AutoCloseable, LiveRegion {
         StringBuilder f = new StringBuilder();
         if (painter.height() > 0) painter.lift(f, 0, 0);
         out.print(f);
-        out.print(Osc.taskbarClear());
+        out.print(TerminalStatus.get().between());
         out.print(Ansi.SHOW_CURSOR);
         out.flush();
         return true;
@@ -261,10 +261,7 @@ final class LiveLine implements AutoCloseable, LiveRegion {
             out.print(Ansi.ERASE_LINE_TO_END);
         }
         if (settle != null) out.println(settle);
-        if (animate) {
-            out.print(Osc.taskbarClear());
-            out.print(Ansi.SHOW_CURSOR);
-        }
+        if (animate) out.print(Ansi.SHOW_CURSOR);
         out.flush();
         return settle != null;
     }
@@ -292,8 +289,8 @@ final class LiveLine implements AutoCloseable, LiveRegion {
         out.flush();
     }
 
-    /** The taskbar told what the region knows: a percentage once one was reported, busy until then. */
+    /** The terminal told what the region knows: a percentage once one was reported, busy until then. */
     private String taskbar() {
-        return percent == INDETERMINATE ? Osc.taskbarIndeterminate() : Osc.taskbarProgress(percent);
+        return TerminalStatus.get().working(percent);
     }
 }

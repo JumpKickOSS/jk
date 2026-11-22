@@ -2,7 +2,6 @@
 package cc.jumpkick.command.ide;
 
 import cc.jumpkick.cli.api.CliOutput;
-import cc.jumpkick.cli.api.Osc;
 import cc.jumpkick.cli.api.PathDisplay;
 import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.theme.PlainAscii;
@@ -15,6 +14,7 @@ import cc.jumpkick.cli.tui.JkWedge;
 import cc.jumpkick.cli.tui.LiveRegion;
 import cc.jumpkick.cli.tui.RenderContext;
 import cc.jumpkick.cli.tui.RichText;
+import cc.jumpkick.cli.tui.TerminalStatus;
 import cc.jumpkick.cli.tui.Tree;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.ide.IdeGeneration;
@@ -69,6 +69,7 @@ public final class IdeChrome implements AutoCloseable, LiveRegion {
         CommandWedge.envelopeStart(out);
         chrome.phase(firstPhase);
         if (animate && Theme.active().isAnsi()) {
+            TerminalStatus.get().begin(out);
             out.print(Ansi.HIDE_CURSOR);
             out.flush();
             chrome.startAnimator();
@@ -213,7 +214,7 @@ public final class IdeChrome implements AutoCloseable, LiveRegion {
             LiveRegion.clearActive(this);
             if (animate && Theme.active().isAnsi()) {
                 wipe();
-                out.print(Osc.taskbarClear());
+                out.print(TerminalStatus.get().between());
                 out.print(Ansi.SHOW_CURSOR);
             }
             if (chip != null) {
@@ -245,7 +246,7 @@ public final class IdeChrome implements AutoCloseable, LiveRegion {
     private void paint() {
         StringBuilder f = new StringBuilder();
         painter.paint(f, renderLines(frame), 0, 0, Integer.MAX_VALUE);
-        painter.status(f, Osc.taskbarIndeterminate());
+        painter.status(f, TerminalStatus.get().working(-1));
         if (f.isEmpty()) return;
         out.print(f);
         out.flush();
@@ -276,7 +277,6 @@ public final class IdeChrome implements AutoCloseable, LiveRegion {
             LiveRegion.clearActive(this);
             if (animate && Theme.active().isAnsi()) {
                 wipe();
-                out.print(Osc.taskbarClear());
                 out.print(Ansi.SHOW_CURSOR);
                 out.println(JkWedge.cancelled(COMMAND, true, null).renderLine(RenderContext.current()));
                 out.flush();
@@ -296,7 +296,7 @@ public final class IdeChrome implements AutoCloseable, LiveRegion {
             LiveRegion.clearActive(this);
             if (animate && Theme.active().isAnsi()) {
                 wipe();
-                out.print(Osc.taskbarClear());
+                out.print(TerminalStatus.get().between());
                 out.print(Ansi.SHOW_CURSOR);
             }
             out.flush();

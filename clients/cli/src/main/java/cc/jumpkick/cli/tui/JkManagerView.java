@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.tui;
 
-import cc.jumpkick.cli.api.Osc;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.task.TransferBoard;
@@ -121,7 +120,7 @@ final class JkManagerView {
             m.windowTitle.clear();
             if (m.animate && Theme.active().isAnsi()) {
                 m.wipeRegion();
-                m.out.print(Osc.taskbarClear());
+                m.out.print(TerminalStatus.get().between());
                 m.out.print(Ansi.SHOW_CURSOR);
                 m.out.flush();
             } else if (m.animate && !Theme.active().isAnsi()) {
@@ -153,7 +152,7 @@ final class JkManagerView {
                 m.pane.flushVisibleToScrollback();
                 // The settle replaces the whole region (cursor lands on the first wiped row).
                 m.wipeRegion();
-                m.out.print(Osc.taskbarClear());
+                m.out.print(TerminalStatus.get().between());
                 m.out.print(Ansi.SHOW_CURSOR);
             } else if (m.animate && !Theme.active().isAnsi()) {
                 // Plain multi-line: mandatory done line before the settle wedge.
@@ -385,14 +384,14 @@ final class JkManagerView {
         appendTaskbar(f, m.elapsedMillis());
     }
 
-    /** The OS taskbar is told the bar's percent when it changes, or that there is none yet. */
+    /** The terminal is told the bar's percent when it changes, or that there is none yet. */
     private void appendTaskbar(StringBuilder f, long elapsedMillis) {
         if (m.indeterminate()) {
-            m.painter.status(f, Osc.taskbarIndeterminate());
+            m.painter.status(f, TerminalStatus.get().working(-1));
             return;
         }
         long[] bd = m.displayBar(elapsedMillis);
-        m.painter.status(f, Osc.taskbarProgress(ProgressBar.percent(bd[0], bd[1])));
+        m.painter.status(f, TerminalStatus.get().working(ProgressBar.percent(bd[0], bd[1])));
     }
 
     /**

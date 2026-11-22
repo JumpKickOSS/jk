@@ -146,8 +146,8 @@ class SpinnerProgressBarTest {
         String all = buf.toString(StandardCharsets.UTF_8);
         // CR + clear-to-end-of-line wipes the bar.
         assertThat(all).contains("\r\033[K");
-        // OSC 9;4 cleared and cursor restored.
-        assertThat(all).contains("\033]9;4;0\007");
+        // The command goes on: the terminal is told it is still working, and the cursor is back.
+        assertThat(all).contains("\033]9;4;3\007").doesNotContain("\033]9;4;0\007");
         assertThat(all).contains("\033[?25h");
         // Replacement message lands on the same row.
         assertThat(TestAnsi.strip(all)).contains("✓ Download finished for Eclipse Temurin 21");
@@ -158,16 +158,15 @@ class SpinnerProgressBarTest {
     }
 
     @Test
-    void close_emits_osc94_clear() {
+    void close_leaves_the_terminal_working_until_the_command_ends() {
         var buf = new ByteArrayOutputStream();
         try (var pb = SpinnerProgressBar.show(stream(buf))) {
             pb.update(50, "halfway");
         }
         String all = buf.toString(StandardCharsets.UTF_8);
-        // Clear (state 0) appears once we close out of the bar.
-        assertThat(all).contains("\033]9;4;0\007");
-        // And it precedes the cursor-restore on the close path.
-        assertThat(all.indexOf("\033]9;4;0\007")).isLessThan(all.indexOf("\033[?25h"));
+        // The percentage gives way to plain working; only the end of the command clears it.
+        assertThat(all).contains("\033]9;4;3\007").doesNotContain("\033]9;4;0\007");
+        assertThat(all.indexOf("\033]9;4;3\007")).isLessThan(all.indexOf("\033[?25h"));
     }
 
     @Test

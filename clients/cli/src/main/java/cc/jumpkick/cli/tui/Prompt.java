@@ -6,6 +6,7 @@ import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.terminal.InputMode;
 import cc.jumpkick.terminal.Key;
 import cc.jumpkick.terminal.ModeGuard;
+import cc.jumpkick.terminal.ProgramStatus.Waiting;
 import cc.jumpkick.terminal.RegionPainter;
 import cc.jumpkick.terminal.TerminalSession;
 import cc.jumpkick.terminal.Terminals;
@@ -96,7 +97,8 @@ public final class Prompt<T> implements Widget {
         painter.paint(frame, List.of(asked + hintText(false)), cols, 0, 0);
         err.print(frame.append(' '));
         err.flush();
-        try (ModeGuard raw = tty.enter(InputMode.PROMPT)) {
+        try (var waiting = TerminalStatus.get().blocked(Waiting.PERMISSION, err);
+                ModeGuard raw = tty.enter(InputMode.PROMPT)) {
             while (true) {
                 var key = tty.readKey(Duration.ZERO);
                 if (key.isEmpty()) {

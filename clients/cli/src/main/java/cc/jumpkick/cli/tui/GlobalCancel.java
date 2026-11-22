@@ -147,6 +147,7 @@ public final class GlobalCancel {
             CliOutput.err(
                     Theme.colorize(Glyphs.CROSS + " " + message, Theme.active().error()));
         }
+        TerminalStatus.get().cancelled();
         err.print(Ansi.RESET);
         CliOutput.closeEnvelope();
         err.flush();

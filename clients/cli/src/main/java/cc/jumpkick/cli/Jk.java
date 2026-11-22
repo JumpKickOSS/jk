@@ -13,6 +13,7 @@ import cc.jumpkick.cli.theme.PlainAscii;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.GlobalCancel;
 import cc.jumpkick.cli.tui.StartupPulse;
+import cc.jumpkick.cli.tui.TerminalStatus;
 import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.config.JkConfigLoader;
 import cc.jumpkick.config.Request;
@@ -139,7 +140,10 @@ public final class Jk {
         }
         // A verb that unwound because the user pressed Ctrl-C exits 130 even though it returned an
         // ordinary failure code — GlobalCancel's own halt is only the backup for a wedged verb.
-        System.exit(GlobalCancel.exitCodeFor(code));
+        int exit = GlobalCancel.exitCodeFor(code);
+        // The terminal keeps what the command came to: done, failed, or idle after a cancel.
+        TerminalStatus.get().exit(exit);
+        System.exit(exit);
     }
 
     /**

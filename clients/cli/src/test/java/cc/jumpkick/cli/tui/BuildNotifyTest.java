@@ -124,7 +124,6 @@ class BuildNotifyTest {
             assertThat(Osc.oscEnabled()).isFalse();
             assertThat(Osc.desktopNotify("JumpKick Build", "hello")).isEmpty();
             assertThat(Osc.windowTitle("x")).isEmpty();
-            assertThat(Osc.taskbarIndeterminate()).isEmpty();
         });
     }
 }

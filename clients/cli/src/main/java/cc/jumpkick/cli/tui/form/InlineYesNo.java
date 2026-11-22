@@ -3,10 +3,12 @@ package cc.jumpkick.cli.tui.form;
 
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.RenderContext;
+import cc.jumpkick.cli.tui.TerminalStatus;
 import cc.jumpkick.terminal.Ansi;
 import cc.jumpkick.terminal.InputMode;
 import cc.jumpkick.terminal.Key;
 import cc.jumpkick.terminal.ModeGuard;
+import cc.jumpkick.terminal.ProgramStatus.Waiting;
 import cc.jumpkick.terminal.RegionPainter;
 import cc.jumpkick.terminal.TerminalSession;
 import java.io.BufferedReader;
@@ -73,7 +75,8 @@ public final class InlineYesNo {
         if (!typeahead.isZero()) tty.drain(typeahead);
         var painter = new RegionPainter(RegionPainter.Park.IN_ROW);
         boolean focusYes = question.focusYes();
-        try (ModeGuard ignored = tty.enter(InputMode.PROMPT)) {
+        try (var waiting = TerminalStatus.get().blocked(Waiting.PERMISSION, out);
+                ModeGuard ignored = tty.enter(InputMode.PROMPT)) {
             out.print("\r" + Ansi.HIDE_CURSOR);
             paint(painter, out, tty, row(ctx, lead, focusYes));
             while (true) {

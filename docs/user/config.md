@@ -59,6 +59,16 @@ class, however long it took, unless `notify` is `never`.
 `--no-progress` and `--no-osc` also suppress notifications. A notification goes only to a
 terminal: with stdout redirected it goes to stderr when that is the terminal, and never into the log.
 
+**Terminal status:** while live progress or a prompt is on screen, JumpKick tells the terminal
+what it is doing, so a tab, window or taskbar can show it: working (with a percentage when one is
+known), waiting on you (a confirmation, or a question to answer), failed, or done. When the command
+ends it leaves `done` or `error` behind, and Ctrl-C leaves the terminal idle. It speaks the
+[Program Status Protocol](https://www.superlogical.com/rex/docs/build/program-status) (OSC 7501,
+with `app=jk`) when the terminal answers its query, asked once as the first progress or prompt
+starts, and OSC 9;4 progress otherwise, never both. Under tmux or screen, or with stdin not a
+terminal, it does not ask and uses OSC 9;4. `--no-osc` and `--no-ansi` turn it off, and none of it
+goes into a file or a pipe.
+
 **Plain output:** a stream that is not a terminal is plain, whether it goes to a file or a pipe:
 no colour, no escape sequences (links, progress, notifications), no live progress, and ASCII in
 place of Unicode chrome. stdout and stderr are judged separately, so `jk build 2> err.log`

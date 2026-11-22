@@ -6,10 +6,12 @@ import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.cli.tui.Interactivity;
 import cc.jumpkick.cli.tui.RenderContext;
+import cc.jumpkick.cli.tui.TerminalStatus;
 import cc.jumpkick.terminal.Ansi;
 import cc.jumpkick.terminal.InputMode;
 import cc.jumpkick.terminal.Key;
 import cc.jumpkick.terminal.ModeGuard;
+import cc.jumpkick.terminal.ProgramStatus.Waiting;
 import cc.jumpkick.terminal.RegionPainter;
 import cc.jumpkick.terminal.TerminalSession;
 import cc.jumpkick.terminal.Terminals;
@@ -100,7 +102,9 @@ public final class Asker {
 
     private <T> Optional<T> raw(Question<T> q) {
         var painter = new RegionPainter(RegionPainter.Park.BELOW);
-        try (ModeGuard ignored = tty.enter(InputMode.PROMPT)) {
+        Waiting kind = q instanceof YesNo ? Waiting.PERMISSION : Waiting.QUESTION;
+        try (var waiting = TerminalStatus.get().blocked(kind, out);
+                ModeGuard ignored = tty.enter(InputMode.PROMPT)) {
             out.print("\r" + Ansi.HIDE_CURSOR);
             paint(painter, q);
             while (true) {

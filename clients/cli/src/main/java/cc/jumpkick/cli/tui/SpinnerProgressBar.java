@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.tui;
 
-import cc.jumpkick.cli.api.Osc;
 import cc.jumpkick.cli.theme.Gradient;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.config.SessionContext;
@@ -40,15 +39,6 @@ public final class SpinnerProgressBar implements AutoCloseable, LiveRegion {
     private static final String HIDE_CURSOR = Ansi.HIDE_CURSOR;
     private static final String SHOW_CURSOR = Ansi.SHOW_CURSOR;
 
-    // OSC 9;4 — ConEmu-introduced taskbar/tab progress indicator, now
-    // supported by Windows Terminal, WezTerm, ghostty, kitty (≥0.31),
-    // and others. Format: ESC ] 9 ; 4 ; <state> [ ; <percent> ] BEL.
-    // States: 0 = clear, 1 = normal, 2 = error, 3 = indeterminate,
-    // 4 = warning. We use 1 (normal) while the bar advances and 0
-    // (clear) on close. BEL terminator is more universally honored
-    // than ST in OSC handling. Terminals that don't recognise OSC 9;4
-    // silently swallow the sequence in their OSC parser.
-
     private final PrintStream out;
     private final Style[] segmentColors;
     private final Style[] failColors;
@@ -84,6 +74,7 @@ public final class SpinnerProgressBar implements AutoCloseable, LiveRegion {
         SpinnerProgressBar pb = new SpinnerProgressBar(out, silent);
         LiveRegion.setActive(pb);
         if (!silent) {
+            TerminalStatus.get().begin(out);
             out.print(HIDE_CURSOR);
             out.flush();
         }
@@ -102,7 +93,7 @@ public final class SpinnerProgressBar implements AutoCloseable, LiveRegion {
         String statusStr = status == null ? "" : status;
 
         StringBuilder f = new StringBuilder();
-        painter.status(f, Osc.taskbarProgress(clamped));
+        painter.status(f, TerminalStatus.get().working(clamped));
         painter.paint(f, List.of(row(filled, clamped, percentStr, statusStr)), 0, 0, 0);
         out.print(f);
         out.flush();
@@ -123,7 +114,7 @@ public final class SpinnerProgressBar implements AutoCloseable, LiveRegion {
         // before any progress) would stay in the transcript next to
         // the failure summary that follows.
         wipe();
-        out.print(Osc.taskbarClear());
+        out.print(TerminalStatus.get().between());
         out.print(SHOW_CURSOR);
         out.flush();
     }
@@ -147,7 +138,7 @@ public final class SpinnerProgressBar implements AutoCloseable, LiveRegion {
         }
         out.print(Ansi.CLEAR_LINE); // clear the bar line
         painter.forget();
-        out.print(Osc.taskbarClear());
+        out.print(TerminalStatus.get().between());
         out.print(SHOW_CURSOR);
         out.println(message);
         out.flush();
@@ -207,7 +198,7 @@ public final class SpinnerProgressBar implements AutoCloseable, LiveRegion {
                 + SEPARATOR
                 + Theme.colorize(lastStatus, strikeStyle);
         settleRow(failed);
-        out.print(Osc.taskbarClear());
+        out.print(TerminalStatus.get().between());
         out.print(SHOW_CURSOR);
         out.println();
         out.flush();
@@ -236,7 +227,6 @@ public final class SpinnerProgressBar implements AutoCloseable, LiveRegion {
                 + Theme.colorize(lastPercent, percentStyle(lastPercentVal))
                 + SEPARATOR
                 + Theme.colorize(lastStatus, strikeStyle));
-        out.print(Osc.taskbarClear());
         out.print(SHOW_CURSOR);
         out.flush();
         // Cursor is left mid-line with no newline; GlobalCancel prints the
