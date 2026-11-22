@@ -2,6 +2,7 @@
 package cc.jumpkick.task;
 
 import cc.jumpkick.config.EnvValues;
+import cc.jumpkick.config.JkCacheConfig;
 import cc.jumpkick.config.RunNotices;
 import cc.jumpkick.config.TomlScan;
 import java.net.InetAddress;
@@ -43,9 +44,10 @@ public record RemoteCacheSettings(URI url, boolean writes) {
     /** The settings {@code env} and {@code userConfig} give, or null when they name no shared cache. */
     static @Nullable RemoteCacheSettings resolve(Function<String, @Nullable String> env, Path userConfig) {
         TomlScan file = Files.isRegularFile(userConfig)
-                ? TomlScan.scan(userConfig, "cache.remote", "cache.remote-write")
+                ? TomlScan.scan(userConfig, JkCacheConfig.REMOTE.dotted(), JkCacheConfig.REMOTE_WRITE.dotted())
                 : null;
-        String raw = EnvValues.string(env, URL_ENV).orElse(file == null ? null : file.get("cache.remote"));
+        String raw =
+                EnvValues.string(env, URL_ENV).orElse(file == null ? null : file.get(JkCacheConfig.REMOTE.dotted()));
         // A URL, or a word of the truth set saying no (off, false): none.
         if (raw == null || raw.isBlank() || EnvValues.parseBool(raw).isPresent()) return null;
         URI url = url(raw.strip());
@@ -54,7 +56,7 @@ public record RemoteCacheSettings(URI url, boolean writes) {
                 .orElse(
                         file == null
                                 ? null
-                                : EnvValues.parseBool(file.get("cache.remote-write"))
+                                : EnvValues.parseBool(file.get(JkCacheConfig.REMOTE_WRITE.dotted()))
                                         .orElse(null));
         boolean writes = !pullRequest(env) && (explicit != null ? explicit : EnvValues.isCi(env));
         return new RemoteCacheSettings(url, writes);

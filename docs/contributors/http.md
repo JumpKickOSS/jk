@@ -995,9 +995,11 @@ socket's `stats` rows (`jk stats -O jsonl`) carry the same fields.
 
 ### `GET /api/config`
 
-Effective machine `~/.jk/config.toml` (plus env) as `{ path, rows: [{ key, default, value,
-overridden }] }` for the Status Configuration panel — every known scalar key with its default and
-whether the effective value differs. Token-gated even on loopback: the payload names the
+Effective machine `~/.jk/config.toml` (plus env) as `{ path, parseError?, rows: [{ key, default,
+value, overridden }] }` for the Status Configuration panel — every key of the file this JumpKick does
+not read (value `unknown key, ignored`), then every known scalar key with its default and whether
+the effective value differs. `parseError` names the file, line and column when the file does not
+parse; the rows are then the defaults. Token-gated even on loopback: the payload names the
 owner's config path and raw values, the same class as `/api/forms/new-project`.
 
 ### New project

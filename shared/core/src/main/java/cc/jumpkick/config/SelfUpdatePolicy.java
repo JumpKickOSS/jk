@@ -29,7 +29,7 @@ public final class SelfUpdatePolicy {
     public static final String ENV = "JK_SELF_UPDATE";
 
     /** The root-level key in {@code ~/.jk/config.toml}. */
-    public static final String KEY = "self-update";
+    public static final String KEY = GlobalConfig.SELF_UPDATE.dotted();
 
     private SelfUpdatePolicy() {}
 

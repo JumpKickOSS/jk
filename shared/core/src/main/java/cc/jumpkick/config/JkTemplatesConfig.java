@@ -34,6 +34,14 @@ public record JkTemplatesConfig(String officialUrl, List<Source> sources) {
     /** Default official first-party templates monorepo. */
     public static final String DEFAULT_OFFICIAL = "https://github.com/JumpKickOSS/jk-templates";
 
+    /** The {@code [templates]} table and its key. */
+    public static final UserConfigTable TEMPLATES = UserConfigTable.of("templates");
+
+    static final UserConfigTable.Key OFFICIAL_KEY = TEMPLATES.key("official");
+
+    /** {@code [templates.sources]}: names the user chooses. */
+    public static final UserConfigTable SOURCES = UserConfigTable.open("templates", "sources");
+
     /** {@code [templates] official}: a blank override is not an override. */
     private static final MachineConfig<String> OFFICIAL = MachineConfig.of(DEFAULT_OFFICIAL);
 
@@ -91,11 +99,11 @@ public record JkTemplatesConfig(String officialUrl, List<Source> sources) {
     /** Parse from a root TOML document (tests / explicit file). */
     public static JkTemplatesConfig fromTomlRoot(@Nullable TomlTable root) {
         if (root == null) return defaults();
-        TomlTable templates = root.getTable("templates");
+        TomlTable templates = TEMPLATES.in(root);
         if (templates == null) return defaults();
 
         List<Source> sources = new ArrayList<>();
-        TomlTable sourcesTable = templates.getTable("sources");
+        TomlTable sourcesTable = SOURCES.in(root);
         if (sourcesTable != null) {
             for (String name : sourcesTable.keySet()) {
                 Object value = sourcesTable.get(List.of(name));
@@ -116,7 +124,8 @@ public record JkTemplatesConfig(String officialUrl, List<Source> sources) {
             }
         }
         return new JkTemplatesConfig(
-                OFFICIAL.layer(TomlValues.optString(templates, "official").orElse(null))
+                OFFICIAL.layer(TomlValues.optString(templates, OFFICIAL_KEY.name())
+                                .orElse(null))
                         .strip(),
                 sources);
     }

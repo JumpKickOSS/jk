@@ -150,13 +150,14 @@ export const statusMethods = {
       }
     });
   },
-  /** Effective machine config.toml (key / default / override) for the Status Configuration panel. */
+  /** Effective machine config.toml (key / default / override, parse error) for the Status Configuration panel. */
   async refreshConfig() {
     if (this.authModal) return;
     return this.fetchOnce('config', async () => {
       try {
         const payload = await get('/api/config');
         this.configPath = payload.path || null;
+        this.configParseError = payload.parseError || null;
         this.configRows = Array.isArray(payload.rows) ? payload.rows : [];
       } catch (e) {
         this.handleHttpError(e);

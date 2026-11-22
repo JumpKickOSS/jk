@@ -3,6 +3,7 @@ package cc.jumpkick.task;
 
 import cc.jumpkick.cache.CacheBackend;
 import cc.jumpkick.config.EnvValues;
+import cc.jumpkick.config.JkCacheConfig;
 import cc.jumpkick.config.RequestScope;
 import cc.jumpkick.config.TomlScan;
 import cc.jumpkick.config.WorkspaceScan;
@@ -304,6 +305,8 @@ public final class ToolchainPolicy {
     /** The environment variable that sets the match level for one shell. */
     public static final String ENV = "JK_CACHE_JDK_MATCH";
 
+    private static final String JDK_MATCH = JkCacheConfig.JDK_MATCH.dotted();
+
     /**
      * The match level for {@code moduleDir}: {@link #ENV}, else {@code [cache] jdk-match} in the
      * module's {@code jk.toml}, else in its workspace root's, else in {@code ~/.jk/config.toml}, else
@@ -313,14 +316,12 @@ public final class ToolchainPolicy {
         Optional<Match> env = Match.parse(ProcessEnv.get(ENV));
         if (env.isPresent()) return env.get();
         for (Path manifest : manifests(moduleDir)) {
-            Optional<Match> m =
-                    Match.parse(TomlScan.scan(manifest, "cache.jdk-match").get("cache.jdk-match"));
+            Optional<Match> m = Match.parse(TomlScan.scan(manifest, JDK_MATCH).get(JDK_MATCH));
             if (m.isPresent()) return m.get();
         }
         Path user = JkDirs.userConfigFile();
         if (Files.isRegularFile(user)) {
-            Optional<Match> m =
-                    Match.parse(TomlScan.scan(user, "cache.jdk-match").get("cache.jdk-match"));
+            Optional<Match> m = Match.parse(TomlScan.scan(user, JDK_MATCH).get(JDK_MATCH));
             if (m.isPresent()) return m.get();
         }
         return Match.MAJOR;

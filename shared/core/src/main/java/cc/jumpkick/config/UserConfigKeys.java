@@ -9,7 +9,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import org.tomlj.Toml;
@@ -20,78 +19,64 @@ import org.tomlj.TomlParseResult;
  * A key jk does not know is reported and ignored, never translated: {@code jk doctor} warns on its
  * config row, the dashboard's Configuration panel lists it, and a command says so once per key.
  *
- * <p>The tables whose readers keep their own key lists ({@link EngineControls}, {@link
- * JkConfigLoader#KEYS}, {@code ManifestImage.KEYS}) are taken from them. {@code UserConfigKeysTest}
- * fails when a reader reads, or a page of {@code docs/user} shows, a key this list does not hold.
+ * <p>The keys are the readers' own: each reader declares the keys it reads in a {@link
+ * UserConfigTable} and reads through them, and {@link #TABLES} lists those tables. {@code
+ * [image]} is the manifest's own table, so its keys come from {@code ManifestImage.KEYS}. {@code
+ * UserConfigKeysTest} fails when a table is declared and not listed here, when a key is declared
+ * twice, or when a reader reads a key no table declares.
  */
 public final class UserConfigKeys {
 
     private UserConfigKeys() {}
 
+    /** Every table a reader of the file declares. */
+    static final List<UserConfigTable> TABLES = List.of(
+            GlobalConfig.ROOT,
+            GlobalConfig.TOOLCHAIN,
+            GlobalConfig.UPDATES,
+            GlobalConfig.CREDENTIALS,
+            GlobalConfig.RELEASE,
+            GlobalConfig.NODE,
+            GlobalConfig.NODE_SCOPES,
+            GlobalConfig.MIRRORS,
+            GlobalConfig.REPOSITORIES,
+            GlobalConfig.WINDOWS,
+            GlobalConfig.WSL,
+            JkConfigLoader.CONFIG,
+            EngineControls.ENGINE,
+            JkHttpConfig.HTTP,
+            JkHttpConfig.MCP,
+            SessionExpiry.MCP,
+            JkCacheConfig.CACHE,
+            HeavyTtl.CACHE,
+            JkHistoryConfig.HISTORY,
+            JkM2Config.M2,
+            JkInstallConfig.INSTALL,
+            JkTemplatesConfig.TEMPLATES,
+            JkTemplatesConfig.SOURCES,
+            NetworkConfig.NETWORK,
+            ReadUsage.AGENTS,
+            UiAsk.UI,
+            UserPlugins.PLUGINS,
+            ForgeAuthConfig.FORGE);
+
     /** Keys known exactly, each as its path of bare keys. */
-    static final Set<List<String>> EXACT = Set.copyOf(exact());
+    static final Set<List<String>> EXACT = Set.copyOf(declared());
 
     /** Tables under which any key is known: their entries are names the user chooses. */
-    static final Set<List<String>> OPEN = Set.of(
-            List.of("repositories"),
-            List.of("mirrors"),
-            List.of("plugins"),
-            List.of("forge"),
-            List.of("node", "scopes"),
-            List.of("templates", "sources"));
+    static final Set<List<String>> OPEN = Set.copyOf(TABLES.stream()
+            .filter(UserConfigTable::isOpen)
+            .map(UserConfigTable::path)
+            .toList());
 
-    private static Set<List<String>> exact() {
-        Set<List<String>> out = new LinkedHashSet<>();
-        out.add(List.of("nerd-font"));
-        out.add(List.of(SelfUpdatePolicy.KEY));
-        JkConfigLoader.KEYS.forEach(k -> out.add(List.of("config", k)));
-        EngineControls.TABLE.stream()
-                .filter(c -> !c.toml().isEmpty())
-                .forEach(c -> out.add(List.of("engine", c.toml())));
-        table(
-                out,
-                "http",
-                "enabled",
-                "host",
-                "port",
-                "max-concurrent-requests",
-                "max-event-streams",
-                "web-root",
-                "web-overlay");
-        table(out, "mcp", "enabled", "max-event-streams", "max-sessions", "session-expiry", "tools");
-        table(
-                out,
-                "cache",
-                "auto-prune",
-                "prune-interval-days",
-                "max-cache-size-gb",
-                "incremental-max-size-gb",
-                "heavy-ttl",
-                "jdk-match",
-                "remote",
-                "remote-write",
-                "key-seed-file",
-                "credential-env");
-        table(out, "history", "enabled", "max-age-days", "max-disk-mb");
-        table(out, "m2", "integration", "auto-clean", "clean-after-days");
-        table(out, "install", "destination");
-        table(out, "credentials", "store");
-        table(out, "templates", "official");
-        table(out, "toolchain", "jdk");
-        table(out, "updates", "check");
-        table(out, "release", "trusted-keys");
-        table(out, "network", "proxy", "https-proxy", "no-proxy");
-        table(out, "node", "registry");
-        table(out, "agents", "read-usage");
-        table(out, "ui", "ask");
-        table(out, "windows", "fix");
-        table(out, "wsl", "host-engine");
+    /** Every declared key, in declaration order, duplicates kept so a test can name them. */
+    static List<List<String>> declared() {
+        List<List<String>> out = new ArrayList<>();
+        for (UserConfigTable table : TABLES) {
+            for (UserConfigTable.Key key : table.keys()) out.add(key.path());
+        }
         ManifestImage.KEYS.forEach(k -> out.add(List.of("image", k)));
         return out;
-    }
-
-    private static void table(Set<List<String>> out, String table, String... keys) {
-        for (String key : keys) out.add(List.of(table, key));
     }
 
     /** Whether {@code path} (bare keys, outermost first) is a key this jk reads. */

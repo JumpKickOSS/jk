@@ -168,32 +168,37 @@ public record JkEngineConfig(
                 MAX_HEAP_MB.layerOver(
                         defaultMaxHeapMb(env),
                         EnvValues.intValue(env, "JK_ENGINE_MAX_HEAP_MB").orElse(null),
-                        scanInt(scan, "engine.max-heap-mb")),
-                JOBS.layer(EnvValues.intValue(env, "JK_JOBS").orElse(null), scanInt(scan, "engine.jobs")),
+                        scanInt(scan, EngineControls.MAX_HEAP_MB.dotted())),
+                JOBS.layer(
+                        EnvValues.intValue(env, "JK_JOBS").orElse(null), scanInt(scan, EngineControls.JOBS.dotted())),
                 // As the heap: CI moves the floor, not the precedence.
                 KEEP_GOING.layerOver(
                         defaultKeepGoing(env),
                         EnvValues.bool(env, "JK_CONTINUE").orElse(null),
-                        scanBool(scan, "engine.continue")),
+                        scanBool(scan, EngineControls.CONTINUE.dotted())),
                 // CI does not bump VFS: the heap bump is concurrency headroom.
                 VFS_MAX_MB.layer(
                         EnvValues.intValue(env, "JK_ENGINE_VFS_MAX_MB").orElse(null),
-                        scanInt(scan, "engine.vfs-max-mb")),
+                        scanInt(scan, EngineControls.VFS_MAX_MB.dotted())),
                 AUTO_WARMUP.layer(
-                        EnvValues.bool(env, "JK_AUTO_WARMUP").orElse(null), scanBool(scan, "engine.auto-warmup")),
+                        EnvValues.bool(env, "JK_AUTO_WARMUP").orElse(null),
+                        scanBool(scan, EngineControls.AUTO_WARMUP.dotted())),
                 JobLimits.resolve(
                         env,
-                        scanLong(scan, "engine.detached-deadline-ms"),
-                        scanLong(scan, "engine.queue-wait-ms"),
-                        scanLong(scan, "engine.drain-deadline-ms")),
+                        scanLong(scan, EngineControls.DETACHED_DEADLINE_MS.dotted()),
+                        scanLong(scan, EngineControls.QUEUE_WAIT_MS.dotted()),
+                        scanLong(scan, EngineControls.DRAIN_DEADLINE_MS.dotted())),
                 LOG_MAX_MB.layer(
                         EnvValues.intValue(env, "JK_ENGINE_LOG_MAX_MB").orElse(null),
-                        scanInt(scan, "engine.log-max-mb")),
-                LOG_LEVEL.layer(EnvValues.string(env, "JK_LOG_LEVEL").orElse(null), scan.get("engine.log-level")),
+                        scanInt(scan, EngineControls.LOG_MAX_MB.dotted())),
+                LOG_LEVEL.layer(
+                        EnvValues.string(env, "JK_LOG_LEVEL").orElse(null),
+                        scan.get(EngineControls.LOG_LEVEL.dotted())),
                 KEEP_AWAKE.layer(
                         KeepAwake.parse(EnvValues.string(env, "JK_KEEP_AWAKE").orElse(null))
                                 .orElse(null),
-                        KeepAwake.parse(scan.get("engine.keep-awake")).orElse(null)));
+                        KeepAwake.parse(scan.get(EngineControls.KEEP_AWAKE.dotted()))
+                                .orElse(null)));
     }
 
     /** Machine defaults only (CI-aware heap and continue, no file/env override). */
@@ -240,18 +245,19 @@ public record JkEngineConfig(
     public static JkEngineConfig fromToml(Path file) {
         TomlScan scan = scan(file);
         return new JkEngineConfig(
-                MAX_HEAP_MB.layer(scanInt(scan, "engine.max-heap-mb")),
-                JOBS.layer(scanInt(scan, "engine.jobs")),
-                KEEP_GOING.layer(scanBool(scan, "engine.continue")),
-                VFS_MAX_MB.layer(scanInt(scan, "engine.vfs-max-mb")),
-                AUTO_WARMUP.layer(scanBool(scan, "engine.auto-warmup")),
+                MAX_HEAP_MB.layer(scanInt(scan, EngineControls.MAX_HEAP_MB.dotted())),
+                JOBS.layer(scanInt(scan, EngineControls.JOBS.dotted())),
+                KEEP_GOING.layer(scanBool(scan, EngineControls.CONTINUE.dotted())),
+                VFS_MAX_MB.layer(scanInt(scan, EngineControls.VFS_MAX_MB.dotted())),
+                AUTO_WARMUP.layer(scanBool(scan, EngineControls.AUTO_WARMUP.dotted())),
                 JobLimits.fromFile(
-                        scanLong(scan, "engine.detached-deadline-ms"),
-                        scanLong(scan, "engine.queue-wait-ms"),
-                        scanLong(scan, "engine.drain-deadline-ms")),
-                LOG_MAX_MB.layer(scanInt(scan, "engine.log-max-mb")),
-                LOG_LEVEL.layer(scan.get("engine.log-level")),
-                KEEP_AWAKE.layer(KeepAwake.parse(scan.get("engine.keep-awake")).orElse(null)));
+                        scanLong(scan, EngineControls.DETACHED_DEADLINE_MS.dotted()),
+                        scanLong(scan, EngineControls.QUEUE_WAIT_MS.dotted()),
+                        scanLong(scan, EngineControls.DRAIN_DEADLINE_MS.dotted())),
+                LOG_MAX_MB.layer(scanInt(scan, EngineControls.LOG_MAX_MB.dotted())),
+                LOG_LEVEL.layer(scan.get(EngineControls.LOG_LEVEL.dotted())),
+                KEEP_AWAKE.layer(KeepAwake.parse(scan.get(EngineControls.KEEP_AWAKE.dotted()))
+                        .orElse(null)));
     }
 
     private static TomlScan scan(Path file) {

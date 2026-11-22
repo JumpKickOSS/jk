@@ -34,6 +34,52 @@ public final class GlobalConfig {
 
     private GlobalConfig() {}
 
+    /** The file's top level and the keys read there. */
+    public static final UserConfigTable ROOT = UserConfigTable.of();
+
+    public static final UserConfigTable.Key NERD_FONT = ROOT.key("nerd-font");
+
+    public static final UserConfigTable.Key SELF_UPDATE = ROOT.key("self-update");
+
+    public static final UserConfigTable TOOLCHAIN = UserConfigTable.of("toolchain");
+
+    static final UserConfigTable.Key TOOLCHAIN_JDK = TOOLCHAIN.key("jdk");
+
+    public static final UserConfigTable UPDATES = UserConfigTable.of("updates");
+
+    private static final UserConfigTable.Key UPDATES_CHECK = UPDATES.key("check");
+
+    public static final UserConfigTable CREDENTIALS = UserConfigTable.of("credentials");
+
+    static final UserConfigTable.Key CREDENTIALS_STORE = CREDENTIALS.key("store");
+
+    public static final UserConfigTable RELEASE = UserConfigTable.of("release");
+
+    private static final UserConfigTable.Key RELEASE_TRUSTED_KEYS = RELEASE.key("trusted-keys");
+
+    public static final UserConfigTable NODE = UserConfigTable.of("node");
+
+    private static final UserConfigTable.Key NODE_REGISTRY = NODE.key("registry");
+
+    /** {@code [node.scopes]}: an {@code @scope} to its registry. */
+    public static final UserConfigTable NODE_SCOPES = UserConfigTable.open("node", "scopes");
+
+    /** {@code [mirrors]}: a mirror per source the user names. */
+    public static final UserConfigTable MIRRORS = UserConfigTable.open("mirrors");
+
+    /** {@code [repositories]}: repositories by the ids the user chooses. */
+    public static final UserConfigTable REPOSITORIES = UserConfigTable.open("repositories");
+
+    /** {@code [windows]}: the setup decision a Windows host gives in advance. */
+    public static final UserConfigTable WINDOWS = UserConfigTable.of("windows");
+
+    private static final UserConfigTable.Key WINDOWS_FIX = WINDOWS.key("fix");
+
+    /** {@code [wsl]}: the engine a WSL guest starts on its Windows host. */
+    public static final UserConfigTable WSL = UserConfigTable.of("wsl");
+
+    private static final UserConfigTable.Key WSL_HOST_ENGINE = WSL.key("host-engine");
+
     /**
      * Which Nerd Font glyph families may be painted. Precedence, highest first:
      *
@@ -160,7 +206,7 @@ public final class GlobalConfig {
     static NerdFontMode nerdFontMode(Path configFile, @Nullable String jkEnv, @Nullable String hostEnv) {
         return NerdFontMode.parse(jkEnv)
                 .or(() -> NerdFontMode.parseBooleanOnly(hostEnv))
-                .or(() -> stringFromRoot(configFile, "nerd-font").flatMap(NerdFontMode::parse))
+                .or(() -> string(configFile, NERD_FONT).flatMap(NerdFontMode::parse))
                 .orElse(NerdFontMode.AUTO);
     }
 
@@ -175,7 +221,7 @@ public final class GlobalConfig {
     /** As {@link #engineJdkPin()} but against an explicit config file + env value — for tests. */
     static Optional<String> engineJdkPin(Path file, @Nullable String envValue) {
         if (envValue != null && !envValue.isBlank()) return Optional.of(envValue.trim());
-        return stringFromGlobal(file, "toolchain", "jdk");
+        return string(file, TOOLCHAIN_JDK);
     }
 
     /** Root-level {@code self-update} as written, before {@link SelfUpdatePolicy} reads it. */
@@ -185,7 +231,7 @@ public final class GlobalConfig {
 
     /** As {@link #selfUpdate()} against an explicit config file. */
     public static Optional<String> selfUpdate(Path configFile) {
-        return stringFromRoot(configFile, SelfUpdatePolicy.KEY);
+        return string(configFile, SELF_UPDATE);
     }
 
     /** {@code [updates] check}: whether the engine checks the update manifest; on unless written {@code false}. */
@@ -195,9 +241,7 @@ public final class GlobalConfig {
 
     /** As {@link #updatesCheck()} against an explicit config file. */
     public static boolean updatesCheck(Path configFile) {
-        return !stringFromGlobal(configFile, "updates", "check")
-                .map("false"::equalsIgnoreCase)
-                .orElse(false);
+        return !string(configFile, UPDATES_CHECK).map("false"::equalsIgnoreCase).orElse(false);
     }
 
     /**
@@ -217,16 +261,12 @@ public final class GlobalConfig {
 
     /** As {@link #credentialsStore()} against an explicit config file. */
     public static Optional<String> credentialsStore(Path configFile) {
-        return parseConfig(configFile)
-                .map(toml -> toml.get("credentials.store"))
-                .filter(String.class::isInstance)
-                .map(v -> ((String) v).strip())
-                .filter(v -> !v.isEmpty());
+        return parseConfig(configFile).flatMap(CREDENTIALS_STORE::string).map(String::strip);
     }
 
     /** {@code [release] trusted-keys}: base64 RSA SPKI keys extending built-in release trust. */
     public static List<String> releaseTrustedKeys() {
-        return stringFromGlobal(JkDirs.userConfigFile(), "release", "trusted-keys")
+        return string(JkDirs.userConfigFile(), RELEASE_TRUSTED_KEYS)
                 .map(v -> Arrays.stream(v.split(","))
                         .map(String::trim)
                         .filter(k -> !k.isEmpty())
@@ -234,19 +274,23 @@ public final class GlobalConfig {
                 .orElse(List.of());
     }
 
-    /** Read a single top-level string value, leniently, via TomlScan. */
-    private static Optional<String> stringFromRoot(Path file, String key) {
-        return stringFromGlobal(file, key);
+    /**
+     * {@code [windows] fix} as written: the setup decision's answer in advance. Empty when unset or
+     * the file does not parse.
+     */
+    public static Optional<String> windowsFix(Path configFile) {
+        return TomlValues.parse(configFile).flatMap(WINDOWS_FIX::string);
     }
 
-    /** Read a single string value from {@code [table].key} (or a bare top-level key), leniently. */
-    private static Optional<String> stringFromGlobal(Path file, String table, String key) {
-        return stringFromGlobal(file, table + "." + key);
+    /** {@code [wsl] host-engine} as written. Empty when unset or the file does not parse. */
+    public static Optional<String> wslHostEngine(Path configFile) {
+        return TomlValues.parse(configFile).flatMap(WSL_HOST_ENGINE::string);
     }
 
-    /** Read a dotted or bare key via TomlScan, leniently. */
-    private static Optional<String> stringFromGlobal(Path file, String dotted) {
+    /** Read one string value via TomlScan, leniently. */
+    private static Optional<String> string(Path file, UserConfigTable.Key key) {
         if (file == null) return Optional.empty();
+        String dotted = key.dotted();
         StampedMemo.FileStamp stamp = StampedMemo.FileStamp.of(file);
         if (stamp == null) return Optional.empty(); // absent or unreadable — no value, nothing to memo
         String raw = SCAN_CACHE.get(
@@ -396,7 +440,7 @@ public final class GlobalConfig {
     private static NetworkConfig parseNetwork(Path configFile) {
         try {
             return parseConfig(configFile)
-                    .map(toml -> NetworkConfig.parse(toml.getTable("network")))
+                    .map(toml -> NetworkConfig.parse(NetworkConfig.NETWORK.in(toml)))
                     .orElse(NetworkConfig.EMPTY);
         } catch (UserConfigParseException unparsed) {
             throw unparsed;
@@ -433,9 +477,13 @@ public final class GlobalConfig {
     static NodeSources nodeSources(Path configFile) {
         try {
             return parseConfig(configFile)
-                    .map(toml -> toml.getTable("node"))
-                    .map(t -> new NodeSources(
-                            stringEntry(t, "registry"), nodeScopes(t.isTable("scopes") ? t.getTable("scopes") : null)))
+                    .map(toml -> {
+                        TomlTable node = NODE.in(toml);
+                        return node == null
+                                ? null
+                                : new NodeSources(
+                                        stringEntry(node, NODE_REGISTRY.name()), nodeScopes(NODE_SCOPES.in(toml)));
+                    })
                     .orElse(NodeSources.EMPTY);
         } catch (UserConfigParseException unparsed) {
             throw unparsed;
@@ -461,7 +509,7 @@ public final class GlobalConfig {
     static Map<String, String> mirrors(Path configFile) {
         try {
             return parseConfig(configFile)
-                    .map(toml -> toml.getTable("mirrors"))
+                    .map(MIRRORS::in)
                     .map(t -> {
                         Map<String, String> out = new LinkedHashMap<>();
                         for (String key : t.keySet()) {
@@ -514,14 +562,14 @@ public final class GlobalConfig {
     static List<RepositorySpec> repositories(Path configFile) {
         return parseConfig(configFile)
                 .map(toml -> RepositoryToml.repositories(
-                        toml.getTable("repositories"), RepositoryToml.VarPolicy.LENIENT, RepositoryToml.OnBad.SKIP))
+                        REPOSITORIES.in(toml), RepositoryToml.VarPolicy.LENIENT, RepositoryToml.OnBad.SKIP))
                 .orElse(List.of());
     }
 
     /** The {@code credential-only} tables of {@code configFile}: credentials, never repositories. */
     static List<RepositorySpec> credentialOnly(Path configFile) {
         return parseConfig(configFile)
-                .map(toml -> RepositoryToml.credentialOnly(toml.getTable("repositories")))
+                .map(toml -> RepositoryToml.credentialOnly(REPOSITORIES.in(toml)))
                 .orElse(List.of());
     }
 
@@ -541,7 +589,7 @@ public final class GlobalConfig {
     /** As {@link #repositoryMirrors()} but against an explicit config file — for tests. */
     static List<RepositoryMirror> repositoryMirrors(Path configFile) {
         return parseConfig(configFile)
-                .map(toml -> RepositoryToml.mirrors(toml.getTable("repositories"), configFile))
+                .map(toml -> RepositoryToml.mirrors(REPOSITORIES.in(toml), configFile))
                 .orElse(List.of());
     }
 

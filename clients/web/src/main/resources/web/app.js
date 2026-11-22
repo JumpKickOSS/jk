@@ -136,6 +136,7 @@ export const appOptions = {
     engineLog: '', // the /api/log tail, shown on the Status view
     configPath: null, // absolute path of the machine config.toml
     configRows: [], // EffectiveUserConfig rows: {key, default, value, overridden}
+    configParseError: null, // why config.toml does not parse; the rows are then its defaults
     cards: [], // folded runs, newest first: the console's live builds and the run page
     projectHistory: [], // raw /api/history records (up to 200), grouped into the Projects tab
     buildError: null,
@@ -288,6 +289,7 @@ export const appOptions = {
       this.engineLog = '';
       this.configRows = [];
       this.configPath = null;
+      this.configParseError = null;
       this.cards = [];
       this.projectHistory = [];
       this.sessions = [];

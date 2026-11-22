@@ -18,6 +18,9 @@ public final class UserPlugins {
 
     private UserPlugins() {}
 
+    /** {@code [plugins]}: pins by the plugin ids the user names. */
+    public static final UserConfigTable PLUGINS = UserConfigTable.open("plugins");
+
     /**
      * Process-lifetime memo, keyed by path, with the staleness rule {@link StampedMemo} owns — the
      * same one {@code GlobalConfig} applies to this file, at the same path resolution.
@@ -56,7 +59,7 @@ public final class UserPlugins {
     }
 
     private static List<PluginDeclaration> plugins(TomlParseResult parsed) {
-        if (parsed.getTable("plugins") == null) return List.of();
+        if (PLUGINS.in(parsed) == null) return List.of();
         return List.copyOf(ManifestBuild.parsePlugins(parsed));
     }
 

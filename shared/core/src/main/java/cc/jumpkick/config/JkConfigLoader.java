@@ -33,20 +33,25 @@ public final class JkConfigLoader {
 
     private JkConfigLoader() {}
 
+    /** The {@code [config]} table, in {@code ~/.jk/config.toml} and a project's {@code jk.toml} alike. */
+    public static final UserConfigTable CONFIG = UserConfigTable.of("config");
+
+    private static final String COLOR = CONFIG.key("color").dotted();
+    private static final String OFFLINE = CONFIG.key("offline").dotted();
+    private static final String NO_PROGRESS = CONFIG.key("no-progress").dotted();
+    private static final String QUIET = CONFIG.key("quiet").dotted();
+    private static final String VERBOSE = CONFIG.key("verbose").dotted();
+    private static final String DIR = CONFIG.key("dir").dotted();
+    private static final String FORCE = CONFIG.key("force").dotted();
+    private static final String NO_ANSI = CONFIG.key("no-ansi").dotted();
+    private static final String FORCE_ANSI = CONFIG.key("force-ansi").dotted();
+    private static final String NO_OSC = CONFIG.key("no-osc").dotted();
+    private static final String NOTIFY = CONFIG.key("notify").dotted();
+    private static final String BUILD_OUTPUT = CONFIG.key("build-output").dotted();
+
     /** The keys of a {@code [config]} table; a project's {@code jk.toml} refuses any other. */
-    public static final List<String> KEYS = List.of(
-            "color",
-            "offline",
-            "no-progress",
-            "quiet",
-            "verbose",
-            "dir",
-            "force",
-            "no-ansi",
-            "force-ansi",
-            "no-osc",
-            "notify",
-            "build-output");
+    public static final List<String> KEYS =
+            CONFIG.keys().stream().map(UserConfigTable.Key::name).toList();
 
     /**
      * File layers (from {@code startDir}) then env. Caller overlays CLI flags via
@@ -84,22 +89,22 @@ public final class JkConfigLoader {
     /** Parse a TOML file's {@code [config]} table into a config layer; missing/malformed → empty. */
     static JkConfig loadTomlOrEmpty(Path path) throws IOException {
         // Missing/malformed → empty layer. TomlScan (flat scalars; no full TOML parser).
-        TomlScan scan =
-                TomlScan.scan(path, KEYS.stream().map(k -> "config." + k).toArray(String[]::new));
+        TomlScan scan = TomlScan.scan(
+                path, CONFIG.keys().stream().map(UserConfigTable.Key::dotted).toArray(String[]::new));
         return new JkConfig(
-                JkConfig.ColorChoice.parse(scan.get("config.color")).orElse(null),
-                scanBool(scan, "config.offline"),
+                JkConfig.ColorChoice.parse(scan.get(COLOR)).orElse(null),
+                scanBool(scan, OFFLINE),
                 null, // rebuild is a per-invocation CLI flag, not a config-file key
-                scanBool(scan, "config.no-progress"),
-                scanBool(scan, "config.quiet"),
-                scanBool(scan, "config.verbose"),
-                Optional.ofNullable(scan.get("config.dir")).map(Paths::get).orElse(null),
-                scanBool(scan, "config.force"),
-                scanBool(scan, "config.no-ansi"),
-                scanBool(scan, "config.force-ansi"),
-                scanBool(scan, "config.no-osc"),
-                JkConfig.NotifyChoice.parse(scan.get("config.notify")).orElse(null),
-                scanBool(scan, "config.build-output"));
+                scanBool(scan, NO_PROGRESS),
+                scanBool(scan, QUIET),
+                scanBool(scan, VERBOSE),
+                Optional.ofNullable(scan.get(DIR)).map(Paths::get).orElse(null),
+                scanBool(scan, FORCE),
+                scanBool(scan, NO_ANSI),
+                scanBool(scan, FORCE_ANSI),
+                scanBool(scan, NO_OSC),
+                JkConfig.NotifyChoice.parse(scan.get(NOTIFY)).orElse(null),
+                scanBool(scan, BUILD_OUTPUT));
     }
 
     /** A scanned {@code jk.toml} boolean, per the jk-wide truth set; anything else = unset. */

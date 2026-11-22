@@ -23,6 +23,11 @@ public enum UiAsk {
     /** The link in the tool result only. */
     QUIET;
 
+    /** The {@code [ui]} table and its key. */
+    public static final UserConfigTable UI = UserConfigTable.of("ui");
+
+    private static final UserConfigTable.Key KEY = UI.key("ask");
+
     private static final MachineConfig<UiAsk> ASK = MachineConfig.of(NOTIFY);
 
     /** The spelling in {@code config.toml} and {@code JK_UI_ASK}. */
@@ -48,10 +53,10 @@ public enum UiAsk {
 
     /** As {@link #resolve()} but against an explicit config file and env. */
     public static UiAsk resolve(Path userConfig, Function<String, @Nullable String> env) {
-        TomlTable ui =
-                TomlValues.parse(userConfig).map(root -> root.getTable("ui")).orElse(null);
+        TomlTable ui = TomlValues.parse(userConfig).map(UI::in).orElse(null);
         UiAsk fromEnv = EnvValues.string(env, "JK_UI_ASK").flatMap(UiAsk::parse).orElse(null);
-        UiAsk fromFile = TomlValues.optString(ui, "ask").flatMap(UiAsk::parse).orElse(null);
+        UiAsk fromFile =
+                TomlValues.optString(ui, KEY.name()).flatMap(UiAsk::parse).orElse(null);
         return ASK.layer(fromEnv, fromFile);
     }
 }

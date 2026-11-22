@@ -956,6 +956,7 @@
               <span class="spacer"></span>
               <span class="mono dim">{{ configPath || '~/.jk/config.toml' }}</span>
             </div>
+            <div v-if="configParseError" class="mono small error">{{ configParseError }}</div>
             <div v-if="configRows && configRows.length" class="config-scroll">
               <table class="stats config-table">
                 <thead>

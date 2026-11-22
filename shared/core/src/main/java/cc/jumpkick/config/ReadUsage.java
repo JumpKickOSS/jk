@@ -33,6 +33,11 @@ public final class ReadUsage {
     /** The surface that shows the notice after a command at a terminal. */
     public static final String CLI = "cli";
 
+    /** The {@code [agents]} table and its key. */
+    public static final UserConfigTable AGENTS = UserConfigTable.of("agents");
+
+    private static final UserConfigTable.Key KEY = AGENTS.key("read-usage");
+
     private static final MachineConfig<Boolean> READ = MachineConfig.of(true);
 
     private ReadUsage() {}
@@ -49,12 +54,10 @@ public final class ReadUsage {
 
     /** As {@link #on()} but against an explicit config file and environment. */
     public static boolean on(Path userConfig, Function<String, @Nullable String> env) {
-        TomlTable agents = TomlValues.parse(userConfig)
-                .map(root -> root.getTable("agents"))
-                .orElse(null);
+        TomlTable agents = TomlValues.parse(userConfig).map(AGENTS::in).orElse(null);
         return READ.layer(
                 EnvValues.bool(env, ENV).orElse(null),
-                TomlValues.optBoolean(agents, "read-usage").orElse(null));
+                TomlValues.optBoolean(agents, KEY.name()).orElse(null));
     }
 
     /**

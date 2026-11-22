@@ -102,7 +102,8 @@ column, and exits 2, the configuration exit code. That covers `[repositories]` (
 `[templates]` and `[image]`. Local preferences (`nerd-font`, `[engine]`, `[cache]`, `[history]`,
 `[http]`) still fall back to their defaults, so `jk --version`, `jk help`, `jk engine stop`
 and `jk doctor` keep working. `jk doctor` reports the file as a failed `config` check with the
-position. The engine reads the file again when it changes, so the command after the fix
+position, and the dashboard's Configuration panel shows the same error above its rows, which then
+show the defaults. The engine reads the file again when it changes, so the command after the fix
 succeeds without a restart.
 
 `[plugins]` pins are code that runs, so they are read strictly too: a file that does not parse

@@ -19,6 +19,11 @@ import org.jspecify.annotations.Nullable;
  */
 public final class ForgeAuthConfig {
 
+    /** {@code [forge]}: client ids by the providers and hosts the user names. */
+    public static final UserConfigTable FORGE = UserConfigTable.open("forge");
+
+    private static final String PREFIX = FORGE.path().getFirst() + ".";
+
     private final Map<String, String> byProvider; // providerId (lowercased) → client id
     private final Map<String, String> byHost; // host (lowercased)       → client id
 
@@ -108,7 +113,7 @@ public final class ForgeAuthConfig {
                 section = line.substring(line.startsWith("[[") ? 2 : 1, close)
                         .replace("]", "")
                         .strip();
-                inHostEntry = section.equals("forge.host") && line.startsWith("[[");
+                inHostEntry = section.equals(PREFIX + "host") && line.startsWith("[[");
                 hostName = null;
                 hostCid = null;
                 continue;
@@ -121,8 +126,8 @@ public final class ForgeAuthConfig {
             if (inHostEntry) {
                 if (key.equals("name")) hostName = value;
                 if (key.equals("client-id")) hostCid = value;
-            } else if (section.startsWith("forge.") && key.equals("client-id")) {
-                byProvider.put(section.substring("forge.".length()).toLowerCase(Locale.ROOT), value.strip());
+            } else if (section.startsWith(PREFIX) && key.equals("client-id")) {
+                byProvider.put(section.substring(PREFIX.length()).toLowerCase(Locale.ROOT), value.strip());
             }
         }
         commitHost(byHost, inHostEntry, hostName, hostCid);

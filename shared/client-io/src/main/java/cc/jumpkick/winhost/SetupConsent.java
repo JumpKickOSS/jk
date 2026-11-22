@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.winhost;
 
-import cc.jumpkick.config.TomlValues;
+import cc.jumpkick.config.GlobalConfig;
 import java.nio.file.Path;
 import java.util.Locale;
 
@@ -18,10 +18,7 @@ public enum SetupConsent {
 
     /** The consent {@code userConfig} gives; {@link #ASK} when the file or key is missing. */
     public static SetupConsent read(Path userConfig) {
-        String value = TomlValues.parse(userConfig)
-                .map(root -> root.getTable("windows"))
-                .flatMap(windows -> TomlValues.optString(windows, "fix"))
-                .orElse("");
+        String value = GlobalConfig.windowsFix(userConfig).orElse("");
         return switch (value.strip().toLowerCase(Locale.ROOT)) {
             case "apply" -> APPLY;
             case "never" -> NEVER;

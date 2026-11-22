@@ -27,6 +27,15 @@ public record NetworkConfig(
 
     public static final NetworkConfig EMPTY = new NetworkConfig(null, null, List.of());
 
+    /** The {@code [network]} table and its keys. */
+    public static final UserConfigTable NETWORK = UserConfigTable.of("network");
+
+    private static final UserConfigTable.Key PROXY = NETWORK.key("proxy");
+
+    private static final UserConfigTable.Key HTTPS_PROXY = NETWORK.key("https-proxy");
+
+    private static final UserConfigTable.Key NO_PROXY = NETWORK.key("no-proxy");
+
     public NetworkConfig {
         noProxy = noProxy == null ? List.of() : List.copyOf(noProxy);
     }
@@ -38,8 +47,8 @@ public record NetworkConfig(
     static NetworkConfig parse(@Nullable TomlTable network) {
         if (network == null) return EMPTY;
         List<String> noProxy = new ArrayList<>();
-        switch (network.get("no-proxy")) {
-            case TomlArray array -> noProxy.addAll(TomlValues.stringList(network, "no-proxy"));
+        switch (network.get(List.of(NO_PROXY.name()))) {
+            case TomlArray array -> noProxy.addAll(TomlValues.stringList(network, NO_PROXY.name()));
             case String csv -> {
                 for (String entry : csv.split(",")) {
                     if (!entry.isBlank()) noProxy.add(entry.trim());
@@ -48,8 +57,8 @@ public record NetworkConfig(
             case null, default -> {}
         }
         return new NetworkConfig(
-                TomlValues.optString(network, "proxy").orElse(null),
-                TomlValues.optString(network, "https-proxy").orElse(null),
+                TomlValues.optString(network, PROXY.name()).orElse(null),
+                TomlValues.optString(network, HTTPS_PROXY.name()).orElse(null),
                 noProxy);
     }
 }

@@ -2,14 +2,16 @@
 package cc.jumpkick.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.testing.RepoRoot;
 import java.io.IOException;
+import java.lang.reflect.Field;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.LinkedHashSet;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.TreeSet;
@@ -21,7 +23,8 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * A key of {@code ~/.jk/config.toml} is unknown when no reader reads it, and the list of known keys
- * stays the readers' own: a reader that reads a key the list lacks fails here.
+ * stays the readers' own: a table no list holds, a key declared twice, or a reader that reads a key
+ * no table declares fails here.
  */
 class UserConfigKeysTest {
 
@@ -31,18 +34,17 @@ class UserConfigKeysTest {
             Pattern.compile("TomlValues\\.opt\\w+\\(\\s*\\w+,\\s*\"([^\"]+)\""),
             Pattern.compile("\\.get\\(List\\.of\\(\"([^\"]+)\"\\)\\)"));
 
-    /** GlobalConfig's own scalar reads: {@code stringFromRoot(file, "k")}, {@code stringFromGlobal(file, "t", "k")}. */
-    private static final Pattern GLOBAL_READ =
-            Pattern.compile("stringFrom(?:Root|Global)\\(\\s*\\w+,\\s*\"([^\"]+)\"(?:,\\s*\"([^\"]+)\")?\\)");
+    /** A table's declaration: {@code static final UserConfigTable HTTP = UserConfigTable.of("http")}. */
+    private static final Pattern TABLE_DECLARATION =
+            Pattern.compile("static final UserConfigTable (\\w+)\\s*=\\s*UserConfigTable\\.(?:of|open)\\(");
+
+    private static final String CORE = "shared/core/src/main/java";
 
     /** A dotted key literal, as a {@code TomlScan} read spells one. */
     private static final Pattern DOTTED = Pattern.compile("\"([a-z][a-z0-9-]*(?:\\.[a-z0-9-]+)+)\"");
 
     /** A parameter that carries {@code ~/.jk/config.toml}, by the readers' naming. */
     private static final Pattern USER_CONFIG_PARAM = Pattern.compile("Path userConfig\\b");
-
-    /** Dotted literals in reader files that are not keys of the file. */
-    private static final Set<String> NOT_KEYS = Set.of("config.parse-error");
 
     @Test
     void a_file_of_known_keys_has_no_unknown_key(@TempDir Path tmp) throws IOException {
@@ -149,6 +151,64 @@ class UserConfigKeysTest {
 
     @Test
     void every_key_a_reader_of_the_file_reads_is_known() throws IOException {
+        List<String> unknown = new ArrayList<>();
+        int readers = 0;
+        for (Path main : mainSourceRoots(RepoRoot.find(UserConfigKeysTest.class))) {
+            try (Stream<Path> walk = Files.walk(main)) {
+                for (Path java :
+                        walk.filter(p -> p.toString().endsWith(".java")).toList()) {
+                    String text = Files.readString(java);
+                    if (!isReader(text)) continue;
+                    readers++;
+                    unknown.addAll(undeclaredReads(main.relativize(java).toString(), text));
+                }
+            }
+        }
+        assertThat(readers).as("the reader scan found too few files; it broke").isGreaterThan(20);
+        assertThat(unknown)
+                .as("keys read from ~/.jk/config.toml that no UserConfigTable declares")
+                .isEmpty();
+    }
+
+    @Test
+    void a_reader_of_an_undeclared_key_is_caught() {
+        String reader = """
+                TomlTable http = TomlValues.parse(userConfig).map(root -> root.getTable("http")).orElse(null);
+                int port = TomlValues.optInt(http, "port").orElse(0);
+                int typo = TomlValues.optInt(http, "prot").orElse(0);
+                TomlTable retired = TomlValues.parse(userConfig).map(root -> root.getTable("telemetry")).orElse(null);
+                static String level(Path userConfig) {
+                    return TomlScan.scan(userConfig, "engine.log-levl").get("engine.log-levl");
+                }
+                """;
+
+        assertThat(isReader(reader)).isTrue();
+        assertThat(undeclaredReads("Fixture.java", reader))
+                .containsExactlyInAnyOrder(
+                        "Fixture.java: prot",
+                        "Fixture.java: telemetry",
+                        "Fixture.java: engine.log-levl",
+                        "Fixture.java: engine.log-levl");
+    }
+
+    /** Whether {@code text} reads {@code ~/.jk/config.toml}, by the calls and names its readers use. */
+    private static boolean isReader(String text) {
+        return parsesTheFile(text) || scansTheFile(text);
+    }
+
+    /** TomlValues.parse and GlobalConfig.parseConfig read only {@code ~/.jk/config.toml}. */
+    private static boolean parsesTheFile(String text) {
+        return text.contains("TomlValues.parse(") || text.contains("parseConfig(");
+    }
+
+    /** A TomlScan read of the file names it {@code userConfig} and its keys dotted. */
+    private static boolean scansTheFile(String text) {
+        return text.contains("userConfigFile")
+                || USER_CONFIG_PARAM.matcher(text).find();
+    }
+
+    /** The literal keys {@code text} reads that no table declares, each as {@code at: key}. */
+    private static List<String> undeclaredReads(String at, String text) {
         Set<String> segments = new TreeSet<>();
         Set<String> tables = new TreeSet<>();
         Stream.concat(UserConfigKeys.EXACT.stream(), UserConfigKeys.OPEN.stream())
@@ -157,52 +217,74 @@ class UserConfigKeysTest {
                     tables.add(p.getFirst());
                 });
         List<String> unknown = new ArrayList<>();
-        Set<Path> readers = new LinkedHashSet<>();
-        for (Path main : mainSourceRoots(RepoRoot.find(UserConfigKeysTest.class))) {
+        for (Pattern read : parsesTheFile(text) ? SEGMENT_READS : List.<Pattern>of()) {
+            Matcher m = read.matcher(text);
+            while (m.find()) {
+                if (!segments.contains(m.group(1))) unknown.add(at + ": " + m.group(1));
+            }
+        }
+        Matcher d = DOTTED.matcher(scansTheFile(text) ? text : "");
+        while (d.find()) {
+            String key = d.group(1);
+            List<String> path = Arrays.asList(key.split("\\."));
+            if (tables.contains(path.getFirst()) && !UserConfigKeys.known(path)) unknown.add(at + ": " + key);
+        }
+        return unknown;
+    }
+
+    @Test
+    void no_key_is_declared_twice() {
+        List<List<String>> declared = UserConfigKeys.declared();
+        Set<List<String>> seen = new HashSet<>();
+        List<String> twice = new ArrayList<>();
+        for (List<String> path : declared) {
+            if (!seen.add(path)) twice.add(String.join(".", path));
+        }
+        assertThat(declared).as("declared keys; the derivation broke").hasSizeGreaterThan(60);
+        assertThat(twice).as("keys two readers declare").isEmpty();
+    }
+
+    @Test
+    void a_key_is_declared_once_per_table_and_an_open_table_declares_none() {
+        UserConfigTable table = UserConfigTable.of("t");
+        table.key("k");
+        assertThatThrownBy(() -> table.key("k")).hasMessageContaining("t.k is declared twice");
+        assertThatThrownBy(() -> UserConfigTable.open("o").key("k")).hasMessageContaining("open");
+    }
+
+    @Test
+    void every_declared_table_is_listed() throws Exception {
+        Path root = RepoRoot.find(UserConfigKeysTest.class);
+        List<String> problems = new ArrayList<>();
+        int declarations = 0;
+        for (Path main : mainSourceRoots(root)) {
             try (Stream<Path> walk = Files.walk(main)) {
                 for (Path java :
                         walk.filter(p -> p.toString().endsWith(".java")).toList()) {
-                    String text = Files.readString(java);
-                    String at = main.relativize(java).toString();
-                    // TomlValues.parse and GlobalConfig.parseConfig read only ~/.jk/config.toml.
-                    if (text.contains("TomlValues.parse(") || text.contains("parseConfig(")) {
-                        readers.add(java);
-                        for (Pattern read : SEGMENT_READS) {
-                            Matcher m = read.matcher(text);
-                            while (m.find()) {
-                                if (!segments.contains(m.group(1))) unknown.add(at + ": " + m.group(1));
-                            }
+                    Matcher m = TABLE_DECLARATION.matcher(Files.readString(java));
+                    while (m.find()) {
+                        declarations++;
+                        String at = root.relativize(java) + ": " + m.group(1);
+                        if (!main.equals(root.resolve(CORE))) {
+                            problems.add(at + " is declared outside " + CORE + ", where UserConfigKeys cannot list it");
+                            continue;
                         }
-                        Matcher g = GLOBAL_READ.matcher(text);
-                        while (g.find()) {
-                            List<String> path = g.group(2) == null
-                                    ? Arrays.asList(g.group(1).split("\\."))
-                                    : List.of(g.group(1), g.group(2));
-                            if (!UserConfigKeys.known(path)) unknown.add(at + ": " + String.join(".", path));
-                        }
-                    }
-                    // A TomlScan read of the file names its keys dotted.
-                    if (text.contains("userConfigFile")
-                            || USER_CONFIG_PARAM.matcher(text).find()) {
-                        readers.add(java);
-                        Matcher d = DOTTED.matcher(text);
-                        while (d.find()) {
-                            String key = d.group(1);
-                            List<String> path = Arrays.asList(key.split("\\."));
-                            if (tables.contains(path.getFirst())
-                                    && !NOT_KEYS.contains(key)
-                                    && !UserConfigKeys.known(path)) {
-                                unknown.add(at + ": " + key);
-                            }
+                        String type = main.relativize(java)
+                                .toString()
+                                .replace(java.getFileSystem().getSeparator(), ".")
+                                .replaceFirst("\\.java$", "");
+                        Field field = Class.forName(type).getDeclaredField(m.group(1));
+                        field.setAccessible(true);
+                        Object table = field.get(null);
+                        if (UserConfigKeys.TABLES.stream().noneMatch(t -> t == table)) {
+                            problems.add(at + " is not in UserConfigKeys.TABLES");
                         }
                     }
                 }
             }
         }
-        assertThat(readers).as("the reader scan found too few files; it broke").hasSizeGreaterThan(20);
-        assertThat(unknown)
-                .as("keys read from ~/.jk/config.toml that UserConfigKeys lacks")
-                .isEmpty();
+        assertThat(declarations).as("table declarations found; the scan broke").isGreaterThan(20);
+        assertThat(problems).isEmpty();
     }
 
     /** Every module's production sources. */

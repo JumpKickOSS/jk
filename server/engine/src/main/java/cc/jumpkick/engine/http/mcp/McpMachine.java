@@ -4,6 +4,8 @@ package cc.jumpkick.engine.http.mcp;
 import cc.jumpkick.cache.DiskUsage;
 import cc.jumpkick.changes.ChangeJournal;
 import cc.jumpkick.config.EffectiveUserConfig;
+import cc.jumpkick.config.EngineControls;
+import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.NerdFontMode;
 import cc.jumpkick.config.UserConfigEditor;
 import cc.jumpkick.engine.http.api.CacheSnapshot;
@@ -112,6 +114,7 @@ public final class McpMachine {
             row.put("overridden", r.overridden());
             rows.add(row);
         }
+        EffectiveUserConfig.parseError().ifPresent(error -> m.put("parseError", error));
         m.put("rows", rows);
         return m;
     }
@@ -119,7 +122,7 @@ public final class McpMachine {
     public static Map<String, Object> configSet(String key, @Nullable String value) {
         Map<String, Object> m = new LinkedHashMap<>();
         try {
-            if ("nerd-font".equals(key)) {
+            if (GlobalConfig.NERD_FONT.dotted().equals(key)) {
                 NerdFontMode mode = parseNerd(value);
                 Path written = UserConfigEditor.setNerdFont(JkDirs.userConfigFile(), mode);
                 m.put("written", written.toString());
@@ -127,7 +130,7 @@ public final class McpMachine {
                 m.put("value", mode.toToml());
                 return m;
             }
-            if ("engine.max-heap-mb".equals(key)) {
+            if (EngineControls.MAX_HEAP_MB.dotted().equals(key)) {
                 if (value == null) throw new McpError(-32602, "config set " + key + " requires value");
                 int mb = heapMb(value);
                 Path file = JkDirs.userConfigFile();
@@ -149,7 +152,7 @@ public final class McpMachine {
     }
 
     public static Map<String, Object> applyCiPreset() {
-        Map<String, Object> heap = configSet("engine.max-heap-mb", "512");
+        Map<String, Object> heap = configSet(EngineControls.MAX_HEAP_MB.dotted(), "512");
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("heap", heap);
         m.put("env", List.of());

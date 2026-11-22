@@ -20,6 +20,11 @@ public record JkInstallConfig(InstallDestination destination) {
 
     public static final JkInstallConfig DEFAULTS = new JkInstallConfig(InstallDestination.JK);
 
+    /** The {@code [install]} table and its key. */
+    public static final UserConfigTable INSTALL = UserConfigTable.of("install");
+
+    static final String DESTINATION_KEY = INSTALL.key("destination").dotted();
+
     private static final MachineConfig<InstallDestination> DESTINATION = MachineConfig.of(DEFAULTS.destination());
 
     public static JkInstallConfig resolve() {
@@ -28,20 +33,20 @@ public record JkInstallConfig(InstallDestination destination) {
 
     /** As {@link #resolve()} but against an explicit config file and environment. */
     static JkInstallConfig resolve(Path userConfig, Function<String, @Nullable String> env) {
-        TomlScan scan = TomlScan.scan(userConfig, "install.destination");
+        TomlScan scan = TomlScan.scan(userConfig, DESTINATION_KEY);
         InstallDestination implied =
                 JkM2Config.resolve(userConfig, env).share() ? InstallDestination.M2 : InstallDestination.JK;
         return new JkInstallConfig(DESTINATION.layerOver(
                 implied,
                 word(EnvValues.string(env, "JK_INSTALL_DESTINATION").orElse(null)),
-                word(scan.get("install.destination"))));
+                word(scan.get(DESTINATION_KEY))));
     }
 
     /** The {@code [install]} table of {@code file}; missing or malformed gives {@link #DEFAULTS}. */
     public static JkInstallConfig fromToml(Path file) {
         InstallDestination implied = JkM2Config.fromToml(file).share() ? InstallDestination.M2 : InstallDestination.JK;
         return new JkInstallConfig(DESTINATION.layerOver(
-                implied, word(TomlScan.scan(file, "install.destination").get("install.destination"))));
+                implied, word(TomlScan.scan(file, DESTINATION_KEY).get(DESTINATION_KEY))));
     }
 
     private static @Nullable InstallDestination word(@Nullable String raw) {

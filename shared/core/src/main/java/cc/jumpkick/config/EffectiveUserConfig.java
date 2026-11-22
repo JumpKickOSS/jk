@@ -48,6 +48,19 @@ public final class EffectiveUserConfig {
         return JkDirs.userConfigFile();
     }
 
+    /**
+     * Why {@code userConfig} does not parse, as one line naming the file and the place, or empty
+     * when it parses or is absent. The rows of a file that does not parse are their defaults.
+     */
+    public static Optional<String> parseError(Path userConfig) {
+        return GlobalConfig.userConfigProblem(userConfig).map(e -> Objects.toString(e.getMessage(), ""));
+    }
+
+    /** {@link #parseError(Path)} of the live machine config. */
+    public static Optional<String> parseError() {
+        return parseError(JkDirs.userConfigFile());
+    }
+
     /** Effective rows for the live machine config. */
     public static List<Row> rows() {
         return rows(JkDirs.userConfigFile(), BuildEnv::get);
@@ -62,11 +75,9 @@ public final class EffectiveUserConfig {
     static List<Row> rows(
             Path userConfig, Function<String, @Nullable String> env, Supplier<JkCacheConfig.DiskSpace> disk) {
         List<Row> out = new ArrayList<>();
-        // A file that does not parse is the first thing the panel says; the rows below it fall back
-        // to their defaults, which is what a lenient reader of the file sees.
-        Optional<UserConfigParseException> problem = GlobalConfig.userConfigProblem(userConfig);
-        problem.ifPresent(e -> add(out, "config.parse-error", "", Objects.toString(e.getMessage(), "")));
-        // A key this jk does not read comes next, so a misspelt or retired key is not mistaken for a default.
+        // A file that does not parse gives the defaults, which is what a lenient reader of it sees.
+        boolean parses = GlobalConfig.userConfigProblem(userConfig).isEmpty();
+        // A key this jk does not read comes first, so a misspelt or retired key is not mistaken for a default.
         for (String key : UserConfigKeys.unknown(userConfig)) add(out, key, "", UNKNOWN);
         addGlobal(out, userConfig, env);
         addToolchain(out, userConfig, env);
@@ -76,8 +87,8 @@ public final class EffectiveUserConfig {
         addHistory(out, userConfig, env);
         addM2(out, userConfig, env);
         addInstall(out, userConfig, env);
-        addCredentials(out, problem.isPresent() ? null : userConfig, env);
-        addTemplates(out, problem.isPresent() ? null : userConfig);
+        addCredentials(out, parses ? userConfig : null, env);
+        addTemplates(out, parses ? userConfig : null);
         return List.copyOf(out);
     }
 
@@ -85,7 +96,7 @@ public final class EffectiveUserConfig {
         // The declared mode, not the detected caps: this table reports configuration intent, so
         // "auto" must read as "auto" rather than as whatever this terminal happens to resolve to.
         NerdFontMode mode = GlobalConfig.nerdFontMode(file, env.apply("JK_NERD_FONT"), env.apply("NERD_FONT"));
-        add(out, "nerd-font", NerdFontMode.AUTO.name().toLowerCase(Locale.ROOT), name(mode));
+        add(out, GlobalConfig.NERD_FONT.dotted(), NerdFontMode.AUTO.name().toLowerCase(Locale.ROOT), name(mode));
         String selfUpdate = SelfUpdatePolicy.Mode.parse(env.apply(SelfUpdatePolicy.ENV))
                 .or(() -> GlobalConfig.selfUpdate(file).flatMap(SelfUpdatePolicy.Mode::parse))
                 .map(SelfUpdatePolicy.Mode::spelling)
@@ -104,56 +115,76 @@ public final class EffectiveUserConfig {
 
     private static void addToolchain(List<Row> out, Path file, Function<String, @Nullable String> env) {
         String pin = GlobalConfig.engineJdkPin(file, env.apply("JK_ENGINE_JDK")).orElse("");
-        add(out, "toolchain.jdk", "", pin);
+        add(out, GlobalConfig.TOOLCHAIN_JDK.dotted(), "", pin);
     }
 
     private static void addHttp(List<Row> out, Path file, Function<String, @Nullable String> env) {
         Optional<JkHttpConfig> resolved = JkHttpConfig.resolve(file, env);
         JkHttpConfig d = JkHttpConfig.DEFAULTS;
-        add(out, "http.enabled", true, resolved.isPresent());
+        add(out, JkHttpConfig.HTTP_ENABLED_KEY.dotted(), true, resolved.isPresent());
         JkHttpConfig e = resolved.orElse(d);
-        add(out, "http.host", d.host(), e.host());
-        add(out, "http.port", d.port(), e.port());
-        add(out, "http.max-concurrent-requests", d.maxConcurrentRequests(), e.maxConcurrentRequests());
-        add(out, "http.max-event-streams", d.maxEventStreams(), e.maxEventStreams());
-        add(out, "http.web-root", d.webRoot(), e.webRoot());
-        add(out, "http.web-overlay", d.webOverlay(), e.webOverlay());
-        add(out, "mcp.enabled", d.mcp().enabled(), e.mcp().enabled());
-        add(out, "mcp.max-event-streams", d.mcp().maxEventStreams(), e.mcp().maxEventStreams());
-        add(out, "mcp.max-sessions", d.mcp().maxSessions(), e.mcp().maxSessions());
+        add(out, JkHttpConfig.HOST_KEY.dotted(), d.host(), e.host());
+        add(out, JkHttpConfig.PORT_KEY.dotted(), d.port(), e.port());
         add(
                 out,
-                "mcp.session-expiry",
+                JkHttpConfig.MAX_CONCURRENT_REQUESTS_KEY.dotted(),
+                d.maxConcurrentRequests(),
+                e.maxConcurrentRequests());
+        add(out, JkHttpConfig.MAX_EVENT_STREAMS_KEY.dotted(), d.maxEventStreams(), e.maxEventStreams());
+        add(out, JkHttpConfig.WEB_ROOT_KEY.dotted(), d.webRoot(), e.webRoot());
+        add(out, JkHttpConfig.WEB_OVERLAY_KEY.dotted(), d.webOverlay(), e.webOverlay());
+        add(
+                out,
+                JkHttpConfig.MCP_ENABLED_KEY.dotted(),
+                d.mcp().enabled(),
+                e.mcp().enabled());
+        add(
+                out,
+                JkHttpConfig.MCP_MAX_EVENT_STREAMS_KEY.dotted(),
+                d.mcp().maxEventStreams(),
+                e.mcp().maxEventStreams());
+        add(
+                out,
+                JkHttpConfig.MCP_MAX_SESSIONS_KEY.dotted(),
+                d.mcp().maxSessions(),
+                e.mcp().maxSessions());
+        add(
+                out,
+                SessionExpiry.KEY.dotted(),
                 SessionExpiry.spell(SessionExpiry.DEFAULT),
                 SessionExpiry.spell(SessionExpiry.resolve(file, env)));
-        add(out, "mcp.tools", d.mcp().tools(), e.mcp().tools());
+        add(out, JkHttpConfig.MCP_TOOLS_KEY.dotted(), d.mcp().tools(), e.mcp().tools());
     }
 
     private static void addEngine(List<Row> out, Path file, Function<String, @Nullable String> env) {
         // Heap default is CI-aware (256 MiB locally, 512 MiB when CI=1|true).
         JkEngineConfig d = JkEngineConfig.resolvedDefaults(env);
         JkEngineConfig e = JkEngineConfig.resolve(file, env);
-        add(out, "engine.max-heap-mb", d.maxHeapMb(), e.maxHeapMb());
-        add(out, "engine.jobs", jobsLabel(d.jobs()), jobsLabel(e.jobs()));
-        add(out, "engine.continue", d.keepGoing(), e.keepGoing());
-        add(out, "engine.vfs-max-mb", d.vfsMaxMb(), e.vfsMaxMb());
-        add(out, "engine.auto-warmup", d.autoWarmup(), e.autoWarmup());
-        add(out, "engine.log-max-mb", d.logMaxMb(), e.logMaxMb());
-        add(out, "engine.log-level", d.logLevel(), e.logLevel());
-        add(out, "engine.keep-awake", d.keepAwake().spelling(), e.keepAwake().spelling());
+        add(out, EngineControls.MAX_HEAP_MB.dotted(), d.maxHeapMb(), e.maxHeapMb());
+        add(out, EngineControls.JOBS.dotted(), jobsLabel(d.jobs()), jobsLabel(e.jobs()));
+        add(out, EngineControls.CONTINUE.dotted(), d.keepGoing(), e.keepGoing());
+        add(out, EngineControls.VFS_MAX_MB.dotted(), d.vfsMaxMb(), e.vfsMaxMb());
+        add(out, EngineControls.AUTO_WARMUP.dotted(), d.autoWarmup(), e.autoWarmup());
+        add(out, EngineControls.LOG_MAX_MB.dotted(), d.logMaxMb(), e.logMaxMb());
+        add(out, EngineControls.LOG_LEVEL.dotted(), d.logLevel(), e.logLevel());
         add(
                 out,
-                "engine.detached-deadline-ms",
+                EngineControls.KEEP_AWAKE.dotted(),
+                d.keepAwake().spelling(),
+                e.keepAwake().spelling());
+        add(
+                out,
+                EngineControls.DETACHED_DEADLINE_MS.dotted(),
                 d.jobLimits().detachedDeadlineMs(),
                 e.jobLimits().detachedDeadlineMs());
         add(
                 out,
-                "engine.queue-wait-ms",
+                EngineControls.QUEUE_WAIT_MS.dotted(),
                 d.jobLimits().queueWaitMs(),
                 e.jobLimits().queueWaitMs());
         add(
                 out,
-                "engine.drain-deadline-ms",
+                EngineControls.DRAIN_DEADLINE_MS.dotted(),
                 d.jobLimits().drainDeadlineMs(),
                 e.jobLimits().drainDeadlineMs());
     }
@@ -164,18 +195,18 @@ public final class EffectiveUserConfig {
         JkCacheConfig.DiskSpace space = disk != null ? disk.get() : null;
         JkCacheConfig d = JkCacheConfig.resolvedDefaults(env, space);
         JkCacheConfig e = JkCacheConfig.resolve(file, env, space);
-        add(out, "cache.auto-prune", d.autoPrune(), e.autoPrune());
+        add(out, JkCacheConfig.AUTO_PRUNE_KEY, d.autoPrune(), e.autoPrune());
         add(
                 out,
-                "cache.max-cache-size-gb",
+                JkCacheConfig.MAX_CACHE_SIZE_GB_KEY,
                 JkCacheConfig.formatGb(d.maxCacheSizeGb()),
                 JkCacheConfig.formatGb(e.maxCacheSizeGb()));
-        add(out, "cache.prune-interval-days", d.pruneIntervalDays(), e.pruneIntervalDays());
+        add(out, JkCacheConfig.PRUNE_INTERVAL_DAYS_KEY, d.pruneIntervalDays(), e.pruneIntervalDays());
         // Off on CI by default; the CI-aware default makes "overridden" mean the user set it.
         Duration heavyDefault = EnvValues.isCi(env) ? Duration.ZERO : HeavyTtl.DEFAULT;
         add(
                 out,
-                "cache.heavy-ttl",
+                HeavyTtl.KEY.dotted(),
                 SessionExpiry.spell(heavyDefault),
                 SessionExpiry.spell(HeavyTtl.resolve(file, env)));
     }
@@ -183,17 +214,17 @@ public final class EffectiveUserConfig {
     private static void addHistory(List<Row> out, Path file, Function<String, @Nullable String> env) {
         JkHistoryConfig d = JkHistoryConfig.DEFAULTS;
         JkHistoryConfig e = JkHistoryConfig.resolve(file, env);
-        add(out, "history.enabled", d.enabled(), e.enabled());
-        add(out, "history.max-age-days", d.maxAgeDays(), e.maxAgeDays());
-        add(out, "history.max-disk-mb", d.maxDiskMb(), e.maxDiskMb());
+        add(out, JkHistoryConfig.ENABLED_KEY.dotted(), d.enabled(), e.enabled());
+        add(out, JkHistoryConfig.MAX_AGE_DAYS_KEY.dotted(), d.maxAgeDays(), e.maxAgeDays());
+        add(out, JkHistoryConfig.MAX_DISK_MB_KEY.dotted(), d.maxDiskMb(), e.maxDiskMb());
     }
 
     private static void addM2(List<Row> out, Path file, Function<String, @Nullable String> env) {
         JkM2Config d = JkM2Config.DEFAULTS;
         JkM2Config e = JkM2Config.resolve(file, env);
-        add(out, "m2.integration", d.mode().spelling(), e.mode().spelling());
-        add(out, "m2.auto-clean", d.autoClean(), e.autoClean());
-        add(out, "m2.clean-after-days", d.cleanAfterDays(), e.cleanAfterDays());
+        add(out, JkM2Config.INTEGRATION_KEY, d.mode().spelling(), e.mode().spelling());
+        add(out, JkM2Config.AUTO_CLEAN_KEY, d.autoClean(), e.autoClean());
+        add(out, JkM2Config.CLEAN_AFTER_DAYS_KEY, d.cleanAfterDays(), e.cleanAfterDays());
     }
 
     private static void addInstall(List<Row> out, Path file, Function<String, @Nullable String> env) {
@@ -201,7 +232,7 @@ public final class EffectiveUserConfig {
         JkInstallConfig e = JkInstallConfig.resolve(file, env);
         add(
                 out,
-                "install.destination",
+                JkInstallConfig.DESTINATION_KEY,
                 d.destination().spelling(),
                 e.destination().spelling());
     }
@@ -215,15 +246,19 @@ public final class EffectiveUserConfig {
         String store = fromEnv != null && !fromEnv.isBlank()
                 ? fromEnv.strip()
                 : (file == null ? Optional.<String>empty() : GlobalConfig.credentialsStore(file)).orElse("auto");
-        add(out, "credentials.store", "auto", store);
+        add(out, GlobalConfig.CREDENTIALS_STORE.dotted(), "auto", store);
     }
 
     /** The {@code [templates]} rows; {@code file} is null when it does not parse, and the effective values are the defaults. */
     private static void addTemplates(List<Row> out, @Nullable Path file) {
         JkTemplatesConfig d = JkTemplatesConfig.defaults();
         JkTemplatesConfig e = file == null ? d : JkTemplatesConfig.resolve(file);
-        add(out, "templates.official", d.officialUrl(), e.officialUrl());
-        add(out, "templates.sources", sourcesLabel(d.sources()), sourcesLabel(e.sources()));
+        add(out, JkTemplatesConfig.OFFICIAL_KEY.dotted(), d.officialUrl(), e.officialUrl());
+        add(
+                out,
+                String.join(".", JkTemplatesConfig.SOURCES.path()),
+                sourcesLabel(d.sources()),
+                sourcesLabel(e.sources()));
     }
 
     private static String jobsLabel(@Nullable Integer jobs) {

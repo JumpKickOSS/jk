@@ -31,6 +31,11 @@ public final class HeavyTtl {
     /** No configuration keeps a heavy output longer than a day. */
     public static final Duration MAX = Duration.ofHours(24);
 
+    /** The {@code [cache]} table as this reads it. */
+    public static final UserConfigTable CACHE = UserConfigTable.of("cache");
+
+    static final UserConfigTable.Key KEY = CACHE.key("heavy-ttl");
+
     private HeavyTtl() {}
 
     /** Effective machine value: {@code JK_HEAVY_TTL} over the user-global file over the default. */
@@ -43,9 +48,8 @@ public final class HeavyTtl {
         Duration fromEnv =
                 SessionExpiry.duration(EnvValues.string(env, "JK_HEAVY_TTL").orElse(null));
         if (fromEnv != null) return clamp(fromEnv);
-        TomlTable cache =
-                TomlValues.parse(userConfig).map(root -> root.getTable("cache")).orElse(null);
-        Duration fromFile = SessionExpiry.duration(cache == null ? null : cache.get(List.of("heavy-ttl")));
+        TomlTable cache = TomlValues.parse(userConfig).map(CACHE::in).orElse(null);
+        Duration fromFile = SessionExpiry.duration(cache == null ? null : cache.get(List.of(KEY.name())));
         if (fromFile != null) return clamp(fromFile);
         return EnvValues.isCi(env) ? Duration.ZERO : DEFAULT;
     }

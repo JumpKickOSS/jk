@@ -23,6 +23,11 @@ public final class SessionExpiry {
 
     public static final Duration DEFAULT = Duration.ofHours(24);
 
+    /** The {@code [mcp]} table as this reads it. */
+    public static final UserConfigTable MCP = UserConfigTable.of("mcp");
+
+    static final UserConfigTable.Key KEY = MCP.key("session-expiry");
+
     private static final MachineConfig<Duration> EXPIRY = MachineConfig.of(DEFAULT, Duration::isPositive);
 
     private static final Pattern DURATION = Pattern.compile("(\\d+)\\s*([smhd])?");
@@ -36,11 +41,10 @@ public final class SessionExpiry {
 
     /** As {@link #resolve()} but against an explicit config file + env. */
     public static Duration resolve(Path userConfig, Function<String, @Nullable String> env) {
-        TomlTable mcp =
-                TomlValues.parse(userConfig).map(root -> root.getTable("mcp")).orElse(null);
+        TomlTable mcp = TomlValues.parse(userConfig).map(MCP::in).orElse(null);
         return EXPIRY.layer(
                 duration(EnvValues.string(env, "JK_MCP_SESSION_EXPIRY").orElse(null)),
-                duration(mcp == null ? null : mcp.get(List.of("session-expiry"))));
+                duration(mcp == null ? null : mcp.get(List.of(KEY.name()))));
     }
 
     /**

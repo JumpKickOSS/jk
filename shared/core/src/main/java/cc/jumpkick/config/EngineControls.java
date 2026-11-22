@@ -21,78 +21,105 @@ public final class EngineControls {
      * at engine start, per command, per job, or per idle cycle — because the keys differ and a
      * doc that said "read once at engine start" was wrong for three of five.
      */
-    public record Control(String toml, String env, String defaultValue, String whenRead, String meaning) {}
+    public record Control(String toml, String env, String defaultValue, String whenRead, String meaning) {
+
+        /** The key as {@link TomlScan} spells it: {@code engine.max-heap-mb}. */
+        public String dotted() {
+            return "engine." + toml;
+        }
+    }
 
     static final String ENGINE_START = "engine start";
 
-    /** {@code [engine]} keys in {@code ~/.jk/config.toml}. */
+    /** The {@code [engine]} table of {@code ~/.jk/config.toml}; each row below declares one of its keys. */
+    public static final UserConfigTable ENGINE = UserConfigTable.of("engine");
+
+    public static final Control MAX_HEAP_MB = control(
+            "max-heap-mb",
+            "JK_ENGINE_MAX_HEAP_MB",
+            "a 64th of RAM, 256 to 512; at least 512 when CI is set",
+            ENGINE_START,
+            "Engine process heap ceiling (-Xmx). 0 = uncapped.");
+
+    public static final Control JOBS = control(
+            "jobs",
+            "JK_JOBS",
+            "cores (0 = all cores)",
+            "each command",
+            "Concurrent module/worker budget. CLI -j wins.");
+
+    public static final Control CONTINUE = control(
+            "continue",
+            "JK_CONTINUE",
+            "false; true when CI is set",
+            "each job",
+            "Keep going after a failed module. Does not change the verdict.");
+
+    public static final Control VFS_MAX_MB = control(
+            "vfs-max-mb",
+            "JK_ENGINE_VFS_MAX_MB",
+            "32",
+            ENGINE_START,
+            "Per-job input-tree retain in MiB. 0 = off. CI does not bump this.");
+
+    public static final Control AUTO_WARMUP = control(
+            "auto-warmup", "JK_AUTO_WARMUP", "true", "each idle cycle", "Idle host calibration. false skips it.");
+
+    public static final Control LOG_MAX_MB = control(
+            "log-max-mb",
+            "JK_ENGINE_LOG_MAX_MB",
+            "16",
+            ENGINE_START,
+            "Engine log size cap in MiB; at the cap the log rolls to .1. 0 = no cap.");
+
+    public static final Control LOG_LEVEL = control(
+            "log-level",
+            "JK_LOG_LEVEL",
+            "info",
+            ENGINE_START,
+            "Engine log threshold: debug, info, warn or error. debug adds the perf probes.");
+
+    public static final Control DETACHED_DEADLINE_MS = control(
+            "detached-deadline-ms",
+            "JK_ENGINE_DETACHED_DEADLINE_MS",
+            "3600000",
+            ENGINE_START,
+            "Wall deadline for a detached HTTP/MCP job, in ms; a request's own deadline wins. 0 = off.");
+
+    public static final Control QUEUE_WAIT_MS = control(
+            "queue-wait-ms",
+            "JK_ENGINE_QUEUE_WAIT_MS",
+            "3600000",
+            ENGINE_START,
+            "How long a job waits to start for the engine's own heap before it gives up naming the live job, in ms; a fork's wait for worker memory is not bounded by it. 0 = no bound.");
+
+    public static final Control KEEP_AWAKE = control(
+            "keep-awake",
+            "JK_KEEP_AWAKE",
+            "ac",
+            "each job",
+            "Keep the machine from idle sleep while a job runs: ac (on mains power), always or never. A closed lid always sleeps.");
+
+    public static final Control DRAIN_DEADLINE_MS = control(
+            "drain-deadline-ms",
+            "JK_ENGINE_DRAIN_DEADLINE_MS",
+            "3600000",
+            ENGINE_START,
+            "How long a stopping engine lets its in-flight jobs finish before it cancels them, kills its workers and exits, in ms. 0 = no bound.");
+
+    /** {@code [engine]} keys in {@code ~/.jk/config.toml}, in the order the docs list them. */
     public static final List<Control> TABLE = List.of(
-            control(
-                    "max-heap-mb",
-                    "JK_ENGINE_MAX_HEAP_MB",
-                    "a 64th of RAM, 256 to 512; at least 512 when CI is set",
-                    ENGINE_START,
-                    "Engine process heap ceiling (-Xmx). 0 = uncapped."),
-            control(
-                    "jobs",
-                    "JK_JOBS",
-                    "cores (0 = all cores)",
-                    "each command",
-                    "Concurrent module/worker budget. CLI -j wins."),
-            control(
-                    "continue",
-                    "JK_CONTINUE",
-                    "false; true when CI is set",
-                    "each job",
-                    "Keep going after a failed module. Does not change the verdict."),
-            control(
-                    "vfs-max-mb",
-                    "JK_ENGINE_VFS_MAX_MB",
-                    "32",
-                    ENGINE_START,
-                    "Per-job input-tree retain in MiB. 0 = off. CI does not bump this."),
-            control(
-                    "auto-warmup",
-                    "JK_AUTO_WARMUP",
-                    "true",
-                    "each idle cycle",
-                    "Idle host calibration. false skips it."),
-            control(
-                    "log-max-mb",
-                    "JK_ENGINE_LOG_MAX_MB",
-                    "16",
-                    ENGINE_START,
-                    "Engine log size cap in MiB; at the cap the log rolls to .1. 0 = no cap."),
-            control(
-                    "log-level",
-                    "JK_LOG_LEVEL",
-                    "info",
-                    ENGINE_START,
-                    "Engine log threshold: debug, info, warn or error. debug adds the perf probes."),
-            control(
-                    "detached-deadline-ms",
-                    "JK_ENGINE_DETACHED_DEADLINE_MS",
-                    "3600000",
-                    ENGINE_START,
-                    "Wall deadline for a detached HTTP/MCP job, in ms; a request's own deadline wins. 0 = off."),
-            control(
-                    "queue-wait-ms",
-                    "JK_ENGINE_QUEUE_WAIT_MS",
-                    "3600000",
-                    ENGINE_START,
-                    "How long a job waits to start for the engine's own heap before it gives up naming the live job, in ms; a fork's wait for worker memory is not bounded by it. 0 = no bound."),
-            control(
-                    "keep-awake",
-                    "JK_KEEP_AWAKE",
-                    "ac",
-                    "each job",
-                    "Keep the machine from idle sleep while a job runs: ac (on mains power), always or never. A closed lid always sleeps."),
-            control(
-                    "drain-deadline-ms",
-                    "JK_ENGINE_DRAIN_DEADLINE_MS",
-                    "3600000",
-                    ENGINE_START,
-                    "How long a stopping engine lets its in-flight jobs finish before it cancels them, kills its workers and exits, in ms. 0 = no bound."));
+            MAX_HEAP_MB,
+            JOBS,
+            CONTINUE,
+            VFS_MAX_MB,
+            AUTO_WARMUP,
+            LOG_MAX_MB,
+            LOG_LEVEL,
+            DETACHED_DEADLINE_MS,
+            QUEUE_WAIT_MS,
+            KEEP_AWAKE,
+            DRAIN_DEADLINE_MS);
 
     /** {@code JK_ENGINE_*} env that is not an {@code [engine]} key. */
     public static final List<Control> PROCESS = List.of(
@@ -178,7 +205,7 @@ public final class EngineControls {
 
     /** TomlScan keys: {@code engine.max-heap-mb}, … */
     public static String[] tomlScanKeys() {
-        return TABLE.stream().map(c -> "engine." + c.toml()).toArray(String[]::new);
+        return TABLE.stream().map(Control::dotted).toArray(String[]::new);
     }
 
     /** Env names the product may read. */
@@ -229,6 +256,7 @@ public final class EngineControls {
 
     /** Parseable row factory so both builds can regex the catalog. */
     static Control control(String toml, String env, String defaultValue, String whenRead, String meaning) {
+        if (!toml.isEmpty()) ENGINE.key(toml);
         return new Control(toml, env, defaultValue, whenRead, meaning);
     }
 }

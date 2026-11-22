@@ -80,7 +80,7 @@ final class HttpReadApi {
 
     /**
      * {@code GET /api/config} — effective machine {@code config.toml} as key / default / effective
-     * rows for the Status Configuration panel.
+     * rows for the Status Configuration panel, and {@code parseError} when the file does not parse.
      */
     void handleConfig(HttpExchange exchange) throws IOException {
         List<Map<String, Object>> rows = new ArrayList<>();
@@ -94,6 +94,7 @@ final class HttpReadApi {
         }
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("path", EffectiveUserConfig.configPath().toString());
+        EffectiveUserConfig.parseError().ifPresent(error -> body.put("parseError", error));
         body.put("rows", rows);
         HttpResponses.sendJson(exchange, 200, MiniJson.write(body));
     }

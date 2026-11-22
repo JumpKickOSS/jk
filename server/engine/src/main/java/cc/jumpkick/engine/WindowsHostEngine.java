@@ -2,7 +2,7 @@
 package cc.jumpkick.engine;
 
 import cc.jumpkick.changes.ChangeJournal;
-import cc.jumpkick.config.TomlValues;
+import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.engine.http.FrontDoor;
 import cc.jumpkick.engine.http.GuestPairing;
 import cc.jumpkick.host.ChildEnv;
@@ -40,10 +40,7 @@ final class WindowsHostEngine {
         OFF;
 
         static Mode read(Path userConfig) {
-            String value = TomlValues.parse(userConfig)
-                    .map(root -> root.getTable("wsl"))
-                    .flatMap(wsl -> TomlValues.optString(wsl, "host-engine"))
-                    .orElse("");
+            String value = GlobalConfig.wslHostEngine(userConfig).orElse("");
             return switch (value.strip().toLowerCase(Locale.ROOT)) {
                 case "auto" -> AUTO;
                 case "off" -> OFF;

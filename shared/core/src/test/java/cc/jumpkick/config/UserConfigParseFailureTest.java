@@ -92,10 +92,10 @@ class UserConfigParseFailureTest {
         Path file = Files.writeString(dir.resolve("config.toml"), "nerd-font = false\n" + BROKEN);
 
         assertThat(GlobalConfig.nerdFontMode(file, null, null)).isEqualTo(NerdFontMode.OFF);
+        assertThat(EffectiveUserConfig.parseError(file))
+                .hasValueSatisfying(error -> assertThat(error).startsWith(file + ":"));
         assertThat(EffectiveUserConfig.rows(file, name -> null))
-                .filteredOn(row -> row.key().equals("config.parse-error"))
-                .singleElement()
-                .satisfies(row -> assertThat(row.effectiveValue()).startsWith(file + ":"));
+                .allSatisfy(row -> assertThat(row.effectiveValue()).doesNotStartWith(file + ":"));
     }
 
     @Test
@@ -104,8 +104,7 @@ class UserConfigParseFailureTest {
 
         assertThat(GlobalConfig.repositoryMirrors(file)).isEmpty();
         assertThat(GlobalConfig.userConfigProblem(file)).isEmpty();
-        assertThat(EffectiveUserConfig.rows(file, name -> null))
-                .noneMatch(row -> row.key().equals("config.parse-error"));
+        assertThat(EffectiveUserConfig.parseError(file)).isEmpty();
     }
 
     @Test

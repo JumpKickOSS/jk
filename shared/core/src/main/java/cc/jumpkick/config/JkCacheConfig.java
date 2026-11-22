@@ -70,6 +70,35 @@ public record JkCacheConfig(
     public static final JkCacheConfig DEFAULTS =
             new JkCacheConfig(true, 7, DEFAULT_MAX_CACHE_SIZE_GB, DEFAULT_INCREMENTAL_MAX_SIZE_GB);
 
+    /**
+     * The {@code [cache]} table and its keys. {@code remote}, {@code remote-write}, {@code
+     * key-seed-file}, {@code credential-env} and {@code jdk-match} are read by the engine's shared
+     * cache and toolchain readers, through the keys declared here.
+     */
+    public static final UserConfigTable CACHE = UserConfigTable.of("cache");
+
+    static final String AUTO_PRUNE_KEY = CACHE.key("auto-prune").dotted();
+    static final String PRUNE_INTERVAL_DAYS_KEY =
+            CACHE.key("prune-interval-days").dotted();
+    static final String MAX_CACHE_SIZE_GB_KEY = CACHE.key("max-cache-size-gb").dotted();
+    private static final String INCREMENTAL_MAX_SIZE_GB_KEY =
+            CACHE.key("incremental-max-size-gb").dotted();
+
+    /** {@code [cache] remote}: the shared cache's URL. */
+    public static final UserConfigTable.Key REMOTE = CACHE.key("remote");
+
+    /** {@code [cache] remote-write}: whether a request uploads what it stores. */
+    public static final UserConfigTable.Key REMOTE_WRITE = CACHE.key("remote-write");
+
+    /** {@code [cache] key-seed-file}: a file that holds the team's key seed. */
+    public static final UserConfigTable.Key KEY_SEED_FILE = CACHE.key("key-seed-file");
+
+    /** {@code [cache] credential-env}: whether a result keyed on a credential's value stays on this host. */
+    public static final UserConfigTable.Key CREDENTIAL_ENV = CACHE.key("credential-env");
+
+    /** {@code [cache] jdk-match}: how closely a cached result's JDK must match; a {@code jk.toml} may set it too. */
+    public static final UserConfigTable.Key JDK_MATCH = CACHE.key("jdk-match");
+
     private static final MachineConfig<Boolean> AUTO_PRUNE = MachineConfig.of(DEFAULTS.autoPrune());
 
     private static final MachineConfig<Integer> PRUNE_INTERVAL_DAYS =
@@ -136,15 +165,15 @@ public record JkCacheConfig(
         double defaultIncremental = Math.min(DEFAULT_INCREMENTAL_MAX_SIZE_GB, defaultCache * INCREMENTAL_DEFAULT_SHARE);
 
         return new JkCacheConfig(
-                AUTO_PRUNE.layer(EnvValues.bool(env, "JK_AUTO_PRUNE").orElse(null), tomlBool(scan, "cache.auto-prune")),
+                AUTO_PRUNE.layer(EnvValues.bool(env, "JK_AUTO_PRUNE").orElse(null), tomlBool(scan, AUTO_PRUNE_KEY)),
                 PRUNE_INTERVAL_DAYS.layer(
                         EnvValues.intValue(env, "JK_PRUNE_INTERVAL_DAYS").orElse(null),
-                        scanInt(scan, "cache.prune-interval-days")),
+                        scanInt(scan, PRUNE_INTERVAL_DAYS_KEY)),
                 MAX_CACHE_SIZE_GB.layerOver(defaultCache, envCacheGb(env), fileCacheGb(scan)),
                 INCREMENTAL_MAX_SIZE_GB.layerOver(
                         defaultIncremental,
                         EnvValues.doubleValue(env, "JK_INCREMENTAL_MAX_SIZE_GB").orElse(null),
-                        scanDouble(scan, "cache.incremental-max-size-gb")));
+                        scanDouble(scan, INCREMENTAL_MAX_SIZE_GB_KEY)));
     }
 
     /**
@@ -201,19 +230,15 @@ public record JkCacheConfig(
     public static JkCacheConfig fromToml(Path file) {
         TomlScan scan = scan(file);
         return new JkCacheConfig(
-                AUTO_PRUNE.layer(tomlBool(scan, "cache.auto-prune")),
-                PRUNE_INTERVAL_DAYS.layer(scanInt(scan, "cache.prune-interval-days")),
+                AUTO_PRUNE.layer(tomlBool(scan, AUTO_PRUNE_KEY)),
+                PRUNE_INTERVAL_DAYS.layer(scanInt(scan, PRUNE_INTERVAL_DAYS_KEY)),
                 MAX_CACHE_SIZE_GB.layer(fileCacheGb(scan)),
-                INCREMENTAL_MAX_SIZE_GB.layer(scanDouble(scan, "cache.incremental-max-size-gb")));
+                INCREMENTAL_MAX_SIZE_GB.layer(scanDouble(scan, INCREMENTAL_MAX_SIZE_GB_KEY)));
     }
 
     private static TomlScan scan(Path file) {
         return TomlScan.scan(
-                file,
-                "cache.auto-prune",
-                "cache.prune-interval-days",
-                "cache.max-cache-size-gb",
-                "cache.incremental-max-size-gb");
+                file, AUTO_PRUNE_KEY, PRUNE_INTERVAL_DAYS_KEY, MAX_CACHE_SIZE_GB_KEY, INCREMENTAL_MAX_SIZE_GB_KEY);
     }
 
     /** The env cache budget, judged by the setting's rule; an out-of-range value ranks as absent. */
@@ -224,7 +249,7 @@ public record JkCacheConfig(
 
     /** The file cache budget, judged the same way. */
     private static @Nullable Double fileCacheGb(TomlScan scan) {
-        return MAX_CACHE_SIZE_GB.accept(scanDouble(scan, "cache.max-cache-size-gb"));
+        return MAX_CACHE_SIZE_GB.accept(scanDouble(scan, MAX_CACHE_SIZE_GB_KEY));
     }
 
     /** Action-cache budget in bytes ({@link #maxCacheSizeGb}). */

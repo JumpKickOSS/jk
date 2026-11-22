@@ -77,6 +77,15 @@ public record JkM2Config(Mode mode, boolean autoClean, int cleanAfterDays) {
         return mode == Mode.SHARE;
     }
 
+    /** The {@code [m2]} table and its keys. */
+    public static final UserConfigTable M2 = UserConfigTable.of("m2");
+
+    static final String INTEGRATION_KEY = M2.key("integration").dotted();
+
+    static final String AUTO_CLEAN_KEY = M2.key("auto-clean").dotted();
+
+    static final String CLEAN_AFTER_DAYS_KEY = M2.key("clean-after-days").dotted();
+
     /** {@code [m2] auto-clean}. */
     private static final MachineConfig<Boolean> AUTO_CLEAN = MachineConfig.of(DEFAULTS.autoClean());
 
@@ -94,10 +103,10 @@ public record JkM2Config(Mode mode, boolean autoClean, int cleanAfterDays) {
         return new JkM2Config(
                 INTEGRATION.layer(
                         Mode.parse(EnvValues.string(env, "JK_M2_INTEGRATION").orElse(null)), tomlMode(scan)),
-                AUTO_CLEAN.layer(EnvValues.bool(env, "JK_M2_AUTO_CLEAN").orElse(null), tomlBool(scan, "m2.auto-clean")),
+                AUTO_CLEAN.layer(EnvValues.bool(env, "JK_M2_AUTO_CLEAN").orElse(null), tomlBool(scan, AUTO_CLEAN_KEY)),
                 CLEAN_AFTER_DAYS.layer(
                         EnvValues.intValue(env, "JK_M2_CLEAN_AFTER_DAYS").orElse(null),
-                        scanInt(scan, "m2.clean-after-days")));
+                        scanInt(scan, CLEAN_AFTER_DAYS_KEY)));
     }
 
     /** {@code [m2]} table; missing/malformed → {@link #DEFAULTS}. */
@@ -105,12 +114,12 @@ public record JkM2Config(Mode mode, boolean autoClean, int cleanAfterDays) {
         TomlScan scan = scan(file);
         return new JkM2Config(
                 INTEGRATION.layer(tomlMode(scan)),
-                AUTO_CLEAN.layer(tomlBool(scan, "m2.auto-clean")),
-                CLEAN_AFTER_DAYS.layer(scanInt(scan, "m2.clean-after-days")));
+                AUTO_CLEAN.layer(tomlBool(scan, AUTO_CLEAN_KEY)),
+                CLEAN_AFTER_DAYS.layer(scanInt(scan, CLEAN_AFTER_DAYS_KEY)));
     }
 
     private static TomlScan scan(Path file) {
-        return TomlScan.scan(file, "m2.integration", "m2.auto-clean", "m2.clean-after-days");
+        return TomlScan.scan(file, INTEGRATION_KEY, AUTO_CLEAN_KEY, CLEAN_AFTER_DAYS_KEY);
     }
 
     /**
@@ -129,8 +138,8 @@ public record JkM2Config(Mode mode, boolean autoClean, int cleanAfterDays) {
 
     /** {@code [m2] integration} as the file spells it: a mode's word, or TOML's {@code true} / {@code false}. */
     private static @Nullable Mode tomlMode(TomlScan scan) {
-        String raw = scan.get("m2.integration");
-        Boolean bool = tomlBool(scan, "m2.integration");
+        String raw = scan.get(INTEGRATION_KEY);
+        Boolean bool = tomlBool(scan, INTEGRATION_KEY);
         if (bool != null) return bool ? Mode.SHARE : Mode.OFF;
         if (raw == null) return null;
         for (Mode mode : Mode.values()) {

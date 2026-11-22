@@ -90,6 +90,25 @@ public record JkHttpConfig(
             DEFAULT_WEB_OVERLAY,
             Mcp.DEFAULTS);
 
+    /** The {@code [http]} table and its keys. */
+    public static final UserConfigTable HTTP = UserConfigTable.of("http");
+
+    static final UserConfigTable.Key HTTP_ENABLED_KEY = HTTP.key("enabled");
+    static final UserConfigTable.Key HOST_KEY = HTTP.key("host");
+    static final UserConfigTable.Key PORT_KEY = HTTP.key("port");
+    static final UserConfigTable.Key MAX_CONCURRENT_REQUESTS_KEY = HTTP.key("max-concurrent-requests");
+    static final UserConfigTable.Key MAX_EVENT_STREAMS_KEY = HTTP.key("max-event-streams");
+    static final UserConfigTable.Key WEB_ROOT_KEY = HTTP.key("web-root");
+    static final UserConfigTable.Key WEB_OVERLAY_KEY = HTTP.key("web-overlay");
+
+    /** The {@code [mcp]} table and the server keys this reads; {@link SessionExpiry} reads its own. */
+    public static final UserConfigTable MCP = UserConfigTable.of("mcp");
+
+    static final UserConfigTable.Key MCP_ENABLED_KEY = MCP.key("enabled");
+    static final UserConfigTable.Key MCP_MAX_EVENT_STREAMS_KEY = MCP.key("max-event-streams");
+    static final UserConfigTable.Key MCP_MAX_SESSIONS_KEY = MCP.key("max-sessions");
+    static final UserConfigTable.Key MCP_TOOLS_KEY = MCP.key("tools");
+
     private static final MachineConfig<String> HOST = MachineConfig.of(DEFAULT_HOST);
 
     /** {@code 0} = OS-assigned at bind, recorded in {@code <key>.http}. */
@@ -171,27 +190,31 @@ public record JkHttpConfig(
         if (!Files.isRegularFile(file)) return Optional.of(DEFAULTS);
         Optional<TomlParseResult> parsed = TomlValues.parse(file);
         if (parsed.isEmpty()) return Optional.empty(); // exists but unreadable → fail closed
-        TomlTable http = parsed.get().getTable("http");
-        if (http != null && !TomlValues.optBoolean(http, "enabled").orElse(true)) return Optional.empty();
+        TomlTable http = HTTP.in(parsed.get());
+        if (http != null
+                && !TomlValues.optBoolean(http, HTTP_ENABLED_KEY.name()).orElse(true)) return Optional.empty();
         return Optional.of(new JkHttpConfig(
-                HOST.layer(TomlValues.optString(http, "host").orElse(null)),
-                PORT.layer(TomlValues.optInt(http, "port").orElse(null)),
-                MAX_CONCURRENT_REQUESTS.layer(
-                        TomlValues.optInt(http, "max-concurrent-requests").orElse(null)),
+                HOST.layer(TomlValues.optString(http, HOST_KEY.name()).orElse(null)),
+                PORT.layer(TomlValues.optInt(http, PORT_KEY.name()).orElse(null)),
+                MAX_CONCURRENT_REQUESTS.layer(TomlValues.optInt(http, MAX_CONCURRENT_REQUESTS_KEY.name())
+                        .orElse(null)),
                 MAX_EVENT_STREAMS.layer(
-                        TomlValues.optInt(http, "max-event-streams").orElse(null)),
-                WEB_ROOT.layer(TomlValues.optString(http, "web-root").orElse(null)),
-                WEB_OVERLAY.layer(TomlValues.optString(http, "web-overlay").orElse(null)),
-                mcpFrom(parsed.get().getTable("mcp"))));
+                        TomlValues.optInt(http, MAX_EVENT_STREAMS_KEY.name()).orElse(null)),
+                WEB_ROOT.layer(TomlValues.optString(http, WEB_ROOT_KEY.name()).orElse(null)),
+                WEB_OVERLAY.layer(
+                        TomlValues.optString(http, WEB_OVERLAY_KEY.name()).orElse(null)),
+                mcpFrom(MCP.in(parsed.get()))));
     }
 
     private static Mcp mcpFrom(@Nullable TomlTable mcp) {
         return new Mcp(
-                MCP_ENABLED.layer(TomlValues.optBoolean(mcp, "enabled").orElse(null)),
+                MCP_ENABLED.layer(
+                        TomlValues.optBoolean(mcp, MCP_ENABLED_KEY.name()).orElse(null)),
                 MAX_EVENT_STREAMS.layer(
-                        TomlValues.optInt(mcp, "max-event-streams").orElse(null)),
-                MCP_MAX_SESSIONS.layer(TomlValues.optInt(mcp, "max-sessions").orElse(null)),
-                MCP_TOOLS.layer(TomlValues.optString(mcp, "tools").orElse(null)));
+                        TomlValues.optInt(mcp, MCP_MAX_EVENT_STREAMS_KEY.name()).orElse(null)),
+                MCP_MAX_SESSIONS.layer(
+                        TomlValues.optInt(mcp, MCP_MAX_SESSIONS_KEY.name()).orElse(null)),
+                MCP_TOOLS.layer(TomlValues.optString(mcp, MCP_TOOLS_KEY.name()).orElse(null)));
     }
 
     /** This config bound to {@code port} instead. */
@@ -210,8 +233,8 @@ public record JkHttpConfig(
     static boolean portNamed(Path userConfig, Function<String, @Nullable String> env) {
         if (EnvValues.intValue(env, "JK_HTTP_PORT").isPresent()) return true;
         return TomlValues.parse(userConfig)
-                .map(root -> root.getTable("http"))
-                .flatMap(http -> TomlValues.optInt(http, "port"))
+                .map(HTTP::in)
+                .flatMap(http -> TomlValues.optInt(http, PORT_KEY.name()))
                 .isPresent();
     }
 

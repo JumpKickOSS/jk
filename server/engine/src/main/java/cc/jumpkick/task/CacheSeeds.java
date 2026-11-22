@@ -4,6 +4,7 @@ package cc.jumpkick.task;
 import cc.jumpkick.cache.CacheBackend;
 import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.EnvValues;
+import cc.jumpkick.config.JkCacheConfig;
 import cc.jumpkick.config.RunNotices;
 import cc.jumpkick.config.TomlScan;
 import cc.jumpkick.host.Hashing;
@@ -57,13 +58,13 @@ public final class CacheSeeds {
     public static final String ENV = BuildEnv.CACHE_KEY_SEED;
 
     /** The user setting naming a file that holds the team's seed. */
-    static final String FILE_KEY = "cache.key-seed-file";
+    static final String FILE_KEY = JkCacheConfig.KEY_SEED_FILE.dotted();
 
     /** {@code local} or {@code shared}: whether a result keyed on a credential's value stays on this host. */
     public static final String CREDENTIAL_ENV = "JK_CACHE_CREDENTIAL_ENV";
 
     /** The user setting {@link #CREDENTIAL_ENV} spells in {@code ~/.jk/config.toml}. */
-    static final String CREDENTIAL_KEY = "cache.credential-env";
+    static final String CREDENTIAL_KEY = JkCacheConfig.CREDENTIAL_ENV.dotted();
 
     /** The fewest characters a team seed is taken with. */
     static final int MIN_CHARS = 16;
