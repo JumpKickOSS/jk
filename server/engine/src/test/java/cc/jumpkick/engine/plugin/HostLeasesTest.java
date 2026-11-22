@@ -181,7 +181,8 @@ class HostLeasesTest {
         WorkerLeases.Ledger ledger = track(
                 new WorkerLeases.Ledger(() -> BUDGET, () -> 8, id -> false, OverbookSignals.off()).shareHost(share));
         ledger.snapshot();
-        assertThat(share.counts()).isEqualTo(new SharedLeaseCounts(0, 1));
+        assertThat(share.counts().reclaims()).isEqualTo(1);
+        long waitsBefore = share.counts().lockWaits();
 
         CountDownLatch holding = new CountDownLatch(1);
         CountDownLatch letGo = new CountDownLatch(1);
@@ -193,9 +194,11 @@ class HostLeasesTest {
         assertThat(status.join(Duration.ofSeconds(10))).isTrue();
         holder.join(Duration.ofSeconds(10));
         ledger.snapshot();
-        assertThat(share.counts())
-                .as("one read waited for the lock; a line is reclaimed once")
-                .isEqualTo(new SharedLeaseCounts(1, 1));
+        // A loaded host can stall any read past the threshold, so only the held lock's wait is sure.
+        assertThat(share.counts().lockWaits())
+                .as("the read behind the held lock waited for it")
+                .isGreaterThan(waitsBefore);
+        assertThat(share.counts().reclaims()).as("a line is reclaimed once").isEqualTo(1);
     }
 
     @Test

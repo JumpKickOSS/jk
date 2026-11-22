@@ -121,8 +121,9 @@ class UserConfigKeysTest {
 
     @Test
     void the_notice_is_one_short_line_naming_key_and_file() {
-        String line = "jk: " + UserConfigKeys.notice("engine.heap-mb", Path.of("/home/u/.jk/config.toml"));
-        assertThat(line).isEqualTo("jk: engine.heap-mb: unknown key in /home/u/.jk/config.toml, ignored");
+        Path file = Path.of("/home/u/.jk/config.toml");
+        String line = "jk: " + UserConfigKeys.notice("engine.heap-mb", file);
+        assertThat(line).isEqualTo("jk: engine.heap-mb: unknown key in " + file + ", ignored");
         assertThat(line.length()).isLessThanOrEqualTo(78);
     }
 
