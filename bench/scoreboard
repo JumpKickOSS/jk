@@ -34,7 +34,7 @@ that tool does today. Rows from another host are kept and never compared.
 
 Dimensions live in bench/scoreboard.d/<name>.py (files starting with `_` are shared helpers), each
 with TIERS (the tiers it runs in), an optional KIND = "absolute-wall", measure(ctx) -> list of row
-dicts and an optional render(board, host). Results land in $SCOREBOARD_HOME/results/<stamp>/rows.json
+dicts, an optional render(board, host) and an optional selftest() that --selftest runs. Results land in $SCOREBOARD_HOME/results/<stamp>/rows.json
 (default $JK_BENCH_HOME/scoreboard). docs/perf/README.md is the reference.
 """
 
@@ -260,6 +260,9 @@ def selftest() -> int:
     assert "load-per-core" in (busy_reason({**idle, "load": 6.0}, 0, 24) or ""), "a loaded 24-core host is busy"
     assert "cpu-psi" in (busy_reason({**idle, "cpu-psi-avg60": 3.0}, 0, 24) or "")
     assert "live job" in (busy_reason(idle, 2, 24) or "")
+    for dim in load_dims().values():
+        if hasattr(dim, "selftest"):
+            dim.selftest()
     print("selftest ok")
     return 0
 

@@ -42,11 +42,13 @@ import re
 import secrets
 import shutil
 import signal
+import socket
 import statistics
 import subprocess
 import sys
 import time
 import tomllib
+import urllib.parse
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -376,7 +378,7 @@ def replay_one(fx: dict, sha: str, variant: str, remote: str | None, out: Path) 
         stop_engines(state)
 
 
-def summarize(fx: dict, arm: str, variant: str, records: list[dict], usd_per_minute: float | None) -> dict:
+def summarize(fx: dict, arm: str, variant: str, records: list[dict]) -> dict:
     timed_ = [r for r in records if "s" in r]
     row = {"fixture": fx["name"], "arm": arm, "tool": variant, "commits": len(records),
            "failed": sum(1 for r in records if r.get("rc") or "status" in r),
@@ -390,8 +392,6 @@ def summarize(fx: dict, arm: str, variant: str, records: list[dict], usd_per_min
     minutes = [r["s"] / 60 for r in timed_]
     row.update(median_min=round(statistics.median(minutes), 3), p90_min=round(p90(minutes), 3),
                runner_min_per_100=round(statistics.mean(minutes) * 100, 1))
-    if usd_per_minute is not None:
-        row["usd_per_100"] = round(statistics.mean(minutes) * 100 * usd_per_minute, 2)
     if variant.startswith("jk"):
         by_kind: collections.Counter = collections.Counter()
         outcomes: collections.Counter = collections.Counter()
@@ -409,7 +409,7 @@ def summarize(fx: dict, arm: str, variant: str, records: list[dict], usd_per_min
     return row
 
 
-def arm_replay(fx: dict, tools: list[str], commits: int, remote: str | None, usd: float | None, out: Path,
+def arm_replay(fx: dict, tools: list[str], commits: int, remote: str | None, out: Path,
                deadline: float | None) -> list[dict]:
     """One summary row per variant once every commit has run; none while the replay is unfinished."""
     variants = [t for t in (fx["build"], "jk-cold", "jk-shared") if t in tools]
@@ -436,7 +436,7 @@ def arm_replay(fx: dict, tools: list[str], commits: int, remote: str | None, usd
                 fh.write(json.dumps(r) + "\n")
             print(f"  {fx['name']} {i}/{len(shas)} {sha[:10]} {variant}: "
                   f"{r.get('s', '-')} s exit {r.get('rc', r.get('status'))}", flush=True)
-    return [summarize(fx, "replay", v, [done[(fx["name"], s, v)] for s in shas], usd) for v in variants]
+    return [summarize(fx, "replay", v, [done[(fx["name"], s, v)] for s in shas]) for v in variants]
 
 
 def arm_morning(fx: dict, tools: list[str], runs: int, remote: str | None, out: Path) -> list[dict]:
@@ -468,12 +468,37 @@ def arm_morning(fx: dict, tools: list[str], runs: int, remote: str | None, out: 
         if samples:
             row.update(median_s=round(statistics.median(samples), 2), p90_s=p90(samples))
         if variant.startswith("jk") and samples:
-            row["hit_rate"] = summarize(fx, "morning", variant, records, None).get("hit_rate")
+            row["hit_rate"] = summarize(fx, "morning", variant, records).get("hit_rate")
         rows.append(row)
     return rows
 
 
 # --------------------------------------------------------------------------- main
+
+def selftest() -> int:
+    here = socket.gethostname()
+    for url in ("http://localhost:8080", "http://127.0.0.1:8080", f"https://{here}:8443", "http://[::1]:8080"):
+        assert cache_placement(url) == "same machine", url
+    assert cache_placement("https://cache.example.com") == "network"
+    records = [{"s": 60, "jk_sha256": "a", "steps": {"compile-java:hit": 1, "run-tests:ran": 1}},
+               {"s": 180, "jk_sha256": "a", "steps": {}}]
+    row = summarize({"name": "f"}, "replay", "jk-shared", records)
+    assert row["median_min"] == 2.0 and row["runner_min_per_100"] == 200.0 and row["hit_rate"] == 0.5, row
+    assert not any("usd" in k for k in row), row
+    print("selftest ok")
+    return 0
+
+
+def cache_placement(remote: str) -> str:
+    """"same machine" when the shared cache is served from this host, "network" otherwise.
+
+    A cache on the same machine has no network between it and the runner, so its rows track
+    JumpKick over time but are never published as what a team's CI would see.
+    """
+    host = (urllib.parse.urlsplit(remote).hostname or "").lower()
+    here = {socket.gethostname().lower(), socket.gethostname().split(".")[0].lower(), "localhost", "::1"}
+    return "same machine" if host in here or host.startswith("127.") or host.endswith(".localhost") else "network"
+
 
 def jk_digest() -> str:
     """The first 16 hex digits of the jk client's sha256: a reinstall mid-replay shows as a second value."""
@@ -498,10 +523,12 @@ def main(argv: list[str]) -> int:
                                            "the environment, as JumpKick reads it)")
     ap.add_argument("--max-minutes", type=float, help="stop the replay between commits after this long; "
                                                       "the same --out resumes it")
-    ap.add_argument("--usd-per-runner-minute", type=float, help="price one runner minute; rows then carry usd_per_100")
     ap.add_argument("--out", type=Path, help="results directory (default $SUITE_HOME/results/<stamp>)")
+    ap.add_argument("--selftest", action="store_true", help="check the harness's own arithmetic and exit")
     benchtools.add_arguments(ap)
     ns = ap.parse_args(argv)
+    if ns.selftest:
+        return selftest()
     benchtools.use_flags(ns)
     arms = ns.arm or list(ARMS)
     fixtures = load_fixtures(ns.fixture)
@@ -521,10 +548,12 @@ def main(argv: list[str]) -> int:
             if arm == "edit":
                 rows = arm_edit(fx, tools, ns.runs, out)
             elif arm == "replay":
-                rows = arm_replay(fx, tools, ns.commits, ns.cache_remote, ns.usd_per_runner_minute, out, deadline)
+                rows = arm_replay(fx, tools, ns.commits, ns.cache_remote, out, deadline)
             else:
                 rows = arm_morning(fx, tools, ns.runs, ns.cache_remote, out)
             for row in rows:
+                if row["tool"] == "jk-shared" and ns.cache_remote:
+                    row["cache"] = cache_placement(ns.cache_remote)
                 row.update(commit=fx["commit"], build=fx["build"], load_start=start["load"], load_end=benchtools.conditions()["load"],
                            jk_version=jk_version(), **stamp)
                 with open(out / "rows.jsonl", "a", encoding="utf-8") as fh:

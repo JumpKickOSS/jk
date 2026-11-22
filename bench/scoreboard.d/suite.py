@@ -10,8 +10,10 @@ tier adds the CI replay and the morning build, which take hours. Subjects, per f
 
 Tools: `jk` and the fixture's build tool for the edit; `jk-cold` (an empty action cache, as a fresh
 runner has), `jk-shared` (the shared cache in $SUITE_CACHE_REMOTE) and the build tool for the
-replay and the morning build. $SUITE_COMMITS sets the replay's length (default 200);
-$SUITE_USD_PER_RUNNER_MINUTE, when set, prices the runner minutes. $SUITE_OUT names
+replay and the morning build. $SUITE_COMMITS sets the replay's length (default 200). Rows carry
+runner minutes, never dollars: a price is applied where a row is shown, with its date. A `jk-shared`
+row says where its cache ran (`shared-cache`): one on the same machine as the runner is banked for
+tracking and never published, as no team's CI reads its cache without a network. $SUITE_OUT names
 the harness's results directory: a replay cut short there resumes, its finished commits kept, and
 its rows are recorded `noisy` because those commits ran before this batch's quiet gate. jk rows ratchet; the build
 tool's rows record what it does today.
@@ -52,14 +54,14 @@ def as_row(r: dict, started: float) -> dict | None:
     common = {"dim": "suite", "subject": SUBJECTS[r["arm"]], "project": r["fixture"], "tool": r["tool"], "kind": KIND,
               "band": BAND, "tool-version": version, "host": benchtools.host_summary(),
               "fixture-commit": r["commit"], "conditions": f"load {r['load_start']} at start, {r['load_end']} at end"}
+    if r.get("cache"):
+        common["shared-cache"] = r["cache"]
     if r["arm"] == "replay":
         if "median_min" not in r:
             return None
         common["conditions"] = f"load at most {r['load_max']:.2f} as each commit started"
         row = {**common, "value": r["median_min"], "unit": "min", "runs": r["commits"], "p90-min": r["p90_min"],
                "commits": r["commits"], "failed": r["failed"], "runner-min-per-100": r["runner_min_per_100"]}
-        if "usd_per_100" in r:
-            row["usd-per-100"] = r["usd_per_100"]
         if r.get("first_at", 0) < started:
             row["noisy"] = "commits replayed before this batch's quiet gate (resumed from $SUITE_OUT)"
         if "hit_rate" in r:
@@ -77,6 +79,19 @@ def as_row(r: dict, started: float) -> dict | None:
     return row
 
 
+def selftest() -> None:
+    """A row keeps the shared cache's placement and carries minutes, never dollars."""
+    r = {"arm": "replay", "fixture": "f", "tool": "jk-shared", "build": "maven", "jk_version": "jk 1", "commit": "c",
+         "load_start": 1, "load_end": 1, "load_max": 1.0, "median_min": 2.0, "p90_min": 3.0, "commits": 4,
+         "failed": 0, "runner_min_per_100": 210.0, "first_at": 10, "hit_rate": 0.5, "skipped_by_kind": {},
+         "cache": "same machine"}
+    row = as_row(r, started=5)
+    assert row["shared-cache"] == "same machine" and not any("usd" in k for k in row), row
+    assert "noisy" not in row, row
+    cold = as_row({**r, "tool": "jk-cold", "cache": None}, started=5)
+    assert "shared-cache" not in cold, cold
+
+
 def measure(ctx) -> list[dict]:
     chosen = arms(ctx)
     if not chosen:
@@ -89,8 +104,6 @@ def measure(ctx) -> list[dict]:
         cmd += ["--arm", arm]
     if os.environ.get("SUITE_CACHE_REMOTE"):
         cmd += ["--cache-remote", os.environ["SUITE_CACHE_REMOTE"]]
-    if os.environ.get("SUITE_USD_PER_RUNNER_MINUTE"):
-        cmd += ["--usd-per-runner-minute", os.environ["SUITE_USD_PER_RUNNER_MINUTE"]]
     for tool in ctx.tools or []:
         cmd += ["--tool", tool]
     subprocess.run(cmd, env=dict(os.environ, JK_BIN=ctx.jk), check=False)

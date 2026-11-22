@@ -13,6 +13,7 @@ bench/suite/measure --arm replay --cache-remote http://localhost:8080 --out DIR
 bench/suite/measure --arm morning --cache-remote http://localhost:8080
 bench/scoreboard --dim suite                            # the edit arm, behind the quiet gate, banked
 bench/scoreboard --tier release --dim suite             # all three: hours, behind the quiet gate
+bench/suite/measure --selftest                          # the harness's arithmetic, no fixture needed
 ```
 
 Clones, working copies, private engine state and action caches live under `$SUITE_HOME` (default
@@ -47,15 +48,18 @@ from the environment as JumpKick reads it (`JK_REPO_<HOST>_TOKEN`); every shared
 one team key seed, kept in `$SUITE_HOME/team-cache-seed`, as a team's CI and laptops would
 ([Cache](../../docs/user/cache.md#results-that-read-your-environment)). A local cache service in
 development mode serves the arm when no hosted one is at hand; the row then measures a cache on
-the same machine, with no network between them.
+the same machine, with no network between them, and says so (`shared-cache = "same machine"`). Such
+rows are banked to track JumpKick over time and are never published: only a cache on another
+machine, reached over the network (`shared-cache = "network"`), stands for what a team's CI sees.
 
 ## What a row says
 
 - `suite.edit`, seconds: median and p90 of the timed runs, the test count of the last run and how
   many runs ended red.
-- `suite.ci.pipeline`, minutes per commit: median and p90 over the replayed commits, failed commits,
-  runner minutes per 100 commits (the mean times 100) and, with `--usd-per-runner-minute`, their
-  price. JumpKick rows add the steps it did not run, by kind, and the hit rate: steps served from an
+- `suite.ci.pipeline`, minutes per commit: median and p90 over the replayed commits, failed commits
+  and runner minutes per 100 commits (the mean times 100). Rows carry minutes, never dollars: a
+  page that shows a price applies a runner's list price where it renders, and names the price's
+  date. JumpKick rows add the steps it did not run, by kind, and the hit rate: steps served from an
   action cache over every step a cache can serve (compile, test compile, the suite, and any step
   that hit).
 - `suite.morning`, seconds: median and p90 of the fresh checkouts, with the hit rate.
