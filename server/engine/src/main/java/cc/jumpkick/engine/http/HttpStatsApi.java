@@ -3,6 +3,7 @@ package cc.jumpkick.engine.http;
 
 import cc.jumpkick.engine.api.JsonOut;
 import cc.jumpkick.engine.journal.BuildJournal;
+import cc.jumpkick.engine.savings.AgentUsage;
 import cc.jumpkick.engine.savings.Savings;
 import cc.jumpkick.engine.savings.SavingsLedger;
 import cc.jumpkick.engine.sessions.SessionLog;
@@ -24,15 +25,17 @@ final class HttpStatsApi {
     private final BuildJournal journal;
     private final Clock clock;
     private volatile @Nullable SessionLog sessions;
+    private volatile AgentUsage usage = AgentUsage.NONE;
 
     HttpStatsApi(BuildJournal journal, Clock clock) {
         this.journal = journal;
         this.clock = clock;
     }
 
-    /** Count the actions of {@code sessions} too. */
-    void sessions(SessionLog sessions) {
+    /** Count the actions of {@code sessions} too, each priced at the model {@code usage} finds its agent on. */
+    void sessions(SessionLog sessions, AgentUsage usage) {
         this.sessions = sessions;
+        this.usage = usage;
     }
 
     void handle(HttpExchange exchange) throws IOException {
@@ -50,7 +53,7 @@ final class HttpStatsApi {
             return;
         }
         List<Map<String, Object>> rows = new ArrayList<>();
-        for (Savings s : SavingsLedger.read(journal, sessions, since, clock.millis())) rows.add(s.toMap());
+        for (Savings s : SavingsLedger.read(journal, sessions, usage, since, clock.millis())) rows.add(s.toMap());
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("rows", rows);
         HttpResponses.sendJson(exchange, 200, JsonOut.rawObject(body).toString());

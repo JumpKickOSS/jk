@@ -1008,11 +1008,14 @@
       </template>
     </main>
 
-    <!-- Global status bar: shown on every view. Left = builds running; right = connection. The
+    <!-- Global status bar: shown on every view. Left = builds running and the running total saved
+         (every project, and the open one); right = connection. The
          cache, store and heap are on Admin; CPU and RAM on the console's Engine card and Admin. -->
     <footer class="statusbar">
       <div class="sb-left">
         <span class="sb-item"><jk-icon name="activity"></jk-icon>Builds Running&nbsp;<b>{{ buildsRunning() }}</b></span>
+        <span v-if="savingsTotalAll" class="sb-item" :data-tip="tokensSaved(savingsTotalAll).tip"><jk-icon name="bolt"></jk-icon>Saved&nbsp;<b>{{ tokensSaved(savingsTotalAll).tokens }} tokens · {{ tokensSaved(savingsTotalAll).usd }}</b>&nbsp;est.</span>
+        <span v-if="savingsTotalProject" class="sb-item" :data-tip="tokensSaved(savingsTotalProject).tip">This project&nbsp;<b>{{ tokensSaved(savingsTotalProject).tokens }} · {{ tokensSaved(savingsTotalProject).usd }}</b></span>
       </div>
       <span class="spacer"></span>
       <div class="conn" :class="connection" :data-tip="connectionLabel()">

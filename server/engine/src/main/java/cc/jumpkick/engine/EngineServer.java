@@ -654,7 +654,8 @@ public final class EngineServer implements AutoCloseable {
                         historyConfig,
                         () -> metrics.get(),
                         inFlightBuilds,
-                        sessionLog),
+                        sessionLog,
+                        agentUsage),
                 decisions,
                 setupRows(),
                 guestOffer);

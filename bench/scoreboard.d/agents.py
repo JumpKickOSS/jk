@@ -325,6 +325,62 @@ def dollars(by: dict, questions: list[dict], renames: list[dict]) -> str:
     return "\n".join(lines)
 
 
+# The table the engine credits each code answer and refactoring from (SavingsRates.java).
+RATES = JK_TREE / "server" / "engine" / "src" / "main" / "resources" / "cc" / "jumpkick" / "engine" / "savings" / "rates.json"
+RATE_KINDS = {"input": "input", "output": "output", "cache-read": "cacheRead", "cache-write": "cacheWrite"}
+
+
+def _per_call(jk: dict, off: dict, both: list[str]) -> dict | None:
+    """What one graph call saved over the tasks run both ways: per task, each kind of token's median
+    without the graph less its median with it, summed over the tasks whose jk runs made graph calls and
+    divided by the median graph calls of those runs, summed; None when a run lacks its tokens or count."""
+    saved, calls, tasks = {k: 0.0 for k in cost.KINDS}, 0.0, 0
+    for t in both:
+        on = [r for r in jk[t] if r.get("accepted")] or jk[t]
+        without = [r for r in off[t] if r.get("accepted")] or off[t]
+        if any(r.get("graph") is None for r in on):
+            return None
+        n = statistics.median(r["graph"] for r in on)
+        if n <= 0:
+            continue
+        k_on = [k for r in on if (k := cost.kinds(r)) is not None]
+        k_off = [k for r in without if (k := cost.kinds(r)) is not None]
+        if not k_on or not k_off:
+            return None
+        for k in cost.KINDS:
+            saved[k] += statistics.median(x[k] for x in k_off) - statistics.median(x[k] for x in k_on)
+        calls += n
+        tasks += 1
+    if not tasks:
+        return None
+    return {"tasks": tasks, "graphCalls": int(calls) if float(calls).is_integer() else calls, **{RATE_KINDS[k]: round(saved[k] / calls) for k in cost.KINDS}}
+
+
+def rates(by: dict) -> str:
+    """Tokens one graph call saved in the question tasks and in the rename tasks, per agent on its
+    default model, as JSON, with the model and whether its cache writes are priced at the 1-hour rate.
+    No prices: the engine prices the tokens with the product's price table when it shows them."""
+    agents, measured = {}, set()
+    for driver in LABELS:
+        entry = {}
+        for kind, action in (("questions", "question"), ("renames", "rename")):
+            p = _pair(by, driver, kind)
+            if not p:
+                continue
+            both, jk, off = p
+            rate = _per_call(jk, off, both)
+            if rate is None:
+                continue
+            entry[action] = rate
+            measured.update(str(r.get("date", "")) for cells in (jk, off) for t in both for r in cells[t])
+        model = next((rs[0].get("model") for (d, _, _), rs in by.items() if d == driver), None)
+        if not entry or not model:
+            continue
+        agents[driver] = {"model": model, "cacheWrite1h": driver in cost.CACHE_1H, **entry}
+    table = {"measured": max(measured - {""}, default=""), "agents": agents}
+    return json.dumps(table, indent=2) + "\n"
+
+
 def _loc(repo: str) -> int | None:
     f = QUESTIONS / f"{repo}.json"
     return json.loads(f.read_text())["loc"] if f.is_file() else None
@@ -492,6 +548,11 @@ def render(board: list[dict], host: str) -> None:
         _splice(doc, "renames", comparison_table(renames, "renames"))
         _splice(doc, "curve", curve_table(points))
         _splice(doc, "dollars", dollars(by, questions, renames))
+    table = rates(by)
+    if not RATES.is_file() or RATES.read_text(encoding="utf-8") != table:
+        RATES.parent.mkdir(parents=True, exist_ok=True)
+        RATES.write_text(table, encoding="utf-8", newline="\n")
+        print(f"rendered {RATES.relative_to(JK_TREE)}")
     tiers = models()
     for doc in MODEL_DOCS:
         _splice(doc, "models", models_table(tiers))

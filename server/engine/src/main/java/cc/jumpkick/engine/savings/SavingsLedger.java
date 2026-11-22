@@ -20,8 +20,9 @@ import org.jspecify.annotations.Nullable;
 /**
  * Adds up what jk saved: the cache's estimate and its skipped steps, suites and test classes from
  * each run's record, guard violations from its errors, and the graph questions, refactorings and
- * edits from the sessions' actions. Nothing new is recorded for it; it reads what the journal
- * keeps, so a period reaches back only as far as {@code [history]} retention.
+ * edits from the sessions' actions, with the tokens those saved the agents ({@link SavingsRates}).
+ * Nothing new is recorded for it; it reads what the journal keeps, so a period reaches back only as
+ * far as {@code [history]} retention.
  */
 public final class SavingsLedger {
 
@@ -33,18 +34,31 @@ public final class SavingsLedger {
     /**
      * The rows for the period from {@code since} to {@code until} (epoch millis): {@link
      * Savings#ALL} first, then one per project, the one with the most saved first. {@code sessions}
-     * is null for an engine that logs none.
+     * is null for an engine that logs none; {@code usage} finds the model each agent was on.
      */
-    public static List<Savings> read(BuildJournal journal, @Nullable SessionLog sessions, long since, long until) {
+    public static List<Savings> read(
+            BuildJournal journal, @Nullable SessionLog sessions, AgentUsage usage, long since, long until) {
         return fold(
                 journal.finishedSince(since),
                 sessions == null ? List.of() : sessions.actionsSince(since),
+                SavingsRates.shipped(),
+                new AgentModels(usage),
                 since,
                 until);
     }
 
     /** The rows {@link #read} answers, from runs (newest first) and actions already read. */
-    static List<Savings> fold(List<BuildRecord> runs, List<SessionLog.Acted> actions, long since, long until) {
+    static List<Savings> fold(
+            List<BuildRecord> runs,
+            List<SessionLog.Acted> actions,
+            SavingsRates rates,
+            AgentModels models,
+            long since,
+            long until) {
+        for (SessionLog.Acted a : actions) {
+            if (savesTokens(a.action()))
+                models.note(a.client(), a.action().project(), a.action().at());
+        }
         Savings all = Savings.empty(Savings.ALL, null, null, null, since, until);
         Map<String, Savings> projects = new LinkedHashMap<>();
         Map<String, String> idByDir = new LinkedHashMap<>();
@@ -64,7 +78,7 @@ public final class SavingsLedger {
         for (SessionLog.Acted a : actions) {
             ActionRecord action = a.action();
             if (action.at() > until) continue;
-            Savings row = of(action);
+            Savings row = of(action, saved(action, a.client(), rates, models));
             if (row.nothing()) continue;
             all = all.plus(row);
             String dir = action.project();
@@ -128,7 +142,9 @@ public final class SavingsLedger {
                 0,
                 0,
                 violations,
-                violations.isEmpty() ? 0 : 1);
+                violations.isEmpty() ? 0 : 1,
+                TokensSaved.NONE,
+                0);
     }
 
     /**
@@ -146,8 +162,28 @@ public final class SavingsLedger {
         return d.code() + '\0' + (r.dir() == null ? "" : r.dir()) + '\0' + d.dir() + '\0' + file;
     }
 
-    /** One action's contribution: a question answered, a refactoring applied, edits made, or nothing. */
-    static Savings of(ActionRecord a) {
+    /** Whether {@code a} is a call the bench measured a token saving for: a code answer or a refactoring. */
+    static boolean savesTokens(ActionRecord a) {
+        return ActionRecord.OK.equals(a.outcome())
+                && (ActionRecord.GRAPH.contains(a.kind()) || ActionRecord.REFACTORINGS.contains(a.kind()));
+    }
+
+    /**
+     * The tokens {@code a} saved its agent, on the model {@code models} finds it was on; null when the
+     * bench has no rate for its agent and kind ({@link SavingsRates#saved}).
+     */
+    static @Nullable TokensSaved saved(
+            ActionRecord a, @Nullable String client, SavingsRates rates, AgentModels models) {
+        if (!savesTokens(a)) return TokensSaved.NONE;
+        return rates.saved(a, client, models.at(client, a.project(), a.at()));
+    }
+
+    /**
+     * One action's contribution: a question answered, a refactoring applied, edits made, or nothing,
+     * with the {@code tokens} it saved, or null when the bench has no rate for it: then it is a call
+     * not measured.
+     */
+    static Savings of(ActionRecord a, @Nullable TokensSaved tokens) {
         boolean ok = ActionRecord.OK.equals(a.outcome());
         long graph = ok && ActionRecord.GRAPH.contains(a.kind()) ? 1 : 0;
         long refactoring = ok && ActionRecord.REFACTORINGS.contains(a.kind()) ? 1 : 0;
@@ -170,6 +206,8 @@ public final class SavingsLedger {
                 refactoring,
                 ok ? a.edits() : 0,
                 Set.of(),
-                0);
+                0,
+                tokens == null ? TokensSaved.NONE : tokens,
+                tokens == null ? 1 : 0);
     }
 }

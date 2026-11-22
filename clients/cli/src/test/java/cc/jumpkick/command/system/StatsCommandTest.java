@@ -13,7 +13,8 @@ class StatsCommandTest {
     private static final String ALL = "{\"type\":\"stats\",\"scope\":\"all\",\"runs\":12,\"savedMillis\":125000,"
             + "\"estimatedUncachedMillis\":300000,\"coveredSkips\":3,\"estimatedSkips\":4,\"stepsSkipped\":40,"
             + "\"suitesSkipped\":2,\"testClassesNotRerun\":6,\"graphCalls\":9,\"refactorings\":1,\"edits\":3,"
-            + "\"guardViolations\":2,\"guardStops\":1}";
+            + "\"guardViolations\":2,\"guardStops\":1,\"tokensSaved\":1234567,\"usdSavedMicros\":840000,"
+            + "\"pricesRetrieved\":\"2026-11-17\"}";
 
     @Test
     void since_takes_a_duration_back_from_now_a_date_or_all() {
@@ -56,6 +57,7 @@ class StatsCommandTest {
                 .extracting(r -> r.get(0) + ": " + r.get(1))
                 .containsExactly(
                         "Build and test time avoided: ~2m5s (estimate, 75% measured)",
+                        "Tokens saved: ~1.2M, ~$0.840 (estimate, API list prices of 2026-11-17)",
                         "Steps served from the cache: 40",
                         "Test suites not re-run: 2",
                         "Test classes not re-run: 6",
@@ -67,15 +69,33 @@ class StatsCommandTest {
     }
 
     @Test
+    void the_tokens_saved_say_they_are_an_estimate_and_whose_prices() {
+        assertThat(StatsCommand.tokens(
+                        "{\"tokensSaved\":950,\"usdSavedMicros\":12345678," + "\"pricesRetrieved\":\"2026-11-17\"}"))
+                .isEqualTo("~950, ~$12.35 (estimate, API list prices of 2026-11-17)");
+        assertThat(StatsCommand.tokens("{\"tokensSaved\":12500}"))
+                .as("a row with no price date still says it is an estimate")
+                .isEqualTo("~13k, ~$0.000 (estimate, API list prices)");
+        assertThat(StatsCommand.tokens("{\"tokensSaved\":12500,\"tokensUnpriced\":2500,\"usdSavedMicros\":1000,"
+                        + "\"pricesRetrieved\":\"2026-11-17\"}"))
+                .as("tokens on a model the price table does not know are left out of the dollars, and say so")
+                .isEqualTo("~13k, ~$0.001 (estimate, API list prices of 2026-11-17; 3k on models with no price)");
+        assertThat(StatsCommand.tokens("{\"tokensSaved\":950,\"callsNotMeasured\":4}"))
+                .as("calls from agents the bench never ran are left out of the total, and counted")
+                .isEqualTo("~950, ~$0.000 (estimate, API list prices; 4 calls not measured by the bench, not counted)");
+    }
+
+    @Test
     void a_project_row_is_named_by_its_coordinate_else_its_directory() {
         List<List<String>> rows = StatsCommand.projectRows(List.of(
-                "{\"scope\":\"project\",\"coord\":\"g:app\",\"dir\":\"/ws/app\",\"savedMillis\":1500,\"stepsSkipped\":4}",
+                "{\"scope\":\"project\",\"coord\":\"g:app\",\"dir\":\"/ws/app\",\"savedMillis\":1500,\"stepsSkipped\":4,"
+                        + "\"tokensSaved\":224000}",
                 "{\"scope\":\"project\",\"dir\":\"/tmp/loose\",\"graphCalls\":2}"));
         assertThat(StatsCommand.PROJECT_COLUMNS)
-                .containsExactly("Project", "Time", "Cached", "Code", "Refactorings", "Edits", "Guards");
+                .containsExactly("Project", "Time", "Tokens", "Cached", "Code", "Refactorings", "Edits", "Guards");
         assertThat(rows)
                 .containsExactly(
-                        List.of("g:app", "1.5s", "4", "0", "0", "0", "0"),
-                        List.of("loose", "0ms", "0", "2", "0", "0", "0"));
+                        List.of("g:app", "1.5s", "224k", "4", "0", "0", "0", "0"),
+                        List.of("loose", "0ms", "0", "0", "2", "0", "0", "0"));
     }
 }

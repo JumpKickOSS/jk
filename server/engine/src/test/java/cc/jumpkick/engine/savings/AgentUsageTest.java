@@ -114,6 +114,34 @@ class AgentUsageTest {
     }
 
     @Test
+    void the_models_the_agent_ran_on_are_read_by_time_without_one_it_could_not_name() throws IOException {
+        claudeSession(
+                "s1.jsonl",
+                claudeLine(T - 60_000, "msg_before", "claude-opus-5-5", 9, 9, 9, 9),
+                claudeLine(T + 1_000, "msg_a", "claude-sonnet-5-5", 1, 1, 1, 1),
+                claudeLine(T + 2_000, "msg_b", "<synthetic>", 0, 0, 0, 0),
+                claudeLine(T + 3_000, "msg_c", "claude-opus-5-5", 1, 1, 1, 1));
+
+        assertThat(usage().models("claude-code", PROJECT, T))
+                .containsExactly(Map.entry(T + 1_000, "claude-sonnet-5-5"), Map.entry(T + 3_000, "claude-opus-5-5"));
+        assertThat(usage(new AtomicBoolean(false)).models("claude-code", PROJECT, T))
+                .as("nothing is read while reading is off")
+                .isEmpty();
+        assertThat(usage().models("cursor-agent", PROJECT, T)).isEmpty();
+
+        AgentModels models = new AgentModels(usage());
+        models.note("claude-code", PROJECT, T + 500);
+        assertThat(models.at("claude-code", PROJECT, T + 500))
+                .as("before its first count from there on, the model of that count")
+                .isEqualTo("claude-sonnet-5-5");
+        assertThat(models.at("claude-code", PROJECT, T + 2_500))
+                .as("the model of its last count at or before the call")
+                .isEqualTo("claude-sonnet-5-5");
+        assertThat(models.at("claude-code", PROJECT, T + 4_000)).isEqualTo("claude-opus-5-5");
+        assertThat(models.at(null, PROJECT, T + 4_000)).isNull();
+    }
+
+    @Test
     void claude_code_reads_only_the_checkout_of_the_episode() throws IOException {
         write(
                 claude().resolve("projects")

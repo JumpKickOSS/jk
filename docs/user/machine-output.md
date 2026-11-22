@@ -55,7 +55,9 @@ between this file and `details.jsonl` before reading either.
 A run placed in an episode ends with `## Saved in this episode`: the episode's title and its run
 count, then one line for each figure it counted so far, this run included, in the words and order
 of `jk stats` (build and test time the cache avoided, marked as an estimate with the share
-measured; steps served from the cache; test classes not re-run; code questions answered;
+measured; tokens saved, with their dollars at API list prices, marked as an estimate
+([web](web.md#tokens-and-dollars-saved)); steps served from the cache; test classes not re-run;
+code questions answered;
 refactorings; dependency edits; guard violations stopped), or `Nothing saved yet` when it counted none.
 When the agent records its token counts (Claude Code, Codex, Grok, Copilot CLI, Muse,
 Antigravity), a last line gives the tokens it used over the episode by its own count (`Tokens the

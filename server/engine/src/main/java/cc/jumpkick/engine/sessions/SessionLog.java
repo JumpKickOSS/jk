@@ -764,8 +764,14 @@ public final class SessionLog {
         return out.size() > limit ? List.copyOf(out.subList(0, limit)) : out;
     }
 
-    /** One action a session took, with the id of the project it acted on, or null when it has none. */
-    public record Acted(ActionRecord action, @Nullable String projectId) {}
+    /**
+     * One action a session took, with the id of the project it acted on and the name its session's
+     * client gave itself, each null when it has none.
+     */
+    public record Acted(
+            ActionRecord action,
+            @Nullable String projectId,
+            @Nullable String client) {}
 
     /**
      * Every non-run action any session kept that started at or after {@code since} (epoch millis),
@@ -774,16 +780,19 @@ public final class SessionLog {
     public List<Acted> actionsSince(long since) {
         sweep();
         SessionJournal stored = journal;
-        List<ActionRecord> found = new ArrayList<>();
+        List<Acted> found = new ArrayList<>();
         if (stored != null) found.addAll(StoredSessions.actionsSince(stored, since));
         else
             synchronized (this) {
-                for (Live l : byId.values()) found.addAll(l.memory);
+                for (Live l : byId.values()) {
+                    for (ActionRecord a : l.memory) found.add(new Acted(a, null, l.record.client()));
+                }
             }
         List<Acted> out = new ArrayList<>();
-        for (ActionRecord a : found) {
+        for (Acted f : found) {
+            ActionRecord a = f.action();
             if (a.at() < since || ActionRecord.RUN.equals(a.kind())) continue;
-            out.add(new Acted(a, a.project() == null ? null : projectIds.idOf(a.project())));
+            out.add(new Acted(a, a.project() == null ? null : projectIds.idOf(a.project()), f.client()));
         }
         return out;
     }

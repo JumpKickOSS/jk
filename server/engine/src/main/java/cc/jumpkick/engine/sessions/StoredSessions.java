@@ -53,12 +53,15 @@ final class StoredSessions {
         return read;
     }
 
-    /** The actions of every stored session active at or after {@code since}, oldest first within a session. */
-    static List<ActionRecord> actionsSince(SessionJournal journal, long since) {
-        List<ActionRecord> out = new ArrayList<>();
+    /**
+     * The actions of every stored session active at or after {@code since}, oldest first within a
+     * session, each with its session's client and no project id.
+     */
+    static List<SessionLog.Acted> actionsSince(SessionJournal journal, long since) {
+        List<SessionLog.Acted> out = new ArrayList<>();
         for (SessionRecord r : newestFirst(journal)) {
             if (r.lastActiveAt() < since) break;
-            out.addAll(actions(journal, r.id()));
+            for (ActionRecord a : actions(journal, r.id())) out.add(new SessionLog.Acted(a, null, r.client()));
         }
         return out;
     }

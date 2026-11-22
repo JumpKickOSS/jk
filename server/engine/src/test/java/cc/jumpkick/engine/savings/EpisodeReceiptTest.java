@@ -10,11 +10,13 @@ import cc.jumpkick.engine.journal.SessionJournal;
 import cc.jumpkick.engine.sessions.EpisodeInference;
 import cc.jumpkick.engine.sessions.Fact;
 import cc.jumpkick.engine.sessions.SessionLog;
+import cc.jumpkick.prices.PriceTables;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicLong;
+import org.assertj.core.api.InstanceOfAssertFactories;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -48,11 +50,15 @@ class EpisodeReceiptTest {
     }
 
     private void act(String label, long at, Fact.Kind kind, String tool) {
+        act(label, "claude-code", at, kind, tool);
+    }
+
+    private void act(String label, String client, long at, Fact.Kind kind, String tool) {
         now.set(at);
         log.action(
                 "mcp",
                 label,
-                "claude-code",
+                client,
                 Fact.action(at, 3, "/ws/app", kind, true, "", 0),
                 tool,
                 tool + " PricingRules",
@@ -123,7 +129,16 @@ class EpisodeReceiptTest {
         assertThat(s.graphCalls())
                 .as("its two questions, not the other session's")
                 .isEqualTo(2);
+        TokensSaved question = claudeQuestion();
+        assertThat(s.tokens()).as("its two questions at its agent's rate").isEqualTo(question.plus(question));
         assertThat(receipt.title()).isEqualTo("Working in app");
+    }
+
+    /** What one code question saves the session's agent at the shipped rates, on the bench's model. */
+    private static TokensSaved claudeQuestion() {
+        SavingsRates.Agent agent =
+                Objects.requireNonNull(SavingsRates.shipped().agents().get("claude-code"));
+        return TokensSaved.of(agent.model(), agent.question());
     }
 
     @Test
@@ -167,7 +182,26 @@ class EpisodeReceiptTest {
                         + "Working in app · 2 runs\n\n"
                         + "- Build and test time avoided: ~2m 05s (estimate, 75% measured)\n"
                         + "- Steps served from the cache: 2 (2 test suites)\n"
+                        + "- Tokens saved: "
+                        + claudeQuestion().text(PriceTables.current(), 0) + "\n"
                         + "- Code questions answered: 1\n");
+    }
+
+    @Test
+    void an_agent_the_bench_never_ran_is_credited_no_tokens_and_the_receipt_says_how_many_calls_it_left_out() {
+        String label = "some-new-agent 5c21";
+        log.open("mcp", "some-new-agent", label, "/ws/app");
+        act(label, "some-new-agent", T + 1_000, Fact.Kind.GRAPH, "usages");
+        act(label, "some-new-agent", T + 1_500, Fact.Kind.GRAPH, "query");
+        BuildRecord last = run(label, T + 2_000, 61, null);
+        journaled(last);
+
+        String md = Objects.requireNonNull(EpisodeReceipt.markdown(journal, log, AgentUsage.NONE, last));
+
+        assertThat(md)
+                .contains("- Tokens saved: ~0, ~$0.000 (estimate, API list prices; "
+                        + "2 calls not measured by the bench, not counted)\n")
+                .contains("- Code questions answered: 2\n");
     }
 
     @Test
@@ -196,6 +230,12 @@ class EpisodeReceiptTest {
                 .next()
                 .toMap();
         assertThat(saved).containsEntry("graphCalls", 1L);
+        assertThat(saved.get("tokensSavedByModel"))
+                .as("the question's tokens are priced at the model the agent's own files say it was on")
+                .asInstanceOf(InstanceOfAssertFactories.LIST)
+                .singleElement()
+                .asInstanceOf(InstanceOfAssertFactories.MAP)
+                .containsEntry("model", "claude-opus-5-5");
         @SuppressWarnings("unchecked")
         Map<String, Object> tokens = (Map<String, Object>) saved.get("tokens");
         assertThat(tokens)
@@ -206,8 +246,8 @@ class EpisodeReceiptTest {
 
         assertThat(EpisodeReceipt.markdown(
                         journal, log, new AgentUsage(Map.of(AgentUsage.Agent.CLAUDE_CODE, claude), () -> false), last))
-                .as("with reading off the receipt has no token line")
-                .doesNotContain("Tokens");
+                .as("with reading off the receipt has no line of the agent's own count")
+                .doesNotContain("Tokens the agent used");
     }
 
     @Test

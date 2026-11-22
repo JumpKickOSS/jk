@@ -177,7 +177,7 @@ public final class HttpEngineServer implements AutoCloseable {
         HttpSessionsApi sessionsApi = new HttpSessionsApi(sessions, journal, usage);
         api.register("GET", "/api/sessions", sessionsApi::handleSessions);
         api.registerPrefix("GET", HttpSessionsApi.PREFIX, sessionsApi::handleSession);
-        statsApi.sessions(sessions);
+        statsApi.sessions(sessions, usage);
         if (mcp != null) mcp.sessions(sessions);
     }
 

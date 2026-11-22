@@ -9,6 +9,7 @@ import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.engine.journal.BuildRecord;
 import cc.jumpkick.engine.listen.EventRedaction;
+import cc.jumpkick.engine.savings.AgentUsage;
 import cc.jumpkick.engine.sessions.SessionLog;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.run.BuildPlan;
@@ -192,6 +193,11 @@ public interface VerbHost {
     /** The engine's session log; null for a host that keeps none. */
     default @Nullable SessionLog sessionLog() {
         return null;
+    }
+
+    /** The reader of the agents' own token counts; one that reads nothing for a host that has none. */
+    default AgentUsage agentUsage() {
+        return AgentUsage.NONE;
     }
 
     default JkHistoryConfig historyConfig() {

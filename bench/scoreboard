@@ -478,6 +478,11 @@ def hold_heavy_lock():
     return fh
 
 
+# Generated files beside the docs that --render --check holds to the banked results too.
+GENERATED = [JK_TREE / "server" / "engine" / "src" / "main" / "resources" / "cc" / "jumpkick" / "engine" / "savings"
+             / "rates.json"]
+
+
 def render_docs(dims: dict, board: list[dict], host: str) -> None:
     for mod in dims.values():
         if hasattr(mod, "render"):
@@ -486,7 +491,8 @@ def render_docs(dims: dict, board: list[dict], host: str) -> None:
 
 def check_docs(dims: dict, board: list[dict], host: str) -> int:
     """Render, list each page whose generated blocks differ from the banked rows, and put every page back."""
-    pages = [JK_TREE / "README.md", *sorted((JK_TREE / "docs").rglob("*.md")), *sorted((JK_TREE / "hosting").rglob("*.html"))]
+    pages = [JK_TREE / "README.md", *sorted((JK_TREE / "docs").rglob("*.md")), *sorted((JK_TREE / "hosting").rglob("*.html")),
+             *GENERATED]
     before = {p: p.read_bytes() for p in pages if p.is_file()}
     try:
         with contextlib.redirect_stdout(io.StringIO()):

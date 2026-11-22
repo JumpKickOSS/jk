@@ -2,6 +2,7 @@
 package cc.jumpkick.engine.sessions;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.tuple;
 
 import cc.jumpkick.config.SessionExpiry;
 import cc.jumpkick.engine.journal.BuildRecord;
@@ -68,6 +69,7 @@ class SessionActionsSinceTest {
                 assertThat(a.action().edits()).isEqualTo(2);
                 assertThat(a.action().project()).isEqualTo("/ws/app");
                 assertThat(a.projectId()).isEqualTo("p-app");
+                assertThat(a.client()).as("the agent its tokens are priced as").isEqualTo("claude-code");
             });
         }
         assertThat(log.actionsSince(0)).extracting(a -> a.action().kind()).containsExactly("usages", "deps");
@@ -87,7 +89,9 @@ class SessionActionsSinceTest {
                 "rename Ledger.post → record",
                 null,
                 0);
-        assertThat(memory.actionsSince(T)).extracting(a -> a.action().kind()).containsExactly("rename");
+        assertThat(memory.actionsSince(T))
+                .extracting(a -> a.action().kind(), SessionLog.Acted::client)
+                .containsExactly(tuple("rename", "claude-code"));
         assertThat(memory.actionsSince(T + 1)).isEmpty();
     }
 }

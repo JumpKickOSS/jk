@@ -200,6 +200,7 @@ same panel for that project. Both cover the last 7 days and show what `jk stats`
 | Figure | What it counts |
 | --- | --- |
 | time avoided | Build and test time the cache avoided. An estimate: each run's cold-cache critical path less its wall ([Cache](cache.md)); `measured` is the share of cache hits backed by a measured time |
+| tokens saved | Tokens the code questions and refactorings saved the agents, and what they would have cost at API list prices. An estimate ([below](#tokens-and-dollars-saved)) |
 | steps from cache | Steps whose result came from the cache instead of running, and of those, test suites |
 | classes not re-run | Test classes a red re-run left out because they passed under the same inputs ([Test](test.md)) |
 | code answers | Code questions an agent asked through MCP (`query`, `usages`, `read`, `find`) |
@@ -216,6 +217,34 @@ jk stats -O jsonl             # one `stats` object per row: `scope` `all` first,
 
 The same figures, over one episode's runs and actions, end that episode on the console and the
 `jk-results.md` of each run in it ([results](machine-output.md)).
+
+The status bar at the foot of every page keeps a running total of the tokens and dollars saved over
+all the history kept, every project's and, on a project's page, that project's. It is read again a
+moment after each finished run and each agent action, and its tip names the date of the prices.
+
+#### Tokens and dollars saved
+
+The tokens are an estimate, never a count of what your agent spent. The benchmark in
+[Why JumpKick](why.md#asking-about-the-code) runs each agent on the same tasks with JumpKick's code
+graph and without it. For each task it takes each kind of token (input, output, cache read, cache
+write) the agent spent without the graph less what it spent with it, the median of each, adds those
+up over the tasks and divides by the graph calls the agent made in them with the graph. Each code
+answer (`query`, `usages`, `read`, `find`) is credited what one graph call saved in the code-question
+tasks, and each refactoring what one saved in the rename tasks, at the rates measured for the agent
+whose MCP client asked: Claude Code, Codex, Cursor, Grok, Muse or Antigravity. A call from an agent
+the benchmark has not run, or of a kind it has not measured for that agent, is not credited at
+another agent's rates and not counted as zero: it is left out of the total, and the figure says how
+many calls were (`not measured by the bench, not counted`).
+
+The dollars are those tokens at the API list price of the model the agent was on, which JumpKick reads
+from the agent's own session files while `[agents] read-usage` is on, else the model the benchmark
+ran it on. The price table is the one JumpKick ships with or a newer signed one the engine fetched
+([config](config.md#updates)); the tip names the date the newest price behind the figure was
+read from its vendor's page. Tokens on a model the table has no price for are counted but left out
+of the dollars, and the tip says how many; they are priced once a table that knows the model
+arrives. An agent on a subscription pays its plan instead. A cached step or a test class not re-run
+saves time but no tokens the benchmark has measured, so it adds none. The rates ship with JumpKick
+and change with a new release.
 
 Nothing new is recorded for it: the engine adds up the run records and session actions it keeps,
 so a period reaches back only as far as `[history]` keeps runs and a session keeps its last 1000

@@ -20,6 +20,7 @@ import java.time.ZoneId;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
@@ -45,7 +46,7 @@ public final class StatsCommand implements CliCommand {
 
     /** The per-project table's columns, in the order {@link #projectRows} fills them. */
     static final List<String> PROJECT_COLUMNS =
-            List.of("Project", "Time", "Cached", "Code", "Refactorings", "Edits", "Guards");
+            List.of("Project", "Time", "Tokens", "Cached", "Code", "Refactorings", "Edits", "Guards");
 
     @Override
     public String name() {
@@ -157,6 +158,7 @@ public final class StatsCommand implements CliCommand {
     static List<List<String>> totalRows(String row) {
         List<List<String>> out = new ArrayList<>();
         out.add(List.of("Build and test time avoided", saved(row)));
+        out.add(List.of("Tokens saved", tokens(row)));
         out.add(List.of("Steps served from the cache", count(row, "stepsSkipped")));
         out.add(List.of("Test suites not re-run", count(row, "suitesSkipped")));
         out.add(List.of("Test classes not re-run", count(row, "testClassesNotRerun")));
@@ -177,6 +179,7 @@ public final class StatsCommand implements CliCommand {
             out.add(List.of(
                     HistoryCommand.truncate(HistoryCommand.label(Jsonl.str(p, "coord"), Jsonl.str(p, "dir")), 28),
                     HistoryCommand.duration(Jsonl.longValue(p, "savedMillis", 0)),
+                    compact(Jsonl.longValue(p, "tokensSaved", 0)),
                     count(p, "stepsSkipped"),
                     count(p, "graphCalls"),
                     count(p, "refactorings"),
@@ -184,7 +187,7 @@ public final class StatsCommand implements CliCommand {
                     count(p, "guardViolations")));
         }
         if (projects.size() > PROJECT_ROWS) {
-            out.add(List.of("+" + (projects.size() - PROJECT_ROWS) + " more", "", "", "", "", "", ""));
+            out.add(List.of("+" + (projects.size() - PROJECT_ROWS) + " more", "", "", "", "", "", "", ""));
         }
         return out;
     }
@@ -200,6 +203,37 @@ public final class StatsCommand implements CliCommand {
                 ? ", " + HistoryCommand.pctString(Jsonl.longValue(row, "coveredSkips", 0), hits) + " measured"
                 : "";
         return "~" + HistoryCommand.duration(saved) + " (estimate" + measured + ")";
+    }
+
+    /**
+     * The tokens the code questions and refactorings saved the agents, and their dollars, marked as
+     * the estimate they are: {@code ~1.2M, ~$0.840 (estimate, API list prices of 2026-11-17)}, with
+     * the calls left out because the bench has not measured their agent or kind.
+     */
+    static String tokens(String row) {
+        long micros = Jsonl.longValue(row, "usdSavedMicros", 0);
+        double usd = micros / 1e6;
+        String dollars = Math.abs(usd) < 1
+                ? String.format(Locale.ROOT, "$%.3f", usd)
+                : String.format(Locale.ROOT, "$%,.2f", usd);
+        String date = Jsonl.str(row, "pricesRetrieved");
+        long unpriced = Jsonl.longValue(row, "tokensUnpriced", 0);
+        long notMeasured = Jsonl.longValue(row, "callsNotMeasured", 0);
+        return "~" + compact(Jsonl.longValue(row, "tokensSaved", 0)) + ", ~" + dollars + " (estimate, API list prices"
+                + (date == null || date.isEmpty() ? "" : " of " + date)
+                + (unpriced == 0 ? "" : "; " + compact(unpriced) + " on models with no price")
+                + (notMeasured == 0
+                        ? ""
+                        : "; " + notMeasured + (notMeasured == 1 ? " call" : " calls")
+                                + " not measured by the bench, not counted")
+                + ")";
+    }
+
+    /** {@code n} in a few characters: {@code 950}, {@code 12k}, {@code 1.2M}. */
+    static String compact(long n) {
+        if (Math.abs(n) >= 1_000_000) return String.format(Locale.ROOT, "%.1fM", n / 1e6);
+        if (Math.abs(n) >= 1_000) return String.format(Locale.ROOT, "%.0fk", n / 1e3);
+        return Long.toString(n);
     }
 
     private static String count(String row, String field) {

@@ -48,7 +48,8 @@ public final class StatsVerb implements HostedVerb {
     public JobOutcome run(String requestLine, Session.CancelToken cancelToken, @Nullable BufferedWriter writer) {
         try {
             long since = StatsRequest.decode(requestLine).since();
-            List<Savings> rows = SavingsLedger.read(host.journal(), host.sessionLog(), since, host.nowMillis());
+            List<Savings> rows =
+                    SavingsLedger.read(host.journal(), host.sessionLog(), host.agentUsage(), since, host.nowMillis());
             for (Savings row : rows) host.send(writer, line(row));
             host.send(
                     writer,

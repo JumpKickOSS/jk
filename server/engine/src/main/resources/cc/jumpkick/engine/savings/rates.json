@@ -1,0 +1,125 @@
+{
+  "measured": "2026-11-04",
+  "agents": {
+    "claude-code": {
+      "model": "claude-sonnet-5-5",
+      "cacheWrite1h": true,
+      "question": {
+        "tasks": 8,
+        "graphCalls": 10,
+        "input": 11,
+        "output": 3666,
+        "cacheRead": 179026,
+        "cacheWrite": 17174
+      },
+      "rename": {
+        "tasks": 7,
+        "graphCalls": 7,
+        "input": 7,
+        "output": 3462,
+        "cacheRead": 52324,
+        "cacheWrite": 8144
+      }
+    },
+    "grok": {
+      "model": "grok-4.7",
+      "cacheWrite1h": false,
+      "question": {
+        "tasks": 8,
+        "graphCalls": 9,
+        "input": 119893,
+        "output": 20277,
+        "cacheRead": 1642482,
+        "cacheWrite": 0
+      },
+      "rename": {
+        "tasks": 7,
+        "graphCalls": 10,
+        "input": 29619,
+        "output": 3894,
+        "cacheRead": 279014,
+        "cacheWrite": 0
+      }
+    },
+    "agy": {
+      "model": "gemini-3.8-flash-high",
+      "cacheWrite1h": false,
+      "question": {
+        "tasks": 8,
+        "graphCalls": 26,
+        "input": 40548,
+        "output": -1400,
+        "cacheRead": 749502,
+        "cacheWrite": 0
+      },
+      "rename": {
+        "tasks": 7,
+        "graphCalls": 7,
+        "input": 194963,
+        "output": 11876,
+        "cacheRead": 1511363,
+        "cacheWrite": 0
+      }
+    },
+    "cursor": {
+      "model": "composer-2.5",
+      "cacheWrite1h": false,
+      "question": {
+        "tasks": 8,
+        "graphCalls": 9,
+        "input": 45543,
+        "output": 7080,
+        "cacheRead": 1552704,
+        "cacheWrite": 0
+      },
+      "rename": {
+        "tasks": 7,
+        "graphCalls": 7,
+        "input": 13630,
+        "output": 1912,
+        "cacheRead": 220795,
+        "cacheWrite": 0
+      }
+    },
+    "muse": {
+      "model": "muse-spark-1.3-contributor",
+      "cacheWrite1h": false,
+      "question": {
+        "tasks": 8,
+        "graphCalls": 9,
+        "input": 121170,
+        "output": 21677,
+        "cacheRead": 2453030,
+        "cacheWrite": 0
+      },
+      "rename": {
+        "tasks": 7,
+        "graphCalls": 10,
+        "input": 44011,
+        "output": 4237,
+        "cacheRead": 1073499,
+        "cacheWrite": 0
+      }
+    },
+    "codex": {
+      "model": "gpt-6.1-terra",
+      "cacheWrite1h": false,
+      "question": {
+        "tasks": 8,
+        "graphCalls": 9,
+        "input": 17804,
+        "output": 570,
+        "cacheRead": 201500,
+        "cacheWrite": 0
+      },
+      "rename": {
+        "tasks": 7,
+        "graphCalls": 7,
+        "input": 9116,
+        "output": 562,
+        "cacheRead": 165175,
+        "cacheWrite": 0
+      }
+    }
+  }
+}

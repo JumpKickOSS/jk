@@ -8,6 +8,7 @@ import cc.jumpkick.engine.sessions.ActionRecord;
 import cc.jumpkick.engine.sessions.Episode;
 import cc.jumpkick.engine.sessions.SessionLog;
 import cc.jumpkick.jsonl.MiniJson;
+import cc.jumpkick.prices.PriceTables;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -93,8 +94,9 @@ public record EpisodeReceipt(
         if (current != null && runs.stream().noneMatch(r -> sameRun(r, current))) runs.add(current);
         List<ActionRecord> actions = new ArrayList<>();
         for (Map<String, Object> m : page.get().actions()) actions.add(ActionRecord.of(m));
-        Map<String, EpisodeReceipt> out = fold(episodes, runs, actions);
         String client = MiniJson.str(page.get().session(), "client");
+        Map<String, EpisodeReceipt> out =
+                fold(episodes, runs, actions, SavingsRates.shipped(), new AgentModels(usage), client);
         long now = current == null ? 0 : current.finishedAt();
         for (Episode e : episodes) {
             long next = starts.stream()
@@ -119,16 +121,27 @@ public record EpisodeReceipt(
         return m;
     }
 
-    /** The receipts of {@code episodes} over runs and actions already read, by episode id. */
+    /**
+     * The receipts of {@code episodes} over runs and actions already read, by episode id; {@code
+     * client} names the agent of the session they belong to, or is null when it named none.
+     */
     static Map<String, EpisodeReceipt> fold(
-            List<Episode> episodes, List<BuildRecord> runs, List<ActionRecord> actions) {
+            List<Episode> episodes,
+            List<BuildRecord> runs,
+            List<ActionRecord> actions,
+            SavingsRates rates,
+            AgentModels models,
+            @Nullable String client) {
+        for (ActionRecord a : actions) {
+            if (SavingsLedger.savesTokens(a)) models.note(client, a.project(), a.at());
+        }
         Map<String, EpisodeReceipt> out = new LinkedHashMap<>();
         for (Episode e : episodes) {
             Savings saved = Savings.empty(Savings.EPISODE, e.projectId(), e.project(), null, e.startedAt(), e.lastAt());
             for (BuildRecord r : runs) if (e.id().equals(r.episode())) saved = saved.plus(SavingsLedger.of(r));
             for (ActionRecord a : actions) {
                 if (e.id().equals(a.episode()) && !ActionRecord.RUN.equals(a.kind())) {
-                    saved = saved.plus(SavingsLedger.of(a));
+                    saved = saved.plus(SavingsLedger.of(a, SavingsLedger.saved(a, client, rates, models)));
                 }
             }
             out.put(e.id(), new EpisodeReceipt(e.id(), e.title(), saved, null));
@@ -164,6 +177,9 @@ public record EpisodeReceipt(
                     + (s.suitesSkipped() > 0 ? " (" + s.suitesSkipped() + " test suites)" : ""));
         }
         if (s.testClassesNotRerun() > 0) lines.add("Test classes not re-run: " + s.testClassesNotRerun());
+        if (s.tokens().total() != 0 || s.callsNotMeasured() != 0) {
+            lines.add("Tokens saved: " + s.tokens().text(PriceTables.current(), s.callsNotMeasured()));
+        }
         if (s.graphCalls() > 0) lines.add("Code questions answered: " + s.graphCalls());
         if (s.refactorings() > 0) lines.add("Refactorings applied: " + s.refactorings());
         if (s.edits() > 0) lines.add("Dependency edits made: " + s.edits());

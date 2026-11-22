@@ -976,7 +976,17 @@ project (`projectId`, its newest `dir` and `coord`), the one with the most saved
 number is a **400**. Each row is `Savings.toMap()`: the run count, the cache's `savedMillis` and
 `estimatedUncachedMillis` with the `coveredSkips` / `estimatedSkips` behind them, `stepsSkipped`,
 `suitesSkipped`, `testClassesNotRerun`, `graphCalls`, `refactorings`, `edits`, `guardViolations`
-(each guard rule broken in each file once in the period) and `guardStops` (the runs they stopped).
+(each guard rule broken in each file once in the period) and `guardStops` (the runs they stopped),
+then the tokens the code questions and refactorings saved: `tokensSaved`, `tokensSavedByModel`
+(one object per model id: `model`, `input`, `output`, `cacheRead`, `cacheWrite`, `cacheWrite1h`,
+so rows from many projects or machines add up and can be priced again), `usdSavedMicros`
+(millionths of a dollar at the price table in effect, `PriceTables.current()`), `tokensUnpriced`
+(tokens on a model that table has no row for, left out of the dollars), `callsNotMeasured` (code
+answers and refactorings the bench has no rate for, by their agent or kind, left out of
+`tokensSaved`), `ratesMeasured` and
+`pricesRetrieved`, the dates of the bench runs and of the newest price behind the dollars. Those are
+an estimate from `SavingsRates`
+(`rates.json`, written by `bench/scoreboard --render`; [web](../user/web.md#tokens-and-dollars-saved)).
 `SavingsLedger` adds them up from `BuildJournal.finishedSince` and `SessionLog.actionsSince`; the
 socket's `stats` rows (`jk stats -O jsonl`) carry the same fields.
 

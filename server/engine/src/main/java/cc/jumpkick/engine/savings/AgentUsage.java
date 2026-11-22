@@ -20,6 +20,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.NavigableMap;
 import java.util.Objects;
 import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
@@ -136,16 +137,40 @@ public final class AgentUsage {
         if (home == null) return null;
         long last = agent.wholeSession ? Math.max(until, next - 1) : until;
         Map<String, AgentTokens.Counts> byModel = new TreeMap<>();
+        for (Entry e : entries(agent, home, project, since)) {
+            if (e.at() >= since && e.at() <= last) byModel.merge(e.model(), e.counts(), AgentTokens.Counts::plus);
+        }
+        return byModel.isEmpty() ? null : new AgentTokens(agent.label, byModel, agent.wholeSession);
+    }
+
+    /**
+     * The models the agent {@code client} names ran on working in {@code project} from {@code since}
+     * (epoch millis) on: the time of each count to its model id, without the counts whose model id was
+     * missing. Empty when reading is off or the agent keeps no counts jk reads.
+     */
+    public NavigableMap<Long, String> models(@Nullable String client, String project, long since) {
+        Agent agent = agentOf(client);
+        NavigableMap<Long, String> out = new TreeMap<>();
+        if (agent == null || !on.getAsBoolean()) return out;
+        Path home = homes.get(agent);
+        if (home == null) return out;
+        for (Entry e : entries(agent, home, project, since)) {
+            if (e.at() >= since && !AgentTokens.UNKNOWN.equals(e.model())) out.put(e.at(), e.model());
+        }
+        return out;
+    }
+
+    /** The counts in {@code agent}'s files under {@code home} for {@code project}, in files written at or after {@code since}. */
+    private List<Entry> entries(Agent agent, Path home, String project, long since) {
+        List<Entry> out = new ArrayList<>();
         for (Path file : sessionFiles(agent, home, project, since)) {
             Parsed p = parse(agent, file);
             if (p == null) continue;
             String cwd = p.cwd() == null && agent == Agent.MUSE ? parentCheckout(file) : p.cwd();
             if (agent != Agent.CLAUDE_CODE && !sameDir(cwd, project)) continue;
-            for (Entry e : p.entries()) {
-                if (e.at() >= since && e.at() <= last) byModel.merge(e.model(), e.counts(), AgentTokens.Counts::plus);
-            }
+            out.addAll(p.entries());
         }
-        return byModel.isEmpty() ? null : new AgentTokens(agent.label, byModel, agent.wholeSession);
+        return out;
     }
 
     /** A Muse subagent's checkout, which its file does not name: its parent session's, two directories up. */

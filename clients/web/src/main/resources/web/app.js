@@ -174,6 +174,7 @@ export const appOptions = {
       this.loadNotices(); // the bell's unseen count and "Just now"
       this.connectEvents();
       this.refresh();
+      this.loadSavingsTotal(); // the status bar's running total
       this.loadHistory(); // backfill past builds so a reload/restart doesn't start from an empty feed
       this.loadProjectHistory(); // so the Projects tab is populated the moment it's opened
       if (this.view === 'project' && this.selectedProjectId) this.loadProjectMeta(this.selectedProjectId);
@@ -463,6 +464,8 @@ export const appOptions = {
             if (this.view === 'machine') this.loadMachine(); // its pairing column
             return;
           }
+          // An agent's action can save tokens: the status bar's running total follows it.
+          if (event.type === SSE.action) this.scheduleSavingsTotal();
           // The session log and the decision queue feed the console.
           if (this.applyConsoleEvent(event)) return;
           // Live vitals: change-gated on the server; apply without folding cards.
@@ -484,6 +487,7 @@ export const appOptions = {
           // so re-pull history a beat later: it reconciles the live card (tagging its #number) and
           // refreshes the Projects tab. Debounced so a burst of finishes triggers one reload.
           if (event.type === SSE.requestFinish) {
+            this.scheduleSavingsTotal();
             clearTimeout(this._reconcileTimer);
             this._reconcileTimer = setTimeout(() => {
               this.loadHistory({ newer: true }); // the Projects tab reads the same list
@@ -512,6 +516,7 @@ export const appOptions = {
             // run-snapshot SSE covers the same instant for running jobs; history remains the
             // durable path and fills any race where the stream opened before the first GET.
             if (wasOffline) this.refresh(); // full chrome resync after an engine restart
+            if (wasOffline) this.loadSavingsTotal();
             this.loadHistory();
             this.loadProjectHistory();
             if (wasOffline && this.view === 'console') this.loadConsole();

@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.savings;
 
+import cc.jumpkick.prices.PriceTables;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
@@ -37,6 +39,10 @@ import org.jspecify.annotations.Nullable;
  * @param violations the guard-rule violations a run stopped, each rule in each file once however
  *     many runs it stopped ({@link SavingsLedger#violation}); {@link #guardViolations} counts them
  * @param guardStops runs that stopped on at least one
+ * @param tokens the tokens the code questions and refactorings saved the agents, by model: an
+ *     estimate at {@link SavingsRates#shipped}'s rates, priced at the price table in effect when shown
+ * @param callsNotMeasured code answers and refactorings the bench has no rate for, so left out of
+ *     {@code tokens}: those of an agent it never ran, or of a kind it never measured for that agent
  */
 public record Savings(
         String scope,
@@ -57,7 +63,9 @@ public record Savings(
         long refactorings,
         long edits,
         Set<String> violations,
-        long guardStops) {
+        long guardStops,
+        TokensSaved tokens,
+        long callsNotMeasured) {
 
     public static final String ALL = "all";
     public static final String PROJECT = "project";
@@ -75,7 +83,28 @@ public record Savings(
             @Nullable String coord,
             long since,
             long until) {
-        return new Savings(scope, projectId, dir, coord, since, until, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, Set.of(), 0);
+        return new Savings(
+                scope,
+                projectId,
+                dir,
+                coord,
+                since,
+                until,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                Set.of(),
+                0,
+                TokensSaved.NONE,
+                0);
     }
 
     /** This row with {@code o}'s counts added to its own; its identity and period stay. */
@@ -99,7 +128,9 @@ public record Savings(
                 refactorings + o.refactorings,
                 edits + o.edits,
                 union(violations, o.violations),
-                guardStops + o.guardStops);
+                guardStops + o.guardStops,
+                tokens.plus(o.tokens),
+                callsNotMeasured + o.callsNotMeasured);
     }
 
     /** The guard-rule violations stopped: distinct rule and file pairs, not one per run. */
@@ -141,6 +172,14 @@ public record Savings(
         m.put("edits", edits);
         m.put("guardViolations", guardViolations());
         m.put("guardStops", guardStops);
+        TokensSaved.Priced priced = tokens.priced(PriceTables.current());
+        m.put("tokensSaved", tokens.total());
+        m.put("tokensSavedByModel", tokens.rows());
+        m.put("usdSavedMicros", priced.usdMicros());
+        m.put("tokensUnpriced", priced.unpriced());
+        m.put("callsNotMeasured", callsNotMeasured);
+        m.put("ratesMeasured", SavingsRates.shipped().measured());
+        m.put("pricesRetrieved", Objects.toString(priced.retrieved(), ""));
         return m;
     }
 }
