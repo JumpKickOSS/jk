@@ -38,7 +38,12 @@ public record ImageConfig(
          */
         boolean aotCache,
         /** Attach the SBOM and provenance to a registry push as OCI referrers; {@code [image] referrers}. */
-        boolean referrers) {
+        boolean referrers,
+        /**
+         * Sign a registry push's provenance with Sigstore keyless and attach it in a DSSE envelope;
+         * {@code [image] sigstore} or {@code jk image --sigstore}.
+         */
+        boolean sigstore) {
 
     public ImageConfig {
         ports = ports == null ? List.of() : List.copyOf(ports);

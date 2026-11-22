@@ -6,8 +6,13 @@ description = "JumpKick's OCI image builder plugin"
 # jk-core/jk-io were declared but never imported and cost two scheduling levels.
 jk-model.workspace = true
 jk-plugin-sdk.workspace = true
+# A signed push wraps the provenance in DSSE with the keyless signer jk publish uses.
+jk-sigstore.workspace = true
 jib-core = "0.28.2"
 commons-compress = "1.28.0"
+# Jib's registry transport is Apache HttpClient 4, which logs through commons-logging; the
+# google-http-client 2.x sigstore-java brings excludes it from that edge, so the worker names it.
+commons-logging = { group = "commons-logging", version = "1.4.0" }
 # jib-core needs the JRE flavour of Guava (ImmutableList.toImmutableList and the other stream
 # collectors are absent from -android), and Guava publishes both flavours under one module, so
 # the flavour is pinned here rather than left to whichever transitive request the walk meets.
@@ -37,5 +42,6 @@ options = [
 
 [test-dependencies]
 jk-host = { workspace = true, fixtures = true }
+jk-sigstore = { workspace = true, fixtures = true }
 assertj-core = "3.27.7"
 junit-jupiter = "6.1.3"

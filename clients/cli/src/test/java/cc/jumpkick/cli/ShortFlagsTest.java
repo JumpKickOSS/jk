@@ -30,6 +30,7 @@ class ShortFlagsTest {
             "install --bin",
             "install --destination",
             "publish --tag",
+            "image --sigstore",
             "release --major",
             "release --minor",
             "release --patch",

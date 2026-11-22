@@ -51,6 +51,8 @@ test-plugin-jars = [
   # jk publish, which stages this checkout's plugin SDK in a file repository for a plugin build
   # (TemplateCatalogE2eTest's plugin template, ThirdPartyPluginExampleTest).
   "publisher",
+  # jk image's worker: the image suites build and push through the image builder this build produced.
+  "image-builder",
   # Rule packs the templates declare, templates/ and the plugins': staged into the test sandbox
   # store, where a scaffolded project's lock looks for a first-party pack (TemplateCatalogE2eTest).
   "cc.jumpkick.guards:spring",

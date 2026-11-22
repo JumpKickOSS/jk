@@ -74,7 +74,7 @@ class TailForecastTest {
 
     @Test
     void an_image_is_written_however_clean_its_module_and_only_for_the_selection() throws Exception {
-        assertThat(scheduled(WorkspaceSpec.image(Set.of(app), null, null, null, null, null)))
+        assertThat(scheduled(WorkspaceSpec.image(Set.of(app), null, null, null, null, null, false)))
                 .containsExactly(app);
     }
 

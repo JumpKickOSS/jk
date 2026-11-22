@@ -40,7 +40,7 @@ Three tables are workspace facts and read from the root as well: `[publish]` app
 member that declares none, `[profiles.<name>]` merge by name with the root winning every key but the member-additive `env`
 and `jvm-args` (see [Test § Workspace scope](test.md#workspace-scope-suites-and-profiles-come-from-the-root)), and the
 `[image]` registry facts — `base`, `user`, `registry`, `tag`, `env`, `labels`, `platforms`,
-`docker-executable`, `aot-cache`, `referrers` — sit under the member's own table (see
+`docker-executable`, `aot-cache`, `referrers`, `sigstore` — sit under the member's own table (see
 [Images § In a workspace](images.md#in-a-workspace)). `[manifest]`, `[application]`, `[native]`
 and the dependency tables are each member's own and never inherit.
 

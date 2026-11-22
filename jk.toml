@@ -61,6 +61,7 @@ modules = [
   "shared/dynamic-surface",
   "shared/guard-api",
   "shared/code-graph",
+  "shared/sigstore",
   # Server/Engine
   "server/io",
   "server/resolver",

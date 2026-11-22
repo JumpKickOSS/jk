@@ -163,7 +163,8 @@ class ImagePlansOfflineTest {
                 dockerExecutable,
                 null,
                 false,
-                true);
+                true,
+                false);
         return new Fixture(project, layout, config, tmp.resolve("cache"), tarball, workerJar);
     }
 

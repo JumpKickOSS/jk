@@ -6,6 +6,11 @@ JumpKick shows you this page's new entries after it updates itself.
 
 ## 0.54.1
 
+- **A signed image push.** `jk image --sigstore`, or `[image] sigstore = true`, signs the pushed
+  image's SLSA provenance with Sigstore keyless, as `jk publish --sigstore` signs a jar, and
+  attaches it in a DSSE envelope beside the Sigstore bundle that verifies it. The provenance now
+  names the command, the JumpKick version and the git commit too
+  ([Images](images.md#a-signed-push)).
 - **Flaky tests are quarantined.** A test class that fails and then passes on a re-run with
   nothing changed in 2 of its last 20 runs goes into `.jk/test/quarantine.toml`, which you check
   in. A run whose only failures are in quarantined classes passes and says so in one line; the

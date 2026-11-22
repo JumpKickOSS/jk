@@ -2,25 +2,37 @@
 package cc.jumpkick.plugin.image;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.image.ImageConfig;
+import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.jsonl.MiniJson;
+import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.plugin.PluginConfig;
 import cc.jumpkick.plugin.build.ImageContext;
 import cc.jumpkick.plugin.build.PackageIo;
 import cc.jumpkick.plugin.build.ProjectFacts;
+import cc.jumpkick.sigstore.Dsse;
+import cc.jumpkick.sigstore.KeylessSigstoreSigner;
+import cc.jumpkick.sigstore.StubSigner;
 import cc.jumpkick.testing.RegistryStub;
+import dev.sigstore.bundle.Bundle;
+import java.io.IOException;
+import java.io.StringReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.Signature;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.concurrent.Callable;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterEach;
@@ -47,6 +59,11 @@ class ImageReferrersTest {
               {"purl":"pkg:maven/com.acme/unhashed@2.0"}]}
             """.formatted("c".repeat(64)).getBytes(StandardCharsets.UTF_8);
 
+    /** The signer source of an unsigned push, which never opens one. */
+    private static final Callable<KeylessSigstoreSigner> UNSIGNED = () -> {
+        throw new AssertionError("an unsigned push opens no signer");
+    };
+
     private RegistryStub registry;
     private String baseRef;
 
@@ -67,7 +84,7 @@ class ImageReferrersTest {
         ImageBuilder.Result pushed = push(tmp, anonymous());
         Context ctx = context(tmp, true);
 
-        OciImageBuilder.attach(ctx, pushed, baseRef, anonymous());
+        OciImageBuilder.attach(ctx, pushed, baseRef, anonymous(), UNSIGNED);
 
         assertThat(ctx.notices).isEmpty();
         Map<?, ?> index = json(registry.manifest("app", Referrers.tagSchema(pushed.digest())));
@@ -102,8 +119,8 @@ class ImageReferrersTest {
     void attaching_again_does_not_list_an_artifact_twice(@TempDir Path tmp) throws Exception {
         ImageBuilder.Result pushed = push(tmp, anonymous());
 
-        OciImageBuilder.attach(context(tmp, true), pushed, baseRef, anonymous());
-        OciImageBuilder.attach(context(tmp, true), pushed, baseRef, anonymous());
+        OciImageBuilder.attach(context(tmp, true), pushed, baseRef, anonymous(), UNSIGNED);
+        OciImageBuilder.attach(context(tmp, true), pushed, baseRef, anonymous(), UNSIGNED);
 
         assertThat(MiniJson.list(json(registry.manifest("app", Referrers.tagSchema(pushed.digest()))), "manifests"))
                 .hasSize(2);
@@ -116,7 +133,7 @@ class ImageReferrersTest {
         ImageBuilder.Result pushed = push(tmp, anonymous());
         Context ctx = context(tmp, true);
 
-        OciImageBuilder.attach(ctx, pushed, baseRef, anonymous());
+        OciImageBuilder.attach(ctx, pushed, baseRef, anonymous(), UNSIGNED);
 
         assertThat(ctx.notices).isEmpty();
         assertThat(registry.tags("app")).containsExactly("9");
@@ -127,7 +144,7 @@ class ImageReferrersTest {
     void without_an_sbom_the_provenance_is_attached_alone(@TempDir Path tmp) throws Exception {
         ImageBuilder.Result pushed = push(tmp, anonymous());
 
-        OciImageBuilder.attach(context(tmp, false), pushed, baseRef, anonymous());
+        OciImageBuilder.attach(context(tmp, false), pushed, baseRef, anonymous(), UNSIGNED);
 
         assertThat(MiniJson.list(json(registry.manifest("app", Referrers.tagSchema(pushed.digest()))), "manifests"))
                 .extracting(m -> MiniJson.str(m, "artifactType"))
@@ -150,7 +167,8 @@ class ImageReferrersTest {
                     refused,
                     pushed,
                     baseRef,
-                    RegistryAuth.of(RepoCredential.ANONYMOUS, RepoCredential.ANONYMOUS, baseRef, target));
+                    RegistryAuth.of(RepoCredential.ANONYMOUS, RepoCredential.ANONYMOUS, baseRef, target),
+                    UNSIGNED);
             assertThat(refused.notices)
                     .as("the image is pushed either way; a refused attach says so and does not fail the build")
                     .singleElement()
@@ -160,7 +178,7 @@ class ImageReferrersTest {
                     .isFalse();
 
             Context ctx = context(tmp, true);
-            OciImageBuilder.attach(ctx, pushed, baseRef, auth);
+            OciImageBuilder.attach(ctx, pushed, baseRef, auth, UNSIGNED);
             assertThat(ctx.notices).isEmpty();
             assertThat(registry.holdsManifest("app", Referrers.tagSchema(pushed.digest())))
                     .isTrue();
@@ -221,7 +239,7 @@ class ImageReferrersTest {
         String base = "ghcr.io/acme/jre@sha256:" + "e".repeat(64);
 
         String statement = new String(
-                OciImageBuilder.provenance("127.0.0.1:5000/app:9", digest, base, facts(), SBOM),
+                OciImageBuilder.provenance("127.0.0.1:5000/app:9", digest, base, facts(), SBOM, "f".repeat(40)),
                 StandardCharsets.UTF_8);
 
         Map<?, ?> json = json(statement);
@@ -237,9 +255,104 @@ class ImageReferrersTest {
         assertThat(MiniJson.get(resolved.get(2), "digest"))
                 .as("an unhashed component claims no digest")
                 .isNull();
-        assertThat(OciImageBuilder.provenance("127.0.0.1:5000/app:9", digest, base, facts(), SBOM))
+        Object definition = MiniJson.get(MiniJson.get(json, "predicate"), "buildDefinition");
+        assertThat(MiniJson.str(MiniJson.get(definition, "externalParameters"), "command"))
+                .isEqualTo("jk image");
+        assertThat(MiniJson.str(MiniJson.get(definition, "externalParameters"), "sourceCommit"))
+                .isEqualTo("f".repeat(40));
+        assertThat(MiniJson.str(MiniJson.get(definition, "internalParameters"), "jkVersion"))
+                .isEqualTo(JkVersion.VERSION);
+        assertThat(OciImageBuilder.provenance("127.0.0.1:5000/app:9", digest, base, facts(), SBOM, "f".repeat(40)))
                 .as("no clock and no random id: a re-push attaches the same statement")
                 .isEqualTo(statement.getBytes(StandardCharsets.UTF_8));
+    }
+
+    /**
+     * A signed push attaches the statement in a DSSE envelope beside the Sigstore bundle of its
+     * signature, in one artifact, and the envelope verifies against the bundle's certificate.
+     */
+    @Test
+    void a_signed_push_attaches_an_envelope_its_bundle_verifies(@TempDir Path tmp) throws Exception {
+        ImageBuilder.Result pushed = push(tmp, anonymous());
+        Path sbom = Files.write(tmp.resolve("image.cdx.json"), SBOM);
+        Context ctx = new Context(Map.of("sbom", sbom.toString(), "sigstore", true, "sourceCommit", "a".repeat(40)));
+        StubSigner stub = new StubSigner();
+
+        OciImageBuilder.attach(ctx, pushed, baseRef, anonymous(), stub::signer);
+
+        assertThat(ctx.notices).isEmpty();
+        List<?> listed =
+                MiniJson.list(json(registry.manifest("app", Referrers.tagSchema(pushed.digest()))), "manifests");
+        assertThat(listed)
+                .extracting(m -> MiniJson.str(m, "artifactType"))
+                .as("the SBOM, and the provenance only in its signed envelope")
+                .containsExactly(Referrers.SBOM_TYPE, Dsse.ENVELOPE_TYPE);
+        verifySigned(pushed.digest(), str(listed.get(1), "digest"), stub);
+    }
+
+    /** A node module's signed push signs its provenance the same way. */
+    @Test
+    void a_signed_node_push_attaches_an_envelope_its_bundle_verifies(@TempDir Path tmp) throws Exception {
+        Map<String, Object> spec = nodePush(tmp, true);
+        spec.put("sigstore", true);
+        StubSigner stub = new StubSigner();
+
+        new OciImageBuilder(stub::signer).image(new Context(spec));
+
+        List<?> listed =
+                MiniJson.list(json(registry.manifest("app", Referrers.tagSchema(pushedDigest()))), "manifests");
+        assertThat(listed).extracting(m -> MiniJson.str(m, "artifactType")).containsExactly(Dsse.ENVELOPE_TYPE);
+        verifySigned(pushedDigest(), str(listed.get(0), "digest"), stub);
+    }
+
+    /** It was asked for a signed image: a signature that fails fails the build, naming the image. */
+    @Test
+    void a_signature_that_fails_fails_the_push(@TempDir Path tmp) throws Exception {
+        ImageBuilder.Result pushed = push(tmp, anonymous());
+        Context ctx = new Context(Map.of("sigstore", true));
+
+        assertThatThrownBy(() -> OciImageBuilder.attach(ctx, pushed, baseRef, anonymous(), () -> {
+                    throw new IOException("no OIDC token");
+                }))
+                .isInstanceOf(IOException.class)
+                .hasMessage("[image] no signed provenance attached to " + pushed.imageReference() + ": no OIDC token");
+        assertThat(registry.holdsManifest("app", Referrers.tagSchema(pushed.digest())))
+                .as("no unsigned provenance stands in for the signed one")
+                .isFalse();
+    }
+
+    /**
+     * The artifact {@code manifestDigest} holds the provenance of {@code subject} in a DSSE envelope
+     * whose one keyless signature the Sigstore bundle beside it certifies, over the envelope's
+     * pre-authentication encoding, as {@code stub} was asked to sign it.
+     */
+    private void verifySigned(String subject, String manifestDigest, StubSigner stub) throws Exception {
+        Map<?, ?> manifest = json(registry.manifest("app", manifestDigest));
+        assertThat(MiniJson.str(MiniJson.get(manifest, "subject"), "digest")).isEqualTo(subject);
+        List<?> layers = MiniJson.list(manifest, "layers");
+        assertThat(layers)
+                .extracting(l -> MiniJson.str(l, "mediaType"))
+                .containsExactly(Dsse.ENVELOPE_TYPE, OciImageBuilder.BUNDLE_TYPE);
+        String envelope =
+                new String(Objects.requireNonNull(registry.blob(str(layers.get(0), "digest"))), StandardCharsets.UTF_8);
+        assertThat(Jsonl.str(envelope, "payloadType")).isEqualTo(Dsse.IN_TOTO);
+        byte[] statement = Base64.getDecoder().decode(Jsonl.requiredStr(envelope, "payload"));
+        assertThat(new String(statement, StandardCharsets.UTF_8))
+                .contains("\"predicateType\":\"https://slsa.dev/provenance/v1\"")
+                .contains("\"sha256\":\"" + subject.substring("sha256:".length()) + "\"");
+        byte[] sig = Base64.getDecoder()
+                .decode(Jsonl.requiredStr(
+                        Jsonl.objectArray(envelope, "signatures").getFirst(), "sig"));
+
+        byte[] pae = Dsse.pae(Dsse.IN_TOTO, statement);
+        assertThat(stub.handed).containsExactly(Hashing.sha256(pae));
+        Bundle bundle = Bundle.from(new StringReader(new String(
+                Objects.requireNonNull(registry.blob(str(layers.get(1), "digest"))), StandardCharsets.UTF_8)));
+        assertThat(bundle.getMessageSignature().orElseThrow().getSignature()).isEqualTo(sig);
+        Signature verify = Signature.getInstance("SHA256withECDSA");
+        verify.initVerify(bundle.getCertPath().getCertificates().getFirst().getPublicKey());
+        verify.update(pae);
+        assertThat(verify.verify(sig)).as("the envelope's signature verifies").isTrue();
     }
 
     private ImageBuilder.Result push(Path tmp, RegistryAuth auth) throws Exception {
@@ -260,7 +373,8 @@ class ImageReferrersTest {
                 null,
                 null,
                 false,
-                true);
+                true,
+                false);
         return ImageBuilder.pushToRegistry(
                 new ImageBuilder.Plan(config, "app", "0.1.0", "com.example.Main", jar, List.of()),
                 tmp.resolve("cache"),

@@ -358,6 +358,10 @@
         "referrers": {
           "type": "boolean",
           "description": "Attach the SBOM and SLSA provenance to a registry push as OCI referrers. Default true."
+        },
+        "sigstore": {
+          "type": "boolean",
+          "description": "Sign a registry push's SLSA provenance with Sigstore keyless and attach it in a DSSE envelope, as jk image --sigstore does. Default false."
         }
       },
       "additionalProperties": false

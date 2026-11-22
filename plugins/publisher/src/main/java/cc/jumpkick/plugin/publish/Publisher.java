@@ -37,6 +37,7 @@ import cc.jumpkick.plugin.protocol.PluginReply;
 import cc.jumpkick.plugin.protocol.PluginSpec;
 import cc.jumpkick.plugin.protocol.ProtocolWriter;
 import cc.jumpkick.publish.PublishablePom;
+import cc.jumpkick.sigstore.KeylessSigstoreSigner;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
@@ -229,7 +230,7 @@ public final class Publisher implements Plugin, PublishExtension {
             byte[] statement =
                     SlsaProvenance.generate(List.of(new SlsaProvenance.Subject(jarFilename, jarSha)), buildCtx);
             if (gpg != null) {
-                Path envelope = Files.write(publishDir.resolve(stem + ".intoto.jsonl"), Dsse.envelope(statement, gpg));
+                Path envelope = Files.write(publishDir.resolve(stem + ".intoto.jsonl"), gpg.dsse(statement));
                 artifacts.add(new MavenPublisher.Artifact(".intoto.jsonl", envelope, true, null));
                 ctx.label("artifact " + stem + ".intoto.jsonl");
             } else {

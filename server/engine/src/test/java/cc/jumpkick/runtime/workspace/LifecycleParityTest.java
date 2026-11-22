@@ -195,7 +195,7 @@ class LifecycleParityTest {
         BuildGraph.BuildUnit unit = unit(web, "ex:web");
         WorkspaceRequest request = new WorkspaceRequest(
                         tmp, tmp.resolve("cache"), null, 0, null, false, false, 0, null, false, false)
-                .withSpec(WorkspaceSpec.image(Set.of(web), null, null, null, "", null));
+                .withSpec(WorkspaceSpec.image(Set.of(web), null, null, null, "", null, false));
         var plan = ModulePipeline.plan(unit, request, Set.of(web), false);
         assertThat(plan.steps().stream().map(t -> t.name()))
                 .as("a node module's image tail")
@@ -226,7 +226,7 @@ class LifecycleParityTest {
         WorkspaceSpec spec =
                 switch (target) {
                     case NATIVE -> WorkspaceSpec.nativeImage(Set.of(app), Map.of(app, graal), null, List.of());
-                    case IMAGE -> WorkspaceSpec.image(Set.of(app), null, null, null, "", null);
+                    case IMAGE -> WorkspaceSpec.image(Set.of(app), null, null, null, "", null, false);
                     case INSTALL -> WorkspaceSpec.install(Set.of(), Map.of(), tmp.resolve("m2"), null);
                     case TRAIN -> WorkspaceSpec.train(Set.of(app), Map.of(), null, false);
                     case PUBLISH ->

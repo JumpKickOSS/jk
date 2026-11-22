@@ -1,10 +1,10 @@
 version = 1
-generated-by = "jk 0.54.1-SNAPSHOT"
-generated-by-build = "b3126de6cf1d"
-generated-by-build-time = "2026-11-21T20:22:26Z"
+generated-by = "jk 0.53.1-SNAPSHOT"
+generated-by-build = "220a109493b7"
+generated-by-build-time = "2026-11-21T05:07:25Z"
 resolution-algorithm = "pubgrub-v1"
 jk-min = "0.52.0"
-manifests-sha256 = "23b09746b4c078f5f72caf1518ec4f66447980d472de073d99f5ca744245f7fb"
+manifests-sha256 = "701a6bb0c7c1c454345fb781dc86ada7b4d6fcef638ee49fde8e179e25934062"
 project-id = "a66f86e5f1e675e17a67c9c36474f968"
 
 [jdk]
@@ -417,15 +417,6 @@ deps = [
 ]
 
 [[artifact]]
-name     = "com.google.code.gson:gson:jar:"
-version  = "2.9.0"
-source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:c96d60551331a196dac54b745aa642cd078ef89b6f267146b705f2c2cbef052d"
-scopes   = ["main"]
-licenses = ["Apache-2.0"]
-members  = ["plugins/image-builder"]
-
-[[artifact]]
 name     = "com.google.code.javaparser:javaparser:jar:"
 version  = "1.0.11"
 source   = "central+https://repo.maven.apache.org/maven2/"
@@ -563,27 +554,6 @@ version  = "33.8.0-jre"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:97b79ec3f2c0a6313a0c2df51ce1abdf8907e6531803467b81efcaaf99b35161"
 pinned-by = "jk.toml:guava"
-scopes   = ["provided", "processor"]
-licenses = ["Apache-2.0"]
-members  = ["plugins/quarkus"]
-deps = [
-  "com.google.errorprone:error_prone_annotations:jar:@2.41.0",
-  "com.google.guava:failureaccess:jar:@1.0.1",
-  "org.jspecify:jspecify:jar:@1.0.1",
-]
-excluded-by = [
-  "com.google.errorprone:error_prone_annotations <- org.apache.maven:maven-core@3.9.16, org.apache.maven:maven-embedder@3.9.16",
-  "com.google.guava:failureaccess <- org.apache.maven:maven-core@3.9.16, org.apache.maven:maven-embedder@3.9.16",
-  "com.google.guava:listenablefuture <- org.apache.maven:maven-core@3.9.16, org.apache.maven:maven-embedder@3.9.16",
-  "com.google.j2objc:j2objc-annotations <- org.apache.maven:maven-core@3.9.16, org.apache.maven:maven-embedder@3.9.16",
-]
-
-[[artifact]]
-name     = "com.google.guava:guava:jar:"
-version  = "33.8.0-jre"
-source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:97b79ec3f2c0a6313a0c2df51ce1abdf8907e6531803467b81efcaaf99b35161"
-pinned-by = "jk.toml:guava"
 scopes   = ["provided", "test"]
 licenses = ["Apache-2.0"]
 members  = ["clients/maven-spy"]
@@ -597,6 +567,27 @@ excluded-by = [
   "com.google.guava:failureaccess <- org.apache.maven:maven-core@3.10.0",
   "com.google.guava:listenablefuture <- org.apache.maven:maven-core@3.10.0",
   "com.google.j2objc:j2objc-annotations <- org.apache.maven:maven-core@3.10.0",
+]
+
+[[artifact]]
+name     = "com.google.guava:guava:jar:"
+version  = "33.8.0-jre"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:97b79ec3f2c0a6313a0c2df51ce1abdf8907e6531803467b81efcaaf99b35161"
+pinned-by = "jk.toml:guava"
+scopes   = ["provided", "processor"]
+licenses = ["Apache-2.0"]
+members  = ["plugins/quarkus"]
+deps = [
+  "com.google.errorprone:error_prone_annotations:jar:@2.41.0",
+  "com.google.guava:failureaccess:jar:@1.0.1",
+  "org.jspecify:jspecify:jar:@1.0.1",
+]
+excluded-by = [
+  "com.google.errorprone:error_prone_annotations <- org.apache.maven:maven-core@3.9.16, org.apache.maven:maven-embedder@3.9.16",
+  "com.google.guava:failureaccess <- org.apache.maven:maven-core@3.9.16, org.apache.maven:maven-embedder@3.9.16",
+  "com.google.guava:listenablefuture <- org.apache.maven:maven-core@3.9.16, org.apache.maven:maven-embedder@3.9.16",
+  "com.google.j2objc:j2objc-annotations <- org.apache.maven:maven-core@3.9.16, org.apache.maven:maven-embedder@3.9.16",
 ]
 
 [[artifact]]
@@ -636,19 +627,6 @@ deps = [
 
 [[artifact]]
 name     = "com.google.http-client:google-http-client-gson:jar:"
-version  = "1.42.2"
-source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:4fbeaf39f4fc12c10f45f1d4b8e45db6a0de4452d75da81f94926985b98f9637"
-scopes   = ["main"]
-licenses = ["Apache-2.0"]
-members  = ["plugins/image-builder"]
-deps = [
-  "com.google.code.gson:gson:jar:@2.9.0",
-  "com.google.http-client:google-http-client:jar:@1.42.2",
-]
-
-[[artifact]]
-name     = "com.google.http-client:google-http-client-gson:jar:"
 version  = "2.2.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:3242dc7e91d355d118a355c5d586271bedfeb84c3f2f6fa2f3b9b42503a4dc59"
@@ -657,24 +635,6 @@ licenses = ["Apache-2.0"]
 deps = [
   "com.google.code.gson:gson:jar:@2.14.0",
   "com.google.http-client:google-http-client:jar:@2.2.0",
-]
-
-[[artifact]]
-name     = "com.google.http-client:google-http-client:jar:"
-version  = "1.42.2"
-source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:97544ad0b0ae39b6ac14b1bcacc0f6c20c46c07ca05b9362ceb38f216c51e049"
-scopes   = ["main"]
-licenses = ["Apache-2.0"]
-members  = ["plugins/image-builder"]
-deps = [
-  "com.google.code.findbugs:jsr305:jar:@3.0.2",
-  "com.google.guava:guava:jar:@33.8.0-jre",
-  "com.google.j2objc:j2objc-annotations:jar:@3.1",
-  "io.opencensus:opencensus-api:jar:@0.31.1",
-  "io.opencensus:opencensus-contrib-http-util:jar:@0.31.1",
-  "org.apache.httpcomponents:httpclient:jar:@4.5.13",
-  "org.apache.httpcomponents:httpcore:jar:@4.4.15",
 ]
 
 [[artifact]]
@@ -993,7 +953,7 @@ source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:e599d5318e97aa48f42136a2927e6dfa4e8881dff0e6c8e3109ddbbff51d7b7d"
 scopes   = ["main"]
 licenses = ["Apache-2.0"]
-members  = ["plugins/publisher"]
+members  = ["plugins/publisher", "shared/sigstore"]
 
 [[artifact]]
 name     = "commons-codec:commons-codec:jar:"
@@ -1049,18 +1009,10 @@ licenses = ["Apache-2.0"]
 
 [[artifact]]
 name     = "commons-logging:commons-logging:jar:"
-version  = "1.2"
-source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:daddea1ea0be0f56978ab3006b8ac92834afeefbd9b7e4e6316fca57df0fa636"
-scopes   = ["main", "provided"]
-licenses = ["Apache-2.0"]
-
-[[artifact]]
-name     = "commons-logging:commons-logging:jar:"
 version  = "1.4.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:d175dbd751dd782a63bde28c7a039520e971f25e84b79c19b8435edc3603e0dc"
-scopes   = ["test"]
+scopes   = ["main", "provided", "test"]
 licenses = ["Apache-2.0"]
 
 [[artifact]]
@@ -1142,7 +1094,7 @@ source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:96a94b488a8a9a922e9e455ac4c87d9edcb37be4ed79ec1f14e98da267a6c505"
 scopes   = ["main"]
 licenses = ["Apache-2.0"]
-members  = ["plugins/publisher"]
+members  = ["plugins/image-builder", "plugins/publisher", "shared/sigstore"]
 deps = [
   "com.google.code.findbugs:jsr305:jar:@3.0.2",
   "com.google.errorprone:error_prone_annotations:jar:@2.52.0",
@@ -1164,21 +1116,12 @@ deps = [
 
 [[artifact]]
 name     = "io.grpc:grpc-context:jar:"
-version  = "1.27.2"
-source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:bcbf9055dff453fd6508bd7cca2a0aa2d5f059a9c94beed1f5fda1dc015607b8"
-scopes   = ["main"]
-licenses = ["Apache-2.0"]
-members  = ["plugins/image-builder"]
-
-[[artifact]]
-name     = "io.grpc:grpc-context:jar:"
 version  = "1.83.1"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:8224f45eccae567d68e34e7e0d2fde2f4ed36afc56d6496470f5c156b886b768"
 scopes   = ["main"]
 licenses = ["Apache-2.0"]
-members  = ["plugins/publisher"]
+members  = ["plugins/image-builder", "plugins/publisher", "shared/sigstore"]
 deps = [
   "io.grpc:grpc-api:jar:@1.83.1",
 ]
@@ -1897,7 +1840,7 @@ source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:d78396e3c5bce3f2865c9186647481e5589d34cacc632484715b686108d17c66"
 scopes   = ["test"]
 licenses = ["Apache-2.0"]
-members  = ["clients/cli", "clients/cli-terminal", "clients/intellij", "clients/maven-spy", "clients/web", "e2e/cli", "e2e/engine", "plugins/android", "plugins/antlr", "plugins/asyncapi", "plugins/auditor", "plugins/avro", "plugins/formatter", "plugins/generator", "plugins/grails", "plugins/graph", "plugins/groovy-compiler", "plugins/helidon", "plugins/image-builder", "plugins/intellij", "plugins/java-compiler", "plugins/jaxb", "plugins/jenkins-test", "plugins/jooq", "plugins/json-schema", "plugins/kotlin-compiler", "plugins/lint", "plugins/localizer", "plugins/micronaut", "plugins/minified", "plugins/openapi", "plugins/protobuf", "plugins/publisher", "plugins/quarkus", "plugins/spring-boot", "plugins/taglib", "plugins/test-runner", "server/engine", "server/guard", "server/io", "server/resolver", "server/toolchain", "shared/client-io", "shared/code-graph", "shared/core", "shared/dynamic-surface", "shared/guard-api", "shared/host", "shared/ide", "shared/jk-api", "shared/plugin-sdk", "shared/toolchain-jdk", "shared/wire"]
+members  = ["clients/cli", "clients/cli-terminal", "clients/intellij", "clients/maven-spy", "clients/web", "e2e/cli", "e2e/engine", "plugins/android", "plugins/antlr", "plugins/asyncapi", "plugins/auditor", "plugins/avro", "plugins/formatter", "plugins/generator", "plugins/grails", "plugins/graph", "plugins/groovy-compiler", "plugins/helidon", "plugins/image-builder", "plugins/intellij", "plugins/java-compiler", "plugins/jaxb", "plugins/jenkins-test", "plugins/jooq", "plugins/json-schema", "plugins/kotlin-compiler", "plugins/lint", "plugins/localizer", "plugins/micronaut", "plugins/minified", "plugins/openapi", "plugins/protobuf", "plugins/publisher", "plugins/quarkus", "plugins/spring-boot", "plugins/taglib", "plugins/test-runner", "server/engine", "server/guard", "server/io", "server/resolver", "server/toolchain", "shared/client-io", "shared/code-graph", "shared/core", "shared/dynamic-surface", "shared/guard-api", "shared/host", "shared/ide", "shared/jk-api", "shared/plugin-sdk", "shared/sigstore", "shared/toolchain-jdk", "shared/wire"]
 
 [[artifact]]
 name     = "net.jcip:jcip-annotations:jar:"
@@ -2190,20 +2133,6 @@ licenses = ["Apache-2.0"]
 
 [[artifact]]
 name     = "org.apache.httpcomponents:httpclient:jar:"
-version  = "4.5.13"
-source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:6fe9026a566c6a5001608cf3fc32196641f6c1e5e1986d1037ccdbd5f31ef743"
-scopes   = ["main"]
-licenses = ["Apache-2.0"]
-members  = ["plugins/image-builder"]
-deps = [
-  "commons-codec:commons-codec:jar:@1.19.0",
-  "commons-logging:commons-logging:jar:@1.2",
-  "org.apache.httpcomponents:httpcore:jar:@4.4.15",
-]
-
-[[artifact]]
-name     = "org.apache.httpcomponents:httpclient:jar:"
 version  = "4.5.14"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:c8bc7e1c51a6d4ce72f40d2ebbabf1c4b68bfe76e732104b04381b493478e9d6"
@@ -2212,26 +2141,8 @@ scopes   = ["main", "provided", "test"]
 licenses = ["Apache-2.0"]
 deps = [
   "commons-codec:commons-codec:jar:@1.22.1",
-  "commons-logging:commons-logging:jar:@1.2",
+  "commons-logging:commons-logging:jar:@1.4.0",
   "org.apache.httpcomponents:httpcore:jar:@4.4.16",
-]
-
-[[artifact]]
-name     = "org.apache.httpcomponents:httpclient:jar:"
-version  = "4.5.14"
-source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:c8bc7e1c51a6d4ce72f40d2ebbabf1c4b68bfe76e732104b04381b493478e9d6"
-pinned-by = "io.quarkus:quarkus-bootstrap-bom:3.40.1.1"
-scopes   = ["provided"]
-licenses = ["Apache-2.0"]
-members  = ["plugins/quarkus"]
-deps = [
-  "commons-codec:commons-codec:jar:@1.22.1",
-  "org.apache.httpcomponents:httpcore:jar:@4.4.16",
-]
-excluded-by = [
-  "commons-codec:commons-codec <- org.apache.maven.resolver:maven-resolver-transport-http@1.9.27",
-  "commons-logging:commons-logging <- org.apache.maven.resolver:maven-resolver-transport-http@1.9.27",
 ]
 
 [[artifact]]
@@ -2241,7 +2152,7 @@ source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:c8bc7e1c51a6d4ce72f40d2ebbabf1c4b68bfe76e732104b04381b493478e9d6"
 scopes   = ["main"]
 licenses = ["Apache-2.0"]
-members  = ["plugins/publisher"]
+members  = ["plugins/publisher", "shared/sigstore"]
 deps = [
   "commons-codec:commons-codec:jar:@1.11",
   "org.apache.httpcomponents:httpcore:jar:@4.4.16",
@@ -2268,13 +2179,22 @@ excluded-by = [
 ]
 
 [[artifact]]
-name     = "org.apache.httpcomponents:httpcore:jar:"
-version  = "4.4.15"
+name     = "org.apache.httpcomponents:httpclient:jar:"
+version  = "4.5.14"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:3cbaed088c499a10f96dde58f39dc0e7985171abd88138ca1655a872011bb142"
-scopes   = ["main"]
+checksum = "sha256:c8bc7e1c51a6d4ce72f40d2ebbabf1c4b68bfe76e732104b04381b493478e9d6"
+pinned-by = "io.quarkus:quarkus-bootstrap-bom:3.40.1.1"
+scopes   = ["provided"]
 licenses = ["Apache-2.0"]
-members  = ["plugins/image-builder"]
+members  = ["plugins/quarkus"]
+deps = [
+  "commons-codec:commons-codec:jar:@1.22.1",
+  "org.apache.httpcomponents:httpcore:jar:@4.4.16",
+]
+excluded-by = [
+  "commons-codec:commons-codec <- org.apache.maven.resolver:maven-resolver-transport-http@1.9.27",
+  "commons-logging:commons-logging <- org.apache.maven.resolver:maven-resolver-transport-http@1.9.27",
+]
 
 [[artifact]]
 name     = "org.apache.httpcomponents:httpcore:jar:"
@@ -3063,11 +2983,32 @@ deps = [
 
 [[artifact]]
 name     = "org.bouncycastle:bcprov-jdk18on:jar:"
+version  = "1.85"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:20af26bf6060bb8005cc2389916812c1e0e998dc48d2ced7131b89461b54cff7"
+scopes   = ["main"]
+licenses = ["MIT"]
+members  = ["plugins/image-builder", "shared/sigstore"]
+
+[[artifact]]
+name     = "org.bouncycastle:bcprov-jdk18on:jar:"
 version  = "1.86"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:2af190b300cbb0b35e248ccf5f4a06b6072030aeb3da7a98ec73abe5b4cb371f"
 scopes   = ["main", "test"]
 licenses = ["MIT"]
+
+[[artifact]]
+name     = "org.bouncycastle:bcutil-jdk18on:jar:"
+version  = "1.85"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:590f55ed5d68529239898a4a5c4f730b6e37f45d1cfa3fbe51f8485abe32c42d"
+scopes   = ["main"]
+licenses = ["MIT"]
+members  = ["plugins/image-builder", "shared/sigstore"]
+deps = [
+  "org.bouncycastle:bcprov-jdk18on:jar:@1.85",
+]
 
 [[artifact]]
 name     = "org.bouncycastle:bcutil-jdk18on:jar:"
@@ -3112,10 +3053,9 @@ name     = "org.codehaus.plexus:plexus-cipher:jar:"
 version  = "2.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:9a7f1b5c5a9effd61eadfd8731452a2f76a8e79111fac391ef75ea801bea203a"
-pinned-by = "io.quarkus:quarkus-bootstrap-bom:3.40.1.1"
-scopes   = ["provided"]
+scopes   = ["provided", "test"]
 licenses = ["Apache-2.0"]
-members  = ["plugins/quarkus"]
+members  = ["clients/maven-spy"]
 deps = [
   "javax.inject:javax.inject:jar:@1",
 ]
@@ -3125,9 +3065,10 @@ name     = "org.codehaus.plexus:plexus-cipher:jar:"
 version  = "2.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:9a7f1b5c5a9effd61eadfd8731452a2f76a8e79111fac391ef75ea801bea203a"
-scopes   = ["provided", "test"]
+pinned-by = "io.quarkus:quarkus-bootstrap-bom:3.40.1.1"
+scopes   = ["provided"]
 licenses = ["Apache-2.0"]
-members  = ["clients/maven-spy"]
+members  = ["plugins/quarkus"]
 deps = [
   "javax.inject:javax.inject:jar:@1",
 ]
@@ -4518,7 +4459,7 @@ source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:d3ef575e3e4979678dc01bf1dcce51021493b4d11fb7f1be8ad982877c16a1c0"
 scopes   = ["main", "test"]
 licenses = ["MIT"]
-members  = ["plugins/java-compiler", "plugins/publisher"]
+members  = ["plugins/image-builder", "plugins/java-compiler", "plugins/publisher", "shared/sigstore"]
 
 [[artifact]]
 name     = "org.slf4j:slf4j-api:jar:"
@@ -7716,6 +7657,15 @@ name    = "jk-plugin-sdk"
 version = "0.54.1"
 java    = 17
 description = "Plugin SPI; codec and host primitives are jk-host"
+install.destination = "jk"
+
+[[module]]
+path    = "shared/sigstore"
+group   = "cc.jumpkick"
+name    = "jk-sigstore"
+version = "0.54.1"
+java    = 25
+description = "Sigstore keyless signing and DSSE envelopes: jk publish's signed files and provenance, jk image's signed provenance"
 install.destination = "jk"
 
 [[module]]

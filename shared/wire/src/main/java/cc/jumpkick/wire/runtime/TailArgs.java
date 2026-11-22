@@ -31,14 +31,16 @@ public sealed interface TailArgs {
 
     /**
      * {@code jk image}: {@code tarball} is tri-state like {@code --tarball}: {@code null} (no
-     * tarball), {@code ""} (the default layout path), or an explicit path.
+     * tarball), {@code ""} (the default layout path), or an explicit path. {@code sigstore} is
+     * {@code --sigstore}: sign a push's provenance whatever {@code [image] sigstore} says.
      */
     record Image(
             @Nullable String main,
             @Nullable String registry,
             @Nullable String tag,
             @Nullable String tarball,
-            @Nullable String docker)
+            @Nullable String docker,
+            boolean sigstore)
             implements TailArgs {}
 
     /**

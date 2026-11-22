@@ -6,6 +6,7 @@ import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.SlsaProvenance;
 import cc.jumpkick.image.ImageConfig;
 import cc.jumpkick.jsonl.MiniJson;
+import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.plugin.Plugin;
 import cc.jumpkick.plugin.PluginConfig;
@@ -19,6 +20,8 @@ import cc.jumpkick.plugin.protocol.PluginProtocol;
 import cc.jumpkick.plugin.protocol.PluginReply;
 import cc.jumpkick.plugin.protocol.PluginSpec;
 import cc.jumpkick.plugin.protocol.ProtocolWriter;
+import cc.jumpkick.sigstore.Dsse;
+import cc.jumpkick.sigstore.KeylessSigstoreSigner;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -31,6 +34,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.Callable;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -48,6 +52,20 @@ import org.jspecify.annotations.Nullable;
 public final class OciImageBuilder implements Plugin, ImageExtension {
 
     private static final String PREFIX = "##JKIM:";
+
+    /** The media type of a Sigstore bundle stored as an OCI artifact's layer. */
+    static final String BUNDLE_TYPE = "application/vnd.dev.sigstore.bundle+json";
+
+    /** Opens the keyless signer of a signed push; a test hands in one that needs no Sigstore. */
+    private final Callable<KeylessSigstoreSigner> keyless;
+
+    public OciImageBuilder() {
+        this(KeylessSigstoreSigner::sigstorePublic);
+    }
+
+    OciImageBuilder(Callable<KeylessSigstoreSigner> keyless) {
+        this.keyless = keyless;
+    }
 
     @Override
     public PluginManifest manifest() {
@@ -123,7 +141,7 @@ public final class OciImageBuilder implements Plugin, ImageExtension {
         }
 
         // A node or static image has no main class: it names its own layers and entrypoint.
-        if (c.stringOpt("kind").isPresent()) return layered(ctx, c, artifact, version, base, registry, tag);
+        if (c.stringOpt("kind").isPresent()) return layered(ctx, c, artifact, version, base, registry, tag, keyless);
         String mainClass = c.string("mainClass");
 
         Path mainJar = ctx.mainArtifact().orElseThrow(() -> new IOException("image goal needs a built main artifact"));
@@ -158,7 +176,8 @@ public final class OciImageBuilder implements Plugin, ImageExtension {
                 dockerExecutable,
                 null,
                 aotCache,
-                referrers);
+                referrers,
+                c.bool("sigstore").orElse(false));
         ImageBuilder.Plan plan = new ImageBuilder.Plan(
                 config,
                 artifact,
@@ -206,7 +225,7 @@ public final class OciImageBuilder implements Plugin, ImageExtension {
         ctx.label("pushing " + ref);
         ImageBuilder.Result pushed = ImageBuilder.pushToRegistry(plan, cacheRoot, auth);
         noticeOf(ctx, pushed);
-        if (config.referrers()) attach(ctx, pushed, base, auth);
+        if (config.referrers()) attach(ctx, pushed, base, auth, keyless);
         return ImageResult.pushed(ref);
     }
 
@@ -214,30 +233,90 @@ public final class OciImageBuilder implements Plugin, ImageExtension {
      * Attach the module's SBOM, when the engine sent one, and a provenance statement to the image
      * just pushed, as OCI referrers. The image is in the registry whatever happens here, so a
      * registry that refuses an artifact manifest costs a notice, not the build.
+     *
+     * <p>A signed push ({@code sigstore}) attaches the statement in a keyless DSSE envelope, beside
+     * the Sigstore bundle that certifies its signature, in one artifact. It was asked for a signed
+     * image, so a signature or an attach that fails fails the build, naming the image it left
+     * unsigned.
      */
-    static void attach(ImageContext ctx, ImageBuilder.Result pushed, @Nullable String base, RegistryAuth auth) {
+    static void attach(
+            ImageContext ctx,
+            ImageBuilder.Result pushed,
+            @Nullable String base,
+            RegistryAuth auth,
+            Callable<KeylessSigstoreSigner> keyless)
+            throws IOException {
         String ref = pushed.imageReference();
+        boolean sign = ctx.config().bool("sigstore").orElse(false);
         try {
             List<Referrers.Document> documents = new ArrayList<>();
             Optional<String> sbomFile = ctx.config().stringOpt("sbom");
             byte[] sbom = sbomFile.isPresent() ? Files.readAllBytes(Path.of(sbomFile.get())) : null;
-            if (sbom != null) documents.add(new Referrers.Document(Referrers.SBOM_TYPE, sbom));
-            documents.add(new Referrers.Document(
-                    Referrers.PROVENANCE_TYPE, provenance(ref, pushed.digest(), base, ctx.project(), sbom)));
-            ctx.label("attaching " + (sbom == null ? "provenance" : "SBOM and provenance") + " to " + ref);
+            if (sbom != null) documents.add(Referrers.Document.of(Referrers.SBOM_TYPE, sbom));
+            byte[] statement = provenance(
+                    ref,
+                    pushed.digest(),
+                    base,
+                    ctx.project(),
+                    sbom,
+                    ctx.config().stringOpt("sourceCommit").orElse(null));
+            documents.add(
+                    sign
+                            ? signed(ctx, ref, statement, keyless)
+                            : Referrers.Document.of(Referrers.PROVENANCE_TYPE, statement));
+            String what = (sign ? "signed " : "") + "provenance";
+            ctx.label("attaching " + (sbom == null ? what : "SBOM and " + what) + " to " + ref);
             Referrers.attach(ref, pushed.digest(), documents, auth);
         } catch (IOException e) {
+            if (sign)
+                throw new IOException("[image] no signed provenance attached to " + ref + ": " + Errors.text(e), e);
             ctx.notice("[image] no SBOM or provenance attached to " + ref + ": " + Errors.text(e));
         }
     }
 
     /**
-     * The SLSA provenance of the image {@code reference} pushed as {@code digest}: built on {@code
-     * base} from the components {@code sbom} lists. A function of its inputs, no clock and no random
-     * id, so a re-push of the same image attaches the same statement.
+     * {@code statement} signed with Sigstore keyless: one artifact whose layers are the DSSE
+     * envelope and the bundle of its signature (the short-lived certificate and the transparency-log
+     * entry), as {@code jk publish --sigstore} uploads them beside a jar.
+     */
+    private static Referrers.Document signed(
+            ImageContext ctx, String ref, byte[] statement, Callable<KeylessSigstoreSigner> keyless)
+            throws IOException {
+        ctx.label("signing the provenance of " + ref + " with Sigstore");
+        KeylessSigstoreSigner.Attestation attestation;
+        try (KeylessSigstoreSigner signer = open(keyless)) {
+            attestation = signer.attest(statement);
+        }
+        return new Referrers.Document(
+                Dsse.ENVELOPE_TYPE,
+                List.of(
+                        new Referrers.Layer(Dsse.ENVELOPE_TYPE, attestation.envelope()),
+                        new Referrers.Layer(BUNDLE_TYPE, attestation.bundle())));
+    }
+
+    private static KeylessSigstoreSigner open(Callable<KeylessSigstoreSigner> keyless) throws IOException {
+        try {
+            return keyless.call();
+        } catch (IOException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new IOException("Sigstore signer: " + Errors.text(e), e);
+        }
+    }
+
+    /**
+     * The SLSA provenance of the image {@code reference} pushed as {@code digest}: built by {@code
+     * jk image} at this JumpKick's version, from {@code sourceCommit} when the module is in a git
+     * checkout, on {@code base}, from the components {@code sbom} lists. A function of its inputs,
+     * no clock and no random id, so a re-push of the same image attaches the same statement.
      */
     static byte[] provenance(
-            String reference, String digest, @Nullable String base, ProjectFacts project, byte @Nullable [] sbom) {
+            String reference,
+            String digest,
+            @Nullable String base,
+            ProjectFacts project,
+            byte @Nullable [] sbom,
+            @Nullable String sourceCommit) {
         List<SlsaProvenance.Dependency> dependencies = new ArrayList<>();
         if (base != null) dependencies.add(baseImage(base));
         if (sbom != null) {
@@ -259,12 +338,29 @@ public final class OciImageBuilder implements Plugin, ImageExtension {
                         .toString(),
                 null,
                 null,
-                Map.of("image", reference),
-                Map.of("group", project.group(), "artifact", project.name(), "version", project.version()),
+                externalParameters(reference, sourceCommit),
+                Map.of(
+                        "group",
+                        project.group(),
+                        "artifact",
+                        project.name(),
+                        "version",
+                        project.version(),
+                        "jkVersion",
+                        JkVersion.VERSION),
                 dependencies);
         return SlsaProvenance.generate(
                 List.of(new SlsaProvenance.Subject(repository(reference), digest.substring(digest.indexOf(':') + 1))),
                 build);
+    }
+
+    /** What the build was asked: the command, the image it pushed, and the commit it built from when known. */
+    private static Map<String, String> externalParameters(String reference, @Nullable String sourceCommit) {
+        Map<String, String> parameters = new LinkedHashMap<>();
+        parameters.put("command", "jk image");
+        parameters.put("image", reference);
+        if (sourceCommit != null) parameters.put("sourceCommit", sourceCommit);
+        return parameters;
     }
 
     /**
@@ -304,7 +400,8 @@ public final class OciImageBuilder implements Plugin, ImageExtension {
             String version,
             @Nullable String base,
             @Nullable String registry,
-            @Nullable String tag)
+            @Nullable String tag,
+            Callable<KeylessSigstoreSigner> keyless)
             throws IOException, InterruptedException {
         List<LayeredImage.Layer> layers = new ArrayList<>();
         for (String line : c.stringList("layers")) {
@@ -330,7 +427,8 @@ public final class OciImageBuilder implements Plugin, ImageExtension {
                 dockerExecutable,
                 null,
                 false,
-                c.bool("referrers").orElse(true));
+                c.bool("referrers").orElse(true),
+                c.bool("sigstore").orElse(false));
         LayeredImage.Plan plan = new LayeredImage.Plan(
                 config,
                 artifact,
@@ -364,7 +462,7 @@ public final class OciImageBuilder implements Plugin, ImageExtension {
         }
         ctx.label("pushing " + ref);
         ImageBuilder.Result pushed = LayeredImage.pushToRegistry(plan, cacheRoot, auth);
-        if (config.referrers()) attach(ctx, pushed, base, auth);
+        if (config.referrers()) attach(ctx, pushed, base, auth, keyless);
         return ImageResult.pushed(ref);
     }
 

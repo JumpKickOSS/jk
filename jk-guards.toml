@@ -1137,6 +1137,14 @@ in     = "plugins/publisher -> shared/client-io"
 reason = "repository uploads use the client-safe HTTP/file/object-store transports, which live there so the worker does not depend on server I/O"
 
 [[guards.plugin-sdk-boundary.allow]]
+in     = "plugins/publisher -> shared/sigstore"
+reason = "a signed publish signs with Sigstore and wraps its provenance in DSSE, the one signer jk image's signed provenance uses too"
+
+[[guards.plugin-sdk-boundary.allow]]
+in     = "plugins/image-builder -> shared/sigstore"
+reason = "a signed push wraps the image's provenance in DSSE with the keyless signer jk publish uses"
+
+[[guards.plugin-sdk-boundary.allow]]
 in     = "plugins/auditor -> shared/client-io"
 reason = "OSV queries go through Http, the one client jk routes through the configured proxy"
 

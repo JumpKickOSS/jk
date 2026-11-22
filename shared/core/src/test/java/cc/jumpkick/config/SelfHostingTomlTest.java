@@ -64,6 +64,7 @@ class SelfHostingTomlTest {
                         "shared/dynamic-surface",
                         "shared/guard-api",
                         "shared/code-graph",
+                        "shared/sigstore",
                         "server/io",
                         "server/resolver",
                         "shared/toolchain-jdk",

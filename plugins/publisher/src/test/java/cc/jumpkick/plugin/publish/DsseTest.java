@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.plugin.publish.testkit.GpgTestFixture;
+import cc.jumpkick.sigstore.Dsse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -35,7 +36,7 @@ class DsseTest {
         GpgSigner signer = GpgSigner.fromKeyFile(key.secretKeyFile(), "pass".toCharArray());
         byte[] statement = "{\"_type\":\"https://in-toto.io/Statement/v1\"}\n".getBytes(StandardCharsets.UTF_8);
 
-        byte[] envelope = Dsse.envelope(statement, signer);
+        byte[] envelope = signer.dsse(statement);
 
         String line = new String(envelope, StandardCharsets.UTF_8);
         assertThat(line).endsWith("}\n").doesNotContain("\n{");
@@ -47,8 +48,7 @@ class DsseTest {
     void an_envelope_whose_payload_was_changed_does_not_verify(@TempDir Path dir) throws Exception {
         var key = GpgTestFixture.generate(dir, "pass");
         GpgSigner signer = GpgSigner.fromKeyFile(key.secretKeyFile(), "pass".toCharArray());
-        String line =
-                new String(Dsse.envelope("{\"a\":1}".getBytes(StandardCharsets.UTF_8), signer), StandardCharsets.UTF_8);
+        String line = new String(signer.dsse("{\"a\":1}".getBytes(StandardCharsets.UTF_8)), StandardCharsets.UTF_8);
         String forged = Base64.getEncoder().encodeToString("{\"a\":2}".getBytes(StandardCharsets.UTF_8));
 
         byte[] tampered =
@@ -70,13 +70,11 @@ class DsseTest {
                 "pass".toCharArray());
         byte[] statement = "{\"a\":1}".getBytes(StandardCharsets.UTF_8);
 
-        assertThat(Dsse.samePayload(Dsse.envelope(statement, first), Dsse.envelope(statement, second)))
+        assertThat(Dsse.samePayload(first.dsse(statement), second.dsse(statement)))
                 .isTrue();
-        assertThat(Dsse.samePayload(
-                        Dsse.envelope(statement, first),
-                        Dsse.envelope("{\"a\":2}".getBytes(StandardCharsets.UTF_8), first)))
+        assertThat(Dsse.samePayload(first.dsse(statement), first.dsse("{\"a\":2}".getBytes(StandardCharsets.UTF_8))))
                 .isFalse();
-        assertThat(Dsse.samePayload("not json".getBytes(StandardCharsets.UTF_8), Dsse.envelope(statement, first)))
+        assertThat(Dsse.samePayload("not json".getBytes(StandardCharsets.UTF_8), first.dsse(statement)))
                 .isFalse();
     }
 }

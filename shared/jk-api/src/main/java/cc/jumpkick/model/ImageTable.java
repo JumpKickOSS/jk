@@ -34,7 +34,9 @@ public record ImageTable(
         /** {@code image.kind} — {@value #KIND_STATIC} serves a node build's output from nginx; unset is the module's own image. */
         @Nullable String kind,
         /** {@code image.referrers} — attach the SBOM and provenance to a push; unset is on. */
-        @Nullable Boolean referrers) {
+        @Nullable Boolean referrers,
+        /** {@code image.sigstore} — sign a push's provenance with Sigstore keyless; unset is off. */
+        @Nullable Boolean sigstore) {
 
     /** {@code image.kind} for an nginx image of a node build's static output. */
     public static final String KIND_STATIC = "static";
@@ -42,7 +44,7 @@ public record ImageTable(
     /** No {@code [image]} table — every field unset. */
     public static final ImageTable EMPTY = new ImageTable(
             null, null, null, List.of(), Map.of(), Map.of(), Map.of(), null, null, List.of(), null, null, null, null,
-            null, null);
+            null, null, null);
 
     public ImageTable {
         ports = ports == null ? List.of() : List.copyOf(ports);

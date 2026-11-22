@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.plugin.publish;
 
+import cc.jumpkick.sigstore.SigstoreSigner;
 import org.jspecify.annotations.Nullable;
 
 /**

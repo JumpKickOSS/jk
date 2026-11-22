@@ -53,6 +53,7 @@ public final class ManifestImage {
         Boolean aotCache = project.aotCache() != null ? project.aotCache() : global.aotCache();
         String kind = nonBlank(project.kind()) != null ? project.kind() : global.kind();
         Boolean referrers = project.referrers() != null ? project.referrers() : global.referrers();
+        Boolean sigstore = project.sigstore() != null ? project.sigstore() : global.sigstore();
         return new ImageTable(
                 base,
                 name,
@@ -69,14 +70,15 @@ public final class ManifestImage {
                 dockerFile,
                 aotCache,
                 kind,
-                referrers);
+                referrers,
+                sigstore);
     }
 
     /**
      * A workspace member's table over the root's shared keys. The root answers for what is a
      * workspace fact — {@code base}, {@code user}, {@code registry}, {@code tag}, {@code env}, {@code training-env},
      * {@code labels}, {@code platforms}, {@code docker-executable}, {@code aot-cache}, {@code
-     * referrers} — and the member's own value wins per key, as it does over the user-global table.
+     * referrers}, {@code sigstore} — and the member's own value wins per key, as it does over the user-global table.
      * What names one image never flows down: {@code name}, {@code main}, {@code ports} and {@code
      * docker-file} stay the member's, so two members cannot inherit one image name and push over
      * each other. A {@code nodeModule} takes neither the root's {@code base} nor its {@code
@@ -101,7 +103,8 @@ public final class ManifestImage {
                 null,
                 nodeModule ? null : root.aotCache(),
                 null,
-                root.referrers());
+                root.referrers(),
+                root.sigstore());
         return merge(member, shared);
     }
 
@@ -125,7 +128,8 @@ public final class ManifestImage {
             "docker-file",
             "aot-cache",
             "kind",
-            "referrers");
+            "referrers",
+            "sigstore");
 
     /** {@link ImageTable#EMPTY} when the document has no {@code [image]} table. */
     static ImageTable parse(TomlTable root) {
@@ -148,7 +152,8 @@ public final class ManifestImage {
                 string(image, "docker-file"),
                 optionalBool(image, "aot-cache", "image.aot-cache"),
                 kind(image),
-                optionalBool(image, "referrers", "image.referrers"));
+                optionalBool(image, "referrers", "image.referrers"),
+                optionalBool(image, "sigstore", "image.sigstore"));
     }
 
     private static @Nullable String string(TomlTable image, String key) {

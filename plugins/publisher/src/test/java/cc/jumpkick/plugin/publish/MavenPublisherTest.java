@@ -13,6 +13,8 @@ import cc.jumpkick.model.Project;
 import cc.jumpkick.plugin.publish.testkit.GpgTestFixture;
 import cc.jumpkick.repo.MavenMetadata;
 import cc.jumpkick.repo.RepoTransport;
+import cc.jumpkick.sigstore.Dsse;
+import cc.jumpkick.sigstore.SigstoreSigner;
 import com.sun.management.ThreadMXBean;
 import com.sun.net.httpserver.HttpServer;
 import java.io.ByteArrayInputStream;
@@ -413,8 +415,8 @@ class MavenPublisherTest {
     }
 
     private MavenPublisher.Artifact envelope(byte[] statement, GpgSigner signer) throws IOException {
-        Path file = Files.write(
-                Files.createTempFile(artifactFiles, "artifact", ".intoto.jsonl"), Dsse.envelope(statement, signer));
+        Path file =
+                Files.write(Files.createTempFile(artifactFiles, "artifact", ".intoto.jsonl"), signer.dsse(statement));
         return new MavenPublisher.Artifact(".intoto.jsonl", file, true, null);
     }
 

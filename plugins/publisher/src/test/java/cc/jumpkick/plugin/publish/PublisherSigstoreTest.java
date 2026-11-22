@@ -9,6 +9,8 @@ import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
 import cc.jumpkick.plugin.protocol.ProtocolWriter;
 import cc.jumpkick.plugin.protocol.SpecWriter;
+import cc.jumpkick.sigstore.Dsse;
+import cc.jumpkick.sigstore.StubSigner;
 import com.sun.net.httpserver.HttpServer;
 import dev.sigstore.bundle.Bundle;
 import java.io.ByteArrayOutputStream;
@@ -99,8 +101,7 @@ class PublisherSigstoreTest {
                         .lines());
         var buffer = new ByteArrayOutputStream();
         ProtocolWriter out = new ProtocolWriter(new PrintStream(buffer, true, StandardCharsets.UTF_8), "##JKPU:");
-        Publisher publisher = new Publisher(
-                Http::failFast, () -> new KeylessSigstoreSigner(new KeylessSigstoreSignerTest.StubSigner(), () -> {}));
+        Publisher publisher = new Publisher(Http::failFast, () -> new StubSigner().signer());
         int exit = publisher.run(List.of(spec.toString()), out);
         String output = buffer.toString(StandardCharsets.UTF_8);
         assertThat(exit).as(output).isZero();

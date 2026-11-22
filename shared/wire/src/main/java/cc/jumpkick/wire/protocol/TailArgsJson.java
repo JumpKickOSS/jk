@@ -40,6 +40,7 @@ public final class TailArgsJson {
                         .optionalString("tag", i.tag())
                         .optionalString("tarball", i.tarball())
                         .optionalString("docker", i.docker())
+                        .optionalTrue("sigstore", i.sigstore())
                         .body();
             case TailArgs.Install i ->
                 RequestJson.fields()
@@ -110,7 +111,8 @@ public final class TailArgsJson {
                         Jsonl.str(json, "registry"),
                         Jsonl.str(json, "tag"),
                         Jsonl.str(json, "tarball"),
-                        Jsonl.str(json, "docker"));
+                        Jsonl.str(json, "docker"),
+                        Jsonl.bool(json, "sigstore", false));
             case "install" ->
                 new TailArgs.Install(
                         path(Jsonl.str(json, "m2Dir")),

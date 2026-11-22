@@ -9,6 +9,8 @@ import cc.jumpkick.pom.PomXml;
 import cc.jumpkick.repo.MavenMetadata;
 import cc.jumpkick.repo.RepoTransport;
 import cc.jumpkick.repo.transport.RepoTransports;
+import cc.jumpkick.sigstore.Dsse;
+import cc.jumpkick.sigstore.SigstoreSigner;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;

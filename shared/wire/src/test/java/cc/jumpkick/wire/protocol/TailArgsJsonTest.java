@@ -41,7 +41,15 @@ class TailArgsJsonTest {
     @Test
     void the_image_tarball_keeps_its_three_states() {
         for (String tarball : new String[] {null, "", "/out/app.tar"}) {
-            TailArgs image = new TailArgs.Image("ex.Main", "reg.example", "1.0", tarball, "podman");
+            TailArgs image = new TailArgs.Image("ex.Main", "reg.example", "1.0", tarball, "podman", false);
+            assertThat(BuildRequest.decode(request(image).encode()).tail()).isEqualTo(image);
+        }
+    }
+
+    @Test
+    void an_image_push_keeps_its_sigstore_flag() {
+        for (boolean sigstore : new boolean[] {false, true}) {
+            TailArgs image = new TailArgs.Image(null, "reg.example", null, null, null, sigstore);
             assertThat(BuildRequest.decode(request(image).encode()).tail()).isEqualTo(image);
         }
     }

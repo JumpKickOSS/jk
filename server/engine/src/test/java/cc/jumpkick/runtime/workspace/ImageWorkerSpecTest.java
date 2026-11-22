@@ -5,12 +5,16 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.host.CacheTree;
+import cc.jumpkick.host.GitCommand;
+import cc.jumpkick.host.Processes;
 import cc.jumpkick.image.ImageConfig;
 import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.LockfileReader;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.Nullable;
@@ -54,6 +58,18 @@ class ImageWorkerSpecTest {
     private static List<String> spec(
             Path module, Path cache, String base, @Nullable String registry, @Nullable Path tarball, boolean referrers)
             throws Exception {
+        return spec(module, cache, base, registry, tarball, referrers, false);
+    }
+
+    private static List<String> spec(
+            Path module,
+            Path cache,
+            String base,
+            @Nullable String registry,
+            @Nullable Path tarball,
+            boolean referrers,
+            boolean sigstore)
+            throws Exception {
         var project = JkBuildParser.parse(module.resolve("jk.toml"));
         return ImagePlans.imageWorkerSpec(
                         cache,
@@ -61,7 +77,7 @@ class ImageWorkerSpecTest {
                         BuildLayout.of(module, project),
                         new ImageConfig(
                                 TAG, null, null, List.of(), Map.of(), Map.of(), Map.of(), registry, null, List.of(),
-                                null, null, null, true, referrers),
+                                null, null, null, true, referrers, sigstore),
                         base,
                         "com.example.Main",
                         new ImagePlans.RuntimeJars(List.of(), List.of(), List.of(), Map.of()),
@@ -179,7 +195,8 @@ class ImageWorkerSpecTest {
                                 null,
                                 null,
                                 false,
-                                true),
+                                true,
+                                false),
                         PINNED,
                         "com.example.Main",
                         new ImagePlans.RuntimeJars(List.of(), List.of(), List.of(), Map.of()),
@@ -216,7 +233,8 @@ class ImageWorkerSpecTest {
                 null,
                 "Dockerfile",
                 false,
-                true);
+                true,
+                false);
         ImageConfig off = new ImageConfig(
                 TAG,
                 null,
@@ -231,6 +249,7 @@ class ImageWorkerSpecTest {
                 null,
                 null,
                 "Dockerfile",
+                false,
                 false,
                 false);
 
@@ -264,5 +283,75 @@ class ImageWorkerSpecTest {
             """);
         LockfileReader.clearCache();
         return module;
+    }
+
+    /** A signed push tells the worker to sign; nothing else that a worker writes is signed. */
+    @Test
+    void only_a_signed_push_tells_the_worker_to_sign(@TempDir Path tmp) throws Exception {
+        Path module = module(tmp);
+        Path cache = tmp.resolve("cache");
+
+        assertThat(config(spec(module, cache, PINNED, "registry.example:5000", null, true, true), "sigstore"))
+                .isEqualTo("true");
+        assertThat(config(spec(module, cache, PINNED, "registry.example:5000", null, true, false), "sigstore"))
+                .isNull();
+        assertThat(config(spec(module, cache, PINNED, null, module.resolve("target/app.tar"), true, true), "sigstore"))
+                .as("a tarball is not pushed, so there is nothing to sign")
+                .isNull();
+    }
+
+    /** The signature is over the provenance a push attaches: a push that attaches none is refused. */
+    @Test
+    void a_signed_push_that_attaches_no_provenance_is_refused() {
+        assertThat(ImagePushProvenance.unsignable(signed(null, true), null)).isNull();
+        assertThat(ImagePushProvenance.unsignable(signed("Dockerfile", true), null))
+                .isEqualTo("[image] sigstore: a Dockerfile-mode push attaches no provenance to sign");
+        assertThat(ImagePushProvenance.unsignable(signed(null, false), null))
+                .isEqualTo("[image] sigstore: referrers = false attaches no provenance to sign");
+        assertThat(ImagePushProvenance.unsignable(signed(null, false), Path.of("app.tar")))
+                .as("a tarball is not pushed")
+                .isNull();
+    }
+
+    @Test
+    void the_source_commit_is_heads_full_sha_and_none_outside_a_checkout(@TempDir Path tmp) throws Exception {
+        Path outside = Files.createDirectories(tmp.resolve("plain"));
+        assertThat(ImagePushProvenance.sourceCommit(outside)).isNull();
+
+        Path repo = Files.createDirectories(tmp.resolve("repo"));
+        git(repo, "init", "-q");
+        git(repo, "-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "-q", "--allow-empty", "-m", "x");
+        String head = ImagePushProvenance.sourceCommit(repo);
+        assertThat(head).matches("[0-9a-f]{40}");
+        assertThat(ImagePushProvenance.sourceCommit(Files.createDirectories(repo.resolve("app"))))
+                .as("a module below the checkout's root")
+                .isEqualTo(head);
+    }
+
+    private static void git(Path dir, String... args) throws Exception {
+        List<String> command = new ArrayList<>(GitCommand.of("-C", dir.toString()));
+        command.addAll(List.of(args));
+        Processes.Captured run = Processes.capture(new ProcessBuilder(command), Duration.ofSeconds(30));
+        assertThat(run.ok()).as(run.output()).isTrue();
+    }
+
+    private static ImageConfig signed(@Nullable String dockerFile, boolean referrers) {
+        return new ImageConfig(
+                TAG,
+                null,
+                null,
+                List.of(),
+                Map.of(),
+                Map.of(),
+                Map.of(),
+                "registry.example:5000",
+                null,
+                List.of(),
+                null,
+                null,
+                dockerFile,
+                false,
+                referrers,
+                true);
     }
 }

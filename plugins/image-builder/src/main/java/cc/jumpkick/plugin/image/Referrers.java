@@ -47,8 +47,20 @@ import org.jspecify.annotations.Nullable;
  */
 final class Referrers {
 
-    /** An artifact to attach: its {@code artifactType}, which is also its one layer's media type, and its bytes. */
-    record Document(String artifactType, byte[] content) {}
+    /** An artifact to attach: its {@code artifactType} and its layers, in order. */
+    record Document(String artifactType, List<Layer> layers) {
+        Document {
+            layers = List.copyOf(layers);
+        }
+
+        /** One document whose single layer is {@code content}, of the artifact's own type. */
+        static Document of(String artifactType, byte[] content) {
+            return new Document(artifactType, List.of(new Layer(artifactType, content)));
+        }
+    }
+
+    /** One blob of an artifact and its media type. */
+    record Layer(String mediaType, byte[] content) {}
 
     static final String SBOM_TYPE = "application/vnd.cyclonedx+json";
     static final String PROVENANCE_TYPE = "application/vnd.in-toto+json";
@@ -92,7 +104,7 @@ final class Referrers {
             List<String> digests = new ArrayList<>();
             List<Map<String, Object>> unindexed = new ArrayList<>();
             for (Document document : documents) {
-                registry.pushBlob(document.content());
+                for (Layer layer : document.layers()) registry.pushBlob(layer.content());
                 byte[] manifest = manifest(document, subject);
                 String digest = digest(manifest);
                 String indexedUnder = registry.putManifest(digest, MANIFEST_TYPE, manifest);
@@ -106,7 +118,7 @@ final class Referrers {
         }
     }
 
-    /** The artifact manifest for {@code document}: the empty config, the document as its one layer. */
+    /** The artifact manifest for {@code document}: the empty config, then the document's layers. */
     static byte[] manifest(Document document, Map<String, Object> subject) {
         Map<String, Object> manifest = new LinkedHashMap<>();
         manifest.put("schemaVersion", 2);
@@ -115,8 +127,9 @@ final class Referrers {
         manifest.put("config", descriptor(EMPTY_TYPE, digest(EMPTY), EMPTY.length, null));
         manifest.put(
                 "layers",
-                List.of(descriptor(
-                        document.artifactType(), digest(document.content()), document.content().length, null)));
+                document.layers().stream()
+                        .map(l -> descriptor(l.mediaType(), digest(l.content()), l.content().length, null))
+                        .toList());
         manifest.put("subject", subject);
         return MiniJson.write(manifest).getBytes(StandardCharsets.UTF_8);
     }

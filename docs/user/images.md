@@ -15,6 +15,7 @@ container runtime is only needed for some [AOT training](#aot-cache-in-the-image
 # tag       = "edge"              # default the module version
 # aot-cache = true
 # referrers = false               # attach no SBOM or provenance to a push
+# sigstore  = true                # sign a push's provenance (as --sigstore does)
 
 [image.env]
 # JAVA_OPTS = "-Xmx256m -XX:+UseSerialGC"   # the JVM flags: entrypoint AND AOT training run
@@ -93,8 +94,10 @@ image's digest:
 
 - the module's **CycloneDX SBOM** (`application/vnd.cyclonedx+json`), the same bill of materials an
   application jar embeds, read from the lock; a copy stays at `target/sbom/image.cdx.json`.
-- an unsigned **SLSA v1 provenance** statement (`application/vnd.in-toto+json`) naming the image
-  digest, the base image and every locked dependency with its SHA-256.
+- a **SLSA v1 provenance** statement (`application/vnd.in-toto+json`) naming the image digest,
+  the command (`jk image`), the JumpKick version, the git commit the module was built from (when it
+  is in a git checkout), the base image and every locked dependency with its SHA-256. It is
+  unsigned unless the push is [signed](#a-signed-push).
 
 ```bash
 jk image --registry ghcr.io/acme
@@ -119,13 +122,32 @@ off:
 referrers = false
 ```
 
+### A signed push
+
+`jk image --sigstore` signs the provenance with Sigstore keyless, as `jk publish --sigstore`
+signs a jar: on CI the runner's OIDC identity (GitHub Actions, GitLab, …), on a laptop a browser
+sign-in, and no key to keep. The provenance is then attached as one artifact of type
+`application/vnd.dsse.envelope.v1+json` whose two layers are the statement in a DSSE envelope and
+the Sigstore bundle of its signature (`application/vnd.dev.sigstore.bundle+json`): the short-lived
+certificate naming who signed it and the transparency-log entry. The envelope's signature verifies
+against that certificate. `[image] sigstore = true` makes every push of the project signed.
+
+```bash
+jk image --registry ghcr.io/acme --sigstore
+```
+
+A signed push is signed or it fails: when Sigstore cannot sign (no OIDC identity, no network) or
+the registry refuses the artifact, the image stays pushed and the build fails naming it. A push
+that attaches no provenance cannot be signed and is refused before it builds: Dockerfile mode, or
+`referrers = false`. A tarball or a daemon load is not pushed, so `--sigstore` signs nothing there.
+
 ## In a workspace
 
 `jk image` from a member's directory builds that member's image. The member's `[image]` table
 sits over the workspace root's, which sits over the user-global table in `~/.jk/config.toml`; the
 nearest value wins per key. The root answers for what is a workspace fact — `base`, `user`,
 `registry`, `tag`, `env`, `labels`, `platforms`, `docker-executable`, `aot-cache`,
-`referrers` — so one `[image]` on the root names the registry and the base image for every member, and a member sets
+`referrers`, `sigstore` — so one `[image]` on the root names the registry and the base image for every member, and a member sets
 only what differs. What names one image never flows down: `name`, `main`, `ports` and
 `docker-file` are read from the member alone, so two members cannot inherit one image name and
 push over each other. `env` and `labels` merge key by key, the member's entry winning.

@@ -3,6 +3,7 @@ package cc.jumpkick.plugin.publish;
 
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.time.Clock;
+import cc.jumpkick.sigstore.Dsse;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -177,6 +178,11 @@ public final class GpgSigner {
     /** A detached signature over {@code data} as one binary OpenPGP signature packet, unarmored. */
     public byte[] signBinary(byte[] data) throws IOException {
         return sign(new ByteArrayInputStream(data)).getEncoded();
+    }
+
+    /** The {@link Dsse} envelope over the in-toto {@code statement}, signed with this key. */
+    public byte[] dsse(byte[] statement) throws IOException {
+        return Dsse.envelope(statement, fingerprint(), signBinary(Dsse.pae(Dsse.IN_TOTO, statement)));
     }
 
     /** The fingerprint of the key that signs, in lowercase hex. */

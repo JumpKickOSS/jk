@@ -75,9 +75,10 @@ final class NodeImagePlans {
             @Nullable String registry,
             @Nullable String tag,
             @Nullable String tarballArg,
-            @Nullable String dockerExecutableArg) {
+            @Nullable String dockerExecutableArg,
+            boolean sigstore) {
         return builder.stateKeys(ImagePlans.CONFIG, ImagePlans.TARBALL_PATH, ImagePlans.IMAGE_REF, STATIC)
-                .extend(planStep(projectDir, registry, tag, tarballArg, dockerExecutableArg))
+                .extend(planStep(projectDir, registry, tag, tarballArg, dockerExecutableArg, sigstore))
                 .extend(writeStep(inputs, projectDir, cache));
     }
 
@@ -86,7 +87,8 @@ final class NodeImagePlans {
             @Nullable String registry,
             @Nullable String tag,
             @Nullable String tarballArg,
-            @Nullable String dockerExecutableArg) {
+            @Nullable String dockerExecutableArg,
+            boolean sigstore) {
         return Task.builder(TaskNames.IMAGE_PLAN)
                 .forecast(StepForecast.RIDES)
                 .stage(BuildStage.IMAGE)
@@ -113,9 +115,14 @@ final class NodeImagePlans {
                     Path tarballPath = ImagePlans.resolveTarballPath(tarballArg, layout);
                     if (tarballPath != null) ctx.put(ImagePlans.TARBALL_PATH, tarballPath);
                     ctx.put(STATIC, staticSite);
-                    ctx.put(
-                            ImagePlans.CONFIG,
-                            config(data, project, projectDir, staticSite, registry, tag, dockerExecutableArg));
+                    ImageConfig config =
+                            config(data, project, projectDir, staticSite, registry, tag, dockerExecutableArg, sigstore);
+                    String unsignable = ImagePushProvenance.unsignable(config, tarballPath);
+                    if (unsignable != null) {
+                        ctx.error("image", unsignable);
+                        throw new IllegalStateException(unsignable);
+                    }
+                    ctx.put(ImagePlans.CONFIG, config);
                     ctx.progress(1);
                 })
                 .build();
@@ -134,7 +141,8 @@ final class NodeImagePlans {
             boolean staticSite,
             @Nullable String registry,
             @Nullable String tag,
-            @Nullable String dockerExecutableArg)
+            @Nullable String dockerExecutableArg,
+            boolean sigstore)
             throws IOException {
         String base = data.base();
         if (base == null || base.isBlank()) {
@@ -176,7 +184,8 @@ final class NodeImagePlans {
                 dockerExe,
                 null,
                 false,
-                !Boolean.FALSE.equals(data.referrers()));
+                !Boolean.FALSE.equals(data.referrers()),
+                sigstore || Boolean.TRUE.equals(data.sigstore()));
     }
 
     private static Task writeStep(BuildPlanner.Inputs inputs, Path projectDir, Path cache) {
@@ -260,7 +269,11 @@ final class NodeImagePlans {
                 .configString("base", base)
                 .configString("jkCache", cache.toAbsolutePath().toString());
         ImageCredentials.write(sw, base, config, project, tarballPath == null && !daemonMode, layout.moduleRoot());
-        if (!config.referrers()) sw.configBool("referrers", false);
+        if (!config.referrers()) {
+            sw.configBool("referrers", false);
+        } else if (tarballPath == null && !daemonMode) {
+            ImagePushProvenance.write(sw, config, layout.moduleRoot());
+        }
         if (config.name() != null) sw.configString("name", config.name());
         if (config.user() != null) sw.configString("user", config.user());
         if (config.registry() != null) sw.configString("registry", config.registry());

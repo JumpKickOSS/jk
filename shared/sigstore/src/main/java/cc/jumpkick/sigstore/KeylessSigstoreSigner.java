@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.plugin.publish;
+package cc.jumpkick.sigstore;
 
 import cc.jumpkick.host.Hashing;
 import dev.sigstore.KeylessSigner;
@@ -17,22 +17,21 @@ import java.security.GeneralSecurityException;
  * etc.), sigstore-java auto-detects credentials; locally, it falls back to a browser-based
  * device-code flow.
  *
- * <p>Wraps {@link KeylessSigner} so that {@code dev.sigstore.*} types never leak across the {@code
- * :supply-chain} module boundary — {@link KeylessSignerException} surfaces as {@link IOException},
- * which is what every {@code :cli} call site already handles.
+ * <p>Wraps {@link KeylessSigner} so that no {@code dev.sigstore.*} type reaches a caller: {@link
+ * KeylessSignerException} surfaces as {@link IOException}.
  */
 public final class KeylessSigstoreSigner implements SigstoreSigner, AutoCloseable {
 
     /** Signs a SHA-256 digest; {@link KeylessSigner#sign(byte[])} in production. */
     @FunctionalInterface
-    interface DigestSigner {
+    public interface DigestSigner {
         Bundle sign(byte[] sha256) throws KeylessSignerException;
     }
 
     private final DigestSigner signer;
     private final Runnable onClose;
 
-    KeylessSigstoreSigner(DigestSigner signer, Runnable onClose) {
+    public KeylessSigstoreSigner(DigestSigner signer, Runnable onClose) {
         this.signer = signer;
         this.onClose = onClose;
     }

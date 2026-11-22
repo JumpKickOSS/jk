@@ -33,6 +33,7 @@ final class ImageVerb implements BuildVerb {
     private @Nullable String tag;
     private @Nullable String tarball;
     private @Nullable String dockerExecutable;
+    private boolean sigstore;
 
     /** The one module a workspace run images. */
     private @Nullable Path moduleDir;
@@ -65,7 +66,8 @@ final class ImageVerb implements BuildVerb {
                 Opt.value("<tag>", "Override image.tag from jk.toml.", "-W", "--tag"),
                 Opt.value("<path>", "Write an OCI tarball instead of pushing.", "-Z", "--tarball")
                         .withFallback(""),
-                Opt.value("<exe>", "Docker/Podman binary (default: auto)", "-X", "--docker-executable"));
+                Opt.value("<exe>", "Docker/Podman binary (default: auto)", "-X", "--docker-executable"),
+                Opt.flag("Sign the pushed image's provenance with Sigstore keyless.", "--sigstore"));
     }
 
     @Override
@@ -75,6 +77,7 @@ final class ImageVerb implements BuildVerb {
         this.tag = in.value("tag").orElse(null);
         this.tarball = tarballPath(in);
         this.dockerExecutable = in.value("docker-executable").orElse(null);
+        this.sigstore = in.isSet("sigstore");
     }
 
     /** {@code --tarball}, absolute against the invocation directory: the engine writes it, and its cwd is not ours. */
@@ -110,7 +113,7 @@ final class ImageVerb implements BuildVerb {
                 run.request(
                         entryDir,
                         modules,
-                        WorkspaceSpec.image(Set.of(), mainClass, registry, tag, tarball, dockerExecutable)),
+                        WorkspaceSpec.image(Set.of(), mainClass, registry, tag, tarball, dockerExecutable, sigstore)),
                 listener);
     }
 

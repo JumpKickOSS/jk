@@ -71,7 +71,8 @@ class ImageAotCacheE2eTest {
                 null,
                 null,
                 true,
-                true);
+                true,
+                false);
         // A release jar the application calls and a snapshot jar beside it: each ships in a layer
         // of its own below the application, and the cache trained over all three still maps.
         Path greeter = jar(tmp, "greeter", "example.lib", "Greeter", """

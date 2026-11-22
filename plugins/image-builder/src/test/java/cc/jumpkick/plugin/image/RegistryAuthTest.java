@@ -319,7 +319,8 @@ class RegistryAuthTest {
                 null,
                 null,
                 false,
-                true);
+                true,
+                false);
     }
 
     private ImageBuilder.Plan plan(Path tmp) throws Exception {

@@ -94,22 +94,32 @@ public final class ImagePlans {
      * {@code jk image}'s tail: {@code image-plan} then {@code write-image} (a node module's own pair
      * for a node module). {@code tarballArg} is tri-state exactly like {@code --tarball}'s optional
      * value: {@code null} (no tarball), {@code ""} (default layout path), or an explicit path.
+     * {@code sigstore} is {@code --sigstore}, which signs a push whatever {@code [image]} says.
      */
     public static Tail tail(
             @Nullable String mainClass,
             @Nullable String registry,
             @Nullable String tag,
             @Nullable String tarballArg,
-            @Nullable String dockerExecutableArg) {
+            @Nullable String dockerExecutableArg,
+            boolean sigstore) {
         return (plan, in) -> {
             Path projectDir = in.dir();
             if (NodeImagePlans.isNodeModule(in.buildFile(), projectDir)) {
-                NodeImagePlans.tail(plan, in, projectDir, in.cache(), registry, tag, tarballArg, dockerExecutableArg);
+                NodeImagePlans.tail(
+                        plan, in, projectDir, in.cache(), registry, tag, tarballArg, dockerExecutableArg, sigstore);
                 return;
             }
             plan.stateKeys(CONFIG, TARBALL_PATH, RUNTIME_JARS, IMAGE_REF)
                     .extend(imagePlanStep(
-                            projectDir, in.cache(), mainClass, registry, tag, tarballArg, dockerExecutableArg))
+                            projectDir,
+                            in.cache(),
+                            mainClass,
+                            registry,
+                            tag,
+                            tarballArg,
+                            dockerExecutableArg,
+                            sigstore))
                     .extend(writeImageStep(projectDir, in.cache(), mainClass));
         };
     }
@@ -122,7 +132,8 @@ public final class ImagePlans {
             @Nullable String registry,
             @Nullable String tag,
             @Nullable String tarballArg,
-            @Nullable String dockerExecutableArg) {
+            @Nullable String dockerExecutableArg,
+            boolean sigstore) {
         return Task.builder(TaskNames.IMAGE_PLAN)
                 .forecast(StepForecast.RIDES)
                 .stage(BuildStage.IMAGE)
@@ -135,8 +146,13 @@ public final class ImagePlans {
                     Path tarballPath = resolveTarballPath(tarballArg, layout);
                     if (tarballPath != null) ctx.put(TARBALL_PATH, tarballPath);
                     int level = javaLevel(project, projectDir);
-                    ImageConfig config = buildConfig(project, level, registry, tag, dockerExecutableArg);
+                    ImageConfig config = buildConfig(project, level, registry, tag, dockerExecutableArg, sigstore);
                     ctx.put(CONFIG, config);
+                    String unsignable = ImagePushProvenance.unsignable(config, tarballPath);
+                    if (unsignable != null) {
+                        ctx.error("image", unsignable);
+                        throw new IllegalStateException(unsignable);
+                    }
                     boolean dockerfileMode =
                             config.dockerFile() != null && !config.dockerFile().isBlank();
                     if (!dockerfileMode) {
@@ -298,7 +314,8 @@ public final class ImagePlans {
             int level,
             @Nullable String registry,
             @Nullable String tag,
-            @Nullable String dockerExecutableArg)
+            @Nullable String dockerExecutableArg,
+            boolean sigstore)
             throws IOException {
         // Merge user-global [image] from ~/.jk/config.toml underneath the project layer.
         ImageTable data = ManifestImage.merge(project.image(), GlobalConfig.image());
@@ -324,7 +341,8 @@ public final class ImagePlans {
                 dockerExe,
                 data.dockerFile(),
                 Boolean.TRUE.equals(data.aotCache()),
-                !Boolean.FALSE.equals(data.referrers()));
+                !Boolean.FALSE.equals(data.referrers()),
+                sigstore || Boolean.TRUE.equals(data.sigstore()));
     }
 
     /**
@@ -386,6 +404,7 @@ public final class ImagePlans {
                 AtomicWrites.replace(sbomFile, sbom);
                 sw.configString("sbom", sbomFile.toAbsolutePath().toString());
             }
+            ImagePushProvenance.write(sw, config, layout.moduleRoot());
         }
         if (!config.ports().isEmpty()) {
             sw.configList("ports", config.ports().stream().map(String::valueOf).toList());

@@ -33,7 +33,8 @@ class ImageBuilderAppTreeTest {
                 null,
                 null,
                 false,
-                true);
+                true,
+                false);
     }
 
     @Test

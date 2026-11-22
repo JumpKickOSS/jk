@@ -128,7 +128,8 @@ class ImageReleaseLayerTest {
                 null,
                 null,
                 false,
-                true);
+                true,
+                false);
         ImageBuilder.Plan plan = new ImageBuilder.Plan(
                 config,
                 "app",

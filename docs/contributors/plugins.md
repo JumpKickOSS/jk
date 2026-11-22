@@ -86,6 +86,9 @@ The guarded exceptions each carry a current product invariant:
 - `publisher → client-io`: repository uploads use the client-safe HTTP/file/object-store
   transports. The transport surface lives there specifically so the worker does not depend on
   server I/O.
+- `publisher → sigstore` and `image-builder → sigstore`: Sigstore keyless signing and DSSE
+  envelopes live in one module, so a signed publish and a signed image push sign the same way
+  without either worker carrying the other's plugin.
 - `auditor → client-io`: OSV queries go through `Http`, the one client JumpKick routes through the
   configured proxy.
 - `android → client-io`: the SDK license feed is downloaded through `Http`, for the same reason.

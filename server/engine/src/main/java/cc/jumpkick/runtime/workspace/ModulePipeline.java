@@ -136,8 +136,8 @@ public final class ModulePipeline {
             }
             case IMAGE -> {
                 TailArgs.Image a =
-                        args instanceof TailArgs.Image i ? i : new TailArgs.Image(null, null, null, null, null);
-                yield ImagePlans.tail(a.main(), a.registry(), a.tag(), a.tarball(), a.docker());
+                        args instanceof TailArgs.Image i ? i : new TailArgs.Image(null, null, null, null, null, false);
+                yield ImagePlans.tail(a.main(), a.registry(), a.tag(), a.tarball(), a.docker(), a.sigstore());
             }
             case TRAIN -> {
                 TailArgs.Train a = args instanceof TailArgs.Train t ? t : new TailArgs.Train(null, false);

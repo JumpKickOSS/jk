@@ -53,9 +53,13 @@ public record WorkspaceSpec(
             @Nullable String registry,
             @Nullable String tag,
             @Nullable String tarball,
-            @Nullable String docker) {
+            @Nullable String docker,
+            boolean sigstore) {
         return new WorkspaceSpec(
-                WorkspaceTarget.IMAGE, selected, Map.of(), new TailArgs.Image(main, registry, tag, tarball, docker));
+                WorkspaceTarget.IMAGE,
+                selected,
+                Map.of(),
+                new TailArgs.Image(main, registry, tag, tarball, docker, sigstore));
     }
 
     /** {@code jk compile}: a compile-only plan for every module in the cone; nothing packages. */
