@@ -9,6 +9,7 @@ import cc.jumpkick.config.SecretRedactor;
 import cc.jumpkick.config.SessionExpiry;
 import cc.jumpkick.engine.journal.SessionJournal;
 import cc.jumpkick.engine.listen.EventRedaction;
+import cc.jumpkick.engine.savings.AgentUsage;
 import cc.jumpkick.engine.sessions.EpisodeInference;
 import cc.jumpkick.engine.sessions.Fact;
 import cc.jumpkick.engine.sessions.SessionLog;
@@ -16,6 +17,7 @@ import cc.jumpkick.jsonl.MiniJson;
 import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Stream;
@@ -32,6 +34,9 @@ class HttpSessionsApiTest extends HttpEngineServerHarness {
     private SessionLog log;
     private String id;
 
+    @TempDir
+    Path claude;
+
     @BeforeEach
     void sessions() {
         log = new SessionLog(
@@ -39,7 +44,7 @@ class HttpSessionsApiTest extends HttpEngineServerHarness {
                 () -> now[0],
                 EpisodeInference.DEFAULT_IDLE_GAP_MILLIS,
                 SessionExpiry.DEFAULT.toMillis());
-        server.setSessions(log);
+        server.setSessions(log, new AgentUsage(claude, null, () -> true));
         id = log.open("mcp", "claude-code", LABEL, "/ws/app");
         for (int i = 0; i < 3; i++) {
             log.action(
@@ -89,6 +94,28 @@ class HttpSessionsApiTest extends HttpEngineServerHarness {
                 MiniJson.parse(get("/api/sessions/" + id + "?before=2&limit=2").body()));
         assertThat(MiniJson.list(older, "actions")).hasSize(1);
         assertThat(MiniJson.get(older, "next")).isNull();
+    }
+
+    @Test
+    void an_episode_carries_the_tokens_its_agent_counted_and_no_text_of_its_session_file() throws Exception {
+        String secret = "sk-ant-SECRET-77aa";
+        Path transcript = claude.resolve("projects")
+                .resolve(AgentUsage.claudeDir("/ws/app"))
+                .resolve("s.jsonl");
+        Files.createDirectories(transcript.getParent());
+        String line = "{\"type\":\"assistant\",\"timestamp\":\"" + Instant.ofEpochMilli(now[0] + 1)
+                + "\",\"message\":{\"id\":\"m1\",\"model\":\"claude-opus-5-5\",\"content\":[{\"type\":\"text\","
+                + "\"text\":\"" + secret + "\"}],\"usage\":{\"input_tokens\":12,\"output_tokens\":30}}}";
+        Files.writeString(transcript, line + "\n");
+
+        String raw = get("/api/sessions/" + id).body();
+
+        Object saved =
+                MiniJson.get(MiniJson.list(MiniJson.parse(raw), "episodes").getFirst(), "saved");
+        Object tokens = MiniJson.get(saved, "tokens");
+        assertThat(MiniJson.str(tokens, "agent")).isEqualTo("Claude Code");
+        assertThat(MiniJson.get(tokens, "total")).isEqualTo(42L);
+        assertThat(raw).doesNotContain(secret);
     }
 
     @Test

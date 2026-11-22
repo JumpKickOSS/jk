@@ -57,6 +57,9 @@ count, then one line for each figure it counted so far, this run included, in th
 of `jk stats` (build and test time the cache avoided, marked as an estimate with the share
 measured; steps served from the cache; test classes not re-run; code questions answered;
 refactorings; dependency edits; guard violations stopped), or `Nothing saved yet` when it counted none.
+When the agent is Claude Code or Codex, a last line gives the tokens it used over the episode by
+its own count (`Tokens the agent used: 43,000 (Claude Code's own count, 40,000 read from its
+cache)`), read from its session files ([config](config.md#agents-token-counts)).
 The dashboard's console ends the episode with the same figures
 ([web](web.md#what-jumpkick-saved)).
 

@@ -4,7 +4,7 @@
 // engine; its rows are the objects `jk stats -O jsonl` prints, overall first, then per project.
 
 import { get } from './api.js';
-import { fmtDuration } from './format.js';
+import { count, fmtDuration } from './format.js';
 
 /** The period the panel covers, as `jk stats` defaults to. */
 export const SAVINGS_DAYS = 7;
@@ -65,7 +65,8 @@ export function savingsTiles(row) {
 
 /**
  * An episode's receipt (its `saved` row from /api/sessions/<id>): the panel's tiles for the
- * figures it counted, in the same order; empty when it saved nothing yet.
+ * figures it counted, in the same order, then the tokens its agent counted when the engine read
+ * them; empty when it saved nothing yet.
  */
 export function receiptTiles(row) {
   if (!row) return [];
@@ -77,7 +78,15 @@ export function receiptTiles(row) {
     refactorings: (row.refactorings || 0) + (row.edits || 0),
     guards: row.guardViolations,
   };
-  return savingsTiles(row).filter((t) => (counted[t.key] || 0) > 0);
+  const tiles = savingsTiles(row).filter((t) => (counted[t.key] || 0) > 0);
+  const tokens = row.tokens;
+  if (tokens && tokens.total > 0) {
+    tiles.push({ key: 'tokens', label: 'agent tokens', value: count(tokens.total),
+      note: tokens.agent + '’s own count',
+      tip: 'Tokens the agent used in this episode, read from its own session files: '
+        + count(tokens.cacheRead || 0) + ' read from its cache, ' + count(tokens.output || 0) + ' output' });
+  }
+  return tiles;
 }
 
 export const savingsData = () => ({

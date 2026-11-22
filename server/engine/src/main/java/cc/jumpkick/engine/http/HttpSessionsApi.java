@@ -4,6 +4,7 @@ package cc.jumpkick.engine.http;
 import cc.jumpkick.engine.api.JsonOut;
 import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.engine.journal.SessionJournal;
+import cc.jumpkick.engine.savings.AgentUsage;
 import cc.jumpkick.engine.savings.EpisodeReceipt;
 import cc.jumpkick.engine.sessions.SessionLog;
 import com.sun.net.httpserver.HttpExchange;
@@ -26,10 +27,12 @@ final class HttpSessionsApi {
 
     private final SessionLog sessions;
     private final BuildJournal journal;
+    private final AgentUsage usage;
 
-    HttpSessionsApi(SessionLog sessions, BuildJournal journal) {
+    HttpSessionsApi(SessionLog sessions, BuildJournal journal, AgentUsage usage) {
         this.sessions = sessions;
         this.journal = journal;
+        this.usage = usage;
     }
 
     /**
@@ -46,7 +49,7 @@ final class HttpSessionsApi {
 
     /**
      * {@code GET /api/sessions/<id>?before=<seq>&limit=N}: one session, every episode with what it
-     * saved ({@code saved}, an {@link EpisodeReceipt}), and a page of its actions oldest first;
+     * saved ({@code saved}, an {@link EpisodeReceipt}, with the tokens its agent counted), and a page of its actions oldest first;
      * {@code next} is the {@code before} of the page older than this one.
      */
     void handleSession(HttpExchange exchange) throws IOException {
@@ -70,7 +73,7 @@ final class HttpSessionsApi {
         }
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("session", page.get().session());
-        Map<String, EpisodeReceipt> receipts = EpisodeReceipt.forSession(journal, sessions, id);
+        Map<String, EpisodeReceipt> receipts = EpisodeReceipt.forSession(journal, sessions, usage, id);
         List<Map<String, Object>> episodes = new ArrayList<>();
         for (Map<String, Object> e : page.get().episodes()) {
             EpisodeReceipt receipt = receipts.get(String.valueOf(e.get("id")));
@@ -79,7 +82,7 @@ final class HttpSessionsApi {
                 continue;
             }
             Map<String, Object> withSaved = new LinkedHashMap<>(e);
-            withSaved.put("saved", receipt.saved().toMap());
+            withSaved.put("saved", receipt.toMap());
             episodes.add(withSaved);
         }
         body.put("episodes", episodes);

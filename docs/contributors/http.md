@@ -741,7 +741,11 @@ first, and up to `limit` (default 100, at most 1000) actions older than `before`
 one, `null` on the first page. Each episode carries `saved`, what it saved: a
 [`GET /api/stats`](#get-apistats) row with `scope` `episode`, `dir` its checkout, and `since`/`until`
 its start and last fact, added up over the runs the journal placed in it and every action it kept
-(not only the page's). An action is `{ seq, at, kind, summary, headline?, outcome, millis,
+(not only the page's). When the session's agent is Claude Code or Codex and `[agents] read-usage`
+is on, `saved.tokens` is the tokens it used from the episode's start to its last fact by its own
+count, read from its session files: `{ agent, input, cacheWrite, cacheRead, output, total, models:
+[{ model, input, cacheWrite, cacheRead, output, total }] }`, a `model` that does not look like a
+model id reading `unknown`. An action is `{ seq, at, kind, summary, headline?, outcome, millis,
 episode, project?, buildNumber? }`: `kind` is `run` or the MCP tool (`query`, `usages`, `read`,
 `find`, `rename`, `deps`, `update`, `workspace`), `summary` one line of what it asked (`callers
 PricingRules.weekendUplift`), `headline` the first line of its answer (`3 callers`), `outcome`

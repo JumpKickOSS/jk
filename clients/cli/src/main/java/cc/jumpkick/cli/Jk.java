@@ -108,6 +108,7 @@ public final class Jk {
             code = SupersededClient.handOffAfterCommand(args).orElse(code);
             SelfUpdatePrompt.afterCommand(commandName(args), List.of(args), code);
             NerdFontHint.afterCommand(commandName(args), List.of(args), code);
+            ReadUsageHint.afterCommand(commandName(args), List.of(args), code);
         } catch (JkDirs.InvalidOverrideException e) {
             System.err.println("jk: invalid environment: " + e.getMessage());
             code = Exit.USAGE;

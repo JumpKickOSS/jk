@@ -108,7 +108,7 @@ class EpisodeReceiptTest {
         journaled(run(LABEL, T + 3_000, 11, new BuildRecord.CacheBenefit(90_000, 60_000, 3, 4)));
         journaled(run(OTHER, T + 4_000, 12, new BuildRecord.CacheBenefit(50_000, 40_000, 1, 1)));
 
-        Map<String, EpisodeReceipt> receipts = EpisodeReceipt.forSession(journal, log, session);
+        Map<String, EpisodeReceipt> receipts = EpisodeReceipt.forSession(journal, log, AgentUsage.NONE, session);
 
         assertThat(receipts).hasSize(1);
         EpisodeReceipt receipt = receipts.values().iterator().next();
@@ -135,11 +135,13 @@ class EpisodeReceiptTest {
         journaled(kept);
         BuildRecord unkept = run(LABEL, T + 4_000, 23, new BuildRecord.CacheBenefit(10_000, 5_000, 0, 1));
 
-        EpisodeReceipt journaledReceipt = Objects.requireNonNull(EpisodeReceipt.forRun(journal, log, kept));
+        EpisodeReceipt journaledReceipt =
+                Objects.requireNonNull(EpisodeReceipt.forRun(journal, log, AgentUsage.NONE, kept));
         assertThat(journaledReceipt.saved().runs()).isEqualTo(2);
         assertThat(journaledReceipt.saved().savedMillis()).isEqualTo(10_000);
 
-        EpisodeReceipt withUnkept = Objects.requireNonNull(EpisodeReceipt.forRun(journal, log, unkept));
+        EpisodeReceipt withUnkept =
+                Objects.requireNonNull(EpisodeReceipt.forRun(journal, log, AgentUsage.NONE, unkept));
         assertThat(withUnkept.saved().runs()).isEqualTo(3);
         assertThat(withUnkept.saved().savedMillis()).isEqualTo(15_000);
     }
@@ -147,8 +149,8 @@ class EpisodeReceiptTest {
     @Test
     void a_run_placed_in_no_episode_has_no_receipt() {
         BuildRecord r = run(LABEL, T + 1_000, 31, null).withEpisode(null);
-        assertThat(EpisodeReceipt.forRun(journal, log, r)).isNull();
-        assertThat(EpisodeReceipt.markdown(journal, log, r)).isNull();
+        assertThat(EpisodeReceipt.forRun(journal, log, AgentUsage.NONE, r)).isNull();
+        assertThat(EpisodeReceipt.markdown(journal, log, AgentUsage.NONE, r)).isNull();
     }
 
     @Test
@@ -158,7 +160,7 @@ class EpisodeReceiptTest {
         BuildRecord last = run(LABEL, T + 3_000, 42, null);
         journaled(last);
 
-        String md = Objects.requireNonNull(EpisodeReceipt.markdown(journal, log, last));
+        String md = Objects.requireNonNull(EpisodeReceipt.markdown(journal, log, AgentUsage.NONE, last));
 
         assertThat(md)
                 .isEqualTo(EpisodeReceipt.HEADING + "\n\n"
@@ -169,9 +171,47 @@ class EpisodeReceiptTest {
     }
 
     @Test
+    void the_receipt_ends_with_the_tokens_its_agent_counted_over_the_episode() throws Exception {
+        Path claude = root.resolve("claude");
+        Path transcript = claude.resolve("projects")
+                .resolve(AgentUsage.claudeDir("/ws/app"))
+                .resolve("s.jsonl");
+        AgentUsageTest.write(
+                transcript,
+                AgentUsageTest.claudeLine(T - 5_000, "msg_0", "claude-opus-5-5", 999, 0, 0, 999),
+                AgentUsageTest.claudeLine(T + 1_500, "msg_1", "claude-opus-5-5", 100, 2_000, 40_000, 900));
+        AgentUsage usage = new AgentUsage(claude, null, () -> true);
+        act(LABEL, T + 1_000, Fact.Kind.GRAPH, "usages");
+        BuildRecord last = run(LABEL, T + 2_000, 51, null);
+        journaled(last);
+
+        String md = Objects.requireNonNull(EpisodeReceipt.markdown(journal, log, usage, last));
+        assertThat(md)
+                .endsWith("- Code questions answered: 1\n"
+                        + "- Tokens the agent used: 43,000 (Claude Code's own count, 40,000 read from its cache)\n");
+
+        Map<String, Object> saved = EpisodeReceipt.forSession(journal, log, usage, session)
+                .values()
+                .iterator()
+                .next()
+                .toMap();
+        assertThat(saved).containsEntry("graphCalls", 1L);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> tokens = (Map<String, Object>) saved.get("tokens");
+        assertThat(tokens)
+                .containsEntry("agent", "Claude Code")
+                .containsEntry("total", 43_000L)
+                .containsEntry("cacheRead", 40_000L);
+
+        assertThat(EpisodeReceipt.markdown(journal, log, new AgentUsage(claude, null, () -> false), last))
+                .as("with reading off the receipt has no token line")
+                .doesNotContain("Tokens");
+    }
+
+    @Test
     void an_episode_that_saved_nothing_says_so() {
         Savings nothing = Savings.empty(Savings.EPISODE, null, "/ws/app", null, T, T);
-        String md = new EpisodeReceipt("s.1", "Working in app", nothing).markdown();
+        String md = new EpisodeReceipt("s.1", "Working in app", nothing, null).markdown();
         assertThat(md).endsWith("Working in app · 0 runs\n\nNothing saved yet: no cache hits, code answers or edits\n");
     }
 }

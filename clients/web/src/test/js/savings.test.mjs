@@ -71,3 +71,14 @@ test("an episode's receipt shows the panel's tiles for what it counted, and none
   assert.deepEqual(receiptTiles({ scope: 'episode', runs: 1 }), []);
   assert.deepEqual(receiptTiles(null), []);
 });
+
+test("an episode's receipt ends with the tokens its agent counted, labelled as the agent's own count", () => {
+  const tokens = { agent: 'Claude Code', input: 100, cacheWrite: 2_000, cacheRead: 40_000, output: 900, total: 43_000, models: [] };
+  const tiles = receiptTiles({ scope: 'episode', runs: 1, graphCalls: 2, tokens });
+  assert.deepEqual(tiles.map((t) => t.key), ['graph', 'tokens']);
+  const t = tiles[1];
+  assert.equal(t.value, (43_000).toLocaleString());
+  assert.equal(t.note, 'Claude Code’s own count');
+  assert.match(t.tip, /read from its own session files/);
+  assert.deepEqual(receiptTiles({ scope: 'episode', runs: 0, tokens: { ...tokens, total: 0 } }), []);
+});

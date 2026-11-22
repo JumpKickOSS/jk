@@ -20,6 +20,7 @@ import cc.jumpkick.engine.http.mcp.tools.McpTools;
 import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.engine.machine.MachineEnvironments;
 import cc.jumpkick.engine.notices.Notices;
+import cc.jumpkick.engine.savings.AgentUsage;
 import cc.jumpkick.engine.sessions.SessionLog;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.time.Clock;
@@ -169,10 +170,11 @@ public final class HttpEngineServer implements AutoCloseable {
 
     /**
      * Engine hook: serve {@code sessions} on {@code GET /api/sessions} and {@code
-     * /api/sessions/<id>}, and log MCP connections and their actions in it. Before {@link #start}.
+     * /api/sessions/<id>}, each episode with the tokens {@code usage} reads for it, and log MCP
+     * connections and their actions in it. Before {@link #start}.
      */
-    public void setSessions(SessionLog sessions) {
-        HttpSessionsApi sessionsApi = new HttpSessionsApi(sessions, journal);
+    public void setSessions(SessionLog sessions, AgentUsage usage) {
+        HttpSessionsApi sessionsApi = new HttpSessionsApi(sessions, journal, usage);
         api.register("GET", "/api/sessions", sessionsApi::handleSessions);
         api.registerPrefix("GET", HttpSessionsApi.PREFIX, sessionsApi::handleSession);
         statsApi.sessions(sessions);

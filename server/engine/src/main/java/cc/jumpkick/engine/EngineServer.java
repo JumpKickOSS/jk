@@ -36,11 +36,13 @@ import cc.jumpkick.engine.journal.JournalWriter;
 import cc.jumpkick.engine.journal.SessionJournal;
 import cc.jumpkick.engine.machine.MachineEnvironments;
 import cc.jumpkick.engine.notices.Notices;
+import cc.jumpkick.engine.notices.ReadUsageNotice;
 import cc.jumpkick.engine.notices.UpdatedNotice;
 import cc.jumpkick.engine.plugin.MemoryHolds;
 import cc.jumpkick.engine.plugin.ShelfPins;
 import cc.jumpkick.engine.plugin.WorkerAotCache;
 import cc.jumpkick.engine.plugin.WorkerScopes;
+import cc.jumpkick.engine.savings.AgentUsage;
 import cc.jumpkick.engine.savings.EpisodeReceipt;
 import cc.jumpkick.engine.sessions.EpisodeInference;
 import cc.jumpkick.engine.sessions.FinishedRun;
@@ -186,6 +188,9 @@ public final class EngineServer implements AutoCloseable {
 
     /** The bell's notices and the machine's one seen marker, kept in the state directory. */
     private final Notices notices;
+
+    /** The tokens each episode's agent counted in its own session files, for its receipt. */
+    private final AgentUsage agentUsage = AgentUsage.machine();
 
     /** Rings the bell once for each batch of new change-journal entries. */
     private final ChangeNotices changeNotices;
@@ -449,7 +454,7 @@ public final class EngineServer implements AutoCloseable {
         notices.follow(decisions);
         this.changeNotices = new ChangeNotices(ChangeJournal::current, notices);
         journalWriter.onFinished(sessionLog::runFinished);
-        journalWriter.onReceipt(r -> EpisodeReceipt.markdown(journal, sessionLog, r));
+        journalWriter.onReceipt(r -> EpisodeReceipt.markdown(journal, sessionLog, agentUsage, r));
         drain.predecessorRuns(this::foldPredecessorRun);
         this.sse = new SsePublisher(
                 sessions,
@@ -685,6 +690,7 @@ public final class EngineServer implements AutoCloseable {
                 jobs::cancelJobsForDir,
                 cacheGate,
                 sessionLog,
+                agentUsage,
                 decisions,
                 notices,
                 machine);
@@ -794,6 +800,8 @@ public final class EngineServer implements AutoCloseable {
         changeNotices.start();
         // The first engine of a freshly installed version says so once, in the bell.
         UpdatedNotice.announce(notices, version, SelfUpdateState.file());
+        // Reading agents' token counts is on by default; the bell says so once.
+        ReadUsageNotice.announce(notices, JkDirs.userConfigFile(), JkDirs.state());
         // Sessions a previous engine left open carry on here; off the startup path.
         Thread.ofVirtual().name("jk-engine-sessions-adopt").start(() -> {
             int adopted = sessionLog.adopt();

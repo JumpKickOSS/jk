@@ -7,6 +7,7 @@ import cc.jumpkick.engine.journal.JkResultsMarkdown;
 import cc.jumpkick.engine.sessions.ActionRecord;
 import cc.jumpkick.engine.sessions.Episode;
 import cc.jumpkick.engine.sessions.SessionLog;
+import cc.jumpkick.jsonl.MiniJson;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -23,8 +24,13 @@ import org.jspecify.annotations.Nullable;
  *
  * @param title what the episode is doing, as its page names it
  * @param saved its figures in {@link Savings#EPISODE} scope, from its start to its last fact
+ * @param tokens the tokens its agent used by the agent's own count, or null when jk read none
  */
-public record EpisodeReceipt(String episode, String title, Savings saved) {
+public record EpisodeReceipt(
+        String episode,
+        String title,
+        Savings saved,
+        @Nullable AgentTokens tokens) {
 
     /** The heading of the receipt's section, the last of {@code jk-results.md}. */
     public static final String HEADING = "## Saved in this episode";
@@ -33,25 +39,29 @@ public record EpisodeReceipt(String episode, String title, Savings saved) {
      * The receipt of each episode session {@code sessionId} keeps, by episode id; empty for a
      * session the log does not know.
      */
-    public static Map<String, EpisodeReceipt> forSession(BuildJournal journal, SessionLog sessions, String sessionId) {
-        return read(journal, sessions, sessionId, null, null);
+    public static Map<String, EpisodeReceipt> forSession(
+            BuildJournal journal, SessionLog sessions, AgentUsage usage, String sessionId) {
+        return read(journal, sessions, usage, sessionId, null, null);
     }
 
     /**
      * The receipt of the episode {@code run} was placed in, {@code run} counted once whether or not
      * the journal kept it; null when it was placed in none the log keeps.
      */
-    public static @Nullable EpisodeReceipt forRun(BuildJournal journal, SessionLog sessions, BuildRecord run) {
+    public static @Nullable EpisodeReceipt forRun(
+            BuildJournal journal, SessionLog sessions, AgentUsage usage, BuildRecord run) {
         String episode = run.episode();
         if (episode == null) return null;
         int dot = episode.lastIndexOf('.');
         if (dot <= 0) return null;
-        return read(journal, sessions, episode.substring(0, dot), episode, run).get(episode);
+        return read(journal, sessions, usage, episode.substring(0, dot), episode, run)
+                .get(episode);
     }
 
     /** {@link #forRun}'s receipt as {@link #markdown()} renders it, or null when there is none. */
-    public static @Nullable String markdown(BuildJournal journal, SessionLog sessions, BuildRecord run) {
-        EpisodeReceipt receipt = forRun(journal, sessions, run);
+    public static @Nullable String markdown(
+            BuildJournal journal, SessionLog sessions, AgentUsage usage, BuildRecord run) {
+        EpisodeReceipt receipt = forRun(journal, sessions, usage, run);
         return receipt == null ? null : receipt.markdown();
     }
 
@@ -59,6 +69,7 @@ public record EpisodeReceipt(String episode, String title, Savings saved) {
     private static Map<String, EpisodeReceipt> read(
             BuildJournal journal,
             SessionLog sessions,
+            AgentUsage usage,
             String sessionId,
             @Nullable String only,
             @Nullable BuildRecord current) {
@@ -80,7 +91,26 @@ public record EpisodeReceipt(String episode, String title, Savings saved) {
         if (current != null && runs.stream().noneMatch(r -> sameRun(r, current))) runs.add(current);
         List<ActionRecord> actions = new ArrayList<>();
         for (Map<String, Object> m : page.get().actions()) actions.add(ActionRecord.of(m));
-        return fold(episodes, runs, actions);
+        Map<String, EpisodeReceipt> out = fold(episodes, runs, actions);
+        String client = MiniJson.str(page.get().session(), "client");
+        long now = current == null ? 0 : current.finishedAt();
+        for (Episode e : episodes) {
+            AgentTokens tokens = usage.read(client, e.project(), e.startedAt(), Math.max(e.lastAt(), now));
+            if (tokens != null) out.computeIfPresent(e.id(), (id, r) -> r.withTokens(tokens));
+        }
+        return out;
+    }
+
+    /** This receipt with the tokens its agent counted. */
+    EpisodeReceipt withTokens(@Nullable AgentTokens tokens) {
+        return new EpisodeReceipt(episode, title, saved, tokens);
+    }
+
+    /** As {@code GET /api/sessions/<id>} serves it, an episode's {@code saved}: the figures and the agent's {@code tokens}. */
+    public Map<String, Object> toMap() {
+        Map<String, Object> m = saved.toMap();
+        if (tokens != null) m.put("tokens", tokens.toMap());
+        return m;
     }
 
     /** The receipts of {@code episodes} over runs and actions already read, by episode id. */
@@ -95,7 +125,7 @@ public record EpisodeReceipt(String episode, String title, Savings saved) {
                     saved = saved.plus(SavingsLedger.of(a));
                 }
             }
-            out.put(e.id(), new EpisodeReceipt(e.id(), e.title(), saved));
+            out.put(e.id(), new EpisodeReceipt(e.id(), e.title(), saved, null));
         }
         return out;
     }
@@ -136,6 +166,7 @@ public record EpisodeReceipt(String episode, String title, Savings saved) {
                     + (s.guardStops() == 1 ? " run" : " runs"));
         }
         if (lines.isEmpty()) sb.append("Nothing saved yet: no cache hits, code answers or edits\n");
+        if (tokens != null) lines.add(tokens.line());
         for (String line : lines) sb.append("- ").append(line).append('\n');
         return sb.toString();
     }
