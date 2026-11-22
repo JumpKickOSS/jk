@@ -4,9 +4,13 @@
 # tier of scripts/gate/gate.sh, unless that commit was judged already. The gate's base is `green`,
 # so it runs the slow tier when a plugin changed since the last commit that passed.
 #
-# GREEN pushes the tip to origin's `green` branch as a fast-forward: releases are cut from it. A
-# gate green only because its failed classes passed on the re-run is GREEN, and its line in
-# full-runs.log names those classes; it neither counts as red nor holds the queue.
+# Each tip it takes is appended to full-taken before it is gated, so the Windows and macOS loops
+# (scripts/gate/platform-loop.sh) run it beside the Linux gate.
+# GREEN moves origin's `green` branch to the tip as a fast-forward (scripts/gate/green.sh): releases
+# are cut from it. While a platform holds green, green waits there for that platform's verdict on the
+# tip, and its loop moves green once it passes. A gate green only because its failed classes passed
+# on the re-run is GREEN, and its line in full-runs.log names those classes; it neither counts as red
+# nor holds the queue.
 # RED looks for the batch of the merge queue that made it red among those landed since `green`
 # (queue-batches.log): it bisects them, gating batch tips with the Full tier until the first red one
 # is known (each commit is gated once; full-verdicts keeps every verdict), and names it in
@@ -28,7 +32,8 @@
 #
 #   QUEUE_REPO       the merge queue's repository (default ~/src/jk-queue.git): its queue-batches.log
 #                    is read, and this loop's state is written beside it: full-runs.log (one line per
-#                    cycle), full-verdicts (`<sha> GREEN|RED <gate>`), full-reds, full-filed, full-hold;
+#                    cycle), full-taken (each tip it took), full-verdicts (`<sha> GREEN|RED <gate>`),
+#                    full-reds, full-filed, full-hold;
 #                    the re-runs and the revert's Branch tier log to full-<batch>.log beside the gate logs
 #   FULL_CHECKOUT    the clean checkout the Full tier runs in; its origin holds main and green
 #                    (required; not the queue's checkout)
@@ -55,7 +60,7 @@
     mkdir -p "$repo" "$D/full-loop/queue" || exit 2
     # Run a copy, so a commit that changes these scripts changes the loop only when it is restarted.
     cp "$0" "$D/full-loop/full-loop.sh" || exit 2
-    cp "$H/rerun-classes.sh" "$H/flaky.sh" "$D/full-loop/" || exit 2
+    cp "$H/rerun-classes.sh" "$H/flaky.sh" "$H/green.sh" "$D/full-loop/" || exit 2
     cp "$H/../queue/branch-tier.sh" "$H/../queue/submit.sh" "$H/../queue/common.sh" "$D/full-loop/queue/" || exit 2
     while :; do
       flock -w 7200 "${GATE_LOCK:-/var/tmp/fleet-gate.lock}" bash "$D/full-loop/full-loop.sh" --cycle
@@ -111,13 +116,13 @@
   tip="$(git rev-parse refs/remotes/origin/main)"
   [ -z "$(awk -v s="$tip" '$1 == s' "$V" 2>/dev/null)" ] || exit 3
 
+  [ "$(tail -1 "$repo/full-taken" 2>/dev/null)" = "$tip" ] || echo "$tip" >>"$repo/full-taken"
   v="$(judge "$tip")" || exit 2
   n="$(gate_of "$tip")"
   stamp="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
   if [ "$v" = GREEN ]; then
-    pushed="green"
-    git push -q origin "$tip:refs/heads/green" || pushed="NOT pushed to green (not a fast-forward of it?)"
+    pushed="$(QUEUE_REPO="$repo" GREEN_CHECKOUT="$co" bash "$H/green.sh")" || pushed="NOT pushed to green (green.sh failed)"
     echo 0 >"$repo/full-reds"
     held=""
     [ -f "$repo/full-hold" ] && held="; the queue's hold is lifted" && rm -f "$repo/full-hold"

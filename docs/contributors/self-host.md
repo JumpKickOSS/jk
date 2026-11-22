@@ -183,8 +183,9 @@ with `GATE_TIER=full`, unless that commit was judged already. Its base is `green
 the gate also runs the slow tier when a plugin, or a root build file, changed since the last commit
 that passed; before there is a `green`, it always does. Then:
 
-- **Green** pushes the tip to origin's `green` branch as a fast-forward. `green` is the newest commit
-  that passed the Full tier, and releases are cut from it ([releases](releases.md#cutting-a-release-by-hand)).
+- **Green** moves origin's `green` branch to the tip as a fast-forward (`scripts/gate/green.sh`).
+  `green` is the newest commit that passed the Full tier, and every platform that
+  [holds it](#windows-and-macos), and releases are cut from it ([releases](releases.md#cutting-a-release-by-hand)).
   A gate green because its failed classes passed on its re-run ([flaky tests](#flaky-tests)) is a
   green cycle, and its line in `full-runs.log` names those classes.
 - **Red** finds the batch that made it red among the queue's batches landed since `green`
@@ -221,6 +222,42 @@ The re-runs of a culprit and its revert's Branch tier log to `full-<batch>.log` 
 header of `scripts/gate/full-loop.sh` lists its settings; `scripts/test-full-loop.sh` holds it and
 the queue's hold to the rules above in scratch repositories, and `scripts/test-rerun-classes.sh`
 holds the re-run.
+
+### Windows and macOS
+
+Each tip the Full loop takes (it appends it to `full-taken` in the queue's repository before its
+Linux gate starts) also runs on Windows, on Daybreak, and on macOS, on bocamacmini, at the same
+time. One loop per platform runs on the gate host, outside the gate lock: a platform run checks one
+fixed commit, so it needs no lock shared with the Linux gate, and the run holds its own host to one
+run at a time.
+
+```bash
+PLATFORM_CHECKOUT=~/src/jk-platform-checkout scripts/gate/platform-loop.sh windows
+PLATFORM_CHECKOUT=~/src/jk-platform-checkout scripts/gate/platform-loop.sh macos
+```
+
+Each cycle feeds `scripts/gate/platform-run.sh` to the host over ssh (Git Bash on Windows) for the
+newest tip the platform has no verdict on; a platform slower than the Full tier skips to the newest.
+On the host the run keeps a checkout, a JumpKick home and a local Maven repository of its own under
+`~/jk-platform`, so the host's own install and engine are never touched. It installs the tip into
+that home without tests (a home that does not exist yet is made the way CI makes one, with
+`scripts/ci-bootstrap.sh` and `scripts/ci-takeover.sh`), then runs every module's fast tier, each
+test class whose source names an OS (`@EnabledOnOs`, `OS.WINDOWS`, `os.name`, …) in the fast or
+integration tier, by module, and the product smoke (`scripts/ci-product-smoke.sh`).
+
+- **Red** files a ticket (a bug labelled `platform-windows` or `platform-macos`) that says what
+  failed. While it is open, a red run with other failures comments on it, and a green run says so.
+- **Trailing, then holding.** A platform's runs do not hold `green` at first. Once it has been green
+  for a week with no red run between, its loop writes `platform-<platform>-blocking` in the queue's
+  repository, and from then on `green` moves only to a tip the Full tier and that platform both
+  passed: the Full loop leaves `green` where it is until the platform's verdict comes in, and the
+  platform's loop moves it. Delete the file to make the platform trail again.
+
+Verdicts are `platform-verdicts` and each run is a line of `platform-runs.log`, both beside the Full
+loop's; the run's output is `/var/tmp/jk-platform/platform-<platform>-<n>.log` on the gate host, and
+its steps' own logs are in `~/jk-platform/logs` on the platform's host. The header of
+`scripts/gate/platform-loop.sh` lists its settings; `scripts/test-platform-loop.sh` holds the run,
+the loop and the hold to the rules above.
 
 ## CI
 
