@@ -568,6 +568,7 @@ public final class JkResultsAgent {
                         .append(sites(head, more))
                         .append('\n');
             }
+            sb.append(JkResultsConflict.block(head.diag().conflict(), r.dir()));
             appendFix(sb, head.diag());
             blocks.add(sb.toString());
             files.add(head.file());
@@ -752,6 +753,7 @@ public final class JkResultsAgent {
         if (action == null) action = secondLine(message, cause);
         if (action != null && !action.isBlank())
             sb.append("  ").append(one(action, projectDir)).append('\n');
+        sb.append(JkResultsConflict.block(d.conflict(), projectDir));
         JkResultsHints.Hint hint = JkResultsHints.forDiag(d);
         String fix = hint == null ? null : fixLine(hint, projectDir);
         if (fix != null) sb.append(fix).append('\n');

@@ -249,7 +249,9 @@ update has no solution, the `error` event the dashboard's SSE stream and MCP car
 and the `workspace-finish` row of a workspace build whose own lock update has none: `conclusion`, the `packages` in it, every `facts` row (`kind`, `package`, `versions`,
 `from`, `fromVersions`, `pinnedBy`, `available`, `notes`, each present when it says something)
 and the project's own `declared` dependencies behind it
-([Machine output](machine-output.md)).
+([Machine output](machine-output.md)). An agent reads the same facts as text in the MCP `build`
+and `diagnostics` answers: each contested coordinate, who wants which version, and the `why` call
+for it ([MCP](mcp.md#verdict)).
 
 With a BOM: [Platforms](platforms.md).
 

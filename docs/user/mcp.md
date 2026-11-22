@@ -156,6 +156,22 @@ In a module with [`[test] failure-snapshot = true`](test.md#the-state-at-a-failu
 a failed test's block ends with `state when it threw:` and one line per frame: the frame that threw,
 then the project frames above it, each with its arguments and locals.
 
+A failed resolve's block ends with the conflict it ran into, for each contested coordinate:
+`conflict <group:artifact>`, one line per version wanted of it and who wants it (`jk.toml` for
+your own declaration, and the BOM or managed entry that pinned it), `picked none:` and why, and
+the [`why`](#tools) call for that coordinate. The `diagnostics` answer carries the same lines.
+
+```
+FAIL build app · 1 error · 90ms
+E resolve-deps: │ ch.qos.logback:logback-classic 1.5.6 depends on org.slf4j:slf4j-api 2.0.13
+  │ org.apache.zookeeper:zookeeper 3.9.2 depends on org.slf4j:slf4j-api 1.7.36 (pinned by org.apache.zookeeper:zookeeper-bom:3.9.2)
+  conflict org.slf4j:slf4j-api
+    2.0.13 wanted by ch.qos.logback:logback-classic 1.5.6
+    1.7.36 wanted by org.apache.zookeeper:zookeeper 3.9.2, pinned by org.apache.zookeeper:zookeeper-bom:3.9.2
+    picked none: no version satisfies every want
+    why(coord=org.slf4j:slf4j-api)
+```
+
 A failure with no failed step, test or source error carries its reason on the headline, after
 ` — `: the run-level error that decided it, or else the warning the run left.
 
