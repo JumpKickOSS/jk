@@ -26,9 +26,10 @@ the tier `GATE_TIER` names ([tiers](test-suite-tiers.md#gate-tiers)). It takes t
 `jk guard`, then the tier's tests:
 
 - **`GATE_TIER=queue`**, the push gate the [merge queue](#the-merge-queue) runs on every batch:
-  `jk install -c` (every module's fast tier, then the reinstall), then under a freshly started
-  engine the integration suite of each module changed since `GATE_BASE`
-  (`scripts/gate/changed-modules.sh`) and the curated lane's classes in the other modules.
+  `jk install -S` (the reinstall without tests), then under a freshly started engine
+  `jk install -c` (every module's fast tier, then the reinstall), the integration suite of each
+  module changed since `GATE_BASE` (`scripts/gate/changed-modules.sh`) and the curated lane's
+  classes in the other modules.
 - **`GATE_TIER=full`** (the default): `jk install -S` (the reinstall without tests), `jk install -g`
   under a freshly started engine (the one run of the fast tier, with the gated tiers), then
   `jk test -s release`, `jk test -s slow` when a member under `plugins/` or a root build file
@@ -39,8 +40,10 @@ the tier `GATE_TIER` names ([tiers](test-suite-tiers.md#gate-tiers)). It takes t
   `GATE_BASE` is [docs-only](#docs-only-changes): `jk guard` and `bench/scoreboard --render --check`,
   no install and no test. It is red over a range that is not docs-only.
 
-The Queue and Full tiers then check that the engine which served the tests is the tip's and run the
-shell fixtures. Each tier writes `GREEN <sha>` or `RED` to `integ-gate-<n>.log` under
+Both reinstall before any test runs, because a test's verdict is keyed by the engine that ran it:
+a batch that changes the engine reruns every suite under its own engine, and the next gate reuses
+those verdicts for every module it did not change. The Queue and Full tiers then check that the
+engine which served the tests is the tip's and run the shell fixtures. Each tier writes `GREEN <sha>` or `RED` to `integ-gate-<n>.log` under
 `GATE_LOG_DIR`. A gate never pushes.
 The header of `scripts/gate/gate.sh` lists its settings; `scripts/test-gate.sh` runs it against a
 stand-in `jk`.

@@ -6,9 +6,11 @@
 # install that runs tests (the fast tier once, under the engine the reinstall before it installed),
 # a red push gate run once more to record its flaky classes and still red, red at the reinstall
 # when it fails, and refused on a dirty checkout. Last the Queue tier, in a scratch workspace: the
-# members a range changed (none for docs and scripts, every one for a root build file), one install
-# that runs the fast tier, the integration suite of the changed members and the curated lane in the
-# others, a red run excused only when it failed in quarantine, and none of the Full tier's steps.
+# members a range changed (none for docs and scripts, every one for a root build file), the
+# reinstall without tests and then, under the engine it installed, one install that runs the fast
+# tier (red at the reinstall when it fails, before any test), the integration suite of the changed
+# members and the curated lane in the others, a red run excused only when it failed in quarantine,
+# and none of the Full tier's steps.
 # In the same workspace, the Full tier runs the slow tier only when a plugin changed since its base,
 # and is red when a suite was seen reading a doc that scripts/gate/test-reads.txt does not list. The
 # docs tier runs guard and the scoreboard check alone, and is red over a range that is not docs-only.
@@ -292,7 +294,7 @@ tip="$qtip"
 gate 5 GATE_TIER=queue GATE_BASE="$qbase"
 [[ "$(verdict 5)" == "GREEN $tip" ]] || fail "a green Queue tier was not green: $(cat "$WORK/logs/integ-gate-5.log")"
 got="$(sed -n '/^install /,$p' "$WORK/calls-5" | grep -E '^(install|engine stop|test)')"
-want="$(printf '%s\n' 'install -c' 'engine stop' \
+want="$(printf '%s\n' 'install -S' 'engine stop' 'install -c' 'engine stop' \
   'test -s integration -c -X --no-ansi -m mod/a -m mod/a/packs/p' \
   'test -s integration --no-ansi -m mod/b --class b.CuratedBTest')"
 [[ "$got" == "$want" ]] || fail "the Queue tier ran:
@@ -301,6 +303,11 @@ want:
 $want"
 grep -q '^CHANGED_MODULES since .*: mod/a mod/a/packs/p' "$WORK/logs/integ-gate-5.log" || fail "the log does not name the changed members"
 if grep -q '^RELEASE_SUITE_EXIT' "$WORK/logs/integ-gate-5.log"; then fail "the Queue tier ran the release suite"; fi
+
+# The reinstall red: the gate stops there, and no test ran under the previous engine.
+gate 22 GATE_TIER=queue GATE_BASE="$qbase" FAIL_REINSTALL=1
+[[ "$(verdict 22)" == "RED (reinstall)" ]] || fail "a failed reinstall did not stop the Queue tier: $(cat "$WORK/logs/integ-gate-22.log")"
+if grep -qE '^(install -c|test )' "$WORK/calls-22"; then fail "the Queue tier ran tests after a failed reinstall: $(cat "$WORK/calls-22")"; fi
 
 # Red only in a quarantined class: excused, and green. Red in another class too: red, naming the run.
 printf '2000-01-01T00:00:00Z\tquarantined\tcc.jumpkick:jk-engine\ta.FlakyTest\tfake-9\n' >>"$WORK/logs/flaky-history.tsv"
@@ -412,4 +419,4 @@ if [[ -z "${TEST_GATE_NESTED:-}" ]]; then
     fail "under a Queue-tier gate's environment: $(cat "$WORK/nested.log")"
 fi
 
-echo "test-gate: ok (flaky record and quarantine; 21 gate runs; again under a gate's environment)"
+echo "test-gate: ok (flaky record and quarantine; 22 gate runs; again under a gate's environment)"

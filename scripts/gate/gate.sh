@@ -1,23 +1,25 @@
 #!/usr/bin/env bash
 # The gate a tip must pass, in one of three tiers. Each detaches a checkout at the tip, runs
 # `jk guard` and never pushes; the Full and Queue tiers then check that the engine which served the
-# tests is the tip's and run the shell fixtures.
+# tests is the tip's and run the shell fixtures. Both start with the reinstall without tests
+# (`jk install -S`), so every test they run runs under the tip's own engine: test verdicts are keyed
+# by the engine that ran them, so a change to the engine reruns every suite in the gate that lands
+# it, and the gate after it reuses them.
 #
-# The Full tier (GATE_TIER=full, the default): the reinstall without tests (`jk install -S`), then
-# `jk install -g -c` (the fast tier with the gated tiers, run once) under a freshly started engine,
-# the release suite, the slow tier when a plugin (a member under plugins/) or a root build file
-# changed since GATE_BASE, the release notes, and a check that scripts/gate/test-reads.txt lists every
-# doc the suites were seen reading (scripts/gate/docs-only.sh check). A red `jk install -g` runs once
-# more, only to record the classes that pass on that re-run as flaky (scripts/gate/flaky.sh); its
-# verdict stays red.
+# The Full tier (GATE_TIER=full, the default): after the reinstall, `jk install -g -c` (the fast
+# tier with the gated tiers, run once) under a freshly started engine, the release suite, the slow
+# tier when a plugin (a member under plugins/) or a root build file changed since GATE_BASE, the
+# release notes, and a check that scripts/gate/test-reads.txt lists every doc the suites were seen
+# reading (scripts/gate/docs-only.sh check). A red `jk install -g` runs once more, only to record
+# the classes that pass on that re-run as flaky (scripts/gate/flaky.sh); its verdict stays red.
 #
-# The Queue tier (GATE_TIER=queue), the one that blocks a push from the merge queue: one install
-# that runs every module's fast tier (`jk install -c`), then, under a freshly started engine, the
-# integration suite of each module changed since GATE_BASE (scripts/gate/changed-modules.sh; every
-# module when a root build file changed) and the curated lane's classes (curated-integration.txt)
-# in the other modules. A run red only in quarantined classes (`flaky.sh excused`) passes; a run red
-# in other classes runs them once more under the same inputs, and passes when they pass there,
-# recorded as flaky. Each class still red is a `FAILED <module> <class>` line of the log, its
+# The Queue tier (GATE_TIER=queue), the one that blocks a push from the merge queue: after the
+# reinstall, one install that runs every module's fast tier (`jk install -c`), then, under a
+# freshly started engine, the integration suite of each module changed since GATE_BASE
+# (scripts/gate/changed-modules.sh; every module when a root build file changed) and the curated
+# lane's classes (curated-integration.txt) in the other modules. A run red only in quarantined
+# classes (`flaky.sh excused`) passes; a run red in other classes runs them once more under the
+# same inputs, and passes when they pass there, recorded as flaky. Each class still red is a `FAILED <module> <class>` line of the log, its
 # failure in g<n>-failures.txt.
 #
 # The docs tier (GATE_TIER=docs), which the merge queue runs in place of the Queue tier when
@@ -132,6 +134,19 @@
     done_gate
   fi
 
+  # The reinstall without tests, first: a change to the engine changes the stamp of every module's
+  # test run, so tests run before it would run under the previous engine and leave verdicts that the
+  # next gate, under this one, could not reuse. Then stop the engine the steps above ran on, so it
+  # cannot serve the tests; the next jk starts a fresh one from the jar just installed.
+  jk install -S >"$D/g$n-reinstall.log" 2>&1
+  m=$?
+  echo "REINSTALL_EXIT=$m $(date +%H:%M:%S)" >>"$L"
+  if [ "$m" -ne 0 ]; then
+    noansi "$D/g$n-reinstall.log" | grep -vE '^\s*$' | tail -20 >>"$L"
+    red "RED (reinstall)"
+  fi
+  jk engine stop >/dev/null 2>&1
+
   m=0 s=0 r=0 rn=0 sl=0 dr=0
   if [ "$tier" = queue ]; then
     # tested <label> <excusable> <jk args...>: one jk run that runs tests, its exit in $e. A red run
@@ -176,8 +191,8 @@
       echo "EXCUSED $1: red only in quarantined classes" >>"$L"
     }
 
-    # The one install: every module's fast tier, then the reinstall. Nothing after it runs the fast
-    # tier again, so the reinstall's new engine stamp re-runs nothing.
+    # The one install that runs tests: every module's fast tier under the engine just installed,
+    # then the reinstall, which installs that same engine again.
     tested install "" install -c
     m=$e
     echo "INSTALL_EXIT=$m $(date +%H:%M:%S)" >>"$L"
@@ -212,20 +227,6 @@
       done < <(JK=jk bash scripts/curated-integration.sh --print)
     fi
   else
-    # Reinstall without tests: `jk install -g` below runs the fast tier with the gated tiers. A merge
-    # gate here would run the fast tier twice: a reinstall that changes the engine jar changes the
-    # stamp of every module's test run, so `jk install -g` would not reuse a single verdict of it.
-    jk install -S >"$D/g$n-reinstall.log" 2>&1
-    m=$?
-    echo "REINSTALL_EXIT=$m $(date +%H:%M:%S)" >>"$L"
-    if [ "$m" -ne 0 ]; then
-      noansi "$D/g$n-reinstall.log" | grep -vE '^\s*$' | tail -20 >>"$L"
-      red "RED (reinstall)"
-    fi
-    # Stop the engine the steps above ran on so it cannot serve the tests; `jk install -g` starts a
-    # fresh one from the jar just installed.
-    jk engine stop >/dev/null 2>&1
-
     jk install -g -c >"$D/g$n-snapshot.log" 2>&1
     s=$?
     echo "PUSHGATE_EXIT=$s $(date +%H:%M:%S)" >>"$L"

@@ -214,8 +214,9 @@ work on something else and read answers with `ka inbox`. Stopping without finish
 - **Push gate** — the Queue tier, on the exact commit that becomes `origin/main`. The merge queue
   on bocabox runs it, as `scripts/gate/gate.sh` with `GATE_TIER=queue`, on each batch of submitted
   branches under the host's gate lock; nobody else pushes `main` (see
-  [Landing on `origin/main`](#landing-on-originmain)). The Queue tier: `jk guard`, one `jk install`
-  (every module's fast tier, then the reinstall), the integration suite of each module the batch
+  [Landing on `origin/main`](#landing-on-originmain)). The Queue tier: `jk guard`, `jk install -S` (the
+  reinstall without tests, so the tests run under the batch's own engine), one `jk install` (every
+  module's fast tier, then the reinstall), the integration suite of each module the batch
   changed and the [curated lane](docs/contributors/test-suite-tiers.md#the-curated-integration-lane)
   in the others, and the shell fixtures; a failure only in a quarantined class does not block it.
 - **Full tier** — `scripts/gate/gate.sh` with `GATE_TIER=full`: `jk guard`, `jk install -S` (the
@@ -250,7 +251,7 @@ work on something else and read answers with `ka inbox`. Stopping without finish
 | `jk guard docs` | The text rules that read Markdown, no build | A docs-only commit |
 | `jk install` | Exactly what `jk build` runs (every module compiled and packaged, its fast tier, the model/module/workspace/output lanes), then the reinstall | Every local merge |
 | `scripts/queue/branch-tier.sh` | `jk guard`, then the fast tier of the modules the branch changed | Before submitting a branch to the merge queue |
-| `GATE_TIER=queue scripts/gate/run.sh <n> <sha>` | The Queue tier: guard, one install, the changed modules' integration suites, the curated lane, the shell fixtures | Every batch the merge queue lands (the push gate) |
+| `GATE_TIER=queue scripts/gate/run.sh <n> <sha>` | The Queue tier: guard, the reinstall without tests, one install, the changed modules' integration suites, the curated lane, the shell fixtures | Every batch the merge queue lands (the push gate) |
 | `jk install -g` | Engine/CLI e2e, workers, install, lock: every integration class | The Full tier, back to back behind the queue (`scripts/gate/full-loop.sh`) |
 | `jk test -s slow` | Framework and language e2e (Android, Grails, Scala, KSP, Protobuf) | Before submitting a plugin or toolchain change; the Full tier when a plugin changed since `green`; nightly |
 

@@ -150,10 +150,10 @@ jk install -g                                # every integration and e2e class: 
 ```
 
 The first two are the merge gate, run before every local merge into `main`. A branch reaches
-`origin/main` through the merge queue, whose Queue tier is the push gate: guard, one install, the
-integration suites of the modules the batch changed and the curated lane. `jk install -g` (the
-default suite, `integration` and `e2e`, against the JumpKick it installs) is the Full tier's, which
-runs behind it. The fleet's gate hosts run either as `scripts/gate/run.sh <n> <sha>`
+`origin/main` through the merge queue, whose Queue tier is the push gate: guard, the reinstall
+without tests, one install, the integration suites of the modules the batch changed and the curated
+lane. `jk install -g` (the default suite, `integration` and `e2e`, against the JumpKick it
+installs) is the Full tier's, which runs behind it. The fleet's gate hosts run either as `scripts/gate/run.sh <n> <sha>`
 ([self-host](docs/contributors/self-host.md#the-gate),
 [tiers](docs/contributors/test-suite-tiers.md#gate-tiers)).
 
