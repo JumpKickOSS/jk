@@ -8,13 +8,15 @@ nothing else is running.
 
 | Trigger | Behavior |
 |---------|----------|
-| **First engine start** | Queue idle warmup (feeds → templates → calibration) |
+| **First engine start** | Queue idle warmup (calibration) |
 | **Every minute** | Poll `config.toml` mtime (reload policy); check the wall-clock 12 h stamp |
-| **Every ~12 h wall-clock** (laptop-safe) | Feeds + `jk-templates` freshen + cache GC enqueue + calibration if still missing or stale |
+| **Every ~12 h wall-clock** (laptop-safe) | Startup-cache sweep + cache GC enqueue + calibration if still missing or stale |
 | **JDK / JumpKick version change** | Calibration re-probes when the host JDK id or the JumpKick version no longer matches |
 
 The 12 h interval is **wall-clock since the last stamp**, checked each minute — a laptop that
-never stays up 12 hours continuously still refreshes after resume once 12 h have elapsed.
+never stays up 12 hours continuously still runs the cycle after resume once 12 h have elapsed.
+The cycle asks nothing of the network: the price table, the library registry, the JDK catalog and
+the official templates come from the engine's [update check](../user/config.md#updates) alone.
 
 Disable with user config:
 
@@ -25,16 +27,13 @@ auto-warmup = false
 
 Or env: `JK_AUTO_WARMUP=off`.
 
-## Warmup order (idle worker)
+## Warmup (idle worker)
 
-1. **`libs.global.toml`** — `<store>/libs.global.toml` (`JkDirs.libraryRegistry()`); conditional GET / ETag (skip if fresh)
-2. **`jdks.json`** — TTL + If-Modified-Since
-3. **Official `jk-templates` shallow clone** — `<store>/templates` (`JkDirs.templates()`); `git fetch --depth 1` / clone
-4. **Host calibration** — only if missing or stale for this JumpKick version + JDK
-
-Steps 1–3 belong to the maintenance cycle (`EngineMaintenance`) and run whether or not
-`auto-warmup` is on; step 4 is `HostWarmup`, behind the switch. Network errors are **fail-fast and
-quiet** (no retries). The next minute/12 h cycle or engine restart tries again.
+**Host calibration** runs only when missing or stale for this JumpKick version + JDK. It is
+`HostWarmup`, behind the `auto-warmup` switch. The library registry (`<store>/libs.global.toml`), the
+JDK catalog (`<store>/jdks.json`) and the official `jk-templates` clone (`<store>/templates`) are
+`UpdateCheck`'s, on `UpdateScheduler`'s timing, whether or not `auto-warmup` is on. Network errors
+are **fail-fast and quiet** (no retries); the next check or engine restart tries again.
 
 ## What calibration writes
 
@@ -49,7 +48,7 @@ and the next engine rebuilds what it needs.
 
 Work runs on a **daemon idle thread** when `activeBuildPlans == 0` so client builds are not
 blocked. Within a maintenance workset, **`System.gc()` is always last** — after prune,
-journal and run retention, feeds/templates and calibration — so the heap is not
+journal and run retention and calibration — so the heap is not
 shrunk mid-chore.
 
 ## Worker startup caches

@@ -19,9 +19,9 @@ import org.junit.platform.launcher.listeners.TestExecutionSummary;
 class StoreWipeBoundaryTest {
 
     @Test
-    void a_feed_refresh_class_after_a_store_wipe_class_still_fetches() {
+    void an_update_check_class_after_a_store_wipe_class_still_applies() {
         LauncherDiscoveryRequest request = LauncherDiscoveryRequestBuilder.request()
-                .selectors(selectClass(WipesTheStore.class), selectClass(StoreFeedRefreshTest.class))
+                .selectors(selectClass(WipesTheStore.class), selectClass(UpdateCheckTest.class))
                 .configurationParameter(
                         "junit.jupiter.testclass.order.default", ClassOrderer.OrderAnnotation.class.getName())
                 .configurationParameter("junit.jupiter.conditions.deactivate", "org.junit.*DisabledCondition")
@@ -34,12 +34,12 @@ class StoreWipeBoundaryTest {
                 .extracting(f -> f.getTestIdentifier().getDisplayName() + ": " + f.getException())
                 .isEmpty();
         assertThat(summary.getTestsSucceededCount())
-                .as("the wipe and every feed refresh case ran")
+                .as("the wipe and every update check case ran")
                 .isGreaterThan(1);
         assertThat(StoreWriteGate.wipedSinceStart()).isFalse();
     }
 
-    /** Runs only inside the launcher above, ahead of the feed refresh class. */
+    /** Runs only inside the launcher above, ahead of the update check class. */
     @Disabled("run by StoreWipeBoundaryTest")
     @Order(1)
     static class WipesTheStore {

@@ -371,13 +371,6 @@ public final class EngineServer implements AutoCloseable {
     /** Decides, once a second, whether this engine is primary, displaced or orphaned. */
     private final DisplacementWatchdog watchdog;
 
-    /**
-     * Quiet background revalidation of {@code store/libs.global.toml} and {@code store/jdks.json}
-     * (every 12 h). Started only after winning the resident-engine election — never in {@code --job}
-     * mode.
-     */
-    private @Nullable StoreFeedRefresh storeFeedRefresh;
-
     /** One-minute chore loop (config mtime + wall-clock 12 h maintenance). */
     private @Nullable EngineMaintenance engineMaintenance;
 
@@ -807,7 +800,6 @@ public final class EngineServer implements AutoCloseable {
         connectionExecutor = Executors.newThreadPerTaskExecutor(
                 Thread.ofPlatform().daemon().name("jk-engine-conn-", 0).factory());
         EngineStartup.Started started = new EngineStartup(version, pid, election, http, journal, idle, log).run(won);
-        storeFeedRefresh = started.feeds();
         engineMaintenance = started.maintenance();
         engineMaintenance.onTick(() -> {
             sessionLog.sweep();
@@ -1198,10 +1190,6 @@ public final class EngineServer implements AutoCloseable {
         if (diskWatch != null) {
             diskWatch.close();
             diskWatch = null;
-        }
-        if (storeFeedRefresh != null) {
-            storeFeedRefresh.close();
-            storeFeedRefresh = null;
         }
         // The bound-URL file is shared with a successor; retire() drops it only while it is ours.
         http.close();

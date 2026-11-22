@@ -37,10 +37,7 @@ public final class JdkCatalogClient {
 
     public static final String DEFAULT_FEED_URL = "https://download.jetbrains.com/jdk/feed/v1/jdks.json";
 
-    /**
-     * 12 h — matches the resident engine's quiet revalidation cadence for store feeds
-     * ({@code libs.global.toml} + this file).
-     */
+    /** How long a cached catalog is used before a command that needs it asks the feed again. */
     public static final Duration DEFAULT_TTL = Duration.ofHours(12);
 
     private static final DateTimeFormatter HTTP_DATE =

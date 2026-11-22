@@ -128,7 +128,7 @@ public final class LockCommand implements CliCommand {
         // Ensure libs.global.toml exists (first-time download) and revalidate when present —
         // before anything parses jk.toml short names. Engine-hosted (JIT, no client-side TTL): the
         // CLI never talks to the library registry's network itself, and the engine reads the same
-        // on-disk file this writes, closing the race with background StoreFeedRefresh.
+        // on-disk file this writes, closing the race with the background update check.
         EngineCatalogFreshen.freshenCatalog(
                 EnginePaths.current(),
                 "libraries",

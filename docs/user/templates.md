@@ -177,8 +177,9 @@ corp = { url = "https://git.example/corp/jk-templates.git", rev = "main" }
 ```
 
 Configured sources are cloned into the artifact store (`<store>/templates`,
-next to `libs.global.toml`) alongside the official catalog and refreshed the
-same way; their short names resolve in `jk new -t` and appear in the picker.
+next to `libs.global.toml`) alongside the official catalog and fetched with it
+when `jk new -t` names a short name; their short names resolve in `jk new -t`
+and appear in the picker.
 Override the store root with `JK_STORE_DIR`. For a one-off template that isn't
 in a configured catalog, pass its git/HTTPS URL (or a local path) directly to
 `-t`.

@@ -4,17 +4,13 @@ package cc.jumpkick.engine;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.engine.plugin.StartupCaches;
-import cc.jumpkick.http.Http;
-import com.sun.net.httpserver.HttpServer;
-import java.net.InetSocketAddress;
-import java.net.URI;
+import cc.jumpkick.testing.RepoRoot;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -24,8 +20,7 @@ class EngineMaintenanceTest {
     void config_delete_and_recreate_both_count_as_changes(@TempDir Path dir) throws Exception {
         Path cfg = dir.resolve("config.toml");
         List<String> log = new ArrayList<>();
-        try (EngineMaintenance m =
-                new EngineMaintenance(log::add, new StoreFeedRefresh(s -> {}), () -> {}, dir.resolve("stamp"), cfg)) {
+        try (EngineMaintenance m = new EngineMaintenance(log::add, () -> {}, dir.resolve("stamp"), cfg)) {
 
             Files.writeString(cfg, "[engine]\n");
             m.maybeReloadConfig(); // first tick: baseline, no log
@@ -53,8 +48,8 @@ class EngineMaintenanceTest {
     @Test
     void absent_config_on_first_tick_stays_quiet(@TempDir Path dir) throws Exception {
         List<String> log = new ArrayList<>();
-        try (EngineMaintenance m = new EngineMaintenance(
-                log::add, new StoreFeedRefresh(s -> {}), () -> {}, dir.resolve("stamp"), dir.resolve("config.toml"))) {
+        try (EngineMaintenance m =
+                new EngineMaintenance(log::add, () -> {}, dir.resolve("stamp"), dir.resolve("config.toml"))) {
             m.maybeReloadConfig();
             m.maybeReloadConfig();
             assertThat(log).isEmpty();
@@ -81,56 +76,18 @@ class EngineMaintenanceTest {
     }
 
     /**
-     * A host offline by its user config asks neither feed on the 12 h cycle, and the cycle's local
-     * chores still run; the same host online asks both.
+     * The update check alone keeps the price table, the library registry, the JDK catalog and the
+     * official templates current; the maintenance cycle fetches none of them.
      */
     @Test
-    void an_offline_host_sends_no_feed_request_on_the_maintenance_cycle(@TempDir Path dir) throws Exception {
-        assertThat(feedRequests(dir.resolve("offline"), true))
-                .as("requests while offline")
-                .isZero();
-        assertThat(feedRequests(dir.resolve("online"), false))
-                .as("requests while online")
-                .isEqualTo(2);
-    }
-
-    /** The requests one due cycle sends a loopback feed server, the host offline or not; asserts the cycle ran. */
-    private static int feedRequests(Path dir, boolean offline) throws Exception {
-        AtomicInteger requests = new AtomicInteger();
-        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-        server.createContext("/", exchange -> {
-            requests.incrementAndGet();
-            exchange.sendResponseHeaders(404, -1);
-            exchange.close();
-        });
-        server.start();
-        URI base = URI.create("http://127.0.0.1:" + server.getAddress().getPort() + "/");
-        Path state = Files.createDirectories(dir.resolve("state"));
-        List<String> due = new ArrayList<>();
-        System.setProperty("jk.env.JK_STATE_DIR", state.toString());
-        try (StoreFeedRefresh feeds = new StoreFeedRefresh(
-                        s -> {},
-                        new Http(),
-                        () -> dir.resolve("libs.global.toml"),
-                        () -> dir.resolve("jdks.json"),
-                        base.resolve("libraries.toml"),
-                        base.resolve("jdks.json"),
-                        null);
-                EngineMaintenance m = new EngineMaintenance(
-                        s -> {},
-                        feeds::refreshFeedsQuietly,
-                        () -> offline,
-                        () -> due.add("due"),
-                        dir.resolve("stamp"),
-                        dir.resolve("config.toml"))) {
-            m.tickQuietly();
-        } finally {
-            System.clearProperty("jk.env.JK_STATE_DIR");
-            server.stop(0);
-        }
-        assertThat(due).as("the cycle's local chores").containsExactly("due");
-        assertThat(dir.resolve("stamp")).exists();
-        return requests.get();
+    void the_maintenance_cycle_fetches_no_feed_or_template() throws Exception {
+        String source = Files.readString(RepoRoot.file(
+                EngineMaintenanceTest.class, "server/engine/src/main/java/cc/jumpkick/engine/EngineMaintenance.java"));
+        assertThat(source)
+                .doesNotContain("cc.jumpkick.http")
+                .doesNotContain("LibraryRegistry")
+                .doesNotContain("JdkCatalog")
+                .doesNotContain("OfficialTemplatesFreshen");
     }
 
     /** Another version's cache and one of {@code version} unmapped for 13 h, after one tick under {@code version}. */
@@ -149,18 +106,13 @@ class EngineMaintenanceTest {
         System.setProperty("jk.env.JK_STATE_DIR", state.toString());
         StartupCaches.pinVersionForTests(version);
         try (EngineMaintenance m = new EngineMaintenance(
-                s -> {},
-                () -> due.add("fetches"),
-                () -> false,
-                () -> due.add("due"),
-                dir.resolve("stamp"),
-                dir.resolve("config.toml"))) {
+                s -> {}, () -> due.add("due"), dir.resolve("stamp"), dir.resolve("config.toml"))) {
             m.tickQuietly();
         } finally {
             StartupCaches.pinVersionForTests(null);
             System.clearProperty("jk.env.JK_STATE_DIR");
         }
-        assertThat(due).containsExactly("fetches", "due");
+        assertThat(due).containsExactly("due");
         return new Swept(otherVersion, unused);
     }
 }

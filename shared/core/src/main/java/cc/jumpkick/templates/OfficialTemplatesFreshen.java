@@ -33,8 +33,8 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * Shallow clone / fetch of the official Giter8 monorepo ({@code JumpKickOSS/jk-templates}) for engine
- * self-heal and short-name resolution. Fail-fast, quiet, no retries — next 12 h cycle or engine
- * restart will try again.
+ * short-name resolution and the engine's update check. Fail-fast, quiet, no retries — the next
+ * request or update check tries again.
  *
  * <p>Clones land under {@link JkDirs#templates()} ({@code <store>/templates}), one subdirectory
  * per source cache key.
@@ -54,9 +54,9 @@ public final class OfficialTemplatesFreshen {
 
     /**
      * Best-effort freshen; never throws. Network / missing git → silent skip. Attempts are rate
-     * limited to one per cache key per {@link #ATTEMPT_TTL_NANOS} (success <em>or</em> failure) —
-     * for the 12 h maintenance cycle and engine-start warmup, both long-lived-process callers where
-     * the guard actually protects against a hung run retrying itself. {@link #refreshNow} is the
+     * limited to one per cache key per {@link #ATTEMPT_TTL_NANOS} (success <em>or</em> failure), so
+     * short-name resolution on the engine's request path does not retry a failing fetch on every
+     * call. {@link #refreshNow} is the
      * on-demand counterpart for a real user action ({@code jk new}/{@code init}): every call
      * attempts a real fetch, no TTL.
      */

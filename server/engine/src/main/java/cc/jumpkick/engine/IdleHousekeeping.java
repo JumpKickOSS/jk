@@ -250,7 +250,7 @@ public final class IdleHousekeeping {
         if (activeBuildPlans.get() == 0) drainPendingPrune();
     }
 
-    /** 12-hour feed-refresh hook. Does not consult {@code .last-pruned}. */
+    /** The 12-hour maintenance cycle's hook. Does not consult {@code .last-pruned}. */
     public void enqueueScheduledCachePrune() {
         if (shuttingDown.getAsBoolean()) return;
         var config = JkCacheConfig.resolve();

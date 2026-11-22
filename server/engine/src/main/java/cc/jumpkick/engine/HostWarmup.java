@@ -25,9 +25,8 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>Not a user-facing command. Queued on the idle-boundary worker after first start and each
  * wall-clock 12 h maintenance cycle ({@link EngineMaintenance}). Disable with {@code [engine]
- * auto-warmup = false} or {@code JK_AUTO_WARMUP=off}. Store feeds and official templates are
- * {@link EngineMaintenance#runMaintenanceCycle}'s alone: it refreshes both immediately before the
- * hook that reaches this pass, so their cadence has one owner and is not behind the auto-warmup
+ * auto-warmup = false} or {@code JK_AUTO_WARMUP=off}. Store feeds and official templates are the
+ * {@link UpdateCheck}'s alone, so their cadence has one owner and is not behind the auto-warmup
  * switch.
  *
  * <p>The pass writes {@code state/builds/host-estimates.txt} and fetches the probe's worker jars

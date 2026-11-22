@@ -26,11 +26,10 @@ import java.util.Objects;
  *
  * <ul>
  * <li><b>Missing file</b> — fetch once (first-time host / race with the engine's background
- * {@code StoreFeedRefresh}). Fail soft to the bundled catalog if the network is down.
- * <li><b>Fresh file</b> (mtime younger than {@link #FRESH_FOR}) — no network at all. The
- * resident engine keeps the file warm on this same cadence; foreground commands must not stack
- * blocking fetches on top (a blackholed network stalls each one to the full HTTP timeouts, and
- * a stale-lock <em>build</em> reaches here via auto-relock).
+ * update check). Fail soft to the bundled catalog if the network is down.
+ * <li><b>Fresh file</b> (mtime younger than {@link #FRESH_FOR}) — no network at all. Foreground
+ * commands must not stack blocking fetches (a blackholed network stalls each one to the full HTTP
+ * timeouts, and a stale-lock <em>build</em> reaches here via auto-relock).
  * <li><b>Stale file</b> — conditional-GET revalidation; a 304 re-arms the freshness window.
  * <li><b>Failed fetch</b> — the source is not asked again for {@link #RETRY_AFTER}, and the
  * engine log says so once: without the pause an unreachable origin is dialed by every
@@ -41,10 +40,7 @@ import java.util.Objects;
  */
 public final class LibraryRegistrySync {
 
-    /**
-     * How long a downloaded registry counts as fresh. The engine's {@code StoreFeedRefresh}
-     * cadence aliases this so the two never drift apart.
-     */
+    /** How long a downloaded registry counts as fresh. */
     public static final Duration FRESH_FOR = Duration.ofHours(12);
 
     /** How long a source whose fetch failed is left alone before a command asks it again. */

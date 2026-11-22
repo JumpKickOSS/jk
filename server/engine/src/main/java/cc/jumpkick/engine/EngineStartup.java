@@ -26,7 +26,7 @@ import java.util.function.Consumer;
 final class EngineStartup {
 
     /** The two long-lived chores started here; the lifecycle owner closes them at cleanup. */
-    record Started(StoreFeedRefresh feeds, EngineMaintenance maintenance) {}
+    record Started(EngineMaintenance maintenance) {}
 
     private final String version;
     private final long pid;
@@ -148,20 +148,18 @@ final class EngineStartup {
     }
 
     /**
-     * Store feeds are revalidated by HostWarmup / EngineMaintenance (not a 12 h process sleep). The
-     * 1-minute loop reloads config.toml on mtime and runs the wall-clock 12 h maintenance (feeds,
-     * templates, cache prune, calibration); laptop suspend-safe, since due work runs on the next minute
+     * The 1-minute loop reloads config.toml on mtime and runs the wall-clock 12 h maintenance (cache
+     * sweep and prune, calibration); laptop suspend-safe, since due work runs on the next minute
      * tick after resume.
      */
     private Started startChores() {
-        StoreFeedRefresh feeds = new StoreFeedRefresh(log, null);
-        EngineMaintenance maintenance = new EngineMaintenance(log, feeds, idle::enqueueScheduledCachePrune);
+        EngineMaintenance maintenance = new EngineMaintenance(log, idle::enqueueScheduledCachePrune);
         maintenance.start();
-        return new Started(feeds, maintenance);
+        return new Started(maintenance);
     }
 
     /**
-     * First-start self-heal: feeds → templates → host calibration on the idle worker (does not block
+     * First-start self-heal: host calibration on the idle worker (does not block
      * accept), then touch resolve/PubGrub classes so the first real lock does not pay classload on
      * the critical path.
      */

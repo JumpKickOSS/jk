@@ -573,7 +573,7 @@ public final class LockPlans {
      */
     public static LockScope lockScope(Path entryDir, FeatureSelection selection) throws IOException {
         // Ensure libs.global.toml exists before short-name expansion (closes race with the engine's
-        // background StoreFeedRefresh on first start of a host).
+        // background update check on first start of a host).
         LibraryRegistryMirror registry = LibraryRegistryMirror.current();
         LibraryRegistrySync.ensurePresent(
                 SessionContext.current().offline(),

@@ -48,9 +48,8 @@ repository or mirror whose URL is `file:` — a directory on this disk, such as 
 or a Maven local repository — as it reads them online; a repository or mirror reached over the
 network is asked nothing, and what the store already holds from it answers instead. See
 [Repositories § Offline](repositories.md#offline). Set in `~/.jk/config.toml` or by
-`JK_OFFLINE`, it also stops every fetch the engine makes in the background: the update check,
-the 12-hour refresh of the library registry, the JDK catalog and the official templates, and the
-resolve request of the host calibration probe.
+`JK_OFFLINE`, it also stops every fetch the engine makes in the background: the
+[update check](#updates) and the resolve request of the host calibration probe.
 
 **`notify`:** `auto` (default) sends an OSC desktop notification when a build’s ETA **or**
 elapsed time is ≥ 1 minute; `always`/`true` always; `never`/`false` never. A run that puts a
@@ -458,7 +457,8 @@ one raw/generic proxy per host, grouped under one URL. The feed and its checksum
 published, so every archive is verified against the catalog's sha256 whichever host served it.
 
 The library registry is the file behind `jk.toml`'s short library names (`jk library update`
-reads it, and `jk lock` and the engine refresh it every 12 hours). Its public copy is
+fetches it, `jk lock` fetches it when it is missing or 12 hours old, and the engine's
+[update check](#updates) brings a newer copy). Its public copy is
 `https://raw.githubusercontent.com/JumpKickOSS/jk-libraries/refs/heads/main/libraries.toml`;
 a `libraries` mirror (`JK_LIBRARIES_DIST_MIRROR`) is the directory that holds a copy, so JumpKick
 reads `<mirror>libraries.toml`.

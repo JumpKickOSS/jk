@@ -75,8 +75,8 @@ class FreshEngineHostsTest {
 
         assertThat(run("lock", "-C", dir.toString())).isZero();
         assertThat(run("new", dir.resolve("made").toString(), "-N")).isZero();
-        // The engine's first maintenance pass reads both feeds too: wait for it to have asked.
-        awaitRequested(REGISTRY, JDK_FEED);
+        // The JDK catalog is asked when a command needs it; the engine asks only the update manifest.
+        run("jdk", "list");
 
         assertThat(mirror.requested()).contains(REGISTRY, JDK_FEED);
         // And it clones the official catalog from its mirror, the home's local repository.
@@ -145,11 +145,6 @@ class FreshEngineHostsTest {
             Thread.sleep(100);
         }
         return false;
-    }
-
-    /** Until the mirror was asked for every path, at most 30 s. */
-    private void awaitRequested(String... paths) throws InterruptedException {
-        for (int i = 0; i < 300 && !mirror.requested().containsAll(List.of(paths)); i++) Thread.sleep(100);
     }
 
     /**

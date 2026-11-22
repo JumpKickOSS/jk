@@ -1,55 +1,47 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine;
 
-import cc.jumpkick.config.JkConfigLoader;
 import cc.jumpkick.engine.plugin.StartupCaches;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.OwnerOnlyFiles;
 import cc.jumpkick.host.time.Clock;
-import cc.jumpkick.http.ProxyEnvironment;
 import cc.jumpkick.runtime.Calibration;
-import cc.jumpkick.templates.OfficialTemplatesFreshen;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
-import java.util.Objects;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 
 /**
- * One-minute resident-engine chore loop (laptop-safe 12 h maintenance).
+ * One-minute resident-engine chore loop (laptop-safe 12 h maintenance).
  *
  * <ul>
  *   <li>Reload user {@code config.toml} when its mtime changes (best-effort; heap size is not
  *       re-applied to the running JVM).
- *   <li>If wall-clock ≥ 12 h since the last maintenance stamp, run store-feed refresh + templates
- *       freshen + the startup-cache sweep ({@link StartupCaches}) + enqueue cache prune / host
- *       calibration. Heap {@code System.gc()} is
- *       performed only at the end of that workset by the engine (never mid-chore). A host offline
- *       by {@link JkConfigLoader#hostOffline} skips the feeds and templates and runs the rest.
+ *   <li>If wall-clock ≥ 12 h since the last maintenance stamp, run the startup-cache sweep ({@link
+ *       StartupCaches}) and enqueue cache prune / host calibration. Heap {@code System.gc()} is
+ *       performed only at the end of that workset by the engine (never mid-chore).
  * </ul>
  *
- * <p>Does not sleep 12 h continuously — a suspended laptop still sees a due cycle on the next
- * minute tick after resume.
+ * <p>The cycle asks nothing of the network: the price table, the library registry, the JDK catalog
+ * and the official templates are kept current by the {@link UpdateCheck}. Does not sleep 12 h
+ * continuously — a suspended laptop still sees a due cycle on the next minute tick after resume.
  */
 public final class EngineMaintenance implements AutoCloseable {
 
     /** How often we poll config mtime and the 12 h stamp. */
     public static final Duration TICK = Duration.ofMinutes(1);
 
-    /** Wall-clock gap between full maintenance cycles (feeds, templates, cache prune, warmup). */
-    public static final Duration MAINTENANCE_INTERVAL = StoreFeedRefresh.INTERVAL;
+    /** Wall-clock gap between maintenance cycles (startup-cache sweep, cache prune, warmup). */
+    public static final Duration MAINTENANCE_INTERVAL = Duration.ofHours(12);
 
     private final Consumer<String> log;
-    private final Runnable fetches;
-    private final BooleanSupplier offline;
     private final Runnable onMaintenanceDue;
     private final Path stampFile;
     private final Path configFile;
@@ -62,33 +54,16 @@ public final class EngineMaintenance implements AutoCloseable {
     private volatile Runnable onTick = () -> {};
 
     /**
-     * @param onMaintenanceDue after feeds/templates; typically enqueue the cache prune + schedule host
-     *     calibration. Must not throw.
+     * @param onMaintenanceDue after the startup-cache sweep; typically enqueue the cache prune +
+     *     schedule host calibration. Must not throw.
      */
-    public EngineMaintenance(Consumer<String> log, StoreFeedRefresh feeds, Runnable onMaintenanceDue) {
-        this(log, feeds, onMaintenanceDue, JkDirs.state().resolve("engine-maintenance.stamp"), JkDirs.userConfigFile());
+    public EngineMaintenance(Consumer<String> log, Runnable onMaintenanceDue) {
+        this(log, onMaintenanceDue, JkDirs.state().resolve("engine-maintenance.stamp"), JkDirs.userConfigFile());
     }
 
     /** Test seam: injectable stamp + config paths. */
-    EngineMaintenance(
-            Consumer<String> log, StoreFeedRefresh feeds, Runnable onMaintenanceDue, Path stampFile, Path configFile) {
-        this(log, fetches(log, feeds), JkConfigLoader::hostOffline, onMaintenanceDue, stampFile, configFile);
-    }
-
-    /**
-     * Test seam: {@code fetches} stands for the cycle's network half (feeds, templates), which runs
-     * only while {@code offline} is false.
-     */
-    EngineMaintenance(
-            Consumer<String> log,
-            Runnable fetches,
-            BooleanSupplier offline,
-            Runnable onMaintenanceDue,
-            Path stampFile,
-            Path configFile) {
+    EngineMaintenance(Consumer<String> log, Runnable onMaintenanceDue, Path stampFile, Path configFile) {
         this.log = log != null ? log : s -> {};
-        this.fetches = Objects.requireNonNull(fetches, "fetches");
-        this.offline = Objects.requireNonNull(offline, "offline");
         this.onMaintenanceDue = onMaintenanceDue != null ? onMaintenanceDue : () -> {};
         this.stampFile = stampFile;
         this.configFile = configFile;
@@ -182,24 +157,12 @@ public final class EngineMaintenance implements AutoCloseable {
         }
     }
 
-    /** Store feeds, then the official templates: the cycle's network half; each quiet on failure. */
-    private static Runnable fetches(Consumer<String> log, StoreFeedRefresh feeds) {
-        Objects.requireNonNull(feeds, "feeds");
-        Consumer<String> sink = log != null ? log : s -> {};
-        return () -> {
-            feeds.refreshFeedsQuietly();
-            OfficialTemplatesFreshen.refreshQuiet(sink, ProxyEnvironment.ambient()::gitHttpProxy);
-        };
-    }
-
     /**
-     * Full cycle: store feeds and official templates unless the host is offline, the startup-cache
-     * sweep, then prune/warmup enqueue, then stamp. Failures inside each are already quiet.
+     * Full cycle: the startup-cache sweep, then prune/warmup enqueue, then stamp. Failures inside
+     * each are already quiet.
      */
     void runMaintenanceCycle() {
         if (closed.get()) return;
-        // Read per cycle, from the user config and not the session: no request asked for this fetch.
-        if (!offline.getAsBoolean()) fetches.run();
         // A snapshot jk's caches unmapped for 12 h go on this cycle too, not only when an engine starts.
         StartupCaches.sweepQuietly(log);
         try {
@@ -213,11 +176,7 @@ public final class EngineMaintenance implements AutoCloseable {
         }
     }
 
-    /**
-     * Stop the loop and give a chore in flight the moment to end: an interrupted templates clone
-     * kills its git subprocess only when its thread gets to run the interrupt, and a JVM that
-     * exits first leaves that git writing into the store the engine was stopped to release.
-     */
+    /** Stop the loop and give a chore in flight the moment to end before the JVM exits. */
     @Override
     public void close() {
         if (!closed.compareAndSet(false, true)) return;
