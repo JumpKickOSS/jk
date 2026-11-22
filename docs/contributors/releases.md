@@ -193,6 +193,19 @@ Wire Firebase Hosting (or Firebase CDN / load balancer) so `jumpkick.build/relea
 served from the GCS prefix `releases/*` (custom domain + backend bucket, or Hosting rewrites
 to Cloud Storage — either is fine as long as the URL layout above is public HTTPS).
 
+### The update manifest (jk-updates)
+
+The signed manifest a running engine reads between releases ([Updates](../user/config.md#updates))
+is published from its own repository, JumpKickOSS/jk-updates, by a GitHub Actions job that signs
+it with the release key whenever a data change merges, and every three hours after refreshing the
+copies it carries of the library registry, the JDK feed, the jk-templates revision and the current
+release. That repository's workflow, scripts and README are kept here under
+[`hosting/jk-updates/`](../../hosting/jk-updates/README.md), tested by `scripts/test-jk-updates.sh`
+with a throwaway key; its data files live only there. The job uploads to `gs://jumpkick/updates/`
+and `firebase.json` redirects `/updates.json` and each file beside it there; a new kind of data
+needs its own redirect. `hosting/jk-updates/scripts/verify-served.sh
+https://jumpkick.build/updates.json` checks the live copy.
+
 ## Signing
 
 Two signatures, different jobs:
@@ -698,7 +711,9 @@ branch>` makes `jk new` scaffold from templates that are not published yet.
 ## Rotation
 
 1. Generate a new RSA-3072 keypair in owner-only credential storage.
-2. Replace the Java SPKI and installer SPKI/modulus/exponent together.
+2. Replace the Java SPKI and installer SPKI/modulus/exponent together, and
+   `hosting/jk-updates/release-key.spki` (copied to jk-updates) with them.
 3. Run the public-key consistency and installer verification fixtures.
 4. Replace the Actions secret only after the clients and public installers carrying the new key
    are ready to publish atomically.
+   jk-updates' `publish` environment holds the same secret: replace it at the same moment.

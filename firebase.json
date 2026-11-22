@@ -39,6 +39,31 @@
         "type": 302
       },
       {
+        "source": "/updates.json",
+        "destination": "https://storage.googleapis.com/jumpkick/updates/updates.json",
+        "type": 302
+      },
+      {
+        "source": "/updates.json.sig",
+        "destination": "https://storage.googleapis.com/jumpkick/updates/updates.json.sig",
+        "type": 302
+      },
+      {
+        "source": "/prices.toml",
+        "destination": "https://storage.googleapis.com/jumpkick/updates/prices.toml",
+        "type": 302
+      },
+      {
+        "source": "/libraries.toml",
+        "destination": "https://storage.googleapis.com/jumpkick/updates/libraries.toml",
+        "type": 302
+      },
+      {
+        "source": "/jdks.json",
+        "destination": "https://storage.googleapis.com/jumpkick/updates/jdks.json",
+        "type": 302
+      },
+      {
         "source": "/repo",
         "destination": "https://storage.googleapis.com/jumpkick/repo/",
         "type": 302

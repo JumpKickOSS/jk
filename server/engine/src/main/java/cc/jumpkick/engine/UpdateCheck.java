@@ -169,11 +169,11 @@ public final class UpdateCheck {
         Files.deleteIfExists(LibraryCatalog.etagFileFor(file));
     }
 
-    /** Keep {@code bytes} as the JDK catalog when they are JSON. */
+    /** Keep {@code bytes} as the JDK catalog when they are the feed's JSON: an object whose {@code jdks} is an array. */
     static void applyJdks(byte[] bytes, Path file) throws IOException {
         try {
-            if (!(MiniJson.parse(new String(bytes, StandardCharsets.UTF_8)) instanceof List<?>)) {
-                throw new IOException("JDK catalog is not a JSON array");
+            if (!(MiniJson.get(MiniJson.parse(new String(bytes, StandardCharsets.UTF_8)), "jdks") instanceof List<?>)) {
+                throw new IOException("JDK catalog is not the JDK feed: no jdks array");
             }
         } catch (RuntimeException e) {
             throw new IOException("JDK catalog is not JSON", e);

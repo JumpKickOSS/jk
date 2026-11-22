@@ -1,0 +1,134 @@
+# Publish the signed update manifest every JumpKick engine reads: https://jumpkick.build/updates.json,
+# and the same files on this repository's main branch, which engines ask when jumpkick.build does
+# not answer.
+#
+# Trigger:
+#   push to main      — a change to prices.toml (or any data file) publishes as it is
+#   schedule          — first refreshes the copies of other sources (scripts/refresh.sh: the library
+#                       registry, the JDK feed, the jk-templates revision, the current release)
+#   workflow_dispatch — the same refresh, and uploads even when nothing changed, to repair the bucket
+#
+# The chain: assemble and sign updates.json with the release key (scripts/assemble.sh refuses a
+# prices.toml whose published date did not move forward, and any key but the release key), commit
+# it to main, upload the files to the bucket behind jumpkick.build with the manifest last, and
+# check the served copy is the one just signed (scripts/verify-served.sh). A run that changes
+# nothing commits and uploads nothing.
+#
+# Secrets of the `publish` environment (deployment branch main, no reviewer, so a merged data
+# change publishes on its own):
+#   JK_RELEASE_RSA_SIGNING_KEY — base64 PKCS#8 DER RSA-3072 private key, the JumpKick release key
+#   JK_RELEASE_GCS_BUCKET      — GCS bucket name (no gs://), e.g. jumpkick
+#   JK_RELEASE_GCS_SA_JSON     — GCP service-account JSON with storage.objectAdmin on the bucket
+# GITHUB_TOKEN (automatic) writes the signed manifest to main; a push made with it starts no
+# workflow, so the commit does not publish again.
+
+name: Publish
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - README.md
+      - updates.json
+      - updates.json.sig
+  schedule:
+    - cron: "17 */3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One publish at a time, never cancelled half-way: each run starts from the main the last one left.
+concurrency:
+  group: publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Sign + publish updates.json
+    runs-on: ubuntu-latest
+    environment:
+      name: publish
+      url: https://jumpkick.build/updates.json
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+
+      # A source that fails keeps its current copy and turns the run red once the rest is published.
+      - name: Refresh the copies of other sources
+        id: refresh
+        if: ${{ github.event_name != 'push' }}
+        continue-on-error: true
+        run: scripts/refresh.sh .
+
+      - name: Assemble and sign updates.json
+        id: assemble
+        env:
+          JK_RELEASE_RSA_SIGNING_KEY: ${{ secrets.JK_RELEASE_RSA_SIGNING_KEY }}
+          JK_UPDATES_REQUIRE_TRUSTED_KEY: "1"
+        run: |
+          set -euo pipefail
+          if [[ -z "${JK_RELEASE_RSA_SIGNING_KEY:-}" ]]; then
+            echo "::error::JK_RELEASE_RSA_SIGNING_KEY is not set in the publish environment"
+            exit 1
+          fi
+          scripts/assemble.sh .
+          echo "published=$(jq -r .published updates.json)" >> "$GITHUB_OUTPUT"
+
+      - name: Commit the signed manifest to main
+        id: commit
+        env:
+          PUBLISHED: ${{ steps.assemble.outputs.published }}
+        run: |
+          set -euo pipefail
+          git add -A -- prices.toml libraries.toml jdks.json pins.json updates.json updates.json.sig
+          if git diff --cached --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "Nothing changed"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -q -m "Publish updates.json ${PUBLISHED}"
+          git push origin HEAD:main
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Authenticate to Google Cloud
+        if: ${{ steps.commit.outputs.changed == 'true' || github.event_name == 'workflow_dispatch' }}
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          credentials_json: ${{ secrets.JK_RELEASE_GCS_SA_JSON }}
+
+      - name: Set up Cloud SDK
+        if: ${{ steps.commit.outputs.changed == 'true' || github.event_name == 'workflow_dispatch' }}
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+
+      # The files first and the manifest last, so an engine that reads the new manifest finds every
+      # file it lists. Uncached, so the next check sees a publish at once.
+      - name: Upload to the bucket behind jumpkick.build
+        if: ${{ steps.commit.outputs.changed == 'true' || github.event_name == 'workflow_dispatch' }}
+        env:
+          BUCKET: ${{ secrets.JK_RELEASE_GCS_BUCKET }}
+        run: |
+          set -euo pipefail
+          [[ -n "${BUCKET:-}" ]] || { echo "::error::JK_RELEASE_GCS_BUCKET is not set in the publish environment"; exit 1; }
+          mapfile -t files < <(jq -r '.data[] | .file // empty' updates.json)
+          for file in "${files[@]}" updates.json.sig updates.json; do
+            gsutil -q -h "Cache-Control:no-cache,max-age=0" cp "$file" "gs://${BUCKET}/updates/${file}"
+            echo "  gs://${BUCKET}/updates/${file}"
+          done
+
+      - name: jumpkick.build serves the manifest just signed
+        if: ${{ steps.commit.outputs.changed == 'true' || github.event_name == 'workflow_dispatch' }}
+        env:
+          PUBLISHED: ${{ steps.assemble.outputs.published }}
+        run: scripts/verify-served.sh https://jumpkick.build/updates.json "$PUBLISHED"
+
+      - name: Every source refreshed
+        if: ${{ steps.refresh.outcome == 'failure' }}
+        run: |
+          echo "::error::scripts/refresh.sh could not refresh every source; see its step"
+          exit 1

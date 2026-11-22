@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Lint every shell script this repository ships or runs: the installers (repo root and the copy
-# the CDN serves), scripts/, scripts/gate/ and scripts/queue/, and the POSIX wrapper template
+# the CDN serves), scripts/, scripts/gate/ and scripts/queue/, the jk-updates repository's
+# scripts (hosting/jk-updates/scripts/), and the POSIX wrapper template
 # `jk wrapper` writes into projects.
 #
 # Usage:
@@ -22,7 +23,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
 TARGETS=(install.sh hosting/public/install.sh clients/cli/src/main/resources/cc/jumpkick/command/toolchain/wrapper/jk.sh)
-for script in scripts/*.sh scripts/gate/*.sh scripts/queue/*.sh; do
+for script in scripts/*.sh scripts/gate/*.sh scripts/queue/*.sh hosting/jk-updates/scripts/*.sh; do
   TARGETS+=("$script")
 done
 

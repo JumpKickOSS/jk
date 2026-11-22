@@ -15,7 +15,7 @@
 #      omission; on a developer machine it is skipped with a notice.
 #
 # Usage:
-#   scripts/check-workflows.sh                 # every .github/workflows/*.yml
+#   scripts/check-workflows.sh                 # every .github/workflows/*.yml, and the jk-updates one
 #   scripts/check-workflows.sh a.yml b.yml     # these files (the fixture test)
 # Every finding is printed as file:line: message; the exit status is 1 when there is one.
 set -euo pipefail
@@ -26,7 +26,8 @@ if [[ $# -gt 0 ]]; then
   FILES=("$@")
   ACTIONS=()
 else
-  FILES=("$ROOT"/.github/workflows/*.yml)
+  # The jk-updates repository's workflow is kept here (hosting/jk-updates/), under the same rules.
+  FILES=("$ROOT"/.github/workflows/*.yml "$ROOT"/hosting/jk-updates/.github/workflows/*.yml)
   # A composite action's steps run in the workflows that use it: its uses: are pinned the same.
   shopt -s nullglob
   ACTIONS=("$ROOT"/.github/actions/*/action.yml)

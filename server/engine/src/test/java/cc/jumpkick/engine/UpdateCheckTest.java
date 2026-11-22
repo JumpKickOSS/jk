@@ -2,14 +2,18 @@
 package cc.jumpkick.engine;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.Processes;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.prices.PriceTable;
 import cc.jumpkick.prices.PriceTables;
 import cc.jumpkick.repo.ReleaseVerifier;
 import cc.jumpkick.testing.DeadEndpoint;
 import cc.jumpkick.testing.FakeClock;
+import cc.jumpkick.testing.RepoRoot;
 import cc.jumpkick.updates.UpdateManifest;
 import cc.jumpkick.updates.UpdateState;
 import com.sun.net.httpserver.Headers;
@@ -23,6 +27,7 @@ import java.security.GeneralSecurityException;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.Signature;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Base64;
@@ -37,11 +42,14 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.DisabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
  * The engine's update check against a local server: a model added to the published price table is
- * priced by the running engine after one check; a catalog arrives the same way; offline, failed,
+ * priced by the running engine after one check, signed here or by the scripts that publish it
+ * ({@code hosting/jk-updates}); a catalog arrives the same way; offline, failed,
  * unsigned, mis-signed, tampered, malformed and older manifests and files change nothing; the
  * request carries nothing about the user or the project.
  */
@@ -216,6 +224,51 @@ class UpdateCheckTest {
         assertThat(state().applied()).containsEntry("prices", later(5).toString());
         assertThat(state().pending()).isEmpty();
         assertThat(state().checked()).isEqualTo(clock.instant());
+    }
+
+    @Test
+    @DisabledOnOs(value = OS.WINDOWS, disabledReason = "the jk-updates scripts run on the publishing Linux runner")
+    void a_model_added_to_the_table_the_jk_updates_scripts_sign_is_priced_after_one_check() throws Exception {
+        assumeTrue(runs("python3", "--version") && runs("openssl", "version"), "python3 and openssl on PATH");
+        Path repo = Files.createDirectories(dir.resolve("jk-updates"));
+        Files.write(repo.resolve("prices.toml"), table(later(5), 15.0));
+        Path key = dir.resolve("release-key.pem");
+        Files.writeString(
+                key,
+                "-----BEGIN PRIVATE KEY-----\n"
+                        + Base64.getMimeEncoder(64, new byte[] {'\n'})
+                                .encodeToString(releaseKey.getPrivate().getEncoded())
+                        + "\n-----END PRIVATE KEY-----\n");
+        Path assemble = RepoRoot.file(UpdateCheckTest.class, "hosting/jk-updates/scripts/assemble.sh");
+
+        Processes.Captured assembled = Processes.capture(
+                List.of("bash", assemble.toString(), repo.toString(), key.toString()), Duration.ofMinutes(1));
+        assertThat(assembled.ok()).as(assembled.output()).isTrue();
+        for (String name : List.of("updates.json", "updates.json.sig", "prices.toml")) {
+            replies.put("/" + name, new Reply(200, Files.readAllBytes(repo.resolve(name))));
+        }
+
+        checkAndApply();
+
+        assertThat(newModelPriced()).isTrue();
+        assertThat(state().applied()).containsEntry("prices", later(5).toString());
+    }
+
+    private static boolean runs(String... command) {
+        return Processes.outputIfOk(List.of(command), Duration.ofSeconds(30)) != null;
+    }
+
+    @Test
+    void the_jdk_catalog_is_kept_only_in_the_feeds_own_shape() throws Exception {
+        Path catalog = dir.resolve("jdks/jdks.json");
+        byte[] feed = "{\n  \"jdks\": []\n}\n".getBytes(StandardCharsets.UTF_8);
+
+        UpdateCheck.applyJdks(feed, catalog);
+        assertThat(catalog).hasBinaryContent(feed);
+
+        assertThatThrownBy(() -> UpdateCheck.applyJdks("[]".getBytes(StandardCharsets.UTF_8), catalog))
+                .hasMessageContaining("no jdks array");
+        assertThat(catalog).as("the copy in use stays").hasBinaryContent(feed);
     }
 
     @Test
