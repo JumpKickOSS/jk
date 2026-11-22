@@ -205,9 +205,12 @@ final class SuiteRetry {
         return List.copyOf(out);
     }
 
-    /** {@code who} ran out of every heap in {@code ranOut}, oldest first. */
-    static String exhausted(String who, List<Long> ranOut) {
-        return who + " " + HeapLadder.ranOut(ranOut) + "; raise -Xmx in [test] jvm-args or [jvm] args";
+    /**
+     * {@code who} ran out of every heap in {@code ranOut}, oldest first, on a ladder held to {@code
+     * budget} and {@code ceiling}.
+     */
+    static String exhausted(String who, List<Long> ranOut, long budget, long ceiling) {
+        return who + " " + HeapLadder.ranOut(ranOut, budget, ceiling) + "; raise -Xmx in [test] jvm-args or [jvm] args";
     }
 
     /**

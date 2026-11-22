@@ -18,6 +18,7 @@ import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.engine.plugin.WorkerExit;
 import cc.jumpkick.engine.plugin.WorkerFate;
 import cc.jumpkick.engine.plugin.WorkerLaunchClasspath;
+import cc.jumpkick.engine.plugin.WorkerLeases;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.TestSuites;
@@ -935,8 +936,9 @@ public final class JUnitLauncher {
                 long failed = ranOut.getLast();
                 // It filled this heap. Remember that, so the next plan starts above the cap that failed.
                 heaps.note(key, failed);
-                long ceiling = SuiteRetry.ceiling();
-                Long next = ceiling > 0 ? HeapLadder.next(ranOut, ceiling) : HeapLadder.next(ranOut);
+                long budget = WorkerLeases.engine().capacityBytes();
+                long ceiling = LearnedHeaps.testRamCeiling();
+                Long next = HeapLadder.next(ranOut, budget, ceiling);
                 if (next == null) {
                     if (ranOut.size() == 1) return first;
                     if (partial != null) return partial;
@@ -945,7 +947,7 @@ public final class JUnitLauncher {
                             diedExit,
                             diedOutput,
                             diedCommand,
-                            SuiteRetry.exhausted("test runner", ranOut));
+                            SuiteRetry.exhausted("test runner", ranOut, budget, ceiling));
                 }
                 HeapNotes.note(HeapNotes.line(next, failed, false));
                 ranOut.add(next);

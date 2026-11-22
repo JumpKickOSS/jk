@@ -823,7 +823,9 @@ its floor from then on.
 A jk-planned item that runs out of its own heap is run again at twice that `-Xmx`, up to
 three times (512 MiB, 1 GiB, 2 GiB after a 256 MiB start), each rung still inside the budget;
 the new lease waits in line like any other, and a rung the budget cannot grow ends the
-ladder. An item the kernel killed for memory — host or cgroup pressure, not its own heap — is
+ladder. A test JVM's rung also stops at a quarter of the host's RAM. The failure names the
+bound that ended the ladder: `the most the worker budget can lease` or `a quarter of this
+host's RAM`. An item the kernel killed for memory — host or cgroup pressure, not its own heap — is
 run once more at the same heap once its lease can be taken again; that run, and a native-image
 rerun, is leased at its whole `-Xmx` rather than at what it was expected to hold, and the
 resident peak the killed run reached prices the next one. An item killed at its own

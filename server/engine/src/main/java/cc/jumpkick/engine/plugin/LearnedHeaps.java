@@ -132,12 +132,20 @@ public final class LearnedHeaps {
      * #choose} never plans a test row past it.
      */
     public static long testCeiling() {
-        long ram = MemoryProbe.current().totalBytes() / TEST_CEILING_RAM_DIVISOR;
+        long ram = testRamCeiling();
         long budget = budget();
         long byBudget = budget > 0 ? WorkerLeases.clampXmx(budget, budget) : 0;
         if (ram <= 0) return byBudget;
         if (byBudget <= 0) return ram;
         return Math.min(ram, byBudget);
+    }
+
+    /**
+     * A quarter of the host's RAM, the part of {@link #testCeiling} the worker budget does not set;
+     * {@code 0} when not known.
+     */
+    public static long testRamCeiling() {
+        return Math.max(0, MemoryProbe.current().totalBytes() / TEST_CEILING_RAM_DIVISOR);
     }
 
     /** {@code bytes}, no more than {@link #testCeiling} for a test row. */

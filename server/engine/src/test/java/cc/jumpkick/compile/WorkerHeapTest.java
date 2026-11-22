@@ -65,7 +65,7 @@ class WorkerHeapTest {
                 .contains("ran out of heap at 256 MiB, 512 MiB, 1.0 GiB and 2.0 GiB;")
                 .contains("Terminating due to OOM");
         IOException capped = WorkerHeap.exhausted("g:app compile-test", List.of(4096 * MIB), "");
-        assertThat(capped.getMessage()).contains("4.0 GiB").contains("the most this host can give");
+        assertThat(capped.getMessage()).contains("4.0 GiB").contains("the most the worker budget can lease");
     }
 
     private static ForkedJavac.Request request(Path dir, List<Path> classpath) {
