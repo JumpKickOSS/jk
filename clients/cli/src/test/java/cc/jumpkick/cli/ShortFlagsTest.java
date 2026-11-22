@@ -43,6 +43,7 @@ class ShortFlagsTest {
             "tool install --bin",
             "tool install --destination",
             "guard --schema",
+            "test --quarantined",
             "stats --since");
 
     @Test

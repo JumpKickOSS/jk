@@ -11,12 +11,15 @@ import cc.jumpkick.cli.args.ArgParser;
 import cc.jumpkick.cli.args.ParseException;
 import cc.jumpkick.command.project.ExplainCommand;
 import cc.jumpkick.command.toolchain.ToolInstallCommand;
+import cc.jumpkick.config.TestQuarantine;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.function.Supplier;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 /** Short-flag parity for {@code jk test}: {@code -s}/{@code -s}, {@code -p}/{@code -p}. */
 class TestCommandOptionsTest {
@@ -56,6 +59,27 @@ class TestCommandOptionsTest {
         assertThatThrownBy(() -> BuildFlags.testSelection(parse("--class", "OrdersTest#")))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("names no method after '#'");
+    }
+
+    @Test
+    void quarantined_selects_the_classes_the_quarantine_file_holds(@TempDir Path root) throws Exception {
+        assertThat(parse("--quarantined").isSet("quarantined")).isTrue();
+        assertThatThrownBy(() -> BuildFlags.quarantinedClasses(root, List.of()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage(BuildFlags.NONE_QUARANTINED);
+
+        Files.writeString(root.resolve(TestQuarantine.FILE), """
+                [[class]]
+                name = "b.SlowFlakyTest"
+                module = "app"
+
+                [[class]]
+                name = "a.FlakyTest"
+                """);
+        assertThat(BuildFlags.quarantinedClasses(root, List.of())).containsExactly("a.FlakyTest", "b.SlowFlakyTest");
+        assertThatThrownBy(() -> BuildFlags.quarantinedClasses(root, List.of("OrdersTest")))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage(BuildFlags.QUARANTINED_WITH_CLASS);
     }
 
     @Test

@@ -245,6 +245,7 @@ final class TestSteps {
         // The marker is stored under the key that folds in what the suite was found to read.
         KeyAudit.used(in.dir(), TaskNames.RUN_TESTS, stampKey, rekey::key);
         result = ledger.finish(ctx, actionCache, testTaskId, startedKey, stampKey, result);
+        TestFlakes.record(ctx, ctx.require(MODULE).layout().workspaceRoot(), in.dir(), ledger.outcomes());
         List<String> said = EnvReadReport.report(ctx, in, projectUnderTest, testEnv, testClasses, runtimeCp, result);
         settle(
                 ctx,

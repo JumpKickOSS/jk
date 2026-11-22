@@ -554,11 +554,15 @@ final class TestLaunch {
     /** The warning a run whose failing tests did not fail it carries; readers key on it. */
     public static final String FAILURES_REPORTED = "test-failures-reported";
 
+    /** The warning a run red only in quarantined classes carries in place of failing; readers key on it. */
+    public static final String QUARANTINED_FAILED = "test-quarantined-failed";
+
     /**
      * A red marker on failure: the next build re-runs (only a green marker skips), and the
      * forecast prices that re-run as a suite rather than as a drifted stamp — a module whose only
      * dirty step is its suite looks the same either way without it. Each failure (name + stack
-     * trace) surfaces above the bar, not just the count — like Maven/Gradle.
+     * trace) surfaces above the bar, not just the count — like Maven/Gradle. A run red only in
+     * quarantined classes ({@link TestFlakes#quarantinedFailures}) says so and does not fail.
      *
      * <p>On success a CAS marker keyed by the content key lets a later build / explain skip the
      * runner when inputs are unchanged. It lives in the CAS (not target/), so it survives {@code jk
@@ -586,6 +590,12 @@ final class TestLaunch {
             recordRed(actionCache, testTaskId, stampKey, result);
             for (String line : TestSupport.renderFailures(result, in.dir(), snippets)) ctx.output(line);
             if (SessionCancel.cancelled()) throw new RuntimeException("test run cancelled");
+            List<String> held = TestFlakes.quarantinedFailures(
+                    ctx, ctx.require(MODULE).layout().workspaceRoot(), in.dir(), result);
+            if (!held.isEmpty()) {
+                ctx.warn(QUARANTINED_FAILED, TestFlakes.quarantinedFailedMessage(held));
+                return;
+            }
             String failed = result.failed() + " test failure" + (result.failed() == 1 ? "" : "s");
             if (failureMode(in, ctx.require(MODULE).project()) == TestFailureMode.REPORT) {
                 ctx.warn(FAILURES_REPORTED, failed + " reported, not failing: [test] failures = \"report\"");

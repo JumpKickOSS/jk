@@ -27,8 +27,16 @@ final class JkResultsTestsSection {
 
     private JkResultsTestsSection() {}
 
-    /** Beside the count when a run succeeded with failing tests, which only {@code [test] failures = "report"} allows. */
+    /** Beside the count when a run succeeded with failing tests under {@code [test] failures = "report"}. */
     static final String REPORTED = "_reported, not failing: [test] failures = \"report\"_";
+
+    /** Beside the count when a run succeeded because its only failures were in quarantined classes. */
+    static final String QUARANTINED = "_quarantined flaky test failed, not your change_";
+
+    /** What sits beside the count of a run that succeeded with failing tests. */
+    static String reportedNote(BuildRecord r) {
+        return JkResultsAgent.quarantinedFailed(r) != null ? QUARANTINED : REPORTED;
+    }
 
     /** The headline's {@code Tests:} line; {@code true} when one was written. */
     static boolean appendCount(StringBuilder sb, BuildRecord r, List<MarkdownTestReport.ModuleRun> tests) {
@@ -45,7 +53,7 @@ final class JkResultsTestsSection {
                 sb.append(", ").append(roll.unrun).append(" passed earlier under the same inputs, not re-run");
             sb.append(')');
             if (runTestsFailed(r) && roll.fail == 0) sb.append(" · **run-tests failed**");
-            if (r.success() && roll.fail > 0) sb.append(" · ").append(REPORTED);
+            if (r.success() && roll.fail > 0) sb.append(" · ").append(reportedNote(r));
             appendTook(sb, roll, r);
             sb.append('\n');
             return true;
@@ -57,7 +65,7 @@ final class JkResultsTestsSection {
             sb.append(t.succeeded()).append(" passed");
             if (t.skipped() > 0) sb.append(", ").append(t.skipped()).append(" skipped");
             sb.append(" (").append(t.total()).append(" total)");
-            if (r.success() && t.failed() > 0) sb.append(" · ").append(REPORTED);
+            if (r.success() && t.failed() > 0) sb.append(" · ").append(reportedNote(r));
             sb.append('\n');
             return true;
         }

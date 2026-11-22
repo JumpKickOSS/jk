@@ -96,6 +96,10 @@ class TestClassLedgerTest {
         run(l, "demo.OtherTest$Inner", "SUCCESSFUL");
         run(l, "demo.OtherTest", "SUCCESSFUL");
         run(l, "demo.OnlyNestedTest$Inner", "SUCCESSFUL");
+        assertThat(first.outcomes())
+                .as("a nested class's failure is its outer class's")
+                .containsEntry("demo.OuterTest", TestFlakes.Outcome.FAILED)
+                .containsEntry("demo.OtherTest", TestFlakes.Outcome.PASSED);
         first.store(cache, TASK, STAMP);
 
         assertThat(load().settledClasses(ONE))
@@ -115,6 +119,11 @@ class TestClassLedgerTest {
         TestProgressListener l2 = second.recording(TestProgressListener.noop());
         run(l2, "demo.RedTest", "SUCCESSFUL");
         assertThat(second.passedOnRerun()).containsExactly("demo.RedTest");
+        assertThat(first.outcomes())
+                .containsExactly(
+                        Map.entry("demo.OkTest", TestFlakes.Outcome.PASSED),
+                        Map.entry("demo.RedTest", TestFlakes.Outcome.FAILED));
+        assertThat(second.outcomes()).containsExactly(Map.entry("demo.RedTest", TestFlakes.Outcome.PASSED_ON_RERUN));
         second.store(cache, TASK, STAMP);
 
         assertThat(load().settledClasses(ONE)).containsExactly("demo.OkTest", "demo.RedTest");

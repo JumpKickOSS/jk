@@ -1496,13 +1496,13 @@ reason = "PlannerTest's steps become per-plan TestCompileSteps (compile-test) an
 [[runtime-efferent-coupling.entries]]
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.TestLaunch"
-value  = 21
-reason = "AffectedTestRun moved into runtime to cut the runtime-test cycle: TestSteps 27 to 28, TestLaunch 20 to 21, the dependencies they had before"
+value  = 22
+reason = "the flaky-test quarantine: run-tests records each class's outcome in its history (TestSteps 28 to 29) and a run red only in quarantined classes does not fail (TestLaunch 21 to 22), both through TestFlakes"
 [[runtime-efferent-coupling.entries]]
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.TestSteps"
-value  = 28
-reason = "AffectedTestRun moved into runtime to cut the runtime-test cycle: TestSteps 27 to 28, TestLaunch 20 to 21, the dependencies they had before"
+value  = 29
+reason = "the flaky-test quarantine: run-tests records each class's outcome in its history (TestSteps 28 to 29) and a run red only in quarantined classes does not fail (TestLaunch 21 to 22), both through TestFlakes"
 [[runtime-efferent-coupling.entries]]
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.workspace.WorkspacePreflightPhase"

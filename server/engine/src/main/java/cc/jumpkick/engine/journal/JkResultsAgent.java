@@ -152,7 +152,9 @@ public final class JkResultsAgent {
         boolean reported = record.success() && !record.cancelled() && failedTests(record, tests) > 0;
         String reason = decided != null
                 ? decided.message()
-                : reported ? REPORTED : firstNonNull(decidingWarning(record, loci, tests), allSkipped(record, tests));
+                : reported
+                        ? firstNonNull(quarantinedFailed(record), REPORTED)
+                        : firstNonNull(decidingWarning(record, loci, tests), allSkipped(record, tests));
         if (reason != null && !reason.isBlank()) sb.append(" — ").append(one(reason, record.dir()));
         sb.append('\n');
         appendInputsChanged(sb, record);
@@ -311,6 +313,20 @@ public final class JkResultsAgent {
 
     /** Why a run with failing tests still passed. */
     static final String REPORTED = "test failures reported, not failing: [test] failures = \"report\"";
+
+    /**
+     * Why a run with failing tests passed when its only failures were in quarantined classes: the
+     * one line the run said so with, unless some module's failures were reported under {@code [test]
+     * failures = "report"} instead. {@code null} otherwise.
+     */
+    static @Nullable String quarantinedFailed(BuildRecord r) {
+        String said = null;
+        for (BuildRecord.Diag d : r.diagnostics()) {
+            if ("test-failures-reported".equals(d.code())) return null;
+            if (said == null && "test-quarantined-failed".equals(d.code())) said = d.message();
+        }
+        return said;
+    }
 
     /** The run's failed tests: the record's summary, else the suites' entries. */
     private static long failedTests(BuildRecord r, @Nullable List<MarkdownTestReport.ModuleRun> tests) {

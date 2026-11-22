@@ -13,6 +13,7 @@ import cc.jumpkick.command.VariantSelection;
 import cc.jumpkick.config.BuildLogicToml;
 import cc.jumpkick.config.KeyAuditMode;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.config.TestQuarantine;
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.host.JkDirs;
@@ -20,6 +21,7 @@ import cc.jumpkick.model.TestFailureMode;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.wire.runtime.WorkspaceTarget;
+import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -265,6 +267,23 @@ public record BuildFlags(
         CliOutput.err(Theme.colorize(Glyphs.BANG, Theme.active().warning()) + " " + GUARD_SUITE_OVERRIDE_WARNING);
     }
 
+    static final String QUARANTINED_WITH_CLASS = "--quarantined and --class cannot be combined";
+
+    static final String NONE_QUARANTINED = "no test class is quarantined in " + TestQuarantine.FILE;
+
+    /** {@code --quarantined}: the classes {@value TestQuarantine#FILE} at {@code root} holds. */
+    static List<String> quarantinedClasses(Path root, List<String> classes) {
+        if (!classes.isEmpty()) throw new IllegalArgumentException(QUARANTINED_WITH_CLASS);
+        TestQuarantine q;
+        try {
+            q = TestQuarantine.read(root);
+        } catch (IOException e) {
+            throw new IllegalArgumentException(TestQuarantine.FILE + ": " + e.getMessage(), e);
+        }
+        if (q.entries().isEmpty()) throw new IllegalArgumentException(NONE_QUARANTINED);
+        return q.classNames();
+    }
+
     /**
      * The CLI's suites, tags and classes → {@link TestSelection}. Suites choose tests: the default
      * suite, {@code --suite} names, {@code --guard}'s list ({@code [test] guard-suites} at the
@@ -306,6 +325,7 @@ public record BuildFlags(
                         + " names no method after '#'; write Class#method or the class alone");
             }
         }
+        if (in.isSet("quarantined")) classes = quarantinedClasses(root, classes);
         return TestSelection.of(suites, all, include, exclude, applyGuard, scriptsOnly, noScripts, classes);
     }
 }

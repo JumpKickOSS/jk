@@ -546,6 +546,20 @@
           "enum": ["allowed"],
           "description": "A suite that reaches past this host runs on every build unless this says \"allowed\": its author vouching that what it reaches does not change its outcome, so its green marker is kept."
         },
+        "quarantine": {
+          "oneOf": [
+            { "const": false },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "flakes": { "type": "integer", "minimum": 1 },
+                "runs": { "type": "integer", "minimum": 1 }
+              }
+            }
+          ],
+          "description": "When jk quarantines a test class on its own: one that fails and then passes on a re-run with nothing changed `flakes` times in its last `runs` runs (default { flakes = 2, runs = 20 }) is added to jk-quarantine.toml, where a failure no longer fails the run. false: never. Read from the workspace root."
+        },
         "failures": { "type": "string", "enum": ["fail", "report"], "description": "Whether a failing test fails the run. \"report\" keeps every failure in jk-results.md and the JUnit XML and lets the run succeed (Maven's maven.test.failure.ignore); a compile error, a crashed test JVM or a timeout still fails. Default \"fail\". --test-failures and JK_TEST_FAILURES override it."},
         "exclude-classes": {
           "type": "array",

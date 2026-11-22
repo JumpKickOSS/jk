@@ -112,7 +112,9 @@ The agent headline reads `<outcome> <kind> <name>`, and the kind is the command 
 `OK guard app` for `jk guard`, in a standalone project as in a workspace. The headline outcome is the run's own verdict. `FAIL` with the failed step's exit (`1`, or `4` for
 red tests) is a build that stopped at a failure; `OK` with failed tests in the count is a run under
 `[test] failures = "report"`, and the verdict says `test failures reported, not failing` and lists
-them ([Test](test.md#failures-that-do-not-fail-the-run-test-failures)); `CANCELLED` with `exit 130` is a run a user or a
+them ([Test](test.md#failures-that-do-not-fail-the-run-test-failures)), or a run whose only failures
+are in quarantined classes, and the verdict says `quarantined flaky test failed, not your change`
+and names them ([Test](test.md#flaky-tests-are-quarantined-jk-quarantinetoml)); `CANCELLED` with `exit 130` is a run a user or a
 deadline interrupted, and only that. A cancelled run names what it interrupted: the step that was
 in flight is a `CANCELLED` row under `## Failed steps` carrying the time it had run, and one error
 under `## Failures` says so — `` `run-tests` was in flight for 20m 43s when the run was cancelled ``

@@ -373,6 +373,24 @@ final class TestClassLedger {
     }
 
     /**
+     * Each top-level class this run finished, by name, and how: red when it or a class nested in it
+     * failed, {@link TestFlakes.Outcome#PASSED_ON_RERUN} when green now after a red under this stamp.
+     */
+    Map<String, TestFlakes.Outcome> outcomes() {
+        Map<String, TestFlakes.Outcome> out = new TreeMap<>();
+        for (Map.Entry<String, Entry> e : recorded.entrySet()) {
+            Entry before = previous.get(e.getKey());
+            TestFlakes.Outcome now = !e.getValue().green()
+                    ? TestFlakes.Outcome.FAILED
+                    : before != null && !before.green()
+                            ? TestFlakes.Outcome.PASSED_ON_RERUN
+                            : TestFlakes.Outcome.PASSED;
+            out.merge(topLevel(splitKey(e.getKey())[1]), now, TestFlakes.Outcome::worse);
+        }
+        return out;
+    }
+
+    /**
      * {@link #store} when every failure in {@code ran} belongs to a class this run recorded red.
      * A failure no class owns (a worker that died mid-class or after its classes finished, tests
      * discovery announced that were never reported) clears the ledger instead: the classes it would

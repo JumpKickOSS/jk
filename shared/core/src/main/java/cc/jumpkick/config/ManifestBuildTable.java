@@ -200,7 +200,10 @@ final class ManifestBuildTable {
         }
     }
 
-    /** Every key {@code [test]} may carry; {@code env} and {@code guard-suites} have readers of their own. */
+    /**
+     * Every key {@code [test]} may carry; {@code env}, {@code guard-suites} and {@code quarantine}
+     * have readers of their own.
+     */
     static final List<String> TEST_KEYS = List.of(
             "workers",
             "extra-src",
@@ -224,7 +227,34 @@ final class ManifestBuildTable {
             "jvm-args",
             "system-properties",
             "env",
-            "guard-suites");
+            "guard-suites",
+            "quarantine");
+
+    /**
+     * {@code [test] quarantine}: {@code false}, or {@code { flakes = N, runs = M }} with {@code 1 <= N
+     * <= M}. Only the workspace root's is read ({@link TestQuarantine.Policy#of}).
+     */
+    private static void checkQuarantine(TomlTable test) {
+        if (!test.contains("quarantine")) return;
+        String shape = "[test].quarantine must be false or { flakes = 2, runs = 20 }";
+        Object raw = test.get(List.of("quarantine"));
+        if (Boolean.FALSE.equals(raw)) return;
+        if (!(raw instanceof TomlTable t)) throw JkBuildParseException.at(test, "quarantine", shape);
+        rejectUnknownKeys(t, List.of("flakes", "runs"), "[test].quarantine");
+        long flakes = count(t, "flakes", TestQuarantine.Policy.DEFAULT.flakes(), shape);
+        long runs = count(t, "runs", TestQuarantine.Policy.DEFAULT.runs(), shape);
+        if (flakes < 1 || runs < flakes) {
+            throw JkBuildParseException.at(test, "quarantine", "[test].quarantine needs 1 <= flakes <= runs");
+        }
+    }
+
+    /** The integer at {@code key} of {@code t}, or {@code fallback} when absent. */
+    private static long count(TomlTable t, String key, long fallback, String shape) {
+        Object raw = t.get(List.of(key));
+        if (raw == null) return fallback;
+        if (!(raw instanceof Long n)) throw JkBuildParseException.at(t, key, shape);
+        return n;
+    }
 
     private static void readTestTable(TomlTable test, Settings s) {
         // [test] workers — pin within-module test JVMs (1 = serial; 0 = same as omitting: the
@@ -294,6 +324,7 @@ final class ManifestBuildTable {
             }
         }
         readSuites(test, s);
+        checkQuarantine(test);
         // [test] assertions — -ea on every forked test JVM unless the module turns it off.
         if (test.contains("assertions")) {
             if (!(test.get("assertions") instanceof Boolean assertions)) {

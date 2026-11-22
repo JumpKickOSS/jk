@@ -492,7 +492,8 @@ class counts as passed only when it and every class nested in it passed. The run
 again`), its counts and `jk results` include the classes not re-run, and once every class has
 passed the suite's marker is green and the next run skips it whole. A class that failed and then
 passes with nothing changed is flaky or depends on what ran before it, and the run warns
-`test-passed-on-rerun` naming it. `--redo`, `--debug-jvm`, a coverage run and `--affected` run their
+`test-passed-on-rerun` naming it; past a threshold it is quarantined
+([Flaky tests](#flaky-tests-are-quarantined-jk-quarantinetoml)). `--redo`, `--debug-jvm`, a coverage run and `--affected` run their
 whole selection. A change to any stamp input still re-runs every class.
 
 A suite whose classes share state — a database one class seeds and the next reads, a server the
@@ -839,6 +840,52 @@ JUnit XML, and the run still exits `0`: Maven's `maven.test.failure.ignore`. The
 agent verdict. A compile error, a test JVM that crashed or a timeout fails the run either way.
 `--test-failures=fail|report` on `jk test` and `jk build`, or `JK_TEST_FAILURES`, overrides every
 module's setting for one run (flag, then environment, then `jk.toml`).
+
+## Flaky tests are quarantined (`jk-quarantine.toml`)
+
+A test class that fails and then passes on a re-run with nothing changed is flaky, and one flaky
+class can turn every run red that runs it. JumpKick keeps each class's last 100 runs (pass, fail,
+or passed on a re-run under the same inputs) in its state directory,
+so a `jk clean` keeps them. When a class has passed on a re-run in 2 of its last 20 runs, the run
+adds it to `jk-quarantine.toml` at the workspace root and says so:
+
+```text
+! quarantined com.acme.OrdersTest: passed on a re-run 2 of its last 20 runs
+```
+
+```toml
+# jk-quarantine.toml: check it in
+[[class]]
+name = "com.acme.OrdersTest"
+module = "orders"                       # the module's directory; leave it out for every module
+reason = "failed, then passed on a re-run with nothing changed, in 2 of its last 20 runs"
+since = 2026-11-22
+issue = "https://github.com/acme/shop/issues/88"   # optional, yours to add
+```
+
+A quarantined class still runs and its failures are still in `jk-results.md`, `details.jsonl` and
+the JUnit XML, but a run whose only failures are in quarantined classes does not fail. The run warns
+`test-quarantined-failed`, and the headline and the agent verdict say it in one line:
+
+```text
+OK test orders · 1 of 40 failed · 2.1s — quarantined flaky test failed, not your change: com.acme.OrdersTest
+```
+
+A failure in any other class, or one no class owns (a test JVM that died), fails the run as before.
+A build or test run through MCP takes the same steps and honours the quarantine too. Fix the test,
+then delete its entry to release it; you can also add an entry by hand.
+
+`jk test --quarantined` runs only the quarantined classes, in every module that has them, to check
+whether a fix holds. It cannot be combined with `--class`; add `-r` to run classes that already
+passed under the same inputs.
+
+The threshold is the workspace root's:
+
+```toml
+[test]
+quarantine = { flakes = 3, runs = 50 }   # default { flakes = 2, runs = 20 }
+# quarantine = false                     # never add a class; the file is still honoured
+```
 
 ## Coverage (`--coverage`, `[test] coverage`)
 
