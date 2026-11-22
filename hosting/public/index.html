@@ -1434,10 +1434,29 @@ We asked coding agents from 6 vendors questions like "who calls this method?" Wi
         </div>
       </article>
 
-      <!-- 4. toolkit -->
+      <!-- 4. flaky tests -->
+      <article class="row reveal" style="--accent: var(--err)">
+        <div class="row-copy">
+          <div class="row-num">04 · Flaky tests, quarantined</div>
+          <h3>A flaky test stops failing your agent's runs. Automatically.</h3>
+          <p>A test class that fails and then passes with nothing changed is flaky. JumpKick keeps each class's recent runs, and when one has passed on a re-run in 2 of its last 20, quarantines it on its own, in a file you check in. It still runs and its failures are still reported, but they no longer fail the run, and the verdict says so in one line. <code>jk flaky</code> lists, shows and releases them.</p>
+        </div>
+        <div class="viz" aria-hidden="true">
+          <div class="viz-title">jk test · .jk/test/quarantine.toml</div>
+          <div class="term"><span class="p">$</span> jk test
+<span class="y">! quarantined com.acme.OrdersTest:</span>
+  passed on a re-run 2 of its last 20 runs
+<span class="p">$</span> jk test
+OK test orders · 1 of 40 failed · 2.1s
+<span class="d">  quarantined flaky test failed, not your change:
+  com.acme.OrdersTest</span></div>
+        </div>
+      </article>
+
+      <!-- 5. toolkit -->
       <article class="row reveal" style="--accent: var(--warn)">
         <div class="row-copy">
-          <div class="row-num">04 · One right way</div>
+          <div class="row-num">05 · One right way</div>
           <h3>Build your application. Not your build system.</h3>
           <p>Readable configuration. Managed JDKs. Named test rungs and a gate that says the work is done. House rules that name the fix. Built-in code generation, packaging, native executables, and containers. One coherent workbench — not another integration project.</p>
         </div>
@@ -1465,10 +1484,10 @@ We asked coding agents from 6 vendors questions like "who calls this method?" Wi
         </div>
       </article>
 
-      <!-- 5. import -->
+      <!-- 6. import -->
       <article class="row reveal" style="--accent: var(--run-line)">
         <div class="row-copy">
-          <div class="row-num">05 · Switch in minutes</div>
+          <div class="row-num">06 · Switch in minutes</div>
           <h3>Bring your project. Leave the friction behind.</h3>
           <p>Import your Maven or Gradle build. Let your agent handle the finishing touches. Get back to building.</p>
         </div>

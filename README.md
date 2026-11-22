@@ -101,6 +101,17 @@ branch, worktree, agent or CI runner reuses the work instead of starting over, a
 every compile, generate, guard and test step an earlier run already proved. Never type `clean`
 again.
 
+### Flaky tests do not hold you up
+
+A test class that fails and then passes with nothing changed is flaky, and one flaky class can turn
+every run red. JumpKick keeps each class's recent runs, and when one has passed on a re-run in 2 of
+its last 20, it quarantines the class on its own: it adds it to `.jk/test/quarantine.toml`, for you
+to check in, and says so. A quarantined class still runs and its failures are still reported, but
+they no longer fail the run. The verdict says it in one line, so your agent does not chase a failure
+its change did not cause. `jk flaky` lists, shows and releases quarantined classes, `jk test
+--quarantined` checks whether a fix holds, and the dashboard shows their history.
+([Flaky tests](docs/user/test.md#flaky-tests-are-quarantined-jk-flaky).)
+
 ### Stay on the rails
 
 The default test run is the cheap unit rung; `--guard` is the named bar before work is handed
