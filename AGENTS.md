@@ -372,6 +372,16 @@ KanArtist (`projects/jk/docs/` or the ticket), or the commit body. Never as nove
 the main source tree. Never dump decision essays into `docs/user/`. Contributor docs
 state *how the system works now*, not which ticket invented it.
 
+**Docs say what is, never what was**
+
+Until 1.0.0 every doc and piece of public copy (README, `docs/`, the skill pages, the template
+READMEs, the website, the unreleased What's new entry) explains what JumpKick does now. No
+was-named notes ("`usages` (was `callers`)"), no renamed-from or "before 0.60.0" asides, no
+`**Breaking:**` bullets, no "used to" or "no longer" narration of a past release: describe the
+command, key or behaviour as it is. What's new entries of released versions stay as they were
+written. `jk guard docs` holds the common shapes (rule `docs-say-what-is`), and
+`scripts/release-notes.sh` holds the unreleased What's new entry to the same rule.
+
 **When you touch a file**
 
 Strip leftover ticket refs and essay comments in that file (except live

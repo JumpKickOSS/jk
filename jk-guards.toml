@@ -749,6 +749,49 @@ miss        = "Run `jk build`; it reads `~/.jk` and jk.toml, as [the guide](docs
 instead     = "JumpKick for the product, the tool or a comparison; `jk` in a code span for the command, a command line or a path"
 why         = "a doc that calls the product by its command name reads as a command, where Gradle and Maven get their names"
 
+# G166. Until 1.0.0 the docs and public copy say what is, never what was: no was-named or
+# renamed-from note, no aside about a past release, no "used to". What's new is read whole: its
+# released entries stay as written, and scripts/release-notes.sh holds the one being written.
+# "Before 1.0" states a present policy and passes. An older jk has no prose view and holds the rule
+# back.
+[guards.docs-say-what-is]
+kind        = "text"
+requires-jk = "0.52.0"
+files       = [
+  "README.md", "CONTRIBUTING.md", "AGENTS.md", "SECURITY.md", "docs/**/*.md", "clients/*/README.md",
+  "shared/core/src/main/resources/cc/jumpkick/docs/skill/*.md",
+  "templates/**/README.md", "plugins/*/src/main/resources/templates/**/README.md",
+  "server/engine/src/main/resources/cc/jumpkick/giter8/shipped/**/README.md", "hosting/public/*.html",
+]
+languages   = ["prose", "html"]
+blank       = "prose"
+patterns    = [
+  '(?i)\bformerly\b',
+  '(?i)\bpreviously\b',
+  '(?i)\b(?:it|this|they|that|which|JumpKick|jk) used to\b',
+  '(?i)\bused to be\b',
+  '(?i)\brenamed from\b',
+  '(?i)\(was\s+(?:[\w.-]+\s*)?\)',
+  '(?i)\bwas (?:named|called|spelled|renamed)\b',
+  '(?i)\bwas (?:this|its|the) [\w-]+(?:\Ws)? name\b',
+  '(?i)\b(?:before|prior to|until|as of)\s+(?:JumpKick\s+|v|version\s+)?(?!1\.0(?:\.0)?\b)\d+\.\d+',
+  '(?i)\b(?:in|under|after|since|upgrading to|upgrade to) JumpKick \d+\.\d+',
+  '(?i)\bupgrading to \d+\.\d+',
+  '(?i)\bfrom before (?:this|the)\b',
+]
+hit         = "The verb was named callers before 0.60.0."
+miss        = "Before 1.0 a release may move a type; the cache is used to skip work."
+instead     = "describe the command, key or behaviour as it is now; history belongs in a released What's new entry or the commit body"
+why         = "a note about what a name or behaviour was sends the reader after a JumpKick they do not have"
+
+[[guards.docs-say-what-is.allow]]
+in     = "AGENTS.md"
+reason = "states the rule, naming the shapes it bans"
+
+[[guards.docs-say-what-is.allow]]
+in     = "docs/contributors/comments.md"
+reason = "states the rule, naming the shapes it bans"
+
 # G60. A JSON object spliced by hand — chop the closing brace, append fields, re-close — got the
 # separator wrong on an empty object every time it was written. Jsonl.append owns it.
 [guards.one-json-splicer]

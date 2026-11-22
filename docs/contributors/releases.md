@@ -64,10 +64,11 @@ rules below. The commit log is for contributors; this entry is for someone decid
   in backticks; don't name classes, internal steps or wire formats.
 - **The product is JumpKick.** `jk` names the command (`jk build`) and its files (`jk.toml`), never
   the product: "JumpKick caches the plan". `jk guard docs` checks it.
-- **Fixes say what used to go wrong**, from the user's side: "`jk test` no longer hangs when a test
-  prints without a newline", not "fix non-hermetic index repro".
-- **A breaking change's bullet starts with `**Breaking:**`** and says how to migrate
-  ([Compatibility](compatibility.md#announcing)).
+- **Say what is, never what was.** A fix states the behaviour a user gets, from their side:
+  "`jk test` finishes when a test prints without a newline", not "`jk test` no longer hangs …" and
+  not "fix non-hermetic index repro". Before 1.0 there are no `**Breaking:**` bullets, no former
+  names and no "used to": a changed command or key is described as it now is, and what to write
+  is the docs' job.
 - **Read it out loud.** If it sounds like a commit message, rewrite it. If it needs a second
   paragraph, it belongs in the docs and the bullet links there.
 

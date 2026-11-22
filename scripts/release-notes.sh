@@ -9,7 +9,10 @@
 # the one place a release's story is written, before the tag. A version with no entry is refused:
 # a release whose notes are only a commit list has nothing to say to someone deciding whether to
 # update. So is an entry that breaks the writing rules (docs/contributors/releases.md#writing-an-entry):
-# one to five bullets, each opening with a bold hook, 40 to 320 characters, no ticket ids.
+# one to five bullets, each opening with a bold hook, 40 to 320 characters, no ticket ids. An entry
+# whose `v<version>` tag is not cut yet also says what is, never what was: no **Breaking:** hook, no
+# former name, no "used to", "no longer" or "before <version>". A released entry is history and
+# stays as written.
 #
 # The default form is the GitHub Release body: the highlights, then the commit list from the
 # previous `v*` tag (the newest one older than <version>, or the one given) to `v<version>`, or to
@@ -60,9 +63,12 @@ if [[ -z "$highlights" ]]; then
   exit 1
 fi
 
-# The writing rules, checked on this version's entry only: older entries are history.
+# The writing rules, checked on this version's entry only: older entries are history. So is this
+# one once its tag is cut, as far as the present-tense rule goes.
+unreleased=1
+git -C "$REPO" rev-parse -q --verify "refs/tags/v$VERSION" >/dev/null 2>&1 && unreleased=0
 lint() {
-  awk -v ver="$VERSION" '
+  awk -v ver="$VERSION" -v unreleased="$unreleased" '
     function check(   len, text) {
       if (bullet == "") return
       text = bullet
@@ -71,7 +77,15 @@ lint() {
       if (len < 40) bad("is " len " characters; say what the user gets (40 at least)")
       if (len > 320) bad("is " len " characters; keep it to the hook and a sentence or two (320 at most)")
       if (text ~ /JK-[0-9A-Z][0-9A-Z][0-9A-Z][0-9A-Z]/ || text ~ /JK-[0-9]+/) bad("names a ticket; users cannot look tickets up")
+      if (unreleased && history(text)) bad("says what was; say what is (no Breaking:, former names, used to, no longer, before <version>)")
       bullet = ""
+    }
+    function history(text,   t) {
+      t = tolower(text)
+      gsub(/(before|until|prior to) (jumpkick |v)?1\.0(\.0)?([^.0-9]|$)/, " ", t)
+      return t ~ /\*\*breaking|formerly|previously|renamed from|\(was |was (named|called|spelled)|no longer|used to be/ \
+        || t ~ /(it|this|they|that|which|jumpkick|jk) used to/ \
+        || t ~ /(before|until|prior to) (jumpkick |v)?[0-9]+\.[0-9]+/
     }
     function bad(why) { printf "release-notes: %s bullet %d %s:\n  %s\n", ver, n, why, substr(bullet, 1, 120) > "/dev/stderr"; errors++ }
     /^- / { check(); n++; bullet = $0; next }

@@ -41,6 +41,15 @@ bug: strip the id; keep the diagnosis.
 
 How to word that output: [User-facing messages](messages.md).
 
+## Docs say what is
+
+Until 1.0.0 the docs, the skill pages, the template READMEs, the website and the unreleased
+What's new entry describe the present only: no "was named" or "renamed from" notes, no "before
+0.60.0" asides, no `**Breaking:**` bullets, no "used to" narration. Write the command, key or
+behaviour as it is now. Entries of released versions in [What's new](../user/whats-new.md) stay as
+written. `jk guard docs` flags the common shapes (`docs-say-what-is`); `scripts/release-notes.sh`
+refuses them in the entry being written.
+
 ## History belongs elsewhere
 
 KanArtist tickets / `projects/jk/docs/`, or the commit body — not novels in the

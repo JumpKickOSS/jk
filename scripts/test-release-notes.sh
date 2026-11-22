@@ -4,7 +4,8 @@
 # version order (an explicit previous tag is honoured) folded under a <details>, run to HEAD when
 # the tag is not cut yet, close with a compare link when the repository slug is known, cover a
 # first release with no previous tag, and refuse a version without a highlights entry, an entry
-# that breaks the writing rules, a malformed version and a previous tag that does not exist.
+# that breaks the writing rules (an unreleased one that says what was, too; a released one stays as
+# written), a malformed version and a previous tag that does not exist.
 # --whats-new carries the version's entry and the older ones, newest first, and never a newer one.
 set -euo pipefail
 
@@ -50,6 +51,8 @@ Intro line with ## 1.1.0 in prose that is not a heading.
 - **The second and third features land together.** One line about both of them.
 - **A second bullet with `code`** that wraps onto
   a continuation line, as long entries do.
+- **Breaking: the index moved.** It used to live in the home directory, before 1.0.5; released, so
+  it stays as written.
 
 ## 1.0.0
 
@@ -74,6 +77,22 @@ Intro line with ## 1.1.0 in prose that is not a heading.
 ## 2.0.0-bad-prose
 
 A paragraph instead of bullets, which the in-app dialog cannot show.
+
+## 2.0.0-bad-breaking
+
+- **Breaking: the index lives in the project.** Move it there before you build again.
+
+## 2.0.0-bad-was
+
+- **The `usages` verb lists every use.** It was named `callers` before 2.0.0, so scripts change.
+
+## 2.0.0-bad-no-longer
+
+- **The index no longer crashes when a file is deleted.** A build that deletes a file finishes.
+
+## 2.0.0-ok-before-1
+
+- **Before 1.0 a release may move a type.** A plugin is rebuilt against the release it runs on.
 
 ## 2.0.0-bad-many
 
@@ -155,6 +174,10 @@ refuses 2.0.0-bad-ticket "names a ticket"
 refuses 2.0.0-bad-hook "bold hook"
 refuses 2.0.0-bad-prose "not a bullet"
 refuses 2.0.0-bad-many "6 bullets"
+refuses 2.0.0-bad-breaking "says what was"
+refuses 2.0.0-bad-was "says what was"
+refuses 2.0.0-bad-no-longer "says what was"
+"$SCRIPT" 2.0.0-ok-before-1 >/dev/null || fails "a present-tense entry naming 1.0 is refused"
 refuses --whats-new 2.0.0-bad-ticket "names a ticket"
 refuses v1.1.0 "is not a version"
 refuses "1.1.0; rm -rf /" "is not a version"
