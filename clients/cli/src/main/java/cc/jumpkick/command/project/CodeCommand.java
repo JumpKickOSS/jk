@@ -120,8 +120,7 @@ public final class CodeCommand extends GroupCommand {
                         List.of(
                                 Opt.value(
                                         "<route>",
-                                        "The route an instance method takes, as the last move listed: r1, r2.",
-                                        "-w",
+                                        "The route an instance method takes, as the last move listed: f1, p1.",
                                         "--via"),
                                 BUDGET),
                         List.of(MEMBER, Param.of("type", Arity.ONE, "the class, enum or record it moves to"))),

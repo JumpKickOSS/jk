@@ -11,10 +11,11 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * An instance method moves to a type it reaches through a field of its own type or one of its
- * parameters: with one route it moves at once, every call reaches the target through it, the moved
- * code reads the route as {@code this} and the source instance through a parameter when it needs it,
- * then it compiles and is proven. With more routes, or one a call cannot take, it writes nothing and
- * lists them; an override is refused and what would change is listed.
+ * parameters: when exactly one route reaches the target from every call it moves at once, every call
+ * reaches the target through it, the moved code reads the route as {@code this} and the source
+ * instance through a parameter when it needs it, then it compiles and is proven. With more such
+ * routes, or none, it writes nothing and lists them; an override is refused and what would change is
+ * listed.
  */
 class InstanceMoveTest {
 
@@ -119,7 +120,7 @@ class InstanceMoveTest {
 
         assertThat(answer)
                 .startsWith("Moved Order.greeting() to org.acme.shop.Customer: 2 uses and 0 imports in 3 files")
-                .contains("  through r1, the field Order.customer; a call reads order.customer.greeting(), and fails"
+                .contains("  through f1, the field Order.customer; a call reads order.customer.greeting(), and fails"
                         + " where that field is null");
         assertThat(f.read(SHOP + "Customer.java")).contains("""
                     public String name() {
@@ -180,29 +181,62 @@ class InstanceMoveTest {
     }
 
     @Test
-    void twoRoutesAreListedThenTheOneNamedMovesIt(@TempDir Path dir) throws IOException {
-        RenameFixture f = new RenameFixture(dir, shop());
+    void twoRoutesEveryCallCanTakeAreListedThenTheOneNamedMovesIt(@TempDir Path dir) throws IOException {
+        Map<String, String> files = shop();
+        files.put(SHOP + "Desk.java", DESK.replace(" + order.visit(null, 1)", ""));
+        RenameFixture f = new RenameFixture(dir, files);
 
         String listed = f.move("Order.visit", "Customer");
 
         assertThat(listed)
                 .startsWith("Not moved, nothing is written: Order.visit() is an instance method; 2 routes reach"
                         + " org.acme.shop.Customer. Move it again with via=<route>:")
-                .contains("  r1  through the field Order.customer\n")
+                .contains("  f1  through the field Order.customer\n")
                 .contains(SHOP + "Desk.java:13  order.customer.visit(c, 2)")
-                .contains("  r2  through the parameter Customer c (1 of 2 calls cannot)")
-                .contains(SHOP + "Desk.java:13  c.visit(2)")
+                .contains("  p1  through the parameter Customer c\n")
+                .contains(SHOP + "Desk.java:13  c.visit(2)");
+        assertThat(f.read(SHOP + "Order.java")).isEqualTo(ORDER);
+        assertThat(f.move("Order.visit", "Customer", "via=p9"))
+                .startsWith("Not moved, nothing is written: p9 is not a route of Order.visit()");
+
+        assertThat(f.move("Order.visit", "Customer", "via=f1")).startsWith("Moved Order.visit() to ");
+        assertThat(f.read(SHOP + "Desk.java")).contains("return order.customer.visit(c, 2);");
+        assertThat(f.checkMove()).startsWith("Proven: it compiles");
+    }
+
+    @Test
+    void theOneRouteEveryCallCanTakeMovesAtOnceAndSaysWhyTheOtherWasNot(@TempDir Path dir) throws IOException {
+        RenameFixture f = new RenameFixture(dir, shop());
+
+        assertThat(f.move("Order.visit", "Customer", "via=p1"))
+                .startsWith("Not moved, nothing is written: p1 does not reach org.acme.shop.Customer from every call")
                 .contains(SHOP + "Desk.java:13  cannot: passes null for c");
         assertThat(f.read(SHOP + "Order.java")).isEqualTo(ORDER);
-        assertThat(f.move("Order.visit", "Customer", "via=r2"))
-                .startsWith("Not moved, nothing is written: r2 does not reach org.acme.shop.Customer from every call");
-        assertThat(f.move("Order.visit", "Customer", "via=r9"))
-                .startsWith("Not moved, nothing is written: r9 is not a route of Order.visit()");
 
-        assertThat(f.move("Order.visit", "Customer", "via=r1")).startsWith("Moved Order.visit() to ");
+        assertThat(f.move("Order.visit", "Customer"))
+                .startsWith("Moved Order.visit() to ")
+                .contains("  through f1, the field Order.customer; a call reads order.customer.visit(c, 2)")
+                .contains("  not through p1, the parameter Customer c: 1 of 2 calls cannot take it; " + SHOP
+                        + "Desk.java:13  passes null for c");
         assertThat(f.read(SHOP + "Desk.java"))
                 .contains("return order.customer.visit(c, 2) + order.customer.visit(null, 1);");
         assertThat(f.checkMove()).startsWith("Proven: it compiles");
+    }
+
+    @Test
+    void whenNoRouteReachesTheTargetFromEveryCallTheyAreListed(@TempDir Path dir) throws IOException {
+        Map<String, String> files = shop();
+        String order = ORDER.replace("    final Customer customer;", "    private final Customer customer;");
+        files.put(SHOP + "Order.java", order);
+        RenameFixture f = new RenameFixture(dir, files);
+
+        assertThat(f.move("Order.visit", "Customer"))
+                .startsWith("Not moved, nothing is written: Order.visit() is an instance method, and no route reaches"
+                        + " org.acme.shop.Customer from every call of it:")
+                .contains("  f1  through the field Order.customer (2 of 2 calls cannot)")
+                .contains(SHOP + "Desk.java:13  cannot: Order.customer is not visible here")
+                .contains("  p1  through the parameter Customer c (1 of 2 calls cannot)");
+        assertThat(f.read(SHOP + "Order.java")).isEqualTo(order);
     }
 
     @Test
@@ -211,7 +245,7 @@ class InstanceMoveTest {
         files.put(SHOP + "Desk.java", DESK.replace(" + order.visit(null, 1)", ""));
         RenameFixture f = new RenameFixture(dir, files);
 
-        assertThat(f.move("Order.visit", "Customer", "via=r2")).startsWith("Moved Order.visit() to ");
+        assertThat(f.move("Order.visit", "Customer", "via=p1")).startsWith("Moved Order.visit() to ");
 
         assertThat(f.read(SHOP + "Customer.java")).contains("""
                     /**
@@ -268,11 +302,10 @@ class InstanceMoveTest {
         RenameFixture f = new RenameFixture(dir, files);
 
         assertThat(f.move("Box.tag", "Customer"))
-                .contains("  r1  through the field Box.customer (2 of 2 calls cannot)")
-                .contains(SHOP + "Desk.java:5  cannot: its receiver would run twice")
-                .contains(SHOP + "Desk.java:5  c.tag(new Box<String, Integer>(c), new Box<String, Integer>(c))")
-                .contains(SHOP + "Desk.java:9  c.tag(Box.<String, Integer>of(c), n > 1 ? \"many\" : \"one\")");
-        assertThat(f.move("Box.tag", "Customer", "via=r2")).startsWith("Moved Box.tag() to ");
+                .startsWith("Moved Box.tag() to ")
+                .contains("  through p1, the parameter Customer c; a call reads c.tag(new Box<String, Integer>(c),")
+                .contains("  not through f1, the field Box.customer: 2 of 2 calls cannot take it; " + SHOP
+                        + "Desk.java:5  its receiver would run twice");
 
         assertThat(f.read(SHOP + "Desk.java"))
                 .contains("return c.tag(new Box<String, Integer>(c), new Box<String, Integer>(c));")
@@ -311,7 +344,7 @@ class InstanceMoveTest {
 
         assertThat(f.move("Order.greeting", "Customer"))
                 .startsWith("Not moved, nothing is written: moving Order.greeting() to org.acme.shop.Customer"
-                        + " through r1 would break or change:")
+                        + " through f1 would break or change:")
                 .contains("a call from a nested or anonymous class, where this is another instance  " + SHOP
                         + "Order.java:22")
                 .contains("a call from a nested or anonymous class, where this is another instance  " + SHOP
@@ -488,7 +521,7 @@ class InstanceMoveTest {
                 .isEqualTo("Not moved, nothing is written: Order.toString() overrides or implements a supertype's"
                         + " method (@Override); moving it would change which method a call runs.");
         assertThat(f.move("Order.held", "Customer"))
-                .startsWith("Not moved, nothing is written: moving Order.held() to org.acme.shop.Customer through r1"
+                .startsWith("Not moved, nothing is written: moving Order.held() to org.acme.shop.Customer through f1"
                         + " would break or change:")
                 .contains("synchronized: it would lock the target instead of Order");
         assertThat(f.move("Order.greeting", "org.acme.crm.Ledger"))
@@ -512,7 +545,7 @@ class InstanceMoveTest {
         RenameFixture f = new RenameFixture(dir, files);
 
         assertThat(f.move("Order.label", "Customer"))
-                .startsWith("Not moved, nothing is written: moving Order.label() to org.acme.crm.Customer through r1")
+                .startsWith("Not moved, nothing is written: moving Order.label() to org.acme.crm.Customer through f1")
                 .contains("uses Order.status, which is package-private and org.acme.crm.Customer would not see");
         assertThat(f.read(SHOP + "Order.java")).isEqualTo(files.get(SHOP + "Order.java"));
     }

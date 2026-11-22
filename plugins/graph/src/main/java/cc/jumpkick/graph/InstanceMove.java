@@ -39,10 +39,11 @@ import org.jspecify.annotations.Nullable;
  * that holds the target, or a parameter of the target type, the routes. A call through a field
  * {@code customer} becomes {@code order.customer.summary(order)}; through a parameter {@code c}, {@code
  * c.summary(order)}. The moved code reads that field or parameter as {@code this}, and what else it
- * used of the source type through a parameter of that type, added only when it needs one. With one
- * route it moves at once; with more, or with one a call cannot take, it writes nothing and lists them
- * for {@code via}. A method that overrides, implements or is overridden is refused: moving it changes
- * which method a call runs.
+ * used of the source type through a parameter of that type, added only when it needs one. Routes are
+ * {@code f1}, {@code f2}, ... for fields and {@code p1}, ... for parameters. When exactly one route
+ * reaches the target from every call, it moves at once and says why each other route was not taken;
+ * otherwise it writes nothing and lists them for {@code via}. A method that overrides, implements or
+ * is overridden is refused: moving it changes which method a call runs.
  */
 final class InstanceMove {
 
@@ -158,27 +159,35 @@ final class InstanceMove {
         for (Route r : routes) dry.add(land(p, m, head, r, name, new MoveHazards()));
         p.to.imports.retainAll(imports);
         p.to.staticImports.retainAll(statics);
+        List<Route> usable = routes.stream()
+                .filter(r ->
+                        calls.stream().allMatch(c -> blocked(p, head, c, r, dry.get(routes.indexOf(r)).source) == null))
+                .toList();
         Route chosen = via == null
-                ? routes.size() == 1 ? routes.getFirst() : null
+                ? usable.size() == 1 ? usable.getFirst() : null
                 : routes.stream()
                         .filter(r -> r.id().equals(via.strip()))
                         .findFirst()
                         .orElse(null);
-        boolean blocked = chosen != null
-                && calls.stream()
-                        .anyMatch(c -> blocked(p, head, c, chosen, dry.get(routes.indexOf(chosen)).source) != null);
+        boolean blocked = chosen != null && !usable.contains(chosen);
         if (chosen == null || blocked || !p.h.isEmpty()) {
             String header = via != null && chosen == null
                     ? "Not moved, nothing is written: " + via.strip() + " is not a route of " + p.what
                             + "; move it again with via= one of these:"
-                    : chosen == null
-                            ? "Not moved, nothing is written: " + p.what + " is an instance method; " + routes.size()
-                                    + " routes reach " + canonical(p.toBin) + ". Move it again with via=<route>:"
-                            : blocked
-                                    ? "Not moved, nothing is written: " + chosen.id() + " does not reach "
-                                            + canonical(p.toBin) + " from every call of " + p.what + ":"
-                                    : "Not moved, nothing is written: moving " + p.what + " to " + canonical(p.toBin)
-                                            + " through " + chosen.id() + " would break or change:";
+                    : chosen == null && usable.isEmpty()
+                            ? "Not moved, nothing is written: " + p.what
+                                    + " is an instance method, and no route reaches " + canonical(p.toBin)
+                                    + " from every call of it:"
+                            : chosen == null
+                                    ? "Not moved, nothing is written: " + p.what + " is an instance method; "
+                                            + usable.size() + " routes reach " + canonical(p.toBin)
+                                            + ". Move it again with via=<route>:"
+                                    : blocked
+                                            ? "Not moved, nothing is written: " + chosen.id() + " does not reach "
+                                                    + canonical(p.toBin) + " from every call of " + p.what + ":"
+                                            : "Not moved, nothing is written: moving " + p.what + " to "
+                                                    + canonical(p.toBin) + " through " + chosen.id()
+                                                    + " would break or change:";
             return Budget.lines(listing(p, head, header, routes, dry, calls, name), budget, "Raise the budget");
         }
         Landing l = land(p, m, head, chosen, name, p.h);
@@ -209,6 +218,7 @@ final class InstanceMove {
                 "  through " + chosen.id() + ", " + label(p, chosen)
                         + (example == null ? "" : "; a call reads " + example) + ", and fails where "
                         + (chosen.field() != null ? "that field" : "that argument") + " is null");
+        if (via == null) answer.addAll(2, skipped(p, head, routes, dry, calls));
         return Budget.lines(answer, budget, "Raise the budget");
     }
 
@@ -238,14 +248,15 @@ final class InstanceMove {
             if (s.kind() != 'd' || !s.symbol().startsWith("F " + p.fromBin + "#")) continue;
             if (JavaText.modifiers(p.from.text, s.start()).contains("static") || !typed(p.from, s, p.toBin)) continue;
             String field = ReferenceIndex.simpleName(s.symbol());
-            out.add(new Route("r" + (out.size() + 1), field, getter(p, field), -1, ""));
+            out.add(new Route("f" + (out.size() + 1), field, getter(p, field), -1, ""));
         }
         String want = "L" + p.toBin.replace('.', '/') + ";";
+        int fields = out.size();
         for (int i = 0; i < head.desc().size(); i++) {
             if (!head.desc().get(i).equals(want)) continue;
             int[] a = head.params().get(i);
             Matcher last = Pattern.compile("([A-Za-z_$][\\w$]*)\\s*$").matcher(p.from.text.substring(a[0], a[1]));
-            if (last.find()) out.add(new Route("r" + (out.size() + 1), null, null, i, last.group(1)));
+            if (last.find()) out.add(new Route("p" + (out.size() - fields + 1), null, null, i, last.group(1)));
         }
         return out;
     }
@@ -586,6 +597,23 @@ final class InstanceMove {
             }
         }
         f.marks.add(new Mark(s.start(), moved, s.kind()));
+    }
+
+    /** Why each route that some call cannot take was not the one moved through: the first such call and the count. */
+    private static List<String> skipped(Plan p, Head head, List<Route> routes, List<Landing> dry, List<Call> calls) {
+        List<String> out = new ArrayList<>();
+        for (Route r : routes) {
+            boolean source = dry.get(routes.indexOf(r)).source;
+            List<Call> cannot = calls.stream()
+                    .filter(c -> blocked(p, head, c, r, source) != null)
+                    .toList();
+            if (cannot.isEmpty()) continue;
+            Call c = cannot.getFirst();
+            out.add("  not through " + r.id() + ", " + label(p, r) + ": " + cannot.size() + " of " + calls.size()
+                    + " calls cannot take it; " + c.f().rel + ":" + c.s().line() + "  "
+                    + blocked(p, head, c, r, source));
+        }
+        return out;
     }
 
     /** The answer that writes nothing: each route with what each call reads through it, or why it cannot. */

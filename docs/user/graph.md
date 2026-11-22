@@ -737,7 +737,7 @@ until they answer for it, rename reports it as a candidate or hazard as above.
 ```bash
 jk code delete OrderService.legacyTotal          # only if nothing uses it; else lists what does
 jk code move PriceMath.round Money               # a static method or field, every use edited
-jk code move Order.visit Customer --via r2       # an instance method, through the route listed
+jk code move Order.visit Customer --via p1       # an instance method, through the route listed
 jk code pull-up Book.label                       # an instance member up to the class Book extends
 jk code extract-interface Book Priced price,total  # a new interface Book implements
 ```
@@ -761,10 +761,12 @@ method's type that holds one, or a parameter of the method of the target type. W
 `order.visit(c, 2)` becomes `c.visit(2)`; a call that cannot see a private field reads it through
 the type's getter (`order.getCustomer().greeting()`) when all that getter does is return it. The moved method reads that field or parameter as `this`,
 and when it uses anything else of its old type, that instance is passed in as a new first
-parameter (`order.customer.label(order)`). With one route the move runs at once and says which;
-with more, or with one some call cannot take (a field it cannot see, a `null` argument, a receiver
-that would run twice or not at all), it writes nothing and lists each route (`r1`, `r2`, ...) with
-what each call would read; `--via r2` (MCP `via`) moves it through that one. A call through the
+parameter (`order.customer.label(order)`). Routes are `f1`, `f2`, ... for fields and `p1`, `p2`,
+... for parameters. A call cannot take a route through a field it cannot see, a `null` argument, or a
+receiver that would run twice or not at all. When exactly one route reaches the target from every
+call, the move runs through it at once, says which, and says why each other route was not taken;
+otherwise it writes nothing and lists each route with what each call would read, and `--via p1`
+(MCP `via`; there is no short form) moves it through the one named. A call through the
 route fails where that field or argument is `null`. A method that overrides, implements or is
 overridden is refused, as is one with overloads; a target the type extends is a `pull-up`.
 

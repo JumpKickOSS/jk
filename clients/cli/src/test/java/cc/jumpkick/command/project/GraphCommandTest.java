@@ -82,9 +82,9 @@ class GraphCommandTest {
         Invocation in = Invocation.builder()
                 .addPositional("Order.visit")
                 .addPositional("Customer")
-                .putValue("via", "r2")
+                .putValue("via", "p1")
                 .build();
-        assertThat(op("move").request(Path.of("/w"), in, false).options()).containsExactly("via=r2");
+        assertThat(op("move").request(Path.of("/w"), in, false).options()).containsExactly("via=p1");
     }
 
     @Test

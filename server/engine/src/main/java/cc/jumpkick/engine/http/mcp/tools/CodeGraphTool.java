@@ -141,7 +141,8 @@ public final class CodeGraphTool implements McpTool {
                                         "to",
                                         McpSchemas.string(),
                                         "via",
-                                        McpSchemas.string("An instance method's route, as the last move listed: r1"))),
+                                        McpSchemas.string(
+                                                "An instance method's route, as the last move listed: f1, p1"))),
                                 List.of("address", "to"))),
                 "move",
                 in -> List.of(required(in, "address"), required(in, "to")));

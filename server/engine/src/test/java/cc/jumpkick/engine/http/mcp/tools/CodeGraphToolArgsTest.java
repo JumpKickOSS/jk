@@ -60,9 +60,9 @@ class CodeGraphToolArgsTest {
         assertThat(request.args()).containsExactly("Order.join", "Texts");
         assertThat(request.options()).isEmpty();
         assertThat(request.scope()).isNull();
-        assertThat(request("move", Map.of("address", "Order.visit", "to", "Customer", "via", "r2"))
+        assertThat(request("move", Map.of("address", "Order.visit", "to", "Customer", "via", "p1"))
                         .options())
-                .containsExactly("via=r2");
+                .containsExactly("via=p1");
     }
 
     @Test

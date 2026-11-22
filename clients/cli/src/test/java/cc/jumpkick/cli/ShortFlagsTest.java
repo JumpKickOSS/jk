@@ -44,7 +44,8 @@ class ShortFlagsTest {
             "tool install --destination",
             "guard --schema",
             "test --quarantined",
-            "stats --since");
+            "stats --since",
+            "code move --via");
 
     @Test
     void every_visible_option_has_a_short_form_unique_in_its_command() {
