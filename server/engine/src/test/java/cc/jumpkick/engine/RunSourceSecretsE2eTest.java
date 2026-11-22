@@ -4,6 +4,7 @@ package cc.jumpkick.engine;
 import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.builds.RunReaper;
 import cc.jumpkick.config.JkEngineConfig;
 import cc.jumpkick.config.RequestEnvNames;
 import cc.jumpkick.config.TestSelection;
@@ -26,8 +27,12 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
+import java.nio.file.SimpleFileVisitor;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -35,7 +40,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.regex.Pattern;
-import java.util.stream.Stream;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
@@ -245,27 +250,56 @@ class RunSourceSecretsE2eTest extends EngineServerHarness {
     }
 
     /**
-     * The journal's files that hold the canary. An atomic write's staging sibling and a run
-     * directory still being staged are skipped: the engine may still be settling the run, and either
-     * can be renamed onto its target between the listing and the read; what it holds is checked
-     * under the target's own name.
+     * The journal's files that hold the canary. The builds root is the test JVM's, and other work
+     * still touches it during the sweep: this process's {@link RunReaper} deletes runs past their
+     * retention once a run finishes, and an engine an earlier class started may still be settling
+     * one of its own. A file or directory deleted between the listing and the read held nothing the
+     * journal keeps, so it is passed over. An atomic write's staging sibling and a run directory
+     * still being staged are skipped without being read: either can be renamed onto its target
+     * between the listing and the read, and what it holds is checked under the target's own name.
      */
     private static List<Path> journalLeaks() throws IOException {
+        RunReaper.get().awaitIdle(REAPER_IDLE.toMillis());
         List<Path> leaks = new ArrayList<>();
-        try (Stream<Path> files = Files.walk(BuildJournal.current().buildsRoot())) {
-            for (Path f : files.filter(path -> !staging(path))
-                    .filter(Files::isRegularFile)
-                    .toList()) {
-                String text = new String(Files.readAllBytes(f), StandardCharsets.ISO_8859_1);
-                if (text.contains(CANARY)) leaks.add(f);
+        Files.walkFileTree(BuildJournal.current().buildsRoot(), new SimpleFileVisitor<>() {
+            @Override
+            public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
+                return staging(dir) ? FileVisitResult.SKIP_SUBTREE : FileVisitResult.CONTINUE;
             }
-        }
+
+            @Override
+            public FileVisitResult visitFile(Path f, BasicFileAttributes attrs) throws IOException {
+                if (!attrs.isRegularFile() || staging(f)) return FileVisitResult.CONTINUE;
+                try {
+                    String text = new String(Files.readAllBytes(f), StandardCharsets.ISO_8859_1);
+                    if (text.contains(CANARY)) leaks.add(f);
+                } catch (NoSuchFileException deleted) {
+                    // since the listing
+                }
+                return FileVisitResult.CONTINUE;
+            }
+
+            @Override
+            public FileVisitResult visitFileFailed(Path f, IOException e) throws IOException {
+                if (e instanceof NoSuchFileException) return FileVisitResult.CONTINUE;
+                throw e;
+            }
+
+            @Override
+            public FileVisitResult postVisitDirectory(Path dir, @Nullable IOException e) throws IOException {
+                if (e != null && !(e instanceof NoSuchFileException)) throw e;
+                return FileVisitResult.CONTINUE;
+            }
+        });
         return leaks;
     }
 
+    /** How long the sweep waits for the reaper pass this test's own run requested. */
+    private static final Duration REAPER_IDLE = Duration.ofSeconds(30);
+
     /**
      * Whether {@code f} is a staging sibling {@link cc.jumpkick.host.AtomicWrites#staging} made, or
-     * sits in a run directory the journal is still staging ({@code .<run>.tmp}, {@code
+     * is, or sits in, a run directory the journal is still staging ({@code .<run>.tmp}, {@code
      * .<run>.complete.tmp}) and renames whole.
      */
     private static boolean staging(Path f) {
