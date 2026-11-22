@@ -436,8 +436,8 @@ public final class GlobalConfig {
      * {@code [mirrors]} of {@code ~/.jk/config.toml}: a download's key to the base URL it is fetched
      * from instead of the public one, as written, {@code ${VAR}} references unexpanded. The keys are
      * the tool distributions ({@code node}, {@code kotlin}, {@code gradle}, {@code maven}), the JDK
-     * catalog and archives ({@code jdk}) and the library registry ({@code libraries}). Empty when the
-     * table is absent.
+     * catalog and archives ({@code jdk}), the library registry ({@code libraries}) and the model price
+     * table ({@code prices}). Empty when the table is absent.
      *
      * @throws UserConfigParseException when the file exists and is not valid TOML
      */

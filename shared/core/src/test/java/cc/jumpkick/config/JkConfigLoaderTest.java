@@ -218,4 +218,22 @@ class JkConfigLoaderTest {
                 .isInstanceOf(JkBuildParseException.class)
                 .hasMessageContaining("[config] unknown key `directory`");
     }
+
+    @Test
+    void the_host_is_offline_by_jk_offline_or_the_user_config(@TempDir Path dir) throws IOException {
+        Path userConfig = dir.resolve("config.toml");
+        Map<String, String> none = Map.of();
+
+        assertThat(JkConfigLoader.hostOffline(userConfig, none::get))
+                .as("no config, no env")
+                .isFalse();
+        Files.writeString(userConfig, "[config]\noffline = true\n");
+        assertThat(JkConfigLoader.hostOffline(userConfig, none::get)).isTrue();
+        assertThat(JkConfigLoader.hostOffline(userConfig, Map.of("JK_OFFLINE", "0")::get))
+                .as("the environment wins over the file")
+                .isFalse();
+        Files.writeString(userConfig, "[config]\noffline = false\n");
+        assertThat(JkConfigLoader.hostOffline(userConfig, Map.of("JK_OFFLINE", "1")::get))
+                .isTrue();
+    }
 }

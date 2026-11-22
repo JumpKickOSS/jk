@@ -364,11 +364,12 @@ gradle = "${NEXUS}/repository/gradle-distributions/"         # as https://servic
 maven  = "https://nexus.corp/repository/maven-central/"      # a Maven repository root holding org/apache/maven/apache-maven/
 jdk    = "https://nexus.corp/repository/jdk/"                # every JDK host under its own prefix, below
 libraries = "https://nexus.corp/repository/jk-libraries/"    # holds libraries.toml, the library registry
+prices = "https://nexus.corp/repository/jk-prices/"          # holds prices.toml, the model price table
 ```
 
 Each is, first to answer: `JK_<TOOL>_DIST_MIRROR` (`JK_NODE_DIST_MIRROR`, `JK_KOTLIN_DIST_MIRROR`,
 …), this table, a Maven `settings.xml` `<mirror>` whose `mirrorOf` names the tool (`nodejs`,
-`kotlin`, `gradle`, `jk-libraries`; for the Maven distribution `central` or `*`, as Maven itself reads them), then
+`kotlin`, `gradle`, `jk-libraries`, `jk-prices`; for the Maven distribution `central` or `*`, as Maven itself reads them), then
 the public origin. A Gradle wrapper's own `distributionUrl` is used as written. Credentials come
 from the chain below, under the mirror's `host[:port]` (or a `settings.xml` mirror's `id`).
 
@@ -398,6 +399,19 @@ reads it, and `jk lock` and the engine refresh it every 12 hours). Its public co
 a `libraries` mirror (`JK_LIBRARIES_DIST_MIRROR`) is the directory that holds a copy, so JumpKick
 reads `<mirror>libraries.toml`.
 
+### Price table
+
+The model price table is what JumpKick prices an agent's tokens with: each model's API list price per
+million tokens, by kind (input, output, cache read, cache write), and the date it was read. JumpKick
+carries one, and the engine checks for a newer one every 12 hours: a conditional request for
+`https://jumpkick.build/prices.toml`, then the same file on GitHub when that fails. The request
+carries no account, project or machine identifier. A table is used only when it is signed with the
+JumpKick release key, parses, and was published after the one in use; otherwise, offline
+(`JK_OFFLINE`, or `offline = true` under `[config]`), or when no source answers, nothing changes and
+nothing is said. Tokens are kept by model and priced when shown, so a model the table does not know
+yet is priced once a table that knows it arrives. A `prices` mirror (`JK_PRICES_DIST_MIRROR`) is the
+directory that holds a copy, so JumpKick reads `<mirror>prices.toml` and asks nothing else.
+
 ## Hosts JumpKick contacts
 
 Every host JumpKick dials on its own, and how to point it somewhere else. A host marked optional is
@@ -411,6 +425,7 @@ firewall that allows only your mirrors costs you that feature's freshness, not a
 | `jumpkick.build` (`/repo/…`) | JumpKick's own repository: plugins, and the engine's worker jars when the store lacks them, each checked against the release's signed digest list from `/releases/` | the same (it is the `jumpkick` repository), with `JK_RELEASES_URL` for the digest list | the same; a worker whose digest list cannot be read is refused |
 | `jumpkick.build` (`/releases/…`) | `jk self update`, the engine jar of an install that has none, and the signed digests of the worker jars the engine downloads | `JK_RELEASES_URL` (a mirror of `releases/`); `self-update = "never"` stops the update checks | the update or install fails, and so does a worker download |
 | `raw.githubusercontent.com` | the library registry | `[mirrors] libraries` | optional: the copy on disk, else the one built into JumpKick; asked again 10 minutes later at the earliest, and the engine log says so once |
+| `jumpkick.build` (`/prices.toml`), then `raw.githubusercontent.com` | the [model price table](#price-table) | `[mirrors] prices` | optional: the table on disk, else the one built into JumpKick |
 | `download.jetbrains.com` | the JDK catalog | `[mirrors] jdk` | optional: the catalog on disk; `jk new` lists the JDKs you have installed, and provisioning a JDK needs a catalog |
 | the JDK vendors' hosts (`github.com`, `cdn.azul.com`, …) | JDK archives the catalog names | `[mirrors] jdk` | provisioning that JDK fails |
 | `github.com` (git) | the official template catalog | `[templates] official` | optional: the catalog on disk |

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.config;
 
+import cc.jumpkick.host.JkDirs;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -61,6 +62,23 @@ public final class JkConfigLoader {
         // Env vars override files but are overridden by CLI flags (caller's job).
         out = out.mergedWith(loadFromEnv(BuildEnv::get));
         return out;
+    }
+
+    /**
+     * Whether this host is offline for a fetch no command asked for (the engine's background
+     * refreshes): {@code JK_OFFLINE}, else {@code [config] offline} in {@code ~/.jk/config.toml}.
+     */
+    public static boolean hostOffline() {
+        return hostOffline(JkDirs.userConfigFile(), BuildEnv::get);
+    }
+
+    /** As {@link #hostOffline()} against an explicit user config file and environment. */
+    static boolean hostOffline(Path userConfig, Function<String, @Nullable String> env) {
+        try {
+            return loadTomlOrEmpty(userConfig).mergedWith(loadFromEnv(env)).offlineOr(false);
+        } catch (IOException e) {
+            return false;
+        }
     }
 
     /** Parse a TOML file's {@code [config]} table into a config layer; missing/malformed → empty. */
