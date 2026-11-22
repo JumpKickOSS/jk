@@ -19,7 +19,8 @@ public record ClassFinishEvent(String dir, String task, TestClassResult result) 
                 .number("failed", result.failed())
                 .number("skipped", result.skipped())
                 .number("millis", result.durationMs())
-                .optionalNonBlankString("tier", result.tier());
+                .optionalNonBlankString("tier", result.tier())
+                .optionalTrue(PASSED_ON_RERUN, result.passedOnRerun());
         if (!result.slow().isEmpty()) line.token(SLOW, slowArray(result.slow()));
         return line.finish();
     }
@@ -36,8 +37,15 @@ public record ClassFinishEvent(String dir, String task, TestClassResult result) 
                         Jsonl.intValue(json, "skipped", 0),
                         Jsonl.longValue(json, "millis", 0),
                         tier(json),
-                        slow(json)));
+                        slow(json),
+                        Jsonl.bool(json, PASSED_ON_RERUN, false)));
     }
+
+    /**
+     * The field a class carries, {@code true}, when it passed after a run under the same inputs
+     * recorded it red; absent otherwise.
+     */
+    public static final String PASSED_ON_RERUN = "passedOnRerun";
 
     /**
      * The field holding a class's slow methods, {@code [{"method":…,"millis":…}]}, written only

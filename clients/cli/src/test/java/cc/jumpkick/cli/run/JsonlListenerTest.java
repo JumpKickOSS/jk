@@ -44,6 +44,17 @@ class JsonlListenerTest {
     }
 
     @Test
+    void a_class_that_passed_on_a_rerun_says_so_on_its_line() {
+        ByteArrayOutputStream buf = new ByteArrayOutputStream();
+        JsonlListener lis = new JsonlListener(new PrintStream(buf, true, StandardCharsets.UTF_8));
+        lis.testClass("run-tests", new TestClassResult("g:a", "demo.A", 1, 0, 0, 9, "", List.of()));
+        lis.testClass("run-tests", new TestClassResult("g:a", "demo.B", 1, 0, 0, 9, "", List.of()).asPassedOnRerun());
+        String[] lines = buf.toString(StandardCharsets.UTF_8).strip().split("\n");
+        assertThat(lines[0]).doesNotContain("passedOnRerun");
+        assertThat(lines[1]).contains("\"testClass\":\"demo.B\"").contains("\"passedOnRerun\":true");
+    }
+
+    @Test
     void workspace_member_listener_never_clobbers_engine_aggregate() {
         LiveProgress.get().setPercent(80.0); // engine workspace-progress snapshot already applied
         ByteArrayOutputStream buf = new ByteArrayOutputStream();

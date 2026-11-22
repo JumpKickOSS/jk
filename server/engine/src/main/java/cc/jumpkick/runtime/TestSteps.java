@@ -356,7 +356,8 @@ final class TestSteps {
 
     /**
      * The run's progress listener: the step's own bridge, each class recorded in {@code ledger} as it
-     * finishes, and the runner's {@code tag-excluded} warning kept when the run named classes.
+     * finishes and marked when it passed after a red under this stamp, and the runner's {@code
+     * tag-excluded} warning kept when the run named classes.
      */
     private static TagExcludedCapture listener(
             TaskContext ctx,
@@ -371,7 +372,7 @@ final class TestSteps {
             TestSelection effectiveSel) {
         return new TagExcludedCapture(
                 ledger.recording(TestSupport.bridgeListener(
-                        ctx, testWorkers, in.verbose(), moduleLabel, in.dir(), snippets, suites, tier)),
+                        ctx, testWorkers, in.verbose(), moduleLabel, in.dir(), snippets, suites, tier, ledger::marked)),
                 affected != null || !effectiveSel.classes().isEmpty());
     }
 

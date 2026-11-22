@@ -28,6 +28,7 @@ import cc.jumpkick.plugin.protocol.JUnitUniqueIds;
 import cc.jumpkick.run.SlowestTests;
 import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TaskNames;
+import cc.jumpkick.run.TestClassResult;
 import cc.jumpkick.run.TestFailureInfo;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.runtime.base.Perf;
@@ -57,6 +58,7 @@ import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Predicate;
+import java.util.function.UnaryOperator;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
@@ -554,7 +556,16 @@ public final class TestSupport {
      * 100% on success.
      */
     public static TestProgressListener bridgeListener(TaskContext ctx, int workerCount, boolean verbose) {
-        return bridgeListener(ctx, workerCount, verbose, "", null, null, SuiteFilter.NONE, TestTier.UNKNOWN);
+        return bridgeListener(
+                ctx,
+                workerCount,
+                verbose,
+                "",
+                null,
+                null,
+                SuiteFilter.NONE,
+                TestTier.UNKNOWN,
+                UnaryOperator.identity());
     }
 
     /**
@@ -569,14 +580,16 @@ public final class TestSupport {
     /** As {@link #bridgeListener(TaskContext, int, boolean, String)} for a suite running as {@code tier}. */
     static TestProgressListener bridgeListener(
             TaskContext ctx, int workerCount, boolean verbose, String moduleLabel, TestTier tier) {
-        return bridgeListener(ctx, workerCount, verbose, moduleLabel, null, null, SuiteFilter.NONE, tier);
+        return bridgeListener(
+                ctx, workerCount, verbose, moduleLabel, null, null, SuiteFilter.NONE, tier, UnaryOperator.identity());
     }
 
     /**
      * Full bridge: module coord + project dir so source snippets attach to structured test-failure
      * diagnostics (web Activity / details.jsonl), a snippet cache shared with {@link
      * #renderFailures}, each failure tagged with the suite {@code suites} says its class runs in, and
-     * each finished class tagged with {@code tier}. A test over the tier's budget is a warning.
+     * each finished class tagged with {@code tier} and passed through {@code marked} before it is
+     * sent. A test over the tier's budget is a warning.
      */
     static TestProgressListener bridgeListener(
             TaskContext ctx,
@@ -586,7 +599,8 @@ public final class TestSupport {
             @Nullable Path moduleDir,
             TestFailureSource.@Nullable Cache cache,
             SuiteFilter suites,
-            TestTier tier) {
+            TestTier tier,
+            UnaryOperator<TestClassResult> marked) {
         String module = moduleLabel == null ? "" : moduleLabel.trim();
         Path dir = moduleDir;
         TestFailureSource.Cache snippets = cache != null ? cache : new TestFailureSource.Cache();
@@ -641,7 +655,9 @@ public final class TestSupport {
                     int workerId) {
                 if (!isTest) {
                     // Sent as the class completes, so a run stopped later still records it.
-                    classes.containerFinished(id, status, durationMs).ifPresent(ctx::testClass);
+                    classes.containerFinished(id, status, durationMs)
+                            .map(marked)
+                            .ifPresent(ctx::testClass);
                     return;
                 }
                 classes.finished(id, status, durationMs);

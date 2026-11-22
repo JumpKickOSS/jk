@@ -15,6 +15,8 @@ import java.util.List;
  *     list), empty when unknown
  * @param slow the class's methods at or over {@link SlowestTests#SLOW_MS}, longest first, at most
  *     {@link SlowestTests#TOP}
+ * @param passedOnRerun the class passed after a run under the same inputs recorded it red: flaky, or
+ *     dependent on what ran before it
  */
 public record TestClassResult(
         String module,
@@ -24,10 +26,29 @@ public record TestClassResult(
         int skipped,
         long durationMs,
         String tier,
-        List<SlowMethod> slow) {
+        List<SlowMethod> slow,
+        boolean passedOnRerun) {
 
     public TestClassResult {
         slow = List.copyOf(slow);
+    }
+
+    /** A class as it finished, with no earlier red run of it to compare. */
+    public TestClassResult(
+            String module,
+            String className,
+            int tests,
+            int failed,
+            int skipped,
+            long durationMs,
+            String tier,
+            List<SlowMethod> slow) {
+        this(module, className, tests, failed, skipped, durationMs, tier, slow, false);
+    }
+
+    /** This result marked as having passed on a re-run under the same inputs. */
+    public TestClassResult asPassedOnRerun() {
+        return new TestClassResult(module, className, tests, failed, skipped, durationMs, tier, slow, true);
     }
 
     /** One test method and its wall in milliseconds. */

@@ -2,13 +2,16 @@
 package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.tuple;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.run.BuildPlanKey;
 import cc.jumpkick.run.TaskContext;
+import cc.jumpkick.run.TestClassResult;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.TestStamp;
+import cc.jumpkick.test.SuiteFilter;
 import cc.jumpkick.test.TestProgressListener;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -127,6 +130,33 @@ class TestClassLedgerTest {
         second.store(cache, TASK, STAMP);
 
         assertThat(load().settledClasses(ONE)).containsExactly("demo.OkTest", "demo.RedTest");
+    }
+
+    @Test
+    void a_class_red_under_the_stamp_is_sent_as_passed_on_a_rerun_when_it_passes() {
+        TestClassLedger first = load();
+        TestProgressListener l1 = first.recording(TestProgressListener.noop());
+        run(l1, "demo.RedTest", "FAILED");
+        run(l1, "demo.RedTest$Inner", "FAILED");
+        run(l1, "demo.StillRedTest", "FAILED");
+        first.store(cache, TASK, STAMP);
+
+        TestClassLedger second = load();
+        List<TestClassResult> sent = new ArrayList<>();
+        TestProgressListener l2 = second.recording(TestSupport.bridgeListener(
+                sending(sent), 1, false, "g:app", null, null, SuiteFilter.NONE, TestTier.UNKNOWN, second::marked));
+        run(l2, "demo.RedTest", "SUCCESSFUL");
+        run(l2, "demo.RedTest$Inner", "SUCCESSFUL");
+        run(l2, "demo.StillRedTest", "FAILED");
+        run(l2, "demo.NewTest", "SUCCESSFUL");
+
+        assertThat(sent)
+                .extracting(TestClassResult::className, TestClassResult::passedOnRerun)
+                .containsExactly(
+                        tuple("demo.RedTest", true),
+                        tuple("demo.RedTest$Inner", true),
+                        tuple("demo.StillRedTest", false),
+                        tuple("demo.NewTest", false));
     }
 
     @Test
@@ -262,6 +292,11 @@ class TestClassLedgerTest {
 
     /** A step context that keeps nothing. */
     private static TaskContext quiet() {
+        return sending(new ArrayList<>());
+    }
+
+    /** A step context that keeps each finished class the step sends in {@code into}, and nothing else. */
+    private static TaskContext sending(List<TestClassResult> into) {
         return new TaskContext() {
             @Override
             public void progress(int delta) {}
@@ -283,6 +318,11 @@ class TestClassLedgerTest {
 
             @Override
             public void error(String code, String message) {}
+
+            @Override
+            public void testClass(TestClassResult result) {
+                into.add(result);
+            }
 
             @Override
             public boolean cancelled() {

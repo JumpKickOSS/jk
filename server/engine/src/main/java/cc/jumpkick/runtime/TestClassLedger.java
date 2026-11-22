@@ -362,6 +362,15 @@ final class TestClassLedger {
                 ran.workers());
     }
 
+    /**
+     * {@code r}, a class the current launch just finished, marked {@link
+     * TestClassResult#asPassedOnRerun} when it passed and a run under this stamp recorded it red.
+     */
+    TestClassResult marked(TestClassResult r) {
+        Entry before = previous.get(entryKey(launch, r.className()));
+        return r.failed() == 0 && before != null && !before.green() ? r.asPassedOnRerun() : r;
+    }
+
     /** Classes recorded red under this stamp that passed this time: with nothing changed, flaky or order-dependent. */
     List<String> passedOnRerun() {
         Set<String> out = new TreeSet<>();

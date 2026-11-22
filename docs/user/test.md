@@ -492,7 +492,8 @@ class counts as passed only when it and every class nested in it passed. The run
 again`), its counts and `jk results` include the classes not re-run, and once every class has
 passed the suite's marker is green and the next run skips it whole. A class that failed and then
 passes with nothing changed is flaky or depends on what ran before it, and the run warns
-`test-passed-on-rerun` naming it; past a threshold it is quarantined
+`test-passed-on-rerun` naming it, and its `class-finish` row in `jk results -O jsonl` carries
+`"passedOnRerun":true` ([Machine output](machine-output.md#event-vocabulary)); past a threshold it is quarantined
 ([Flaky tests](#flaky-tests-are-quarantined-jk-flaky)). `--redo`, `--debug-jvm`, a coverage run and `--affected` run their
 whole selection. A change to any stamp input still re-runs every class.
 

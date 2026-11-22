@@ -279,6 +279,12 @@ class ProtoEventsFrozenBytesTest {
                 .isEqualTo(
                         "{\"schema\":1,\"type\":\"class-finish\",\"dir\":\"a/b\",\"task\":\"run-tests\",\"module\":\"g:a\",\"testClass\":\"demo.A\",\"tests\":2,\"failed\":0,\"skipped\":0,\"millis\":5000,\"tier\":\"fast\",\"slow\":[{\"method\":\"b\",\"millis\":3000},{\"method\":\"a[#1]\",\"millis\":1200}]}");
         assertThat(ClassFinishEvent.decode(slowLine).result()).isEqualTo(slow);
+        TestClassResult flaky = new TestClassResult("g:a", "demo.A", 1, 0, 0, 9, "", List.of()).asPassedOnRerun();
+        String flakyLine = ProtoEvents.classFinish("a/b", "run-tests", flaky);
+        assertThat(flakyLine)
+                .isEqualTo(
+                        "{\"schema\":1,\"type\":\"class-finish\",\"dir\":\"a/b\",\"task\":\"run-tests\",\"module\":\"g:a\",\"testClass\":\"demo.A\",\"tests\":1,\"failed\":0,\"skipped\":0,\"millis\":9,\"passedOnRerun\":true}");
+        assertThat(ClassFinishEvent.decode(flakyLine).result()).isEqualTo(flaky);
         assertThat(ProtoEvents.formatFile("a/b", "src/A.java", "changed", null, 1, 16))
                 .isEqualTo(
                         "{\"type\":\"format-file\",\"dir\":\"a/b\",\"path\":\"src/A.java\",\"status\":\"changed\",\"message\":null,\"index\":1,\"total\":16}");
