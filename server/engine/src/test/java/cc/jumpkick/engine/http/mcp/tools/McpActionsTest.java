@@ -98,6 +98,29 @@ class McpActionsTest {
     }
 
     @Test
+    void a_library_search_names_the_library_it_searched() {
+        McpContext ctx = context();
+        McpConnection connection = ctx.connections().open("claude-code", null, McpRevision.LATEST, McpElicitModes.NONE);
+        String id = log.open("mcp", "claude-code", connection.label(), null);
+        McpTools tools = new McpTools(List.of(
+                tool("query", in -> in.text("org.lib.Splitter.on\n")),
+                tool("find", in -> in.text("3 library types\n"))));
+        String dir = project.toString();
+
+        tools.call(
+                ctx,
+                call("query", Map.of("dir", dir, "question", "split a string", "library", "guava")),
+                connection,
+                null);
+        tools.call(ctx, call("find", Map.of("dir", dir, "kind", "interface", "library", "guava")), connection, null);
+        tools.call(ctx, call("find", Map.of("dir", dir, "name", "*Service")), connection, null);
+
+        assertThat(log.session(id, 0, 10).orElseThrow().actions())
+                .extracting(a -> a.get("summary"))
+                .containsExactly("query \"split a string\" in guava", "find interface in guava", "find *Service");
+    }
+
+    @Test
     void a_move_is_logged_with_the_member_and_where_it_went() {
         McpContext ctx = context();
         McpConnection connection = ctx.connections().open("claude-code", null, McpRevision.LATEST, McpElicitModes.NONE);

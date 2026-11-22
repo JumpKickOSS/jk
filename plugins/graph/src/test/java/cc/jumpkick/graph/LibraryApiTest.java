@@ -2,6 +2,7 @@
 package cc.jumpkick.graph;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.codegraph.Modules;
 import cc.jumpkick.codegraph.SymbolFinder;
@@ -19,6 +20,7 @@ import java.util.jar.JarOutputStream;
 import java.util.stream.Stream;
 import javax.tools.JavaCompiler;
 import javax.tools.ToolProvider;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -140,7 +142,30 @@ class LibraryApiTest {
 
     @Test
     void findWithALibraryGlobListsTheTypesOfTheLibrariesItNamesOnly(@TempDir Path dir) throws IOException {
-        GraphService.Workspace w = new GraphService.Workspace(
+        GraphService.Workspace w = locked(dir);
+
+        assertThat(find(w, "other-kit", "*Mapper"))
+                .isEqualTo("1 library type\nclass  org.lib.Mapper  (org.other:other-kit:2.0)");
+        assertThat(find(w, "*", "*Mapper"))
+                .isEqualTo("2 library types\n"
+                        + "class  org.lib.Mapper  (org.lib:lib:1.0)\n"
+                        + "class  org.lib.Mapper  (org.other:other-kit:2.0)");
+        assertThat(find(w, "jackson-databind", "*Mapper")).startsWith("No locked library matches 'jackson-databind'.");
+    }
+
+    @Test
+    void aLibrarySearchWithOnlyAKindListsEveryTypeOfThatKind(@TempDir Path dir) throws IOException {
+        GraphService.Workspace w = locked(dir);
+
+        assertThat(find(w, "other-kit", "interface", null))
+                .isEqualTo("1 library type\ninterface  org.lib.Mapper.Feature  (org.other:other-kit:2.0)");
+        assertThatThrownBy(() -> find(w, "other-kit", "", null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("needs a name glob or a kind");
+    }
+
+    private static GraphService.Workspace locked(Path dir) throws IOException {
+        return new GraphService.Workspace(
                 dir,
                 dir.resolve("target/graph"),
                 null,
@@ -153,20 +178,19 @@ class LibraryApiTest {
                 dir.resolve("cache"),
                 List.of(),
                 ModuleReach.UNKNOWN);
-
-        assertThat(find(w, "other-kit", "*Mapper"))
-                .isEqualTo("1 library type\nclass  org.lib.Mapper  (org.other:other-kit:2.0)");
-        assertThat(find(w, "*", "*Mapper"))
-                .isEqualTo("2 library types\n"
-                        + "class  org.lib.Mapper  (org.lib:lib:1.0)\n"
-                        + "class  org.lib.Mapper  (org.other:other-kit:2.0)");
-        assertThat(find(w, "jackson-databind", "*Mapper")).startsWith("No locked library matches 'jackson-databind'.");
     }
 
     private static String find(GraphService.Workspace w, String library, String name) throws IOException {
+        return find(w, library, "class", name);
+    }
+
+    private static String find(GraphService.Workspace w, String library, String kind, @Nullable String name)
+            throws IOException {
+        Map<String, String> options =
+                kind.isEmpty() ? Map.of("library", library) : Map.of("library", library, "kind", kind);
         GraphService.Request r = new GraphService.Request(
                 "find",
-                List.of(name),
+                name == null ? List.of() : List.of(name),
                 "bfs",
                 3,
                 2000,
@@ -179,7 +203,7 @@ class LibraryApiTest {
                 null,
                 List.of(),
                 null,
-                Map.of("library", library, "kind", "class"));
+                options);
         return GraphService.run(w, r, GraphBuild.Progress.NONE).text();
     }
 

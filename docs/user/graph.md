@@ -466,7 +466,7 @@ kind, visibility, name and span. Each filter takes a comma list.
 | `-E`, `--extends` | A superclass anywhere up the chain |
 | `-I`, `--implements` | A supertype anywhere above, interfaces included; library supertypes match by name |
 | `-A`, `--annotated` | An annotation on the declaration (`Transactional` or `@Transactional`) |
-| `-l`, `--library <glob>` | Search the types of the locked libraries the glob names instead, by name glob and kind; `*` for every one, as [`query -l`](#asking-a-library) |
+| `-l`, `--library <glob>` | Search the types of the locked libraries the glob names instead, by name glob and kind; `*` for every one, as [`query -l`](#asking-a-library). A kind alone lists every type of that kind, cut to the budget |
 
 `-E` and `-I` filter types, or, when `-t` asks only for members, the type that declares each member:
 `find total -t method -I OrderService` lists every override of `OrderService.total`. A nested type
@@ -478,6 +478,7 @@ jk code find total -t method -I OrderService   # every override
 jk code find -t member -p public -m server/engine 'get*'
 jk code find -l jackson-databind -t class '*Mapper'
 jk code find -l '*' '*Mapper'                 # every locked library
+jk code find -l guava -t interface           # every interface, to the budget
 ```
 
 ## Before editing a file

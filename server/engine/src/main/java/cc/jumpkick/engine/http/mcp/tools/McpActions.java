@@ -12,6 +12,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -130,13 +132,20 @@ final class McpActions {
         };
     }
 
-    /** One line saying what the call asked: {@code usages PricingRules.weekendUplift}. */
+    /**
+     * One line saying what the call asked: {@code usages PricingRules.weekendUplift}, or {@code find
+     * interface in guava} for a search of a locked library.
+     */
     static String summary(String name, McpCall call, @Nullable Map<String, Object> result) {
         String text =
                 switch (name) {
-                    case "query" -> "query \"" + orEmpty(call.str("question")) + "\"";
+                    case "query" -> "query \"" + orEmpty(call.str("question")) + "\"" + library(call);
                     case "usages", "read", "delete" -> name + " " + orEmpty(call.str("address"));
-                    case "find" -> "find " + orEmpty(call.str("name"));
+                    case "find" ->
+                        Stream.of("find", orEmpty(call.str("kind")), orEmpty(call.str("name")))
+                                        .filter(s -> !s.isEmpty())
+                                        .collect(Collectors.joining(" "))
+                                + library(call);
                     case "rename", "move", "pull_up", "extract_interface" ->
                         name + " " + orEmpty(call.str("address"))
                                 + (orEmpty(call.str("to")).isBlank() ? "" : " → " + call.str("to"));
@@ -153,6 +162,12 @@ final class McpActions {
                     default -> name;
                 };
         return clip(text.strip());
+    }
+
+    /** {@code " in guava"} when the call searched a locked library's API instead of the workspace. */
+    private static String library(McpCall call) {
+        String library = orEmpty(call.str("library"));
+        return library.isEmpty() ? "" : " in " + library;
     }
 
     /** The first non-blank line of the answer's text, or {@code null} when it had none. */
