@@ -10,6 +10,9 @@
 #                                                  when the run failed only in test classes
 #   scripts/gate/flaky.sh passed <details.jsonl>   `<module> <class>` of each class that passed on a
 #                                                  re-run under the same inputs
+#   scripts/gate/flaky.sh ran <details.jsonl> <command>
+#                                                  exit 0 when the transcript is a run of `jk
+#                                                  <command>`; else say which run it is
 #   scripts/gate/flaky.sh take <saved>             save the quarantine file jk changed in this
 #                                                  checkout to <saved> and restore HEAD's
 #   scripts/gate/flaky.sh review <saved> <log>     open a ticket for each class jk added (in <saved>)
@@ -65,6 +68,18 @@ passed() {
   rows "$details" | jq -r '
     select(.type == "class-finish" and .passedOnRerun == true and .testClass)
     | "\(.module // "-") \(.testClass | sub("\\$.*"; ""))"' | sort -u
+}
+
+# Exit 0 when the transcript is of a `jk <command>` run, from its session-start row. `jk results`
+# prints the latest run that kept a transcript, which is not the one just run when that one kept
+# none: say which it is, so a gate does not read another run's classes as this one's.
+ran() {
+  local details="${1:?usage: flaky.sh ran <details.jsonl> <command>}" want="${2:?usage: flaky.sh ran <details.jsonl> <command>}" got
+  [[ -f "$details" ]] || die "no run transcript at $details"
+  got="$(rows "$details" | jq -r 'select(.type == "session-start") | .command // empty' | head -1)"
+  [[ "$got" == "$want" ]] && return 0
+  echo "jk results printed the run of jk ${got:-<no command>}, not this jk $want" >&2
+  return 1
 }
 
 take() {
@@ -283,9 +298,10 @@ review() {
   case "${1:-}" in
     failed) failed "${@:2}" ;;
     passed) passed "${@:2}" ;;
+    ran) ran "${@:2}" ;;
     take) take "${@:2}" ;;
     review) review "${@:2}" ;;
-    *) die "usage: flaky.sh failed <details.jsonl> | passed <details.jsonl> | take <saved> | review <saved> <log>" ;;
+    *) die "usage: flaky.sh failed <details.jsonl> | passed <details.jsonl> | ran <details.jsonl> <command> | take <saved> | review <saved> <log>" ;;
   esac
   exit
 }

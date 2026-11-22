@@ -85,6 +85,10 @@ row in `jk results -O jsonl` ([machine output](../user/machine-output.md#event-v
 still red is a `FAILED <module> <class>` line of the Queue tier's log, and its failure's message and
 stack go to `g<n>-failures.txt` beside it. A run red outside a class (a compile error, a dead test
 JVM) stays red: the Queue tier does not run it again, and the Full tier's re-run does not count.
+So does a run whose transcript the gate cannot read: `jk results` prints the latest run that kept
+one, and the gate reads it only when its `session-start` names the command just run
+(`scripts/gate/flaky.sh ran`); otherwise a `TRANSCRIPT` or `RERUN green, but` line names the run
+it printed.
 
 ## The merge queue
 

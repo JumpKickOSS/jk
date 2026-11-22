@@ -25,7 +25,7 @@ set -euo pipefail
 # log directory, its checkout), and gate.sh and flaky.sh would read them in place of the defaults
 # each case here is written against. Neither the settings nor the stand-ins' switches carry in.
 unset "${!GATE_@}" "${!FLAKY_@}" "${!PRE_@}" POST_SCRIPTS FAIL_PUSHGATE FAIL_REINSTALL FAIL_INTEG \
-  FAIL_SLOW FAIL_DOCS FAIL_INTEG_ONCE FAIL_INSTALL_ONCE RESULTS_FIRST RERUN_JSONL JK_CALLS KA_STATE FAIL_SCOREBOARD \
+  FAIL_SLOW FAIL_DOCS FAIL_INTEG_ONCE FAIL_INSTALL_ONCE RESULTS_FIRST RERUN_JSONL RESULTS_RUN JK_CALLS KA_STATE FAIL_SCOREBOARD \
   JK_CACHE_DIR JK_QUEUE_REMOTE BRANCH_TIER_BASE QUARANTINE_ADD KA_FAIL
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -65,6 +65,37 @@ cat >"$WORK/rerun-new.jsonl" <<'EOF'
 {"schema":1,"type":"class-finish","task":"run-tests","module":"cc.jumpkick:jk-engine","testClass":"b.NewTest","tests":1,"failed":0,"skipped":0,"millis":7,"passedOnRerun":true}
 {"schema":1,"type":"warn","task":"run-tests","code":"test-passed-on-rerun","message":"passed on a re-run with no input changed, so flaky or dependent on what ran before: b.NewTest","module":"cc.jumpkick:jk-engine"}
 EOF
+# Full cycle f15, as jk wrote it: the push gate red in one e2e class, and that class alone run on
+# the re-run, passing. The install's transcript after the fix; before it, `jk install` kept none,
+# and `jk results` printed the gate's `jk guard` run, which runs no test.
+cat >"$WORK/f15-red.jsonl" <<'EOF'
+{"schema":1,"ts":1795347749300,"type":"session-start","command":"install","argv":["install"],"trigger":"cli","session":"script 4be0a1","progress":null}
+{"schema":1,"ts":1795347749330,"type":"job","jid":1756,"buildNumber":2086,"detailsPath":"/home/u/.jk/state/builds/projects/a66f/runs/2086/details.jsonl"}
+{"schema":1,"ts":1795347902241,"type":"class-finish","task":"run-tests","module":"cc.jumpkick:jk-cli-e2e","testClass":"cc.jumpkick.command.toolchain.JdkUpdateCommandTest","tests":10,"failed":0,"skipped":0,"millis":2429,"tier":"integration","progress":5.2}
+{"schema":1,"ts":1795347958247,"type":"error","task":"run-tests","code":"test-failure","message":"\"✘ New   template not found: plugin\"\n Expected: 0\n  But Was: 64","module":"cc.jumpkick:jk-cli-e2e","testClass":"cc.jumpkick.command.project.NewCommandTest","test":null,"progress":99}
+{"schema":1,"ts":1795347958300,"type":"class-finish","task":"run-tests","module":"cc.jumpkick:jk-cli-e2e","testClass":"cc.jumpkick.command.project.NewCommandTest","tests":6,"failed":1,"skipped":0,"millis":4120,"tier":"integration","progress":99}
+{"schema":1,"ts":1795347959418,"type":"session-finish","exit":4,"millis":210118,"wedge":"Install failed","modules":["cc.jumpkick:jk-cli-e2e"],"progress":99,"jid":1756,"buildNumber":2086}
+EOF
+cat >"$WORK/f15-rerun.jsonl" <<'EOF'
+{"schema":1,"ts":1795347964400,"type":"session-start","command":"install","argv":["install"],"trigger":"cli","session":"script 4be0a1","progress":null}
+{"schema":1,"ts":1795347964456,"type":"job","jid":1758,"buildNumber":2088,"detailsPath":"/home/u/.jk/state/builds/projects/a66f/runs/2088/details.jsonl"}
+{"schema":1,"ts":1795347966000,"type":"warn","task":"run-tests","code":"tests-not-rerun","message":"142 test classes passed earlier under these same inputs and are not run again; running the rest (--redo runs every class)","module":"cc.jumpkick:jk-cli-e2e"}
+{"schema":1,"ts":1795347980100,"type":"class-finish","task":"run-tests","module":"cc.jumpkick:jk-cli-e2e","testClass":"cc.jumpkick.command.project.NewCommandTest","tests":6,"failed":0,"skipped":0,"millis":3980,"tier":"integration","passedOnRerun":true,"progress":60}
+{"schema":1,"ts":1795347980200,"type":"warn","task":"run-tests","code":"test-passed-on-rerun","message":"passed on a re-run with no input changed, so flaky or dependent on what ran before: cc.jumpkick.command.project.NewCommandTest","module":"cc.jumpkick:jk-cli-e2e"}
+{"schema":1,"ts":1795348790000,"type":"session-finish","exit":0,"millis":825600,"wedge":"Install successful","modules":["cc.jumpkick:jk-cli-e2e"],"progress":100,"jid":1758,"buildNumber":2088}
+EOF
+cat >"$WORK/f15-guard.jsonl" <<'EOF'
+{"schema":1,"ts":1795347732049,"type":"session-start","command":"build","argv":["build","--skip-tests"],"trigger":"cli","session":"script bcaa1d","progress":null}
+{"schema":1,"ts":1795347732131,"type":"job","jid":1753,"buildNumber":2083,"detailsPath":"/home/u/.jk/state/builds/projects/a66f/runs/2083/details.jsonl"}
+{"schema":1,"ts":1795347732159,"type":"preflight","stage":"lock","done":0,"total":0,"label":"Workspace lock ready","progress":null}
+{"schema":1,"ts":1795347737181,"type":"session-finish","exit":0,"millis":5132,"wedge":"Build successful. Built 1 module, 1 up to date - took 5.1s","modules":["cc.jumpkick:jk-cli-e2e","cc.jumpkick:jk"],"progress":100,"jid":1753,"buildNumber":2083}
+EOF
+bash "$ROOT/scripts/gate/flaky.sh" ran "$WORK/f15-red.jsonl" install || fail "an install's transcript was not read as the install's"
+if bash "$ROOT/scripts/gate/flaky.sh" ran "$WORK/f15-guard.jsonl" install 2>/dev/null; then fail "a guard's transcript was read as an install's"; fi
+[[ "$(bash "$ROOT/scripts/gate/flaky.sh" ran "$WORK/f15-guard.jsonl" install 2>&1)" == "jk results printed the run of jk build, not this jk install" ]] ||
+  fail "flaky.sh ran said: $(bash "$ROOT/scripts/gate/flaky.sh" ran "$WORK/f15-guard.jsonl" install 2>&1)"
+[[ "$(bash "$ROOT/scripts/gate/flaky.sh" failed "$WORK/f15-red.jsonl")" == "cc.jumpkick:jk-cli-e2e cc.jumpkick.command.project.NewCommandTest" ]] ||
+  fail "f15's failed classes were: $(bash "$ROOT/scripts/gate/flaky.sh" failed "$WORK/f15-red.jsonl")"
 # A stand-in ka: `new` opens TK-F<n> (or fails under KA_FAIL) and logs its arguments, `show`
 # answers the status written in $KA_STATE/<id>. Each reads its stdin to the end, as a ka that
 # prompts would.
@@ -95,7 +126,8 @@ tickets() { find "$WORK/ka" -type f | wc -l | tr -d ' '; }
 # (the first one only under FAIL_INTEG_ONCE), the slow tier when FAIL_SLOW is set, the docs suite
 # when FAIL_DOCS is set and the first
 # `install -c` under FAIL_INSTALL_ONCE,
-# prints $RESULTS_FIRST as the first run's transcript and $RERUN_JSONL as any later one's, and
+# prints $RESULTS_FIRST as the first run's transcript and $RERUN_JSONL as any later one's, each as
+# the transcript of the jk command it ran last (of $RESULTS_RUN when set), and
 # reports the checkout's HEAD as the engine's commit. A run that runs tests quarantines class
 # $QUARANTINE_ADD of mod/a in the checkout, as jk does past its threshold.
 export HOME="$WORK/home"
@@ -114,11 +146,13 @@ case "$1" in
   --version) echo "jk 0.0.0" ;;
   engine) [[ "${2:-}" == status ]] && echo "Version  0.0.0 (commit $(git rev-parse --short=12 HEAD))" ;;
   results)
-    if [[ -n "${RESULTS_FIRST:-}" && "$(grep -c '^results' "$JK_CALLS")" -eq 1 ]]; then
-      cat "$RESULTS_FIRST"
-    else
-      cat "$RERUN_JSONL"
-    fi
+    # The run just made, as its session-start names it; RESULTS_RUN names another, as a jk that
+    # keeps no transcript of that run prints the one before it.
+    t="$RERUN_JSONL"
+    [[ -n "${RESULTS_FIRST:-}" && "$(grep -c '^results' "$JK_CALLS")" -eq 1 ]] && t="$RESULTS_FIRST"
+    ran="${RESULTS_RUN:-$(grep -vE '^(results|engine|--version)' "$JK_CALLS" | tail -1 | cut -d' ' -f1)}"
+    echo "{\"schema\":1,\"type\":\"session-start\",\"command\":\"$ran\"}"
+    grep -v '"type":"session-start"' "$t" || true
     ;;
   test)
     [[ -n "${FAIL_SLOW:-}" && " $* " == *" -s slow "* ]] && { echo "FAIL a.AndroidE2eTest"; exit 4; }
@@ -208,6 +242,18 @@ gate 38 FAIL_PUSHGATE=1 RESULTS_FIRST="$WORK/red-other.jsonl" RERUN_JSONL="$WORK
 [[ "$(verdict 38)" == "RED" ]] || fail "a push gate red outside a test class was green on its re-run: $(cat "$WORK/logs/integ-gate-38.log")"
 grep -q '^RERUN green, but the first run was red outside a test class' "$WORK/logs/integ-gate-38.log" ||
   fail "the log does not say why the re-run did not count: $(cat "$WORK/logs/integ-gate-38.log")"
+# Full cycle f15's transcripts: green, naming the e2e class. Under a jk that printed the gate's
+# guard run in place of each install's, as f15's did: red, saying which run jk printed, and naming
+# no class.
+gate 39 FAIL_PUSHGATE=1 RESULTS_FIRST="$WORK/f15-red.jsonl" RERUN_JSONL="$WORK/f15-rerun.jsonl"
+[[ "$(verdict 39)" == "GREEN $tip" ]] || fail "f15's push gate, green on its re-run, was not green: $(cat "$WORK/logs/integ-gate-39.log")"
+grep -qx 'FLAKY cc.jumpkick:jk-cli-e2e cc.jumpkick.command.project.NewCommandTest passed on the re-run' "$WORK/logs/integ-gate-39.log" ||
+  fail "the log does not name f15's flaky class: $(cat "$WORK/logs/integ-gate-39.log")"
+gate 40 FAIL_PUSHGATE=1 RESULTS_RUN=build RESULTS_FIRST="$WORK/f15-guard.jsonl" RERUN_JSONL="$WORK/f15-guard.jsonl"
+[[ "$(verdict 40)" == "RED" ]] || fail "a push gate with no transcript of its installs was green: $(cat "$WORK/logs/integ-gate-40.log")"
+grep -qx 'RERUN green, but the gate cannot tell which classes failed (jk results printed the run of jk build, not this jk install): the push gate stays red' \
+  "$WORK/logs/integ-gate-40.log" || fail "the log does not say which run jk results printed: $(cat "$WORK/logs/integ-gate-40.log")"
+if grep -q '^FLAKY .* passed on the re-run$' "$WORK/logs/integ-gate-40.log"; then fail "another run's classes were called flaky: $(cat "$WORK/logs/integ-gate-40.log")"; fi
 
 gate 3 FAIL_REINSTALL=1
 [[ "$(verdict 3)" == "RED (reinstall)" ]] || fail "a failed reinstall did not stop the gate: $(cat "$WORK/logs/integ-gate-3.log")"
@@ -384,6 +430,14 @@ gate 12 GATE_TIER=queue GATE_BASE="$qbase" FAIL_INSTALL_ONCE=1 RESULTS_FIRST="$W
   RERUN_JSONL="$WORK/rerun-new.jsonl"
 [[ "$(verdict 12)" == "GREEN $tip" ]] || fail "an install green on its re-run was not green: $(cat "$WORK/logs/integ-gate-12.log")"
 [[ "$(grep -cx 'install -c' "$WORK/calls-12")" -eq 2 ]] || fail "the red install did not run once more: $(cat "$WORK/calls-12")"
+# The install's transcript not the install's: red at the install, saying which run jk printed,
+# and no class named as failed or run again.
+gate 41 GATE_TIER=queue GATE_BASE="$qbase" FAIL_INSTALL_ONCE=1 RESULTS_RUN=build RESULTS_FIRST="$WORK/red-new.jsonl"
+[[ "$(verdict 41)" == "RED (install)" ]] || fail "an install with no transcript of its own was not red: $(cat "$WORK/logs/integ-gate-41.log")"
+grep -qx 'TRANSCRIPT install: jk results printed the run of jk build, not this jk install, so its failed classes are unknown and do not run again' \
+  "$WORK/logs/integ-gate-41.log" || fail "the log does not say which run jk results printed: $(cat "$WORK/logs/integ-gate-41.log")"
+[[ "$(grep -cx 'install -c' "$WORK/calls-41")" -eq 1 ]] || fail "an install red in another run's classes ran again: $(cat "$WORK/calls-41")"
+if grep -q '^FAILED ' "$WORK/logs/integ-gate-41.log"; then fail "another run's classes were named as failed: $(cat "$WORK/logs/integ-gate-41.log")"; fi
 
 # A root build file changed: the whole integration suite, and no curated lane beside it.
 tip="$qroot"

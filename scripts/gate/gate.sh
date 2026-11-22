@@ -26,7 +26,10 @@
 # still red is a `FAILED <module> <class>` line of the log, its failure in g<n>-failures.txt.
 #
 # In both tiers, each class that passed on such a re-run is a `FLAKY <module> <class> passed on the
-# re-run` line of the log, read from the `passedOnRerun` of its row in `jk results -O jsonl`.
+# re-run` line of the log, read from the `passedOnRerun` of its row in `jk results -O jsonl`. The
+# gate reads a transcript only when it is the run just made (scripts/gate/flaky.sh ran): `jk
+# results` prints the latest run that kept one, and a run red in a transcript the gate cannot read
+# stays red, with a line saying which run jk printed.
 #
 # Every tier runs every quarantined class. jk records each class's runs and quarantines a flaky one
 # in the checkout; the gate saves that file, restores the checkout, and then opens a ticket for each
@@ -93,8 +96,10 @@
   }
   done_gate() { quarantine_review; echo "GATE$n DONE" >>"$L"; exit 0; }
   red() { echo "$1" >>"$L"; done_gate; }
-  # flaky_named <details.jsonl>: a FLAKY line in the log for each class that passed on the re-run.
+  # flaky_named <details.jsonl> <command>: a FLAKY line in the log for each class that passed on the
+  # re-run, when the transcript is that run of `jk <command>`.
   flaky_named() {
+    bash scripts/gate/flaky.sh ran "$1" "$2" 2>/dev/null || return 0
     bash scripts/gate/flaky.sh passed "$1" 2>/dev/null | sed 's/$/ passed on the re-run/; s/^/FLAKY /' >>"$L"
   }
   # The FAIL/T/E lines of the pre-run log, then the gate stops red.
@@ -200,16 +205,19 @@
       e=$?
       [ "$e" -eq 0 ] && return
       jk results -O jsonl >"$out.jsonl" 2>/dev/null </dev/null
-      if bash scripts/gate/flaky.sh failed "$out.jsonl" >/dev/null 2>&1; then
+      if ! why="$(bash scripts/gate/flaky.sh ran "$out.jsonl" "$1" 2>&1)"; then
+        echo "TRANSCRIPT $label: $why, so its failed classes are unknown and do not run again" >>"$L"
+      elif bash scripts/gate/flaky.sh failed "$out.jsonl" >/dev/null 2>&1; then
         out="$D/g$n-$label-rerun"
         jk "$@" >"$out.log" 2>&1 </dev/null
         e=$?
         echo "RERUN $label: its failed classes once more under the same inputs, EXIT=$e $(date +%H:%M:%S)" >>"$L"
         jk results -O jsonl >"$out.jsonl" 2>/dev/null </dev/null
-        flaky_named "$out.jsonl"
+        flaky_named "$out.jsonl" "$1"
         [ "$e" -eq 0 ] && return
       fi
       noansi "$out.log" | grep -aE "^(FAIL|T |E )|FAILED " | tail -20 >>"$L"
+      bash scripts/gate/flaky.sh ran "$out.jsonl" "$1" 2>/dev/null || return 0
       bash scripts/gate/flaky.sh failed "$out.jsonl" 2>/dev/null | sed 's/^/FAILED /' >>"$L"
       jq -rR 'fromjson? // empty | select(.type == "error" and .code == "test-failure")
         | "\(.testClass)#\(.method // "?") (\(.module))", ((.stack // .message // "") | split("\n")[:12][] | "    " + .)' \
@@ -269,9 +277,12 @@
       rs=$?
       echo "RERUN_EXIT=$rs $(date +%H:%M:%S)" >>"$L"
       jk results -O jsonl >"$D/g$n-rerun.jsonl" 2>/dev/null
-      flaky_named "$D/g$n-rerun.jsonl"
+      flaky_named "$D/g$n-rerun.jsonl" install
       if [ "$rs" -ne 0 ]; then
         noansi "$D/g$n-rerun.log" | grep -aE "^(FAIL|T |E )|FAILED " | tail -8 >>"$L"
+      elif ! why="$(bash scripts/gate/flaky.sh ran "$D/g$n-snapshot.jsonl" install 2>&1 \
+        && bash scripts/gate/flaky.sh ran "$D/g$n-rerun.jsonl" install 2>&1)"; then
+        echo "RERUN green, but the gate cannot tell which classes failed ($why): the push gate stays red" >>"$L"
       elif bash scripts/gate/flaky.sh failed "$D/g$n-snapshot.jsonl" >/dev/null 2>&1; then
         s=0
       else
