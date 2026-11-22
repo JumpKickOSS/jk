@@ -1,6 +1,6 @@
 # $name$
 
-Grails 8 REST application (GORM + Hibernate 7, H2, Groovy) built with jk's
+Grails 8 REST application (GORM + Hibernate 7, H2, Groovy) built with JumpKick's
 `[grails]` plugin. Scaffolded from the JumpKick `groovy/grails/hello` template.
 
 ```bash

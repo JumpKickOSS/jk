@@ -1,7 +1,7 @@
 # $name$
 
 Kotlin Spring Boot WebMVC service (JPA/Hibernate + H2, validation, Actuator). Scaffolded
-from the jk `spring-boot-webmvc-kotlin` template. First `jk lock` pins the current
+from the JumpKick `spring-boot-webmvc-kotlin` template. First `jk lock` pins the current
 Spring Boot and Kotlin lines from `"latest"`.
 
 ```bash

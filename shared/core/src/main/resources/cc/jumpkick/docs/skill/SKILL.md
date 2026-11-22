@@ -3,7 +3,7 @@ name: jk
 description: Build, fix, and navigate Java, Kotlin, and Groovy with JumpKick. Use when the tree has jk.toml: a build, test, lockfile, or dependency task, or who calls a method or renaming one.
 ---
 
-# jk
+# JumpKick
 
 The manifest is `jk.toml`; the lock is `jk-lock.toml` (one per workspace, at its root; commit it). Never add `pom.xml` or Gradle files; never run `mvn` or `gradle`.
 
@@ -41,7 +41,7 @@ E src/main/java/app/Web.java:3:8 package org.springframework.web.bind.annotation
 FIX deps(add, org.springframework.boot:spring-boot-starter-web)
 ```
 
-One line per problem: `E path:line:col message` (project-relative), `T Class#method` for a failed test with its expectation and `at path:line`; under either, `N|`, a tab, then the source line verbatim (an Edit's `old_string`); `FIX` when jk knows the edit (`deps(add, g:a)` is `jk add g:a` in a shell), and `+K more: jk results -A | diagnostics(file=…)` past the cap.
+One line per problem: `E path:line:col message` (project-relative), `T Class#method` for a failed test with its expectation and `at path:line`; under either, `N|`, a tab, then the source line verbatim (an Edit's `old_string`); `FIX` when JumpKick knows the edit (`deps(add, g:a)` is `jk add g:a` in a shell), and `+K more: jk results -A | diagnostics(file=…)` past the cap.
 
 ## Topics
 

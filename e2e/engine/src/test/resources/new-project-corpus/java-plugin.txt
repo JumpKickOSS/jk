@@ -16,7 +16,7 @@ src/test/java/com/acme/DemoPluginTest.java
 group = "com.acme"
 name = "demo"
 version = "…"
-description = "A jk build plugin that owns the [demo] table"
+description = "A JumpKick build plugin that owns the [demo] table"
 java = 25
 
 # The plugin SDK of the jk release that scaffolded this project (a development build of jk names

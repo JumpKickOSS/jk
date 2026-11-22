@@ -1,7 +1,7 @@
 # $name$
 
 Helidon Declarative (Helidon 27, JDK 27): the quickstart's `/greet` REST service as an annotated
-endpoint (`GreetEndpoint`), scaffolded from jk's `helidon/declarative` template. Helidon's code
+endpoint (`GreetEndpoint`), scaffolded from JumpKick's `helidon/declarative` template. Helidon's code
 generators write its routing and service descriptors at compile time, and the service registry
 starts the web server with it. Declarative is a preview feature in Helidon 27.
 

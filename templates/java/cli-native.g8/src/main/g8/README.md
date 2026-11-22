@@ -17,7 +17,7 @@ Native builds are opt-in per project. Enable them in `jk.toml`:
 enabled = "always"
 ```
 
-then build the binary (jk provisions/uses a GraalVM JDK):
+then build the binary (JumpKick provisions/uses a GraalVM JDK):
 
 ```bash
 jk native

@@ -1,6 +1,6 @@
 # $name$
 
-A jk build plugin. It owns the `[$name$]` table of a consumer's `jk.toml` and adds one command,
+A JumpKick build plugin. It owns the `[$name$]` table of a consumer's `jk.toml` and adds one command,
 `jk $name$`, that prints the table's `greeting`.
 
 ```text
@@ -15,11 +15,11 @@ jk test          # unit tier
 jk build         # target/$name$-0.1.0-SNAPSHOT.jar is the plugin
 ```
 
-`jk-plugin.toml` is data jk reads itself: the schema validates a consumer's `[$name$]` table, and
+`jk-plugin.toml` is data JumpKick reads itself: the schema validates a consumer's `[$name$]` table, and
 `[[contribute.*]]` tables shape a build with no code running. The class registers steps,
 packagers and commands; its protocol prefix must equal `[code] protocol-prefix`.
 
-A consumer pins the jar by content and trusts its code layer before jk forks it:
+A consumer pins the jar by content and trusts its code layer before JumpKick forks it:
 
 ```toml
 [plugins]
@@ -35,7 +35,7 @@ jk $name$        # hi from the $name$ plugin
 ```
 
 `sdk` in `jk-plugin.toml` and the `jk-plugin-sdk` pin in `jk.toml` name the same release: a
-consumer's lock pins the worker's SDK at it. `jk-compat` is the oldest jk that loads the plugin.
+consumer's lock pins the worker's SDK at it. `jk-compat` is the oldest JumpKick that loads the plugin.
 
 Every package is `@NullMarked` and `[nullness]` checks it with NullAway at compile time: a type is
 non-null unless it says `@Nullable`.

@@ -1,6 +1,6 @@
 # $name$
 
-A Kotlin Spring Boot API and a Vite + React single-page app, in one jk workspace of two modules:
+A Kotlin Spring Boot API and a Vite + React single-page app, in one JumpKick workspace of two modules:
 
 ```text
 app/   the service: GET /api/hello, and the SPA served from classpath:static with a fallback
@@ -41,7 +41,7 @@ jk dev
 
 `jk dev` at the root recompiles and restarts the JVM on change **and** runs `web`'s `dev` script
 beside it on the locked Node.js: the Vite dev server, with `/api` proxied to `:8080` and hot reload
-for the front end. jk infers it from `app`'s dependency on `web`, so there is no sidecar to declare.
+for the front end. JumpKick infers it from `app`'s dependency on `web`, so there is no sidecar to declare.
 It waits for `http://localhost:5173` to answer before printing the front door, prefixes each line
 with the module that wrote it, and stops both on Ctrl-C. `jk dev -T` in `app/` runs the app alone.
 

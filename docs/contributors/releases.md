@@ -62,6 +62,8 @@ rules below. The commit log is for contributors; this entry is for someone decid
 - **Then at most one or two plain sentences** saying what changed and what to do, if anything.
   Hard limits: 40 to 320 characters per bullet, no ticket ids. Name commands, flags and config keys
   in backticks; don't name classes, internal steps or wire formats.
+- **The product is JumpKick.** `jk` names the command (`jk build`) and its files (`jk.toml`), never
+  the product: "JumpKick caches the plan". `jk guard docs` checks it.
 - **Fixes say what used to go wrong**, from the user's side: "`jk test` no longer hangs when a test
   prints without a newline", not "fix non-hermetic index repro".
 - **A breaking change's bullet starts with `**Breaking:**`** and says how to migrate

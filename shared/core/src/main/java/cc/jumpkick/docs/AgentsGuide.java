@@ -31,7 +31,7 @@ public final class AgentsGuide {
             ## JumpKick
 
             This project builds with **JumpKick** (`jk`), not Maven or Gradle: `jk` MCP tools first, the CLI as
-            fallback. jk rewrites this section; put project rules outside the markers.
+            fallback. JumpKick rewrites this section; put project rules outside the markers.
 
             | To | MCP | CLI |
             |---|---|---|
@@ -70,7 +70,7 @@ public final class AgentsGuide {
             ## JumpKick
 
             This repository groups self-contained **JumpKick** (`jk`) workspaces: `[workspaces] members` in
-            `jk.toml` lists them. jk rewrites this section; put repository rules outside the markers.
+            `jk.toml` lists them. JumpKick rewrites this section; put repository rules outside the markers.
 
             - Work inside one member (`cd <member>`): its own `AGENTS.md` and `jk.toml` apply, and it builds
               the same with or without this root.

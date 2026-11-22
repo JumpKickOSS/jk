@@ -1,7 +1,7 @@
 group = "$organization$"
 name = "$name$"
 version = "0.1.0"
-description = "A jk build plugin that owns the [$name$] table"
+description = "A JumpKick build plugin that owns the [$name$] table"
 java = $java$
 
 # The plugin SDK of the jk release that scaffolded this project (a development build of jk names

@@ -29,7 +29,7 @@ JSON with the plugin's own small reader, and hands IntelliJ:
 - the per-module JDK under its stable `jk-<vendor>-<level>` name, registered in the IDE's JDK
   table when missing, and the project default JDK;
 - compiler output pointed at the IDE-owned `target/jdt/classes/{main,test}` of each module, never
-  at jk's `target/classes`.
+  at JumpKick's `target/classes`.
 
 Modules are stored externally, as for Gradle: a linked project gains no `*.iml` and no
 `.idea/modules.xml`. A failing resolve surfaces in the Build tool window with the CLI's first
@@ -50,7 +50,7 @@ depend on this plugin — see the JSON Schema note in `docs/user/projects.md`.
 
 ## Build installable zip
 
-The plugin is a member of jk's workspace, built by the `[intellij]` battery
+The plugin is a member of JumpKick's workspace, built by the `[intellij]` battery
 ([Frameworks](../../docs/user/frameworks.md#intellij-platform-plugins)) against IntelliJ IDEA
 Community with the bundled Java plugin:
 
@@ -97,7 +97,7 @@ Three tiers:
   must pause on that line and `jk test` exit 0 after a resume. Both skip, printing why, when no
   `jk` is on PATH.
 
-## Run and debug through jk
+## Run and debug through JumpKick
 
 `JkRunConfigurationProducer` turns the gutter's context into a `JkRunConfiguration`: a class under
 a test root of a JumpKick module is `jk test -m <module> -S <fqcn>`, an annotated method in
@@ -105,9 +105,9 @@ it is `--class <fqcn>#<method>`; a class with a `main` method under a source roo
 <module>`. Both run from the workspace root in the Run
 tool window's console. The producer is preferred over the bundled JUnit and Application ones on
 these modules, which stay in the list as alternatives. Under Debug, `JkCommandState` picks a free
-loopback port, passes `--debug-jvm=localhost:<port>` — jk starts the one JVM suspended with a
+loopback port, passes `--debug-jvm=localhost:<port>` — JumpKick starts the one JVM suspended with a
 JDWP listener there — and `JkDebugRunner` attaches the Java debugger to that address, retrying
-while jk builds (up to ten minutes); a breakpoint in the test or the application stops as usual
+while JumpKick builds (up to ten minutes); a breakpoint in the test or the application stops as usual
 (`JkDebugBreakpointTest` drives that stop for a test).
 `--class <fqcn>#<method>` selects one method, so a method's gutter action runs that method alone.
 

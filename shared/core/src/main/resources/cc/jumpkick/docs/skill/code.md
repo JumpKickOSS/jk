@@ -1,6 +1,6 @@
 # Code
 
-jk keeps a graph of the code, built from the compiled classes, so one call answers a question about a
+JumpKick keeps a graph of the code, built from the compiled classes, so one call answers a question about a
 symbol completely. Address: `Type.method` (`pkg.Type.method` when two packages declare it,
 `Type.method(Param)` for one overload), `Type.field`, `Type`, `a.pkg`; or an anchor, for uses no compiler
 checks: `route:GET /x/{}`, `table:t`, `column:t.c`, `env:NAME`, `config:key`.

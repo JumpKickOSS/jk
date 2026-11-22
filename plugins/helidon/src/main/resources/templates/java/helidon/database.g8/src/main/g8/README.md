@@ -1,7 +1,7 @@
 # $name$
 
 Helidon SE with a database (Helidon 27, JDK 27): a Pokemon REST service on Helidon DB Client,
-scaffolded from jk's `helidon/database` template, the counterpart of `helidon init`'s database
+scaffolded from JumpKick's `helidon/database` template, the counterpart of `helidon init`'s database
 application.
 $if(db_h2.truthy)$
 The database is an in-memory H2 inside the application: there is nothing to install.

@@ -1,6 +1,6 @@
 # $name$
 
-The Helidon SE quickstart (Helidon 27, JDK 27): a `/greet` REST service, scaffolded from jk's
+The Helidon SE quickstart (Helidon 27, JDK 27): a `/greet` REST service, scaffolded from JumpKick's
 `helidon/quickstart` template, the counterpart of `helidon init`'s quickstart.
 
 ```bash
