@@ -7,6 +7,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Invocation;
+import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.wire.protocol.GraphAck;
 import cc.jumpkick.wire.protocol.GraphRequest;
 import java.nio.file.Path;
@@ -158,6 +159,25 @@ class GraphCommandTest {
         GraphRequest r = op("query").request(Path.of("/w"), in, false);
         assertThat(r.args()).containsExactly("parse", "json");
         assertThat(r.options()).containsExactly("library=jackson-databind");
+
+        Invocation find = Invocation.builder()
+                .addPositional("*Mapper")
+                .putValue("library", "*")
+                .build();
+        assertThat(op("find").request(Path.of("/w"), find, false).options()).containsExactly("library=*");
+    }
+
+    @Test
+    void queryAndFindTakeOneLibraryGlob() {
+        for (String name : List.of("query", "find")) {
+            Opt library = op(name).options().stream()
+                    .filter(o -> o.allNames().contains("-l"))
+                    .findFirst()
+                    .orElseThrow();
+            assertThat(library.allNames()).containsExactly("-l", "--library");
+            assertThat(library.takesValue()).isTrue();
+            assertThat(library.paramLabel()).isEqualTo("<glob>");
+        }
     }
 
     @Test

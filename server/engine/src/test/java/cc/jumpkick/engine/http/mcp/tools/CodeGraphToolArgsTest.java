@@ -90,6 +90,18 @@ class CodeGraphToolArgsTest {
         assertThat(every.args()).containsExactly("Book", "Priced");
     }
 
+    @Test
+    void query_and_find_pass_the_library_glob_they_declare() {
+        assertThat(request("query", Map.of("question", "parse json", "library", "jackson-databind"))
+                        .options())
+                .containsExactly("library=jackson-databind");
+        GraphRequest find = request("find", Map.of("name", "*Mapper", "library", "*"));
+        assertThat(find.args()).containsExactly("*Mapper");
+        assertThat(find.options()).containsExactly("library=*");
+        assertThat(request("usages", Map.of("address", "A.b", "library", "*")).options())
+                .doesNotContain("library=*");
+    }
+
     private static GraphRequest request(String tool) {
         return request(tool, EVERY_SETTING);
     }

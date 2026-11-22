@@ -72,11 +72,7 @@ public final class CodeCommand extends GroupCommand {
                     BUDGET,
                     Opt.value("<a,b,...>", "Follow only these edge contexts (call, field, ...).", "-c", "--context")
                             .splitOn(","),
-                    Opt.value(
-                            "<library>",
-                            "Ask a locked library's public API instead (artifact or glob).",
-                            "-l",
-                            "--library"),
+                    Opt.value("<glob>", "Ask a locked library's public API instead; * for all.", "-l", "--library"),
                     NO_REFRESH),
             List.of(Param.of("question", Arity.ONE_OR_MORE, "words or symbol names")));
 
@@ -98,7 +94,7 @@ public final class CodeCommand extends GroupCommand {
                     Opt.value("<type>", "A superclass anywhere up the chain.", "-E", "--extends"),
                     Opt.value("<type>", "A supertype anywhere above, interfaces too.", "-I", "--implements"),
                     Opt.value("<annotation>", "Carries this annotation.", "-A", "--annotated"),
-                    Opt.flag("Search the locked jars' types instead.", "-l", "--libraries"),
+                    Opt.value("<glob>", "Search a locked library's types instead; * for all.", "-l", "--library"),
                     BUDGET,
                     NO_REFRESH),
             List.of(Param.of("name", Arity.ZERO_OR_ONE, "a name glob: *Service, get*")));

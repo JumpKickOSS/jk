@@ -303,18 +303,20 @@ public final class GraphService {
         return m == null ? "" : m.prefix();
     }
 
-    /** Workspace declarations, or with {@code libraries=true} the locked jars' types by name glob and kind. */
+    /** Workspace declarations, or with a {@code library} glob that library's types by name glob and kind. */
     private static String find(Workspace w, CodeGraph g, Scope scope, Request r, List<String> a) {
         String name = a.isEmpty() ? null : String.join(" ", a);
-        if (!EnvValues.parseBool(r.options().get("libraries")).orElse(false)) {
-            return SymbolFinder.of(r.options(), name).find(g, scope, r.budget());
-        }
+        String library = r.options().get("library");
+        if (library == null) return SymbolFinder.of(r.options(), name).find(g, scope, r.budget());
         if (name == null) throw new IllegalArgumentException("a library search needs a name glob: *Mapper");
+        LibraryApi locked = new LibraryApi(w.libraries(), w.apiCache());
+        List<LibraryApi.Jar> jars = locked.select(library);
+        if (jars.isEmpty()) return locked.noMatch(library);
         String kinds = r.options().getOrDefault("kind", "");
         List<String> wanted = kinds.isBlank()
                 ? List.of()
                 : List.of(kinds.toLowerCase(Locale.ROOT).replace(" ", "").split(","));
-        List<String> rows = new LibraryApi(w.libraries(), w.apiCache()).find(SymbolFinder.namePattern(name), wanted);
+        List<String> rows = new LibraryApi(jars, w.apiCache()).find(SymbolFinder.namePattern(name), wanted);
         List<String> lines = new ArrayList<>();
         lines.add(rows.size() == 1 ? "1 library type" : rows.size() + " library types");
         lines.addAll(rows);

@@ -172,7 +172,6 @@ final class GraphOpCommand implements CliCommand {
         for (String name : SETTINGS) {
             for (String v : in.values(name)) out.add(name + "=" + v);
         }
-        if (in.isSet("libraries")) out.add("libraries=true");
         if (in.isSet("transitive")) out.add("transitive=true");
         if (in.isSet("no-accessors")) out.add("accessors=false");
         return out;

@@ -752,14 +752,15 @@ public final class GraphRunner {
                 .writeTempSpec();
     }
 
-    /** Whether {@code r} may answer from the locked jars: a {@code read}, a {@code find}, or a {@code query} with a library. */
+    /** Whether {@code r} may answer from the locked jars: a {@code read}, or a {@code find} or {@code query} with a library. */
     static boolean readsLibraries(GraphRequest r) {
-        return "read".equals(r.op()) || "find".equals(r.op()) || asksALibrary(r);
+        return "read".equals(r.op()) || asksALibrary(r);
     }
 
-    /** Whether {@code r} is a question about a locked library's API, which no workspace class answers. */
+    /** Whether {@code r} is a search of a locked library's API, which no workspace class answers. */
     static boolean asksALibrary(GraphRequest r) {
-        return "query".equals(r.op()) && r.options().stream().anyMatch(o -> o.startsWith("library="));
+        return ("query".equals(r.op()) || "find".equals(r.op()))
+                && r.options().stream().anyMatch(o -> o.startsWith("library="));
     }
 
     /** The spec of one operation on {@code root}: the worker's whole input. */

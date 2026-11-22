@@ -5,6 +5,7 @@ import cc.jumpkick.codegraph.Budget;
 import cc.jumpkick.codegraph.CodeGraph;
 import cc.jumpkick.codegraph.Linker;
 import cc.jumpkick.codegraph.Scope;
+import cc.jumpkick.codegraph.SymbolFinder;
 import cc.jumpkick.codegraph.SymbolReader;
 import cc.jumpkick.codegraph.extract.Extractor;
 import cc.jumpkick.codegraph.extract.Extractors;
@@ -34,6 +35,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
@@ -101,6 +103,42 @@ final class LibraryApi {
     @Nullable
     Path cache() {
         return cache;
+    }
+
+    /**
+     * The jars {@code library} names: a glob matched, case-insensitively, against each locked
+     * coordinate whole, its {@code group:artifact} and its artifact; {@code *} names every one.
+     */
+    List<Jar> select(String library) {
+        Pattern glob = SymbolFinder.namePattern(library.strip());
+        List<Jar> out = new ArrayList<>();
+        for (Jar jar : jars) {
+            String[] parts = jar.coord().split(":");
+            String ga = parts.length > 1 ? parts[0] + ":" + parts[1] : jar.coord();
+            String artifact = parts.length > 1 ? parts[1] : jar.coord();
+            if (glob.matcher(jar.coord()).matches()
+                    || glob.matcher(ga).matches()
+                    || glob.matcher(artifact).matches()) {
+                out.add(jar);
+            }
+        }
+        return out;
+    }
+
+    /** The answer when {@link #select} finds nothing: the locked jars whose coordinate contains {@code library}, else all. */
+    String noMatch(String library) {
+        if (jars.isEmpty()) return "No locked jar is on this machine: jk sync fetches them.";
+        String needle = library.replace("*", "").replace("?", "").toLowerCase(Locale.ROOT);
+        List<String> coords = jars.stream().map(Jar::coord).sorted().toList();
+        List<String> close = coords.stream()
+                .filter(c -> !needle.isEmpty() && c.toLowerCase(Locale.ROOT).contains(needle))
+                .toList();
+        List<String> shown = close.isEmpty() ? coords : close;
+        List<String> out = new ArrayList<>();
+        out.add("No locked library matches '" + library + "'. Name one by artifact, group:artifact or a glob:");
+        shown.subList(0, Math.min(10, shown.size())).forEach(c -> out.add("  " + c));
+        if (shown.size() > 10) out.add("  … " + (shown.size() - 10) + " more");
+        return String.join("\n", out);
     }
 
     /** Every public type of every jar, in jar order. */

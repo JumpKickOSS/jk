@@ -11,7 +11,6 @@ import cc.jumpkick.codegraph.GraphNode;
 import cc.jumpkick.codegraph.GraphSearch;
 import cc.jumpkick.codegraph.Linker;
 import cc.jumpkick.codegraph.Relations;
-import cc.jumpkick.codegraph.SymbolFinder;
 import cc.jumpkick.codegraph.extract.Extractor;
 import cc.jumpkick.codegraph.extract.Extractors;
 import cc.jumpkick.host.AtomicWrites;
@@ -31,7 +30,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
@@ -85,9 +83,8 @@ final class LibraryQuery {
 
     /** The public types and members of the jars {@code library} selects that match {@code question}, within {@code budget}. */
     String answer(String library, String question, int budget) {
-        if (api.empty()) return "No locked jar is on this machine: jk sync fetches them.";
-        List<LibraryApi.Jar> jars = select(library);
-        if (jars.isEmpty()) return noLibrary(library);
+        List<LibraryApi.Jar> jars = api.select(library);
+        if (jars.isEmpty()) return api.noMatch(library);
         List<String> keys = new ArrayList<>();
         for (LibraryApi.Jar jar : jars) keys.add(key(jar));
         String graphKey = String.join(",", keys);
@@ -193,42 +190,6 @@ final class LibraryQuery {
 
     private static String plural(int n, String word) {
         return String.format(Locale.ROOT, "%,d %s", n, n == 1 ? word : word.endsWith("ch") ? word + "es" : word + "s");
-    }
-
-    /**
-     * The jars {@code library} names: a glob matched, case-insensitively, against each locked
-     * coordinate whole, its {@code group:artifact} and its artifact.
-     */
-    List<LibraryApi.Jar> select(String library) {
-        Pattern glob = SymbolFinder.namePattern(library.strip());
-        List<LibraryApi.Jar> out = new ArrayList<>();
-        for (LibraryApi.Jar jar : api.jars()) {
-            String[] parts = jar.coord().split(":");
-            String ga = parts.length > 1 ? parts[0] + ":" + parts[1] : jar.coord();
-            String artifact = parts.length > 1 ? parts[1] : jar.coord();
-            if (glob.matcher(jar.coord()).matches()
-                    || glob.matcher(ga).matches()
-                    || glob.matcher(artifact).matches()) {
-                out.add(jar);
-            }
-        }
-        return out;
-    }
-
-    /** No locked jar matches {@code library}: the answer names the locked ones whose coordinate contains it, else all. */
-    private String noLibrary(String library) {
-        String needle = library.replace("*", "").replace("?", "").toLowerCase(Locale.ROOT);
-        List<String> coords =
-                api.jars().stream().map(LibraryApi.Jar::coord).sorted().toList();
-        List<String> close = coords.stream()
-                .filter(c -> !needle.isEmpty() && c.toLowerCase(Locale.ROOT).contains(needle))
-                .toList();
-        List<String> shown = close.isEmpty() ? coords : close;
-        List<String> out = new ArrayList<>();
-        out.add("No locked library matches '" + library + "'. Name one by artifact, group:artifact or a glob:");
-        shown.subList(0, Math.min(10, shown.size())).forEach(c -> out.add("  " + c));
-        if (shown.size() > 10) out.add("  … " + (shown.size() - 10) + " more");
-        return String.join("\n", out);
     }
 
     /** The search graph of {@code jars}, whose index keys are {@code keys}. */

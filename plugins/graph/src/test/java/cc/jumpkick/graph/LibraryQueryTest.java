@@ -12,12 +12,17 @@ import org.junit.jupiter.api.io.TempDir;
 
 class LibraryQueryTest {
 
-    private static LibraryQuery query(Path dir, boolean sources) throws IOException {
+    /** Two locked jars with the same classes: {@code org.lib:lib:1.0} and {@code org.other:other-kit:2.0}. */
+    static LibraryApi locked(Path dir, boolean sources) throws IOException {
         Path classes = LibraryApiTest.jar(dir);
         LibraryApi.Jar lib =
                 new LibraryApi.Jar("org.lib:lib:1.0", classes, sources ? LibraryApiTest.sourcesJar(dir) : null);
         LibraryApi.Jar other = new LibraryApi.Jar("org.other:other-kit:2.0", classes);
-        return new LibraryQuery(new LibraryApi(List.of(lib, other), dir.resolve("cache")));
+        return new LibraryApi(List.of(lib, other), dir.resolve("cache"));
+    }
+
+    private static LibraryQuery query(Path dir, boolean sources) throws IOException {
+        return new LibraryQuery(locked(dir, sources));
     }
 
     @Test
@@ -70,11 +75,15 @@ class LibraryQueryTest {
 
     @Test
     void aLibraryIsNamedByArtifactGroupAndArtifactOrGlob(@TempDir Path dir) throws IOException {
-        LibraryQuery q = query(dir, false);
-        assertThat(q.select("other-kit")).extracting(LibraryApi.Jar::coord).containsExactly("org.other:other-kit:2.0");
-        assertThat(q.select("org.lib:lib")).extracting(LibraryApi.Jar::coord).containsExactly("org.lib:lib:1.0");
-        assertThat(q.select("org.*")).hasSize(2);
-        assertThat(q.select("org.lib:lib:1.0")).hasSize(1);
+        LibraryApi api = locked(dir, false);
+        LibraryQuery q = new LibraryQuery(api);
+        assertThat(api.select("other-kit"))
+                .extracting(LibraryApi.Jar::coord)
+                .containsExactly("org.other:other-kit:2.0");
+        assertThat(api.select("org.lib:lib")).extracting(LibraryApi.Jar::coord).containsExactly("org.lib:lib:1.0");
+        assertThat(api.select("org.*")).hasSize(2);
+        assertThat(api.select("*")).hasSize(2);
+        assertThat(api.select("org.lib:lib:1.0")).hasSize(1);
         assertThat(q.answer("org.*", "tree", 2000))
                 .contains("[i] org.lib:lib:1.0 is the locked version")
                 .contains("[i] org.other:other-kit:2.0 is the locked version")

@@ -22,7 +22,8 @@ import org.jspecify.annotations.Nullable;
 /**
  * The code graph's tools, named like the {@code jk code} subcommands they answer: {@code usages}
  * and {@code rename} on the default list, {@code query}, {@code read}, {@code find}, {@code
- * delete}, {@code move}, {@code pull_up} and {@code extract_interface} on the extended one.
+ * delete}, {@code move}, {@code pull_up} and {@code extract_interface} on the extended one. A
+ * {@code library} glob turns {@code query} and {@code find} to the locked jars' public API.
  * Each refreshes the graph first (a walk and a snapshot load when nothing changed) and answers with
  * {@code Owner.member()} at {@code file:line}.
  */
@@ -211,7 +212,13 @@ public final class CodeGraphTool implements McpTool {
                         "query",
                         "Answer a question about the code in a token budget: the symbols it names and how they "
                                 + "connect, each at file:line, instead of grep and reads.",
-                        scoped(Map.of("question", McpSchemas.string(), "token_budget", McpSchemas.integer())),
+                        scoped(Map.of(
+                                "question",
+                                McpSchemas.string(),
+                                "library",
+                                library(),
+                                "token_budget",
+                                McpSchemas.integer())),
                         List.of("question")),
                 "query",
                 in -> List.of(required(in, "question")));
@@ -247,6 +254,7 @@ public final class CodeGraphTool implements McpTool {
                                 "extends", McpSchemas.string(),
                                 "implements", McpSchemas.string(),
                                 "annotated", McpSchemas.string(),
+                                "library", library(),
                                 "token_budget", McpSchemas.integer())),
                         List.of()),
                 "find",
@@ -327,12 +335,19 @@ public final class CodeGraphTool implements McpTool {
     /** The operation's named settings a call carries, as {@code key=value}. */
     private List<String> options(McpCall in) {
         List<String> out = new ArrayList<>();
-        for (String key : List.of("view", "kind", "visibility", "extends", "implements", "annotated", "also", "via")) {
+        for (String key :
+                List.of("view", "kind", "visibility", "extends", "implements", "annotated", "also", "via", "library")) {
             String v = optional(in, key);
             if (v != null && !v.isBlank()) out.add(key + "=" + v);
         }
         if (declared("transitive") && in.flag("transitive")) out.add("transitive=true");
         return out;
+    }
+
+    /** The locked libraries a {@code query} or {@code find} searches instead of the code. */
+    private static Map<String, Object> library() {
+        return McpSchemas.string(
+                "Search this locked library's public API instead: artifact, group:artifact or glob; * for all.");
     }
 
     /** {@code props} plus the optional scope: paths, modules, source set. */

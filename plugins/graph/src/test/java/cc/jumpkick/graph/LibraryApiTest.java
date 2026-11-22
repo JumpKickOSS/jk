@@ -3,6 +3,7 @@ package cc.jumpkick.graph;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.codegraph.Modules;
 import cc.jumpkick.codegraph.SymbolFinder;
 import cc.jumpkick.codegraph.SymbolReader.View;
 import java.io.IOException;
@@ -12,6 +13,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.jar.JarEntry;
 import java.util.jar.JarOutputStream;
 import java.util.stream.Stream;
@@ -134,6 +136,51 @@ class LibraryApiTest {
                 .containsExactly("interface  org.lib.Mapper.Feature  (org.lib:lib:1.0)");
         assertThat(api.find(SymbolFinder.namePattern("map*"), List.of()))
                 .containsExactly("class  org.lib.Mapper  (org.lib:lib:1.0)");
+    }
+
+    @Test
+    void findWithALibraryGlobListsTheTypesOfTheLibrariesItNamesOnly(@TempDir Path dir) throws IOException {
+        GraphService.Workspace w = new GraphService.Workspace(
+                dir,
+                dir.resolve("target/graph"),
+                null,
+                List.of(),
+                Modules.NONE,
+                new ScriptReader(null, null),
+                Map.of(),
+                List.of(),
+                LibraryQueryTest.locked(dir, false).jars(),
+                dir.resolve("cache"),
+                List.of(),
+                ModuleReach.UNKNOWN);
+
+        assertThat(find(w, "other-kit", "*Mapper"))
+                .isEqualTo("1 library type\nclass  org.lib.Mapper  (org.other:other-kit:2.0)");
+        assertThat(find(w, "*", "*Mapper"))
+                .isEqualTo("2 library types\n"
+                        + "class  org.lib.Mapper  (org.lib:lib:1.0)\n"
+                        + "class  org.lib.Mapper  (org.other:other-kit:2.0)");
+        assertThat(find(w, "jackson-databind", "*Mapper")).startsWith("No locked library matches 'jackson-databind'.");
+    }
+
+    private static String find(GraphService.Workspace w, String library, String name) throws IOException {
+        GraphService.Request r = new GraphService.Request(
+                "find",
+                List.of(name),
+                "bfs",
+                3,
+                2000,
+                List.of(),
+                false,
+                8,
+                null,
+                false,
+                false,
+                null,
+                List.of(),
+                null,
+                Map.of("library", library, "kind", "class"));
+        return GraphService.run(w, r, GraphBuild.Progress.NONE).text();
     }
 
     @Test

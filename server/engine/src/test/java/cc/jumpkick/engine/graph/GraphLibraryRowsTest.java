@@ -178,7 +178,7 @@ class GraphLibraryRowsTest {
     }
 
     @Test
-    void aQuestionReadsTheLockedJarsAndCompilesNothingOnlyWhenItNamesALibrary() {
+    void aQuestionOrFindReadsTheLockedJarsAndCompilesNothingOnlyWhenItNamesALibrary() {
         assertThat(GraphRunner.readsLibraries(request("query", List.of("library=jackson-databind"))))
                 .isTrue();
         assertThat(GraphRunner.readsLibraries(request("query", List.of()))).isFalse();
@@ -187,6 +187,10 @@ class GraphLibraryRowsTest {
         assertThat(GraphRunner.asksALibrary(request("query", List.of("library=guava"))))
                 .isTrue();
         assertThat(GraphRunner.asksALibrary(request("read", List.of()))).isFalse();
+        assertThat(GraphRunner.asksALibrary(request("find", List.of("library=*"))))
+                .isTrue();
+        assertThat(GraphRunner.readsLibraries(request("find", List.of("kind=class"))))
+                .isFalse();
     }
 
     private static GraphRequest request(String op, List<String> options) {

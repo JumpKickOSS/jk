@@ -377,15 +377,15 @@ the closest names.
 | `-s`, `--dfs` | Walk depth-first |
 | `-c`, `--context call,field,…` | Follow only edges with these contexts; a question that says "calls" or "imports" sets it, and one that says "returns", "member" or "template" sets it unless that leaves fewer than ten symbols (the first line then says every edge was followed) |
 | `-n`, `--no-refresh` | Answer from the last graph without looking at the tree |
-| `-l`, `--library <name>` | Ask a locked library's public API instead of the workspace ([below](#asking-a-library)) |
+| `-l`, `--library <glob>` | Ask a locked library's public API instead of the workspace; `*` for every locked library ([below](#asking-a-library)) |
 
 ### Asking a library
 
-`jk code query -l <name> <question>` answers "what in this library does X" from the jars
-`jk-lock.toml` pins, for when the type's name is not known yet. `<name>` is an artifact
+`jk code query -l <glob> <question>` answers "what in this library does X" from the jars
+`jk-lock.toml` pins, for when the type's name is not known yet. `<glob>` is an artifact
 (`jackson-databind`), a `group:artifact`, a whole coordinate or a glob over any of them
-(`'com.fasterxml.jackson.*'`); a name no locked jar matches lists the ones whose coordinate
-contains it.
+(`'com.fasterxml.jackson.*'`, or `'*'` for every locked library); one no locked jar matches lists
+the ones whose coordinate contains it. `jk code find -l` takes the same glob.
 
 The question's words are matched as above against every public type and member name, and against
 each one's Javadoc summary when the library's `-sources.jar` is on this machine (`jk sync --sources`
@@ -466,7 +466,7 @@ kind, visibility, name and span. Each filter takes a comma list.
 | `-E`, `--extends` | A superclass anywhere up the chain |
 | `-I`, `--implements` | A supertype anywhere above, interfaces included; library supertypes match by name |
 | `-A`, `--annotated` | An annotation on the declaration (`Transactional` or `@Transactional`) |
-| `-l`, `--libraries` | Search the locked jars' types instead, by name glob and kind |
+| `-l`, `--library <glob>` | Search the types of the locked libraries the glob names instead, by name glob and kind; `*` for every one, as [`query -l`](#asking-a-library) |
 
 `-E` and `-I` filter types, or, when `-t` asks only for members, the type that declares each member:
 `find total -t method -I OrderService` lists every override of `OrderService.total`. A nested type
@@ -476,7 +476,8 @@ can be named by its outer one, `-I Preflight.Main`.
 jk code find -A RestController
 jk code find total -t method -I OrderService   # every override
 jk code find -t member -p public -m server/engine 'get*'
-jk code find -l '*Mapper' -t class
+jk code find -l jackson-databind -t class '*Mapper'
+jk code find -l '*' '*Mapper'                 # every locked library
 ```
 
 ## Before editing a file
