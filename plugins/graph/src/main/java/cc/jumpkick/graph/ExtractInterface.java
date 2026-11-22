@@ -146,8 +146,11 @@ final class ExtractInterface {
         for (Method m : methods) signatures.add(step + signature(at, from, target, m) + ";");
 
         int brace = header(from, bin, simple);
-        String implemented = at.ref(from, ifaceBin);
         int declared = declaration(from, bin).end();
+        String params = typeParams(from.text, declared);
+        int paramsAt = from.text.indexOf(params, declared);
+        String ifaceParams = named(at, from, target, paramsAt, paramsAt + params.length());
+        String implemented = at.ref(from, ifaceBin) + typeArgs(params);
         // implements comes before a sealed class's permits.
         Matcher permits = Pattern.compile("\\bpermits\\b").matcher(from.text.substring(declared, brace));
         int insert = before(from.text, permits.find() ? declared + permits.start() : brace) + 1;
@@ -201,7 +204,7 @@ final class ExtractInterface {
             afters.put(f.rel, after);
             plan.edit(f.rel, f.text, after, lines);
         }
-        String body = ifaceText(target, Decl.vis(cls), ifacePkg.equals(pkg(bin)), ifaceName, signatures);
+        String body = ifaceText(target, Decl.vis(cls), ifacePkg.equals(pkg(bin)), ifaceName + ifaceParams, signatures);
         plan.after.put(ifaceRel, body);
         plan.lines.put(ifaceRel, new TreeSet<>());
         RenameStore.write(w.root(), w.out(), plan);
@@ -311,16 +314,10 @@ final class ExtractInterface {
                 "Not extracted: javac's index does not declare " + canonical(bin) + " in " + f.rel + "; build first.");
     }
 
-    /** The offset of the {@code {} that opens the class's body; a generic class is refused. */
+    /** The offset of the {@code {} that opens the class's body. */
     private static int header(FileEdit f, String bin, String simple) {
         String t = f.text;
         int i = declaration(f, bin).end();
-        int k = i;
-        while (k < t.length() && Character.isWhitespace(t.charAt(k))) k++;
-        if (k < t.length() && t.charAt(k) == '<') {
-            throw new RenameRefusal(
-                    "Not extracted: " + simple + " declares type parameters; extract its interface" + " by hand.");
-        }
         int depth = 0;
         while (i < t.length()) {
             int p = past(t, i);
@@ -335,6 +332,54 @@ final class ExtractInterface {
             i++;
         }
         throw new RenameRefusal("Not extracted: no body found for " + simple + " in " + f.rel + ".");
+    }
+
+    /**
+     * The type parameters written after the class's name at {@code declared}, as written
+     * ({@code <K extends Comparable<K>, V>}), or empty for a class that declares none.
+     */
+    static String typeParams(String t, int declared) {
+        int k = declared;
+        while (k < t.length() && (Character.isWhitespace(t.charAt(k)) || past(t, k) != k)) {
+            k = Character.isWhitespace(t.charAt(k)) ? k + 1 : past(t, k);
+        }
+        if (k >= t.length() || t.charAt(k) != '<') return "";
+        int depth = 0;
+        int i = k;
+        while (i < t.length()) {
+            int p = past(t, i);
+            if (p != i) {
+                i = p;
+                continue;
+            }
+            char c = t.charAt(i);
+            if (c == '<') depth++;
+            else if (c == '>' && --depth == 0) return t.substring(k, i + 1);
+            i++;
+        }
+        return "";
+    }
+
+    /** The type arguments that pass {@code params} on as they are: {@code <K, V>} for {@code <K extends A, V>}. */
+    static String typeArgs(String params) {
+        if (params.isEmpty()) return "";
+        List<String> names = new ArrayList<>();
+        int depth = 0;
+        int from = 1;
+        for (int i = 1; i < params.length(); i++) {
+            char c = params.charAt(i);
+            if (c == '<' || c == '(') depth++;
+            else if (c == ')' || (c == '>' && depth > 0)) depth--;
+            else if ((c == ',' && depth == 0) || i == params.length() - 1) {
+                String one = params.substring(from, i)
+                        .replaceAll("@[\\w$.]+\\s*(\\([^)]*\\))?", "")
+                        .strip();
+                Matcher name = NAME.matcher(one);
+                if (name.lookingAt()) names.add(name.group());
+                from = i + 1;
+            }
+        }
+        return "<" + String.join(", ", names) + ">";
     }
 
     /** The methods to extract, in the order the class declares them. */
@@ -439,11 +484,16 @@ final class ExtractInterface {
             }
             break;
         }
-        int start = i;
+        return named(at, from, target, i, m.body()).strip().replaceAll("\\s+", " ");
+    }
+
+    /** The source between {@code start} and {@code end} with each type named as the interface's file must name it. */
+    private static String named(MoveMember.Resolver at, FileEdit from, FileEdit target, int start, int end) {
+        String t = from.text;
         List<Op> ops = new ArrayList<>();
         for (ReferenceIndex.Span s : from.spans) {
             if (s.start() < start
-                    || s.start() >= m.body()
+                    || s.start() >= end
                     || s.kind() == 'd'
                     || !s.symbol().startsWith("T ")) continue;
             if (afterQualifier(t, s.start())) continue;
@@ -451,8 +501,7 @@ final class ExtractInterface {
             String ref = at.ref(target, bin);
             if (!ref.equals(t.substring(s.start(), s.end()))) ops.add(new Op(s.start() - start, s.end() - start, ref));
         }
-        String sig = MoveMember.apply(t.substring(start, m.body()), ops, null);
-        return sig.strip().replaceAll("\\s+", " ");
+        return MoveMember.apply(t.substring(start, end), ops, null);
     }
 
     /** The offset of the {@code )} that closes the {@code (} at {@code open}. */

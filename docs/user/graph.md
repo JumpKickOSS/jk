@@ -776,8 +776,9 @@ overridden is refused, as is one with overloads; a target the type extends is a 
 `extract-interface` creates an interface beside the class (a qualified name puts it in that
 package) declaring the public instance methods `--methods` names, every overload of each, or by
 default every public instance method that overrides nothing; the answer names the methods it
-took. Each signature is copied as written, with the imports its types need; the class implements
-the interface, with `@Override` on each method. In the same edit, each variable, parameter, field
+took. Each signature is copied as written, with the imports its types need; a generic class passes
+its type parameters on (`interface Holder<K, V>`, `Box<K, V> implements Holder<K, V>`). The class
+implements the interface, with `@Override` on each method. In the same edit, each variable, parameter, field
 and return type of the class's type outside it that uses only the interface's methods (or
 `Object`'s) is declared as the interface instead, with the imports that needs. A return type is
 switched only when every caller uses the result that way or keeps it in a switched variable. A
@@ -786,7 +787,7 @@ reference, a lambda's parameter, a record component or a field another file read
 calls, casts, type arguments and static calls stay too. Each place left is listed at `file:line`
 with its reason (`calls pages()`, `passed on`, `show() overrides a method`). `--no-switch` (MCP
 `switch: false`) creates the interface alone and lists the places that could take it. It refuses
-a generic class, a static or non-public method and a name already taken, writing nothing. Then it
+a static or non-public method and a name already taken, writing nothing. Then it
 compiles the modules it touched, undoing the edit whole, the new file and every switch included,
 when that fails.
 

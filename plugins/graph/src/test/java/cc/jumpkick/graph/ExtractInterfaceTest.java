@@ -359,20 +359,65 @@ class ExtractInterfaceTest {
     }
 
     @Test
-    void aGenericClassIsRefused(@TempDir Path dir) throws IOException {
+    void aGenericClassPassesItsTypeParametersToTheInterface(@TempDir Path dir) throws IOException {
         RenameFixture f = new RenameFixture(dir, RenameFixture.files(SHOP + "Box.java", """
                         package org.acme.shop;
 
-                        public class Box<T> {
-                            public T get() {
-                                return null;
+                        import java.io.Serializable;
+                        import java.util.List;
+
+                        public class Box<K extends Comparable<K> & Serializable, V> {
+                            private V value;
+
+                            public V get(K key) {
+                                return value;
+                            }
+
+                            public <R> List<R> map(java.util.function.Function<V, R> f) {
+                                return List.of(f.apply(value));
+                            }
+                        }
+                        """, SHOP + "Shop.java", """
+                        package org.acme.shop;
+
+                        class Shop {
+                            String name(Box<String, String> box) {
+                                return box.get("a");
                             }
                         }
                         """));
 
-        assertThat(f.extract("Box", "Holder"))
-                .isEqualTo("Not extracted: Box declares type parameters; extract its interface by hand.");
-        assertThat(f.exists(SHOP + "Holder.java")).isFalse();
+        assertThat(f.extract("Box", "org.acme.api.Holder"))
+                .startsWith("Extracted org.acme.api.Holder from Box: 2 methods (get, map); Box implements it, 2"
+                        + " @Override.")
+                .contains("  src/main/java/org/acme/shop/Shop.java:6  String name(Holder<String, String> box) {");
+        assertThat(f.read(API + "Holder.java")).isEqualTo("""
+                package org.acme.api;
+
+                import java.io.Serializable;
+                import java.util.List;
+
+                public interface Holder<K extends Comparable<K> & Serializable, V> {
+
+                    V get(K key);
+
+                    <R> List<R> map(java.util.function.Function<V, R> f);
+                }
+                """);
+        assertThat(f.read(SHOP + "Box.java"))
+                .contains("public class Box<K extends Comparable<K> & Serializable, V> implements Holder<K, V> {");
+        assertThat(f.checkExtract()).isEqualTo("Proven: it compiles.");
+    }
+
+    @Test
+    void typeArgumentsNameEachParameterWithoutItsBoundOrAnnotations() {
+        assertThat(ExtractInterface.typeArgs("")).isEmpty();
+        assertThat(ExtractInterface.typeArgs("<T>")).isEqualTo("<T>");
+        assertThat(ExtractInterface.typeArgs("<K extends Map<K, V>, @A(x = 1) V extends Comparable<? super V>>"))
+                .isEqualTo("<K, V>");
+        assertThat(ExtractInterface.typeParams("Box /* c */ <T extends List<T>> {", 3))
+                .isEqualTo("<T extends List<T>>");
+        assertThat(ExtractInterface.typeParams("Box {", 3)).isEmpty();
     }
 
     @Test

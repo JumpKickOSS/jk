@@ -96,7 +96,7 @@ final class InterfaceSwitch {
                     out.add(new Place(f, start, s.end(), other));
                     continue;
                 }
-                Matcher m = NAME.matcher(code).region(skip(code, s.end()), code.length());
+                Matcher m = NAME.matcher(code).region(pastTypeArgs(code, s.end()), code.length());
                 m.lookingAt();
                 int after = skip(code, m.end());
                 if (after < code.length() && code.charAt(after) == '(') {
@@ -115,7 +115,7 @@ final class InterfaceSwitch {
                 if (why == null) {
                     Set<Integer> names = new TreeSet<>();
                     for (Typed t : e.getValue()) {
-                        names.add(skip(code, t.type().end()));
+                        names.add(pastTypeArgs(code, t.type().end()));
                     }
                     why = scan.misuse(f, code, e.getKey(), names);
                 }
@@ -143,7 +143,7 @@ final class InterfaceSwitch {
         if (word.equals("new")) return "a constructor call";
         if (word.equals("instanceof") || word.equals("case")) return "a type test";
         if (word.equals("extends") || word.equals("implements")) return "a supertype";
-        int k = skip(code, end);
+        int k = pastTypeArgs(code, end);
         if (k >= code.length()) return "names the class";
         char c = code.charAt(k);
         if (c == '.' || c == ':') return "names the class";
@@ -471,6 +471,20 @@ final class InterfaceSwitch {
     private static int skip(String code, int i) {
         while (i < code.length() && Character.isWhitespace(code.charAt(i))) i++;
         return i;
+    }
+
+    /** The offset of the first non-blank past {@code i} and any type arguments there: the name after {@code Box<String> }. */
+    private static int pastTypeArgs(String code, int i) {
+        int k = skip(code, i);
+        if (k >= code.length() || code.charAt(k) != '<') return k;
+        int depth = 0;
+        for (int j = k; j < code.length(); j++) {
+            char c = code.charAt(j);
+            if (c == '<') depth++;
+            else if (c == '>' && --depth == 0) return skip(code, j + 1);
+            else if (c == ';' || c == '{' || c == '}' || c == '(' || c == ')') return k;
+        }
+        return k;
     }
 
     /**
