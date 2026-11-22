@@ -348,7 +348,7 @@ public final class AgentUsage {
     /** Line {@code n} parsed, or null (logged by position only) when it is not JSON. */
     static @Nullable Object json(Path file, int n, String line) {
         try {
-            return MiniJson.parse(line);
+            return MiniJson.parseRelaxed(line);
         } catch (RuntimeException e) {
             skipped(file, n);
             return null;

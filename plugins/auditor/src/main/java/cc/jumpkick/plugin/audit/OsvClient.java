@@ -240,7 +240,7 @@ public final class OsvClient {
     }
 
     private static Vulnerability parseVuln(String vulnId, String body) {
-        Map<?, ?> node = object(MiniJson.parse(body));
+        Map<?, ?> node = object(MiniJson.parseRelaxed(body));
         return new Vulnerability(
                 vulnId,
                 textOrEmpty(node, "summary"),
@@ -261,7 +261,7 @@ public final class OsvClient {
     private static List<Page> parseBatchResponse(String body, int expectedSize) throws IOException {
         List<Page> out = new ArrayList<>(expectedSize);
         try {
-            Object results = object(MiniJson.parse(body)).get("results");
+            Object results = object(MiniJson.parseRelaxed(body)).get("results");
             if (!(results instanceof List<?> rows)) {
                 throw new IOException("OSV batch response missing `results` array");
             }

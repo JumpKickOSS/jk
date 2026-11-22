@@ -26,7 +26,7 @@ final class BspRequestParams {
             return TestSelection.DEFAULT;
         }
         try {
-            Object parsed = MiniJson.parse(requestJson);
+            Object parsed = MiniJson.parseRelaxed(requestJson);
             if (!(parsed instanceof Map<?, ?> outer)) {
                 return TestSelection.DEFAULT;
             }
@@ -66,7 +66,7 @@ final class BspRequestParams {
     static @Nullable DebugJvm parseDebugData(String requestJson) {
         if (requestJson == null || requestJson.isBlank()) return null;
         try {
-            Object parsed = MiniJson.parse(requestJson);
+            Object parsed = MiniJson.parseRelaxed(requestJson);
             if (!(parsed instanceof Map<?, ?> outer)) return null;
             Map<?, ?> params = outer.get("params") instanceof Map<?, ?> inner ? inner : outer;
             Map<?, ?> src = params.get("data") instanceof Map<?, ?> d ? d : params;

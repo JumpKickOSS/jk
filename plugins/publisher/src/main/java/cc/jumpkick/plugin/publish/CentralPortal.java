@@ -200,7 +200,7 @@ public final class CentralPortal {
     static Status parseStatus(String json, String deploymentId) throws IOException {
         Object root;
         try {
-            root = MiniJson.parse(json);
+            root = MiniJson.parseRelaxed(json);
         } catch (RuntimeException e) {
             throw new IOException(
                     "Central Portal status for " + deploymentId + " is not JSON: " + clip(json.trim()), e);

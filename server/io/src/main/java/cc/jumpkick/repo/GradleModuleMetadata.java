@@ -122,7 +122,7 @@ public final class GradleModuleMetadata {
             return new GradleModuleMetadata(List.of());
         }
 
-        Object root = MiniJson.parse(text);
+        Object root = MiniJson.parseRelaxed(text);
         if (!(root instanceof Map<?, ?> map)) throw new IOException("not a GMM document: " + moduleFile);
         Object variants = map.get("variants");
         return !(variants instanceof List<?> list)

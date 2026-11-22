@@ -63,7 +63,7 @@ public interface ForgeIdentity {
                         .get(userEndpoint, Map.of("Authorization", "Bearer " + token, "Accept", "application/json"));
                 if (resp.statusCode() / 100 != 2) return Optional.empty();
                 String body = new String(resp.body(), StandardCharsets.UTF_8);
-                String login = MiniJson.str(MiniJson.parse(body), loginField);
+                String login = MiniJson.str(MiniJson.parseRelaxed(body), loginField);
                 if (login == null || login.isBlank()) return Optional.empty();
                 cache.put(cacheKey, login);
                 return Optional.of(login);

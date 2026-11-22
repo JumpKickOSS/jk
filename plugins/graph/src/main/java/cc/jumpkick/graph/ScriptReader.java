@@ -63,7 +63,9 @@ final class ScriptReader {
             String version = null;
             try {
                 version = MiniJson.str(
-                        MiniJson.parse(Files.readString(modules.resolve(name).resolve("package.json"))), "version");
+                        MiniJson.parseRelaxed(
+                                Files.readString(modules.resolve(name).resolve("package.json"))),
+                        "version");
             } catch (IOException | RuntimeException unreadable) {
                 Log.debug("graph: unreadable " + name + " package.json", unreadable);
             }

@@ -181,7 +181,7 @@ public final class BaseImageDigest {
         try {
             HttpResponse<byte[]> response = http.documents().get(URI.create(url.toString()), realmAuth);
             if (response.statusCode() != 200) return null;
-            Object body = MiniJson.parse(new String(response.body(), StandardCharsets.UTF_8));
+            Object body = MiniJson.parseRelaxed(new String(response.body(), StandardCharsets.UTF_8));
             if (!(body instanceof Map<?, ?> fields)) return null;
             Object token = fields.get("token");
             if (!(token instanceof String s) || s.isBlank()) token = fields.get("access_token");

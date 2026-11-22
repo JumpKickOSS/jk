@@ -16,9 +16,11 @@ import org.jspecify.annotations.Nullable;
  * <p>Lives in :host at the SPI language floor ({@code --release 17}); written without
  * pattern-switch (Java 21+) so worker JVMs on project JDK 17+ can load the same classes.
  *
- * <p>{@link #parse} is strict RFC 8259 — it is the wire-protocol path and must stay that way.
- * {@link #parseRelaxed} is the JSONC dialect for human-edited files (comments, trailing commas,
- * byte-order mark); both share one parser, gated on a {@code relaxed} flag.
+ * <p>{@link #parse} is strict RFC 8259 — it reads what jk itself wrote (its files, its wire) and
+ * must stay that way. {@link #parseRelaxed} is the JSONC dialect for human-edited files (comments,
+ * trailing commas, byte-order mark, stray whitespace and control characters), and it reads every
+ * document another program wrote — a registry answer, a tool's report, an agent's message — whose
+ * slips are not the user's to fix. Both share one parser, gated on a {@code relaxed} flag.
  */
 public final class MiniJson {
 
@@ -179,8 +181,8 @@ public final class MiniJson {
     /**
      * Parse a complete JSON document; trailing non-whitespace is an error. Strict: no comments, no
      * trailing commas, no byte-order mark, no whitespace but space, tab, LF and CR, and no raw
-     * control character (U+0000 to U+001F) inside a string. This is the plugin wire-protocol path —
-     * anything lenient belongs in {@link #parseRelaxed} instead.
+     * control character (U+0000 to U+001F) inside a string. This is the path for JSON jk wrote;
+     * a document another program wrote belongs in {@link #parseRelaxed} instead.
      */
     public static @Nullable Object parse(String json) {
         return parse(json, false);
@@ -188,7 +190,7 @@ public final class MiniJson {
 
     /**
      * Parse a JSONC document — {@link #parse}'s grammar plus the concessions human-edited config
-     * files need: {@code //} line and block comments wherever whitespace is legal, a trailing comma
+     * files and other programs' output need: {@code //} line and block comments wherever whitespace is legal, a trailing comma
      * in objects and arrays, a leading byte-order mark, any {@link Character#isWhitespace} character
      * between tokens and a raw control character (a pasted tab) inside a string. A comment is not
      * recognized inside a string literal, so {@code {"a":"// text"}} keeps its value verbatim.

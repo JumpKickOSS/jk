@@ -61,7 +61,7 @@ public final class NativeImageMetadata {
     public static DynamicSurface parse(String entryName, String body, String origin) {
         Object root;
         try {
-            root = MiniJson.parse(body);
+            root = MiniJson.parseRelaxed(body);
         } catch (RuntimeException e) {
             return DynamicSurface.empty();
         }

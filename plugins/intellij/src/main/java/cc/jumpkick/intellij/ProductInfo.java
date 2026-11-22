@@ -30,7 +30,7 @@ record ProductInfo(
         if (!Files.isRegularFile(file)) {
             throw new IOException(ide + " is not an IntelliJ distribution: no product-info.json");
         }
-        Object root = MiniJson.parse(Files.readString(file, StandardCharsets.UTF_8));
+        Object root = MiniJson.parseRelaxed(Files.readString(file, StandardCharsets.UTF_8));
         String build = MiniJson.str(root, "buildNumber");
         if (build == null) throw new IOException(file + " names no buildNumber");
         Object launch = null;

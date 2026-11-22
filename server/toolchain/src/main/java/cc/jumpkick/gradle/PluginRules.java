@@ -248,7 +248,7 @@ final class PluginRules {
             return all;
         }
         if (name.endsWith(".json")) {
-            Object node = MiniJson.parse(text);
+            Object node = MiniJson.parseRelaxed(text);
             if (!select.isEmpty()) {
                 for (String segment : select.split("\\.")) node = MiniJson.get(node, segment);
             }

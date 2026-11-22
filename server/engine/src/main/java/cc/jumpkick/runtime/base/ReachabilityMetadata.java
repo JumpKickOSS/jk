@@ -129,7 +129,7 @@ public final class ReachabilityMetadata {
         if (!Files.isRegularFile(index)) return null;
         List<?> entries;
         try {
-            Object parsed = MiniJson.parse(Files.readString(index, StandardCharsets.UTF_8));
+            Object parsed = MiniJson.parseRelaxed(Files.readString(index, StandardCharsets.UTF_8));
             if (!(parsed instanceof List<?> list)) return null;
             entries = list;
         } catch (IOException | RuntimeException e) {

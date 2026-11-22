@@ -263,7 +263,7 @@ final class BaseJre {
         if (!Files.isRegularFile(manifest)) return List.of();
         Object root;
         try {
-            root = MiniJson.parse(Files.readString(manifest));
+            root = MiniJson.parseRelaxed(Files.readString(manifest));
         } catch (RuntimeException e) {
             return List.of(); // not a docker archive; the caller falls back to name order
         }

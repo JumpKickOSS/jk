@@ -271,6 +271,20 @@ class GradleModuleMetadataTest {
                         new GradleModuleMetadata.Constraint("g", "y", "", false, List.of("4.0")));
     }
 
+    @Test
+    void a_published_file_with_a_raw_tab_and_a_form_feed_still_reads(@TempDir Path dir) throws Exception {
+        // A third party's file: strict JSON refuses both, and a resolve must not fail on them.
+        String json = "{ \"formatVersion\": \"1.1\", \"variants\": [ {\f"
+                + "\"name\": \"runtime\tElements\","
+                + "\"attributes\": { \"org.gradle.category\": \"library\", \"org.gradle.usage\": \"java-runtime\" },"
+                + "\"dependencyConstraints\": [ { \"group\": \"g\", \"module\": \"x\", \"version\": { \"requires\": \"1.2\" } } ]"
+                + "} ] }";
+        Path module = Files.writeString(dir.resolve("m.module"), json);
+
+        assertThat(GradleModuleMetadata.parse(module).dependencyConstraints("standard-jvm", 25))
+                .containsExactly(new GradleModuleMetadata.Constraint("g", "x", "1.2", false, List.of()));
+    }
+
     /** A runtime variant for JVM {@code level} and up, redirecting to {@code lib-jdk<level>}, constraining x to {@code x}. */
     private static String perJvmVariant(int level, String x) {
         return """

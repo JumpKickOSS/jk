@@ -242,7 +242,7 @@ public final class OciImageBuilder implements Plugin, ImageExtension {
         if (base != null) dependencies.add(baseImage(base));
         if (sbom != null) {
             for (Object component :
-                    MiniJson.list(MiniJson.parse(new String(sbom, StandardCharsets.UTF_8)), "components")) {
+                    MiniJson.list(MiniJson.parseRelaxed(new String(sbom, StandardCharsets.UTF_8)), "components")) {
                 String purl = MiniJson.str(component, "purl");
                 if (purl == null) continue;
                 String sha256 = null;

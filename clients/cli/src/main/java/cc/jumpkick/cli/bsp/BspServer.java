@@ -126,7 +126,7 @@ public final class BspServer {
         String reason = "JumpKick was updated to " + newer.get() + "; restart the build server to use it";
         System.err.println("jk bsp: " + reason);
         try {
-            String id = requestId(MiniJson.parse(json));
+            String id = requestId(MiniJson.parseRelaxed(json));
             if (id != null) frames.error(id, -32000, reason);
         } catch (RuntimeException notJson) {
             // Nothing to answer.
@@ -137,7 +137,7 @@ public final class BspServer {
     private void handle(String json) throws IOException {
         Object message;
         try {
-            message = MiniJson.parse(json);
+            message = MiniJson.parseRelaxed(json);
         } catch (RuntimeException e) {
             return; // not a JSON-RPC message; no id to answer on either
         }
@@ -661,7 +661,7 @@ public final class BspServer {
 
     private static @Nullable String originId(String requestJson) {
         try {
-            Object parsed = MiniJson.parse(requestJson);
+            Object parsed = MiniJson.parseRelaxed(requestJson);
             Object params = MiniJson.get(parsed, "params");
             return MiniJson.str(params == null ? parsed : params, "originId");
         } catch (RuntimeException e) {
@@ -861,7 +861,7 @@ public final class BspServer {
     /** Collect target URIs from a BSP params object (targets array or single target). */
     static List<String> extractTargetUris(String json) {
         try {
-            Object parsed = MiniJson.parse(json);
+            Object parsed = MiniJson.parseRelaxed(json);
             if (!(parsed instanceof Map<?, ?> outer)) return List.of();
             Map<?, ?> params = outer.get("params") instanceof Map<?, ?> inner ? inner : outer;
             Object targets = params.get("targets");

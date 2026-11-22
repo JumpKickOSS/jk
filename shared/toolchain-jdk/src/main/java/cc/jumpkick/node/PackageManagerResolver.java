@@ -73,7 +73,7 @@ public final class PackageManagerResolver {
         if (response.statusCode() != 200) {
             throw new IOException(pkg + " metadata " + uri + " returned HTTP " + response.statusCode());
         }
-        return MiniJson.parse(new String(response.body(), StandardCharsets.UTF_8));
+        return MiniJson.parseRelaxed(new String(response.body(), StandardCharsets.UTF_8));
     }
 
     /** The hex sha512 an {@code integrity} of {@code sha512-<base64>} carries; refused without one. */

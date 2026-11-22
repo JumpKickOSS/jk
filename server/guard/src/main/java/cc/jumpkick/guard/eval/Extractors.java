@@ -226,7 +226,7 @@ final class Extractors {
         String path = s.arg("path", "");
         Object node;
         try {
-            node = MiniJson.parse(Files.readString(existing(ctx, file)));
+            node = MiniJson.parseRelaxed(Files.readString(existing(ctx, file)));
         } catch (RuntimeException e) {
             throw new ExtractorException(file + ": JSON syntax: " + e.getMessage());
         }

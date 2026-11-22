@@ -86,7 +86,7 @@ final class RegistryClient {
     }
 
     static Version parse(String subject, String json) throws IOException {
-        Object root = MiniJson.parse(json);
+        Object root = MiniJson.parseRelaxed(json);
         String schema = MiniJson.str(root, "schema");
         if (schema == null) throw new IOException(subject + ": registry answer has no schema");
         String type = MiniJson.str(root, "schemaType");

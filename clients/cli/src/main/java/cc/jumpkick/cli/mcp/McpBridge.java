@@ -264,7 +264,7 @@ public final class McpBridge {
         int i = skipSpace(json, open + 1);
         while (json.charAt(i) != '}') {
             int keyEnd = skipValue(json, i);
-            boolean match = key.equals(MiniJson.parse(json.substring(i, keyEnd)));
+            boolean match = key.equals(MiniJson.parseRelaxed(json.substring(i, keyEnd)));
             int valueStart = skipSpace(json, skipSpace(json, keyEnd) + 1);
             int valueEnd = skipValue(json, valueStart);
             if (match) found = new int[] {valueStart, valueEnd};
@@ -336,7 +336,7 @@ public final class McpBridge {
         @SuppressWarnings("unchecked")
         static Message of(String line) {
             try {
-                if (MiniJson.parse(line) instanceof Map<?, ?> m) {
+                if (MiniJson.parseRelaxed(line) instanceof Map<?, ?> m) {
                     Object method = m.get("method");
                     return new Message(
                             method == null ? "" : String.valueOf(method), m.get("id"), (Map<String, Object>) m);
@@ -501,7 +501,7 @@ public final class McpBridge {
     static String error(String message, String text) {
         Object id = null;
         try {
-            if (MiniJson.parse(message) instanceof Map<?, ?> m) {
+            if (MiniJson.parseRelaxed(message) instanceof Map<?, ?> m) {
                 if (!m.containsKey("id")) return "";
                 id = m.get("id");
             }

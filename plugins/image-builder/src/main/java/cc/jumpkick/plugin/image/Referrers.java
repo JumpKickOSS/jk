@@ -181,8 +181,8 @@ final class Referrers {
             }
             String mediaType = fetched.contentType();
             if (mediaType == null || mediaType.isBlank() || mediaType.startsWith("application/json")) {
-                mediaType =
-                        MiniJson.str(MiniJson.parse(new String(fetched.body(), StandardCharsets.UTF_8)), "mediaType");
+                mediaType = MiniJson.str(
+                        MiniJson.parseRelaxed(new String(fetched.body(), StandardCharsets.UTF_8)), "mediaType");
             }
             if (mediaType == null) throw new IOException("manifest " + digest + " names no media type");
             return Referrers.descriptor(mediaType.split(";", 2)[0].strip(), digest, fetched.body().length, null);
@@ -222,7 +222,8 @@ final class Referrers {
             Map<String, Object> index = new LinkedHashMap<>();
             List<Object> manifests = new ArrayList<>();
             if (held != null
-                    && MiniJson.parse(new String(held.body(), StandardCharsets.UTF_8)) instanceof Map<?, ?> read) {
+                    && MiniJson.parseRelaxed(new String(held.body(), StandardCharsets.UTF_8))
+                            instanceof Map<?, ?> read) {
                 for (Map.Entry<?, ?> e : read.entrySet()) index.put(String.valueOf(e.getKey()), e.getValue());
                 manifests.addAll(MiniJson.list(read, "manifests"));
             } else {
@@ -309,7 +310,8 @@ final class Referrers {
                         Authorization.fromBasicCredentials(credential.getUsername(), credential.getPassword()));
             }
             try (Response response = http.get(toUrl(url.toString()), request.build())) {
-                Object body = MiniJson.parse(new String(response.getBody().readAllBytes(), StandardCharsets.UTF_8));
+                Object body =
+                        MiniJson.parseRelaxed(new String(response.getBody().readAllBytes(), StandardCharsets.UTF_8));
                 String token = MiniJson.str(body, "token");
                 if (token == null || token.isBlank()) token = MiniJson.str(body, "access_token");
                 return token == null || token.isBlank() ? null : Authorization.fromBearerToken(token);

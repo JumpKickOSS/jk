@@ -142,7 +142,7 @@ public final class DeviceFlow {
             throw new AuthException(providerName + " returned HTTP " + status + ".");
         }
         try {
-            return MiniJson.parse(new String(resp.body(), StandardCharsets.UTF_8));
+            return MiniJson.parseRelaxed(new String(resp.body(), StandardCharsets.UTF_8));
         } catch (RuntimeException e) {
             return null;
         }

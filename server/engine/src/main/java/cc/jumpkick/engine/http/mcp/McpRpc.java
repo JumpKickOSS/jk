@@ -42,7 +42,7 @@ public final class McpRpc {
         }
         Object parsed;
         try {
-            parsed = MiniJson.parse(body.trim());
+            parsed = MiniJson.parseRelaxed(body.trim());
         } catch (RuntimeException e) {
             return error(null, -32700, "parse error: " + e.getMessage());
         }

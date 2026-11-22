@@ -102,7 +102,7 @@ public final class PackageManagerShims {
     private static Map<String, String> bins(Path home) throws IOException {
         Path pkg = home.resolve("package.json");
         if (!Files.isRegularFile(pkg)) return Map.of();
-        Object bin = MiniJson.get(MiniJson.parse(Files.readString(pkg, StandardCharsets.UTF_8)), "bin");
+        Object bin = MiniJson.get(MiniJson.parseRelaxed(Files.readString(pkg, StandardCharsets.UTF_8)), "bin");
         Map<String, String> out = new LinkedHashMap<>();
         if (bin instanceof Map<?, ?> m) {
             for (Map.Entry<?, ?> e : m.entrySet()) {

@@ -31,7 +31,7 @@ public final class AgentHook {
     public static @Nullable String decide(String stdin) {
         Object call;
         try {
-            call = MiniJson.parse(stdin);
+            call = MiniJson.parseRelaxed(stdin);
         } catch (IllegalArgumentException notJson) {
             return null;
         }

@@ -131,7 +131,7 @@ final class NodeTestReport {
     static @Nullable TestSummary readJest(Path json, String module) {
         Object root;
         try {
-            root = MiniJson.parse(Files.readString(json));
+            root = MiniJson.parseRelaxed(Files.readString(json));
         } catch (IOException | RuntimeException e) {
             return null;
         }

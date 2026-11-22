@@ -42,7 +42,7 @@ public record NodeRelease(
 
     /** The rows of an {@code index.json} body, newest first as the file lists them. */
     static List<NodeRelease> parseIndex(String json) {
-        Object root = MiniJson.parse(json);
+        Object root = MiniJson.parseRelaxed(json);
         if (!(root instanceof List<?> rows)) throw new IllegalArgumentException("Node index is not a JSON array");
         List<NodeRelease> out = new ArrayList<>(rows.size());
         for (Object row : rows) {
