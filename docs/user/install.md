@@ -223,16 +223,6 @@ rm -rf ~/.jk/store     # re-download everything, slow
 `jk self nuke -S` cannot log you out or remove the engine you are running. `changes/` is one too,
 so the record of a nuke survives it ([what JumpKick changed](config.md#what-jumpkick-changed)).
 
-**Another version's cache and state are discarded, never read.** `cache/` and `state/` each hold a
-`jk-version` file naming the JumpKick that wrote them. When an engine starts with no engine of this
-home running and finds another version's name there, or none, JumpKick empties both roots and
-rebuilds what it needs: action cache, build and test history, JDK inventory, plugin trust. It says
-so in one line. `state/engine` (sockets, pid files, the install lock), `state/tmp` and the
-self-update record (an update to announce, a rollback's hold on auto-update) stay. Until
-1.0 nothing is migrated between versions. `creds/` is the one root every version reads as it is,
-and `store/`, `config.toml`, `config/`, `bin/`, `lib/` and `changes/` are left alone. While an
-older engine still drains its jobs after an update, the discard waits for the next start.
-
 The live engine jar is `~/.jk/lib/jk-engine/jk-engine-<version>.jar` (or
 `jk-engine-<version>.<epoch>.jar` when that name is already occupied), with the live pointer
 in `~/.jk/lib/jk-engine/jk-engine.toml`. Every install, and the running engine once a minute,

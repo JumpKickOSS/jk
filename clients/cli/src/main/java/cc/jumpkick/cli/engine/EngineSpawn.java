@@ -154,32 +154,8 @@ public final class EngineSpawn {
         }
         // Absent / unusable / draining / version skew → spawn (takeover or cold start).
         if (spawnForbidden()) throw new EngineSpawnForbiddenException(socket);
-        if (!(reach instanceof Reachability.Live)) discardOtherVersionsState(paths, clientVersion);
         StartupPulse.phase("Starting engine");
         return startWithSelfHeal(paths, clientVersion);
-    }
-
-    /**
-     * A cold start is the one moment nothing of this home runs: the cache and state another jk
-     * version wrote go then ({@link VersionedState}). A failed delete is logged and the start goes
-     * on; the stamp stays foreign, so the next cold start tries again.
-     */
-    private static void discardOtherVersionsState(EnginePaths.Paths paths, String clientVersion) {
-        try {
-            List<String> was = VersionedState.claim(
-                    VersionedState.current(),
-                    clientVersion,
-                    JkDirs.state().resolve("engine").resolve("version.lock"),
-                    () -> !EngineFleet.listThisHome().isEmpty(),
-                    message -> logReason(paths, message));
-            if (!was.isEmpty()) {
-                CliOutput.stderr()
-                        .println("jk " + clientVersion + ": discarded the cache and state " + String.join(", ", was)
-                                + " wrote");
-            }
-        } catch (IOException | RuntimeException e) {
-            logReason(paths, "could not discard another version's cache and state: " + e.getMessage());
-        }
     }
 
     private static boolean spawnForbidden() {
