@@ -115,6 +115,15 @@ still succeeds, and prints one warning after its result naming the file, line an
 hear of the break before the next command that needs it. The dashboard and MCP see the same
 note as a `warn` event.
 
+## A key JumpKick does not know
+
+`~/.jk/config.toml` stays when JumpKick updates. A key this version does not read, misspelt or
+retired, is ignored, never renamed or translated. `jk doctor` warns on its `config` row (`unknown
+key ignored: engine.heap`), the dashboard's Configuration panel lists it as `unknown key, ignored`,
+and the first command that finishes after JumpKick first sees it prints one line on stderr, `jk:
+engine.heap: unknown key in /home/you/.jk/config.toml, ignored`. That line is not repeated for the
+same key; delete or fix the key to clear the warning.
+
 ## Nerd Font glyphs
 
 Detected per launch — `nerd-font` defaults to `"auto"`. Pin only to override:

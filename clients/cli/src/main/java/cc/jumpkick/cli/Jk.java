@@ -109,6 +109,7 @@ public final class Jk {
             SelfUpdatePrompt.afterCommand(commandName(args), List.of(args), code);
             NerdFontHint.afterCommand(commandName(args), List.of(args), code);
             ReadUsageHint.afterCommand(commandName(args), List.of(args), code);
+            UnknownConfigKeyHint.afterCommand(commandName(args), List.of(args), code);
         } catch (JkDirs.InvalidOverrideException e) {
             System.err.println("jk: invalid environment: " + e.getMessage());
             code = Exit.USAGE;

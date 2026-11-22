@@ -6,6 +6,10 @@ JumpKick shows you this page's new entries after it updates itself.
 
 ## 0.54.1
 
+- **A config key JumpKick does not know is reported.** A key of `~/.jk/config.toml` this release
+  does not read is ignored, never translated: `jk doctor` warns on it, the dashboard's
+  Configuration panel lists it, and a command says so once per key
+  ([Configuration](config.md#a-key-jumpkick-does-not-know)).
 - **Breaking: rebuild your plugin against this release's SDK.** `ProtocolWriter`, `ProjectFacts`,
   `RepositoryRoute` and `RuntimeEntry` (was `PackageIo.RuntimeEntry`) import from
   `cc.jumpkick.plugin`; move `sdk` and the SDK pin with them

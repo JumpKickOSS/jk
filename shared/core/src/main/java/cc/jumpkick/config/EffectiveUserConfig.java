@@ -17,8 +17,8 @@ import org.jspecify.annotations.Nullable;
  * Flattened view of the machine-scoped {@code ~/.jk/config.toml} (plus env) as key /
  * default / effective triples for the dashboard Configuration panel.
  *
- * <p>Every known scalar key is listed so the UI can show a full effective document — not only the
- * three knobs historically embedded in {@code GET /api/status}.
+ * <p>Every known scalar key is listed so the UI can show a full effective document, and every key
+ * of the file this jk does not read ({@link UserConfigKeys}) is listed as {@link #UNKNOWN}.
  */
 public final class EffectiveUserConfig {
 
@@ -37,6 +37,9 @@ public final class EffectiveUserConfig {
             return !defaultValue.equals(effectiveValue);
         }
     }
+
+    /** The value shown for a key of the file this jk does not read. */
+    public static final String UNKNOWN = "unknown key, ignored";
 
     private EffectiveUserConfig() {}
 
@@ -63,6 +66,8 @@ public final class EffectiveUserConfig {
         // to their defaults, which is what a lenient reader of the file sees.
         Optional<UserConfigParseException> problem = GlobalConfig.userConfigProblem(userConfig);
         problem.ifPresent(e -> add(out, "config.parse-error", "", Objects.toString(e.getMessage(), "")));
+        // A key this jk does not read comes next, so a misspelt or retired key is not mistaken for a default.
+        for (String key : UserConfigKeys.unknown(userConfig)) add(out, key, "", UNKNOWN);
         addGlobal(out, userConfig, env);
         addToolchain(out, userConfig, env);
         addHttp(out, userConfig, env);

@@ -44,4 +44,14 @@ class DoctorConfigCheckTest {
 
         assertThat(DoctorCommand.checkConfig(file, "1.2.3-SNAPSHOT").status()).isEqualTo(DoctorCommand.Status.OK);
     }
+
+    @Test
+    void a_key_this_jk_does_not_read_is_a_warning_naming_it(@TempDir Path tmp) throws Exception {
+        Path file = Files.writeString(tmp.resolve("config.toml"), "nerd-font = false\n[engine]\nheap-mb = 512\n");
+
+        DoctorCommand.Check check = DoctorCommand.checkConfig(file, "1.0.0");
+
+        assertThat(check.status()).isEqualTo(DoctorCommand.Status.WARN);
+        assertThat(check.detail()).isEqualTo(file + " parses · unknown key ignored: engine.heap-mb");
+    }
 }

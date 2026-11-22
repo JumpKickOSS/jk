@@ -7,6 +7,7 @@ import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.JkCacheConfig;
 import cc.jumpkick.config.JkHttpConfig;
 import cc.jumpkick.config.TomlScan;
+import cc.jumpkick.config.UserConfigKeys;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.ProcessEnv;
@@ -114,7 +115,7 @@ public final class DoctorChecks {
      * Whether {@code ~/.jk/config.toml} parses. A file that does not fails every command that
      * resolves, fetches or authenticates, so it is a failure here too, with the position to fix. A
      * config that parses is a warning when it names an {@code [http] web-overlay} this engine will
-     * not serve.
+     * not serve, or holds a key this jk does not read.
      */
     public static HostRow config(Path file, String version) {
         if (!Files.exists(file)) return row("config", Status.OK, "no " + file + " (defaults)");
@@ -122,12 +123,18 @@ public final class DoctorChecks {
         if (problem.isPresent()) {
             return row("config", Status.FAIL, Objects.toString(problem.get().getMessage(), file.toString()));
         }
-        String ignored = JkHttpConfig.fromToml(file)
+        List<String> notes = new ArrayList<>();
+        JkHttpConfig.fromToml(file)
                 .flatMap(http -> http.webOverlayIgnored(version))
-                .orElse(null);
-        return ignored == null
+                .ifPresent(notes::add);
+        List<String> unknown = UserConfigKeys.unknown(file);
+        if (!unknown.isEmpty()) {
+            notes.add((unknown.size() == 1 ? "unknown key ignored: " : "unknown keys ignored: ")
+                    + String.join(", ", unknown));
+        }
+        return notes.isEmpty()
                 ? row("config", Status.OK, file + " parses")
-                : row("config", Status.WARN, file + " parses · " + ignored);
+                : row("config", Status.WARN, file + " parses · " + String.join(" · ", notes));
     }
 
     /**
