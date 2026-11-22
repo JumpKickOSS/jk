@@ -170,7 +170,7 @@ final class SiblingJars {
      * them: one module list per request ({@link WorkspaceLoader#loadModules}) rather than a full
      * parse of every member per call. Empty when the module is not in a workspace.
      */
-    private static Map<Path, JkBuild> members(Path moduleDir) throws IOException {
+    static Map<Path, JkBuild> members(Path moduleDir) throws IOException {
         var root = WorkspaceLocator.findRoot(moduleDir);
         if (root.isEmpty()) return Map.of();
         // parseLocal for the root, as the loader's own callers read it: its members carry the root's inherits.

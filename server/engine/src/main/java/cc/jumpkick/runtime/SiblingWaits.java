@@ -78,8 +78,9 @@ final class SiblingWaits {
     }
 
     /**
-     * {@code workerJars}, once every workspace module whose jar is among them has published it: a
-     * suite runs against the workers this build makes, whatever order the schedule took.
+     * {@code workerJars}, once every workspace module whose output is among them has written it: a
+     * jar once the module has published, a native binary once it has linked. A suite runs against
+     * the workers and the client this build makes, whatever order the schedule took.
      */
     static Map<String, String> awaitWorkerSiblings(
             TaskContext ctx, BuildPlanner.Inputs in, Map<String, String> workerJars) throws InterruptedException {
@@ -97,6 +98,7 @@ final class SiblingWaits {
             }
         }
         in.siblings().awaitPublished(producers, ctx::cancelled);
+        in.siblings().awaitLinked(producers, ctx::cancelled);
         return workerJars;
     }
 

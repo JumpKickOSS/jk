@@ -409,7 +409,10 @@ exercised without `jk install` first. The workers those engines fork are the che
 (`-Djk.<worker>.plugin.jar`), and so are the libraries they run on: a first-party worker jar
 carries the workspace libraries it depends on (its POM names only external ones), and
 `shared/plugin-sdk` and `shared/host` join its classpath from their `target/` trees, so a library
-change reaches a nested engine's workers once the worker's module is rebuilt.
+change reaches a nested engine's workers once the worker's module is rebuilt. A suite that runs the
+native client gets the one `clients/cli` links (`-Djk.native.client`), and waits for the link:
+never `target/dist/jk`, which the build assembles after every module's tests, so a suite that ran it
+would be keyed on the previous build's client and run again on the next.
 
 ## Default repositories
 

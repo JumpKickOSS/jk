@@ -8,12 +8,8 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import cc.jumpkick.cache.EngineInstall;
 import cc.jumpkick.command.pipeline.VerbMatrixNoopE2eTest.Run;
-import cc.jumpkick.host.Os;
-import cc.jumpkick.host.ProcessEnv;
 import cc.jumpkick.host.Processes;
-import cc.jumpkick.host.SearchPath;
 import cc.jumpkick.model.JkVersion;
-import cc.jumpkick.testing.RepoRoot;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
@@ -35,18 +31,19 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * The installed client's {@code jk watch compile}: a save starts the next pass promptly. The watch's
+ * The native client's {@code jk watch compile}: a save starts the next pass promptly. The watch's
  * own tests run on the JVM; this one runs the native image, which binds the watch itself (on macOS
  * FSEvents, whose callback the image must register) and would fall back to the JDK's watch, which
  * polls there every 2 s, when it cannot.
  *
- * <p>The client is the checkout's {@code target/dist/jk}, as any build of the tree leaves it, or else
- * the {@code jk} on {@code PATH}, as after {@code jk install}: whichever reports this tree's version
- * first. A forked JVM client starts the engine in a private {@code JK_HOME} seeded with
- * the sandbox's, as {@link VerbMatrixNoopE2eTest} does, since only a JVM client hands the engine the
- * test run's worker jars; the installed client then runs against that engine.
+ * <p>The client is the native binary the build links in {@code clients/cli}, which the build hands
+ * this suite as {@code -Djk.native.client} and links before the suite starts, when it reports this
+ * tree's version. Never {@code target/dist/jk} or the {@code jk} on {@code PATH}: the same build
+ * rewrites both after its tests. A forked JVM client starts the engine in a private {@code JK_HOME}
+ * seeded with the sandbox's, as {@link VerbMatrixNoopE2eTest} does, since only a JVM client hands
+ * the engine the test run's worker jars; the native client then runs against that engine.
  */
-// Forked JVM client and engine; the installed client.
+// Forked JVM client and engine; the native client.
 @Tag("integration")
 class NativeWatchLatencyE2eTest {
 
@@ -56,9 +53,9 @@ class NativeWatchLatencyE2eTest {
     private static final long PROMPT_MILLIS = 750;
 
     @Test
-    void each_save_starts_a_pass_of_the_installed_watch_promptly(@TempDir Path tmp) throws Exception {
-        Path client = installedClient();
-        assumeTrue(client != null, "no jk of version " + JkVersion.VERSION + " in target/dist or on PATH");
+    void each_save_starts_a_pass_of_the_native_watch_promptly(@TempDir Path tmp) throws Exception {
+        Path client = nativeClient();
+        assumeTrue(client != null, "no native jk of version " + JkVersion.VERSION + " from this build");
         Optional<EngineInstall.Materialized> sandboxEngine =
                 EngineInstall.current().currentInstall();
         assumeTrue(sandboxEngine.isPresent(), "the sandbox JK_HOME has no engine jar to seed the private home with");
@@ -129,26 +126,12 @@ class NativeWatchLatencyE2eTest {
         Files.writeString(source, "package demo;\n\npublic class Main {} // " + note + "\n");
     }
 
-    /**
-     * The checkout's {@code target/dist/jk}, else the {@code jk} on {@code PATH}, when it reports this
-     * tree's version; null when neither does. Only run, never read: the one on {@code PATH} lies in the
-     * real jk home, which a suite may not read.
-     */
-    private static @Nullable Path installedClient() throws IOException, InterruptedException {
-        String name = Os.isWindows() ? "jk.exe" : "jk";
-        Path dist = RepoRoot.find(NativeWatchLatencyE2eTest.class)
-                .resolve("target")
-                .resolve("dist")
-                .resolve(name);
-        if (Files.isRegularFile(dist) && ofThisTree(dist)) return dist;
-        for (String entry : SearchPath.entries(ProcessEnv.get("PATH"))) {
-            Path dir = SearchPath.path(entry);
-            if (dir == null || !dir.isAbsolute()) continue;
-            Path candidate = dir.resolve(name);
-            if (!Files.isRegularFile(candidate)) continue;
-            return ofThisTree(candidate) ? candidate : null;
-        }
-        return null;
+    /** The native client this build linked, when it reports this tree's version; null otherwise. */
+    private static @Nullable Path nativeClient() throws IOException, InterruptedException {
+        String named = System.getProperty("jk.native.client");
+        if (named == null || named.isBlank()) return null;
+        Path client = Path.of(named);
+        return Files.isRegularFile(client) && ofThisTree(client) ? client : null;
     }
 
     private static boolean ofThisTree(Path client) throws IOException, InterruptedException {

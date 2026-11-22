@@ -250,6 +250,35 @@ class SiblingArtifactsTest {
     }
 
     @Test
+    void a_run_that_starts_a_native_binary_waits_for_its_link_not_only_its_jar() throws Exception {
+        SiblingArtifacts siblings = new SiblingArtifacts(EDGES, List.of(CORE, LIB, APP));
+        siblings.published(LIB);
+        AtomicBoolean released = new AtomicBoolean();
+        CompletableFuture<Void> waiting =
+                waitOn(() -> siblings.gateFor(APP).awaitLinked(List.of(LIB), () -> false), released);
+
+        Thread.sleep(50);
+        assertThat(released)
+                .as("lib has published its jar, not linked its image")
+                .isFalse();
+        siblings.linked(LIB);
+        waiting.get(10, TimeUnit.SECONDS);
+        assertThat(released).isTrue();
+    }
+
+    @Test
+    void completion_releases_a_wait_on_a_module_that_links_nothing() throws Exception {
+        SiblingArtifacts siblings = new SiblingArtifacts(EDGES, List.of(CORE, LIB, APP));
+        AtomicBoolean released = new AtomicBoolean();
+        CompletableFuture<Void> waiting =
+                waitOn(() -> siblings.gateFor(APP).awaitLinked(List.of(LIB), () -> false), released);
+
+        siblings.completed(LIB);
+        waiting.get(10, TimeUnit.SECONDS);
+        assertThat(released).isTrue();
+    }
+
+    @Test
     void a_waiting_test_step_counts_its_module_as_parked_until_it_is_released() throws Exception {
         SiblingArtifacts siblings = fixturesLoop();
         AtomicInteger wakes = new AtomicInteger();

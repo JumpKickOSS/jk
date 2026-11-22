@@ -132,9 +132,9 @@ final class TestSteps {
         }
         // The test runtime classpath is the siblings' jars: wait for them to be written.
         SiblingWaits.awaitSiblingTestRuntime(ctx, in);
-        // Worker jars feed both the forked JVM and the TestStamp
-        // nested-engine CLI modules enrich with engine + every PluginJar so the stamp
-        // matches what the suite actually loads — same set forecast uses.
+        // Worker jars feed both the forked JVM and the TestStamp: nested-engine CLI modules
+        // enrich with the engine, every PluginJar and the native client, so the stamp matches what
+        // the suite actually loads and starts — the same set the forecast uses.
         Map<String, String> workerJars =
                 SiblingWaits.awaitWorkerSiblings(ctx, in, testStampWorkerJars(in.dir(), projectUnderTest));
         TestStampInputs stamp = stampInputs(ctx, in, projectUnderTest, pluginDecls, workerJars);

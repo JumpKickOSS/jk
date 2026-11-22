@@ -407,13 +407,13 @@ public record TestStampInputs(
      * Worker / engine jar props that feed both the forked test JVM and the {@link
      * TestStamp} extras. Includes declared {@code [build] test-plugin-jars} and,
      * for nested-engine CLI modules, every first-party {@link PluginJar} plus the engine assembly
-     * forecast and live run-tests must hash the same set).
+     * and the native client the tests run (forecast and live run-tests must hash the same set).
      */
     static Map<String, String> testStampWorkerJars(Path dir, JkBuild project) throws IOException {
         Map<String, String> props = new LinkedHashMap<>(
                 SiblingJars.workerJarProps(dir, project.build().testPluginJars()));
         if (SelfHostEngine.needsNestedEngineIsolation(project)) {
-            SelfHostEngine.enrichCliTestProps(dir, props);
+            SelfHostEngine.enrichCliTestProps(dir, project, props);
         }
         return props;
     }

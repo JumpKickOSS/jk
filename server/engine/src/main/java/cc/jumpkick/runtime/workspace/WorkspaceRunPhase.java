@@ -243,7 +243,8 @@ final class WorkspaceRunPhase {
      * fixtures and test-classes compiles release the test compiles that select them; the artifact
      * publish releases the dependents' package and test steps (they read its jar); and the module's
      * guard step signals once it has indexed its classes, which releases a guard suite that judges
-     * the workspace. Completion fires all of them, so a module that failed early wedges nothing.
+     * the workspace; its native image releases a suite that runs it. Completion fires all of them,
+     * so a module that failed early wedges nothing.
      */
     private static ModuleOutcome runModule(
             ModulePlan module,
@@ -265,6 +266,7 @@ final class WorkspaceRunPhase {
         watchArtifactSteps(module.plan(), testClassesConsumed, () -> siblings.published(module.dir()));
         watchOrSignal(module.plan(), TaskNames.COMPILE_TEST_FIXTURES, () -> siblings.fixturesCompiled(module.dir()));
         watchOrSignal(module.plan(), TaskNames.COMPILE_TEST, () -> siblings.testsCompiled(module.dir()));
+        watchOrSignal(module.plan(), TaskNames.NATIVE_IMAGE, () -> siblings.linked(module.dir()));
         long started = clock.nanos();
         try {
             return runPlan(module, listener, siblings, clock, started);

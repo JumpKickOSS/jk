@@ -421,7 +421,7 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       # The native client's watch, which binds FSEvents only on macOS: a save starts a pass of the
-      # target/dist/jk the takeover built. The Linux integration job runs the same class.
+      # native client the takeover linked. The Linux integration job runs the same class.
       - name: Native watch latency
         run: >-
           jk test -s integration --no-ansi -m e2e/cli

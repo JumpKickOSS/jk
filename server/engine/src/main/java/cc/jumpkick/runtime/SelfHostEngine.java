@@ -7,6 +7,7 @@ import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.time.Clock;
+import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.JkVersion;
@@ -57,16 +58,22 @@ public final class SelfHostEngine {
         return selfHosted(module) && ENGINE_MODULE.equals(module.project().name());
     }
 
+    /** The test JVM property naming the native client this build links, for a suite that runs it. */
+    public static final String NATIVE_CLIENT_PROPERTY = "jk.native.client";
+
     /**
      * Resolve engine assembly + every first-party worker jar so CLI tests find the engine and the
-     * workers this build produced through {@code -Djk.engine.jar} / {@code -Djk.*.plugin.jar}.
+     * workers this build produced through {@code -Djk.engine.jar} / {@code -Djk.*.plugin.jar}, and
+     * the native client ({@link #nativeClient}) through {@value #NATIVE_CLIENT_PROPERTY}.
      */
-    static void enrichCliTestProps(Path moduleDir, Map<String, String> props) throws IOException {
+    static void enrichCliTestProps(Path moduleDir, JkBuild project, Map<String, String> props) throws IOException {
         Map<String, Path> siblings = SiblingJars.siblingMainJars(moduleDir);
         Path engine = resolveEngineJarForNestedTests(siblings);
         if (engine != null) {
             props.put("jk.engine.jar", engine.toAbsolutePath().toString());
         }
+        Path client = nativeClient(moduleDir, project);
+        if (client != null) props.put(NATIVE_CLIENT_PROPERTY, client.toString());
         for (PluginJar w : PluginJar.values()) {
             if (props.containsKey(w.jarProperty())) continue;
             Path jar = siblings.get(w.artifactId());
@@ -81,6 +88,31 @@ public final class SelfHostEngine {
                 if (located != null) props.put(w.jarProperty(), located.toString());
             }
         }
+    }
+
+    /**
+     * The native binary of the module jk installs as its own client ({@code [install] product-bin}),
+     * when {@code project}'s tests depend on that module and it links one; null otherwise. The
+     * module's own output, never the copy in {@code target/dist}: the run waits for the link, and
+     * nothing later in the build rewrites it.
+     */
+    static @Nullable Path nativeClient(Path moduleDir, JkBuild project) throws IOException {
+        for (Map.Entry<Path, JkBuild> member : SiblingJars.members(moduleDir).entrySet()) {
+            JkBuild sibling = member.getValue();
+            JkBuild.Install install = sibling.install();
+            if (install == null || install.productBin() == null) continue;
+            if (sibling.nativeMode() != JkBuild.NativeMode.ALWAYS) continue;
+            String name = sibling.project().name();
+            for (Dependency dep : project.dependencies().of(Scope.TEST)) {
+                if (name.equals(dep.library()) || dep.module().endsWith(":" + name)) {
+                    return BuildLayout.of(member.getKey(), sibling)
+                            .nativeBinary()
+                            .toAbsolutePath()
+                            .normalize();
+                }
+            }
+        }
+        return null;
     }
 
     /**
