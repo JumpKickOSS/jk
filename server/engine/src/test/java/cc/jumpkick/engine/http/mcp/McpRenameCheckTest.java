@@ -23,7 +23,7 @@ class McpRenameCheckTest {
         McpCall in = new McpCall(context(), Map.of("dir", "/w", "timeout_s", 30), null);
         String renamed = "Renamed Range.contains to includes: 1 declaration, 2 calls, in 2 files.\n"
                 + "Every use the compiled classes record is renamed; no search needed. Test the test classes it"
-                + " edited: run(kind=test, modules=core,app, classes=RangeTest,ShopTest), or jk test -m core,app -S"
+                + " edited: build(kind=test, modules=core,app, classes=RangeTest,ShopTest), or jk test -m core,app -S"
                 + " RangeTest -S ShopTest. A rename changes no behaviour: once that test passes, the task is done.";
 
         String answer = McpRenameCheck.verdict(McpRenameCheck.after(in, renamed, Clock.SYSTEM.nanos(), List.of()));
@@ -56,7 +56,7 @@ class McpRenameCheckTest {
     void a_rename_with_sets_it_could_not_see_names_them_instead_of_saying_it_is_done() {
         String renamed = "Renamed Calc.doubled to twice: 1 declaration, 1 call, in 2 files.\n"
                 + "Every use the compiled classes record is renamed. Not complete: the note below names the modules"
-                + " with no compiled classes. Test next: run(kind=test), or jk test.\n\n[i] compile skipped: the"
+                + " with no compiled classes. Test next: build(kind=test), or jk test.\n\n[i] compile skipped: the"
                 + " code does not compile; tool has no compiled classes, so the calls made there are missing:"
                 + " search it for calls too";
         McpCall in = new McpCall(context(jid -> PASSED), Map.of("dir", "/w", "timeout_s", 60), null);

@@ -12,8 +12,8 @@ WRAPPERS = Path(__file__).resolve().parent.parent / "wrappers"
 
 # What each tool's MCP server calls the three verbs the loop needs.
 TOOL_NAMES = {
-    # jk's run replies with the verdict and rereads the last one with run=latest; it has no results tool.
-    "jk": {"run": "run", "results": "run", "results_args": {"run": "latest"}, "diagnostics": "diagnostics", "run_args": {}},
+    # jk's build replies with the verdict and rereads the last one with id=latest; it has no results tool.
+    "jk": {"run": "build", "results": "build", "results_args": {"id": "latest"}, "diagnostics": "diagnostics", "run_args": {}},
     "mvn": {"run": "run", "results": "results", "results_args": {}, "diagnostics": "diagnostics", "run_args": {}},
     "gradle": {"run": "run", "results": "results", "results_args": {}, "diagnostics": "diagnostics", "run_args": {}},
 }

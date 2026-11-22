@@ -63,8 +63,8 @@ a graph helps.
 
 ## Goal presence from real use
 
-Whether agents pass `goal` on `run`, `deps`, `rename` and `update` is read from use, not a bench:
-the PRD target is a `goal` on 90% of Claude Code and Cursor `run` calls. After a stretch of normal
+Whether agents pass `goal` on `build`, `deps`, `rename` and `update` is read from use, not a bench:
+the PRD target is a `goal` on 90% of Claude Code and Cursor `build` calls. After a stretch of normal
 work, read the local session journal (read-only; the engine need not run):
 
 ```bash

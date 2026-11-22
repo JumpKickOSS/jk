@@ -115,7 +115,7 @@ public final class McpDetails {
             int next) {
         Map<String, Object> m = new LinkedHashMap<>();
         if (rec == null) {
-            m.put("error", "no matching run (nothing failed, or pass run=<history id>)");
+            m.put("error", "no matching run (nothing failed, or pass id=<history id>)");
             return m;
         }
         String id = McpHistoryViews.str(rec, "id");

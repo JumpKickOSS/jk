@@ -22,7 +22,7 @@ repo), [AGENTS.md](../AGENTS.md) (protocol for agents contributing here).
   [user/skill.md](user/skill.md).
 - **Against Maven and Gradle:** [user/comparison.md](user/comparison.md).
 - **Coding agents (one recipe):** [user/troubleshooting.md](user/troubleshooting.md) — fix a
-  failing build (`jk results` or MCP `run`).
+  failing build (`jk results` or MCP `build`).
 - **Contributing to JumpKick:** [contributors/README.md](contributors/README.md).
 
 ## Future HTML

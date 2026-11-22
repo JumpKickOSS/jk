@@ -92,7 +92,7 @@ public final class AgentHook {
                 "permissionDecision",
                 "deny",
                 "permissionDecisionReason",
-                "This project builds with jk, not `" + program + "`. Call MCP `run` (`run(kind=build)` builds),"
+                "This project builds with jk, not `" + program + "`. Call MCP `build` (`build(kind=build)` builds),"
                         + " else `jk -a test`; `deps` or `jk add g:a` / `jk remove g:a` edit dependencies."
                         + " `skill` has the rest.");
     }

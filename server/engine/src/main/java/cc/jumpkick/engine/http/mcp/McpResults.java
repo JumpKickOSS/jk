@@ -15,7 +15,7 @@ import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 
 /**
- * MCP {@code run}: the high-level {@code jk-results.md} for a run. Sibling of {@code
+ * MCP {@code build}: the high-level {@code jk-results.md} for a run. Sibling of {@code
  * details.jsonl} in the journal, with a latest copy at {@code target/jk-results.md}. A run with a
  * run before it from the same session also returns {@code delta}: files changed, diagnostics that
  * appeared or went away, tests that flipped, and the previous attempt's wall — each list a
@@ -33,7 +33,7 @@ public final class McpResults {
             @Nullable Map<String, Object> rec, Function<String, Optional<Path>> detailsFile) {
         Map<String, Object> m = new LinkedHashMap<>();
         if (rec == null) {
-            m.put("error", "no matching run (nothing finished, or pass run=<history id>)");
+            m.put("error", "no matching run (nothing finished, or pass id=<history id>)");
             return m;
         }
         String id = McpHistoryViews.str(rec, "id");

@@ -205,7 +205,7 @@ public final class JobEnvelope {
                 eventRequestId,
                 ChangeActor.current());
         if (!(detached && plan)) return proceed(sub, () -> {});
-        // A detached build (POST /api/build, MCP run) waits here only until it starts, is refused,
+        // A detached build (POST /api/build, MCP build) waits here only until it starts, is refused,
         // or is queued behind coordinator memory. Queued, its caller has the jid at once: the
         // request returns and frees its RPC permit, an MCP client binds its progress token and can
         // cancel by jid, and the admission wait (up to the queue's hour) runs on its own thread.

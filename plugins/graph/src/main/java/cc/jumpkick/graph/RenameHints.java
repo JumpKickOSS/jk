@@ -46,6 +46,6 @@ final class RenameHints {
         String names = String.join(", ", unbuilt.subList(0, Math.min(SHOWN, unbuilt.size())));
         String more = unbuilt.size() > SHOWN ? " and " + (unbuilt.size() - SHOWN) + " more" : "";
         return error + " " + unbuilt.size() + " modules have no compiled classes (" + names + more
-                + "): build them first (run kind=build, or jk build).";
+                + "): build them first (build kind=build, or jk build).";
     }
 }

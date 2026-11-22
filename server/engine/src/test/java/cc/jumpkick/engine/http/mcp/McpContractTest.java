@@ -139,21 +139,21 @@ class McpContractTest {
     }
 
     @Test
-    void run_wait_returns_the_verdict_text() {
+    void build_wait_returns_the_verdict_text() {
         // The stub jobs never land a journal row for the jid, so the settle poll can only run out.
         mcp.journalSettleMs(50);
-        String r = text("run", "{\"kind\":\"test\",\"dir\":\"/tmp\",\"wait\":true,\"timeout_s\":2}");
+        String r = text("build", "{\"kind\":\"test\",\"dir\":\"/tmp\",\"wait\":true,\"timeout_s\":2}");
         assertThat(r).containsPattern("^(OK|FAIL|TIMEOUT) test");
     }
 
     @Test
-    void run_hosts_format_and_applies_tags() {
-        String r = text("run", "{\"kind\":\"format\",\"dir\":\"/tmp\",\"wait\":false}");
+    void build_hosts_format_and_applies_tags() {
+        String r = text("build", "{\"kind\":\"format\",\"dir\":\"/tmp\",\"wait\":false}");
         assertThat(r).startsWith("RUNNING format jid=45\n");
         assertThat(requireNonNull(lastSpec).kind()).isEqualTo("format");
 
         text(
-                "run",
+                "build",
                 "{\"kind\":\"test\",\"dir\":\"/tmp\",\"wait\":false,\"include_tags\":[\"network\"],\"modules\":[\"api\"]}");
         assertThat(requireNonNull(lastSpec).kind()).isEqualTo("test");
         assertThat(requireNonNull(lastSpec).includeTags()).containsExactly("network");
@@ -161,9 +161,45 @@ class McpContractTest {
     }
 
     @Test
+    void build_refuses_a_kind_another_tool_starts_and_names_that_tool() {
+        Map<String, Object> lock = result("build", "{\"kind\":\"lock\",\"dir\":\"/tmp\",\"wait\":false}");
+        assertThat(lock.get("isError")).isEqualTo(true);
+        assertThat(String.valueOf(objects(lock, "content").getFirst().get("text")))
+                .isEqualTo("kind=lock is not a build; call deps(action=lock)\n");
+        assertThat(String.valueOf(objects(result("build", "{\"kind\":\"install\",\"dir\":\"/tmp\"}"), "content")
+                        .getFirst()
+                        .get("text")))
+                .contains("call install");
+        assertThat(String.valueOf(objects(result("build", "{\"kind\":\"sync\",\"dir\":\"/tmp\"}"), "content")
+                        .getFirst()
+                        .get("text")))
+                .startsWith("unknown kind sync; build takes test, build,");
+        assertThat(lastSpec).as("no job started").isNull();
+    }
+
+    @Test
+    void deps_lock_starts_the_lock_job() {
+        String r = text("deps", "{\"action\":\"lock\",\"dir\":\"/tmp\",\"wait\":false}");
+        assertThat(r).startsWith("RUNNING lock jid=44\n");
+        assertThat(requireNonNull(lastSpec).kind()).isEqualTo("lock");
+    }
+
+    @Test
+    void a_call_of_run_is_an_unknown_tool_that_points_at_build() {
+        result("diagnostics", "{}"); // mint the session the next call rides
+        String body = mcp.handle(
+                        "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\","
+                                + "\"params\":{\"name\":\"run\",\"arguments\":{\"kind\":\"test\"}}}",
+                        session)
+                .body();
+        assertThat(body).contains("-32602").contains("unknown tool: run; builds and tests are build(kind=");
+        assertThat(lastSpec).as("no job started").isNull();
+    }
+
+    @Test
     void aot_cache_is_rejected_not_silently_ignored() {
         String body = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\","
-                + "\"params\":{\"name\":\"run\",\"arguments\":"
+                + "\"params\":{\"name\":\"build\",\"arguments\":"
                 + "{\"kind\":\"build\",\"dir\":\"/tmp\",\"wait\":false,\"aot_cache\":true}}}");
         assertThat(body).contains("\"isError\":true").doesNotContain("-32602");
         assertThat(body).contains("aot_cache");
@@ -174,7 +210,7 @@ class McpContractTest {
     @Test
     void tools_list_is_the_loop_set_until_the_engine_opts_into_every_card() {
         String body = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\"}");
-        assertThat(body).contains("\"run\"", "\"diagnostics\"", "\"deps\"", "\"skill\"");
+        assertThat(body).contains("\"build\"", "\"diagnostics\"", "\"deps\"", "\"skill\"");
         assertThat(body)
                 .doesNotContain(
                         "\"history\"",
@@ -188,7 +224,7 @@ class McpContractTest {
 
         mcp.surface(McpTools.Surface.ALL);
         String all = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\"}");
-        assertThat(all).contains("\"history\"", "\"why\"", "\"config\"", "\"jdk\"", "\"run\"");
+        assertThat(all).contains("\"history\"", "\"why\"", "\"config\"", "\"jdk\"", "\"build\"");
         assertThat(all).doesNotContain("jk_tools");
         assertThat(objects(JsonFields.object(JsonFields.parseObject(all), "result"), "tools"))
                 .hasSameSizeAs(McpTools.standard().names());

@@ -224,7 +224,7 @@ class GraphRenameTest {
         assertThat(answer)
                 .startsWith(
                         "Renamed FlatPricer.price to cost: 2 declarations, 2 calls, in 3 files; each one javac or the compiled classes bound.")
-                .contains("no search needed. Test next: run(kind=test), or jk test.");
+                .contains("no search needed. Test next: build(kind=test), or jk test.");
         assertThat(read(root, "Pricer.java")).contains("int cost(String sku);");
         assertThat(read(root, "FlatPricer.java"))
                 .contains(
@@ -517,7 +517,7 @@ class GraphRenameTest {
                 .startsWith(
                         "Renamed Calc.doubled to twice: 1 declaration, 1 call, in 2 files; each one javac or the compiled classes bound.")
                 .contains("Every use the compiled classes record is renamed. Not complete: the note below names the"
-                        + " modules with no compiled classes. Test next: run(kind=test), or jk test.")
+                        + " modules with no compiled classes. Test next: build(kind=test), or jk test.")
                 .doesNotContain("no search needed", "the task is done");
         assertThat(read(root, "Use.java")).contains("return c.twice(2);");
     }
@@ -619,22 +619,23 @@ class GraphRenameTest {
                                 "plugins/graph/src/test/java/b/GraphToolsTest.java"),
                         true))
                 .as("by directory, sorted, the whole workspace's unrelated failures left out")
-                .isEqualTo("Test the test classes it edited: run(kind=test, modules=plugins/graph,shared/code-graph,"
+                .isEqualTo("Test the test classes it edited: build(kind=test, modules=plugins/graph,shared/code-graph,"
                         + " classes=GraphToolsTest), or jk test -m plugins/graph,shared/code-graph -S GraphToolsTest."
                         + EditedTests.DONE);
         assertThat(EditedTests.next(modules, List.of("shared/code-graph/src/main/java/a/CodeGraph.java"), true))
                 .as("no test edited: the modules' suites")
-                .isEqualTo("Test the modules it edited: run(kind=test, modules=shared/code-graph), or jk test -m"
+                .isEqualTo("Test the modules it edited: build(kind=test, modules=shared/code-graph), or jk test -m"
                         + " shared/code-graph." + EditedTests.DONE);
         assertThat(EditedTests.next(modules, List.of("src/main/java/Root.java"), true))
-                .isEqualTo("Test next: run(kind=test), or jk test." + EditedTests.DONE);
+                .isEqualTo("Test next: build(kind=test), or jk test." + EditedTests.DONE);
         assertThat(EditedTests.next(modules, List.of("src/main/java/Root.java", "src/test/java/RootTest.java"), true))
                 .as("a single-module project names its edited tests too")
-                .isEqualTo("Test the test classes it edited: run(kind=test, classes=RootTest), or jk test -S RootTest."
-                        + EditedTests.DONE);
+                .isEqualTo(
+                        "Test the test classes it edited: build(kind=test, classes=RootTest), or jk test -S RootTest."
+                                + EditedTests.DONE);
         assertThat(EditedTests.next(modules, List.of("src/main/java/Root.java"), false))
                 .as("calls a module with no compiled classes makes may be missing: never done")
-                .isEqualTo("Test next: run(kind=test), or jk test.");
+                .isEqualTo("Test next: build(kind=test), or jk test.");
     }
 
     private static final Map<String, String> SIZES = sources(

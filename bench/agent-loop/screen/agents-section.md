@@ -3,9 +3,9 @@
 This project builds with **JumpKick** (`jk`), not Maven or Gradle; `jk skill <topic>` has
 details. jk rewrites this section; put project rules outside the markers.
 
-- Loop: `jk -a test` (MCP `run(kind=test)`) → edit what the verdict names → rerun. Ignore the
+- Loop: `jk -a test` (MCP `build(kind=test)`) → edit what the verdict names → rerun. Ignore the
   terminal and `target/jk-results.md`.
-- Before handing work back: `jk guard` (MCP `run(kind=guard)`).
+- Before handing work back: `jk guard` (MCP `build(kind=guard)`).
 - Who calls `T.m`, or rename it: MCP `usages` or `rename` (`jk code usages|rename`), first,
   with `T.m` as the task names it, before opening or searching a file. The answers are compiled
   facts and final: do not grep or re-read to check them.

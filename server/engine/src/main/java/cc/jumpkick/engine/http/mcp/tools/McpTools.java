@@ -37,6 +37,12 @@ import org.jspecify.annotations.Nullable;
  */
 public final class McpTools {
 
+    /** A tool name agents still reach for when they mean {@code build}. */
+    static final String RUN = "run";
+
+    /** What an unknown {@link #RUN} call adds to its error: where builds and tests are. */
+    static final String RUN_POINTER = "; builds and tests are build(kind=…)";
+
     /** The wire name of the explicit bind; the one call that never binds implicitly. */
     public static final String BIND = "bind";
 
@@ -46,7 +52,7 @@ public final class McpTools {
      * approximate, and {@code rename}, which makes in one call the edits a rename takes a turn each
      * for. Every card is paid on every turn.
      */
-    public static final List<String> LOOP = List.of("run", "diagnostics", "deps", "usages", "rename", "skill");
+    public static final List<String> LOOP = List.of("build", "diagnostics", "deps", "usages", "rename", "skill");
 
     /** Which rows {@code tools/list} answers. */
     public enum Surface {
@@ -77,11 +83,11 @@ public final class McpTools {
      */
     private static String instructions(boolean pinned) {
         return "This project builds with jk, not Maven or Gradle: never add pom.xml or Gradle files. "
-                + "Tools: run, diagnostics, deps, usages, rename, skill. The calls below show every argument they "
+                + "Tools: build, diagnostics, deps, usages, rename, skill. The calls below show every argument they "
                 + "need: make them as written, without fetching a card, schema or skill page. "
                 + (pinned
-                        ? "Loop: run() returns the verdict → edit → run(). "
-                        : "Loop: run(dir=<project>) returns the verdict and binds the connection → edit → run(). ")
+                        ? "Loop: build() returns the verdict → edit → build(). "
+                        : "Loop: build(dir=<project>) returns the verdict and binds the connection → edit → build(). ")
                 + "Who uses a method, field, type or column: usages(address=\"Type.method\"), once, before any "
                 + "search; complete. "
                 + "Rename or move a method, field (with its getter and setter), class or package: "
@@ -143,7 +149,7 @@ public final class McpTools {
                 new HistoryTool(),
                 new DiagnosticsTool(),
                 new DetailsTool(),
-                new RunTool(),
+                new BuildTool(),
                 new WhyTool(),
                 new ExplainTool(),
                 new AffectedTestsTool(),
@@ -157,7 +163,7 @@ public final class McpTools {
                 new JdkTool(),
                 new NodeTool(),
                 new NewTool(),
-                new RunAliasTool(
+                new JobKindTool(
                         "publish",
                         "publish",
                         "Dry-run the publish bundle; upload=true sends it to the repository [publish] names "
@@ -165,7 +171,7 @@ public final class McpTools {
                         McpSchemas.BOUND_ROOT,
                         Map.of("upload", McpSchemas.bool("Upload to the [publish] repository (default: dry run)"))),
                 new InstallTool(),
-                new RunAliasTool(
+                new JobKindTool(
                         "import",
                         "import",
                         "Import a Maven/Gradle build into jk.toml (auto-detects build.gradle.kts / "
@@ -279,7 +285,7 @@ public final class McpTools {
         String name = rawName == null ? null : String.valueOf(rawName);
         if (name == null || name.isBlank()) throw new McpError(-32602, "tools/call requires name");
         McpTool tool = byName.get(name);
-        if (tool == null) throw new McpError(-32602, "unknown tool: " + name);
+        if (tool == null) throw new McpError(-32602, "unknown tool: " + name + (RUN.equals(name) ? RUN_POINTER : ""));
         Map<String, Object> args = params.get("arguments") instanceof Map<?, ?> a ? (Map<String, Object>) a : Map.of();
         McpCall call = new McpCall(ctx, args, progressTokenOf(params), connection, outbound);
         try {

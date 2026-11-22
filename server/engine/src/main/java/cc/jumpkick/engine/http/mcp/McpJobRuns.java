@@ -21,14 +21,14 @@ import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Everything {@code run} and the thin {@code build}-style aliases share:
+ * Everything {@code build} and the tools that start one job kind ({@code update}, {@code install}, …) share:
  * submit a {@link JobSpec} through the one admission point, optionally park for it, and attach the
  * finished journal row. The wait loop and the journal-settle poll live here so a second tool
  * cannot invent a different definition of "finished".
  */
 public final class McpJobRuns {
 
-    /** Hard cap on a single wait; agents call {@code run(jid=N)} to keep waiting. */
+    /** Hard cap on a single wait; agents call {@code build(jid=N)} to keep waiting. */
     public static final int MAX_WAIT_S = 3600;
 
     /** How long a call parks when it names no {@code timeout_s}. */
@@ -36,7 +36,7 @@ public final class McpJobRuns {
 
     /**
      * The park for a client that gives up on a request after 60 s and then cancels it: answering
-     * {@code TIMEOUT … run(jid=N)} first keeps the job, where its cancel would end it. Measured on
+     * {@code TIMEOUT … build(jid=N)} first keeps the job, where its cancel would end it. Measured on
      * that client, calls succeed up to 57 s and time out at 63 s; each TIMEOUT costs it a turn.
      */
     static final int SHORT_CLIENT_WAIT_S = 55;
@@ -48,7 +48,7 @@ public final class McpJobRuns {
 
     /**
      * Submit and answer immediately with the {@code <kind>-accepted} envelope. When the same job is
-     * already running, the answer is that job's {@code jid}, so a {@code run} waits on it and the
+     * already running, the answer is that job's {@code jid}, so a {@code build} waits on it and the
      * agent never sees the journal's build number, a second number for the same job.
      */
     public static Map<String, Object> accept(McpCall in, JobSpec spec) {
@@ -76,8 +76,8 @@ public final class McpJobRuns {
     }
 
     /**
-     * {@code run}: start a job and, unless {@code wait=false}, park for it and attach the
-     * outcome. {@code pinnedKind} is set by the thin aliases ({@code publish} and friends);
+     * Start a job and, unless {@code wait=false}, park for it and attach the outcome. {@code
+     * pinnedKind} is set by the tools that start one kind ({@code publish} and friends);
      * {@code null} reads {@code arguments.kind}, defaulting to {@code test}: the agent loop's step.
      */
     public static Map<String, Object> run(McpCall in, @Nullable String pinnedKind) {
@@ -106,8 +106,8 @@ public final class McpJobRuns {
     }
 
     /**
-     * {@code run(jid=N)}: park on a job an earlier call started and answer its verdict. The call's
-     * progress token follows that job, as it does for a job {@code run} starts.
+     * {@code build(jid=N)}: park on a job an earlier call started and answer its verdict. The call's
+     * progress token follows that job, as it does for a job {@code build} starts.
      */
     public static Map<String, Object> await(McpCall in, long jid) {
         McpContext ctx = in.ctx();
@@ -127,7 +127,7 @@ public final class McpJobRuns {
                 ? in.dir()
                 : McpHistoryViews.str(last, "dir");
         String left = text == null || dir == null || dir.isEmpty() ? "" : AnchorsLeft.after(dir, text);
-        return in.text((text != null ? text : "FAIL run jid=" + jid + "\nno run record\n")
+        return in.text((text != null ? text : "FAIL build jid=" + jid + "\nno run record\n")
                 + left
                 + overlap(ctx, last)
                 + McpHolds.totalLine(jid));
@@ -145,15 +145,15 @@ public final class McpJobRuns {
     }
 
     /**
-     * The arguments {@code run} and its aliases read themselves; everything else is a job field
+     * The arguments {@code build} and the one-kind tools read themselves; everything else is a job field
      * {@link JobRequests} decodes, and a name in neither set is refused.
      */
     public static final Set<String> RUN_FIELDS =
-            Set.of(McpSchemas.GOAL, "wait", "timeout_s", "jid", "run", McpDecisions.DECISION, "upload", "action");
+            Set.of(McpSchemas.GOAL, "wait", "timeout_s", "jid", "id", McpDecisions.DECISION, "upload", "action");
 
     /**
      * {@code in}'s arguments as the job they ask for, through the decoder every surface shares;
-     * {@code pinnedKind} is an alias's kind, else {@code arguments.kind}, else {@code test}.
+     * {@code pinnedKind} is a one-kind tool's kind, else {@code arguments.kind}, else {@code test}.
      */
     public static JobSpec decode(McpCall in, @Nullable String pinnedKind) {
         String kind = pinnedKind;
@@ -229,7 +229,7 @@ public final class McpJobRuns {
     }
 
     /**
-     * {@code run} at a group root: the job runs in each member the selection names ({@code modules}
+     * {@code build} at a group root: the job runs in each member the selection names ({@code modules}
      * names members here; empty is every member the root runs by default), one after another in
      * {@code path}-dependency order, each the job a call with that member's {@code dir} starts; the
      * answer is each member's verdict and a total. A member that fails leaves what depends on it
@@ -239,7 +239,7 @@ public final class McpJobRuns {
         String kind = pinnedKind != null ? pinnedKind : in.str("kind");
         if (kind == null || kind.isBlank()) kind = "test";
         if (RELEASE_KINDS.contains(kind)) {
-            return in.error(root + " groups workspaces and has no version of its own; run " + kind
+            return in.error(root + " groups workspaces and has no version of its own; call " + kind
                     + " with dir set to the workspace it releases\n");
         }
         if (!in.flagOr("wait", true)) {

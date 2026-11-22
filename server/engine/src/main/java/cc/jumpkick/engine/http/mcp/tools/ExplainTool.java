@@ -13,14 +13,14 @@ import cc.jumpkick.wire.protocol.ExplainRequest;
 import java.util.Map;
 import java.util.Set;
 
-/** {@code explain} — the {@link Forecasts forecast} of the build a {@code run} of the same selection starts. */
+/** {@code explain} — the {@link Forecasts forecast} of the build a {@code build} call of the same selection starts. */
 public final class ExplainTool implements McpTool {
 
     @Override
     public Spec spec() {
         return new Spec(
                 "explain",
-                "Forecast the build run would start for this selection: dirty modules, cache hits, ETA (jk explain).",
+                "Forecast what build would start for this selection: dirty modules, cache hits, ETA (jk explain).",
                 McpSchemas.object(JobRequests.schemaProperties(Forecasts.FIELDS)));
     }
 

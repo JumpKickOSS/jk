@@ -35,7 +35,7 @@ class ManualGuardsPageTest {
         assertThat(page)
                 .contains("--schema <kind>")
                 .contains("--schema guard-test")
-                .contains("run(kind=guard)");
+                .contains("build(kind=guard)");
         assertThat(page.getBytes(StandardCharsets.UTF_8).length).isLessThanOrEqualTo(1_200);
     }
 }

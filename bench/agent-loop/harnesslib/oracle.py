@@ -1,7 +1,7 @@
 """The scripted driver: a deterministic oracle that reads the results text and applies the known fix.
 
 It never reads the scenario's injection to decide *what* is wrong; the results text has to say.
-Maven and Gradle still return the markdown results page. jk's ``run`` returns the agent verdict
+Maven and Gradle still return the markdown results page. jk's ``build`` returns the agent verdict
 (``E`` loci, ``T`` tests, ``FIX`` lines). Each turn classifies the failure from that text, applies
 the fix that class calls for — a ``FIX`` line first, when one is present — reruns through the
 tool's MCP and reads the results again. When the text names the failure but not enough to derive
@@ -140,7 +140,7 @@ def strip_preamble(text: str) -> str:
 
 
 def is_agent_verdict(text: str) -> bool:
-    """jk's ``run`` reply, as opposed to the markdown page the wrappers still return."""
+    """jk's ``build`` reply, as opposed to the markdown page the wrappers still return."""
     head = strip_preamble(text).lstrip()
     return bool(_AGENT_HEAD.match(head)) and not head.startswith("#")
 

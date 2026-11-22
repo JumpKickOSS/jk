@@ -35,14 +35,14 @@ public final class AgentsGuide {
 
             | To | MCP | CLI |
             |---|---|---|
-            | test, fix what the verdict names, rerun | `run()` | `jk -a test` |
-            | one class / one suite | `run(classes=[C])` / `run(suites=[s])` | `-S C` / `-s s` |
-            | build | `run(kind=build)` | `jk -a build` |
+            | test, fix what the verdict names, rerun | `build()` | `jk -a test` |
+            | one class / one suite | `build(classes=[C])` / `build(suites=[s])` | `-S C` / `-s s` |
+            | build | `build(kind=build)` | `jk -a build` |
             | every error of the last run | `diagnostics()` | `jk results -A` |
             | add / remove / pin a dependency | `deps` | `jk add` / `jk remove` |
             | who uses `T.m`, `T.f`, `T`, `column:t.c` / rename or move it | `usages` / `rename` | `jk code usages\\|rename` |
             | what a build would run | | `jk explain` |
-            | finish: tests + guards | `run(kind=gate)` | `jk -a test -g` |
+            | finish: tests + guards | `build(kind=gate)` | `jk -a test -g` |
             | anything else | `skill(topic=…)` | `jk skill <topic>` |
 
             - Done when the gate is OK, or when `rename` says the task is done (it ran the tests and guards).

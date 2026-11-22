@@ -377,7 +377,7 @@ for a full one. The test JVM merges stderr into stdout, so `<system-err>` stays 
 keeps its first 262,144 characters of output, and a closing line counts the lines cut. The files are written
 when the module's run ends; a class re-run after its JVM ran out of heap reports the re-run.
 `jk test -v` also shows each line on the terminal as the test prints it. The agent report (`--agent`,
-MCP `run`) puts it in the verdict: under a failed test whose class printed, `printed N lines; jk test
+MCP `build`) puts it in the verdict: under a failed test whose class printed, `printed N lines; jk test
 -v shows them`, and on a `-v` run an `OUT <class> printed N lines` block per class holding its last
 40 lines (200 across the run), naming the report file when earlier lines are left out. An up-to-date
 suite prints nothing; `-r` runs it again.
@@ -881,7 +881,7 @@ The setting is a run-tests input, so flipping it re-runs the suite.
 
 ## The state at a failure (`[test] failure-snapshot`)
 
-With `failure-snapshot = true`, a failed test's block in the agent report (`jk -a`, MCP `run`)
+With `failure-snapshot = true`, a failed test's block in the agent report (`jk -a`, MCP `build`)
 carries the arguments and locals at the frame that threw, and at the project frames above it: what
 a debugger would show at the throw, with no stepping and no print statements.
 
@@ -1247,7 +1247,7 @@ AccessSomeApiTest read MY_TOKEN_VALUE, which your shell sets; core/jk.toml is st
 A variable your shell does not set is not news on a green run; a failed run lists the ones its
 tests looked up, once, after the failure. Set at a workspace root, `inherit = false` holds for every
 member: JumpKick's own tree does this, so its suites cannot reach a developer's tokens or real home.
-The agent report (`jk -a`, MCP `run`) gives each such variable as a `W` line with the declaration
+The agent report (`jk -a`, MCP `build`) gives each such variable as a `W` line with the declaration
 as its `FIX`; a strict module's suite served from its green marker says them again.
 
 ### What is still unseen

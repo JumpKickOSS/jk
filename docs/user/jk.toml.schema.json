@@ -859,7 +859,7 @@
         "anchor-tail": {
           "type": "string",
           "enum": ["off", "silent", "count", "kinds"],
-          "description": "What a passing build's MCP run verdict says of the places a hand edit left under an old name. silent (default): the places that must change, in five files at most; off: nothing, and the verdict waits for nothing; count, kinds (experimental): those and a count of the prose. See docs/user/graph.md."
+          "description": "What a passing build's MCP build verdict says of the places a hand edit left under an old name. silent (default): the places that must change, in five files at most; off: nothing, and the verdict waits for nothing; count, kinds (experimental): those and a count of the prose. See docs/user/graph.md."
         }
       },
       "additionalProperties": false

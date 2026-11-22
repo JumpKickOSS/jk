@@ -32,7 +32,7 @@ public final class IdeTool implements McpTool {
                 "Write IDE project files (same generators as jk ide): kind=idea (.idea + *.iml), "
                         + "vscode (.vscode + Eclipse metadata for redhat.java) or all (default); "
                         + ".bsp/jk.json is refreshed too. Returns the files written; preview=true "
-                        + "lists them without writing. Missing jars are fetched first; run lock "
+                        + "lists them without writing. Missing jars are fetched first; deps action=lock "
                         + "after a jk.toml change.",
                 McpSchemas.object(Map.of(
                         "kind",

@@ -19,8 +19,8 @@ import cc.jumpkick.engine.http.api.StatusSnapshot;
 import cc.jumpkick.engine.http.mcp.McpCall;
 import cc.jumpkick.engine.http.mcp.McpDecisions;
 import cc.jumpkick.engine.http.mcp.McpTool;
+import cc.jumpkick.engine.http.mcp.tools.BuildTool;
 import cc.jumpkick.engine.http.mcp.tools.McpTools;
-import cc.jumpkick.engine.http.mcp.tools.RunTool;
 import cc.jumpkick.engine.jobs.JobSpec;
 import cc.jumpkick.engine.journal.SessionJournal;
 import cc.jumpkick.engine.sessions.EpisodeInference;
@@ -40,7 +40,7 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * Two engines over one state dir, as an upgrade leaves them: an agent's call raises a decision on
  * the first, the second displaces it, and the person's answer and the agent's {@code
- * run(decision=<id>)} both reach the second. Each engine is its {@link SessionLog}, {@link
+ * build(decision=<id>)} both reach the second. Each engine is its {@link SessionLog}, {@link
  * DecisionQueue} and {@link McpHandler}; the operation counts how often it ran.
  */
 class McpDecisionTakeoverTest {
@@ -81,7 +81,7 @@ class McpDecisionTakeoverTest {
                 .handle(call("risky", Map.of("goal", "move a")), session, project.toString(), null, m -> {}));
         assertThat(asked).startsWith("NEEDS-YOU Apply 1 move?");
         String id = first.queue().list().getFirst().id();
-        assertThat(asked).endsWith("run(decision=" + id + ")\n");
+        assertThat(asked).endsWith("build(decision=" + id + ")\n");
 
         // The upgrade: a new engine takes the endpoint, and the first one no longer writes.
         firstIsPrimary.set(false);
@@ -94,10 +94,10 @@ class McpDecisionTakeoverTest {
                 .isInstanceOf(DecisionQueue.Result.Settled.class);
 
         assertThat(text(next.mcp()
-                        .handle(call("run", Map.of("decision", id)), session, project.toString(), null, null)))
+                        .handle(call("build", Map.of("decision", id)), session, project.toString(), null, null)))
                 .isEqualTo("RAN 1\n");
         assertThat(text(next.mcp()
-                        .handle(call("run", Map.of("decision", id)), session, project.toString(), null, null)))
+                        .handle(call("build", Map.of("decision", id)), session, project.toString(), null, null)))
                 .as("the continuation is used up")
                 .contains("no call waits on decision " + id);
         first.mcp().waitSecondMs(1);
@@ -120,7 +120,7 @@ class McpDecisionTakeoverTest {
         String session = initialize(engine);
         Map<String, Object> result = result(engine.mcp()
                 .handle(
-                        call("run", Map.of("decision", "0123456789abcdef01234567")),
+                        call("build", Map.of("decision", "0123456789abcdef01234567")),
                         session,
                         project.toString(),
                         null,
@@ -143,7 +143,7 @@ class McpDecisionTakeoverTest {
         now.addAndGet(DecisionQueue.DEADLINE.toMillis() + 1);
         Engine next = engine(new AtomicBoolean(true));
         assertThat(text(next.mcp()
-                        .handle(call("run", Map.of("decision", id)), session, project.toString(), null, null)))
+                        .handle(call("build", Map.of("decision", id)), session, project.toString(), null, null)))
                 .startsWith("EXPIRED Apply 1 move?")
                 .contains("repeat the call without decision to ask anew");
         assertThat(ran).hasValue(0);
@@ -190,7 +190,7 @@ class McpDecisionTakeoverTest {
                 List::of,
                 "0.13.7");
         h.sessions(log);
-        h.tools(new McpTools(List.of(new Update(), new RunTool())));
+        h.tools(new McpTools(List.of(new Update(), new BuildTool())));
         h.decisions(new Decisions(queue, id -> null, new Dashboards()));
         h.waitSecondMs(1);
         return new Engine(h, queue);

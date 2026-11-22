@@ -101,9 +101,9 @@ An `AGENTS.md` at the root (`jk agents`) describes the group instead of a projec
 
 ## Agents
 
-The MCP `run` tool with `dir` at the root runs the job in each selected member in turn (`modules`
-names members) and answers each member's verdict and a total; `wait=false`, `kind=publish` and
-`kind=release` take a member's `dir`. Other tools work in one member.
+The MCP `build` tool with `dir` at the root runs the job in each selected member in turn (`modules`
+names members) and answers each member's verdict and a total; `wait=false` and the `publish` tool
+take a member's `dir`. Other tools work in one member.
 
 ## Related
 

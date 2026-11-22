@@ -186,8 +186,8 @@ try {
   await initialize();
   const src = path.join(dir, 'src', 'main', 'java', 'demo', 'C0.java');
   fs.appendFileSync(src, '// edited by the console bench\n');
-  const built = await call('run', { kind: 'build', dir, goal: GOAL });
-  if (JSON.stringify(built).includes('"isError":true')) throw new Error('run: ' + JSON.stringify(built).slice(0, 600));
+  const built = await call('build', { kind: 'build', dir, goal: GOAL });
+  if (JSON.stringify(built).includes('"isError":true')) throw new Error('build: ' + JSON.stringify(built).slice(0, 600));
   await call('find', { name: 'C0', dir }); // warm: the first graph call may build the graph
   const { sessions } = await api('/api/sessions?limit=50');
   const session = sessions.find((s) => s.client === CLIENT && s.state !== 'ended');

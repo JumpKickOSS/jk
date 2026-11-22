@@ -2956,7 +2956,7 @@ miss     = 'CommandWedge.printFail("Auth", e.getMessage());'
 instead  = "CommandWedge.printFail(<Command>, message), printChipErr(Glyphs.BANG, …) for a warning, or a required parameter the parser enforces"
 why      = "a hand-typed error prefix is a second failure style: no wedge, no stream rule, no colour rule"
 
-# G160. The places a hand edit left under an old name ride an MCP `run` verdict and nothing else: an
+# G160. The places a hand edit left under an old name ride an MCP `build` verdict and nothing else: an
 # agent finishing its work reads them there, while a person at the CLI asked for a build, not a review
 # of what it touched. A second caller of AnchorsLeft.after is a second surface the push was never
 # measured on, the CLI's output first among them.
@@ -2965,5 +2965,5 @@ kind       = "forbid"
 scope      = ["server/*"]
 signatures = ["cc.jumpkick.engine.graph.AnchorsLeft#after(**)"]
 owner      = "cc.jumpkick.engine.http.mcp.McpJobRuns"
-instead    = "nothing: only an MCP run's verdict (McpJobRuns) names the places; the CLI and every other answer leave them to callers file:<path>"
+instead    = "nothing: only an MCP build verdict (McpJobRuns) names the places; the CLI and every other answer leave them to callers file:<path>"
 why        = "the push was measured on MCP verdicts alone; a second surface would carry it to readers it was never measured on"

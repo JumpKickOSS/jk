@@ -22,7 +22,7 @@ final class EditedTests {
      * Agents otherwise follow a passing scoped test with a whole-workspace build or test, which only
      * re-proves a change that alters no behaviour.
      */
-    static final String DONE = " A rename changes no behaviour: once that test and run(kind=guard) pass, the task"
+    static final String DONE = " A rename changes no behaviour: once that test and build(kind=guard) pass, the task"
             + " is done; a full build or test adds nothing.";
 
     /**
@@ -61,17 +61,17 @@ final class EditedTests {
         String mcpSuites = named ? ", suites=[" + String.join(",", suites) + "]" : "";
         String cliSuites = named ? " -s " + String.join(" -s ", suites) : "";
         if (whole || touched.isEmpty()) {
-            if (classes.isEmpty()) return "Test next: run(kind=test), or jk test." + done;
-            return "Test the test classes it edited: run(kind=test" + mcpSuites + ", classes="
+            if (classes.isEmpty()) return "Test next: build(kind=test), or jk test." + done;
+            return "Test the test classes it edited: build(kind=test" + mcpSuites + ", classes="
                     + String.join(",", classes) + "), or jk test" + cliSuites + " -S " + String.join(" -S ", classes)
                     + "." + done;
         }
         String only = String.join(",", touched);
         if (classes.isEmpty()) {
-            return "Test the modules it edited: run(kind=test, modules=" + only + "), or jk test -m " + only + "."
+            return "Test the modules it edited: build(kind=test, modules=" + only + "), or jk test -m " + only + "."
                     + done;
         }
-        return "Test the test classes it edited: run(kind=test, modules=" + only + mcpSuites + ", classes="
+        return "Test the test classes it edited: build(kind=test, modules=" + only + mcpSuites + ", classes="
                 + String.join(",", classes) + "), or jk test -m " + only + cliSuites + " -S "
                 + String.join(" -S ", classes) + "." + done;
     }

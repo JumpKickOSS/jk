@@ -225,9 +225,10 @@ class HttpAdmissionTest extends HttpEngineServerHarness {
                     return client.send(
                             HttpRequest.newBuilder(URI.create(url + "mcp"))
                                     .header("Authorization", "Bearer " + tok)
-                                    .POST(HttpRequest.BodyPublishers.ofString(
-                                            "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":"
-                                                    + "{\"name\":\"run\",\"arguments\":{\"jid\":7,\"timeout_s\":30}}}"))
+                                    .POST(
+                                            HttpRequest.BodyPublishers.ofString(
+                                                    "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":"
+                                                            + "{\"name\":\"build\",\"arguments\":{\"jid\":7,\"timeout_s\":30}}}"))
                                     .build(),
                             HttpResponse.BodyHandlers.ofString());
                 } catch (Exception e) {

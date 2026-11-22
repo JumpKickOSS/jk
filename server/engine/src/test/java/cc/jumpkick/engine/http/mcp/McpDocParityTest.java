@@ -37,7 +37,7 @@ class McpDocParityTest {
     /** A first-column tool cell: {@code **`run`**}, repeated in combined rows. */
     private static final Pattern TOOL_CELL = Pattern.compile("\\*\\*`([a-z_]+)`\\*\\*");
 
-    /** A tool call in the skill's MCP column: {@code `run(kind=test)`}. */
+    /** A tool call in the skill's MCP column: {@code `build(kind=test)`}. */
     private static final Pattern MCP_CALL = Pattern.compile("`([a-z_]+)\\(");
 
     /** A first-column resource cell: {@code `jk://…`}. */

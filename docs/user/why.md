@@ -51,7 +51,7 @@ Every claim links what backs it. Where JumpKick loses, the linked page says so.
 | Surface | What it does for the agent | Reference |
 |---|---|---|
 | `target/jk-results.md` | One token-cheap report per invocation: what ran, each failure at its `file:line` with a fix hint, what was skipped, what to run next | [Machine output](machine-output.md) |
-| MCP in the engine | `run` returns a verdict; `diagnostics`, `deps`, `usages` and `skill` complete the default list of five, because every card costs the agent context on every turn. Two agents on one engine each keep their own project bind | [MCP](mcp.md) |
+| MCP in the engine | `build` returns a verdict; `diagnostics`, `deps`, `usages` and `skill` complete the default list of five, because every card costs the agent context on every turn. Two agents on one engine each keep their own project bind | [MCP](mcp.md) |
 | `jk skill` | The system prompt for a tool models were not trained on; JumpKick keeps its section of `AGENTS.md` current on every build | [Skill](skill.md) · [Agents](agents.md) |
 | `jk graph` | A code graph built in: code, config and docs, with nothing to install; indexed in seconds, with calls and overrides from the compiled classes. Answers name each symbol `Owner.member()` at `file:line` | [Code graph](graph.md) |
 | Named test rungs | The cheap unit suite by default, `--guard` before sharing, `--all` nightly; the report discloses what did not run | [Test rungs](#test-rungs) |
@@ -287,7 +287,7 @@ build) belong on that same named bar: runnable **with** `--guard`, **alone**
 (`--scripts-only`), or **skipped** (`--no-scripts`). They are not a surprise tax on
 `jk test` while you fix `assertEquals`.
 
-The observe step has to match: `target/jk-results.md` (and MCP `run`) must
+The observe step has to match: `target/jk-results.md` (and MCP `build`) must
 disclose **what ran, what did not, how to replay, what to run next.** A green unit
 run that silently skipped integration is how wiring bugs escape.
 

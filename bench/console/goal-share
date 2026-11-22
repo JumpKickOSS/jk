@@ -9,7 +9,7 @@ source (goal, lastGoal, inferred), per MCP client. Reads only; run it after norm
 
 An episode's title source says how it got its title: `goal` when a call named one, `lastGoal` when
 work with no goal started it and it took the session's last goal, `inferred` when the session had
-none. The PRD measure is the share of MCP `run` calls carrying `goal` (target 90%); the journal
+none. The PRD measure is the share of MCP `build` calls carrying `goal` (target 90%); the journal
 records episodes, not each call's arguments, so the `runs` share counts the runs in episodes a goal
 titled. A run without a goal that joins such an episode counts as one with, so read the share as
 an upper bound, and the `lastGoal` and `inferred` runs as calls that certainly carried none.

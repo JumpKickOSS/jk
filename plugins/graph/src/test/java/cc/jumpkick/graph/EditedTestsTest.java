@@ -14,7 +14,7 @@ class EditedTestsTest {
     void aDefaultSuiteClassNeedsNoSuite() {
         assertThat(EditedTests.next(Modules.NONE, List.of("src/test/java/demo/CalcTest.java"), true))
                 .startsWith(
-                        "Test the test classes it edited: run(kind=test, classes=CalcTest), or jk test -S CalcTest.");
+                        "Test the test classes it edited: build(kind=test, classes=CalcTest), or jk test -S CalcTest.");
     }
 
     @Test
@@ -23,7 +23,7 @@ class EditedTestsTest {
                         Modules.NONE,
                         List.of("src/test/java/demo/CalcTest.java", "src/integration/java/demo/CalcIT.java"),
                         true))
-                .startsWith("Test the test classes it edited: run(kind=test, suites=[integration,test],"
+                .startsWith("Test the test classes it edited: build(kind=test, suites=[integration,test],"
                         + " classes=CalcIT,CalcTest), or jk test -s integration -s test -S CalcIT -S CalcTest.");
     }
 
@@ -31,7 +31,7 @@ class EditedTestsTest {
     void aCompactModulesSuiteIsItsDirectory() {
         Modules modules = new Modules(List.of(new Modules.Module("core/", true)));
         assertThat(EditedTests.next(modules, List.of("core/integration/src/demo/CalcIT.java"), true))
-                .startsWith("Test the test classes it edited: run(kind=test, modules=core, suites=[integration],"
+                .startsWith("Test the test classes it edited: build(kind=test, modules=core, suites=[integration],"
                         + " classes=CalcIT), or jk test -m core -s integration -S CalcIT.");
     }
 }

@@ -252,7 +252,7 @@ class McpConnectionReplacementTest {
     }
 
     private static final String CALL = "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":"
-            + "{\"name\":\"run\",\"arguments\":{\"kind\":\"build\",\"wait\":false}}}";
+            + "{\"name\":\"build\",\"arguments\":{\"kind\":\"build\",\"wait\":false}}}";
 
     private @Nullable HttpServer server;
 
@@ -304,7 +304,7 @@ class McpConnectionReplacementTest {
 
     private McpHandler.Reply run(McpHandler handler, @Nullable String sessionId) {
         McpHandler.Reply reply = handler.handle(
-                "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"run\","
+                "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"build\","
                         + "\"arguments\":{\"kind\":\"build\",\"wait\":false}}}",
                 sessionId,
                 project.toString(),

@@ -9,10 +9,8 @@ import cc.jumpkick.docs.AgentHook;
 import cc.jumpkick.docs.AgentSetup;
 import cc.jumpkick.docs.AgentsGuide;
 import cc.jumpkick.docs.JkSkill;
-import cc.jumpkick.engine.decisions.DecisionQueue;
+import cc.jumpkick.engine.http.mcp.tools.BuildTool;
 import cc.jumpkick.engine.http.mcp.tools.McpTools;
-import cc.jumpkick.engine.verbs.InertVerbHost;
-import cc.jumpkick.engine.verbs.VerbRegistry;
 import cc.jumpkick.jsonl.MiniJson;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -20,7 +18,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -39,7 +36,7 @@ import org.junit.jupiter.api.io.TempDir;
  */
 class McpSteeringTest {
 
-    /** A backticked call or bare tool name: {@code `run(kind=build)`}, {@code `deps`}. */
+    /** A backticked call or bare tool name: {@code `build(kind=build)`}, {@code `deps`}. */
     private static final Pattern TICKED = Pattern.compile("`([a-z_]+)(\\(([^`)]*)\\))?`");
 
     /** A call in running prose: {@code run(dir=<project>)}, {@code usages(address)}. */
@@ -82,7 +79,7 @@ class McpSteeringTest {
         calls(text.toString(), TICKED).forEach((name, args) -> {
             if (TOOLS.tool(name) != null) named.put(name, args);
         });
-        assertThat(named).as("MCP tools the agent files and the hook name").containsKeys("run", "usages", "rename");
+        assertThat(named).as("MCP tools the agent files and the hook name").containsKeys("build", "usages", "rename");
         named.forEach(McpSteeringTest::assertCallable);
     }
 
@@ -101,7 +98,7 @@ class McpSteeringTest {
                 if (m.group(3) != null && !m.group(3).isBlank()) args.add(m.group(3));
             }
         }
-        assertThat(calls).as("tool calls in the skill").containsKeys("run", "deps", "usages", "rename");
+        assertThat(calls).as("tool calls in the skill").containsKeys("build", "deps", "usages", "rename");
         calls.forEach(McpSteeringTest::assertAccepted);
         for (String page : skillPages()) {
             Matcher on = ARGUMENT_ON.matcher(page);
@@ -113,7 +110,7 @@ class McpSteeringTest {
         }
     }
 
-    /** An argument named in prose: {@code `modules` on `run`}. */
+    /** An argument named in prose: {@code `modules` on `build`}. */
     private static final Pattern ARGUMENT_ON = Pattern.compile("`([a-z_]+)` on `([a-z_]+)`");
 
     /** A key the parser refuses must not be taught by any text an agent reads. */
@@ -143,7 +140,7 @@ class McpSteeringTest {
         return pages;
     }
 
-    /** {@code name} is on the default list, and each {@code run} argument list is one the server takes. */
+    /** {@code name} is on the default list, and each {@code build} argument list is one the server takes. */
     static void assertCallable(String name, List<String> argLists) {
         assertThat(TOOLS.loopNames())
                 .as("`%s` is on the default tools/list", name)
@@ -162,22 +159,13 @@ class McpSteeringTest {
                 assertThat(props)
                         .as("`%s(%s)`: %s is an argument of its card", name, args, key)
                         .containsKey(key);
-                if (name.equals("run") && key.equals("kind")) {
-                    assertThat(KINDS)
-                            .as("`run(kind=%s)` is a hosted job kind", value)
+                if (name.equals("build") && key.equals("kind")) {
+                    assertThat(BuildTool.KINDS)
+                            .as("`build(kind=%s)` is a kind build starts", value)
                             .contains(value);
                 }
             }
         }
-    }
-
-    /** The job kinds the engine hosts: what {@code run(kind=…)} accepts. */
-    static final Set<String> KINDS = kinds();
-
-    private static Set<String> kinds() {
-        Set<String> out = new LinkedHashSet<>();
-        VerbRegistry.standard(new InertVerbHost(), new DecisionQueue()).all().forEach(v -> out.addAll(v.jobKinds()));
-        return out;
     }
 
     @SuppressWarnings("unchecked")

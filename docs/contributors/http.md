@@ -1030,7 +1030,7 @@ Otherwise the request goes out on the call's own response: `McpFront` commits th
 event. A request that sends nothing still answers plain JSON. The client's response arrives as a
 separate `POST`; `McpRpc` hands any message with an id and no method to the connection, which
 completes the waiting call by request id. The wait yields the RPC admission permit, as a parked
-`run` does. `jk mcp` (`McpBridge`) asks for both content types, writes each streamed request to
+`build` does. `jk mcp` (`McpBridge`) asks for both content types, writes each streamed request to
 stdout, and posts the host's response lines back.
 
 ### The bridge contract
@@ -1068,14 +1068,14 @@ with the created project and sends `notifications/elicitation/complete`.
 ## Starting a job (`POST /api/build`)
 
 One admission point for every HTTP and MCP job, and one decoder (`JobRequests`) in front of it:
-the body of `POST /api/build` and the arguments of MCP `run` are the same job request, and the
+the body of `POST /api/build` and the arguments of MCP `build` are the same job request, and the
 same JSON admits the same `JobSpec` on both, apart from its origin (`web` or `mcp` and the
 connection). The fields:
 
 | Field | Type | Meaning |
 |---|---|---|
 | `dir` | string | The checkout (required; MCP falls back to the connection's bind) |
-| `kind` | string | `build` (REST default; MCP `run` defaults to `test`), `test`, `lock`, `guard`, `update`, … |
+| `kind` | string | `build` (REST default; MCP `build` defaults to `test` and takes the build kinds only), `test`, `lock`, `guard`, `update`, … |
 | `modules` | string array or `a,b` | Module selection, as `-m` |
 | `classes` | string array or `A,B` | Test classes, as `-S` |
 | `suites` | string array | Test suites, as `-s` |
@@ -1086,7 +1086,7 @@ connection). The fields:
 | `deps` | string array or `a,b` | `kind=update` only: the handles or `group:artifact`s to move (default: every pin) |
 | `major` | boolean | `kind=update` only: let a pin cross its major |
 
-A field outside the table (MCP `run` adds its own `goal`, `wait`, `timeout_s`, `jid`, `run`,
+A field outside the table (MCP `build` adds its own `goal`, `wait`, `timeout_s`, `jid`, `id`,
 `decision`) is refused, `400` naming it (an `isError` result on MCP), as is a value of the wrong type. The
 spec resolves to the hosted verb, decodes to the same wire request line the CLI would send, and
 submits detached. The reply is `202` with the `jid`; progress is the SSE stream. `409` carries the

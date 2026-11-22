@@ -6,7 +6,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Recent no-ops' finished records by request id. A no-op leaves a run-log line, not a run directory,
- * so an MCP run that waits on its jid reads its verdict here. Bounded: cleared once full.
+ * so an MCP build that waits on its jid reads its verdict here. Bounded: cleared once full.
  */
 public final class NoopRecords {
 

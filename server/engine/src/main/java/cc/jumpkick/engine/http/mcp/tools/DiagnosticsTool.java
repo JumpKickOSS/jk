@@ -12,7 +12,7 @@ import java.util.Map;
 
 /**
  * {@code diagnostics} — every problem of a run with its source lines (the headline's line past the
- * cap), or the problems in one file. {@code run} selects a history id (default: the newest run).
+ * cap), or the problems in one file. {@code id} selects a history id (default: the newest run).
  */
 public final class DiagnosticsTool implements McpTool {
 
@@ -27,16 +27,16 @@ public final class DiagnosticsTool implements McpTool {
                         "file", McpSchemas.string(),
                         "limit", McpSchemas.integer(),
                         "dir", McpSchemas.string(),
-                        "run", McpSchemas.string())),
+                        "id", McpSchemas.string())),
                 McpSchemas.READ_ONLY);
     }
 
     @Override
     public Map<String, Object> call(McpCall in) {
-        String run = in.str("run");
-        Map<String, Object> rec = run == null || run.isBlank()
+        String id = in.str("id");
+        Map<String, Object> rec = id == null || id.isBlank()
                 ? McpDiagnostics.findNewest(in.ctx().history(), in.dir())
-                : McpDiagnostics.findRun(in.ctx().history(), run, in.dir());
+                : McpDiagnostics.findRun(in.ctx().history(), id, in.dir());
         String file = in.str("file");
         if (file == null || file.isBlank()) {
             String all = McpAgentText.all(in.ctx(), rec);

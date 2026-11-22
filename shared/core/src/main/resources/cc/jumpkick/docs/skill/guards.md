@@ -6,4 +6,4 @@
 
 Stop and ask when the fix is an exemption, the message says thrash or names `jk guard freeze <id> -W "…"`, or the outcome is `blind`, `owner-missing`, `stale-allow`, `no-bite`, or `scanner-failed`.
 
-`jk guard` (`run(kind=guard)`) runs every lane, no tests. `jk test -g` (`run(kind=gate)`) runs them with the guard suites and is the bar before handing work back; with `[format] enforce` both format what changed first.
+`jk guard` (`build(kind=guard)`) runs every lane, no tests. `jk test -g` (`build(kind=gate)`) runs them with the guard suites and is the bar before handing work back; with `[format] enforce` both format what changed first.

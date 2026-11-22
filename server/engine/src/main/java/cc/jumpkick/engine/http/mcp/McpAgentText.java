@@ -12,7 +12,7 @@ import java.util.Map;
 import org.jspecify.annotations.Nullable;
 
 /**
- * The agent rendering of a run, shared by {@code run} and the results tools. A no-op's record
+ * The agent rendering of a run, shared by {@code build} and the results tools. A no-op's record
  * ({@link NoopRecords#UP_TO_DATE}) renders itself: it wrote no report of its own.
  */
 public final class McpAgentText {
@@ -31,7 +31,7 @@ public final class McpAgentText {
 
     /** The call that waits on {@code jid} and answers its verdict. */
     private static String continuation(long jid) {
-        return "run(jid=" + jid + ")\n";
+        return "build(jid=" + jid + ")\n";
     }
 
     /**

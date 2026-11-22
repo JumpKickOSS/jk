@@ -26,7 +26,7 @@ import org.jspecify.annotations.Nullable;
  * How a tool puts a decision to the person behind its client before it proceeds. The engine climbs
  * three rungs and stops at the first the session supports: form elicitation, which the host renders
  * and answers in the call; URL elicitation to the decision's dashboard page; and a {@code
- * NEEDS-YOU} result naming the decision and the continuation {@code run(decision=<id>)}, after which
+ * NEEDS-YOU} result naming the decision and the continuation {@code build(decision=<id>)}, after which
  * {@code [ui] ask} notifies, opens the browser or stays quiet. Every rung answers before the
  * client's tool timeout ({@link McpJobRuns#clientWaitS}), leaving the decision open when nobody
  * has answered yet.
@@ -96,7 +96,7 @@ public final class McpDecisions {
     /**
      * Ask {@code ask} of the person behind {@code in}'s client, or read the answer to the decision
      * {@code in} names in {@value #DECISION}. {@code tool} is called again with the same arguments
-     * when {@code run(decision=<id>)} continues the decision.
+     * when {@code build(decision=<id>)} continues the decision.
      */
     public static Outcome require(McpCall in, McpTool tool, Ask ask) {
         Decisions decisions = in.ctx().decisions();
@@ -138,7 +138,7 @@ public final class McpDecisions {
     }
 
     /**
-     * {@code run(decision=<id>)}: call the tool the decision continues again, with its arguments
+     * {@code build(decision=<id>)}: call the tool the decision continues again, with its arguments
      * and the decision, which answers it once the decision is settled.
      */
     public static Map<String, Object> resume(McpCall in, String id) {
@@ -210,7 +210,7 @@ public final class McpDecisions {
         return asked != null && asked.equals(callArgs(in));
     }
 
-    /** Store the call {@code d} continues with it, so {@code run(decision=<id>)} can make it again on any engine. */
+    /** Store the call {@code d} continues with it, so {@code build(decision=<id>)} can make it again on any engine. */
     private static void remember(McpCall in, Decision d, McpTool tool) {
         Map<String, Object> call = new LinkedHashMap<>();
         call.put("tool", tool.spec().name());
@@ -381,7 +381,7 @@ public final class McpDecisions {
                 .append(link != null ? link : d.command())
                 .append('\n');
         if (alert && link != null) decisions.alert(d, link);
-        out.append("run(decision=").append(d.id()).append(")\n");
+        out.append("build(decision=").append(d.id()).append(")\n");
         return stop(in.text(out.toString()));
     }
 

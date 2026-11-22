@@ -12,7 +12,7 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * The one decoder from a job request's JSON fields to a {@link JobSpec}: {@code POST /api/build},
- * MCP {@code run} and its aliases all go through it, so a field means the same on every surface and
+ * MCP {@code build} and the one-kind tools all go through it, so a field means the same on every surface and
  * a misspelt one is refused rather than dropped. Errors are {@link IllegalArgumentException}s naming
  * the field; REST answers them with {@code 400}, MCP with {@code -32602}.
  */

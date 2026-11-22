@@ -7,7 +7,7 @@ How JumpKick talks to **agents, scripts, and CI**. Humans at a TTY get a terse v
 |----------|-----------------|
 | Human at a TTY | Terse visual CLI |
 | Human debugging | `jk results` first; `--details` / `-v` if needed |
-| Agents | **`jk skill`** once, then the verdict: MCP `run`, or `jk -a` / `JK_AGENT=1` |
+| Agents | **`jk skill`** once, then the verdict: MCP `build`, or `jk -a` / `JK_AGENT=1` |
 | Scripts / CI | **`target/jk-results.md`** / `jk results`, or `-O jsonl` |
 | Web dashboard | Engine HTTP + SSE (`/api/events`) |
 | MCP clients | Tools, resources, SSE — same facts, not a second build model |
@@ -129,7 +129,7 @@ that has sources), `FAIL` with `exit 2` and the one-line reason naming the modul
 shape, not a red step. A `jk test` with no tests to run is green. [Workspaces](workspaces.md#nothing-to-build).
 
 The two markdown files are the same human report. JUnit XML stays at `target/surefire-reports/` (`target/failsafe-reports/` for the integration suite).
-There is no separate `test-results.md`. MCP `run` / `run` and `jk://runs/latest/results`
+There is no separate `test-results.md`. MCP `build` and `jk://runs/latest/results`
 are the verdict, not this markdown. After a test run, prefer the verdict over `--all` guesswork:
 default `jk test` is the unit suite; climb with `--suite`. [Test](test.md).
 
@@ -360,7 +360,7 @@ Same event shape as `-O jsonl`. Default **on**; disable with `JK_CLI_DETAILS=off
 run's origin: `trigger`, plus `session` when the requester has one), a `job` meta line after
 admit, ends with `session-finish`. Includes **jid**, **buildNumber**, and **etaMs** when
 known. Writing is best-effort: a missing project or full disk never fails the user command.
-A run with no CLI behind it — MCP `run`, the dashboard's `POST /api/build` — gets the same
+A run with no CLI behind it — MCP `build`, the dashboard's `POST /api/build` — gets the same
 `session-start` header from the engine (`command` is the kind, `trigger` is `mcp` or `web`,
 `session` the MCP connection), so its transcript also says who asked.
 

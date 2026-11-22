@@ -9,21 +9,20 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * {@code publish} / {@code import} — a discoverable name for one {@code run} kind. The
- * body is {@code run}'s, pinned: a second job path would be a second definition of "finished".
+ * {@code publish} / {@code import} — a tool that starts one job kind and waits, as {@code build}
+ * does: a second job path would be a second definition of "finished".
  */
-public final class RunAliasTool implements McpTool {
+public final class JobKindTool implements McpTool {
 
     private final Spec spec;
     private final String kind;
 
-    public RunAliasTool(String name, String kind, String description, String dirDescription) {
+    public JobKindTool(String name, String kind, String description, String dirDescription) {
         this(name, kind, description, dirDescription, Map.of());
     }
 
-    /** As above, with {@code extra} schema properties (a boolean the kind's {@code run} reads). */
-    public RunAliasTool(
-            String name, String kind, String description, String dirDescription, Map<String, Object> extra) {
+    /** As above, with {@code extra} schema properties (a boolean the kind's job reads). */
+    public JobKindTool(String name, String kind, String description, String dirDescription, Map<String, Object> extra) {
         this.kind = kind;
         Map<String, Object> properties = new LinkedHashMap<>();
         properties.put("dir", McpSchemas.string(dirDescription));

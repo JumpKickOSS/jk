@@ -66,11 +66,11 @@ class McpSchemaReadsTest {
     }
 
     @Test
-    void diagnostics_declares_the_run_it_reads() {
+    void diagnostics_declares_the_id_it_reads() {
         McpTools tools = McpTools.standard();
         assertThat(properties(
                         Objects.requireNonNull(tools.tool("diagnostics")).spec().inputSchema()))
-                .contains("run");
+                .contains("id");
     }
 
     @SuppressWarnings("unchecked")

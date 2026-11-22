@@ -367,7 +367,8 @@ class GraphRunnerTest {
         assertThat(renamed.text())
                 .contains("1 call")
                 .contains("the task is done")
-                .contains("run(kind=test, suites=[integration], classes=CalcIT), or jk test -s integration -S CalcIT.")
+                .contains(
+                        "build(kind=test, suites=[integration], classes=CalcIT), or jk test -s integration -S CalcIT.")
                 .contains("Proven: it compiles");
         assertThat(root.resolve("src/integration/java/demo/CalcIT.java"))
                 .content()

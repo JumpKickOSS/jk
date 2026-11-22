@@ -3,6 +3,7 @@ package cc.jumpkick.engine.http.mcp.tools;
 
 import cc.jumpkick.engine.http.mcp.McpCall;
 import cc.jumpkick.engine.http.mcp.McpError;
+import cc.jumpkick.engine.http.mcp.McpJobRuns;
 import cc.jumpkick.engine.http.mcp.McpSchemas;
 import cc.jumpkick.engine.http.mcp.McpTool;
 import cc.jumpkick.engine.verbs.ManifestEdit;
@@ -13,7 +14,8 @@ import java.util.Locale;
 import java.util.Map;
 
 /**
- * {@code deps} — add, remove, or pin dependencies in {@code jk.toml}, then relock. {@code
+ * {@code deps} — add, remove, or pin dependencies in {@code jk.toml}, then relock; {@code
+ * action=lock} relocks without an edit, as the {@code lock} job {@code jk lock} runs. {@code
  * preview=true} writes nothing and does not lock; an added or pinned version must still exist in the
  * configured repositories. An add whose lock trips the project's deny policy fails naming each rule
  * it trips, and {@code jk.toml} and {@code jk-lock.toml} are put back as they were: the one
@@ -22,7 +24,7 @@ import java.util.Map;
 public final class DepsTool implements McpTool {
 
     static final String DESCRIPTION =
-            "Add, remove, or pin coords in jk.toml and relock. action=add, remove, or pin; preview=true does not write.";
+            "Add, remove, or pin coords in jk.toml and relock; action=lock only relocks. preview=true does not write.";
 
     @Override
     public Spec spec() {
@@ -32,7 +34,7 @@ public final class DepsTool implements McpTool {
                 McpSchemas.withGoal(
                         Map.of(
                                 "action",
-                                McpSchemas.oneOf("add", "remove", "pin"),
+                                McpSchemas.oneOf("add", "remove", "pin", "lock"),
                                 "coords",
                                 McpSchemas.strings(),
                                 "scope",
@@ -47,6 +49,7 @@ public final class DepsTool implements McpTool {
     @Override
     public Map<String, Object> call(McpCall in) {
         String action = in.action("add").toLowerCase(Locale.ROOT);
+        if ("lock".equals(action)) return lock(in);
         ManifestEdit.Request req;
         try {
             req = new ManifestEdit.Request(
@@ -58,6 +61,11 @@ public final class DepsTool implements McpTool {
             throw new McpError(-32602, "deps: " + e.getMessage());
         }
         return render(in, ManifestEdit.run(req), req.preview());
+    }
+
+    /** The {@code lock} job, waited on as {@code build} waits; an edit's arguments are refused by name. */
+    private static Map<String, Object> lock(McpCall in) {
+        return McpJobRuns.run(in, "lock");
     }
 
     /**

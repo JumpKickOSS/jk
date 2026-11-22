@@ -38,7 +38,7 @@ final class McpActions {
             "workspace");
 
     /** The tools that take {@link McpSchemas#GOAL}: the ones that start work. */
-    static final Set<String> GOALS = Set.of("run", "deps", "rename", "update");
+    static final Set<String> GOALS = Set.of("build", "deps", "rename", "update");
 
     /** Characters of a question or answer line a summary keeps. */
     static final int TEXT_CHARS = 120;

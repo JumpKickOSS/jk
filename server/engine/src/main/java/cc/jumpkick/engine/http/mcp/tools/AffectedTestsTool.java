@@ -21,7 +21,7 @@ public final class AffectedTestsTool implements McpTool {
                 "WIP module cone + advisory ranked test classes. Writes target/jk-tests-affected.md "
                         + "(does not touch jk-results.md). Payload ≤20 test rows (truncated=true if more). "
                         + "Does not compile or run. jk test -f is the same list (table, no run). "
-                        + "run kind=test affected=true re-ranks after compile and runs. "
+                        + "build kind=test affected=true re-ranks after compile and runs. "
                         + "Refuse rather than guess when too broad.",
                 McpSchemas.object(Map.of(
                         "dir",

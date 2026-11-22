@@ -622,7 +622,7 @@ final class GraphRename {
         List<String> shown = new ArrayList<>(edited).subList(0, Math.min(edited.size(), 5));
         return "Not renamed: " + count(edited.size(), "source") + " edited since the last build ("
                 + String.join(", ", shown) + (edited.size() > shown.size() ? ", …" : "") + "). The compiled"
-                + " classes are what find every use: build first (run kind=build, or jk build), then rename.";
+                + " classes are what find every use: build first (build kind=build, or jk build), then rename.";
     }
 
     /**

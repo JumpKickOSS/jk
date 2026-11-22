@@ -25,7 +25,7 @@ public final class UpdateTool implements McpTool {
                 "update",
                 "Move declared exact pins in jk.toml to the newest stable on the same major (major=true"
                         + " crosses) and relock, as jk update. apply=false (default) previews the moves and"
-                        + " the lock packages each adds; apply=true runs the update job and waits, as run"
+                        + " the lock packages each adds; apply=true runs the update job and waits, as build"
                         + " does. Without major, newer majors are listed under available.",
                 McpSchemas.withGoal(
                         Map.of(

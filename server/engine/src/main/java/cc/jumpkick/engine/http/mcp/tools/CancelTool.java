@@ -20,7 +20,7 @@ public final class CancelTool implements McpTool {
                 "Cancel an in-flight job by jid, or every live job for a dir. Grace then force workers.",
                 McpSchemas.object(Map.of(
                         "jid",
-                        McpSchemas.integer("Job id from run"),
+                        McpSchemas.integer("Job id from build"),
                         "dir",
                         McpSchemas.string("Cancel every live job for this checkout"))));
     }

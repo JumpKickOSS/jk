@@ -40,7 +40,7 @@ Outside a project `jk mcp` still serves, and the tools take `dir` as over HTTP.
 | Session | `initialize` answers with an `Mcp-Session-Id` header (32 hex digits, 128 random bits, never reused); echo it on every later request. One id is one **session**: the runs it starts journal as `trigger: mcp · session: <clientInfo.name> <tag>`, where the tag is the id's first four hex digits, or more when four would repeat the label of a session still open. `DELETE /mcp` with the header ends it, and so does the [session expiry](#session-expiry) (a day with no activity, by default). An id the engine no longer knows (its session ended or was pruned) is a `404`, and the client sends `initialize` again for a new session |
 | Protocol | `2025-11-25`, `2025-06-18`, `2025-03-26` or `2024-11-05`, negotiated at `initialize` ([below](#protocol-revisions)); Streamable HTTP. Send `MCP-Protocol-Version` on every later request |
 | Server name | `jk-engine` |
-| Tool list | `tools/list` answers six tools (`run`, `diagnostics`, `deps`, `usages`, `rename`, `skill`); `run(kind=install)` installs for a sibling project. `{"extended": true}` on that call, or `[mcp] tools = "all"` (`JK_MCP_TOOLS=all`), lists every card. Every tool is callable by name either way |
+| Tool list | `tools/list` answers six tools (`build`, `diagnostics`, `deps`, `usages`, `rename`, `skill`); `install` installs for a sibling project. `{"extended": true}` on that call, or `[mcp] tools = "all"` (`JK_MCP_TOOLS=all`), lists every card. Every tool is callable by name either way |
 | CLI | `jk engine status` shows **MCP** and a **Sessions** row (`3 loaded of 256, 1 active`); JSON includes `mcpUrl`, `mcpMaxSessions`, `mcpLoadedConnections` and `mcpActiveConnections` |
 
 Token: `jk engine status` / `jk web` URL fragment, or the file under the state directory
@@ -81,8 +81,8 @@ it holds with the HTTP server off. A client that comes back with the old `Mcp-Se
 gets the `404` and sends `initialize` for a new session; `jk mcp` does that for the host. Ten
 minutes of quiet only marks a session idle and starts a new episode on its next call.
 
-The loop tools (`run`, `diagnostics`, `deps`, `usages`, `rename`, `skill`) and `why` answer `content` text only;
-for `run` and `diagnostics` that text **is** the verdict (below). They send no
+The loop tools (`build`, `diagnostics`, `deps`, `usages`, `rename`, `skill`) and `why` answer `content` text only;
+for `build` and `diagnostics` that text **is** the verdict (below). They send no
 `structuredContent`, because hosts that get one show the model that instead of the text. A
 failure the agent must act on (a bad `deps` coord, a failed relock) sets `isError`, and so does an
 argument a tool refuses (a missing `dir`, an unknown field, a value of the wrong kind): the text
@@ -90,7 +90,7 @@ says what to send instead. An unknown tool is a JSON-RPC error. The extended
 tools answer `structuredContent` (`schema` + `type`, like the rest of the machine model;
 `schema` stays **1** until 1.0) with a one-line text summary.
 
-`run` runs the tests (`kind` defaults to `test`), waits, and the reply is the run. `run=<id>` (no `kind`) reads an earlier verdict.
+`build` runs the tests (`kind` defaults to `test`), waits, and the reply is the verdict. `id=<id>` (no `kind`) reads an earlier one. `run` is not a tool: a call of it is refused as unknown, pointing at `build`.
 It does not carry a dashboard link, a session id, or a trigger. The journal still records who
 asked; the human report is `target/jk-results.md` and [Web](web.md). `details` and
 `jk://runs/latest/*` answer for the bound `dir`, never a sibling worktree's run.
@@ -182,12 +182,12 @@ Paths are relative to the project directory. A quoted source row is its line num
 tab, then the line exactly as the file has it, indentation included: everything after the first
 tab is an Edit's `old_string`. When that line occurs more than once in the file, the rows on
 either side come with it so the quote is unique. `wait=false` answers `RUNNING build jid=42` and
-`run(jid=42)`. A wait that expires answers `TIMEOUT build jid=42` with the same continuation:
-`run(jid=42)` waits on that job again, starts nothing, and returns the verdict when it finishes.
+`build(jid=42)`. A wait that expires answers `TIMEOUT build jid=42` with the same continuation:
+`build(jid=42)` waits on that job again, starts nothing, and returns the verdict when it finishes.
 
 ## Waits and keep-alive
 
-`run` waits up to `timeout_s` (default **240**, at most 3600), then answers `TIMEOUT` and the job
+`build` waits up to `timeout_s` (default **240**, at most 3600), then answers `TIMEOUT` and the job
 keeps going. The default sits under the shortest tool-call timeout among common MCP clients
 (some stop a call after 300 s whatever it reports), so a default wait always answers before the
 client gives up. A client with a longer timeout can pass a larger `timeout_s`.
@@ -200,8 +200,8 @@ accepts `text/event-stream`; `jk mcp` passes them on. MCP clients that reset the
 progress (the spec allows it) keep a long wait alive; the rest still get the `TIMEOUT`
 continuation. The engine's event stream (below) carries the same job's every event.
 
-`jk mcp` handles requests concurrently: while a `run` waits, a `ping`, a `status` or a second call
-answers at once. A `notifications/cancelled` naming an outstanding `run` cancels its job, and the
+`jk mcp` handles requests concurrently: while a `build` waits, a `ping`, a `status` or a second call
+answers at once. A `notifications/cancelled` naming an outstanding `build` cancels its job, and the
 call answers with the cancelled verdict. Over HTTP, send the cancel with the call's
 `_meta.progressToken` in its own `params._meta`, or call the `cancel` tool with the `jid`. A
 progress token is the session's own: the cancel finds it only under the `Mcp-Session-Id` the call
@@ -235,17 +235,17 @@ The whole registry:
 | **`bind`** | Set or switch the connection's project dir; returns a project card. Not on the default list: the first call that carries `dir` binds |
 | **`status`** | Engine vitals (pid, version, heap, the MCP session counts `mcpMaxSessions`, `mcpLoadedConnections`, `mcpActiveConnections`) and the `jobs` array — every live and queued job as the same row `jk engine status -O jsonl` and `GET /api/status` carry (`jid`, `kind`, `dir`, `state`, `since`, `workers`, `lastEventAt`, `ahead`) |
 | **`project`** | Project card (coord, java, members, last run) |
-| **`run`** | Start a job and, by default, wait. The reply is the verdict (see above). [`goal`](#goal) names the task. `jid` waits on a job already started instead. `decision=<id>` continues the call a [`NEEDS-YOU`](#decisions) answered. `kind` is `test` (default) \| `build` \| `gate` (`jk test -g`: the guard suites with the guard lanes, the bar before work is handed back) \| `guard` (`jk guard`: the lanes, no tests) \| `lock` \| `update` \| `format` \| `native` \| `image` \| `assemble` \| `compile` \| `clean` \| `publish` \| `install` \| `import`. Publish is a dry-run unless `upload=true`, which sends the release to the repository `[publish]` names (see `publish`). `modules` limits modules and `classes` test classes (an array or one comma-separated string; the CLI repeats `-S`); `suites`, `include_tags`, `exclude_tags`, `affected` and `skip_tests` select as the CLI flags do, and an argument `run` does not know is refused by name. Its card names `kind`, `dir`, `modules`, `classes`, `suites`, `jid`, `run` and `decision`; the other fields are accepted as listed here. The job fields are the body of `POST /api/build`, so the same JSON starts the same job on either. `run=<id>` with no `kind` reads an earlier verdict, or waits when `<id>` is a running job's `jid`. `wait=false` answers the `jid` at once; `timeout_s` (default 240) bounds one wait. `deadline_s` caps the job's wall time; default is the engine's `detached-deadline-ms` (1 hour), `0` = none. `kind=test` defaults to the **unit** suite — do not pass every suite as a habit. With `dir` at a [group root](groups.md#agents), the job runs in each selected member in turn (`modules` names members) and the reply is each member's verdict and a total. A `build`, `test`, `gate`, `guard`, `install` or other run that builds the tree and passes in a checkout with a graph waits for the graph's refresh (10 s at most) only when a file that defines or uses an anchor changed since the last one, and, when a hand edit changed a name another file still uses (a SQL column, a config key, the variable that sets it, a route), ends with `Your edit changed these names; these places still use the old one:` and those places, in five files at most, and the `usages` call that lists the rest ([After a hand edit](graph.md#after-a-hand-edit)); otherwise it adds nothing, and `[graph] anchor-tail = "off"` turns it off. The CLI never prints these lines |
+| **`build`** | Start a build or test job and, by default, wait. The reply is the verdict (see above). [`goal`](#goal) names the task. `jid` waits on a job already started instead. `decision=<id>` continues the call a [`NEEDS-YOU`](#decisions) answered. `kind` is `test` (default) \| `build` \| `compile` \| `gate` (`jk test -g`: the guard suites with the guard lanes, the bar before work is handed back) \| `guard` (`jk guard`: the lanes, no tests) \| `assemble` \| `native` \| `image` \| `clean` \| `format`. Any other kind is refused, naming the tool that starts it: `lock` is `deps(action=lock)`, `update` is `update(apply=true)`, and `publish`, `install` and `import` are their own tools. `modules` limits modules and `classes` test classes (an array or one comma-separated string; the CLI repeats `-S`); `suites`, `include_tags`, `exclude_tags`, `affected` and `skip_tests` select as the CLI flags do, and an argument `build` does not know is refused by name. Its card names `kind`, `dir`, `modules`, `classes`, `suites`, `jid`, `id` and `decision`; the other fields are accepted as listed here. The job fields are the body of `POST /api/build`, so the same JSON starts the same job on either. `id=<id>` with no `kind` reads an earlier verdict, or waits when `<id>` is a running job's `jid`. `wait=false` answers the `jid` at once; `timeout_s` (default 240) bounds one wait. `deadline_s` caps the job's wall time; default is the engine's `detached-deadline-ms` (1 hour), `0` = none. `kind=test` defaults to the **unit** suite — do not pass every suite as a habit. With `dir` at a [group root](groups.md#agents), the job runs in each selected member in turn (`modules` names members) and the reply is each member's verdict and a total. A `build`, `test`, `gate`, `guard` or other job that builds the tree and passes in a checkout with a graph waits for the graph's refresh (10 s at most) only when a file that defines or uses an anchor changed since the last one, and, when a hand edit changed a name another file still uses (a SQL column, a config key, the variable that sets it, a route), ends with `Your edit changed these names; these places still use the old one:` and those places, in five files at most, and the `usages` call that lists the rest ([After a hand edit](graph.md#after-a-hand-edit)); otherwise it adds nothing, and `[graph] anchor-tail = "off"` turns it off. The CLI never prints these lines |
 | **`cancel`** | Cancel by **`jid`**, or every live job for a `dir` |
 | **`history`** | Recent runs as **summaries**, a page at a time (filters: dir, projectId, success, kind, limit, next); `details` and `diagnostics` read one run in depth |
 | **`diagnostics`** | Problems past the verdict cap, or one file with full snippets (`file`) |
 | **`details`** | Budgeted tail of `details.jsonl` (default last-fail, `error` + `task-finish`, 80 events). CLI `jk results -d` dumps the full file |
 | **`why`** | The dependency path and the rule that picked the version, at most five lines (`coord`) |
-| **`explain`** | Forecast the build `run` would start: takes `run`'s selection fields (`modules`, `classes`, `suites`, `include_tags`, `exclude_tags`, `affected`, `skip_tests`) and answers the dirty modules, cached steps and ETA, the same object as `GET /api/explain` and the same forecast as `jk explain` |
+| **`explain`** | Forecast the job `build` would start: takes `build`'s selection fields (`modules`, `classes`, `suites`, `include_tags`, `exclude_tags`, `affected`, `skip_tests`) and answers the dirty modules, cached steps and ETA, the same object as `GET /api/explain` and the same forecast as `jk explain` |
 | **`affected_tests`** | WIP module cone + advisory ranked test classes; writes `target/jk-tests-affected.md` |
 | **`outdated`** | Declared pins an update would move (read-only; Current / Compatible / Latest): dependencies, language and tool keys, rule packs; `all=true` lists every row, `checked` counts them, `file` is the `target/jk-outdated-dependencies.md` it wrote, and a row whose coordinate moved carries `relocated` |
-| **`update`** | Bump declared pins in `jk.toml` to the newest stable on the same major, then relock, as `jk update`. Params: `dir`, [`goal`](#goal), `deps` (optional list of handles), `major` (bool), `apply` (bool, default **false**). The preview writes nothing and lists each move under `rewrites` (`manifest`, `module`, `table`, `handle`, `coordinate`, `from`, `to`, and `adds`: the lock packages its relock would add), at most 100 with `moreRewrites` counting the rest; without `major`, each newer major is listed under `available`, not applied. A move whose locked and new jars can both be read, in either list, carries `breaks`: how many places in the project's compiled classes (as the last compile left them) call, read or extend public API of that jar the move removes, renames or changes the signature of, and `usages`: the address the `usages` tool (or `jk code usages`) lists those places under, `dep:<group:artifact>@<version>` ([Code graph](graph.md#what-another-version-of-a-dependency-breaks)). It is the preview `jk update --preview` prints and `GET /api/project/update` returns. `apply=true` starts the `update` job `jk update` runs and waits as `run` does: it is in history as the agent's, with a `jid` that `cancel` stops. Every move on a pin's major applies, across a minor and with any package the relock adds, and nobody is asked |
-| **`deps`** | Add, remove, or pin coordinates and relock, with a [`goal`](#goal). `preview=true` does not write; a version or coordinate the repositories do not serve is an error, preview or not. An edit whose lock trips the project's [deny policy](publish.md#deny-policy) fails naming each rule it trips, and `jk.toml` and `jk-lock.toml` are left as they were. A coordinate the action cannot use (`pin` without a version, `add` without a group) is refused. The same edit as `jk add`/`jk remove` and `POST /api/project/deps` |
+| **`update`** | Bump declared pins in `jk.toml` to the newest stable on the same major, then relock, as `jk update`. Params: `dir`, [`goal`](#goal), `deps` (optional list of handles), `major` (bool), `apply` (bool, default **false**). The preview writes nothing and lists each move under `rewrites` (`manifest`, `module`, `table`, `handle`, `coordinate`, `from`, `to`, and `adds`: the lock packages its relock would add), at most 100 with `moreRewrites` counting the rest; without `major`, each newer major is listed under `available`, not applied. A move whose locked and new jars can both be read, in either list, carries `breaks`: how many places in the project's compiled classes (as the last compile left them) call, read or extend public API of that jar the move removes, renames or changes the signature of, and `usages`: the address the `usages` tool (or `jk code usages`) lists those places under, `dep:<group:artifact>@<version>` ([Code graph](graph.md#what-another-version-of-a-dependency-breaks)). It is the preview `jk update --preview` prints and `GET /api/project/update` returns. `apply=true` starts the `update` job `jk update` runs and waits as `build` does: it is in history as the agent's, with a `jid` that `cancel` stops. Every move on a pin's major applies, across a minor and with any package the relock adds, and nobody is asked |
+| **`deps`** | Add, remove, or pin coordinates and relock, with a [`goal`](#goal). `preview=true` does not write; a version or coordinate the repositories do not serve is an error, preview or not. An edit whose lock trips the project's [deny policy](publish.md#deny-policy) fails naming each rule it trips, and `jk.toml` and `jk-lock.toml` are left as they were. A coordinate the action cannot use (`pin` without a version, `add` without a group) is refused. The same edit as `jk add`/`jk remove` and `POST /api/project/deps`. `action=lock` edits nothing: it runs the `lock` job `jk lock` runs and waits as `build` does |
 | **`workspace`** | Preview/apply workspace member add/remove |
 | **`manifest`** | Set whitelisted `jk.toml` keys (`java=N` is language level, not `jdk=`) |
 | **`config`** | Machine config get/set, or `apply_preset=ci`. `set` takes `nerd-font` and `engine.max-heap-mb`, which is `0` (uncapped) or 128 to 65536 MiB |
@@ -271,12 +271,12 @@ The whole registry:
 | **`pull_up`** | Pull an instance method (`address` = `Type.method`, every overload) or instance field (`Type.field`) up to the class its type extends (`to`, optional: a class it does not extend is refused): the code moves there with the imports it needs and every use stays as written, binding to the inherited member; another subclass that declares the method gets `@Override`. Then it compiles the modules it touched and proves each pulled-up symbol has the references the old one had, undoing the edit whole otherwise. What would break or change without a compile error writes nothing and is listed: a member of the subclass the code uses that the superclass lacks, a member a caller would no longer see, a `super` call, an override every subclass would inherit, a name the superclass already has, an overload in another subclass, a string naming it. Not read-only. Same as `jk code pull-up` ([Code graph](graph.md#delete-move-pull-up-and-extract-an-interface)) |
 | **`extract_interface`** | Create the interface `to` (a simple name lands beside the class, a qualified one in that package) from public instance methods of the class `address`: `methods` names them (`price,total`, every overload of each), by default every public instance method that overrides nothing. The signatures are copied as written with the imports they need; the class implements the interface with `@Override` on each method. Then it compiles the module, undoing the edit whole, the new file included, when it does not compile. The answer lists each variable of the class's type that calls only the interface's methods and is not passed on, at `file:line`: each could be declared as the interface. A generic class, a static or non-public method, or a name already taken writes nothing. Not read-only. Same as `jk code extract-interface` ([Code graph](graph.md#delete-move-pull-up-and-extract-an-interface)) |
 
-Start with **`run`**. The reply is the verdict. **`diagnostics`** is the detail past its cap. Do not dump full journal records. A tool
+Start with **`build`**. The reply is the verdict. **`diagnostics`** is the detail past its cap. Do not dump full journal records. A tool
 outside the default list is called by name once `tools/list` with `extended: true` has named it. `tools/call` accepts it either way; the bind and the session are the same.
 
 ### `goal`
 
-`run`, `deps`, `rename` and `update` take `goal`: the task the call serves, under eight words,
+`build`, `deps`, `rename` and `update` take `goal`: the task the call serves, under eight words,
 repeated word for word until the task changes (`"goal": "Rename Ledger.post to record"`). It is
 required in their schemas so an agent passes it, but JumpKick never refuses a call without it. It titles
 the session's [episode](web.md#sessions-and-episodes) on the dashboard: a call whose goal differs
@@ -363,7 +363,7 @@ JumpKick asks by the first rung the session supports ([revisions](#protocol-revi
    NEEDS-YOU Clean the cache?
      ~/.jk/cache 2.1 GiB
    the user answers it: http://127.0.0.1:8910/#decision/3f9a0c1e…
-   run(decision=3f9a0c1e…)
+   build(decision=3f9a0c1e…)
    ```
 
    Then `[ui] ask` ([Config](config.md#decisions)) applies once: `notify` (default) shows it in a
@@ -377,7 +377,7 @@ question gets `notifications/cancelled`, a link gets `notifications/cancelled` a
 `notifications/elicitation/complete`, the desktop or browser notification is closed, and the
 dashboard's bell and Needs-you banner drop the decision.
 
-`run(decision=<id>)` makes the original call again with the decision: it proceeds once the
+`build(decision=<id>)` makes the original call again with the decision: it proceeds once the
 decision is accepted (once only), answers `DECLINED` or `EXPIRED` when it was not, and while it is
 open waits as long as a call may, then answers `NEEDS-YOU` again. Calling the tool again with the
 same arguments while its decision is open asks nothing new.
@@ -388,7 +388,7 @@ cancelled call. A decision expires as declined 30 minutes after it opened.
 
 Decisions outlive the engine, as [sessions](web.md#sessions-and-episodes) do. Each one is kept
 beside the session records with the call it continues, and an engine that replaces another (an
-upgrade, a restart) takes over every decision with its deadline: the answer and `run(decision=<id>)`
+upgrade, a restart) takes over every decision with its deadline: the answer and `build(decision=<id>)`
 both reach the new engine, the first answer still wins, and the operation still runs once. One whose
 deadline passed while no engine ran is `EXPIRED`. When the decision a continuation names is gone,
 the answer is `ASK-AGAIN`: repeat the original call without `decision` to be asked anew.
@@ -405,7 +405,7 @@ when there are several) with the same widgets `jk new` uses. Anywhere, `-y` acce
 | `jk://session` | Bound dir + engine status |
 | `jk://project` | Project card for the connection's bound dir (`bind` first) |
 | `jk://runs/latest` | Summary of the bound dir's newest finished run (`bind` first) |
-| `jk://runs/latest/results` | That run's verdict (same text as `run`) |
+| `jk://runs/latest/results` | That run's verdict (same text as `build`) |
 | `jk://runs/latest/details` | Budgeted tail of that run's `details.jsonl` (same as `details`) |
 | `jk://guards` | Guard catalog (same as `jk guard explain`); `jk://guards/<id>` is one rule's card (same as `jk guard explain <id>`). Reads the connection's bound dir (`bind` first); an unknown id is a `-32602` error naming the nearest ids |
 | `jk://disk` | Cache and store usage |
@@ -416,7 +416,7 @@ when there are several) with the same widgets `jk new` uses. Anywhere, `-y` acce
 | Name | Intent |
 |------|--------|
 | `learn-jumpkick` | `skill` then follow that playbook (not Maven/Gradle) |
-| `fix-failing-build` | `run kind=build` (the reply is the verdict) then edit then `run` again |
+| `fix-failing-build` | `build kind=build` (the reply is the verdict) then edit then `build` again |
 | `recover-disk` | `disk usage` then clean/nuke with confirm |
 | `setup-ci` | `config apply_preset=ci` |
 | `upgrade-deps` | `outdated`, read its `file`, then `update` (preview), then `update apply=true` |

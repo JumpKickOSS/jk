@@ -51,7 +51,9 @@ JK_GRAPH_TOOLS = ["usages", "rename", "query", "read", "find", "delete", "move",
 # What a released jk (the jk-before arm) calls a graph tool the tree names otherwise: usages was callers.
 JK_RELEASED_GRAPH_TOOLS = ["callers"]
 # jk's default tools/list without its one graph card, usages.
-JK_LOOP_TOOLS = ["run", "diagnostics", "deps", "skill"]
+JK_LOOP_TOOLS = ["build", "diagnostics", "deps", "skill"]
+# What a released jk (the jk-before arm) calls a loop tool the tree names otherwise: build was run.
+JK_RELEASED_LOOP_TOOLS = ["run"]
 # graphify's MCP server (`graphify-mcp`, from the `graphifyy[mcp]` tool install).
 GRAPHIFY_MCP = Path.home() / ".local/share/uv/tools/graphifyy/bin/graphify-mcp"
 
@@ -62,12 +64,12 @@ description: JumpKick (jk) and its MCP tools
 alwaysApply: true
 ---
 jk's MCP tools are on the `jk` server: call them with use_tool, tool_name `jk__usages`,
-`jk__rename`, `jk__run`, `jk__diagnostics`. No search_tool or skill call is needed first.
+`jk__rename`, `jk__build`, `jk__diagnostics`. No search_tool or skill call is needed first.
 
 - Who calls `T.m`: `jk__usages` once. Its list is complete; write it as it is.
 - Rename `T.m`: `jk__rename` once, nothing before it. Its answer lists every edit and any comment
   or doc line still naming the old method; change only those you judge refer to it, without
-  searching for more, then `jk__run` with the `only` it names.
+  searching for more, then `jk__build` with the `only` it names.
 - Read `jk__skill` only when a verdict names a topic.
 """
 
@@ -382,7 +384,7 @@ def mcp_servers(tool: str, extra: list[str], hide_graph: bool, sandbox: Path,
     cfg = mcp_server_config(tool, sandbox)
     if extended:
         cfg = {"type": "stdio", "command": str(HERE / "wrappers" / "mcp-filter"),
-               "args": ["--extended", "--keep", ",".join(JK_LOOP_TOOLS + JK_GRAPH_TOOLS),
+               "args": ["--extended", "--keep", ",".join(JK_LOOP_TOOLS + JK_RELEASED_LOOP_TOOLS + JK_GRAPH_TOOLS),
                         "--", cfg["command"], *cfg["args"]]}
     if hide_graph:
         # One proxy for every driver: the graph tools are gone from tools/list and refused if called.
@@ -469,7 +471,7 @@ def navigation(summary: list[dict], sandbox: Path | None = None) -> dict:
             counts["text"] += 1
         elif short in EDITS:
             counts["edits"] += 1
-        elif name.startswith(("mcp__jk__", "mcp__results__")) or short in ("run", "diagnostics", "deps", "why",
+        elif name.startswith(("mcp__jk__", "mcp__results__")) or short in ("build", "run", "diagnostics", "deps", "why",
                                                                             "results", "skill"):
             counts["build"] += 1
         else:

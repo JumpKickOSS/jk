@@ -126,7 +126,7 @@ lines, `## Failed steps`, `## Warnings`, `## Modules`. Compiler errors come from
 `target/surefire-reports`, `target/failsafe-reports` and `build/test-results`. `target/jk-diagnostics.json`
 carries the parsed structure. `wrappers/results-mcp --dir <project> --tool mvn|gradle` is a stdio
 JSON-RPC MCP server exposing `run`, `results` and `diagnostics`: the wrapper's rerun and the two
-readers an agent reaches for first with jk (`run`, `run`, `diagnostics`).
+readers an agent reaches for first with jk (`build`, `build`, `diagnostics`).
 
 These wrappers are built **deliberately well**. They are the benchmark's null hypothesis: the
 cheapest thing Maven or Gradle could ship tomorrow — a results file and two MCP tools over the
@@ -143,7 +143,7 @@ the agent can edit — is exactly what the measurement is for.
 shared engine's, every call scoped to the sandbox with `dir` — the first such call binds the
 connection, so there is no `bind` turn; Maven and Gradle: `wrappers/results-mcp`), and hands an
 agent one fixed system prompt: the build is red, make it green, use only these tools, stop when the
-results say OK. jk's default `tools/list` is `run`, `diagnostics`, `deps`, `why`, and `skill`; the wrapper's
+results say OK. jk's default `tools/list` is `build`, `diagnostics`, `deps`, `usages`, `rename` and `skill`; the wrapper's
 is its three. The agent loops until green or the
 budget ends (`--max-turns 16`, `--max-minutes 10` by default). The harness then reruns the tool
 itself; a row is **green** only when that rerun is green too, **claimed** when the agent said
@@ -178,7 +178,7 @@ Each muse run points muse's config and data homes at a throwaway directory (`MUS
 
 The oracle is the plumbing proof and the results-file audit in one. It never reads the injection
 to decide what is wrong; the results text has to say. Maven and Gradle still return the markdown
-page. jk's `run` returns the agent verdict (`OK`/`FAIL` headline, `E path:line:col message`,
+page. jk's `build` returns the agent verdict (`OK`/`FAIL` headline, `E path:line:col message`,
 `T Class#method` with its expectation and `at File:line`, `E step: cause` for resolve and lock,
 `FIX` when jk knows the edit, `+K more: jk results -A | diagnostics(file=…)` past the cap). A compile locus with
 `';' expected` (or a `FIX insert ';' at line:col` line) gets its semicolon; `package X does not exist`

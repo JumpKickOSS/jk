@@ -3,20 +3,25 @@ package cc.jumpkick.engine.http.mcp.tools;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.engine.decisions.DecisionQueue;
 import cc.jumpkick.engine.http.api.EngineHttpJobs;
 import cc.jumpkick.engine.http.api.StatusSnapshot;
 import cc.jumpkick.engine.http.mcp.McpCall;
 import cc.jumpkick.engine.http.mcp.McpContext;
 import cc.jumpkick.engine.jobs.JobSpec;
+import cc.jumpkick.engine.verbs.InertVerbHost;
+import cc.jumpkick.engine.verbs.VerbRegistry;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.Test;
 
-class RunToolTest {
+class BuildToolTest {
 
     @Test
-    void run_naming_a_live_jid_instead_of_a_finished_run_waits_on_that_job() {
+    void id_naming_a_live_jid_instead_of_a_finished_build_waits_on_that_job() {
         AtomicBoolean live = new AtomicBoolean(true);
         McpContext ctx = new McpContext(
                 () -> new StatusSnapshot("0", 1L, 0L, 0, 0, 1L, 1L, 1L, -1L, 1, 1L),
@@ -54,11 +59,18 @@ class RunToolTest {
             live.set(false);
         });
 
-        Map<String, Object> result = new RunTool().call(new McpCall(ctx, Map.of("run", "3580", "timeout_s", 5), null));
+        Map<String, Object> result = new BuildTool().call(new McpCall(ctx, Map.of("id", "3580", "timeout_s", 5), null));
 
         assertThat(String.valueOf(result.get("content")))
-                .as("the agent asked for run=3580 holding a TIMEOUT's jid: it waited on the job")
-                .doesNotContain("no matching run")
+                .as("the agent asked for id=3580 holding a TIMEOUT's jid: it waited on the job")
+                .doesNotContain("no matching build")
                 .contains("jid=3580");
+    }
+
+    @Test
+    void every_kind_build_starts_is_one_the_engine_hosts() {
+        Set<String> hosted = new HashSet<>();
+        VerbRegistry.standard(new InertVerbHost(), new DecisionQueue()).all().forEach(v -> hosted.addAll(v.jobKinds()));
+        assertThat(hosted).containsAll(BuildTool.KINDS);
     }
 }

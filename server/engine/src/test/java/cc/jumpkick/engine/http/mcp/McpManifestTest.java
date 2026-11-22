@@ -111,12 +111,12 @@ class McpManifestTest {
                 + "\"params\":{\"name\":\"manifest\",\"arguments\":{\"dir\":"
                 + Jsonl.quote(dir.toString())
                 + ",\"java\":21,\"apply\":true}}}");
-        assertThat(applied).contains("run kind=lock");
+        assertThat(applied).contains("deps action=lock");
         String preview = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\","
                 + "\"params\":{\"name\":\"manifest\",\"arguments\":{\"dir\":"
                 + Jsonl.quote(dir.toString())
                 + ",\"java\":25,\"apply\":false}}}");
-        assertThat(preview).doesNotContain("run kind=lock");
+        assertThat(preview).doesNotContain("deps action=lock");
     }
 
     /**

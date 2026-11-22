@@ -95,7 +95,7 @@ def system_prompt(tool: str, sandbox: Path, server: str) -> str:
         return TASK.system
     names = TOOL_NAMES[tool]
     return SYSTEM_PROMPT.format(tool_label=TOOL_LABEL[tool], sandbox=sandbox, server=server,
-                                results_tool=f"{server}: {names['results']}" + (" (run=latest)" if tool == "jk" else ""), run_tool=f"{server}: {names['run']}")
+                                results_tool=f"{server}: {names['results']}" + (" (id=latest)" if tool == "jk" else ""), run_tool=f"{server}: {names['run']}")
 
 
 def estimate_cost(model: str, usage: dict) -> float:

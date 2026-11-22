@@ -136,7 +136,7 @@ class JobEnvelopeQueueTest {
     }
 
     /**
-     * A detached build (an HTTP or MCP run) short of memory gets its jid while it waits, so its
+     * A detached build (an HTTP or MCP build) short of memory gets its jid while it waits, so its
      * request returns and frees its permit, and that jid cancels it in the queue.
      */
     @Test

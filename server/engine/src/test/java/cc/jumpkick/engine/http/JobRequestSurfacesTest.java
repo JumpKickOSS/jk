@@ -95,16 +95,16 @@ class JobRequestSurfacesTest extends HttpEngineServerHarness {
 
     @Test
     @SuppressWarnings("unchecked")
-    void every_argument_runs_card_names_is_one_the_decoder_accepts() {
+    void every_argument_builds_card_names_is_one_the_decoder_accepts() {
         Map<String, Object> props =
-                (Map<String, Object>) Objects.requireNonNull(McpTools.standard().tool("run"))
+                (Map<String, Object>) Objects.requireNonNull(McpTools.standard().tool("build"))
                         .spec()
                         .inputSchema()
                         .get("properties");
         List<String> accepted = new ArrayList<>(McpJobRuns.RUN_FIELDS);
         for (JobRequests.Field f : JobRequests.FIELDS) accepted.add(f.name());
         assertThat(accepted).containsAll(Objects.requireNonNull(props).keySet());
-        assertThat(props).containsKeys("kind", "dir", "modules", "classes", "suites", "jid", "run");
+        assertThat(props).containsKeys("kind", "dir", "modules", "classes", "suites", "jid", "id");
     }
 
     private static JobSpec withWebOrigin(JobSpec s) {

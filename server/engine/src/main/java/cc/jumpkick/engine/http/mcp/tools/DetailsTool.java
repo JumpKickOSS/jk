@@ -18,9 +18,9 @@ public final class DetailsTool implements McpTool {
                 "details",
                 "Budgeted tail of a run's details.jsonl transcript (default: last-fail, error + "
                         + "task-finish, 80 events). Same facts as CLI `jk results -d`, which "
-                        + "prints the full file. Start with run. Resource: jk://runs/latest/details.",
+                        + "prints the full file. Start with build. Resource: jk://runs/latest/details.",
                 McpSchemas.object(Map.of(
-                        "run",
+                        "id",
                         McpSchemas.string("last-fail (default) or history id"),
                         "tail",
                         McpSchemas.integer("Max events (default 80, max 400)"),
@@ -35,7 +35,7 @@ public final class DetailsTool implements McpTool {
 
     @Override
     public Map<String, Object> call(McpCall in) {
-        Map<String, Object> rec = McpDiagnostics.findRun(in.ctx().history(), in.str("run"), in.dir());
+        Map<String, Object> rec = McpDiagnostics.findRun(in.ctx().history(), in.str("id"), in.dir());
         Map<String, Object> fields = McpDetails.tail(
                 rec,
                 in.ctx().detailsFile(),
@@ -46,7 +46,11 @@ public final class DetailsTool implements McpTool {
         Object next = fields.remove("nextCursor");
         return in.ok(
                 McpEnvelope.of(
-                        "details", fields, truncated, next, "run is the high-level report; this is the raw transcript"),
+                        "details",
+                        fields,
+                        truncated,
+                        next,
+                        "build's verdict is the high-level report; this is the raw transcript"),
                 "details " + fields.getOrDefault("run", ""));
     }
 }

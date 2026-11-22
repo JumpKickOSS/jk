@@ -13,12 +13,12 @@ Run, read the verdict, edit, rerun. The verdict is the whole answer; scrape noth
 
 | | Shell | MCP |
 |---|---|---|
-| test | `jk -a test` | `run()` |
-| one class / suite | `-S C` / `-s s` | `run(classes=["C"])` / `run(suites=["s"])` |
-| build | `jk -a build` | `run(kind=build)` |
-| done: tests + guards | `jk -a test -g` | `run(kind=gate)` |
+| test | `jk -a test` | `build()` |
+| one class / suite | `-S C` / `-s s` | `build(classes=["C"])` / `build(suites=["s"])` |
+| build | `jk -a build` | `build(kind=build)` |
+| done: tests + guards | `jk -a test -g` | `build(kind=gate)` |
 | what a build would run | `jk explain` | `explain`* |
-| install for a sibling project | `jk -a install` | `run(kind=install)` |
+| install for a sibling project | `jk -a install` | `install`* |
 | add / remove a dep | `jk add g:a`, `jk remove g:a` | `deps(action=add, coords=["g:a"])` |
 | why this version | `jk why g:a` | `why`* |
 | every problem, with lines | `jk results -A` | `diagnostics()` |

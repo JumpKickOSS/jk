@@ -49,7 +49,7 @@ install maven:3.6.3 --accept-unverified-tool` takes the same consent ahead of ti
 never bypasses a checksum that is published.
 
 `jk mvn` also writes JumpKick's run report for the Maven run: `target/jk-results.md` and the history
-row behind `jk results`, MCP `run` and `diagnostics` (header `trigger: cli · tool: mvn`).
+row behind `jk results`, MCP `build` and `diagnostics` (header `trigger: cli · tool: mvn`).
 The run counts as a build: it takes the project's next build number (`#N` in the header), appears
 in `jk history` and on the dashboard's console and run page labelled `tool: mvn`, so a supervisor sees
 what an agent ran through Maven beside what it ran through JumpKick. The row's duration is Maven's wall

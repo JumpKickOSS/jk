@@ -12,6 +12,6 @@ A version in `jk.toml` is an exact pin. `jk add g:a` writes today's stable as a 
 - `preview=true` checks the coordinate and shows the edit; it writes nothing
 - `did you mean g2:a?`: add that coordinate. `the newest release is X`: use X. Never guess a version
 
-CLI: `jk add` and `jk remove`. The reply is the `jk.toml` change, then `lock ok` or the resolve failure. The next `run()` needs no lock step.
+CLI: `jk add` and `jk remove`. The reply is the `jk.toml` change, then `lock ok` or the resolve failure. The next `build()` needs no lock step.
 
 `java = N` is the language level (`--release`). Do not set `jdk = 17` or `jdk = 21` to emit older bytecode. `jk update` bumps pins on the same major. `jk update -m` crosses one. Do not hand-edit versions inside a BOM.

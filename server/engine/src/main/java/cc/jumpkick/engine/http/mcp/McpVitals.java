@@ -71,12 +71,12 @@ public final class McpVitals {
         return "engine " + status.getOrDefault("version", "") + " pid " + status.getOrDefault("pid", "");
     }
 
-    /** The kind of live job {@code jid}, or {@code run} when it is not in the live set. */
+    /** The kind of live job {@code jid}, or {@code build} when it is not in the live set. */
     public static String liveKind(McpContext ctx, long jid) {
         for (HttpLive.Run r : ctx.liveRuns().get()) {
             if (r.requestId() == jid && r.kind() != null && !r.kind().isBlank()) return r.kind();
         }
-        return "run";
+        return "build";
     }
 
     /** True while {@code jid} is in flight — one membership probe, not a snapshot of every run. */

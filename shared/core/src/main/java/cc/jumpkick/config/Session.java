@@ -119,7 +119,7 @@ public record Session(
         @With boolean keepGoing,
         /** A guard run: every jar is packaged for the output lane and no delivery artifact beside it. */
         @With boolean lanesOnly,
-        /** {@code run kind=test affected=true}: rank and run WIP test classes. */
+        /** {@code build kind=test affected=true}: rank and run WIP test classes. */
         @With boolean affected,
         /** Cross-module changed-type carrier for {@code --affected}; shared by every copy. */
         @With AffectedChanged affectedChanged,

@@ -10,6 +10,11 @@ JumpKick shows you this page's new entries after it updates itself.
   `rename`, `read`, `find`, `query` and `rules`, and new `delete`, `move` and `pull-up`. `jk graph`
   keeps `build`, `path` and `neighbors`; the old names are gone. MCP `callers` is now `usages`, and
   the skill topic `graph` is now `code` ([Code graph](graph.md)).
+- **MCP `run` is now `build`.** It starts what `jk build` and `jk test` do: `test` (the default),
+  `build`, `compile`, `gate`, `guard`, `assemble`, `native`, `image`, `clean` and `format`.
+  `id=<id>` reads an earlier verdict, here and on `diagnostics` and `details`. A lock is
+  `deps(action=lock)`; `update`, `install`, `publish` and `import` are their own tools
+  ([MCP](mcp.md)).
 - **MCP `delete`.** Deletes a method, field or type nothing uses, then compiles; with a use left it
   writes nothing and lists each one. On the extended tool list ([MCP](mcp.md)).
 - **MCP `move`.** Moves a static method or field to another type, editing every use and import,

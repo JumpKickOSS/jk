@@ -53,7 +53,7 @@ wait. JumpKick gives it the same things as tools it can call.
 | Find usages | `usages`: every call, field use and type use, exact, in one call |
 | Rename refactoring | `rename`: every use the compiler bound, proved by a compile, undone if it fails |
 | Red squiggles | A verdict: each error at `file:line` with the exact line to edit |
-| Run tests from the gutter | `run`: the cheapest test rung that can catch the bug, then the gate |
+| Run tests from the gutter | `build`: the cheapest test rung that can catch the bug, then the gate |
 | Incremental build | A content-addressed cache shared by every worktree, agent and CI runner |
 | Inspections | Guards: the rule, the sanctioned alternative, and why |
 | New project wizard | `new`: templates that ask only for what is missing |

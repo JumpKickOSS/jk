@@ -57,8 +57,8 @@ same way while it has no classes. A rename's proof says what it covered: "Proven
 nothing that may call the old name went unchecked, else "Proven only where it compiled; not for …"
 and never done.
 
-**One number per job.** An MCP reply names a job by its `jid` only, and `run(jid=N)`, `run(run=N)` and a
-duplicate `run(kind=…)` all wait on that job. Two numbers for one job send agents chasing the wrong one.
+**One number per job.** An MCP reply names a job by its `jid` only, and `build(jid=N)`, `build(id=N)` and a
+duplicate `build(kind=…)` all wait on that job. Two numbers for one job send agents chasing the wrong one.
 
 **Nothing of the graph's is in the tree.** Its fragments live in the action cache and the linked
 graph under `target/`, which agents' searches already skip, so no file or rule has to keep an agent
@@ -91,7 +91,7 @@ renamed tool or argument fails a test instead of misleading an agent.
 | Agent | Loads `AGENTS.md` | Its own file | MCP | Notes |
 |---|---|---|---|---|
 | Claude Code | yes | `CLAUDE.md` imports `AGENTS.md`; `.claude/settings.json` (allow-list, hook) | `.mcp.json` | Uses the graph as shipped |
-| Cursor | yes | `.cursor/rules/jk.mdc` (required) | `.cursor/mcp.json` | Cancels an MCP call at 60 s, so `run` answers `TIMEOUT … run(jid=N)` by 55 s; looks up each tool's schema before its first use (a turn each); its CLI takes ~11 s to start |
+| Cursor | yes | `.cursor/rules/jk.mdc` (required) | `.cursor/mcp.json` | Cancels an MCP call at 60 s, so `build` answers `TIMEOUT … build(jid=N)` by 55 s; looks up each tool's schema before its first use (a turn each); its CLI takes ~11 s to start |
 | Codex | yes, natively | none | user-level: `codex mcp add jk -- jk mcp` | No file tools: reads and searches through its shell (`zsh -lc '…'`) and edits with `apply_patch` |
 | grok | only in a trusted folder | `.grok/rules/*.md` (not needed) | its config | Reaches MCP tools through `search_tool`/`use_tool` |
 | agy | yes | `.agents/rules/jk.md` (helps) | its config | Reads its own MCP descriptors before a call; glances at config files after an answer |

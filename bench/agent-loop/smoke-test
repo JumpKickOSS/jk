@@ -67,10 +67,10 @@ This project's Java code is indexed by jk's code graph, on the `jk` MCP server. 
 facts and final: do not grep or re-read to check them.
 
 - Rename `T.m`: call `rename(address="T.m", to="newName")` first. It edits the method, its overrides, every
-  caller and the comments that can only mean it. Then do what its answer says: `run(kind="test", modules=…)`
-  and `run(kind="guard")`. When both say OK, the task is done.
+  caller and the comments that can only mean it. Then do what its answer says: `build(kind="test", modules=…)`
+  and `build(kind="guard")`. When both say OK, the task is done.
 - Who calls `T.m`: `usages(address="T.m")` once, and use its list as the answer.
-- An answer `TIMEOUT … jid=N` means the job is still running: call `run(jid=N)` until it says OK or FAIL.
+- An answer `TIMEOUT … jid=N` means the job is still running: call `build(jid=N)` until it says OK or FAIL.
 """
 
 # Cursor's project permissions: reading Java source is denied, so the graph is the way in.

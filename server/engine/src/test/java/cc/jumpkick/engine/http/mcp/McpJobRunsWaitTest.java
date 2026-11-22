@@ -14,7 +14,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 
 /**
- * A parked {@code run(jid=N)} needs one fact twenty times a second: is this jid still
+ * A parked {@code build(jid=N)} needs one fact twenty times a second: is this jid still
  * live. It asks the job's own liveness probe, not the dashboard's live-run snapshot, which copies
  * every in-flight module and step map under their monitors on each call — for as long as an hour
  * per parked agent.
@@ -91,7 +91,7 @@ class McpJobRunsWaitTest {
         assertThat(String.valueOf(result.get("content")))
                 .as("the running job's jid, never the journal's build number")
                 .contains("TIMEOUT test jid=3545")
-                .contains("run(jid=3545)")
+                .contains("build(jid=3545)")
                 .doesNotContain("841");
     }
 

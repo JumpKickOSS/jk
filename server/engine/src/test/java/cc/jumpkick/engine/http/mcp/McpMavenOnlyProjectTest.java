@@ -47,7 +47,7 @@ class McpMavenOnlyProjectTest {
         assertThat(bound.get("coord")).isEqualTo("com.example:app");
         assertThat(object(bound, "lastRun").get("kind")).isEqualTo("mvn");
 
-        assertThat(reply(mcp, session, "run", "{\"run\":\"latest\"}"))
+        assertThat(reply(mcp, session, "build", "{\"id\":\"latest\"}"))
                 .startsWith("FAIL mvn app")
                 .contains("src/A.java")
                 .contains("cannot find symbol");

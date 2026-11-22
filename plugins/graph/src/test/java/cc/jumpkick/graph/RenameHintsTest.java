@@ -31,6 +31,6 @@ class RenameHintsTest {
                         + " Type#field), Type or a.pkg.");
         assertThat(RenameHints.withUnbuilt(reply, List.of("m1", "m2", "m3", "m4", "m5", "m6", "m7")))
                 .isEqualTo(reply + " 7 modules have no compiled classes (m1, m2, m3, m4, m5 and 2 more): build"
-                        + " them first (run kind=build, or jk build).");
+                        + " them first (build kind=build, or jk build).");
     }
 }

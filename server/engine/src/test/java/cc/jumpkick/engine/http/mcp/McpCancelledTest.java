@@ -63,7 +63,7 @@ class McpCancelledTest {
     private void startRun(@Nullable String session, Path dir, String tokenJson) {
         String dirJson = dir.toString().replace("\\", "\\\\");
         mcp.handle(
-                "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"tools/call\",\"params\":{\"name\":\"run\","
+                "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"tools/call\",\"params\":{\"name\":\"build\","
                         + "\"arguments\":{\"dir\":\"" + dirJson + "\",\"wait\":false},"
                         + "\"_meta\":{\"progressToken\":" + tokenJson + "}}}",
                 session);

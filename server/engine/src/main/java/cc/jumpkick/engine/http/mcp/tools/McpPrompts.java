@@ -23,7 +23,7 @@ public final class McpPrompts {
     private static Map<String, String> catalog() {
         Map<String, String> m = new LinkedHashMap<>();
         m.put("learn-jumpkick", "skill then follow that playbook (not Maven/Gradle)");
-        m.put("fix-failing-build", "run kind=build (the reply is the verdict) then edit then run again");
+        m.put("fix-failing-build", "build kind=build (the reply is the verdict) then edit then build again");
         m.put("recover-disk", "disk usage then clean or nuke with confirm");
         m.put("setup-ci", "config apply_preset=ci");
         m.put("upgrade-deps", "outdated then read its file then update (preview) then update apply=true");

@@ -155,7 +155,7 @@ session expiry.
 An episode starts with the session's first action, and again when the session moves to another
 project, when it acts after ten minutes of quiet, and after a red run streak ends green (the
 green run closes the episode it fixed). An agent names its task with the `goal` argument of
-[`run`, `deps`, `rename` and `update`](mcp.md#goal): a new goal starts a new episode titled by
+[`build`, `deps`, `rename` and `update`](mcp.md#goal): a new goal starts a new episode titled by
 it, and a green run does not close an episode the agent named a goal for. Work with no goal
 that starts an episode takes the session's last goal as its title (*last goal*). With no goal at
 all, the title is inferred from what the episode did, in this order:
@@ -266,7 +266,7 @@ token opens that run's report and nothing else, for 8 hours, so the address in y
 history is not the dashboard token; a report link that has expired answers "report link expired or
 not valid", and the dashboard's link takes a fresh one. The
 figures are the record's `coverage[]` rows — the same facts as `target/jk-results.md` and MCP
-`run`; the baseline is the nearest earlier record of the project whose coverage is not
+`build`; the baseline is the nearest earlier record of the project whose coverage is not
 empty, as the results file chooses it.
 
 At an interactive terminal the link `jk web` and `jk engine status` print ends in `#t=<token>`,

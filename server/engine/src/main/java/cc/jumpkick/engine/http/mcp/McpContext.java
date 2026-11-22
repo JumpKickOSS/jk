@@ -141,7 +141,7 @@ public final class McpContext {
     @Setter
     private volatile @Nullable MachineEnvironments machine;
 
-    /** The tool registered under a name, for {@code run(decision=<id>)} to call again; null for none. */
+    /** The tool registered under a name, for {@code build(decision=<id>)} to call again; null for none. */
     @Getter(AccessLevel.PACKAGE)
     @Setter
     private volatile Function<String, @Nullable McpTool> toolNamed = name -> null;

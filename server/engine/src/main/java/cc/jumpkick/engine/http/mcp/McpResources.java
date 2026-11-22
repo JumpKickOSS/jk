@@ -30,7 +30,7 @@ public final class McpResources {
         rs.add(resource("jk://session", "Bound dir + engine status"));
         rs.add(resource("jk://project", "Project card"));
         rs.add(resource("jk://runs/latest", "Latest run of the bound project"));
-        rs.add(resource("jk://runs/latest/results", "That run's verdict (same text as run)", "text/plain"));
+        rs.add(resource("jk://runs/latest/results", "That run's verdict (same text as build)", "text/plain"));
         rs.add(resource(
                 "jk://runs/latest/details",
                 "Budgeted tail of that run's details.jsonl (same as details; CLI jk results -d dumps the full file)",

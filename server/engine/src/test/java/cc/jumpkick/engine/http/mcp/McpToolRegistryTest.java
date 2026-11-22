@@ -95,7 +95,7 @@ class McpToolRegistryTest {
     void the_default_list_is_the_loop() {
         McpTools tools = McpTools.standard();
         List<String> listed = names(tools.listing(McpTools.Surface.LOOP));
-        assertThat(listed).containsExactly("run", "diagnostics", "deps", "usages", "rename", "skill");
+        assertThat(listed).containsExactly("build", "diagnostics", "deps", "usages", "rename", "skill");
         assertThat(listed).isEqualTo(tools.loopNames());
         assertThat(listed)
                 .doesNotContain(
@@ -238,14 +238,15 @@ class McpToolRegistryTest {
     /**
      * The tools that start work require {@code goal}, in one wording, and each card stays within its
      * budget: 134 bytes of {@code goal} property and its place in {@code required} on top of the
-     * card's own. {@code run}'s card names the kinds an agent picks ({@code gate}, {@code guard},
-     * {@code format} among them), 54 bytes over the elided list it had.
+     * card's own. {@code build}'s card names the kinds an agent picks ({@code gate}, {@code guard},
+     * {@code format} among them), 54 bytes over the elided list it had. {@code deps} names {@code
+     * action=lock}, the relock {@code build} does not start.
      *
      * <p>Ceilings stand in for "do not waste tokens": every word must make a capability discoverable, prevent a wasted turn or make the next action more reliable. Raise one when a bench slice or transcripts show the added words save a turn (say so in the commit); cut words that do none of these, docs/contributors/agent-integration.md "Budgets".
      */
     @Test
     void the_tools_that_start_work_require_a_goal_within_their_card_budgets() {
-        Map<String, Integer> budget = Map.of("run", 667, "deps", 527, "rename", 760, "update", 953);
+        Map<String, Integer> budget = Map.of("build", 664, "deps", 532, "rename", 760, "update", 953);
         Map<String, Map<String, Object>> cards = new HashMap<>();
         for (Map<String, Object> row : objects(McpTools.standard().listing(McpTools.Surface.ALL), "tools")) {
             cards.put(String.valueOf(row.get("name")), row);
@@ -305,7 +306,7 @@ class McpToolRegistryTest {
     @Test
     void the_playbook_names_only_the_default_tools() {
         for (String instructions : List.of(McpTools.INSTRUCTIONS, McpTools.PINNED_INSTRUCTIONS)) {
-            assertThat(instructions).contains("run(", "skill");
+            assertThat(instructions).contains("build(", "skill");
             for (String name : McpTools.standard().names()) {
                 if (McpTools.LOOP.contains(name)) continue;
                 assertThat(instructions).as("names %s", name).doesNotContainPattern("\\b" + name + "\\(");
@@ -324,7 +325,7 @@ class McpToolRegistryTest {
             assertThat(PREFIXED.matcher(text).find()).isFalse();
         }
         assertThat(McpPrompts.playbook("learn-jumpkick").orElseThrow()).contains("skill");
-        assertThat(McpPrompts.playbook("fix-failing-build").orElseThrow()).contains("run");
+        assertThat(McpPrompts.playbook("fix-failing-build").orElseThrow()).contains("build kind=build");
     }
 
     private static List<String> names(Map<String, Object> listing) {

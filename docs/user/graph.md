@@ -252,8 +252,8 @@ nothing. The places are kept in `target/graph/anchors/stale`, each dropped once 
 carries the old name or the edit is undone, so a build after a graph question still names them.
 
 The record is always kept, and `usages` answers from it (below). An agent also sees its places without
-asking: in a workspace with a graph, an MCP `run` that builds (`kind=build`, `test`, `gate`, `guard`,
-`install` or any kind that builds the tree) and passes ends with the places that must change, a file's
+asking: in a workspace with a graph, an MCP `build` that builds (`kind=build`, `test`, `gate`, `guard`
+or any kind that builds the tree), or an `install`, and passes ends with the places that must change, a file's
 lines as one place, in five files at most, then `+N more:` and the call that lists the rest. It says
 nothing when none is left, nothing after a run that failed, nothing in a checkout with no graph yet,
 and nothing on the CLI: `jk build` and the rest print their usual output, and `usages file:<path>`
@@ -521,7 +521,7 @@ An alias maps a name in the code to the words people use for it. A question hold
 also starts from the name. JumpKick's graph has no LLM pass: documents are read for their structure, links
 and code mentions only.
 
-`[graph] anchor-tail` is what an MCP `run`'s verdict says after a hand edit left a name behind
+`[graph] anchor-tail` is what an MCP `build`'s verdict says after a hand edit left a name behind
 ([After a hand edit](#after-a-hand-edit)):
 
 ```toml

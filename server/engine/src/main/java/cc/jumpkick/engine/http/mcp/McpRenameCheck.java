@@ -18,8 +18,9 @@ import java.util.regex.Pattern;
  */
 public final class McpRenameCheck {
 
-    /** The answer's test instruction: {@code run(kind=test, modules=a,b, classes=X,Y)}. */
-    private static final Pattern TEST_CALL = Pattern.compile("run\\(kind=test((?:, [a-z]+=[^,) ]+(?:,[^,) =]+)*)*)\\)");
+    /** The answer's test instruction: {@code build(kind=test, modules=a,b, classes=X,Y)}. */
+    private static final Pattern TEST_CALL =
+            Pattern.compile("build\\(kind=test((?:, [a-z]+=[^,) ]+(?:,[^,) =]+)*)*)\\)");
 
     /** The answer's sentence that names the check, from {@code Test} to the end of its line. */
     private static final Pattern TEST_LINE = Pattern.compile("(?m) ?Test (?:next|the [a-z ]+edited):.*$");
@@ -58,12 +59,12 @@ public final class McpRenameCheck {
         String test = verdict(McpJobRuns.run(sub(in, args, left), null));
         if (!test.startsWith("OK")) {
             return in.text(body + "\nChecked by JumpKick, the edited tests: " + test.strip() + "\n" + call.group()
-                    + " runs them again; then run(kind=guard).");
+                    + " runs them again; then build(kind=guard).");
         }
         left = budget - elapsedS(startedNanos);
         if (left < GUARD_FLOOR_S) {
             String unchecked = RenameLeft.after(in.requiredDir());
-            return in.text(body + "\nChecked by JumpKick: " + firstLine(test) + ". Then run(kind=guard)"
+            return in.text(body + "\nChecked by JumpKick: " + firstLine(test) + ". Then build(kind=guard)"
                     + (uncompiled.isEmpty() && unchecked.isEmpty()
                             ? "; when it says OK the task is done."
                             : ". " + done(uncompiled, unchecked)));

@@ -26,7 +26,7 @@ On disk:
 The two files are the same report. Prefer the command over `cat` so you do not have to
 know the state-dir path.
 
-**Agents:** run `jk skill` once. Then MCP `run` (the reply is the verdict) or
+**Agents:** run `jk skill` once. Then MCP `build` (the reply is the verdict) or
 `jk -a`. Do not scrape the TTY. Do not turn on `--verbose` as your primary API.
 
 JUnit XML for CI stays at `target/surefire-reports/` (`target/failsafe-reports/` for the integration suite); each class's
@@ -43,11 +43,11 @@ The engine hosts MCP at `POST {httpUrl}/mcp` (token required). `jk engine status
 
 Recommended loop:
 
-1. `run` with `kind=build` or `kind=test` and `dir` = the project directory (that first
+1. `build` with `kind=build` or `kind=test` and `dir` = the project directory (that first
    `dir` binds the connection; later calls may omit it). The reply is the verdict.
    `diagnostics` with `file` is the rest.
 2. Edit sources.
-3. `run` again (`wait` defaults true).
+3. `build` again (`wait` defaults true).
 4. If stalled: `status`, then `cancel` (both on the extended `tools/list`).
 
 Do not dump full journal records. Open `details` only when you need the raw

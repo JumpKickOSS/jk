@@ -30,12 +30,12 @@ Topics: `code`, `dependencies`, `tests`, `workspaces`, `lockfile`, `imports`, `p
 ## What an agent does
 
 1. Read **`jk skill`** (or MCP **`skill`**) when a task needs more than the `AGENTS.md` section.
-2. Read the **verdict**. MCP `run` returns it. On the CLI, `jk -a` or `JK_AGENT=1` prints it.
-   `run=<id>` reads an earlier run.
+2. Read the **verdict**. MCP `build` returns it. On the CLI, `jk -a` or `JK_AGENT=1` prints it.
+   `build(id=<id>)` reads an earlier run.
 3. Detail past the cap is MCP **`diagnostics`** (`file=`). Over `jk mcp` the tools take no `dir`;
    over HTTP, pass `dir` on the first call and it binds the connection.
-4. Edit dependencies with **`deps`** (it relocks) or `jk add` / `jk remove`. Then `run()`.
-5. Before handing work back: `jk test -g` (MCP `run(kind=gate)`), the tests with the guard lanes; with
+4. Edit dependencies with **`deps`** (it relocks) or `jk add` / `jk remove`. Then `build()`.
+5. Before handing work back: `jk test -g` (MCP `build(kind=gate)`), the tests with the guard lanes; with
    `[format] enforce` it also formats what you changed. A verdict ending `· up to date` ran nothing.
 
 Other tools (history, explain, graph, jdk, …) are a `tools/list` with `{"extended": true}`.

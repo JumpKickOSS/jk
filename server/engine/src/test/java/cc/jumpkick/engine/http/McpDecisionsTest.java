@@ -20,8 +20,8 @@ import cc.jumpkick.engine.http.api.StatusSnapshot;
 import cc.jumpkick.engine.http.mcp.McpCall;
 import cc.jumpkick.engine.http.mcp.McpDecisions;
 import cc.jumpkick.engine.http.mcp.McpTool;
+import cc.jumpkick.engine.http.mcp.tools.BuildTool;
 import cc.jumpkick.engine.http.mcp.tools.McpTools;
-import cc.jumpkick.engine.http.mcp.tools.RunTool;
 import cc.jumpkick.engine.jobs.JobSpec;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.jsonl.Jsonl;
@@ -45,7 +45,7 @@ import org.junit.jupiter.api.Test;
  * Decisions reach the person behind a fake client by the first rung its session supports: a
  * client that declared form elicitation is asked in the call, one that declared URL elicitation is
  * sent to the decision's page, and a call whose rungs run out of time gets {@code NEEDS-YOU} with
- * the continuation {@code run(decision=<id>)} and, under {@code [ui] ask = notify}, a desktop
+ * the continuation {@code build(decision=<id>)} and, under {@code [ui] ask = notify}, a desktop
  * notification carrying the link. Any surface answers, the first answer wins, and a question still
  * in flight to the host is withdrawn when another surface answers first.
  */
@@ -140,7 +140,7 @@ class McpDecisionsTest {
 
         String reply = text(call.get(10, TimeUnit.SECONDS));
         Decision d = queue.list().getFirst();
-        assertThat(reply).startsWith("NEEDS-YOU ").contains("run(decision=" + d.id() + ")");
+        assertThat(reply).startsWith("NEEDS-YOU ").contains("build(decision=" + d.id() + ")");
         assertThat(d.open()).as("the decision stays open").isTrue();
         assertThat(requireNonNull(sent.poll(5, TimeUnit.SECONDS)).get("method")).isEqualTo("notifications/cancelled");
     }
@@ -224,7 +224,7 @@ class McpDecisionsTest {
                 .contains("the user answers it: " + link + "\n")
                 .doesNotContain("terminal")
                 .doesNotContain("t=T")
-                .endsWith("run(decision=" + d.id() + ")\n");
+                .endsWith("build(decision=" + d.id() + ")\n");
         assertThat(launched).singleElement().satisfies(argv -> {
             assertThat(argv.getFirst()).isEqualTo("notify-send");
             assertThat(argv.getLast())
@@ -234,15 +234,15 @@ class McpDecisionsTest {
 
         // Calling the tool again while it is open opens nothing new and notifies nobody again.
         assertThat(text(mcp.handle(call("risky", Map.of()), session, null, null, sent::add)))
-                .contains("run(decision=" + d.id() + ")");
+                .contains("build(decision=" + d.id() + ")");
         assertThat(queue.list()).hasSize(1);
         assertThat(launched).hasSize(1);
 
         assertThat(queue.accept(d.id(), Map.of("answer", "yes"), DecisionSurface.DASHBOARD))
                 .isInstanceOf(DecisionQueue.Result.Settled.class);
-        assertThat(text(mcp.handle(call("run", Map.of("decision", d.id())), session, null, null, sent::add)))
+        assertThat(text(mcp.handle(call("build", Map.of("decision", d.id())), session, null, null, sent::add)))
                 .isEqualTo("DONE 1\n");
-        assertThat(text(mcp.handle(call("run", Map.of("decision", d.id())), session, null, null, sent::add)))
+        assertThat(text(mcp.handle(call("build", Map.of("decision", d.id())), session, null, null, sent::add)))
                 .as("a decision proceeds one operation once")
                 .contains("no call waits on decision " + d.id());
     }
@@ -349,7 +349,7 @@ class McpDecisionsTest {
                 dir -> Map.of(),
                 List::of,
                 "0.13.7");
-        h.tools(new McpTools(List.of(new Risky("risky"), new Risky("other"), new RunTool())));
+        h.tools(new McpTools(List.of(new Risky("risky"), new Risky("other"), new BuildTool())));
         h.decisions(decisions);
         h.waitSecondMs(50);
         return h;

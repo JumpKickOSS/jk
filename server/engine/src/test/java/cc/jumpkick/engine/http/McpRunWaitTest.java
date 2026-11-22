@@ -28,7 +28,7 @@ import java.util.function.Supplier;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-/** {@code run} waits and {@code run(jid=N)} continuations: journal attribution, no HTTP bind. */
+/** {@code run} waits and {@code build(jid=N)} continuations: journal attribution, no HTTP bind. */
 class McpRunWaitTest {
 
     private static final long JID = 45L;
@@ -111,7 +111,7 @@ class McpRunWaitTest {
 
     private static String runWait(McpHandler mcp) {
         return mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\","
-                + "\"params\":{\"name\":\"run\",\"arguments\":"
+                + "\"params\":{\"name\":\"build\",\"arguments\":"
                 + "{\"kind\":\"build\",\"dir\":\"/ws\",\"wait\":true,\"timeout_s\":2}}}");
     }
 
@@ -178,7 +178,7 @@ class McpRunWaitTest {
                 + "\"modules\":[],\"tasks\":[],\"diagnostics\":[]}";
         McpHandler mcp = handler(List::of, jid -> jid == JID ? noop : null);
         String body = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\","
-                + "\"params\":{\"name\":\"run\",\"arguments\":{\"kind\":\"build\",\"dir\":"
+                + "\"params\":{\"name\":\"build\",\"arguments\":{\"kind\":\"build\",\"dir\":"
                 + MiniJson.write(ws.toString()) + ",\"timeout_s\":2}}}");
         assertThat(textOf(body)).startsWith("OK build a · up to date · 30ms").doesNotContain("9.0s");
     }
@@ -214,7 +214,7 @@ class McpRunWaitTest {
         mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\","
                 + "\"params\":{\"name\":\"bind\",\"arguments\":{\"dir\":\"/ws/a\"}}}");
         String body = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":2,"
-                + "\"method\":\"tools/call\",\"params\":{\"name\":\"run\",\"arguments\":"
+                + "\"method\":\"tools/call\",\"params\":{\"name\":\"build\",\"arguments\":"
                 + "{\"kind\":\"build\",\"dir\":\"/ws/b\",\"wait\":true,\"timeout_s\":2}}}");
         assertThat(object((Map<String, Object>) requireNonNull(MiniJson.parse(body)), "result"))
                 .doesNotContainKey("structuredContent");
@@ -227,7 +227,7 @@ class McpRunWaitTest {
 
     private static String runJid(McpHandler mcp, int timeoutS) {
         return mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"tools/call\","
-                + "\"params\":{\"name\":\"run\",\"arguments\":{\"jid\":45,\"timeout_s\":" + timeoutS + "}}}");
+                + "\"params\":{\"name\":\"build\",\"arguments\":{\"jid\":45,\"timeout_s\":" + timeoutS + "}}}");
     }
 
     @Test
@@ -250,7 +250,7 @@ class McpRunWaitTest {
                 () -> live.get() ? List.of(running) : List.of());
         // The job never finishes during the first call, so its one-second budget can only run out.
         mcp.waitSecondMs(100);
-        assertThat(textOf(runJid(mcp, 1))).isEqualTo("TIMEOUT test jid=45\nrun(jid=45)\n");
+        assertThat(textOf(runJid(mcp, 1))).isEqualTo("TIMEOUT test jid=45\nbuild(jid=45)\n");
         live.set(false);
         assertThat(textOf(runJid(mcp, 2))).startsWith("OK build a ·");
     }
