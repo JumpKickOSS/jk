@@ -9,8 +9,12 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.function.UnaryOperator;
+import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 import org.tomlj.Toml;
 import org.tomlj.TomlArray;
@@ -25,7 +29,8 @@ import org.tomlj.TomlTable;
  *
  * <p>Each entry is a {@code [[class]]} table: {@code name} (the top-level class, fully qualified),
  * {@code module} (the module's directory relative to the root, {@code .} for the root; absent
- * matches every module), {@code reason}, {@code since} (an ISO date) and an optional {@code issue}.
+ * matches every module), {@code reason}, {@code since} (an ISO date) and an optional {@link Issue}:
+ * {@code issue} (its id) and {@code issue-url}.
  */
 public record TestQuarantine(List<Entry> entries) {
 
@@ -51,11 +56,73 @@ public record TestQuarantine(List<Entry> entries) {
             String module,
             String reason,
             String since,
-            @Nullable String issue) {
+            @Nullable Issue issue) {
 
         /** Whether this entry holds top-level class {@code className} of the module at {@code module}. */
         public boolean holds(String module, String className) {
             return this.className.equals(className) && (this.module.isEmpty() || this.module.equals(module));
+        }
+    }
+
+    /**
+     * The issue a quarantined class is tracked under, in any ticket system: its id, its URL, or both;
+     * at least one.
+     */
+    public record Issue(@Nullable String id, @Nullable String url) {
+
+        private static final Pattern URL = Pattern.compile("[A-Za-z][A-Za-z0-9+.-]*://\\S+");
+
+        public Issue {
+            id = id == null || id.isBlank() ? null : id.trim();
+            url = url == null || url.isBlank() ? null : url.trim();
+            if (id == null && url == null) throw new IllegalArgumentException("an issue needs an id or a URL");
+        }
+
+        /**
+         * The issue {@code given} names: one value is its URL when it has a scheme ({@code https://…}),
+         * else its id; two are its id, then its URL.
+         */
+        public static Issue of(List<String> given) {
+            return switch (given.size()) {
+                case 1 ->
+                    isUrl(given.getFirst()) ? new Issue(null, given.getFirst()) : new Issue(given.getFirst(), null);
+                case 2 -> {
+                    if (!isUrl(given.get(1)))
+                        throw new IllegalArgumentException(
+                                "not a URL: " + given.get(1) + "; give the id, then the URL");
+                    yield new Issue(given.getFirst(), given.get(1));
+                }
+                default -> throw new IllegalArgumentException("give the issue's id, its URL, or the id then the URL");
+            };
+        }
+
+        /** Whether {@code s} is a URL: a scheme, {@code ://}, and no space. */
+        public static boolean isUrl(String s) {
+            return URL.matcher(s.trim()).matches();
+        }
+
+        /** The issue {@code id} and {@code url} name, or {@code null} when both are blank. */
+        static @Nullable Issue ofNullable(@Nullable String id, @Nullable String url) {
+            boolean none = (id == null || id.isBlank()) && (url == null || url.isBlank());
+            return none ? null : new Issue(id, url);
+        }
+
+        /** Its id, or its URL when it has no id. */
+        public String name() {
+            return id != null ? id : Objects.requireNonNull(url);
+        }
+
+        /** Its {@code id} and {@code url}, the ones it has, as machine output writes them. */
+        public Map<String, String> fields() {
+            Map<String, String> out = new LinkedHashMap<>();
+            if (id != null) out.put("id", id);
+            if (url != null) out.put("url", url);
+            return out;
+        }
+
+        /** Its id, and its URL after it; or the one it has. */
+        public String label() {
+            return id != null && url != null ? id + "  " + url : name();
         }
     }
 
@@ -136,7 +203,7 @@ public record TestQuarantine(List<Entry> entries) {
                     text(t, "module"),
                     text(t, "reason"),
                     t.isLocalDate("since") ? String.valueOf(t.getLocalDate("since")) : text(t, "since"),
-                    t.getString("issue")));
+                    Issue.ofNullable(t.getString("issue"), t.getString("issue-url"))));
         }
         return new TestQuarantine(out);
     }
@@ -177,8 +244,11 @@ public record TestQuarantine(List<Entry> entries) {
                 sb.append("reason = ").append(MinimalToml.quote(e.reason())).append('\n');
             if (!e.since().isEmpty())
                 sb.append("since = ").append(date(e.since())).append('\n');
-            if (e.issue() != null && !e.issue().isBlank())
-                sb.append("issue = ").append(MinimalToml.quote(e.issue())).append('\n');
+            Issue issue = e.issue();
+            if (issue != null && issue.id() != null)
+                sb.append("issue = ").append(MinimalToml.quote(issue.id())).append('\n');
+            if (issue != null && issue.url() != null)
+                sb.append("issue-url = ").append(MinimalToml.quote(issue.url())).append('\n');
         }
         return sb.toString();
     }
@@ -210,6 +280,34 @@ public record TestQuarantine(List<Entry> entries) {
             if (!after.equals(before)) after.write(root);
             return after;
         }
+    }
+
+    /**
+     * Track the class {@code name} names ({@link #names}) under {@code issue} in {@code root}'s
+     * quarantine, in every module, replacing the issue it had; answer the entries as written, none
+     * when it holds no such class. A simple name that names two classes changes nothing and is an
+     * {@link IllegalArgumentException} naming both.
+     */
+    public static List<Entry> issue(Path root, String name, Issue issue) throws IOException {
+        List<Entry> changed = new ArrayList<>();
+        edit(root, q -> {
+            List<Entry> out = new ArrayList<>();
+            for (Entry e : q.entries) {
+                if (!names(name, e.className())) {
+                    out.add(e);
+                    continue;
+                }
+                Entry tracked = new Entry(e.className(), e.module(), e.reason(), e.since(), issue);
+                out.add(tracked);
+                changed.add(tracked);
+            }
+            List<String> classes =
+                    changed.stream().map(Entry::className).distinct().toList();
+            if (classes.size() > 1)
+                throw new IllegalArgumentException(name + " names several classes: " + String.join(", ", classes));
+            return new TestQuarantine(out);
+        });
+        return changed;
     }
 
     /**

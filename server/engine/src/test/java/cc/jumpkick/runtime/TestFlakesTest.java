@@ -233,7 +233,8 @@ class TestFlakesTest {
             run(RERUN_PASS);
         }
         TestQuarantine.read(root)
-                .with(new TestQuarantine.Entry("a.ByHandTest", "", "hangs on CI", "2026-11-01", "https://x/1"))
+                .with(new TestQuarantine.Entry(
+                        "a.ByHandTest", "", "hangs on CI", "2026-11-01", new TestQuarantine.Issue(null, "https://x/1")))
                 .write(root);
 
         TestFlakes.Report report = TestFlakes.report(state, root);
@@ -246,7 +247,7 @@ class TestFlakesTest {
         assertThat(report.rows().get(0).held()).isNotNull();
         assertThat(report.rows().get(1).held())
                 .extracting(TestQuarantine.Entry::issue)
-                .isEqualTo("https://x/1");
+                .isEqualTo(new TestQuarantine.Issue(null, "https://x/1"));
         assertThat(report.rows().get(2).held()).isNull();
     }
 

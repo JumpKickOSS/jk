@@ -11,11 +11,13 @@ import cc.jumpkick.config.TomlScan;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-/** {@code jk flaky list}, {@code show} and {@code release} over a workspace's files. */
+/** {@code jk flaky list}, {@code show}, {@code issue} and {@code release} over a workspace's files. */
 class FlakyCommandTest {
 
     @TempDir
@@ -41,7 +43,11 @@ class FlakyCommandTest {
                         + "a.OkTest\t.....\n");
         TestQuarantine.NONE
                 .with(new TestQuarantine.Entry(
-                        "a.FlakyTest", "app", "passed on a re-run twice", "2026-11-20", "https://example.org/i/3"))
+                        "a.FlakyTest",
+                        "app",
+                        "passed on a re-run twice",
+                        "2026-11-20",
+                        new TestQuarantine.Issue(null, "https://example.org/i/3")))
                 .write(root);
     }
 
@@ -106,5 +112,48 @@ class FlakyCommandTest {
                 Capture.both(() -> assertThat(Jk.execute(new String[] {"flaky", "release", "FlakyTest", "--dir", dir}))
                         .isEqualTo(1));
         assertThat(again.out() + again.err()).contains("not quarantined: FlakyTest");
+    }
+
+    @Test
+    void issue_through_the_cli_stores_one_value_as_an_id_or_a_url_and_two_as_both() throws IOException {
+        String dir = root.toString();
+        Capture.Streams id =
+                Capture.both(() -> Jk.execute(new String[] {"flaky", "issue", "FlakyTest", "PROJ-88", "--dir", dir}));
+        assertThat(id.out() + id.err()).contains("a.FlakyTest in app: issue PROJ-88");
+        assertThat(issue()).isEqualTo(new TestQuarantine.Issue("PROJ-88", null));
+
+        Jk.execute(new String[] {"flaky", "issue", "FlakyTest", "https://linear.app/acme/issue/ENG-4", "--dir", dir});
+        assertThat(issue()).isEqualTo(new TestQuarantine.Issue(null, "https://linear.app/acme/issue/ENG-4"));
+
+        Jk.execute(new String[] {
+            "flaky", "issue", "a.FlakyTest", "88", "https://github.com/acme/shop/issues/88", "--dir", dir
+        });
+        assertThat(issue()).isEqualTo(new TestQuarantine.Issue("88", "https://github.com/acme/shop/issues/88"));
+        assertThat(Capture.stdout(() -> FlakyCommand.list(state, root, false))).contains("88");
+        assertThat(Capture.stdout(() -> FlakyCommand.show(state, root, "FlakyTest", false)))
+                .contains("issue:    88  https://github.com/acme/shop/issues/88");
+        assertThat(Capture.stdout(() -> FlakyCommand.issue(root, "FlakyTest", List.of("PROJ-9"), true)))
+                .contains("\"type\":\"flaky-issue\",\"class\":\"a.FlakyTest\",\"module\":\"app\","
+                        + "\"issue\":{\"id\":\"PROJ-9\"}}");
+    }
+
+    @Test
+    void issue_of_a_class_not_quarantined_or_in_the_wrong_order_fails_and_writes_nothing() throws IOException {
+        String dir = root.toString();
+        Capture.Streams gone = Capture.both(
+                () -> assertThat(Jk.execute(new String[] {"flaky", "issue", "a.OnceTest", "PROJ-1", "--dir", dir}))
+                        .isEqualTo(1));
+        assertThat(gone.out() + gone.err()).contains("not quarantined: a.OnceTest");
+
+        Capture.Streams swapped = Capture.both(() -> assertThat(
+                        Jk.execute(new String[] {"flaky", "issue", "FlakyTest", "https://x/1", "PROJ-1", "--dir", dir}))
+                .isEqualTo(1));
+        assertThat(swapped.out() + swapped.err()).contains("not a URL: PROJ-1; give the id, then the URL");
+        assertThat(issue()).isEqualTo(new TestQuarantine.Issue(null, "https://example.org/i/3"));
+    }
+
+    private TestQuarantine.@Nullable Issue issue() throws IOException {
+        TestQuarantine.Entry e = TestQuarantine.read(root).find("app", "a.FlakyTest");
+        return e == null ? null : e.issue();
     }
 }

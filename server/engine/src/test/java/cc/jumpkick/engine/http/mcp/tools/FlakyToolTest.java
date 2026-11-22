@@ -16,7 +16,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-/** The {@code flaky} MCP tool: the same list, show and release as {@code jk flaky}. */
+/** The {@code flaky} MCP tool: the same list, show, issue and release as {@code jk flaky}. */
 class FlakyToolTest {
 
     @TempDir
@@ -82,5 +82,26 @@ class FlakyToolTest {
                 .containsEntry("flakes", 0)
                 .containsEntry("runs", 0);
         assertThat(FlakyTool.release(state, root, "FlakyTest")).containsEntry("error", "not quarantined: FlakyTest");
+    }
+
+    @Test
+    void issue_stores_one_value_as_an_id_or_a_url_and_list_answers_it() throws IOException {
+        assertThat(FlakyTool.issue(root, "FlakyTest", "https://x/9", null))
+                .isEqualTo(Map.of(
+                        "tracked",
+                        List.of(Map.of(
+                                "class", "a.FlakyTest", "module", "app", "issue", Map.of("url", "https://x/9")))));
+        assertThat(FlakyTool.issue(root, "FlakyTest", "ENG-9", "https://x/9")).containsKey("tracked");
+        assertThat(FlakyTool.list(state, root).get("classes"))
+                .asInstanceOf(InstanceOfAssertFactories.LIST)
+                .singleElement()
+                .asInstanceOf(InstanceOfAssertFactories.MAP)
+                .containsEntry("issue", Map.of("id", "ENG-9", "url", "https://x/9"));
+
+        assertThat(FlakyTool.issue(root, null, "ENG-9", null)).containsEntry("error", "issue requires class");
+        assertThat(FlakyTool.issue(root, "FlakyTest", null, null))
+                .containsEntry("error", "issue requires issue: an id or a URL");
+        assertThat(FlakyTool.issue(root, "a.OkTest", "ENG-9", null))
+                .containsEntry("error", "not quarantined: a.OkTest");
     }
 }

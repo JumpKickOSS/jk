@@ -7,6 +7,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -25,7 +26,12 @@ class TestQuarantineTest {
     void entries_round_trip_sorted_by_module_then_class() throws IOException {
         TestQuarantine q = TestQuarantine.NONE
                 .with(new TestQuarantine.Entry("b.ZTest", "app", "flaky", "2026-11-22", null))
-                .with(new TestQuarantine.Entry("a.YTest", "app", "", "2026-11-21", "https://example.org/issues/7"))
+                .with(new TestQuarantine.Entry(
+                        "a.YTest",
+                        "app",
+                        "",
+                        "2026-11-21",
+                        new TestQuarantine.Issue("SHOP-7", "https://example.org/issues/7")))
                 .with(new TestQuarantine.Entry("c.XTest", "", "", "", null));
         q.write(root);
 
@@ -148,5 +154,85 @@ class TestQuarantineTest {
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessage("FlakyTest names several classes: a.FlakyTest, b.FlakyTest");
         assertThat(TestQuarantine.read(root).entries()).hasSize(2);
+    }
+
+    @Test
+    void one_value_is_an_id_or_a_url_and_two_are_the_id_then_the_url() {
+        assertThat(TestQuarantine.Issue.of(List.of("PROJ-88"))).isEqualTo(new TestQuarantine.Issue("PROJ-88", null));
+        assertThat(TestQuarantine.Issue.of(List.of("#88"))).isEqualTo(new TestQuarantine.Issue("#88", null));
+        assertThat(TestQuarantine.Issue.of(List.of("https://linear.app/acme/issue/ENG-4")))
+                .isEqualTo(new TestQuarantine.Issue(null, "https://linear.app/acme/issue/ENG-4"));
+        assertThat(TestQuarantine.Issue.of(List.of("88", "https://github.com/acme/shop/issues/88")))
+                .isEqualTo(new TestQuarantine.Issue("88", "https://github.com/acme/shop/issues/88"));
+        assertThatThrownBy(() -> TestQuarantine.Issue.of(List.of("https://x/1", "PROJ-1")))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("not a URL: PROJ-1; give the id, then the URL");
+        assertThatThrownBy(() -> TestQuarantine.Issue.of(List.of())).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> TestQuarantine.Issue.of(List.of(" "))).isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void the_file_keeps_an_issue_s_id_and_url_as_given() throws IOException {
+        TestQuarantine.NONE
+                .with(new TestQuarantine.Entry("a.IdTest", "app", "", "", new TestQuarantine.Issue("PROJ-1", null)))
+                .with(new TestQuarantine.Entry(
+                        "b.UrlTest", "app", "", "", new TestQuarantine.Issue(null, "https://x/2")))
+                .with(new TestQuarantine.Entry(
+                        "c.BothTest", "app", "", "", new TestQuarantine.Issue("PROJ-3", "https://x/3#c")))
+                .write(root);
+
+        String text = Files.readString(TestQuarantine.file(root));
+        assertThat(text)
+                .contains("name = \"a.IdTest\"\nmodule = \"app\"\nissue = \"PROJ-1\"\n")
+                .contains("name = \"b.UrlTest\"\nmodule = \"app\"\nissue-url = \"https://x/2\"\n")
+                .contains("issue = \"PROJ-3\"\nissue-url = \"https://x/3#c\"\n");
+        assertThat(TestQuarantine.read(root).entries())
+                .extracting(TestQuarantine.Entry::issue)
+                .containsExactly(
+                        new TestQuarantine.Issue("PROJ-1", null),
+                        new TestQuarantine.Issue(null, "https://x/2"),
+                        new TestQuarantine.Issue("PROJ-3", "https://x/3#c"));
+    }
+
+    @Test
+    void issue_tracks_a_class_in_every_module_and_replaces_what_it_had() throws IOException {
+        TestQuarantine.NONE
+                .with(new TestQuarantine.Entry("a.FlakyTest", "app", "flaky", "2026-11-20", null))
+                .with(new TestQuarantine.Entry(
+                        "a.FlakyTest", "lib", "", "", new TestQuarantine.Issue("OLD-1", "https://x/1")))
+                .with(new TestQuarantine.Entry("b.OtherTest", "app", "", "", null))
+                .write(root);
+        TestQuarantine.Issue issue = new TestQuarantine.Issue("ENG-4", null);
+
+        assertThat(TestQuarantine.issue(root, "FlakyTest", issue))
+                .extracting(e -> e.module() + " " + e.issue())
+                .containsExactly("app " + issue, "lib " + issue);
+        TestQuarantine back = TestQuarantine.read(root);
+        assertThat(back.find("app", "a.FlakyTest"))
+                .isEqualTo(new TestQuarantine.Entry("a.FlakyTest", "app", "flaky", "2026-11-20", issue));
+        assertThat(back.find("lib", "a.FlakyTest"))
+                .extracting(TestQuarantine.Entry::issue)
+                .isEqualTo(issue);
+        assertThat(back.find("app", "b.OtherTest"))
+                .extracting(TestQuarantine.Entry::issue)
+                .isNull();
+        assertThat(TestQuarantine.issue(root, "c.GoneTest", issue))
+                .as("not quarantined")
+                .isEmpty();
+    }
+
+    @Test
+    void a_simple_name_two_classes_share_tracks_neither() throws IOException {
+        TestQuarantine.NONE
+                .with(new TestQuarantine.Entry("a.FlakyTest", "app", "", "", null))
+                .with(new TestQuarantine.Entry("b.FlakyTest", "app", "", "", null))
+                .write(root);
+
+        assertThatThrownBy(() -> TestQuarantine.issue(root, "FlakyTest", new TestQuarantine.Issue("X-1", null)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("FlakyTest names several classes: a.FlakyTest, b.FlakyTest");
+        assertThat(TestQuarantine.read(root).entries())
+                .extracting(TestQuarantine.Entry::issue)
+                .containsOnlyNulls();
     }
 }

@@ -2,7 +2,7 @@
 # The gate's side of jk's test quarantine. jk keeps each class's history and, past the root's
 # [test] quarantine threshold, adds the class to .jk/test/quarantine.toml in the gate's checkout; a
 # run red only in quarantined classes passes, and every tier still runs them. The gate opens a
-# ticket for each class jk adds, writes the ticket's id as its `issue`, takes it out when the
+# ticket for each class jk adds, writes the ticket's id alone as its `issue`, takes it out when the
 # ticket closes, and submits the file to the merge queue, the only writer to origin/main.
 #
 # Usage:
@@ -63,7 +63,7 @@ take() {
   if git cat-file -e "HEAD:$FILE" 2>/dev/null; then git checkout -q HEAD -- "$FILE"; else rm -f "$FILE"; fi
 }
 
-# The entries of the quarantine file on stdin, `<module> <class> <reason> <since> <issue>`,
+# The entries of the quarantine file on stdin, `<module> <class> <reason> <since> <issue> <url>`,
 # tab-separated, `-` for empty: module and class bare, the others as the file writes them.
 entries() {
   awk -v sq="'" '
@@ -88,13 +88,13 @@ entries() {
     function dash(s) { return s == "" ? "-" : s }
     function flush() {
       if (inc && f["name"] != "")
-        print dash(bare(f["module"])) "\t" bare(f["name"]) "\t" dash(f["reason"]) "\t" dash(f["since"]) "\t" dash(f["issue"])
+        print dash(bare(f["module"])) "\t" bare(f["name"]) "\t" dash(f["reason"]) "\t" dash(f["since"]) "\t" dash(f["issue"]) "\t" dash(f["issue-url"])
       split("", f)
       inc = 0
     }
     /^[ \t]*\[\[[ \t]*class[ \t]*\]\][ \t]*(#.*)?$/ { flush(); inc = 1; next }
     /^[ \t]*\[/ { flush(); next }
-    inc && /^[ \t]*(name|module|reason|since|issue)[ \t]*=/ {
+    inc && /^[ \t]*(name|module|reason|since|issue|issue-url)[ \t]*=/ {
       key = $0
       sub(/^[ \t]*/, "", key)
       sub(/[ \t]*=.*/, "", key)
@@ -114,12 +114,13 @@ render() {
 # JumpKick adds a class that fails and then passes on a re-run with nothing changed as often
 # as [test] quarantine in jk.toml says. Delete an entry to release its class.
 EOF
-  LC_ALL=C sort -t$'\t' -k1,1 -k2,2 | while IFS=$'\t' read -r module class reason since issue; do
+  LC_ALL=C sort -t$'\t' -k1,1 -k2,2 | while IFS=$'\t' read -r module class reason since issue url; do
     printf '\n[[class]]\nname = "%s"\n' "$class"
     [[ "$module" == - ]] || printf 'module = "%s"\n' "$module"
     [[ "$reason" == - ]] || printf 'reason = %s\n' "$reason"
     [[ "$since" == - ]] || printf 'since = %s\n' "$since"
     [[ "$issue" == - ]] || printf 'issue = %s\n' "$issue"
+    [[ "$url" == - ]] || printf 'issue-url = %s\n' "$url"
   done
 }
 
@@ -159,7 +160,7 @@ open_ticket() {
 
 review() {
   local saved="${1:?usage: flaky.sh review <saved> <log>}" log="${2:?usage: flaky.sh review <saved> <log>}"
-  local base="${FLAKY_BASE:-origin/main}" tip module class reason since issue t ops=() first=""
+  local base="${FLAKY_BASE:-origin/main}" tip module class reason since issue url t ops=() first=""
   command -v "$KA" >/dev/null 2>&1 || die "$KA not found: the quarantine needs it to open and read tickets"
   git rev-parse -q --verify "$base^{commit}" >/dev/null || die "no commit $base to make the quarantine change on"
   tip="$(git rev-parse HEAD)"
@@ -177,7 +178,7 @@ review() {
       BEGIN { while ((getline l < head) > 0) { split(l, a, "\t"); held[a[1] "\t" a[2]] = 1 } }
       !(($1 "\t" $2) in held)' "$work/now"
     awk -F'\t' -v id="$TICKET_ID" '$5 !~ id' "$work/base"
-  } | while IFS=$'\t' read -r module class reason since issue; do
+  } | while IFS=$'\t' read -r module class reason since issue url; do
     t="$(ledger_ticket "$module" "$class")"
     if [[ -n "$t" ]] && ! closed "$t"; then continue; fi
     t="$(open_ticket "$module" "$class" "$reason")"
@@ -190,9 +191,10 @@ review() {
   done
 
   # The file the base should hold: its entries, each with its ticket's id and none whose ticket
-  # closed, then each class the gate holds an open ticket for and the base does not.
+  # closed, then each class the gate holds an open ticket for and the base does not. The id the
+  # gate writes is the entry's whole issue, with no URL.
   : >"$work/want"
-  while IFS=$'\t' read -r module class reason since issue; do
+  while IFS=$'\t' read -r module class reason since issue url; do
     t="$(ticket_of "$issue")"
     [[ -n "$t" ]] || t="$(ledger_ticket "$module" "$class")"
     if [[ -n "$t" ]] && closed "$t"; then
@@ -202,15 +204,16 @@ review() {
     fi
     if [[ -n "$t" && -z "$(ticket_of "$issue")" ]]; then
       issue="\"$t\""
+      url=-
       ops+=("$t	$class is quarantined under $t")
     fi
-    printf '%s\t%s\t%s\t%s\t%s\n' "$module" "$class" "$reason" "$since" "$issue" >>"$work/want"
+    printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$module" "$class" "$reason" "$since" "$issue" "$url" >>"$work/want"
   done <"$work/base"
   if [[ -f "$LEDGER" ]]; then
     while IFS=$'\t' read -r module class reason since t; do
       awk -F'\t' -v m="$module" -v c="$class" '$1 == m && $2 == c { found = 1 } END { exit !found }' "$work/base" && continue
       closed "$t" && continue
-      printf '%s\t%s\t%s\t%s\t"%s"\n' "$module" "$class" "$reason" "$since" "$t" >>"$work/want"
+      printf '%s\t%s\t%s\t%s\t"%s"\t-\n' "$module" "$class" "$reason" "$since" "$t" >>"$work/want"
       ops+=("$t	$class is quarantined under $t")
     done < <(awk -F'\t' '{ last[$1 "\t" $2] = $0 } END { for (k in last) print last[k] }' "$LEDGER" | LC_ALL=C sort)
   fi

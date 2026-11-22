@@ -860,7 +860,8 @@ name = "com.acme.OrdersTest"
 module = "orders"                       # the module's directory; leave it out for every module
 reason = "failed, then passed on a re-run with nothing changed, in 2 of its last 20 runs"
 since = 2026-11-22
-issue = "https://github.com/acme/shop/issues/88"   # optional, yours to add
+issue = "88"                                       # optional: jk flaky issue
+issue-url = "https://github.com/acme/shop/issues/88"
 ```
 
 A quarantined class still runs and its failures are still in `jk-results.md`, `details.jsonl` and
@@ -881,6 +882,19 @@ one with its entry and its whole history, oldest first (`.` passed, `F` failed, 
 re-run, `|` released); `jk flaky release <class>` deletes its entry in every module, and the file
 with the last one. A class is its fully qualified name or its simple name.
 
+`jk flaky issue <class> <id-or-url> [url]` tracks a quarantined class under an issue in any
+ticket system, Jira, Linear, GitHub or your own, in every module, replacing the issue it had. One
+value is the issue's URL when it starts with a scheme (`https://`), and its id otherwise; two are
+the id, then the URL. The file keeps what you gave, `issue` for the id and `issue-url` for the
+URL; `jk flaky list` shows the id (or the URL), `jk flaky show` both, and the dashboard links the
+id to the URL.
+
+```text
+$ jk flaky issue OrdersTest PROJ-88
+$ jk flaky issue OrdersTest https://linear.app/acme/issue/ENG-4
+$ jk flaky issue OrdersTest 88 https://github.com/acme/shop/issues/88
+```
+
 A release resets the class's count: the runs before it no longer count toward the threshold, so a
 released class goes back into quarantine only when it passes on a re-run 2 more times. Its history
 stays, with a `|` where it was released, and `jk flaky show` still prints it. The history is this
@@ -898,9 +912,10 @@ com.acme.OrdersTest  orders
             | released
 ```
 
-`-O jsonl` prints a `flaky` row per class and a `flaky-released` row per entry released
-([Machine output](machine-output.md)). The MCP tool `flaky` answers the same
-(`action=list|show|release`, `class`) ([MCP](mcp.md)).
+`-O jsonl` prints a `flaky` row per class, a `flaky-issue` row per entry tracked and a
+`flaky-released` row per entry released ([Machine output](machine-output.md)). The MCP tool
+`flaky` answers the same (`action=list|show|issue|release`, `class`, and `issue` and `url` for
+`issue`) ([MCP](mcp.md)).
 
 `jk test --quarantined` runs only the quarantined classes, in every module that has them, to check
 whether a fix holds. It cannot be combined with `--class`; add `-r` to run classes that already

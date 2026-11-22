@@ -9,9 +9,10 @@ JumpKick shows you this page's new entries after it updates itself.
 - **Flaky tests are quarantined.** A test class that fails and then passes on a re-run with
   nothing changed in 2 of its last 20 runs goes into `.jk/test/quarantine.toml`, which you check
   in. A run whose only failures are in quarantined classes passes and says so in one line; the
-  classes still run, and `jk test --quarantined` runs only them. `jk flaky list`, `show` and
-  `release` (MCP `flaky`) list the flaky and quarantined classes, show one with its history and
-  release one; a release resets the class's count and keeps its history. `[test] quarantine` sets the threshold
+  classes still run, and `jk test --quarantined` runs only them. `jk flaky list`, `show`, `issue`
+  and `release` (MCP `flaky`) list the flaky and quarantined classes, show one with its history,
+  track one under an issue in any ticket system (its id, its URL or both) and release one; a
+  release resets the class's count and keeps its history. `[test] quarantine` sets the threshold
   ([Test](test.md#flaky-tests-are-quarantined-jk-flaky)). The dashboard lists them with
   their recent runs on the project's **Flaky tests** tab, and a toast says when a class goes in.
 - **Code questions and refactorings move to `jk code`.** `jk code usages` (was `jk graph callers`),

@@ -43,6 +43,12 @@ export function issueHref(issue) {
   return /^https?:\/\//i.test(String(issue || '')) ? issue : null;
 }
 
+/** What an entry's issue ({ id, url }) reads as: its id, else `issue` for a bare URL, else nothing. */
+export function issueText(issue) {
+  if (!issue) return '';
+  return issue.id || (issue.url ? 'issue' : '');
+}
+
 /** The tab's model of a GET /api/project/flaky body; null before it loads. */
 export function flakyModel(body) {
   if (!body) return null;
@@ -61,8 +67,8 @@ export function flakyModel(body) {
       quarantined: !!q,
       reason: (q && q.reason) || '',
       since: (q && q.since) || '',
-      issue: (q && q.issue) || '',
-      issueHref: q ? issueHref(q.issue) : null,
+      issue: issueText(q && q.issue),
+      issueHref: q && q.issue ? issueHref(q.issue.url) : null,
     };
   });
   return {

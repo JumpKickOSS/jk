@@ -72,14 +72,15 @@ class CommandRowsFrozenBytesTest {
 
     @Test
     void flaky() {
-        var held = new TestQuarantine.Entry("a.FlakyTest", "app", "flaky", "2026-11-20", null);
+        var held = new TestQuarantine.Entry(
+                "a.FlakyTest", "app", "flaky", "2026-11-20", new TestQuarantine.Issue("PROJ-8", "https://x/8"));
         assertThat(JsonlShape.line(
                         7,
                         "flaky",
                         FlakyCommand.fields(new TestQuarantineReport.Row("a.FlakyTest", "app", held, "F.R.R"), 3)))
-                .isEqualTo(
-                        HEAD + "\"flaky\",\"class\":\"a.FlakyTest\",\"module\":\"app\",\"quarantined\":true,"
-                                + "\"flakes\":2,\"runs\":3,\"history\":\"F.R.R\",\"since\":\"2026-11-20\",\"reason\":\"flaky\"}");
+                .isEqualTo(HEAD + "\"flaky\",\"class\":\"a.FlakyTest\",\"module\":\"app\",\"quarantined\":true,"
+                        + "\"flakes\":2,\"runs\":3,\"history\":\"F.R.R\",\"since\":\"2026-11-20\",\"reason\":\"flaky\","
+                        + "\"issue\":{\"id\":\"PROJ-8\",\"url\":\"https://x/8\"}}");
         assertThat(JsonlShape.line(
                         7, "flaky", FlakyCommand.fields(new TestQuarantineReport.Row("b.T", ".", null, "R"), 20)))
                 .isEqualTo(HEAD + "\"flaky\",\"class\":\"b.T\",\"module\":\".\",\"quarantined\":false,"

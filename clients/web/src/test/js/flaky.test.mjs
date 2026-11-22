@@ -7,7 +7,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const spa = (name) => import(pathToFileURL(path.join(process.env.JK_APP_DIR, name)));
-const { QUARANTINE_NOTICE, historyCells, policyLine, issueHref, flakyModel, flakyMethods, flakyComputed } =
+const { QUARANTINE_NOTICE, historyCells, policyLine, issueHref, issueText, flakyModel, flakyMethods, flakyComputed } =
   await spa('flaky.js');
 const { routeFromHash, buildProjectHash } = await spa('route.js');
 
@@ -21,10 +21,17 @@ const body = {
       module: 'orders',
       history: 'FR.R',
       flakes: 2,
-      quarantined: { reason: 'failed, then passed on a re-run', since: '2026-11-22', issue: 'https://x/88' },
+      quarantined: { reason: 'failed, then passed on a re-run', since: '2026-11-22', issue: { id: 'SHOP-88', url: 'https://x/88' } },
     },
-    { name: 'com.acme.ByHandTest', module: '', history: '', flakes: 0, quarantined: { reason: '', since: '', issue: 'ACME-9' } },
+    { name: 'com.acme.ByHandTest', module: '', history: '', flakes: 0, quarantined: { reason: '', since: '', issue: { id: 'ACME-9' } } },
     { name: 'com.acme.CartTest', module: '.', history: 'R', flakes: 1 },
+    {
+      name: 'com.acme.UrlTest',
+      module: '.',
+      history: '',
+      flakes: 0,
+      quarantined: { reason: '', since: '', issue: { url: 'https://x/9' } },
+    },
   ],
 };
 
@@ -55,9 +62,15 @@ test('an issue links only when it is an http(s) URL', () => {
   assert.equal(issueHref('javascript:alert(1)'), null);
 });
 
+test('an issue reads as its id, or as issue when it is a URL alone', () => {
+  assert.equal(issueText({ id: 'ENG-4', url: 'https://x/4' }), 'ENG-4');
+  assert.equal(issueText({ url: 'https://x/4' }), 'issue');
+  assert.equal(issueText(undefined), '');
+});
+
 test('the model keeps the engine order and names what each row needs', () => {
   const m = flakyModel(body);
-  assert.equal(m.quarantined, 2);
+  assert.equal(m.quarantined, 3);
   assert.equal(m.policy, 'quarantined at 2 re-run passes in 4 runs');
   assert.deepEqual(
     m.rows.map((r) => [r.simple, r.module, r.flakes, r.runs, r.quarantined, r.issueHref]),
@@ -65,9 +78,10 @@ test('the model keeps the engine order and names what each row needs', () => {
       ['OrdersTest', 'orders', 2, 4, true, 'https://x/88'],
       ['ByHandTest', 'every module', 0, 0, true, null],
       ['CartTest', '.', 1, 1, false, null],
+      ['UrlTest', '.', 0, 0, true, 'https://x/9'],
     ],
   );
-  assert.equal(m.rows[1].issue, 'ACME-9');
+  assert.deepEqual(m.rows.map((r) => r.issue), ['SHOP-88', 'ACME-9', '', 'issue']);
   assert.equal(m.rows[2].cells.length, 4);
   assert.equal(flakyModel(null), null);
   assert.equal(flakyModel({ ...body, error: '.jk/test/quarantine.toml unreadable: x' }).error, '.jk/test/quarantine.toml unreadable: x');
@@ -84,7 +98,7 @@ test('the tab shows the checkout while it is open, and only the list read for th
   const vm = { view: 'project', projectTab: 'flaky', projectDir: () => '/ws/shop', flaky: { dir: '/ws/shop', body } };
   vm.flakyFor = flakyComputed.flakyFor.call(vm);
   assert.equal(vm.flakyFor, '/ws/shop');
-  assert.equal(flakyComputed.projectFlaky.call(vm).rows.length, 3);
+  assert.equal(flakyComputed.projectFlaky.call(vm).rows.length, 4);
   assert.equal(flakyComputed.projectFlaky.call({ ...vm, flakyFor: '/ws/other' }), null);
   assert.equal(flakyComputed.flakyFor.call({ ...vm, projectTab: 'runs' }), null);
 });

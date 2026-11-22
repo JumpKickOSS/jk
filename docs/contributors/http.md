@@ -471,7 +471,7 @@ directory for the modules at or under `dir`
 ([test.md](../user/test.md#flaky-tests-are-quarantined-jk-flaky)).
 
 `{ dir, policy: { flakes, runs }, file, error?, classes: [{ name, module, history, flakes,
-quarantined?: { reason, since, issue? } }] }`
+quarantined?: { reason, since, issue?: { id?, url? } } }] }`
 
 `classes` lists every class the file holds, then every other class that passed on a re-run in its
 last `policy.runs` runs since its last release, the quarantined first and then by `flakes`, the

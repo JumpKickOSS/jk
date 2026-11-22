@@ -20,7 +20,8 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * {@code flaky} — the project's flaky and quarantined test classes, as {@code jk flaky}:
- * list them, show one with its history, release one from {@value TestQuarantine#FILE}.
+ * list them, show one with its history, track one under an issue, release one from {@value
+ * TestQuarantine#FILE}.
  */
 public final class FlakyTool implements McpTool {
 
@@ -28,12 +29,17 @@ public final class FlakyTool implements McpTool {
     public Spec spec() {
         return new Spec(
                 "flaky",
-                "Flaky and quarantined test classes with their history; release takes one out of " + "quarantine.",
+                "Flaky and quarantined test classes with their history; issue tracks one under an issue in"
+                        + " any ticket system; release takes one out of quarantine.",
                 McpSchemas.object(Map.of(
                         "action",
-                        McpSchemas.string("list (default) | show | release"),
+                        McpSchemas.string("list (default) | show | issue | release"),
                         "class",
-                        McpSchemas.string("show / release: the class, fully qualified or its simple name"),
+                        McpSchemas.string("show / issue / release: the class, fully qualified or its simple name"),
+                        "issue",
+                        McpSchemas.string("issue: the issue's id (PROJ-88), or its URL when that is all you give"),
+                        "url",
+                        McpSchemas.string("issue: the issue's URL, after its id"),
                         "dir",
                         McpSchemas.string("The project (default: bound dir)"))));
     }
@@ -48,6 +54,7 @@ public final class FlakyTool implements McpTool {
             data = switch (action) {
                 case "list" -> list(JkDirs.state(), root);
                 case "show" -> show(JkDirs.state(), root, in.str("class"));
+                case "issue" -> issue(root, in.str("class"), in.str("issue"), in.str("url"));
                 case "release" -> release(JkDirs.state(), root, in.str("class"));
                 default -> Map.of("error", "unknown action `" + action + "`");
             };
@@ -74,6 +81,25 @@ public final class FlakyTool implements McpTool {
         return Map.of("classes", rows(named, report.policy().runs()));
     }
 
+    static Map<String, Object> issue(Path root, @Nullable String name, @Nullable String issue, @Nullable String url)
+            throws IOException {
+        if (name == null || name.isBlank()) return Map.of("error", "issue requires class");
+        if (issue == null || issue.isBlank()) return Map.of("error", "issue requires issue: an id or a URL");
+        List<String> given = url == null || url.isBlank() ? List.of(issue) : List.of(issue, url);
+        TestQuarantine.Issue tracking = TestQuarantine.Issue.of(given);
+        List<TestQuarantine.Entry> tracked = TestQuarantine.issue(root, name, tracking);
+        if (tracked.isEmpty()) return Map.of("error", "not quarantined: " + name);
+        List<Object> rows = new ArrayList<>();
+        for (TestQuarantine.Entry e : tracked) {
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("class", e.className());
+            row.put("module", e.module());
+            row.put("issue", tracking.fields());
+            rows.add(row);
+        }
+        return Map.of("tracked", rows);
+    }
+
     static Map<String, Object> release(Path stateDir, Path root, @Nullable String name) throws IOException {
         if (name == null || name.isBlank()) return Map.of("error", "release requires class");
         List<TestQuarantine.Entry> released = TestQuarantine.release(stateDir, root, name);
@@ -86,7 +112,7 @@ public final class FlakyTool implements McpTool {
     /**
      * Each row as {@code class}, {@code module}, {@code quarantined}, {@code flakes} in the {@code
      * runs} of its {@code history} (oldest first) a count looks at, and the entry's {@code since}, {@code
-     * reason} and {@code issue} when it has them.
+     * reason} and {@code issue} ({@code id}, {@code url}) when it has them.
      */
     private static List<Object> rows(List<TestQuarantineReport.Row> rows, int window) {
         List<Object> out = new ArrayList<>();
@@ -102,7 +128,8 @@ public final class FlakyTool implements McpTool {
             if (e != null) {
                 if (!e.since().isEmpty()) row.put("since", e.since());
                 if (!e.reason().isEmpty()) row.put("reason", e.reason());
-                if (e.issue() != null && !e.issue().isBlank()) row.put("issue", e.issue());
+                TestQuarantine.Issue issue = e.issue();
+                if (issue != null) row.put("issue", issue.fields());
             }
             out.add(row);
         }

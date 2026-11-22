@@ -187,7 +187,7 @@ A project's page has three tabs. **Runs** holds its tiles, the run page and its 
 first, with the episodes it spent here (title, outcome, runs, actions, wall, when), for answering
 "what happened here yesterday". A session's name opens it on the console. **Flaky tests**
 (`#project/<id>/flaky`) lists the checkout's quarantined test classes, with the reason, the date and
-the issue from `.jk/test/quarantine.toml`, and every other class that passed on a re-run in its last runs,
+the issue from `.jk/test/quarantine.toml` (its id, linked to its URL when it has one), and every other class that passed on a re-run in its last runs,
 each with those runs as a row of cells, oldest first: green passed, amber passed on a re-run, red
 failed, and a thin grey one where it was released ([quarantine](test.md#flaky-tests-are-quarantined-jk-flaky)). **Build** in the header
 starts a build of the checkout the page shows; the page then follows it.

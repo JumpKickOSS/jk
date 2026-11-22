@@ -53,7 +53,7 @@ final class HttpFlakyApi {
      * quarantines nothing on its own), {@code file}, {@code error} when the file is unreadable, and
      * {@code classes}: {@code name}, {@code module}, {@code history} (oldest first: {@code .} passed,
      * {@code R} passed on a re-run, {@code F} failed), {@code flakes}, and {@code quarantined} with
-     * the entry's {@code reason}, {@code since} and {@code issue}.
+     * the entry's {@code reason}, {@code since} and {@code issue} ({@code id}, {@code url}).
      */
     static Map<String, Object> body(Path root, TestFlakes.Report report) {
         Map<String, Object> policy = new LinkedHashMap<>();
@@ -71,7 +71,8 @@ final class HttpFlakyApi {
                 Map<String, Object> held = new LinkedHashMap<>();
                 held.put("reason", e.reason());
                 held.put("since", e.since());
-                if (e.issue() != null && !e.issue().isBlank()) held.put("issue", e.issue());
+                TestQuarantine.Issue issue = e.issue();
+                if (issue != null) held.put("issue", issue.fields());
                 row.put("quarantined", held);
             }
             classes.add(row);

@@ -25,7 +25,8 @@ import java.util.function.Consumer;
 
 /**
  * {@code jk flaky} — the workspace's flaky and quarantined test classes: list them, show one
- * with its history, release one from {@value TestQuarantine#FILE}. Reads files only; no engine.
+ * with its history, track one under an issue, release one from {@value TestQuarantine#FILE}. Reads
+ * and writes files only; no engine.
  */
 public final class FlakyCommand extends GroupCommand {
 
@@ -38,12 +39,12 @@ public final class FlakyCommand extends GroupCommand {
 
     @Override
     public String description() {
-        return "List, show and release flaky and quarantined test classes";
+        return "List, show, track and release flaky and quarantined tests";
     }
 
     @Override
     public List<CliCommand> subcommands() {
-        return List.of(new ListCommand(), new ShowCommand(), new ReleaseCommand());
+        return List.of(new ListCommand(), new ShowCommand(), new IssueCommand(), new ReleaseCommand());
     }
 
     /** The workspace root of the invocation's working directory. */
@@ -55,6 +56,7 @@ public final class FlakyCommand extends GroupCommand {
     /** One {@code flaky} row: a class, its state and its history, {@code window} the policy's runs. */
     public static Consumer<JsonFields> fields(TestQuarantineReport.Row r, int window) {
         TestQuarantine.Entry e = r.entry();
+        TestQuarantine.Issue issue = e == null ? null : e.issue();
         return f -> f.string("class", r.className())
                 .string("module", r.module())
                 .bool("quarantined", r.quarantined())
@@ -63,7 +65,7 @@ public final class FlakyCommand extends GroupCommand {
                 .string("history", r.history())
                 .optionalNonBlankString("since", e == null ? null : e.since())
                 .optionalNonBlankString("reason", e == null ? null : e.reason())
-                .optionalNonBlankString("issue", e == null ? null : e.issue());
+                .optionalMap("issue", issue == null ? null : issue.fields());
     }
 
     /** {@code jk flaky list}. */
@@ -84,9 +86,13 @@ public final class FlakyCommand extends GroupCommand {
             CliOutput.out("(no flaky or quarantined test classes)");
             return 0;
         }
-        Table table = new Table("Flaky and quarantined tests").columns("Class", "Module", "State", "Re-run passes");
+        Table table =
+                new Table("Flaky and quarantined tests").columns("Class", "Module", "State", "Re-run passes", "Issue");
         for (TestQuarantineReport.Row r : report.listed()) {
-            table.row(r.className(), r.module(), state(r, window), flakes(r, window));
+            TestQuarantine.Entry e = r.entry();
+            TestQuarantine.Issue issue = e == null ? null : e.issue();
+            table.row(
+                    r.className(), r.module(), state(r, window), flakes(r, window), issue == null ? "" : issue.name());
         }
         table.print();
         return 0;
@@ -117,7 +123,8 @@ public final class FlakyCommand extends GroupCommand {
             CliOutput.out("  state:    " + state(r, window));
             TestQuarantine.Entry e = r.entry();
             if (e != null && !e.reason().isEmpty()) CliOutput.out("  reason:   " + e.reason());
-            if (e != null && e.issue() != null && !e.issue().isBlank()) CliOutput.out("  issue:    " + e.issue());
+            if (e != null && e.issue() != null)
+                CliOutput.out("  issue:    " + e.issue().label());
             String h = r.history();
             if (h.isEmpty()) {
                 CliOutput.out("  history:  none on this machine");
@@ -131,6 +138,35 @@ public final class FlakyCommand extends GroupCommand {
             CliOutput.out("  history:  " + h);
             CliOutput.out("            oldest first; . passed, F failed, R passed on a re-run,");
             CliOutput.out("            | released");
+        }
+        return 0;
+    }
+
+    /** {@code jk flaky issue <class> <id-or-url> [url]}. */
+    static int issue(Path root, String name, List<String> given, boolean json) {
+        TestQuarantine.Issue issue;
+        List<TestQuarantine.Entry> tracked;
+        try {
+            issue = TestQuarantine.Issue.of(given);
+            tracked = TestQuarantine.issue(root, name, issue);
+        } catch (IOException | IllegalArgumentException e) {
+            CommandWedge.printFail(TITLE, e.getMessage());
+            return 1;
+        }
+        if (tracked.isEmpty()) {
+            CommandWedge.printFail(TITLE, "not quarantined: " + name);
+            return 1;
+        }
+        for (TestQuarantine.Entry e : tracked) {
+            if (json) {
+                JsonlShape.row("flaky-issue", f -> f.string("class", e.className())
+                        .string("module", e.module())
+                        .optionalMap("issue", issue.fields()));
+            } else {
+                CommandWedge.printOk(
+                        TITLE,
+                        e.className() + (e.module().isEmpty() ? "" : " in " + e.module()) + ": issue " + issue.label());
+            }
         }
         return 0;
     }
@@ -231,6 +267,38 @@ public final class FlakyCommand extends GroupCommand {
         @Override
         public int run(Invocation in) {
             return show(JkDirs.state(), root(in), in.positionals().getFirst(), GlobalOptions.outputIsJson(in));
+        }
+    }
+
+    /** {@code jk flaky issue <class> <id-or-url> [url]}. */
+    static final class IssueCommand implements CliCommand {
+        @Override
+        public String name() {
+            return "issue";
+        }
+
+        @Override
+        public String description() {
+            return "Track a quarantined test class under an issue: its id, URL or both";
+        }
+
+        @Override
+        public List<Param> parameters() {
+            return List.of(
+                    classParam("The class, fully qualified or its simple name."),
+                    Param.of("id-or-url", Arity.ONE, "The issue's id (PROJ-88), or its URL when you give only one."),
+                    Param.of("url", Arity.ZERO_OR_ONE, "The issue's URL, after its id."));
+        }
+
+        @Override
+        public MachineOutput machineOutput() {
+            return MachineOutput.JSONL;
+        }
+
+        @Override
+        public int run(Invocation in) {
+            List<String> args = in.positionals();
+            return issue(root(in), args.getFirst(), args.subList(1, args.size()), GlobalOptions.outputIsJson(in));
         }
     }
 

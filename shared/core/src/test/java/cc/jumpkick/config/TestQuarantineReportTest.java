@@ -70,7 +70,8 @@ class TestQuarantineReportTest {
                         "a.RedTest", "FFFF"));
         TestQuarantine.NONE
                 .with(new TestQuarantine.Entry("a.FlakyTest", "app", "flaky", "2026-11-20", null))
-                .with(new TestQuarantine.Entry("b.GoneTest", "lib", "", "", "https://example.org/issues/3"))
+                .with(new TestQuarantine.Entry(
+                        "b.GoneTest", "lib", "", "", new TestQuarantine.Issue(null, "https://example.org/issues/3")))
                 .write(root);
 
         TestQuarantineReport report = TestQuarantineReport.of(state, root);

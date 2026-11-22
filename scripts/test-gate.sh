@@ -223,10 +223,15 @@ gate 32 QUARANTINE_ADD=a.OtherTest
 [[ "$(tickets)" -eq 2 ]] || fail "a class with an open ticket got another"
 grep -q '^FLAKY the merge queue already holds' "$WORK/logs/integ-gate-32.log" || fail "the same change was submitted again: $(cat "$WORK/logs/integ-gate-32.log")"
 
-# The queue lands it, with an entry added by hand that names no ticket; then the first ticket
-# closes. Its class leaves the quarantine, the hand-added class gets a ticket, the other stays.
+# The queue lands it, with an entry added by hand that names no ticket and one tracked by hand
+# under a ticket and its URL; then the first ticket closes. Its class leaves the quarantine, the
+# hand-added class gets a ticket's id alone, the others stay as they were.
 mkdir -p "$repo/.jk/test"
-{ waiting && printf '\n[[class]]\nname = "b.HandTest"   # by hand\nreason = "flaky"\n'; } >"$repo/.jk/test/quarantine.toml"
+{
+  waiting
+  printf '\n[[class]]\nname = "b.HandTest"   # by hand\nreason = "flaky"\n'
+  printf '\n[[class]]\nname = "c.TrackedTest"\nissue = "TK-F0009"\nissue-url = "https://example.org/i/9#c"\n'
+} >"$repo/.jk/test/quarantine.toml"
 git -C "$repo" add -A && git -C "$repo" commit -qm landed
 tip="$(git -C "$repo" rev-parse HEAD)"
 echo "done" >"$WORK/ka/TK-F0001"
@@ -237,6 +242,8 @@ grep -q '^FLAKY a.FlakyTest leaves the quarantine: TK-F0001 is done' "$WORK/logs
 if waiting | grep -q a.FlakyTest; then fail "the released class is still in the file: $(waiting)"; fi
 waiting | grep -qx 'issue = "TK-F0002"' || fail "the class still quarantined lost its ticket: $(waiting)"
 waiting | grep -qx 'issue = "TK-F0003"' || fail "the hand-added class got no ticket: $(waiting)"
+waiting | grep -qx 'issue-url = "https://example.org/i/9#c"' || fail "an issue's URL was lost: $(waiting)"
+[[ "$(waiting | grep -c '^issue-url')" -eq 1 ]] || fail "the gate wrote an issue URL of its own: $(waiting)"
 [[ "$(subject)" == "TK-F0001: The gate's test quarantine follows its tickets" ]] || fail "the commit's subject was: $(subject)"
 
 # A class that cannot get a ticket is not submitted.

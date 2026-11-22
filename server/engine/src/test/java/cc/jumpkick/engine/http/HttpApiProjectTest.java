@@ -109,7 +109,8 @@ class HttpApiProjectTest extends HttpEngineServerHarness {
                 module = "orders"
                 reason = "hangs"
                 since = 2026-11-20
-                issue = "https://example.com/88"
+                issue = "SHOP-88"
+                issue-url = "https://example.com/88"
                 """);
         String auth = "Bearer " + token();
 
@@ -126,7 +127,7 @@ class HttpApiProjectTest extends HttpEngineServerHarness {
                 .contains("\"file\":\".jk/test/quarantine.toml\"")
                 .contains("\"name\":\"com.acme.OrdersTest\",\"module\":\"orders\",\"history\":\"\",\"flakes\":0")
                 .contains("\"quarantined\":{\"reason\":\"hangs\",\"since\":\"2026-11-20\","
-                        + "\"issue\":\"https://example.com/88\"}")
+                        + "\"issue\":{\"id\":\"SHOP-88\",\"url\":\"https://example.com/88\"}}")
                 .doesNotContain("\"error\"");
     }
 

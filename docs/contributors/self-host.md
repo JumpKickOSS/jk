@@ -66,7 +66,8 @@ before its verdict. Then
 
 - each class JumpKick added, and each entry on `origin/main` with no ticket, gets a `flake` ticket,
   recorded in `quarantine-tickets.tsv` under `GATE_LOG_DIR` until the queue lands its entry;
-- each entry gets its ticket's id as its `issue`, the id alone (no store URL);
+- each entry gets its ticket's id as its `issue`, the id alone: no `issue-url`, never a ticket
+  store's URL;
 - an entry whose ticket is done or canceled is taken out.
 
 When that file differs from `origin/main`'s and the queue does not already hold it, the review

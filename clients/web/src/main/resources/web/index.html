@@ -533,7 +533,7 @@
                   <td>
                     <template v-if="r.quarantined">
                       <span class="badge finished" :data-tip="r.reason || undefined">since {{ r.since || '?' }}</span>
-                      <a v-if="r.issueHref" class="flaky-issue" :href="r.issueHref" target="_blank" rel="noopener noreferrer">issue</a>
+                      <a v-if="r.issueHref" class="flaky-issue" :href="r.issueHref" target="_blank" rel="noopener noreferrer">{{ r.issue }}</a>
                       <span v-else-if="r.issue" class="dim small">{{ r.issue }}</span>
                     </template>
                     <span v-else class="dim">—</span>
