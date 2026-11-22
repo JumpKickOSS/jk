@@ -28,6 +28,11 @@ JumpKick shows you this page's new entries after it updates itself.
   release resets the class's count and keeps its history. `[test] quarantine` sets the threshold
   ([Test](test.md#flaky-tests-are-quarantined-jk-flaky)). The dashboard lists them with
   their recent runs on the project's **Flaky tests** tab, and a toast says when a class goes in.
+- **JumpKick updates itself only when nothing is using it.** The engine reads the current release
+  from the signed update manifest it already checks every four hours, holds the download to the
+  checksums the manifest lists, and installs it only when no build has run for 10 minutes and no
+  command, watcher, IDE or MCP agent is connected. On CI it never replaces itself mid-run.
+  `[updates] check = false` turns it off ([Install](install.md#updates)).
 - **Code questions and refactorings move to `jk code`.** `jk code usages` (was `jk graph callers`),
   `rename`, `read`, `find`, `query` and `rules`, and new `delete`, `move` and `pull-up`. `jk graph`
   keeps `build`, `path` and `neighbors`; the old names are gone. MCP `callers` is now `usages`, and

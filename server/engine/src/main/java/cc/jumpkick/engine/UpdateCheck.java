@@ -4,6 +4,7 @@ package cc.jumpkick.engine;
 import cc.jumpkick.compat.UpdatesMirror;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.JkConfigLoader;
+import cc.jumpkick.config.SelfUpdateState;
 import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.Log;
@@ -72,6 +73,7 @@ public final class UpdateCheck {
     private final Supplier<ReleaseVerifier> verifier;
     private final BooleanSupplier offline;
     private final Map<String, Applier> appliers;
+    private final Consumer<UpdateManifest> answeredWith;
     private final Clock clock;
 
     /** The manifest URL that last answered, which the files it lists are fetched beside; null before. */
@@ -92,10 +94,14 @@ public final class UpdateCheck {
                 () -> ReleaseVerifier.current(GlobalConfig.releaseTrustedKeys()),
                 JkConfigLoader::hostOffline,
                 appliers(log),
+                UpdateCheck::recordRelease,
                 Clock.SYSTEM);
     }
 
-    /** Test seam: the sources, the state directory, the trusted keys, the offline switch and the appliers. */
+    /**
+     * Test seam: the sources, the state directory, the trusted keys, the offline switch, the
+     * appliers, and what is told each manifest a source answered with.
+     */
     UpdateCheck(
             Consumer<String> log,
             Supplier<Sources> sources,
@@ -103,6 +109,7 @@ public final class UpdateCheck {
             Supplier<ReleaseVerifier> verifier,
             BooleanSupplier offline,
             Map<String, Applier> appliers,
+            Consumer<UpdateManifest> answeredWith,
             Clock clock) {
         this.log = log != null ? log : s -> {};
         this.sources = Objects.requireNonNull(sources, "sources");
@@ -110,6 +117,7 @@ public final class UpdateCheck {
         this.verifier = Objects.requireNonNull(verifier, "verifier");
         this.offline = Objects.requireNonNull(offline, "offline");
         this.appliers = Map.copyOf(appliers);
+        this.answeredWith = Objects.requireNonNull(answeredWith, "answeredWith");
         this.clock = Objects.requireNonNull(clock, "clock");
     }
 
@@ -128,6 +136,20 @@ public final class UpdateCheck {
                 "templates",
                 (entry, file) -> OfficialTemplatesFreshen.freshenOfficialAt(
                         entry.version(), log, ProxyEnvironment.ambient()::gitHttpProxy));
+    }
+
+    /**
+     * The JumpKick release the manifest names, as the latest this home's self-update has seen: the
+     * engine's self-update downloads it, and {@code jk engine status} shows it.
+     */
+    static void recordRelease(UpdateManifest manifest) {
+        manifest.release().ifPresent(release -> {
+            try {
+                SelfUpdateState.update(s -> s.withCheck(Clock.SYSTEM.instant(), release.version()));
+            } catch (IOException e) {
+                Log.debug("update check: jk " + release.version() + " not recorded", e);
+            }
+        });
     }
 
     /** Keep {@code bytes} as the store's price table when they parse and were published after the table in use. */
@@ -204,7 +226,7 @@ public final class UpdateCheck {
 
     /** Ask {@code source}; the state after it answered, with the kinds that now wait. */
     private UpdateState fetch(Http client, URI source, UpdateState state) throws IOException, InterruptedException {
-        Path stored = dir.resolve(UpdatesMirror.FILE);
+        Path stored = dir.resolve(UpdateManifest.FILE);
         Map<String, String> headers = new LinkedHashMap<>();
         if (Files.isRegularFile(stored)) {
             if (!state.etag().isBlank()) headers.put("If-None-Match", state.etag());
@@ -236,6 +258,7 @@ public final class UpdateCheck {
         } else {
             throw new IOException(source + " returned HTTP " + status);
         }
+        answeredWith.accept(manifest);
         Map<String, String> applied = state.applied();
         Map<String, String> pending = new LinkedHashMap<>();
         manifest.data().forEach((kind, entry) -> {
@@ -258,7 +281,7 @@ public final class UpdateCheck {
             try (var held = StoreWriteGate.write()) {
                 if (StoreWriteGate.wipedSinceStart()) return false;
                 UpdateState state = UpdateState.read(dir);
-                Path stored = dir.resolve(UpdatesMirror.FILE);
+                Path stored = dir.resolve(UpdateManifest.FILE);
                 if (state.pending().isEmpty() || !Files.isRegularFile(stored)) return false;
                 UpdateManifest manifest = UpdateManifest.parse(Files.readAllBytes(stored));
                 List<String> applied = new ArrayList<>();

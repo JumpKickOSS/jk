@@ -279,6 +279,14 @@ public final class McpConnections {
         return new Counts(max, live.size(), active);
     }
 
+    /** The loaded connections with a call being served or a request within the last {@code millis}. */
+    public synchronized int connectedWithin(long millis) {
+        long now = clock.getAsLong();
+        int n = 0;
+        for (McpConnection c : live.values()) if (c.outstanding() > 0 || now - c.lastSeenAt() < millis) n++;
+        return n;
+    }
+
     /** True when {@code id} is loaded, not only stored. */
     synchronized boolean loaded(String id) {
         return live.containsKey(id);

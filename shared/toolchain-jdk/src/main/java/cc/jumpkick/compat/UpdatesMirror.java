@@ -5,6 +5,7 @@ import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.m2.MavenSettings;
+import cc.jumpkick.updates.UpdateManifest;
 import java.net.URI;
 import java.util.List;
 import java.util.Map;
@@ -29,13 +30,11 @@ public record UpdatesMirror(@Nullable DownloadOrigin origin) {
     /** The settings.xml {@code mirrorOf} token that names the update files. */
     public static final String MIRROR_OF = "jk-updates";
 
-    /** The manifest's file name under each public origin and under a mirror. */
-    public static final String FILE = "updates.json";
-
     /** The public copies, asked in order: the second only when the first fails. */
     public static final List<URI> PUBLIC_SOURCES = List.of(
-            URI.create("https://jumpkick.build/" + FILE),
-            URI.create("https://raw.githubusercontent.com/JumpKickOSS/jk-updates/refs/heads/main/" + FILE));
+            URI.create("https://jumpkick.build/" + UpdateManifest.FILE),
+            URI.create(
+                    "https://raw.githubusercontent.com/JumpKickOSS/jk-updates/refs/heads/main/" + UpdateManifest.FILE));
 
     /** The mirror this process's configuration names. */
     public static UpdatesMirror current() {
@@ -51,7 +50,7 @@ public record UpdatesMirror(@Nullable DownloadOrigin origin) {
 
     /** The manifest URLs to ask, in order: the mirror's copy alone when one is configured. */
     public List<URI> sources() {
-        return origin == null ? PUBLIC_SOURCES : List.of(origin.url().resolve(FILE));
+        return origin == null ? PUBLIC_SOURCES : List.of(origin.url().resolve(UpdateManifest.FILE));
     }
 
     /** {@code http} carrying the mirror's credential on requests under it; {@code http} itself without one. */

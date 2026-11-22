@@ -17,6 +17,7 @@ import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.testing.PropertyRoots;
+import cc.jumpkick.updates.UpdateManifest;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.PrintStream;
@@ -26,6 +27,8 @@ import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -282,5 +285,22 @@ class SelfUpdateApplyTest {
 
         PreparedUpdate kept = prepared(cas, "0.17.0");
         assertThat(SelfCommand.UpdateSub.preparedFor(install, cas, "0.17.0")).contains(kept);
+    }
+
+    @Test
+    void a_release_the_update_manifest_names_downloads_only_with_the_checksums_it_lists() throws Exception {
+        byte[] sums = "abc  jk-engine-0.17.0.jar\n".getBytes(StandardCharsets.UTF_8);
+        UpdateManifest named = new UpdateManifest(
+                Instant.parse("2026-11-22T04:00:00Z"),
+                Map.of(UpdateManifest.CHANNEL, new UpdateManifest.Release("0.17.0", Hashing.sha256Hex(sums))),
+                Map.of());
+
+        SelfCommand.UpdateSub.holdToUpdateManifest(Optional.of(named), "0.17.0", sums);
+        byte[] swapped = "def  jk-engine-0.17.0.jar\n".getBytes(StandardCharsets.UTF_8);
+        assertThatThrownBy(() -> SelfCommand.UpdateSub.holdToUpdateManifest(Optional.of(named), "0.17.0", swapped))
+                .hasMessageContaining("does not match the update manifest");
+
+        SelfCommand.UpdateSub.holdToUpdateManifest(Optional.of(named), "0.16.2", swapped);
+        SelfCommand.UpdateSub.holdToUpdateManifest(Optional.empty(), "0.17.0", swapped);
     }
 }

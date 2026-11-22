@@ -26,7 +26,6 @@ import org.jspecify.annotations.Nullable;
  * last-attempt = "2026-10-30T09:00:00Z"   # last check tried, reached or not
  * latest = "0.17.0"                       # what that check found
  * latest-etag = "\"ae1c35d5…\""            # the pointer's ETag, sent back as If-None-Match
- * first-seen = "2026-10-01T08:00:00Z"     # the first time this home ran the scheduler
  * held = "0.16.2"                         # a deliberate downgrade: no auto-update until cleared
  * held-from = "0.17.0"
  * snooze-until = "2026-10-31T09:00:00Z"   # "not now" to an offered update, on any surface
@@ -45,7 +44,6 @@ public record SelfUpdateState(
         @Nullable Instant lastAttempt,
         @Nullable String latest,
         @Nullable String latestEtag,
-        @Nullable Instant firstSeen,
         @Nullable String held,
         @Nullable String heldFrom,
         @Nullable Instant snoozeUntil,
@@ -82,7 +80,6 @@ public record SelfUpdateState(
             b.lastAttempt = instant(v, "last-attempt");
             b.latest = v.get("latest");
             b.latestEtag = v.get("latest-etag");
-            b.firstSeen = instant(v, "first-seen");
             b.held = v.get("held");
             b.heldFrom = v.get("held-from");
             b.snoozeUntil = instant(v, "snooze-until");
@@ -142,10 +139,6 @@ public record SelfUpdateState(
 
     public SelfUpdateState withAttempt(Instant at) {
         return with(b -> b.lastAttempt = at);
-    }
-
-    public SelfUpdateState withFirstSeen(Instant at) {
-        return with(b -> b.firstSeen = at);
     }
 
     /** Held at {@code version} after a deliberate downgrade from {@code from}. */
@@ -218,7 +211,6 @@ public record SelfUpdateState(
         put(v, "last-attempt", lastAttempt);
         put(v, "latest", latest);
         put(v, "latest-etag", latestEtag);
-        put(v, "first-seen", firstSeen);
         put(v, "held", held);
         put(v, "held-from", heldFrom);
         put(v, "snooze-until", snoozeUntil);
@@ -262,9 +254,6 @@ public record SelfUpdateState(
         String latestEtag;
 
         @Nullable
-        Instant firstSeen;
-
-        @Nullable
         String held;
 
         @Nullable
@@ -304,7 +293,6 @@ public record SelfUpdateState(
             lastAttempt = s.lastAttempt;
             latest = s.latest;
             latestEtag = s.latestEtag;
-            firstSeen = s.firstSeen;
             held = s.held;
             heldFrom = s.heldFrom;
             snoozeUntil = s.snoozeUntil;
@@ -324,7 +312,6 @@ public record SelfUpdateState(
                     lastAttempt,
                     latest,
                     latestEtag,
-                    firstSeen,
                     held,
                     heldFrom,
                     snoozeUntil,

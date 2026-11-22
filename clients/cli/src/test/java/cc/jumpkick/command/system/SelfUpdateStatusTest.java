@@ -40,7 +40,7 @@ class SelfUpdateStatusTest {
         var prepared = new PreparedUpdate(
                 "0.17.0", "0.16.2", "a".repeat(64), PreparedUpdate.Client.NATIVE, "b".repeat(64), NOW);
         assertThat(row("0.16.2", state, Optional.of(prepared)))
-                .endsWith("checked 5 min ago, 0.17.0 downloaded, installs when the engine is quiet");
+                .endsWith("checked 5 min ago, 0.17.0 downloaded, installs once no build or session is running");
     }
 
     @Test

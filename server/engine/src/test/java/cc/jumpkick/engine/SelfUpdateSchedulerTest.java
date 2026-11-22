@@ -20,9 +20,10 @@ import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 
 /**
- * The engine's update schedule: when a check is due, what wakes a run, and how a build that
- * arrives mid-run pauses it. Steps and the home are fakes; {@link SelfUpdateScheduler#runSteps} is
- * called directly so nothing races a background thread.
+ * The engine's own update: the release the update manifest names is downloaded once the engine is
+ * quiet or the release has waited long enough, and installed only when no build runs and no session
+ * is connected; never on CI, never with the update check off. Steps and the home are fakes; {@link
+ * SelfUpdateScheduler#tick} is called directly so nothing races a background thread.
  */
 class SelfUpdateSchedulerTest {
 
@@ -30,12 +31,13 @@ class SelfUpdateSchedulerTest {
 
     private final FakeClock clock = new FakeClock();
     private final AtomicInteger active = new AtomicInteger();
+    private final AtomicInteger sessions = new AtomicInteger();
     private final FakeHome home = new FakeHome();
     private final FakeSteps steps = new FakeSteps();
     private final List<String> log = new ArrayList<>();
 
     private SelfUpdateScheduler scheduler() {
-        return new SelfUpdateScheduler(RUNNING, active::get, () -> false, steps, home, clock, log::add);
+        return new SelfUpdateScheduler(RUNNING, active::get, sessions::get, () -> false, steps, home, clock, log::add);
     }
 
     private void stage(String version) {
@@ -60,9 +62,9 @@ class SelfUpdateSchedulerTest {
     }
 
     @Test
-    void install_now_skips_the_quiet_trigger_and_installs_the_download() {
+    void install_now_skips_the_idle_trigger_and_installs_the_download() {
         var s = scheduler();
-        active.set(2); // builds in flight: the quiet trigger would wait
+        active.set(2); // builds in flight: the idle trigger would wait
         assertThat(s.installNow()).isFalse();
 
         stage("0.17.0");
@@ -75,134 +77,162 @@ class SelfUpdateSchedulerTest {
     }
 
     @Test
-    void a_quiet_engine_checks_downloads_and_installs_back_to_back() {
+    void an_idle_engine_downloads_the_release_the_manifest_names_and_installs_it() {
         var s = scheduler();
-        clock.advance(SelfUpdateScheduler.QUIET);
+        clock.advance(SelfUpdateScheduler.IDLE);
 
-        s.runSteps(false);
+        s.tick();
 
-        assertThat(steps.ran).containsExactly("check", "download 0.17.0", "install 0.17.0");
+        assertThat(steps.ran).containsExactly("download 0.17.0", "install 0.17.0");
         assertThat(log).anyMatch(l -> l.contains("installing jk 0.17.0"));
+        s.tick();
+        assertThat(steps.ran).as("one install per engine").hasSize(2);
     }
 
     @Test
-    void nothing_runs_before_ten_quiet_minutes_without_the_build_trigger() {
+    void the_download_waits_for_a_quiet_spell_and_the_install_for_an_idle_one() {
         var s = scheduler();
-        clock.advance(SelfUpdateScheduler.QUIET.minusSeconds(1));
-        s.runSteps(false);
+        clock.advance(SelfUpdateScheduler.DOWNLOAD_QUIET.minusSeconds(1));
+        s.tick();
         assertThat(steps.ran).isEmpty();
+
+        clock.advance(Duration.ofSeconds(1));
+        s.tick();
+        assertThat(steps.ran).as("downloaded; not idle long enough to install").containsExactly("download 0.17.0");
+
+        clock.advance(SelfUpdateScheduler.IDLE);
+        s.tick();
+        assertThat(steps.ran).containsExactly("download 0.17.0", "install 0.17.0");
     }
 
     @Test
-    void the_check_runs_at_most_every_twelve_hours_and_a_failed_one_retries_hourly() {
+    void a_release_that_never_finds_a_quiet_spell_is_downloaded_after_waiting_between_builds() {
         var s = scheduler();
-        Instant now = clock.instant();
-        home.state = SelfUpdateState.EMPTY.withCheck(now.minus(Duration.ofHours(11)), RUNNING);
-        assertThat(s.next(now)).isInstanceOf(SelfUpdateScheduler.Next.Nothing.class);
+        Duration gap = SelfUpdateScheduler.DOWNLOAD_QUIET.minusSeconds(30);
+        for (Duration waited = Duration.ZERO;
+                waited.compareTo(SelfUpdateScheduler.DOWNLOAD_WAIT) < 0;
+                waited = waited.plus(gap)) {
+            s.buildFinished();
+            clock.advance(gap);
+            s.tick();
+        }
+        s.buildFinished();
+        clock.advance(gap);
+        s.tick();
 
-        home.state = SelfUpdateState.EMPTY.withCheck(now.minus(Duration.ofHours(12)), RUNNING);
-        assertThat(s.next(now)).isInstanceOf(SelfUpdateScheduler.Next.Check.class);
-
-        home.state = home.state.withAttempt(now.minus(Duration.ofMinutes(59)));
-        assertThat(s.next(now)).isInstanceOf(SelfUpdateScheduler.Next.Nothing.class);
-        home.state = home.state.withAttempt(now.minus(Duration.ofMinutes(60)));
-        assertThat(s.next(now)).isInstanceOf(SelfUpdateScheduler.Next.Check.class);
+        assertThat(steps.ran).containsExactly("download 0.17.0");
     }
 
     @Test
-    void the_third_build_in_a_row_runs_a_step_even_while_others_build() {
+    void nothing_is_downloaded_or_replaced_while_a_build_runs() {
         var s = scheduler();
+        clock.advance(SelfUpdateScheduler.IDLE);
         active.set(1);
-        steps.newest = RUNNING;
-
-        s.runSteps(true);
-
-        assertThat(steps.ran).containsExactly("check");
-    }
-
-    @Test
-    void builds_count_toward_the_trigger_only_while_they_come_back_to_back() {
-        var s = scheduler();
-        // No step runs on the first two; a quiet gap starts the count again.
-        s.buildFinished();
-        s.buildFinished();
-        clock.advance(SelfUpdateScheduler.QUIET);
-        s.buildFinished();
-        s.buildFinished();
+        s.tick();
+        stage("0.17.0");
+        s.tick();
         assertThat(steps.ran).isEmpty();
     }
 
     @Test
-    void a_build_that_starts_during_a_step_holds_the_next_step_for_quiet() {
+    void nothing_is_replaced_while_a_session_is_connected() {
         var s = scheduler();
-        clock.advance(SelfUpdateScheduler.QUIET);
-        steps.duringCheck = () -> active.set(1);
+        clock.advance(SelfUpdateScheduler.IDLE);
+        sessions.set(1);
 
-        s.runSteps(false);
-        assertThat(steps.ran).containsExactly("check");
+        s.tick();
+        s.tick();
+        assertThat(steps.ran).as("a download replaces nothing").containsExactly("download 0.17.0");
 
-        // Still building: the quiet trigger stays shut.
-        s.runSteps(false);
-        assertThat(steps.ran).containsExactly("check");
+        sessions.set(0);
+        s.tick();
+        assertThat(steps.ran).containsExactly("download 0.17.0", "install 0.17.0");
+    }
 
-        active.set(0);
-        clock.advance(SelfUpdateScheduler.QUIET);
-        s.runSteps(false);
-        assertThat(steps.ran).containsExactly("check", "download 0.17.0", "install 0.17.0");
+    @Test
+    void ci_checks_but_never_downloads_or_replaces_itself() {
+        var s = scheduler();
+        clock.advance(SelfUpdateScheduler.IDLE);
+        home.ci = true;
+        s.tick();
+        stage("0.17.0");
+        s.tick();
+        assertThat(steps.ran).isEmpty();
+        assertThat(s.next(clock.instant())).isInstanceOf(SelfUpdateScheduler.Next.Nothing.class);
+    }
+
+    @Test
+    void the_update_check_turned_off_downloads_and_installs_nothing() {
+        var s = scheduler();
+        clock.advance(SelfUpdateScheduler.IDLE);
+        home.enabled = false;
+        s.tick();
+        stage("0.17.0");
+        s.tick();
+        assertThat(steps.ran).isEmpty();
+    }
+
+    @Test
+    void a_manifest_naming_no_newer_release_downloads_nothing() {
+        var s = scheduler();
+        clock.advance(SelfUpdateScheduler.IDLE);
+        home.offered = null;
+        s.tick();
+        home.offered = RUNNING;
+        s.tick();
+        home.offered = "0.16.1";
+        s.tick();
+        assertThat(steps.ran).isEmpty();
     }
 
     @Test
     void ask_stops_after_the_download_and_off_runs_nothing() {
         var s = scheduler();
-        clock.advance(SelfUpdateScheduler.QUIET);
+        clock.advance(SelfUpdateScheduler.IDLE);
         home.action = Action.ASK;
-        s.runSteps(false);
-        assertThat(steps.ran).containsExactly("check", "download 0.17.0");
+        s.tick();
+        assertThat(steps.ran).containsExactly("download 0.17.0");
 
         steps.ran.clear();
+        home.prepared = null;
         home.action = Action.OFF;
-        s.runSteps(false);
+        s.tick();
         assertThat(steps.ran).isEmpty();
     }
 
     @Test
     void a_download_that_failed_waits_an_hour() {
         var s = scheduler();
-        clock.advance(SelfUpdateScheduler.QUIET);
+        clock.advance(SelfUpdateScheduler.IDLE);
         steps.downloadWorks = false;
-        s.runSteps(false);
-        assertThat(steps.ran).containsExactly("check", "download 0.17.0");
+        s.tick();
+        assertThat(steps.ran).containsExactly("download 0.17.0");
 
         steps.ran.clear();
         clock.advance(Duration.ofMinutes(30));
-        s.runSteps(false);
+        s.tick();
         assertThat(steps.ran).isEmpty();
         clock.advance(Duration.ofMinutes(30));
-        s.runSteps(false);
+        s.tick();
         assertThat(steps.ran).containsExactly("download 0.17.0");
     }
 
     @Test
-    void a_newer_install_or_a_fresh_ci_home_leaves_the_update_to_others() {
+    void a_newer_install_leaves_the_update_to_its_engine() {
         var s = scheduler();
-        clock.advance(SelfUpdateScheduler.QUIET);
+        clock.advance(SelfUpdateScheduler.IDLE);
         home.installed = "0.17.0";
-        s.runSteps(false);
-        home.installed = RUNNING;
-        home.freshCi = true;
-        s.runSteps(false);
+        s.tick();
         assertThat(steps.ran).isEmpty();
     }
 
     @Test
-    void a_waiting_download_installs_without_checking_again() {
+    void a_waiting_download_installs_without_downloading_again() {
         var s = scheduler();
-        clock.advance(SelfUpdateScheduler.QUIET);
-        home.state = SelfUpdateState.EMPTY.withCheck(clock.instant(), "0.17.0");
-        home.prepared = new PreparedUpdate(
-                "0.17.0", RUNNING, "a".repeat(64), PreparedUpdate.Client.NATIVE, "b".repeat(64), clock.instant());
+        clock.advance(SelfUpdateScheduler.IDLE);
+        stage("0.17.0");
 
-        s.runSteps(false);
+        s.tick();
 
         assertThat(steps.ran).containsExactly("install 0.17.0");
     }
@@ -228,24 +258,13 @@ class SelfUpdateSchedulerTest {
     /** Steps that record what ran and write what a real step would into the fake home. */
     private final class FakeSteps implements SelfUpdateScheduler.Steps {
         final List<String> ran = new ArrayList<>();
-        String newest = "0.17.0";
         boolean downloadWorks = true;
-        Runnable duringCheck = () -> {};
-
-        @Override
-        public boolean check() {
-            ran.add("check");
-            duringCheck.run();
-            home.state = home.state.withCheck(clock.instant(), newest);
-            return true;
-        }
 
         @Override
         public boolean download(String version) {
             ran.add("download " + version);
             if (!downloadWorks) return false;
-            home.prepared = new PreparedUpdate(
-                    version, RUNNING, "a".repeat(64), PreparedUpdate.Client.NATIVE, "b".repeat(64), clock.instant());
+            stage(version);
             return true;
         }
 
@@ -261,12 +280,16 @@ class SelfUpdateSchedulerTest {
     private static final class FakeHome implements SelfUpdateScheduler.View {
         Action action = Action.AUTO;
         SelfUpdateState state = SelfUpdateState.EMPTY;
+        boolean enabled = true;
+        boolean ci;
+
+        @Nullable
+        String offered = "0.17.0";
 
         @Nullable
         PreparedUpdate prepared;
 
         String installed = RUNNING;
-        boolean freshCi;
 
         @Override
         public Action action() {
@@ -279,6 +302,21 @@ class SelfUpdateSchedulerTest {
         }
 
         @Override
+        public boolean enabled() {
+            return enabled;
+        }
+
+        @Override
+        public boolean ci() {
+            return ci;
+        }
+
+        @Override
+        public Optional<String> offered() {
+            return Optional.ofNullable(offered);
+        }
+
+        @Override
         public Optional<PreparedUpdate> prepared() {
             return Optional.ofNullable(prepared);
         }
@@ -286,16 +324,6 @@ class SelfUpdateSchedulerTest {
         @Override
         public Optional<String> installed() {
             return Optional.of(installed);
-        }
-
-        @Override
-        public boolean freshCiHome() {
-            return freshCi;
-        }
-
-        @Override
-        public void recordAttempt(Instant at) {
-            state = state.withAttempt(at);
         }
 
         @Override

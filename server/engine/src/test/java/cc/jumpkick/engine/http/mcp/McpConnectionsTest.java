@@ -104,6 +104,23 @@ class McpConnectionsTest {
     }
 
     @Test
+    void a_connection_counts_as_connected_while_a_call_runs_or_within_the_window_after_a_request() {
+        McpConnection quietOne = opened("claude-code");
+        McpConnection busy = opened("cursor");
+        busy.callStarted();
+        assertThat(table.connectedWithin(60_000)).isEqualTo(2);
+
+        now.addAndGet(60_000);
+        assertThat(table.connectedWithin(60_000))
+                .as("the quiet one went quiet; the one with a call outstanding is still connected")
+                .isEqualTo(1);
+        table.find(quietOne.id());
+        assertThat(table.connectedWithin(60_000))
+                .as("a request connects it again")
+                .isEqualTo(2);
+    }
+
+    @Test
     void a_connection_with_a_call_outstanding_never_unloads_and_a_full_active_table_refuses_a_new_one() {
         table.max(1);
         McpConnection parked = opened("claude-code");

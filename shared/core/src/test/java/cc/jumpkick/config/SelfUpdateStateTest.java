@@ -17,7 +17,6 @@ class SelfUpdateStateTest {
     void every_field_round_trips(@TempDir Path dir) throws Exception {
         Path file = dir.resolve("self-update.toml");
         SelfUpdateState written = SelfUpdateState.update(file, s -> s.withCheck(T, "0.17.0", "\"etag-1\"")
-                .withFirstSeen(T.minusSeconds(60))
                 .withHold("0.16.2", "0.17.0")
                 .withSnooze("0.17.0", T.plusSeconds(3600))
                 .withInteractiveSeen(T)

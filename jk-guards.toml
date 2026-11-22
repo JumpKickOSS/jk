@@ -1805,10 +1805,6 @@ in     = "cc.jumpkick.engine.SelfUpdateScheduler#start"
 reason = "engine-lifetime update ticker; serves no request"
 
 [[guards.request-thread-carries-session.allow]]
-in     = "cc.jumpkick.engine.SelfUpdateScheduler#kick"
-reason = "a jk self update run the ticker starts; serves no request"
-
-[[guards.request-thread-carries-session.allow]]
 in     = "cc.jumpkick.engine.SelfUpdateScheduler#installNow"
 reason = "a jk self update install the ticker starts; serves no request"
 

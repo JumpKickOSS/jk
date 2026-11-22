@@ -33,6 +33,7 @@ import java.net.BindException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -583,6 +584,12 @@ public final class HttpEngineServer implements AutoCloseable {
     public McpConnections.Counts mcpConnections() {
         McpHandler h = mcp;
         return h == null ? new McpConnections.Counts(0, 0, 0) : h.connectionCounts();
+    }
+
+    /** The MCP connections with a call being served or a request within {@code window}; 0 when not mounted. */
+    public int mcpConnectedWithin(Duration window) {
+        McpHandler h = mcp;
+        return h == null ? 0 : h.connectedWithin(window.toMillis());
     }
 
     /** The applications MCP {@code run} started that are still running; empty when MCP is not mounted. */

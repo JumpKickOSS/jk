@@ -190,7 +190,11 @@ bytes when nothing changed) that carries no account, project or machine identifi
 (`JK_OFFLINE`, or `offline = true` under `[config]`), or when no source answers, nothing changes
 and nothing is said. An `updates` mirror (`JK_UPDATES_DIST_MIRROR`) is the directory that holds a
 copy of the manifest and the files beside it, and nothing else is asked. `jk doctor` shows the last
-check and what waits to be applied. To turn the check off:
+check and what waits to be applied.
+
+The same manifest names the current JumpKick release and the SHA-256 of its signed `SHA256SUMS`,
+which the engine's [own update](install.md#updates) downloads and holds to. To turn the check off,
+and with it the engine's own update:
 
 ```toml
 # ~/.jk/config.toml

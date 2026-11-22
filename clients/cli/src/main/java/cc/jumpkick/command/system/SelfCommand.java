@@ -53,6 +53,7 @@ import cc.jumpkick.model.command.Param;
 import cc.jumpkick.repo.ReleaseArtifacts;
 import cc.jumpkick.repo.ReleaseVerifier;
 import cc.jumpkick.terminal.Terminals;
+import cc.jumpkick.updates.UpdateManifest;
 import cc.jumpkick.util.FileLocks;
 import cc.jumpkick.version.Versions;
 import cc.jumpkick.wire.EnginePaths;
@@ -667,6 +668,7 @@ public final class SelfCommand extends GroupCommand {
                 URI base, ReleaseVerifier verifier, String target, String running, EngineInstall install, Cas cas)
                 throws IOException {
             ReleaseArtifacts.Manifest release = ReleaseArtifacts.manifest(base, target, verifier);
+            holdToUpdateManifest(UpdateManifest.held(), target, release.bytes());
             boolean jvm = JvmClient.installed();
             // A JVM client moves to the native one as soon as a release lists it for this host,
             // unless JK_CLIENT=jvm asks to stay; a native client has nothing else to move to.
@@ -699,6 +701,17 @@ public final class SelfCommand extends GroupCommand {
                     new PreparedUpdate(target, running, engine.sha256(), kind, clientSha, Clock.SYSTEM.instant());
             prepared.write(install.engineHome());
             return prepared;
+        }
+
+        /**
+         * Refuse {@code target}'s {@code SHA256SUMS} when the signed update manifest the engine holds
+         * names that release with other checksums. A release it does not name rests on the release's
+         * own signature alone.
+         */
+        static void holdToUpdateManifest(Optional<UpdateManifest> held, String target, byte[] sums) throws IOException {
+            Optional<UpdateManifest.Release> named = held.flatMap(UpdateManifest::release)
+                    .filter(r -> r.version().equals(target));
+            if (named.isPresent()) named.get().verifySums(sums);
         }
 
         /** {@code jk-whats-new-<version>.md}: the release's highlights, shown once it is installed. */

@@ -49,6 +49,49 @@ class UpdateManifestTest {
     }
 
     @Test
+    void names_each_channels_release_and_skips_a_channel_it_cannot_read() throws IOException {
+        UpdateManifest m = parse("""
+                {
+                  "published": "2026-11-22T04:00:00Z",
+                  "jk": {
+                    "stable": {"version": "0.60.0", "sha256": "%1$s"},
+                    "nightly": {"version": "0.61.0-SNAPSHOT", "sha256": "%1$s"},
+                    "beta": {"version": "../0.61.0", "sha256": "%1$s"},
+                    "edge": {"version": "0.61.0"}
+                  }
+                }
+                """.formatted(SHA));
+
+        assertThat(m.release()).contains(new UpdateManifest.Release("0.60.0", SHA));
+        assertThat(m.jk()).containsOnlyKeys("stable");
+        assertThat(parse("{\"published\": \"2026-11-22T04:00:00Z\", \"jk\": []}")
+                        .release())
+                .isEmpty();
+    }
+
+    @Test
+    void a_release_is_trusted_only_when_its_checksums_match_the_manifest() throws IOException {
+        byte[] sums = "abc  jk-engine-0.60.0.jar\n".getBytes(StandardCharsets.UTF_8);
+        new UpdateManifest.Release("0.60.0", Hashing.sha256Hex(sums)).verifySums(sums);
+
+        assertThatThrownBy(() -> new UpdateManifest.Release("0.60.0", SHA).verifySums(sums))
+                .hasMessageContaining("does not match");
+    }
+
+    @Test
+    void the_held_manifest_is_read_from_the_state_directory(@TempDir Path dir) throws IOException {
+        assertThat(UpdateManifest.held(dir)).isEmpty();
+        Files.writeString(dir.resolve(UpdateManifest.FILE), "not json");
+        assertThat(UpdateManifest.held(dir)).isEmpty();
+        Files.writeString(
+                dir.resolve(UpdateManifest.FILE),
+                "{\"published\": \"2026-11-22T04:00:00Z\", \"jk\": {\"stable\": {\"version\": \"0.60.0\", "
+                        + "\"sha256\": \"" + SHA + "\"}}}");
+        assertThat(UpdateManifest.held(dir).flatMap(UpdateManifest::release))
+                .contains(new UpdateManifest.Release("0.60.0", SHA));
+    }
+
+    @Test
     void refuses_what_is_not_a_manifest() {
         String entry = "{\"published\": \"2026-11-22T04:00:00Z\", \"data\": {\"prices\": %s}}";
         List<String> bad = List.of(

@@ -445,7 +445,11 @@ public final class EngineServer implements AutoCloseable {
         this.idle = newIdleHousekeeping();
         idle.armTestHomeExit();
         this.selfUpdate = SelfUpdateScheduler.forEngine(
-                        this.version, activeBuildPlans::get, () -> draining || shuttingDown, this.log)
+                        this.version,
+                        activeBuildPlans::get,
+                        this::connectedSessions,
+                        () -> draining || shuttingDown,
+                        this.log)
                 .orElse(null);
         this.updates = UpdateScheduler.forEngine(activeBuildPlans::get, () -> draining || shuttingDown, this.log);
         this.journalWriter = new JournalWriter(
@@ -927,6 +931,17 @@ public final class EngineServer implements AutoCloseable {
     /** Dashboard and MCP streams attached right now; zero when HTTP is off. */
     private int liveEventStreams() {
         return http.liveEventStreams();
+    }
+
+    /**
+     * The clients and agents connected now: open socket connections (every running command, {@code
+     * jk watch}, {@code jk dev}, an IDE's build server) and MCP agents served within the self-update's
+     * idle window. A dashboard's event stream is not one: the page follows a new engine on its own.
+     */
+    private int connectedSessions() {
+        HttpEngineServer h = httpServer();
+        int mcp = h == null ? 0 : h.mcpConnectedWithin(SelfUpdateScheduler.IDLE);
+        return activeConnections.get() + mcp;
     }
 
     private int liveConnectionCount() {

@@ -170,6 +170,11 @@ public final class McpHandler {
         return ctx.connections().counts();
     }
 
+    /** The connections with a call being served or a request within the last {@code millis}. */
+    public int connectedWithin(long millis) {
+        return ctx.connections().connectedWithin(millis);
+    }
+
     /** The applications {@code run} started that are still running, as the dashboard lists them. */
     public List<Map<String, Object>> apps() {
         return ctx.apps().rows();

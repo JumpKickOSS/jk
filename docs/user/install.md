@@ -71,11 +71,13 @@ releases](../contributors/releases.md). Reporting a signature or install defect:
 
 ## Updates
 
-JumpKick keeps itself current. The engine checks the signed latest-release pointer at most every
-12 hours (a conditional request, so an unchanged pointer costs one round trip and no download), when it has had no build for 10 minutes or after the third build in a row that never left it
-that quiet. When there is a newer release it downloads and verifies it, installs it, and starts the
-new engine; builds still running finish on the old one. A build that starts in the middle pauses
-the update until the next quiet spell (or three more builds). Your next command runs the new release.
+JumpKick keeps itself current. The engine's [update check](config.md#updates) reads the current
+release from the signed update manifest, every four hours. When there is a newer release the engine
+downloads it once it has had no build for two minutes, or after it has waited half an hour between
+builds, and verifies it against the manifest and the release's own signature. It installs the
+download only when it is idle: no build for 10 minutes and nothing connected to it, no running
+command, `jk watch`, `jk dev`, IDE build server, or MCP agent served in those 10 minutes. The new
+engine then takes over, and your next command runs the new release.
 
 ```bash
 jk self update --check      # is there a newer release? installs nothing
@@ -118,11 +120,12 @@ a **What's new** dialog with the highlights of every release you moved across
 ([What's new](whats-new.md)); the first command you run at a terminal prints the same line with a
 link to the release notes.
 
-Before 1.0 updates are compulsory, and the engine installs a downloaded release at its next quiet
-spell whatever you answered; Yes only gets it sooner. `"ask"` and `"never"` in the config file are ignored (JumpKick says
+Before 1.0 updates are compulsory, and the engine installs a downloaded release the next time it is
+idle whatever you answered; Yes only gets it sooner. `"ask"` and `"never"` in the config file are ignored (JumpKick says
 so once), and only `JK_SELF_UPDATE=never` turns them off. Development builds (`-SNAPSHOT`) never
-update themselves. On CI, a JumpKick home less than a day old (a fresh runner) does not update itself;
-the installer or wrapper that created it already fetched the latest release.
+update themselves. On CI the engine checks but never downloads or installs a release, so a run never replaces its own
+JumpKick; the installer or wrapper that sets up the runner fetches the latest release.
+`[updates] check = false` turns the engine's own update off with the check.
 
 `jk self update <older>` holds this JumpKick home at that release: nothing checks, downloads or offers an
 update until a plain `jk self update` (or any update to the same or a newer release) clears the

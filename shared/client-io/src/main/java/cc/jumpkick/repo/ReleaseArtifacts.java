@@ -75,6 +75,11 @@ public final class ReleaseArtifacts {
             return new String(sums, StandardCharsets.UTF_8);
         }
 
+        /** The manifest's exact bytes, as signed. */
+        public byte[] bytes() {
+            return sums.clone();
+        }
+
         /** Whether the release ships {@code artifactName}. */
         public boolean has(String artifactName) throws IOException {
             return ReleaseVerifier.find(sums, artifactName).isPresent();

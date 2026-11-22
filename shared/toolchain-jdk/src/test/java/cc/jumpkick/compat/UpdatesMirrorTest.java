@@ -4,6 +4,7 @@ package cc.jumpkick.compat;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.m2.MavenSettings;
+import cc.jumpkick.updates.UpdateManifest;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -26,7 +27,7 @@ class UpdatesMirrorTest {
                 .extracting(URI::getHost)
                 .containsExactly("jumpkick.build", "raw.githubusercontent.com");
         assertThat(none.sources()).allSatisfy(uri -> {
-            assertThat(uri.getPath()).endsWith("/" + UpdatesMirror.FILE);
+            assertThat(uri.getPath()).endsWith("/" + UpdateManifest.FILE);
             assertThat(uri.getQuery()).isNull();
         });
     }

@@ -10,6 +10,7 @@ import cc.jumpkick.prices.PriceTables;
 import cc.jumpkick.repo.ReleaseVerifier;
 import cc.jumpkick.testing.DeadEndpoint;
 import cc.jumpkick.testing.FakeClock;
+import cc.jumpkick.updates.UpdateManifest;
 import cc.jumpkick.updates.UpdateState;
 import com.sun.net.httpserver.Headers;
 import com.sun.net.httpserver.HttpServer;
@@ -61,6 +62,7 @@ class UpdateCheckTest {
 
     private final List<String> logs = new ArrayList<>();
     private final List<String> catalogs = new ArrayList<>();
+    private final List<UpdateManifest> answered = new ArrayList<>();
     private final FakeClock clock = new FakeClock();
 
     private record Seen(String path, String query, Headers headers) {}
@@ -128,6 +130,7 @@ class UpdateCheckTest {
                         .encodeToString(releaseKey.getPublic().getEncoded()))),
                 () -> offline,
                 appliers,
+                answered::add,
                 clock);
     }
 
@@ -241,6 +244,31 @@ class UpdateCheckTest {
                 .as("a version already applied is not fetched again")
                 .isEmpty();
         assertThat(requests).extracting(Seen::path).containsExactly("/updates.json");
+    }
+
+    @Test
+    void the_jumpkick_release_a_signed_manifest_names_is_handed_on_with_every_answer() throws Exception {
+        String sha = "b".repeat(64);
+        String json = "{\n  \"published\": \"" + later(5) + "\",\n  \"jk\": {\"stable\": {\"version\": \"9.1.0\", "
+                + "\"sha256\": \"" + sha + "\"}},\n  \"data\": {}\n}\n";
+        publish("/", json, otherKey, Map.of());
+        check().check();
+        assertThat(answered)
+                .as("a manifest whose signature fails names nothing")
+                .isEmpty();
+
+        publish("/", json, releaseKey, Map.of());
+        assertThat(check().check()).as("a release is not a kind of data").isFalse();
+        check().check();
+
+        assertThat(answered)
+                .as("the first answer and the 304 after it")
+                .hasSize(2)
+                .allSatisfy(m -> assertThat(m.release()).contains(new UpdateManifest.Release("9.1.0", sha)));
+        assertThat(UpdateManifest.held(dir.resolve("store/updates"))
+                        .flatMap(UpdateManifest::release)
+                        .map(UpdateManifest.Release::version))
+                .contains("9.1.0");
     }
 
     @Test

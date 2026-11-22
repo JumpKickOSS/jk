@@ -69,7 +69,10 @@ final class SelfUpdateStatus {
         prepared.filter(p -> p.newerThan(version)).ifPresent(p -> sb.append(", ")
                 .append(p.version())
                 .append(" downloaded, ")
-                .append(auto ? "installs when the engine is quiet" : "offered at your next command at a terminal"));
+                .append(
+                        auto
+                                ? "installs once no build or session is running"
+                                : "offered at your next command at a terminal"));
         return sb.toString();
     }
 

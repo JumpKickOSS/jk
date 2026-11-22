@@ -4,12 +4,16 @@ package cc.jumpkick.updates;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.repo.ReleaseVerifier;
+import cc.jumpkick.version.Versions;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Optional;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 
@@ -22,6 +26,7 @@ import org.jspecify.annotations.Nullable;
  * <pre>{@code
  * {
  *   "published": "2026-11-22T04:00:00Z",
+ *   "jk": {"stable": {"version": "0.60.0", "sha256": "<64 hex>"}},
  *   "data": {
  *     "prices":    {"version": "2026-11-21T18:00:00Z", "file": "prices.toml", "sha256": "<64 hex>"},
  *     "templates": {"version": "<jk-templates commit>"}
@@ -30,20 +35,44 @@ import org.jspecify.annotations.Nullable;
  * }</pre>
  *
  * A {@code file} is a relative path under the manifest's own directory, so a mirror of the manifest
- * serves the files too. Keys and kinds a JumpKick does not know are skipped, so an older one reads a
- * newer manifest.
+ * serves the files too. {@code jk} names the current JumpKick release of each channel and the
+ * SHA-256 of that release's {@code SHA256SUMS}, which lists every artifact's own checksum. Keys,
+ * kinds and channels a JumpKick does not know are skipped, and so is a channel it cannot read, so
+ * an older one reads a newer manifest.
  */
-public record UpdateManifest(Instant published, Map<String, Entry> data) {
+public record UpdateManifest(Instant published, Map<String, Release> jk, Map<String, Entry> data) {
+
+    /** The manifest's file name, beside the files it lists and in {@link UpdateState#dir()}. */
+    public static final String FILE = "updates.json";
 
     /** What the signature file's name adds to the manifest's. */
     public static final String SIGNATURE_SUFFIX = ".sig";
 
+    /** The release channel this JumpKick follows. */
+    public static final String CHANNEL = "stable";
+
     private static final Pattern KIND = Pattern.compile("[a-z0-9][a-z0-9-]{0,31}");
     private static final Pattern SEGMENT = Pattern.compile("[A-Za-z0-9_][A-Za-z0-9._-]{0,127}");
     private static final Pattern SHA256 = Pattern.compile("[0-9a-f]{64}");
+    private static final Pattern RELEASE =
+            Pattern.compile("[0-9]{1,6}\\.[0-9]{1,6}\\.[0-9]{1,6}(-[A-Za-z0-9.]{1,32})?");
 
     public UpdateManifest {
+        jk = Map.copyOf(jk);
         data = Map.copyOf(data);
+    }
+
+    /**
+     * A channel's current JumpKick: its version and the SHA-256 of its {@code SHA256SUMS}.
+     */
+    public record Release(String version, String sha256) {
+
+        /** Refuse a release's {@code SHA256SUMS} unless they hash to this release's SHA-256. */
+        public void verifySums(byte[] sums) throws IOException {
+            if (!sha256.equals(Hashing.sha256Hex(sums))) {
+                throw new IOException("jk " + version + " SHA256SUMS does not match the update manifest's sha256");
+            }
+        }
     }
 
     /**
@@ -65,6 +94,29 @@ public record UpdateManifest(Instant published, Map<String, Entry> data) {
     /** The entry for {@code kind}, or null. */
     public @Nullable Entry entry(String kind) {
         return data.get(kind);
+    }
+
+    /** The JumpKick release {@link #CHANNEL} names, or empty when the manifest names none. */
+    public Optional<Release> release() {
+        return Optional.ofNullable(jk.get(CHANNEL));
+    }
+
+    /**
+     * The manifest the engine's update check holds in {@link UpdateState#dir()}, or empty when there
+     * is none or it does not parse. Only a manifest whose signature verified is ever written there.
+     */
+    public static Optional<UpdateManifest> held() {
+        return held(UpdateState.dir());
+    }
+
+    /** {@link #held()} under {@code dir}. */
+    public static Optional<UpdateManifest> held(Path dir) {
+        Path file = dir.resolve(FILE);
+        try {
+            return Files.isRegularFile(file) ? Optional.of(parse(Files.readAllBytes(file))) : Optional.empty();
+        } catch (IOException | RuntimeException e) {
+            return Optional.empty();
+        }
     }
 
     /** {@code json} once {@code signature} (the {@code .sig} file's bytes) verifies over it, parsed. */
@@ -94,7 +146,26 @@ public record UpdateManifest(Instant published, Map<String, Entry> data) {
                 data.put(kind, entry(kind, e.getValue()));
             }
         }
-        return new UpdateManifest(published, data);
+        return new UpdateManifest(published, releases(MiniJson.get(root, "jk")), data);
+    }
+
+    /** The readable channels of a {@code jk} table; anything else in it is skipped. */
+    private static Map<String, Release> releases(@Nullable Object table) {
+        Map<String, Release> out = new LinkedHashMap<>();
+        if (!(table instanceof Map<?, ?> channels)) return out;
+        channels.forEach((name, node) -> {
+            String version = MiniJson.str(node, "version");
+            String sha256 = MiniJson.str(node, "sha256");
+            if (KIND.matcher(String.valueOf(name)).matches()
+                    && version != null
+                    && RELEASE.matcher(version).matches()
+                    && !Versions.isSnapshot(version)
+                    && sha256 != null
+                    && SHA256.matcher(sha256).matches()) {
+                out.put(String.valueOf(name), new Release(version, sha256));
+            }
+        });
+        return out;
     }
 
     private static Entry entry(String kind, @Nullable Object node) throws IOException {
