@@ -124,7 +124,7 @@ and the host's script definition, so:
   declared properties at evaluation time, so a script's text never contains a module path.
 
 This matters because compiling a `.kts` is expensive and starting a JVM to do it is more
-so — together about 5 s for a large script, previously paid on every run of every script.
+so — together about 5 s for a large script, paid once per script rather than on every run.
 A second script in an already-running session costs milliseconds.
 
 Three consequences worth knowing:

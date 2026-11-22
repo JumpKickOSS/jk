@@ -59,14 +59,14 @@ while one origin declared under two names is cached once. Each tree records the 
 first name it was filled under in `.origin`; `jk storage usage` and `jk doctor` print
 `repo: <name> → <origin>` for every tree.
 
-A `repos/<name>` tree from before this rule carries no origin anyone can vouch for, so nothing
+A `repos/<name>` tree with no `.origin` carries no origin anyone can vouch for, so nothing
 reads it; `jk storage usage` flags it and `jk storage clean` removes it. The next resolve
-re-fetches into the identity-keyed tree. The cost of that upgrade is bounded: the reserved trees
+re-fetches into the identity-keyed tree. The cost is bounded: the reserved trees
 (`central`, `google`, `jumpkick`) and the `jk-local` shelf are kept as they are, and unless
 `[m2] integration` is off third-party jars already in `~/.m2/repository` are used
 where they are rather than downloaded, so what is fetched again is the POMs and jars of the
 repositories you named yourself. Lockfile `source`
-fields are unchanged (`"<name>+<url>"`): the URL in the row is what the lookup keys on.
+fields read `"<name>+<url>"`: the URL in the row is what the lookup keys on.
 
 ## Built-in remotes
 

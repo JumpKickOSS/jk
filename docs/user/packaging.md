@@ -596,8 +596,7 @@ the destination without the flag, and so does `[m2] integration = "share"`, the 
 machine that shares its downloads with Maven; `--destination jk` then names `repos/jk-local` for
 one run ([Config](config.md#install-target)). Plugin workers (`jk-plugin.toml`)
 are always installed in `repos/jk-local`: the engine rebuilds their runtime classpath from the installed POM.
-Outside a project, pass a coordinate (`jkx` mode). `jk snapshot` was this verb's name before
-JumpKick 0.51.1; it is refused now, naming `jk install`.
+Outside a project, pass a coordinate (`jkx` mode).
 
 ### Installing the same version twice
 

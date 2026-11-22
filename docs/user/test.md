@@ -877,7 +877,7 @@ the JUnit XML, but a run whose only failures are in quarantined classes does not
 OK test orders · 1 of 40 failed · 2.1s — quarantined flaky test failed, not your change: com.acme.OrdersTest
 ```
 
-A failure in any other class, or one no class owns (a test JVM that died), fails the run as before.
+A failure in any other class, or one no class owns (a test JVM that died), fails the run.
 A build or test run through MCP takes the same steps and honours the quarantine too. Fix the test,
 then release it with `jk flaky release`; you can also add or delete an entry by hand.
 
@@ -1125,11 +1125,9 @@ Every test JVM JumpKick forks has both IP stacks, as Surefire's and Gradle's do:
 plain IPv4 sockets that WSL forwards to Windows; a test JVM opens none of JumpKick's.) A test that
 calls its own server at a name reaching this host over IPv6 alone therefore connects, as under Maven.
 Micronaut's tests do that: an `@Client("/")` call goes to the `HOSTNAME` your shell exports, which on
-Fedora and RHEL can resolve to IPv6 link-local addresses only. Under JumpKick 0.53.0, whose test JVMs
-preferred IPv4, such a test failed (`Read Timeout`, or `Unable to resolve host`) until the project set
-`micronaut.server.host=localhost`; it needs nothing now, and a project that has the line keeps
-working. A suite that must run on IPv4 alone puts `-Djava.net.preferIPv4Stack=true` in `[test]
-jvm-args`.
+Fedora and RHEL can resolve to IPv6 link-local addresses only; such a test passes with no
+`micronaut.server.host=localhost` line, and a project that sets it passes too. A suite that must
+run on IPv4 alone puts `-Djava.net.preferIPv4Stack=true` in `[test] jvm-args`.
 
 ## What the test classpath carries
 
@@ -1297,7 +1295,7 @@ a build from a terminal does not take one that read a variable it could not have
 `[env] scope = ["SPRING_*", "MYAPP_*"]` narrows what a test JVM sees of your other variables to the
 names the patterns match (a name, or a prefix ending in `*`), beside the allow-list and the
 declared names. A suite that lists the environment then keys on a small, stable set of names, so
-an unrelated variable no longer reruns it, and under a cache's key seed its result holds on another
+an unrelated variable does not rerun it, and under a cache's key seed its result holds on another
 machine. The cost: a test sees no other variable of your shell. Set at a workspace root, it holds
 for every member that sets none of its own.
 
@@ -1334,8 +1332,8 @@ variable set in your shell reaches the test with no configuration.
 
 ### Keeping a module strict
 
-`[env] inherit = false` keeps a module's test JVMs to the allow-list and the declared names, as
-every suite was before 0.53. A variable it does not declare reads as unset, and a run names each
+`[env] inherit = false` keeps a module's test JVMs to the allow-list and the declared names. A
+variable it does not declare reads as unset, and a run names each
 one a test looked up that your shell sets, with both choices:
 
 ```text

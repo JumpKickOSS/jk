@@ -135,8 +135,7 @@ hold. `jk engine status` shows the hold, the last check, and a download waiting 
 
 A command started by the release that was just replaced hands itself to the new one. A running
 `jk mcp` keeps serving its agent across the update: it reconnects to the new engine (starting it
-when it is not running) and tells the agent's host to read the tool list again. (A `jk mcp` started
-by a release before 0.51.0 predates this and stops once, asking to be started again.) `jk watch` and
+when it is not running) and tells the agent's host to read the tool list again. `jk watch` and
 `jk dev` notice the update at the next change they see: they stop, say so, and start again on the new
 release with the same arguments (`jk dev` restarts the app). `jk bsp` answers the next request from
 the IDE with an error saying JumpKick was updated and exits, so the IDE starts the new build server.
@@ -437,7 +436,7 @@ Each change's answer is remembered on its own in `~/.jk/state/windows-host.toml`
 declines nothing else. Accepted or declined, neither a build nor an agent asks about it again;
 `jk doctor --fix` shows every change, which is how you change your mind. The
 exclusions are a strong recommendation, never a requirement: if you decline (many people build
-inside a WSL guest instead), JumpKick works as before, and `jk doctor` and the dashboard's Status
+inside a WSL guest instead), JumpKick still works, and `jk doctor` and the dashboard's Status
 view show one quiet `slower: Defender scans …` line.
 
 ## Official URLs

@@ -577,7 +577,7 @@ source like that can see the method (its module sees the declaring one, as the b
 answer is not complete, and each of its lines that calls the method by name is listed `(inferred)`:
 `name(…)`, a command call or method pointer `.name`, and for an accessor the property, `store.size`
 for `getSize()`. A call through a computed name (`obj."$name"()`) or `methodMissing` is not matched.
-A workspace with no Groovy, or only `@CompileStatic` Groovy, answers as before.
+A workspace with no Groovy, or only `@CompileStatic` Groovy, gets exact answers.
 
 ### Uses of a field, a type, an annotation or a constructor
 

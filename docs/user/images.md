@@ -259,7 +259,7 @@ SPRING_CONTEXT_EXIT  = "onRefresh"  # start every bean, then exit: the run settl
 ```
 
 With `[spring-boot] aot = true`, Spring's AOT processing fixes `@ConditionalOnProperty` and friends
-when it generates the context, so `SPRING_FLYWAY_ENABLED=false` no longer removes Flyway at run
+when it generates the context, so `SPRING_FLYWAY_ENABLED=false` does not remove Flyway at run
 time; switch the migration with a value the app reads while it runs (a `FlywayMigrationStrategy`
 that checks it), as jk-examples' hotel application does.
 

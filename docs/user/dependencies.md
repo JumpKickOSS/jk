@@ -493,7 +493,7 @@ The `no-snapshot` arm of a `depend` guard (the `no-snapshot-versions` rule of th
 there. What is shipped or checked for everyone may not use it, since no other machine has those
 bytes: `jk release` and `jk publish` stop before they build, and under `CI` the rule refuses it,
 each saying to release or publish A first and depend on that version. A `-SNAPSHOT` a repository
-serves is refused by the rule everywhere, as before. Pin A's release once it is published.
+serves is refused by the rule everywhere. Pin A's release once it is published.
 
 ### An exact version the first catalog does not list
 

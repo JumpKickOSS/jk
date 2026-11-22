@@ -217,7 +217,7 @@ one your team sets, which wins. With no cache server, your team's seed also shar
 cache directory a CI runner restores ([below](#a-ci-runners-own-cache-with-no-cache-server)).
 Without a seed, a result that read your environment stays on the machine that ran it, `[env]
 scope` or not. A result whose reads were all unset keys no value and is
-shared as before.
+shared with no seed.
 
 ```toml
 # ~/.jk/config.toml
@@ -254,16 +254,15 @@ signing secrets, any step of a module with `[env] inherit = true`, and a node bu
 HMAC'd under your home's secret here and under the seed when shared, never by plain digest, and
 the run's memo under `target/` holds the same. A value the manifest writes itself (`vars = [{ TZ =
 "UTC" }]`, a profile's or a suite's `env`) is the checkout's, not your shell's, and keys by its
-digest as before. So, without a seed, these results stay on the machine that made them, as a
+digest. So, without a seed, these results stay on the machine that made them, as a
 suite's do. Most compiles read no environment and still share with no seed. The steps you are
 likely to notice are release builds whose signing step names `env:`, and node builds on CI runners,
 which all set `CI`: they share between machines only once every machine sets the same team seed.
-The first build after upgrading to 0.54 runs these steps once more, because their keys changed.
 
-**Sharing scoped results through a cache that issues no seed.** Before 0.54, a value a suite read
-under `[env] scope` (or a declared `[env]` / `[test] env` name forwarded from your shell) was keyed
-by its plain digest and shared with no seed. Now it is keyed like any other value, so add the one
-line that keeps sharing, the same seed on every machine that writes or reads:
+**Sharing scoped results through a cache that issues no seed.** A value a suite reads under
+`[env] scope` (or a declared `[env]` / `[test] env` name forwarded from your shell) is keyed like
+any other value, so it shares only under a seed: set the same one on every machine that writes or
+reads:
 
 ```bash
 export JK_CACHE_KEY_SEED="$TEAM_CACHE_SEED"   # CI; on a laptop, [cache] key-seed-file

@@ -58,6 +58,5 @@ code compiled against — the same number as the `[dependencies]` pin in `jk.tom
 consumer's lock pins the worker's floor at — and `jk-compat` is the oldest JumpKick release that may load the
 plugin; JumpKick refuses an older one with an upgrade error instead of failing inside the worker.
 
-Before 1.0 a release may move an SDK type ([What's new](../../whats-new.md) says so in a
-**Breaking:** bullet); the plugin is then rebuilt against that release, with both `sdk` and the
-`jk.toml` pin moved to it.
+Before 1.0 a release may move an SDK type, so the plugin is rebuilt against the release it runs on,
+with both `sdk` and the `jk.toml` pin moved to it.

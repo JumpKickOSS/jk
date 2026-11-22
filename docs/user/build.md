@@ -101,7 +101,7 @@ test back to the runner or a deleted class into the jar.
 
 `jk build -r` (`-r`) runs every step of the modules it enters without reading the action
 cache — compile, package, tests, and the steps plugins contribute, a lint or a generator among
-them — and stores each step's record again, so the build after it is served as before. Nothing
+them — and stores each step's record again, so the build after it is served from the cache. Nothing
 is re-fetched; `--force` re-fetches too.
 
 The first build after `jk install` of a new engine runs every plugin step, guard lane,
@@ -520,10 +520,10 @@ scope = ["SPRING_*", "MYAPP_*"]   # test JVMs see only these of the shell's othe
 ```
 
 `inherit = false`, written, keeps the module's test JVMs to the allow-list and the declared names,
-as before 0.53, and a run names each variable a test looked up that your shell sets ([Test §
+and a run names each variable a test looked up that your shell sets ([Test §
 Keeping a module strict](test.md#keeping-a-module-strict)). `scope` narrows what a test JVM sees of
 the shell's other variables to the names its patterns match (a name, or a prefix ending in `*`),
-so a suite that lists the environment no longer reruns for an unrelated variable and keys alike on
+so a suite that lists the environment does not rerun for an unrelated variable and keys alike on
 another machine; the module's first broadly keyed run prints the scope for its framework ([Test §
 Scoping what a suite may see](test.md#scoping-what-a-suite-may-see)). `[env]` is per module; `inherit = false` and
 `scope` written at a workspace root hold for every member (a member's own `scope` wins).

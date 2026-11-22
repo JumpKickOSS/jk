@@ -533,7 +533,7 @@ entry and the JumpKick icon, and its notifications show under the JumpKick name.
 open **About & help** (the **?** in the header) and click **Install JumpKick**; the entry appears
 only once the browser offers to install, and is gone once the app is installed. The browser's own
 install button in the address bar does the same. Safari on macOS installs it with **File > Add to
-Dock**. Firefox does not install it; the dashboard works in a tab as before.
+Dock**. Firefox does not install it; the dashboard works in a tab.
 
 The app opens the dashboard root, and keeps no copy of the dashboard or of any engine data: it
 loads everything from the engine each time, so after an engine upgrade it shows the new dashboard,

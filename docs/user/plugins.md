@@ -90,9 +90,8 @@ development build the newest release at or below it, since no `-SNAPSHOT` is pub
 [`plugin` template](templates.md#first-party-templates)),
 [examples/third-party-plugin](examples/third-party-plugin/) is the complete shape with a consumer,
 and the [contributor plugin guide](../contributors/plugins.md) the reference. Pre-1.0 the
-SPI has no compatibility contract: a release that moves or changes an SDK type says so in a
-**Breaking:** bullet of [What's new](whats-new.md), and a plugin compiled against an older SDK is
-rebuilt against the new one, with its `sdk` and its `jk-plugin-sdk` pin moved together. There is
+SPI has no compatibility contract: a release may move or change an SDK type, and a plugin is
+rebuilt against the release it runs on, with its `sdk` and its `jk-plugin-sdk` pin moved together. There is
 **no** public plugin marketplace: a consumer pins a plugin jar by content (path or Maven
 coordinate + required `sha256`).
 

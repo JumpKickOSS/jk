@@ -224,7 +224,7 @@ progress token is the session's own: the cancel finds it only under the `Mcp-Ses
 went out on, so two agents that pick the same token never cancel each other's job.
 
 The CLI prints the same text with `--agent` or `JK_AGENT=1`, and when stdout is not a terminal
-and the process was spawned by a coding-agent CLI. Human terminals keep today's output.
+and the process was spawned by a coding-agent CLI. A person's terminal gets the human output.
 `-O jsonl` stays the live event stream.
 
 ## Tools

@@ -37,8 +37,8 @@ jk $name$        # hi from the $name$ plugin
 `sdk` in `jk-plugin.toml` and the `jk-plugin-sdk` pin in `jk.toml` name the same release: a
 consumer's lock pins the worker's SDK at it. `jk-compat` is the oldest JumpKick that loads the plugin.
 
-Before 1.0 a release may move an SDK type; its What's new entry says so in a **Breaking:** bullet,
-and the plugin is rebuilt against that release with both versions moved to it.
+Before 1.0 a release may move an SDK type, so the plugin is rebuilt against the release it runs on,
+with both versions moved to it.
 
 Every package is `@NullMarked` and `[nullness]` checks it with NullAway at compile time: a type is
 non-null unless it says `@Nullable`.
