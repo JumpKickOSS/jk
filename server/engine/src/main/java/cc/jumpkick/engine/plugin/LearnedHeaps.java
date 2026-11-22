@@ -128,7 +128,8 @@ public final class LearnedHeaps {
      * The largest heap a test JVM is given, learned or climbed to: a quarter of the host's RAM and
      * never more than the worker budget can lease; {@code 0} when neither is known. A test row's
      * stored peaks and known-good heap never exceed it either, so what a run learns at the ceiling
-     * (a resident-set peak a little past {@code -Xmx}, say) cannot raise the next plan past it.
+     * (a resident-set peak a little past {@code -Xmx}, say) cannot raise the next plan, and {@link
+     * #choose} never plans a test row past it.
      */
     public static long testCeiling() {
         long ram = MemoryProbe.current().totalBytes() / TEST_CEILING_RAM_DIVISOR;
@@ -185,27 +186,28 @@ public final class LearnedHeaps {
 
     /**
      * The heap a planned worker should start with: the sizing override when one was given, else
-     * {@link #size} of the stored maximum raised to the known-good heap, else {@link #firstHeap}.
-     * {@code fallback}, the plan's share of the free memory, is how many JVMs may run at once and
-     * not what this one needs (on a host with two cores it is most of the host), so an unseen key
-     * starts at the first heap whatever the plan. The build-script host and plugin workers, which
-     * are not re-run on a larger heap, start an unseen key at {@code fallback} as it is.
+     * {@link #size} of the stored maximum raised to the known-good heap, else {@link #firstHeap}. A
+     * test row's heap is no more than {@link #testCeiling}. {@code fallback}, the plan's share of
+     * the free memory, is how many JVMs may run at once and not what this one needs (on a host with
+     * two cores it is most of the host), so an unseen key starts at the first heap whatever the
+     * plan. The build-script host and plugin workers, which are not re-run on a larger heap, start
+     * an unseen key at {@code fallback} as it is.
      */
     public long choose(Path project, String module, String kind, int jdk, long fallback) {
         long budget = budget();
         if (forcedBytes != null) return fit(forcedBytes, budget);
         Row row = stored(project, module, kind, jdk);
         if (row == null) return generousFirst(kind) && budget > 0 ? firstHeap(FLOOR_BYTES, budget) : fallback;
-        if (HeapScope.TEST.equals(kind)) {
-            // A row written before the cap held on what is stored: bring it under, once.
-            long ceiling = testCeiling();
-            if (capped(row, ceiling) != row) {
-                update(project, row(module, kind, jdk), stored -> capped(stored, ceiling));
-                row = capped(row, ceiling);
-            }
+        long ceiling = HeapScope.TEST.equals(kind) ? testCeiling() : 0L;
+        // A row written before the cap held on what is stored: bring it under, once.
+        if (capped(row, ceiling) != row) {
+            update(project, row(module, kind, jdk), stored -> capped(stored, ceiling));
+            row = capped(row, ceiling);
         }
         long sized = row.peaks().length == 0 ? 0L : size(max(row.peaks()), budget);
-        return fit(Math.max(sized, row.good()), budget);
+        long heap = fit(Math.max(sized, row.good()), budget);
+        // The headroom over a peak at the ceiling would pass it; the plan names the heap that runs.
+        return ceiling > 0 ? Math.min(heap, ceiling) : heap;
     }
 
     /** The kinds re-run on a larger heap when they run out, and so the kinds sized generously first. */

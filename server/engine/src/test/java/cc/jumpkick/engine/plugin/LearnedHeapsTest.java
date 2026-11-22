@@ -59,6 +59,9 @@ class LearnedHeapsTest {
         assertThat(heaps.peak(key)).isEqualTo(ceiling);
         assertThat(heaps.good(key)).isEqualTo(ceiling);
         long first = heaps.choose(project, "g:app", HeapScope.TEST, 25, 128L << 20);
+        assertThat(first)
+                .as("the plan is the heap that runs: a peak at the ceiling, with headroom, plans the ceiling")
+                .isEqualTo(ceiling);
         heaps.note(key, ceiling + (3L << 30));
         assertThat(heaps.choose(project, "g:app", HeapScope.TEST, 25, 128L << 20))
                 .as("a second run at the ceiling asks for no more")

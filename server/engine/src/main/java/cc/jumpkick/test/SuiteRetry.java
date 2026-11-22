@@ -68,10 +68,10 @@ final class SuiteRetry {
             long ceiling) {
         long current = HeapFlags.parseXmx(flags);
         long chosen = override != null ? override : heaps.choose(project, module, HeapScope.TEST, jdk, current);
-        // Past the most a test JVM is given, the heap runs at that, silently: with no record it is
-        // the plan's share of the host's free memory, and a record is already held under the ceiling,
-        // so only its headroom can pass it. Neither is anything the user could forget. The flag
-        // names whole MiB, so a ceiling that is not one runs at the whole MiB below it.
+        // Past the most a test JVM is given, the heap runs at that, silently: a record is planned
+        // under the ceiling already, so only a key with none, at the plan's share of the host's free
+        // memory, can pass it, and that is nothing the user could forget. The flag names whole MiB,
+        // so a ceiling that is not one runs at the whole MiB below it.
         if (override == null && ceiling > 0 && chosen > ceiling) chosen = ceiling;
         if (chosen <= 0 || chosen == current) return flags;
         List<String> rewritten = new ArrayList<>(HeapFlags.rewriteHeap(flags, chosen));
