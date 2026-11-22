@@ -5,10 +5,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import cc.jumpkick.config.PluginTuning;
+import cc.jumpkick.config.Request;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.plugin.AsOneStep;
 import cc.jumpkick.engine.plugin.FakeWorkerShell;
 import cc.jumpkick.engine.plugin.HeapNotes;
+import cc.jumpkick.engine.plugin.HeapScope;
+import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.engine.plugin.LearnedHeaps;
 import cc.jumpkick.run.TestSummary;
 import java.nio.file.Files;
@@ -63,8 +66,37 @@ class JUnitLauncherPoolRetryTest {
     }
 
     /**
+     * Each worker records a peak past its heap as it dies, so a heap planned after the pool is not
+     * the one that ran out: the retry names and doubles the heap the workers had.
+     */
+    @Test
+    void the_retry_climbs_from_the_heap_the_workers_ran_at(@TempDir Path dir) throws Exception {
+        assumeTrue(TestWorkers.clampByHeap(2) == 2, "host heap allows two test workers");
+        Path home = fakeJdk(dir);
+        Path classes = Files.createDirectories(dir.resolve("classes"));
+        Path cache = Files.createDirectories(dir.resolve("cache"));
+        SessionContext.install(SessionContext.current().withWorkingDir(dir).withJvm(PluginTuning.NONE));
+        LearnedHeaps heaps = new LearnedHeaps(dir.resolve("state"));
+        int jdk = Runtime.version().feature();
+        heaps.good(new HeapScope.Key(dir, "g:app", HeapScope.TEST, jdk), 256L << 20);
+        assumeTrue(heaps.choose(dir, "g:app", HeapScope.TEST, jdk, 128L << 20) == 256L << 20, "plans 256 MiB");
+        JUnitLauncher launcher = new JUnitLauncher().withModuleLabel("g:app").withHeaps(heaps);
+
+        // A job's request carries its heap plan; without one every heap is the user's and no peak is kept.
+        TestSummary summary = Request.detached()
+                .with(JvmOptions.PLAN, new JvmOptions.PlannedHeap())
+                .call(() -> launcher.run(home, classes, List.of(), cache, 2, Map.of(), TestProgressListener.noop()));
+
+        assertThat(summary.failures()).isEmpty();
+        assertThat(HeapNotes.drain()).containsExactly("retried with 512 MiB heap after running out of 256 MiB");
+        assertThat(heaps.peak(new HeapScope.Key(dir, "g:app", HeapScope.TEST, jdk)))
+                .as("the workers' peaks, past the heap they ran at, were kept")
+                .isEqualTo(700L << 20);
+    }
+
+    /**
      * Lists {@code demo.A} to {@code demo.F}. As a pull worker it passes the first class it is
-     * sent and dies of heap on the second. One-shot at a larger heap it passes every class its {@code --filter} names,
+     * sent and dies of heap on the second, its GC log holding a 700 MiB occupancy. One-shot at a larger heap it passes every class its {@code --filter} names,
      * logging that filter to {@code selections}, and runs nothing the filter leaves out.
      */
     private static Path fakeJdk(Path dir) throws Exception {
@@ -78,9 +110,11 @@ class JUnitLauncherPoolRetryTest {
                 mx=""
                 filter=""
                 oom=""
+                gc=""
                 for a in "$@"; do
                   case "$a" in
                     -Xmx*) mx="$a" ;;
+                    -Xlog:gc:file=*) gc="${a#-Xlog:gc:file=}"; gc="${gc%%::*}" ;;
                     -XX:OnOutOfMemoryError=*) oom="${a#-XX:OnOutOfMemoryError=}" ;;
                     --filter=*) filter="${a#--filter=}" ;;
                   esac
@@ -97,6 +131,7 @@ class JUnitLauncherPoolRetryTest {
                     t "${line#RUN }"
                     e '{"event":"ready"}'
                     read -r line <&3
+                    [ -n "$gc" ] && printf '%s\\n' '[0.2s][info][gc] GC(0) Pause Young (Normal) (G1 Evacuation Pause) 700M->20M(1024M) 1.0ms' > "$gc"
                     [ -n "$oom" ] && sh -c "$(printf '%s' "$oom" | sed "s/%p/$$/g")"
                     echo "Terminating due to java.lang.OutOfMemoryError: Java heap space"
                     exit 3 ;;

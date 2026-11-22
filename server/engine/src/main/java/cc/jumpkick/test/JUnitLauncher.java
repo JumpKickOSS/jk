@@ -789,9 +789,11 @@ public final class JUnitLauncher {
             result = forkSuite(javaHome, classpath, flags, args, aggregator, crash, listener);
         } catch (TestLauncherFailure e) {
             if (heapOverride != null) throw e;
-            result = retryLaunch(javaHome, classpath, flags, listener, e);
+            result = retryLaunch(javaHome, classpath, HeapFlags.parseXmx(flags), listener, e);
         }
-        if (heapOverride == null) result = retrySuite(javaHome, classpath, flags, listener, result, List.of());
+        if (heapOverride == null) {
+            result = retrySuite(javaHome, classpath, HeapFlags.parseXmx(flags), listener, result, List.of());
+        }
         writeXml(xml, testResultsDir);
         publishTests(md, testClassesDir, testResultsDir);
         return result;
@@ -846,14 +848,14 @@ public final class JUnitLauncher {
     }
 
     /**
-     * Re-run a suite that died of its own heap or a memory kill ({@link #rerun}). {@code flags} is
-     * the heap the first fork used; {@code undispatched} is what a pool left queued, run with the
-     * dying workers' classes. A pinned heap is reported with the pin named.
+     * Re-run a suite that died of its own heap or a memory kill ({@link #rerun}). {@code heap} is
+     * the {@code -Xmx} the first forks ran at; {@code undispatched} is what a pool left queued, run
+     * with the dying workers' classes. A pinned heap is reported with the pin named.
      */
     private TestSummary retrySuite(
             Path javaHome,
             String classpath,
-            List<String> flags,
+            long heap,
             TestProgressListener listener,
             TestSummary first,
             List<String> undispatched) {
@@ -866,18 +868,18 @@ public final class JUnitLauncher {
         List<String> again = whole ? selection() : SuiteRetry.classes(first, undispatched, ranOut);
         if (!whole && again.isEmpty()) return first;
         boolean killed = SuiteRetry.onlyKilled(first, ranOut);
-        TestSummary second = rerun(javaHome, classpath, flags, again, listener, killed, whole ? null : first, ranOut);
+        TestSummary second = rerun(javaHome, classpath, heap, again, listener, killed, whole ? null : first, ranOut);
         return second == null ? first : second;
     }
 
     private TestSummary retryLaunch(
-            Path javaHome, String classpath, List<String> flags, TestProgressListener listener, TestLauncherFailure e)
+            Path javaHome, String classpath, long heap, TestProgressListener listener, TestLauncherFailure e)
             throws IOException, InterruptedException {
         if (!SuiteRetry.planned(jvmArgs)) throw SuiteRetry.unplanned(e, moduleLabel, jvmArgs);
         WorkerFate.Cause cause = SuiteRetry.cause(e, heapRun.ranOut());
         if (cause != WorkerFate.Cause.HEAP_EXHAUSTED && cause != WorkerFate.Cause.KILLED_FOR_MEMORY) throw e;
         boolean killed = cause == WorkerFate.Cause.KILLED_FOR_MEMORY;
-        TestSummary second = rerun(javaHome, classpath, flags, selection(), listener, killed, null, true);
+        TestSummary second = rerun(javaHome, classpath, heap, selection(), listener, killed, null, true);
         if (second == null) throw e;
         return second;
     }
@@ -893,23 +895,23 @@ public final class JUnitLauncher {
     }
 
     /**
-     * Suite JVMs for {@code classes} until they stop running out of heap. A memory kill runs once
-     * more at the same heap. Heap exhaustion climbs the {@link HeapLadder}, each rung re-running the
-     * classes that still ran out. {@code first} is folded in when a class-level retry replaces
-     * failures; a launcher retry passes {@code null} and gets only the retries' runs. Returns
-     * {@code first} when the heap cannot grow at all.
+     * Suite JVMs for {@code classes} until they stop running out of heap; {@code heap} is the {@code
+     * -Xmx} the JVMs that ran out had. A memory kill runs once more at the same heap. Heap
+     * exhaustion climbs the {@link HeapLadder}, each rung re-running the classes that still ran out.
+     * {@code first} is folded in when a class-level retry replaces failures; a launcher retry passes
+     * {@code null} and gets only the retries' runs. Returns {@code first} when the heap cannot grow
+     * at all.
      */
     private @Nullable TestSummary rerun(
             Path javaHome,
             String classpath,
-            List<String> flags,
+            long heap,
             List<String> classes,
             TestProgressListener listener,
             boolean killed,
             @Nullable TestSummary first,
             boolean firstRanOut) {
         heapRun.climbed();
-        long heap = HeapFlags.parseXmx(flags);
         try {
             if (killed) {
                 HeapNotes.note(HeapNotes.line(heap, heap, true));
@@ -1117,16 +1119,10 @@ public final class JUnitLauncher {
             if (!SuiteRetry.planned(jvmArgs) || heapOverride != null) {
                 throw SuiteRetry.unplanned(e, moduleLabel, jvmArgs);
             }
-            summary = retryLaunch(javaHome, classpath, jvmFlags(JvmRole.SUITE, 1, testTmpDir), listener, e);
+            summary = retryLaunch(javaHome, classpath, poolHeap(pool, workers), listener, e);
         }
         if (SuiteRetry.planned(jvmArgs) && heapOverride == null) {
-            summary = retrySuite(
-                    javaHome,
-                    classpath,
-                    jvmFlags(JvmRole.PULL_WORKER, workers, testTmpDir),
-                    listener,
-                    summary,
-                    pool.undispatched());
+            summary = retrySuite(javaHome, classpath, poolHeap(pool, workers), listener, summary, pool.undispatched());
         }
         if (!serialClasses.isEmpty() && serialPoolRuns(summary, SessionCancel.cancelled())) {
             TestSummary serial = pool.run(1, serialClasses, xml, md, Math.max(workers, pooled), null);
@@ -1135,6 +1131,15 @@ public final class JUnitLauncher {
         writeXml(xml, testResultsDir);
         publishTests(md, testClassesDir, testResultsDir);
         return summary;
+    }
+
+    /**
+     * The heap {@code pool}'s workers ran at, or the planned one when it started none. A worker
+     * records its peak as it exits, so the heap planned after the pool is not the one that ran out.
+     */
+    private long poolHeap(PullWorkerPool pool, int workers) {
+        long ran = pool.heap();
+        return ran > 0 ? ran : HeapFlags.parseXmx(jvmFlags(JvmRole.PULL_WORKER, workers, testTmpDir));
     }
 
     /**

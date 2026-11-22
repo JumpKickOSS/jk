@@ -2,6 +2,7 @@
 package cc.jumpkick.test;
 
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.engine.plugin.HeapFlags;
 import cc.jumpkick.engine.plugin.HeapScope;
 import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.engine.plugin.PluginLoader;
@@ -23,6 +24,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
@@ -57,6 +59,9 @@ final class PullWorkerPool {
 
     /** Workers the last {@link #run} started. */
     private int started;
+
+    /** The largest {@code -Xmx} a worker of the last {@link #run} was started with; {@code -1} when none was. */
+    private final AtomicLong heap = new AtomicLong(-1);
 
     PullWorkerPool(
             JUnitLauncher launcher,
@@ -104,6 +109,7 @@ final class PullWorkerPool {
         }
 
         undispatched = List.of();
+        heap.set(-1);
         var queue = new ConcurrentLinkedDeque<>(classes);
         var shards = new ArrayList<Shard>();
         // A pool that may grow isolates its first worker too: a later sibling must not share its
@@ -266,6 +272,15 @@ final class PullWorkerPool {
         return started;
     }
 
+    /**
+     * The largest {@code -Xmx} a worker of the last {@link #run} was started with, {@code -1} when it
+     * started none: the heap a retry climbs from. Planning it again after the run would read the
+     * peaks its workers recorded as they exited, not the heap they had.
+     */
+    long heap() {
+        return heap.get();
+    }
+
     /** The classes the last {@link #run} never dispatched; a heap retry runs them with the worker's own class. */
     List<String> undispatched() {
         return undispatched;
@@ -326,6 +341,7 @@ final class PullWorkerPool {
                     ? TestWorkerEnv.forWorker(testEnv, workerId, tmp, launcher.workerHomes())
                     : testEnv;
             List<String> flags = launcher.jvmFlags(JvmRole.PULL_WORKER, concurrency, tmp);
+            heap.accumulateAndGet(HeapFlags.parseXmx(flags), Math::max);
             shard.command.set(PluginLoader.command(javaHome, classpath, flags, args));
             HeapScope.Key key = SuiteRetry.key(
                     SuiteRetry.project(launcher.inferredModuleDir()), moduleLabel, JvmOptions.hostFeature(javaHome));
