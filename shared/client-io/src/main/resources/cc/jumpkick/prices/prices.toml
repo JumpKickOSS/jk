@@ -5,7 +5,7 @@
 # cache read; cache_write is the 5-minute write and cache_write_1h the 1-hour one, each only where the
 # vendor charges for it apart: elsewhere a cache write is priced as input.
 
-published = 2026-11-17T00:00:00Z
+published = 2026-11-22T00:00:00Z
 
 [models."claude-sonnet-5-5"]
 vendor = "anthropic"
@@ -109,6 +109,15 @@ output = 2.5
 source = "https://cursor.com/docs/models"
 retrieved = "2026-11-17"
 note = "Rates for usage beyond Cursor's included weekly pool. Cache write shown as '-'. Composer 2.5 Fast: 3.00 / 0.50 / 15.00. Cursor's Grok 4.7 rate: 2 / 0.5 / 6 (same as xAI); Fast 4 / 1 / 12; 500k 4 / 1 / 12; 500k Fast 6 / 1.5 / 18."
+
+[models."gemini-4-neon"]
+vendor = "google"
+input = 3.0
+cached_input = 0.15
+output = 15.0
+source = "https://aistudio.google.com/docs/pricing"
+retrieved = "2026-11-22"
+note = "Standard paid tier; page lists id 'gemini-4-neon'; agy names its effort variants gemini-4-neon-<effort>. One rate for all prompt lengths (no long-context tier). Implicit caching only. Output includes thinking tokens. Not on the free tier. Batch/Flex: 1.50 / 0.075 / 7.50; Priority 5.40 / 0.27 / 27.00."
 
 [models."gemini-4-hydrogen"]
 vendor = "google"

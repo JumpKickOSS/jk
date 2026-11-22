@@ -1,0 +1,183 @@
+#!/usr/bin/env python3
+"""The agent benches a night owes, in priority order, each with the wall time its earlier runs took.
+
+    bench/agent-loop/night-plan plan     # one line per change-tasks invocation, tab-separated
+    bench/agent-loop/night-plan tools    # exit 1 when the installed jk's MCP lists lack a tool a step needs
+    bench/agent-loop/night-plan corpus   # the directory of the corpus repositories the tasks run on
+
+scripts/bench-night.sh runs the plan. Each line is one cell (driver, arm, task):
+
+    step  driver  arm  task  repo  runs  first_run  model  est_s  source
+
+Step 1 re-runs every change task the published agent claims use, each agent on its prescription arm
+(the arm the claims compare with jk-nograph). Step 2 is the refactoring tasks on jk-graph, jk and
+jk-nograph. Step 4, only with NIGHT_NOGRAPH=1, re-runs jk-nograph for the claims' tasks, three runs a
+cell. Step 3 has no cells here: bench-night.sh runs its commands from a file.
+
+`model` is `-` for the driver's default. `est_s` is the cell's seconds over all its runs: per run, the
+median of baseline, warmup, agent and verification seconds over the newest series of that cell in
+results/*/rows.jsonl; without one, the median over the same driver and arm's cells on the same
+repository and kind (question or edit), then over all that driver and arm's cells, then the run's
+--max-minutes cap. `source` says which. Sandbox copying is not in the rows and not in the estimate.
+
+Environment: NIGHT_DRIVERS (step 1, default every agent with published claims), NIGHT_REFACTOR_DRIVERS
+(step 2, default claude-code), NIGHT_AGY_MODEL (default gemini-4-neon-high), NIGHT_NOGRAPH,
+NIGHT_RESULTS (the results directory, default results/ beside this file), NIGHT_MAX_MINUTES (default 30).
+"""
+from __future__ import annotations
+
+import importlib.util
+import json
+import os
+import statistics
+import sys
+import tomllib
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+REFACTORINGS = ["petclinic-delete-dead-code", "petclinic-move-phone-format", "petclinic-move-type-label",
+                "petclinic-pullup-display-name", "petclinic-extract-interface-contact"]
+REFACTOR_ARMS = ["jk-graph", "jk", "jk-nograph"]
+# The tools each step's arms call by name: the renamed loop and graph cards, then the refactorings.
+NEEDED = {"default": ["build", "usages"], "extended": ["delete", "move", "pull_up", "extract_interface"]}
+FIRST_RUN = {1: 100, 2: 200, 4: 300}
+
+
+def _scoreboard_agents():
+    spec = importlib.util.spec_from_file_location("night_agents", HERE.parent / "scoreboard.d" / "agents.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)  # type: ignore[union-attr]
+    return mod
+
+
+def _rows(results: Path, tasks: dict) -> dict[tuple[str, str, str, str], list[dict]]:
+    """Every (driver, arm, task, model) cell's newest series."""
+    by: dict[tuple[str, str, str, str], dict[tuple[str, int], list[dict]]] = {}
+    for f in sorted(results.glob("*/rows.jsonl")):
+        for line in f.read_text().splitlines():
+            if not line.strip():
+                continue
+            r = json.loads(line)
+            if r.get("task") not in tasks or r.get("wall_s") is None:
+                continue
+            series = (str(r.get("date", "")), int(r.get("run") or 0) // 100)
+            key = (r.get("driver", "claude-code"), r["arm"], r["task"], str(r.get("model")))
+            by.setdefault(key, {}).setdefault(series, []).append(r)
+    return {k: v[max(v)] for k, v in by.items()}
+
+
+def _seconds(r: dict) -> float:
+    return sum(float(r.get(k) or 0) for k in ("baseline_wall_s", "warmup_s", "wall_s", "verify_wall_s"))
+
+
+def _family(spec: dict) -> str:
+    return "question" if spec.get("kind") == "question" else "edit"
+
+
+def estimate(cells: dict, tasks: dict, driver: str, arm: str, task: str, model: str, cap_s: float) -> tuple[float, str]:
+    """Seconds one run of the cell takes, and where that number came from: the model's own runs first."""
+    def med(rs: list[dict]) -> float:
+        return statistics.median(_seconds(r) for r in rs)
+
+    spec = tasks[task]
+    tiers = [
+        lambda d, a, t: d == driver and a == arm and t == task,
+        lambda d, a, t: (d == driver and a == arm and tasks[t]["repo"] == spec["repo"]
+                         and _family(tasks[t]) == _family(spec)),
+        lambda d, a, t: d == driver and a == arm,
+    ]
+    for same_model in (True, False):
+        for i, tier in enumerate(tiers):
+            hits = {k: v for k, v in cells.items() if tier(*k[:3]) and (k[3] == model or not same_model)}
+            if not hits:
+                continue
+            if i == 0:
+                rs = hits[max(hits, key=lambda k: (str(hits[k][0].get("date")), int(hits[k][0].get("run") or 0)))]
+                n = len(rs)
+                return med(rs), f"cell {rs[0].get('date')} ({n} run{'s' if n != 1 else ''}, {rs[0].get('model')})"
+            what = f"{spec['repo']} {_family(spec)}s" if i == 1 else "all cells"
+            models = sorted({k[3] for k in hits})
+            return (statistics.median(med(v) for v in hits.values()),
+                    f"{what} of {driver}/{arm} ({len(hits)} cells, {', '.join(models)})")
+    return cap_s, "no runs: the time cap"
+
+
+def plan() -> list[tuple]:
+    sb = _scoreboard_agents()
+    tasks = tomllib.loads((HERE / "tasks.toml").read_text())["tasks"]
+    results = Path(os.environ.get("NIGHT_RESULTS") or HERE / "results")
+    cells = _rows(results, tasks)
+    cap_s = 60.0 * int(os.environ.get("NIGHT_MAX_MINUTES") or 30)
+    agy_model = os.environ.get("NIGHT_AGY_MODEL") or "gemini-4-neon-high"
+    drivers = (os.environ.get("NIGHT_DRIVERS") or " ".join(sb.LABELS)).split()
+    refactor_drivers = (os.environ.get("NIGHT_REFACTOR_DRIVERS") or "claude-code").split()
+
+    # The claims' tasks are those the published cells hold: graph questions and renames.
+    claimed = sorted({t for (_, _, t), rs in sb.cells().items()
+                      if sb._graph_question(t, rs[0]["kind"]) or rs[0]["kind"].startswith("rename")})
+    out = []
+
+    models = sb._default_models()
+
+    def add(step: int, driver: str, arm: str, task: str, runs: int) -> None:
+        model = agy_model if driver == "agy" else "-"
+        one, source = estimate(cells, tasks, driver, arm, task, agy_model if driver == "agy" else models.get(driver, ""),
+                               cap_s)
+        out.append((step, driver, arm, task, tasks[task]["repo"], runs, FIRST_RUN[step], model, round(one * runs), source))
+
+    for driver in drivers:
+        arm = sb.PRESCRIPTION.get(driver, "jk")
+        model = agy_model if driver == "agy" else models.get(driver, "")
+        for task in sorted(claimed, key=lambda t: estimate(cells, tasks, driver, arm, t, model, cap_s)[0]):
+            add(1, driver, arm, task, 1)
+    for driver in refactor_drivers:
+        for task in REFACTORINGS:
+            for arm in REFACTOR_ARMS:
+                add(2, driver, arm, task, 1)
+    if os.environ.get("NIGHT_NOGRAPH") == "1":
+        for driver in drivers:
+            for task in claimed:
+                add(4, driver, "jk-nograph", task, 3)
+    return out
+
+
+def tools() -> int:
+    """The installed jk's default and extended tools/list must carry every tool a step's arms call."""
+    sys.path.insert(0, str(HERE))
+    from harnesslib.mcp import StdioMcp  # noqa: PLC0415
+
+    missing = []
+    for surface, names in NEEDED.items():
+        client = StdioMcp(["jk", "mcp"], cwd=HERE)
+        try:
+            listed = client.request("tools/list", {"extended": True} if surface == "extended" else {}).get("tools") or []
+        finally:
+            client.close()
+        have = {t.get("name") for t in listed}
+        missing += [f"{name} ({surface} list)" for name in names if name not in have]
+    if missing:
+        print("the installed jk's MCP lacks: " + ", ".join(missing), file=sys.stderr)
+        return 1
+    return 0
+
+
+def main() -> int:
+    what = sys.argv[1] if len(sys.argv) > 1 else ""
+    if what == "plan":
+        for line in plan():
+            print("\t".join(str(x) for x in line))
+        return 0
+    if what == "tools":
+        return tools()
+    if what == "corpus":
+        sys.path.insert(0, str(HERE.parent))
+        import benchtools  # noqa: PLC0415
+
+        print(benchtools.scratch("GRAPH_RETRIEVAL_HOME", "graph-retrieval") / "repos")
+        return 0
+    print(__doc__, file=sys.stderr)
+    return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main())

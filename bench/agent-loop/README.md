@@ -355,4 +355,53 @@ in the transcripts against the graph and counts the reads of never-edited files 
 answer named (what a hook could have saved) against the answers it would have attached (what it
 would have cost), each as tokens times the API calls that carried them.
 
+## A night of benches
+
+`scripts/bench-night.sh` runs what the agent bench owes on the gate host, in priority order, until
+a deadline. Its plan is `night-plan plan`: step 1 re-runs the change tasks the published agent claims
+use, each agent on its prescription arm, one run per cell; step 2 is the refactoring tasks (delete,
+the two moves, pull-up, extract interface) on `jk-graph`, `jk` and `jk-nograph`; step 3 the commands
+in `$NIGHT_EXTRA`, while time is left; step 4, only with `NIGHT_NOGRAPH=1`, `jk-nograph` again for
+the claims' tasks, three runs a cell. agy runs Gemini 4 Neon (`--model gemini-4-neon-high`,
+`$NIGHT_AGY_MODEL`).
+
+```bash
+scripts/bench-night.sh prepare                          # set up the corpus repositories (no agent)
+scripts/bench-night.sh run --until 07:00 --dry-run      # every cell, its expected time, who is not logged in
+scripts/bench-night.sh pause                            # stop the merge queue and Full loops between gates
+scripts/bench-night.sh run --until 07:00                # the night, under systemd-inhibit
+scripts/bench-night.sh resume                           # start both loops again as they were
+```
+
+A cell's expected time is the median of its newest series' baseline, warmup, agent and verification
+seconds in `results/*/rows.jsonl` (the run's own model first); a cell never run takes its driver and
+arm's runs on the same repository, and the dry run says which. A cell starts only when it fits before
+the deadline; one still running at the deadline is stopped. An agent CLI that is not logged in, a
+corpus repository not set up, and an agent whose two cells in a row end in an error row have their
+cells skipped and named. A real run refuses when the installed jk is not the tree's version or lacks
+an MCP tool a step calls, when a loop runs, or when a gate holds the gate lock, which it then holds to
+the end. Rows land in `results/<date>-change-tasks/`, where the scoreboard reads them; nothing is
+banked or rendered: that is a separate, reviewed step. agy's rows count in the claims once
+`change-tasks`' default agy model is Gemini 4 Neon.
+
+`pause` takes the gate lock (`/var/tmp/fleet-gate.lock`), so a batch or Full cycle in flight finishes
+first, saves each loop's command line, directory, output and environment under
+`/var/tmp/jk-bench-night/loops/`, and stops the loop's process group; `resume` starts each in its own
+session. By hand, from the loops' checkout on the gate host:
+
+```bash
+# pause: wait for the gate lock, then stop each loop's process group (the loop and its waiting flock)
+exec 9>>/var/tmp/fleet-gate.lock && flock 9
+for s in scripts/queue/loop.sh scripts/gate/full-loop.sh; do
+  for p in $(pgrep -f "^bash $s"); do
+    [ "$(readlink /proc/$p/cwd)" = "$HOME/src/jk-queue-runner" ] && kill -TERM -- "-$p"
+  done
+done
+exec 9>&-
+# resume
+cd ~/src/jk-queue-runner
+QUEUE_CHECKOUT=~/src/jk-queue-checkout setsid -f bash scripts/queue/loop.sh >>/var/tmp/jk-queue/loop.out 2>&1 </dev/null
+FULL_CHECKOUT=~/src/jk-full-checkout setsid -f bash scripts/gate/full-loop.sh >>/var/tmp/jk-queue/full-loop.out 2>&1 </dev/null
+```
+
 `bench/jar-size/` is the neighbouring bench; this one measures the loop, that one the artefact.

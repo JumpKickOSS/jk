@@ -22,6 +22,9 @@ bench/agent-loop/screen-ff --series 33 --confirm --task …                  # r
 | 1 screen | `screen-ff` on the few tasks the change can show, every agent, one run | Every change |
 | 2 collection | `screen-ff` on every task (`--runs` only for the no-graph arm) | Fresh numbers for the docs, or a new agent |
 
+A night of owed runs on the gate host, in priority order until a deadline, with the merge queue paused:
+`scripts/bench-night.sh` ([README](../../bench/agent-loop/README.md#a-night-of-benches)).
+
 **Fail fast.** Read the verdict as soon as the first agents finish. Stop a screen the moment the change
 is plainly worse or plainly irrelevant; never let a run go long to "be sure". Change one thing per
 screen, and pick tasks that can show it.
