@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.plugin.build;
+package cc.jumpkick.plugin;
 
 import java.util.Collections;
 import java.util.LinkedHashMap;

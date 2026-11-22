@@ -5,8 +5,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.generate.GeneratorEntry;
 import cc.jumpkick.plugin.PluginConfig;
+import cc.jumpkick.plugin.ProjectFacts;
 import cc.jumpkick.plugin.build.KeyProbe;
-import cc.jumpkick.plugin.build.ProjectFacts;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;

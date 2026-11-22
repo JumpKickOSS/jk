@@ -11,9 +11,9 @@ import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.plugin.PluginConfig;
+import cc.jumpkick.plugin.ProjectFacts;
+import cc.jumpkick.plugin.RuntimeEntry;
 import cc.jumpkick.plugin.build.ImageContext;
-import cc.jumpkick.plugin.build.PackageIo;
-import cc.jumpkick.plugin.build.ProjectFacts;
 import cc.jumpkick.sigstore.Dsse;
 import cc.jumpkick.sigstore.KeylessSigstoreSigner;
 import cc.jumpkick.sigstore.StubSigner;
@@ -484,7 +484,7 @@ class ImageReferrersTest {
         }
 
         @Override
-        public List<PackageIo.RuntimeEntry> runtimeEntries() {
+        public List<RuntimeEntry> runtimeEntries() {
             return List.of();
         }
 

@@ -2,6 +2,7 @@
 package cc.jumpkick.plugin.build;
 
 import cc.jumpkick.plugin.PluginConfig;
+import cc.jumpkick.plugin.ProjectFacts;
 
 /**
  * The registration surface handed to {@link BuildPlugin#register}. Registration code may branch on

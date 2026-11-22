@@ -29,7 +29,7 @@ class KotlinNullnessConsumerTest {
                 package consumer
 
                 import cc.jumpkick.plugin.build.ImageResult
-                import cc.jumpkick.plugin.build.ProjectFacts
+                import cc.jumpkick.plugin.ProjectFacts
                 import cc.jumpkick.plugin.protocol.PluginSpec
                 import java.nio.file.Path
 

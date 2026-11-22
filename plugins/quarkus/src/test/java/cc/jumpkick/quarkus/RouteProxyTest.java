@@ -4,7 +4,7 @@ package cc.jumpkick.quarkus;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import cc.jumpkick.plugin.build.RepositoryRoute;
+import cc.jumpkick.plugin.RepositoryRoute;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import io.quarkus.bootstrap.resolver.maven.MavenArtifactResolver;

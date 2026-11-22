@@ -2,9 +2,10 @@
 package cc.jumpkick.plugin.testing;
 
 import cc.jumpkick.plugin.PluginConfig;
+import cc.jumpkick.plugin.ProjectFacts;
+import cc.jumpkick.plugin.RepositoryRoute;
+import cc.jumpkick.plugin.RuntimeEntry;
 import cc.jumpkick.plugin.build.PackageIo;
-import cc.jumpkick.plugin.build.ProjectFacts;
-import cc.jumpkick.plugin.build.RepositoryRoute;
 import cc.jumpkick.plugin.build.TaskExec;
 import cc.jumpkick.plugin.build.Transfers;
 import java.io.IOException;

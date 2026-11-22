@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.plugin.protocol;
+package cc.jumpkick.plugin;
 
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;

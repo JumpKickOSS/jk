@@ -4,7 +4,7 @@ package cc.jumpkick.format;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.host.time.Clock;
-import cc.jumpkick.plugin.protocol.ProtocolWriter;
+import cc.jumpkick.plugin.ProtocolWriter;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.PrintStream;

@@ -11,15 +11,15 @@ import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.plugin.Plugin;
 import cc.jumpkick.plugin.PluginConfig;
 import cc.jumpkick.plugin.PluginManifest;
+import cc.jumpkick.plugin.ProjectFacts;
+import cc.jumpkick.plugin.ProtocolWriter;
+import cc.jumpkick.plugin.RuntimeEntry;
 import cc.jumpkick.plugin.build.ImageContext;
 import cc.jumpkick.plugin.build.ImageExtension;
 import cc.jumpkick.plugin.build.ImageResult;
-import cc.jumpkick.plugin.build.PackageIo;
-import cc.jumpkick.plugin.build.ProjectFacts;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
 import cc.jumpkick.plugin.protocol.PluginReply;
 import cc.jumpkick.plugin.protocol.PluginSpec;
-import cc.jumpkick.plugin.protocol.ProtocolWriter;
 import cc.jumpkick.sigstore.Dsse;
 import cc.jumpkick.sigstore.KeylessSigstoreSigner;
 import java.io.IOException;
@@ -148,7 +148,7 @@ public final class OciImageBuilder implements Plugin, ImageExtension {
         List<Path> depJars = new ArrayList<>();
         List<Path> snapshotJars = new ArrayList<>();
         Map<Path, String> jarNames = new LinkedHashMap<>();
-        for (PackageIo.RuntimeEntry e : ctx.runtimeEntries()) {
+        for (RuntimeEntry e : ctx.runtimeEntries()) {
             if (e.jar() == null) continue;
             (e.snapshot() ? snapshotJars : depJars).add(e.jar());
             // The entry knows its coordinate; the path is a CAS digest and says nothing.
@@ -520,7 +520,7 @@ public final class OciImageBuilder implements Plugin, ImageExtension {
         }
 
         @Override
-        public List<PackageIo.RuntimeEntry> runtimeEntries() {
+        public List<RuntimeEntry> runtimeEntries() {
             return spec.entries();
         }
 

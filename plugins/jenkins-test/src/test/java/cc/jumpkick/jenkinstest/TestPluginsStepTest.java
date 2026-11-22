@@ -4,8 +4,8 @@ package cc.jumpkick.jenkinstest;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import cc.jumpkick.plugin.build.PackageIo;
-import cc.jumpkick.plugin.build.RepositoryRoute;
+import cc.jumpkick.plugin.RepositoryRoute;
+import cc.jumpkick.plugin.RuntimeEntry;
 import cc.jumpkick.plugin.testing.FakeBuildIo;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
@@ -111,8 +111,7 @@ class TestPluginsStepTest {
                 .hasMessageContaining("offline");
     }
 
-    private PackageIo.RuntimeEntry entry(String group, String artifact, String version, boolean plugin)
-            throws IOException {
+    private RuntimeEntry entry(String group, String artifact, String version, boolean plugin) throws IOException {
         Path jar = tmp.resolve("jars").resolve(artifact + "-" + version + ".jar");
         Files.createDirectories(jar.getParent());
         Manifest manifest = new Manifest();
@@ -125,6 +124,6 @@ class TestPluginsStepTest {
         try (JarOutputStream out = new JarOutputStream(Files.newOutputStream(jar), manifest)) {
             // a manifest is all the step reads
         }
-        return new PackageIo.RuntimeEntry(jar.getFileName().toString(), jar, false, null, group, artifact, version);
+        return new RuntimeEntry(jar.getFileName().toString(), jar, false, null, group, artifact, version);
     }
 }

@@ -2,6 +2,7 @@
 package cc.jumpkick.plugin.build;
 
 import cc.jumpkick.plugin.PluginConfig;
+import cc.jumpkick.plugin.ProjectFacts;
 import java.util.ArrayList;
 import java.util.List;
 import org.jspecify.annotations.Nullable;

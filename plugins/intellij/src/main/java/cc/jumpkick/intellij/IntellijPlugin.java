@@ -3,13 +3,13 @@ package cc.jumpkick.intellij;
 
 import cc.jumpkick.plugin.Plugin;
 import cc.jumpkick.plugin.PluginManifest;
+import cc.jumpkick.plugin.ProtocolWriter;
 import cc.jumpkick.plugin.build.BuildPluginHarness;
 import cc.jumpkick.plugin.build.In;
 import cc.jumpkick.plugin.build.PackageContext;
 import cc.jumpkick.plugin.build.PackageExtension;
 import cc.jumpkick.plugin.build.TestContext;
 import cc.jumpkick.plugin.build.TestExtension;
-import cc.jumpkick.plugin.protocol.ProtocolWriter;
 import java.util.List;
 
 /**

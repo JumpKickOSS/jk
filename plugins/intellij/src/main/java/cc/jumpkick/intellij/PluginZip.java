@@ -3,6 +3,7 @@ package cc.jumpkick.intellij;
 
 import cc.jumpkick.host.DeterministicZip;
 import cc.jumpkick.host.TreeContent;
+import cc.jumpkick.plugin.RuntimeEntry;
 import cc.jumpkick.plugin.build.PackageIo;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -61,7 +62,7 @@ final class PluginZip {
         try (ZipOutputStream out = new ZipOutputStream(DeterministicZip.archiveStream(zip))) {
             ZIP.writeEntry(out, lib + jarName, jar);
             written.add(jarName);
-            for (PackageIo.RuntimeEntry entry : io.runtimeEntries()) {
+            for (RuntimeEntry entry : io.runtimeEntries()) {
                 Path dep = entry.jar();
                 if (dep == null) continue;
                 if (!written.add(entry.fileName())) continue;

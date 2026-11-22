@@ -3,8 +3,8 @@ package cc.jumpkick.plugin.protocol;
 
 import cc.jumpkick.jsonl.JsonFields;
 import cc.jumpkick.plugin.PluginConfig;
-import cc.jumpkick.plugin.build.ProjectFacts;
-import cc.jumpkick.plugin.build.RepositoryRoute;
+import cc.jumpkick.plugin.ProjectFacts;
+import cc.jumpkick.plugin.RepositoryRoute;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;

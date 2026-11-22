@@ -2,6 +2,8 @@
 package cc.jumpkick.plugin.build;
 
 import cc.jumpkick.plugin.PluginConfig;
+import cc.jumpkick.plugin.ProjectFacts;
+import cc.jumpkick.plugin.RuntimeEntry;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
@@ -31,7 +33,7 @@ public interface TerminalContext {
     Optional<Path> mainArtifact();
 
     /** The lock-ordered production RUNTIME entries (the runtime closure). */
-    List<PackageIo.RuntimeEntry> runtimeEntries();
+    List<RuntimeEntry> runtimeEntries();
 
     /** The JDK this build runs on — for tool forks. */
     Path javaHome();

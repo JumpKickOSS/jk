@@ -4,8 +4,8 @@ package cc.jumpkick.java.compiler;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.plugin.ProtocolWriter;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
-import cc.jumpkick.plugin.protocol.ProtocolWriter;
 import cc.jumpkick.plugin.protocol.SpecWriter;
 import cc.jumpkick.testing.Symlinks;
 import java.io.ByteArrayOutputStream;

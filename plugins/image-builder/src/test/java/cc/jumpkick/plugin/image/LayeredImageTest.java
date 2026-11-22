@@ -6,9 +6,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.image.ImageConfig;
 import cc.jumpkick.plugin.PluginConfig;
+import cc.jumpkick.plugin.ProjectFacts;
+import cc.jumpkick.plugin.RuntimeEntry;
 import cc.jumpkick.plugin.build.ImageContext;
-import cc.jumpkick.plugin.build.PackageIo;
-import cc.jumpkick.plugin.build.ProjectFacts;
 import cc.jumpkick.testing.RegistryStub;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
@@ -259,7 +259,7 @@ class LayeredImageTest {
         }
 
         @Override
-        public List<PackageIo.RuntimeEntry> runtimeEntries() {
+        public List<RuntimeEntry> runtimeEntries() {
             return List.of();
         }
 

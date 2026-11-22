@@ -29,7 +29,7 @@ import cc.jumpkick.model.PluginConfig;
 import cc.jumpkick.model.PluginDeclaration;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
-import cc.jumpkick.plugin.build.ProjectFacts;
+import cc.jumpkick.plugin.ProjectFacts;
 import cc.jumpkick.plugin.manifest.PluginContributions;
 import cc.jumpkick.plugin.manifest.PluginDescriptor;
 import cc.jumpkick.plugin.manifest.PluginTableRegistry;

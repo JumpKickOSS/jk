@@ -3,11 +3,11 @@ package com.example.hello;
 
 import cc.jumpkick.plugin.Plugin;
 import cc.jumpkick.plugin.PluginManifest;
+import cc.jumpkick.plugin.ProtocolWriter;
 import cc.jumpkick.plugin.build.BuildPlugin;
 import cc.jumpkick.plugin.build.BuildPluginContext;
 import cc.jumpkick.plugin.build.BuildPluginHarness;
 import cc.jumpkick.plugin.build.PluginCommandSpec;
-import cc.jumpkick.plugin.protocol.ProtocolWriter;
 import java.util.List;
 
 /**

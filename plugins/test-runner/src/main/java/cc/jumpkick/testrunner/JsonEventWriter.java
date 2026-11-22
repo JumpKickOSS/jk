@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.testrunner;
 
+import cc.jumpkick.plugin.ProtocolWriter;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
-import cc.jumpkick.plugin.protocol.ProtocolWriter;
 import java.util.LinkedHashMap;
 import java.util.Map;
 

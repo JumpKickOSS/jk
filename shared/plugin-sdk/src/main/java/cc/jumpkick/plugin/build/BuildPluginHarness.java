@@ -6,10 +6,13 @@ import cc.jumpkick.jsonl.JsonFields;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.plugin.Plugin;
 import cc.jumpkick.plugin.PluginConfig;
+import cc.jumpkick.plugin.ProjectFacts;
+import cc.jumpkick.plugin.ProtocolWriter;
+import cc.jumpkick.plugin.RepositoryRoute;
+import cc.jumpkick.plugin.RuntimeEntry;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
 import cc.jumpkick.plugin.protocol.PluginReply;
 import cc.jumpkick.plugin.protocol.PluginSpec;
-import cc.jumpkick.plugin.protocol.ProtocolWriter;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
@@ -341,9 +344,9 @@ public final class BuildPluginHarness {
             @Nullable Path artifactPath,
             List<Path> runtimeClasspath,
             List<Path> compileClasspath,
-            List<PackageIo.RuntimeEntry> entries,
+            List<RuntimeEntry> entries,
             /** The test runtime closure's entries ({@link PluginProtocol#ROLE_TEST}): a lock closure's. */
-            List<PackageIo.RuntimeEntry> testEntries,
+            List<RuntimeEntry> testEntries,
             Map<String, Path> stepOutputs,
             Map<String, Path> extras,
             Map<String, List<Path>> siblingFiles,
@@ -380,8 +383,8 @@ public final class BuildPluginHarness {
             @Nullable Path artifactPath = null;
             List<Path> runtimeClasspath = new ArrayList<>();
             List<Path> compileClasspath = new ArrayList<>();
-            List<PackageIo.RuntimeEntry> entries = new ArrayList<>();
-            List<PackageIo.RuntimeEntry> testEntries = new ArrayList<>();
+            List<RuntimeEntry> entries = new ArrayList<>();
+            List<RuntimeEntry> testEntries = new ArrayList<>();
             Map<String, Path> stepOutputs = new LinkedHashMap<>();
             Map<String, Path> extras = new LinkedHashMap<>();
             Map<String, List<Path>> siblingFiles = new LinkedHashMap<>();
@@ -534,13 +537,13 @@ public final class BuildPluginHarness {
             return PluginProtocol.ROLE_TEST.equals(Jsonl.str(line, PluginProtocol.ROLE));
         }
 
-        private static PackageIo.RuntimeEntry runtimeEntry(String line) {
+        private static RuntimeEntry runtimeEntry(String line) {
             @Nullable String jarPath = Jsonl.str(line, "path");
             @Nullable String container = Jsonl.str(line, "container");
             @Nullable String g = Jsonl.str(line, "group");
             @Nullable String a = Jsonl.str(line, "artifact");
             @Nullable String v = Jsonl.str(line, "version");
-            return new PackageIo.RuntimeEntry(
+            return new RuntimeEntry(
                     required(Jsonl.str(line, "file"), "entry.file"),
                     jarPath == null ? null : Path.of(jarPath),
                     Jsonl.bool(line, "snapshot", false),
@@ -592,7 +595,7 @@ public final class BuildPluginHarness {
         }
 
         @Override
-        public List<PackageIo.RuntimeEntry> runtimeEntries() {
+        public List<RuntimeEntry> runtimeEntries() {
             return spec.entries();
         }
 

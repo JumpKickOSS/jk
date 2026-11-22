@@ -3,8 +3,8 @@ package cc.jumpkick.plugin.build;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.plugin.ProtocolWriter;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
-import cc.jumpkick.plugin.protocol.ProtocolWriter;
 import cc.jumpkick.plugin.protocol.SpecWriter;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;

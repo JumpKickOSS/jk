@@ -3,7 +3,7 @@ package cc.jumpkick.helidon;
 
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.ToolJars;
-import cc.jumpkick.plugin.build.PackageIo;
+import cc.jumpkick.plugin.RuntimeEntry;
 import cc.jumpkick.plugin.build.TaskExec;
 import io.helidon.service.maven.plugin.JkCreateApplication;
 import java.io.IOException;
@@ -84,7 +84,7 @@ final class HelidonBinding {
         Path out = exec.outputDir(HelidonPlugin.TEST_CLASSES);
         Set<Path> classpath = new LinkedHashSet<>();
         classpath.add(testClasses);
-        for (PackageIo.RuntimeEntry entry : exec.runtimeEntries()) {
+        for (RuntimeEntry entry : exec.runtimeEntries()) {
             Path jar = entry.jar();
             if (jar != null) classpath.add(jar);
         }

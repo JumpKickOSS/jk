@@ -3,8 +3,8 @@ package cc.jumpkick.kotlin.compiler;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.plugin.ProtocolWriter;
 import cc.jumpkick.plugin.protocol.CompilerProtocol;
-import cc.jumpkick.plugin.protocol.ProtocolWriter;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;

@@ -4,8 +4,8 @@ package cc.jumpkick.plugin.publish;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.plugin.ProtocolWriter;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
-import cc.jumpkick.plugin.protocol.ProtocolWriter;
 import cc.jumpkick.plugin.protocol.SpecWriter;
 import cc.jumpkick.plugin.publish.testkit.GpgTestFixture;
 import java.io.ByteArrayOutputStream;

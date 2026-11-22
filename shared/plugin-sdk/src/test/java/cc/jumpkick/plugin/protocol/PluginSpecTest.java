@@ -4,8 +4,8 @@ package cc.jumpkick.plugin.protocol;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.plugin.PluginConfig;
-import cc.jumpkick.plugin.build.PackageIo;
-import cc.jumpkick.plugin.build.ProjectFacts;
+import cc.jumpkick.plugin.ProjectFacts;
+import cc.jumpkick.plugin.RuntimeEntry;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -93,10 +93,8 @@ class PluginSpecTest {
                         dir.resolve("dep.jar").toAbsolutePath(),
                         dir.resolve("dep-state").resolve("zinc").toAbsolutePath()));
 
-        assertThat(s.entries())
-                .extracting(PackageIo.RuntimeEntry::fileName)
-                .containsExactly("dep-1.0.jar", "snap-2.0.jar");
-        assertThat(s.entries()).extracting(PackageIo.RuntimeEntry::snapshot).containsExactly(false, true);
+        assertThat(s.entries()).extracting(RuntimeEntry::fileName).containsExactly("dep-1.0.jar", "snap-2.0.jar");
+        assertThat(s.entries()).extracting(RuntimeEntry::snapshot).containsExactly(false, true);
 
         assertThat(s.sources()).containsExactly(dir.resolve("Main.java").toAbsolutePath());
         assertThat(s.args()).containsExactly("-Xlint:all");
@@ -196,7 +194,7 @@ class PluginSpecTest {
                         .lines(),
                 StandardCharsets.UTF_8);
 
-        PackageIo.RuntimeEntry entry = PluginSpec.read(spec).entries().get(0);
+        RuntimeEntry entry = PluginSpec.read(spec).entries().get(0);
         assertThat(entry.jar()).isNull();
         assertThat(entry.container()).isEqualTo(dir.resolve("android-aar").toAbsolutePath());
     }

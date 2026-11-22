@@ -82,6 +82,12 @@
 # plain write, so `builds` reads `lock` and nothing reads back. Left: config, layout, library, lock
 # and plugin.manifest, so the line is 5.
 #
+# 2026-11-21, shared/plugin-sdk: `plugin` and `plugin.protocol` read each other (Plugin.run takes a
+# ProtocolWriter; the spec reads PluginConfig), and so did `plugin.protocol` and `plugin.build` (the
+# spec reads ProjectFacts, RepositoryRoute and PackageIo's runtime entry; the harness reads the
+# spec). ProtocolWriter, ProjectFacts, RepositoryRoute and RuntimeEntry (once PackageIo.RuntimeEntry)
+# moved into `plugin`, which now reads no other SDK package: the line is gone.
+#
 # Measured at landing: 1,432 main sources, 95 packages, 29 module source roots, 195 resolved
 # package edges. Method: per module, resolve each `import cc.jumpkick.*` to the longest declared
 # package prefix WITHIN that module, then Tarjan over the resulting package graph. Imports that
@@ -95,13 +101,5 @@ server/engine 5
 shared/core 5
 clients/cli-terminal 3
 server/toolchain 3
-# shared/plugin-sdk is 3, not 2: the component is {plugin, plugin.build, plugin.protocol}, closed by
-# plugin -> plugin.protocol -> plugin and plugin.protocol -> plugin.build -> plugin.protocol. The
-# edge plugin.build -> plugin.protocol is carried as ordinary imports by
-# shared/plugin-sdk/src/main/java/cc/jumpkick/plugin/build/BuildPluginHarness.java lines 6-7; that
-# file also holds an in-code fully-qualified reference, which is why it has fqcn-baseline.txt
-# entries and why an earlier scan read this module as 2. plugin.process reaches both but has no
-# inbound edge, so it is correctly outside the component.
-shared/plugin-sdk 3
 shared/client-io 2
 shared/toolchain-jdk 2

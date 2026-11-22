@@ -8,6 +8,9 @@ import cc.jumpkick.host.PreferIpv4;
 import cc.jumpkick.host.ToolJars;
 import cc.jumpkick.plugin.Plugin;
 import cc.jumpkick.plugin.PluginManifest;
+import cc.jumpkick.plugin.ProtocolWriter;
+import cc.jumpkick.plugin.RepositoryRoute;
+import cc.jumpkick.plugin.RuntimeEntry;
 import cc.jumpkick.plugin.build.BuildContext;
 import cc.jumpkick.plugin.build.BuildExtension;
 import cc.jumpkick.plugin.build.BuildPluginHarness;
@@ -16,11 +19,9 @@ import cc.jumpkick.plugin.build.LockExtension;
 import cc.jumpkick.plugin.build.PackageContext;
 import cc.jumpkick.plugin.build.PackageExtension;
 import cc.jumpkick.plugin.build.PackageIo;
-import cc.jumpkick.plugin.build.RepositoryRoute;
 import cc.jumpkick.plugin.build.TaskExec;
 import cc.jumpkick.plugin.build.TestContext;
 import cc.jumpkick.plugin.build.TestExtension;
-import cc.jumpkick.plugin.protocol.ProtocolWriter;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -177,9 +178,8 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
      * notice, which {@code jk lock} says.
      */
     @Override
-    public List<Pin> lockClosure(String name, TaskExec exec, List<PackageIo.RuntimeEntry> testRuntimeEntries)
-            throws Exception {
-        List<PackageIo.RuntimeEntry> entries;
+    public List<Pin> lockClosure(String name, TaskExec exec, List<RuntimeEntry> testRuntimeEntries) throws Exception {
+        List<RuntimeEntry> entries;
         if (DEPLOYMENT_CLOSURE.equals(name)) {
             entries = exec.runtimeEntries();
         } else if (TEST_DEPLOYMENT_CLOSURE.equals(name)) {
@@ -342,9 +342,9 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
     }
 
     /** {@code entries} as {@code gav<TAB>jar} lines, as {@link #writeRuntimeList(TaskExec, Path)} writes a step's. */
-    private static Path writeRuntimeList(List<PackageIo.RuntimeEntry> entries, Path listFile) throws IOException {
+    private static Path writeRuntimeList(List<RuntimeEntry> entries, Path listFile) throws IOException {
         List<String> lines = new ArrayList<>();
-        for (PackageIo.RuntimeEntry e : entries) {
+        for (RuntimeEntry e : entries) {
             Path jar = e.jar();
             if (jar == null || !Files.isRegularFile(jar)) continue;
             String gav = e.gav();
@@ -540,8 +540,8 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
      * runtime closure. Empty when the closure has no Quarkus core — the caller falls back to the
      * configured floor and the augment reports whatever Maven makes of it.
      */
-    static Optional<String> resolvedQuarkusVersion(List<PackageIo.RuntimeEntry> entries) {
-        for (PackageIo.RuntimeEntry e : entries) {
+    static Optional<String> resolvedQuarkusVersion(List<RuntimeEntry> entries) {
+        for (RuntimeEntry e : entries) {
             if ("io.quarkus".equals(e.group()) && "quarkus-core".equals(e.artifact())) {
                 return e.version().isEmpty() ? Optional.empty() : Optional.of(e.version());
             }

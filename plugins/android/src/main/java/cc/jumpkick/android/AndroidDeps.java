@@ -5,6 +5,7 @@ import cc.jumpkick.host.DomXml;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.plugin.PluginConfig;
+import cc.jumpkick.plugin.RuntimeEntry;
 import cc.jumpkick.plugin.build.PackageIo;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -62,9 +63,9 @@ final class AndroidDeps {
     }
 
     /** The AAR containers among {@code entries}, in entry (classpath) order. */
-    static List<Aar> aars(List<PackageIo.RuntimeEntry> entries) {
+    static List<Aar> aars(List<RuntimeEntry> entries) {
         List<Aar> out = new ArrayList<>();
-        for (PackageIo.RuntimeEntry e : entries) {
+        for (RuntimeEntry e : entries) {
             if (e.container() != null) out.add(new Aar(e.fileName(), e.container()));
         }
         return out;

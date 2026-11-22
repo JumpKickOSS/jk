@@ -2,6 +2,7 @@
 package cc.jumpkick.plugin.build;
 
 import cc.jumpkick.plugin.PluginConfig;
+import cc.jumpkick.plugin.ProjectFacts;
 
 /**
  * The {@link PackageExtension} contribution surface: declares the one packager that replaces the

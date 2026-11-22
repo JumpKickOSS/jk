@@ -4,7 +4,7 @@ package cc.jumpkick.generate;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import cc.jumpkick.plugin.protocol.ProtocolWriter;
+import cc.jumpkick.plugin.ProtocolWriter;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;

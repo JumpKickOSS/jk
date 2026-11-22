@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.plugin.build;
+package cc.jumpkick.plugin;
 
 import java.net.URI;
 import java.util.Objects;
@@ -7,7 +7,7 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * One remote repository as the engine routes it for this module: the repository's id, the URL a
- * request for it opens, and the credential that request carries — {@link In#repositories}.
+ * request for it opens, and the credential that request carries — what a step declaring the {@code In.repositories()} input reads.
  *
  * <p>The URL is where jk itself would send the request, not the repository's declared address: a
  * {@code settings.xml} mirror stands in for the repository, and Maven Central is rewritten to its

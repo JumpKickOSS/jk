@@ -27,15 +27,15 @@ import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.plugin.Plugin;
 import cc.jumpkick.plugin.PluginConfig;
 import cc.jumpkick.plugin.PluginManifest;
-import cc.jumpkick.plugin.build.PackageIo;
-import cc.jumpkick.plugin.build.ProjectFacts;
+import cc.jumpkick.plugin.ProjectFacts;
+import cc.jumpkick.plugin.ProtocolWriter;
+import cc.jumpkick.plugin.RuntimeEntry;
 import cc.jumpkick.plugin.build.PublishContext;
 import cc.jumpkick.plugin.build.PublishExtension;
 import cc.jumpkick.plugin.build.PublishResult;
 import cc.jumpkick.plugin.manifest.PluginTableRegistry;
 import cc.jumpkick.plugin.protocol.PluginReply;
 import cc.jumpkick.plugin.protocol.PluginSpec;
-import cc.jumpkick.plugin.protocol.ProtocolWriter;
 import cc.jumpkick.publish.PublishablePom;
 import cc.jumpkick.sigstore.KeylessSigstoreSigner;
 import java.io.IOException;
@@ -536,7 +536,7 @@ public final class Publisher implements Plugin, PublishExtension {
         }
 
         @Override
-        public List<PackageIo.RuntimeEntry> runtimeEntries() {
+        public List<RuntimeEntry> runtimeEntries() {
             return spec.entries();
         }
 

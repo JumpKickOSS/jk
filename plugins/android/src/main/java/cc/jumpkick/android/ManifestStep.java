@@ -4,7 +4,7 @@ package cc.jumpkick.android;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.DomXml;
 import cc.jumpkick.host.ToolJars;
-import cc.jumpkick.plugin.build.PackageIo;
+import cc.jumpkick.plugin.RuntimeEntry;
 import cc.jumpkick.plugin.build.TaskExec;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -34,7 +34,7 @@ final class ManifestStep {
     }
 
     /** Every AAR manifest among {@code entries}, in classpath order. */
-    static List<Path> aarManifests(List<PackageIo.RuntimeEntry> entries) {
+    static List<Path> aarManifests(List<RuntimeEntry> entries) {
         List<Path> out = new ArrayList<>();
         for (AndroidDeps.Aar aar : AndroidDeps.aars(entries)) {
             if (Files.isRegularFile(aar.manifest())) out.add(aar.manifest());

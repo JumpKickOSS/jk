@@ -3,9 +3,9 @@ package cc.jumpkick.plugin.protocol;
 
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.plugin.PluginConfig;
-import cc.jumpkick.plugin.build.PackageIo;
-import cc.jumpkick.plugin.build.ProjectFacts;
-import cc.jumpkick.plugin.build.RepositoryRoute;
+import cc.jumpkick.plugin.ProjectFacts;
+import cc.jumpkick.plugin.RepositoryRoute;
+import cc.jumpkick.plugin.RuntimeEntry;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
@@ -43,7 +43,7 @@ public final class PluginSpec {
     private final List<Path> processorClasspath = new ArrayList<>();
     private final List<Path> friendPaths = new ArrayList<>();
     private final List<Path> runtimeClasspath = new ArrayList<>();
-    private final List<PackageIo.RuntimeEntry> entries = new ArrayList<>();
+    private final List<RuntimeEntry> entries = new ArrayList<>();
     private final List<Path> sources = new ArrayList<>();
     private final List<String> args = new ArrayList<>();
     private final List<CompilerPlugin> compilerPlugins = new ArrayList<>();
@@ -117,7 +117,7 @@ public final class PluginSpec {
                     @Nullable String g = Jsonl.str(line, "group");
                     @Nullable String a = Jsonl.str(line, "artifact");
                     @Nullable String v = Jsonl.str(line, "version");
-                    s.entries.add(new PackageIo.RuntimeEntry(
+                    s.entries.add(new RuntimeEntry(
                             requiredString(line, PluginProtocol.FILE_NAME),
                             jar == null ? null : Path.of(jar),
                             Jsonl.bool(line, PluginProtocol.SNAPSHOT, false),
@@ -317,7 +317,7 @@ public final class PluginSpec {
         return runtimeClasspath;
     }
 
-    public List<PackageIo.RuntimeEntry> entries() {
+    public List<RuntimeEntry> entries() {
         return entries;
     }
 

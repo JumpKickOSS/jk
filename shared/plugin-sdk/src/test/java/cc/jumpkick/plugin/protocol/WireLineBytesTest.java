@@ -4,7 +4,7 @@ package cc.jumpkick.plugin.protocol;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.jsonl.Jsonl;
-import cc.jumpkick.plugin.build.ProjectFacts;
+import cc.jumpkick.plugin.ProjectFacts;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.List;

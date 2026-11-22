@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.boot;
 
+import cc.jumpkick.plugin.RuntimeEntry;
 import cc.jumpkick.plugin.build.PackageIo;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -51,7 +52,7 @@ public record BootJarInputs(String bootVersion, String startClass, Path loaderJa
 
         List<BootJarPackager.Lib> libs = new ArrayList<>();
         String bootVersion = "";
-        for (PackageIo.RuntimeEntry entry : io.runtimeEntries()) {
+        for (RuntimeEntry entry : io.runtimeEntries()) {
             // A container entry with no classes.jar has nothing to nest under BOOT-INF/lib.
             Path jar = entry.jar();
             if (jar != null) libs.add(new BootJarPackager.Lib(entry.fileName(), jar, entry.snapshot(), entry.group()));

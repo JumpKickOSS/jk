@@ -3,7 +3,7 @@ package cc.jumpkick.quarkus;
 
 import cc.jumpkick.jsonl.JsonFields;
 import cc.jumpkick.jsonl.Jsonl;
-import cc.jumpkick.plugin.build.RepositoryRoute;
+import cc.jumpkick.plugin.RepositoryRoute;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;

@@ -5,8 +5,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.plugin.PluginConfig;
+import cc.jumpkick.plugin.ProjectFacts;
 import cc.jumpkick.plugin.build.PluginCommandExec;
-import cc.jumpkick.plugin.build.ProjectFacts;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;

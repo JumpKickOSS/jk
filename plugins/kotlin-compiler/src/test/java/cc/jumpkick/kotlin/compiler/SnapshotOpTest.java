@@ -5,9 +5,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.plugin.ProtocolWriter;
 import cc.jumpkick.plugin.protocol.CompilerProtocol;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
-import cc.jumpkick.plugin.protocol.ProtocolWriter;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;

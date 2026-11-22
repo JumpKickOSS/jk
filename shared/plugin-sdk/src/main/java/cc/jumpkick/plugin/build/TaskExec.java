@@ -8,6 +8,9 @@ import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.TreeContent;
 import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.plugin.PluginConfig;
+import cc.jumpkick.plugin.ProjectFacts;
+import cc.jumpkick.plugin.RepositoryRoute;
+import cc.jumpkick.plugin.RuntimeEntry;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
 import java.io.BufferedReader;
 import java.io.File;
@@ -70,7 +73,7 @@ public interface TaskExec {
      * RUNTIME closure under {@link In#runtimeEntries()}, the test runtime closure under {@link
      * In#testRuntimeEntries()}. Empty unless one of them is declared.
      */
-    List<PackageIo.RuntimeEntry> runtimeEntries();
+    List<RuntimeEntry> runtimeEntries();
 
     /**
      * Whether this build is a recompile — {@link In#recompile()}: the compile goal alone, as {@code

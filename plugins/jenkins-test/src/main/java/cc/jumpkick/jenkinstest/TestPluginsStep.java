@@ -3,8 +3,8 @@ package cc.jumpkick.jenkinstest;
 
 import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.http.Http;
-import cc.jumpkick.plugin.build.PackageIo;
-import cc.jumpkick.plugin.build.RepositoryRoute;
+import cc.jumpkick.plugin.RepositoryRoute;
+import cc.jumpkick.plugin.RuntimeEntry;
 import cc.jumpkick.plugin.build.TaskExec;
 import cc.jumpkick.plugin.build.Transfers;
 import java.io.IOException;
@@ -41,12 +41,12 @@ final class TestPluginsStep {
         Path dir = exec.outputDir(JenkinsTestPlugin.OUT).resolve(DIR);
         Files.createDirectories(dir);
         Set<String> excluded = Set.copyOf(exec.config().stringList("exclude"));
-        Map<String, PackageIo.RuntimeEntry> plugins = plugins(exec.runtimeEntries(), excluded);
+        Map<String, RuntimeEntry> plugins = plugins(exec.runtimeEntries(), excluded);
         exec.label("install " + plugins.size() + " Jenkins test plugin" + (plugins.size() == 1 ? "" : "s"));
         Http http = new Http();
         List<String> index = new ArrayList<>();
-        for (Map.Entry<String, PackageIo.RuntimeEntry> e : plugins.entrySet()) {
-            PackageIo.RuntimeEntry entry = e.getValue();
+        for (Map.Entry<String, RuntimeEntry> e : plugins.entrySet()) {
+            RuntimeEntry entry = e.getValue();
             fetch(http, exec.repositories(), entry, dir.resolve(e.getKey() + ".jpi"), exec.offline());
             index.add(e.getKey());
         }
@@ -54,10 +54,9 @@ final class TestPluginsStep {
     }
 
     /** The Jenkins plugins of {@code entries} by artifactId, in closure order, without {@code excluded}. */
-    static Map<String, PackageIo.RuntimeEntry> plugins(List<PackageIo.RuntimeEntry> entries, Set<String> excluded)
-            throws IOException {
-        Map<String, PackageIo.RuntimeEntry> out = new LinkedHashMap<>();
-        for (PackageIo.RuntimeEntry entry : entries) {
+    static Map<String, RuntimeEntry> plugins(List<RuntimeEntry> entries, Set<String> excluded) throws IOException {
+        Map<String, RuntimeEntry> out = new LinkedHashMap<>();
+        for (RuntimeEntry entry : entries) {
             Path jar = entry.jar();
             if (jar == null || entry.gav().isEmpty() || !Files.isRegularFile(jar)) continue;
             if (excluded.contains(entry.artifact()) || out.containsKey(entry.artifact())) continue;
@@ -77,13 +76,12 @@ final class TestPluginsStep {
     }
 
     /** {@code <group path>/<artifact>/<version>/<artifact>-<version>.hpi}. */
-    static String hpiPath(PackageIo.RuntimeEntry entry) {
+    static String hpiPath(RuntimeEntry entry) {
         return entry.group().replace('.', '/') + "/" + entry.artifact() + "/" + entry.version() + "/" + entry.artifact()
                 + "-" + entry.version() + ".hpi";
     }
 
-    private static void fetch(
-            Http http, List<RepositoryRoute> routes, PackageIo.RuntimeEntry entry, Path to, boolean offline)
+    private static void fetch(Http http, List<RepositoryRoute> routes, RuntimeEntry entry, Path to, boolean offline)
             throws IOException, InterruptedException {
         if (offline) {
             throw new IOException(

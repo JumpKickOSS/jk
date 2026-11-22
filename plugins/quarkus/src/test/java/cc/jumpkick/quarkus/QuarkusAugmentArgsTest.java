@@ -5,9 +5,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.plugin.PluginConfig;
-import cc.jumpkick.plugin.build.PackageIo;
-import cc.jumpkick.plugin.build.ProjectFacts;
-import cc.jumpkick.plugin.build.RepositoryRoute;
+import cc.jumpkick.plugin.ProjectFacts;
+import cc.jumpkick.plugin.RepositoryRoute;
+import cc.jumpkick.plugin.RuntimeEntry;
 import cc.jumpkick.plugin.build.TaskExec;
 import cc.jumpkick.testing.ShortTempDirs;
 import java.nio.file.Path;
@@ -182,7 +182,7 @@ class QuarkusAugmentArgsTest {
         }
 
         @Override
-        public List<PackageIo.RuntimeEntry> runtimeEntries() {
+        public List<RuntimeEntry> runtimeEntries() {
             return List.of();
         }
 

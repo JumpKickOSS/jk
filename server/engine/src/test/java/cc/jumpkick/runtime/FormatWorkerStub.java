@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import cc.jumpkick.plugin.ProtocolWriter;
 import cc.jumpkick.plugin.process.CommandChannel;
 import cc.jumpkick.plugin.protocol.PluginReply;
-import cc.jumpkick.plugin.protocol.ProtocolWriter;
 import java.io.BufferedReader;
 import java.io.FileDescriptor;
 import java.io.FileOutputStream;

@@ -6,6 +6,10 @@ JumpKick shows you this page's new entries after it updates itself.
 
 ## 0.54.1
 
+- **Breaking: rebuild your plugin against this release's SDK.** `ProtocolWriter`, `ProjectFacts`,
+  `RepositoryRoute` and `RuntimeEntry` (was `PackageIo.RuntimeEntry`) import from
+  `cc.jumpkick.plugin`; move `sdk` and the SDK pin with them
+  ([Plugins](plugins.md#third-party-and-vendored-plugins)).
 - **A signed image push.** `jk image --sigstore`, or `[image] sigstore = true`, signs the pushed
   image's SLSA provenance with Sigstore keyless, as `jk publish --sigstore` signs a jar, and
   attaches it in a DSSE envelope beside the Sigstore bundle that verifies it. The provenance now

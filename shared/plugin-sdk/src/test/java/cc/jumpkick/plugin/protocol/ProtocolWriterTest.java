@@ -3,6 +3,7 @@ package cc.jumpkick.plugin.protocol;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.plugin.ProtocolWriter;
 import java.io.BufferedOutputStream;
 import java.io.OutputStream;
 import java.io.PrintStream;

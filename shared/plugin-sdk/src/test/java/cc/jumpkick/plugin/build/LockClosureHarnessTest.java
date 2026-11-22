@@ -6,8 +6,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.plugin.Plugin;
 import cc.jumpkick.plugin.PluginManifest;
+import cc.jumpkick.plugin.ProtocolWriter;
+import cc.jumpkick.plugin.RuntimeEntry;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
-import cc.jumpkick.plugin.protocol.ProtocolWriter;
 import cc.jumpkick.plugin.protocol.SpecWriter;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -43,12 +44,12 @@ class LockClosureHarnessTest {
         public void build(BuildContext ctx) {}
 
         @Override
-        public List<Pin> lockClosure(String name, TaskExec exec, List<PackageIo.RuntimeEntry> testRuntimeEntries)
+        public List<Pin> lockClosure(String name, TaskExec exec, List<RuntimeEntry> testRuntimeEntries)
                 throws IOException {
             if (!"deployment".equals(name)) throw new IOException("no closure named " + name);
             List<Pin> files = new ArrayList<>();
-            for (PackageIo.RuntimeEntry e : exec.runtimeEntries()) files.add(new Pin(e.gav() + "-deployment", null));
-            for (PackageIo.RuntimeEntry e : testRuntimeEntries) files.add(new Pin(e.gav() + "!pom", e.jar()));
+            for (RuntimeEntry e : exec.runtimeEntries()) files.add(new Pin(e.gav() + "-deployment", null));
+            for (RuntimeEntry e : testRuntimeEntries) files.add(new Pin(e.gav() + "!pom", e.jar()));
             files.add(new Pin(
                     exec.config().id() + ":"
                             + exec.extra("lock-closure.deployment").orElseThrow(),
@@ -106,8 +107,8 @@ class LockClosureHarnessTest {
                 .writeTempSpec();
         BuildPluginHarness.Spec read = BuildPluginHarness.Spec.read(spec);
 
-        assertThat(read.entries()).extracting(PackageIo.RuntimeEntry::gav).containsExactly("io.q:arc:1");
-        assertThat(read.testEntries()).extracting(PackageIo.RuntimeEntry::gav).containsExactly("org.junit:junit:6");
+        assertThat(read.entries()).extracting(RuntimeEntry::gav).containsExactly("io.q:arc:1");
+        assertThat(read.testEntries()).extracting(RuntimeEntry::gav).containsExactly("org.junit:junit:6");
     }
 
     private static Captured capture() {

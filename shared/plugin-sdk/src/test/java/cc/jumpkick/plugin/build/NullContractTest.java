@@ -3,6 +3,7 @@ package cc.jumpkick.plugin.build;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.plugin.RuntimeEntry;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 
@@ -13,7 +14,7 @@ class NullContractTest {
     void optional_result_and_runtime_entry_paths_are_explicit() {
         ImageResult pushed = ImageResult.pushed("registry.example/app:1");
         ImageResult tarball = ImageResult.tarball(Path.of("app.tar"));
-        PackageIo.RuntimeEntry container = new PackageIo.RuntimeEntry("app.aar", null, false, Path.of("app-aar"));
+        RuntimeEntry container = new RuntimeEntry("app.aar", null, false, Path.of("app-aar"));
 
         assertThat(pushed.reference()).isEqualTo("registry.example/app:1");
         assertThat(pushed.tarball()).isNull();

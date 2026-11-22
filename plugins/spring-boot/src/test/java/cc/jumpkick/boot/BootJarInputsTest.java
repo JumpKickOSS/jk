@@ -4,7 +4,7 @@ package cc.jumpkick.boot;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import cc.jumpkick.plugin.build.PackageIo;
+import cc.jumpkick.plugin.RuntimeEntry;
 import cc.jumpkick.plugin.testing.FakeBuildIo;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -25,8 +25,8 @@ class BootJarInputsTest {
         Path guava = io.entry("guava-33.0.jar", "com.google.guava", "guava", "33.0");
         Path boot = io.entry("spring-boot-4.1.2.jar", "org.springframework.boot", "spring-boot", "4.1.2");
         Path snap = io.jar("shared-2.0-SNAPSHOT.jar", "com/example/Shared.class");
-        io.entry(new PackageIo.RuntimeEntry(
-                "shared-2.0-SNAPSHOT.jar", snap, true, null, "com.example", "shared", "2.0-SNAPSHOT"));
+        io.entry(
+                new RuntimeEntry("shared-2.0-SNAPSHOT.jar", snap, true, null, "com.example", "shared", "2.0-SNAPSHOT"));
 
         BootJarInputs inputs = BootJarInputs.read(io);
 

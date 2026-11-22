@@ -6,10 +6,10 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import cc.jumpkick.plugin.PluginConfig;
+import cc.jumpkick.plugin.ProjectFacts;
 import cc.jumpkick.plugin.build.BuildPluginContext;
 import cc.jumpkick.plugin.build.PackagerSpec;
 import cc.jumpkick.plugin.build.PluginCommandSpec;
-import cc.jumpkick.plugin.build.ProjectFacts;
 import cc.jumpkick.plugin.build.TaskSpec;
 import java.io.IOException;
 import java.io.InputStream;

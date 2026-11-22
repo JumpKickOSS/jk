@@ -5,6 +5,7 @@ import cc.jumpkick.host.DeterministicZip;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.ToolJars;
 import cc.jumpkick.host.TreeContent;
+import cc.jumpkick.plugin.RuntimeEntry;
 import cc.jumpkick.plugin.build.PackageIo;
 import cc.jumpkick.plugin.build.TaskExec;
 import cc.jumpkick.surface.DynamicSurface;
@@ -65,7 +66,7 @@ final class MinifiedJarPackager {
             zipClasses(io.classesDir(), classesJar);
             List<Path> program = new ArrayList<>();
             program.add(classesJar);
-            for (PackageIo.RuntimeEntry entry : io.runtimeEntries()) {
+            for (RuntimeEntry entry : io.runtimeEntries()) {
                 if (entry.jar() != null) program.add(entry.jar());
             }
             // R8 judges program inputs by extension — alias any extensionless path as .jar.

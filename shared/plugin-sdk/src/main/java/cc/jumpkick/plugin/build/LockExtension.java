@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.plugin.build;
 
+import cc.jumpkick.plugin.RuntimeEntry;
 import java.nio.file.Path;
 import java.util.List;
 import org.jspecify.annotations.Nullable;
@@ -41,5 +42,5 @@ public interface LockExtension {
      * is the test runtime closure. Under {@code exec.extra("lock-closure.<name>")} is a Maven-layout
      * repository of what jk already holds of the closure, to read before the network.
      */
-    List<Pin> lockClosure(String name, TaskExec exec, List<PackageIo.RuntimeEntry> testRuntimeEntries) throws Exception;
+    List<Pin> lockClosure(String name, TaskExec exec, List<RuntimeEntry> testRuntimeEntries) throws Exception;
 }

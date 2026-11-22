@@ -3,6 +3,7 @@ package cc.jumpkick.plugin.protocol;
 
 import cc.jumpkick.jsonl.JsonFields;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.plugin.ProtocolWriter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;

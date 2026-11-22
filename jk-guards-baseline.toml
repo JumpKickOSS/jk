@@ -1260,7 +1260,7 @@ population = { files = 2203 }
 "shared/dynamic-surface" = { edges = 0, slices = 1 }
 "shared/host" = { edges = 4, slices = 6 }
 "shared/jk-api" = { edges = 5, slices = 8 }
-"shared/plugin-sdk" = { edges = 7, slices = 4 }
+"shared/plugin-sdk" = { edges = 6, slices = 4 }
 "shared/toolchain-jdk" = { edges = 8, slices = 11 }
 "shared/wire" = { edges = 4, slices = 5 }
 [package-cycles.scope-reasons]
@@ -1290,11 +1290,6 @@ in     = "shared/core"
 unit   = "shared/core:config"
 value  = 5
 reason = "lock no longer reaches builds: a project's lock is written and recorded by builds' ProjectLocks, so the component is config, layout, library, lock and plugin.manifest"
-[[package-cycles.entries]]
-in     = "shared/plugin-sdk"
-unit   = "shared/plugin-sdk:plugin"
-value  = 3
-reason = "banked from cycle-baseline.txt on 2026-09-06 — the facts edges found the same 9 components the import regex did; per-module follow-up work shrinks them"
 [[package-cycles.entries]]
 in     = "shared/toolchain-jdk"
 unit   = "shared/toolchain-jdk:discovery"

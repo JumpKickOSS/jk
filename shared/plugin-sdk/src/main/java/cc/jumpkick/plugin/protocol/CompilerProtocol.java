@@ -3,6 +3,7 @@ package cc.jumpkick.plugin.protocol;
 
 import cc.jumpkick.host.Log;
 import cc.jumpkick.model.command.Exit;
+import cc.jumpkick.plugin.ProtocolWriter;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
