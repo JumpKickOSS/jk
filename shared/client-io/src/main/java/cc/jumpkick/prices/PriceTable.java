@@ -12,7 +12,6 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.format.DateTimeParseException;
-import java.util.Arrays;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -33,13 +32,10 @@ import org.tomlj.TomlTable;
  * <p>The file is TOML: a top-level {@code published} offset date-time, then one {@code
  * [models."<id>"]} table per model with {@code input} and {@code output}, optional {@code
  * cached_input}, {@code cache_write} and {@code cache_write_1h}, and a {@code retrieved} date. Keys a
- * table does not know are skipped, so an older JumpKick reads a newer table. A published copy ends with
- * one {@link #SIGNATURE_PREFIX signature line} ({@link #signed}).
+ * table does not know are skipped, so an older JumpKick reads a newer table. A published copy is
+ * trusted by the SHA-256 the signed update manifest lists for it ({@code cc.jumpkick.updates}).
  */
 public record PriceTable(Instant published, Map<String, ModelPrice> models) {
-
-    /** The comment line a published table ends with: this prefix, the base64 signature, LF. */
-    public static final String SIGNATURE_PREFIX = "# signature ";
 
     /** A model id: lowercase letters, digits and {@code . - _ : /}, at most 64 characters. */
     private static final Pattern MODEL_ID = Pattern.compile("[a-z0-9._:/-]{1,64}");
@@ -151,27 +147,6 @@ public record PriceTable(Instant published, Map<String, ModelPrice> models) {
         } catch (IOException e) {
             throw new UncheckedIOException("the built-in price table does not parse", e);
         }
-    }
-
-    /** A published table split into the bytes its signature covers and the base64 signature. */
-    public record Signed(byte[] content, String signature) {}
-
-    /**
-     * Split a published table: its last line must be {@link #SIGNATURE_PREFIX} and the base64
-     * signature, LF-terminated, and the signature covers every byte before that line.
-     *
-     * @throws IOException when the file does not end with a signature line
-     */
-    public static Signed signed(byte[] bytes) throws IOException {
-        String text = utf8(bytes);
-        if (!text.endsWith("\n")) throw new IOException("price table has no signature line");
-        int start = text.lastIndexOf('\n', text.length() - 2) + 1;
-        String last = text.substring(start, text.length() - 1);
-        if (!last.startsWith(SIGNATURE_PREFIX)) throw new IOException("price table has no signature line");
-        int contentBytes = text.substring(0, start).getBytes(StandardCharsets.UTF_8).length;
-        return new Signed(
-                Arrays.copyOf(bytes, contentBytes),
-                last.substring(SIGNATURE_PREFIX.length()).strip());
     }
 
     private static String utf8(byte[] bytes) throws IOException {

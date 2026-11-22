@@ -66,7 +66,7 @@ class WorkspaceStreamParityTest {
                 .leaf("org.junit.platform", "junit-platform-launcher", DefaultTestDepsFixture.JUNIT_VERSION);
         mirror.serve(FreshEngineHostsTest.REGISTRY, "[libraries]\n");
         mirror.serve(FreshEngineHostsTest.JDK_FEED, "[]\n");
-        mirror.serve(FreshEngineHostsTest.PRICES, "");
+        mirror.serve(FreshEngineHostsTest.UPDATES, "");
         Path config = JkDirs.userConfigFile();
         Files.writeString(
                 config,

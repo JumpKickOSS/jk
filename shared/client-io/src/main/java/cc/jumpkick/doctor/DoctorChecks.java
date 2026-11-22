@@ -17,12 +17,15 @@ import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.repo.LocalInstall;
 import cc.jumpkick.repo.M2Dirs;
 import cc.jumpkick.repo.M2Integrity;
+import cc.jumpkick.updates.UpdateState;
 import cc.jumpkick.winhost.HostRow;
 import cc.jumpkick.winhost.HostRow.Status;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -53,7 +56,30 @@ public final class DoctorChecks {
                 lock(project),
                 pins(project, version),
                 suiteReads(JkDirs.state()),
+                updates(UpdateState.dir(), GlobalConfig.updatesCheck()),
                 m2(project));
+    }
+
+    /**
+     * The engine's update check: off, not run yet, or when it last asked, what came of it and the
+     * kinds that wait to be applied. A failed check is a warning here and nowhere else.
+     */
+    public static HostRow updates(Path dir, boolean enabled) {
+        if (!enabled) return row("updates", Status.OK, "off ([updates] check = false)");
+        UpdateState state = UpdateState.read(dir);
+        Instant checked = state.checked();
+        if (checked == null)
+            return row("updates", Status.OK, "not checked yet; the engine checks after its first build or 2 minutes");
+        StringBuilder detail = new StringBuilder("last check ")
+                .append(checked.truncatedTo(ChronoUnit.MINUTES))
+                .append(": ")
+                .append(state.outcome());
+        if (!state.pending().isEmpty()) {
+            detail.append("; waiting: ")
+                    .append(String.join(", ", state.pending().keySet()));
+        }
+        Status status = state.outcome().startsWith("failed") ? Status.WARN : Status.OK;
+        return row("updates", status, detail.toString());
     }
 
     /**

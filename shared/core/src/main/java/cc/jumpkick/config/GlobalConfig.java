@@ -188,6 +188,18 @@ public final class GlobalConfig {
         return stringFromRoot(configFile, SelfUpdatePolicy.KEY);
     }
 
+    /** {@code [updates] check}: whether the engine checks the update manifest; on unless written {@code false}. */
+    public static boolean updatesCheck() {
+        return updatesCheck(JkDirs.userConfigFile());
+    }
+
+    /** As {@link #updatesCheck()} against an explicit config file. */
+    public static boolean updatesCheck(Path configFile) {
+        return !stringFromGlobal(configFile, "updates", "check")
+                .map("false"::equalsIgnoreCase)
+                .orElse(false);
+    }
+
     /**
      * {@code [credentials] store}: where {@code jk repo login} and {@code jk auth login} keep a
      * secret ({@code keychain} or {@code file}), as written. Empty when unset.

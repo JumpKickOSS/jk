@@ -1,6 +1,6 @@
 # The model price table built into JumpKick: API list prices in USD per million tokens, by kind, at
 # each vendor's standard (short-context) tier, read from the vendor's page on its retrieved date. The
-# engine replaces it with a newer signed copy when one is published (docs/user/config.md#price-table).
+# engine replaces it with a newer copy the signed update manifest lists (docs/user/config.md#updates).
 # A model id matches the longest key it starts with (grok-4.7-high -> grok-4.7). cached_input is a
 # cache read; cache_write is the 5-minute write and cache_write_1h the 1-hour one, each only where the
 # vendor charges for it apart: elsewhere a cache write is priced as input.

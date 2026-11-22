@@ -1799,6 +1799,10 @@ in     = "cc.jumpkick.engine.SelfUpdateScheduler#installNow"
 reason = "a jk self update install the ticker starts; serves no request"
 
 [[guards.request-thread-carries-session.allow]]
+in     = "cc.jumpkick.engine.UpdateScheduler#start"
+reason = "engine-lifetime update-manifest ticker; serves no request"
+
+[[guards.request-thread-carries-session.allow]]
 in     = "cc.jumpkick.engine.EngineHttpFront#start"
 reason = "retries a busy HTTP port beside startup so the first build never waits on the dashboard; serves no request"
 

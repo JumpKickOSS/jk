@@ -86,6 +86,39 @@ public final class OfficialTemplatesFreshen {
         }
     }
 
+    /** A full git commit id, SHA-1 or SHA-256. */
+    private static final Pattern COMMIT = Pattern.compile("[0-9a-f]{40}|[0-9a-f]{64}");
+
+    /**
+     * Bring the official catalog's clone to {@code commit}, the revision the update manifest names.
+     * Git checks every object it fetches against its id, so the commit id is the checksum. Does
+     * nothing when {@code [templates] official} names another catalog, or once the store was wiped in
+     * this process.
+     *
+     * @throws IOException when {@code commit} is not a full commit id or git cannot fetch it
+     */
+    public static void freshenOfficialAt(String commit, Consumer<String> log, GitProxy proxy) throws IOException {
+        if (!JkTemplatesConfig.DEFAULT_OFFICIAL.equals(officialRef(JkTemplatesConfig.resolve()))) return;
+        freshenAt(JkTemplatesConfig.DEFAULT_OFFICIAL, commit, JkDirs.templates(), log, proxy);
+    }
+
+    /** As {@link #freshenOfficialAt} for the catalog {@code ref}, cloned under {@code cacheRoot}. */
+    static void freshenAt(String ref, String commit, Path cacheRoot, Consumer<String> log, GitProxy proxy)
+            throws IOException {
+        if (!COMMIT.matcher(commit).matches()) throw new IOException("not a full commit id: " + commit);
+        try (var held = StoreWriteGate.write()) {
+            if (StoreWriteGate.wipedSinceStart()) return;
+            Files.createDirectories(cacheRoot);
+            Parsed p = parse(ref);
+            Path dest = destination(cacheRoot, p.cacheKey());
+            if (!Files.isDirectory(dest) || !isRepositoryRoot(dest) || !looksLikeTemplateMonorepo(dest)) {
+                refreshRef(ref, cacheRoot, log, proxy);
+            }
+            fetchAndReset(dest, commit, proxy.httpProxy(p.url()).orElse(null));
+            log.accept("jk engine: templates updated to " + commit.substring(0, 12));
+        }
+    }
+
     /** Widest a quiet-path breadcrumb gets; the failing argv plus git's last words fit, a stack dump does not. */
     static final int SKIPPED_WIDTH = 320;
 

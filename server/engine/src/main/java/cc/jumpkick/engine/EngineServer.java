@@ -157,6 +157,9 @@ public final class EngineServer implements AutoCloseable {
     /** Updates jk itself when the engine is quiet; null for an engine that never does. */
     private final @Nullable SelfUpdateScheduler selfUpdate;
 
+    /** The update manifest check: models, templates and catalogs kept current between releases. */
+    private final UpdateScheduler updates;
+
     private final EngineVitals vitals;
     private final SsePublisher sse;
     private final LiveRuns liveRuns;
@@ -268,6 +271,7 @@ public final class EngineServer implements AutoCloseable {
             }
         }
         if (selfUpdate != null) selfUpdate.buildFinished();
+        updates.buildFinished();
     }
 
     /** Dashboard SSE fan-out; non-null only when {@link #httpConfig} is set. */
@@ -443,6 +447,7 @@ public final class EngineServer implements AutoCloseable {
         this.selfUpdate = SelfUpdateScheduler.forEngine(
                         this.version, activeBuildPlans::get, () -> draining || shuttingDown, this.log)
                 .orElse(null);
+        this.updates = UpdateScheduler.forEngine(activeBuildPlans::get, () -> draining || shuttingDown, this.log);
         this.journalWriter = new JournalWriter(
                 sessions, journal, historyConfig, () -> metrics.get(), clockMillis, this.version, this.log);
         this.sessionLog = newSessionLog();
@@ -817,6 +822,7 @@ public final class EngineServer implements AutoCloseable {
             if (asked > 0) log.accept("jk engine: adopted " + asked + " decision(s)");
         });
         if (selfUpdate != null) selfUpdate.start();
+        updates.start();
         watchdog.start();
     }
 
@@ -1167,6 +1173,7 @@ public final class EngineServer implements AutoCloseable {
         Suspensions.system().detach(suspensions);
         GraphRunner.detachCompiler(graphCompiles);
         if (selfUpdate != null) selfUpdate.close();
+        updates.close();
         changeNotices.close();
         if (engineMaintenance != null) {
             engineMaintenance.close();

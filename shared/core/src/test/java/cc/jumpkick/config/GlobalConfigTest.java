@@ -534,4 +534,14 @@ class GlobalConfigTest {
         assertThat(GlobalConfig.nodeSources(file).registry()).isEqualTo("https://nexus.corp/npm/");
         assertThat(GlobalConfig.nodeSources(file).scopes()).containsOnly(Map.entry("@acme", "https://npm.acme/"));
     }
+
+    @Test
+    void the_update_check_is_on_unless_updates_check_is_false(@TempDir Path dir) throws IOException {
+        Path file = dir.resolve("config.toml");
+        assertThat(GlobalConfig.updatesCheck(file)).as("no file").isTrue();
+        Files.writeString(file, "[updates]\ncheck = true\n");
+        assertThat(GlobalConfig.updatesCheck(file)).isTrue();
+        Files.writeString(file, "[updates]\ncheck = false\n");
+        assertThat(GlobalConfig.updatesCheck(file)).isFalse();
+    }
 }

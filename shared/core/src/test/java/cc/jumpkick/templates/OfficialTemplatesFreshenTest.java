@@ -428,6 +428,34 @@ class OfficialTemplatesFreshenTest {
         }
     }
 
+    /**
+     * The update manifest names a catalog commit: the clone moves to exactly that commit, an older
+     * one included, and a revision that is not a full commit id is refused before git runs.
+     */
+    @Test
+    void the_catalog_moves_to_the_commit_the_manifest_names() throws Exception {
+        Path official = tmp.resolve("official");
+        Files.createDirectories(official.resolve("java/app.g8"));
+        Files.writeString(official.resolve("java/app.g8/default.properties"), "name=first\n");
+        git(official, "init", "-q");
+        git(official, "add", ".");
+        git(official, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "first");
+        String first = gitOut(official, "rev-parse", "HEAD");
+        Files.writeString(official.resolve("java/app.g8/default.properties"), "name=second\n");
+        git(official, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-am", "second");
+        String ref = official.toUri().toString();
+        Path cacheRoot = tmp.resolve("tpl");
+        Path dest = cacheRoot.resolve(OfficialTemplatesFreshen.parse(ref).cacheKey());
+
+        OfficialTemplatesFreshen.freshenAt(ref, first, cacheRoot, s -> {}, GitProxy.NONE);
+
+        assertEquals(first, gitOut(dest, "rev-parse", "HEAD"));
+        assertEquals("name=first\n", Files.readString(dest.resolve("java/app.g8/default.properties")));
+        assertThrows(
+                IOException.class,
+                () -> OfficialTemplatesFreshen.freshenAt(ref, "main", cacheRoot, s -> {}, GitProxy.NONE));
+    }
+
     private static void git(Path dir, String... args) throws Exception {
         gitOut(dir, args);
     }

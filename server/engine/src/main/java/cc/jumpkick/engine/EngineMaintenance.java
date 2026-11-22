@@ -169,23 +169,18 @@ public final class EngineMaintenance implements AutoCloseable {
         }
     }
 
-    /**
-     * Store feeds, the official templates, then the model price table: the cycle's network half; each
-     * quiet on failure.
-     */
+    /** Store feeds, then the official templates: the cycle's network half; each quiet on failure. */
     private static Runnable fetches(Consumer<String> log, StoreFeedRefresh feeds) {
         Objects.requireNonNull(feeds, "feeds");
         Consumer<String> sink = log != null ? log : s -> {};
-        PriceTableRefresh prices = new PriceTableRefresh(sink);
         return () -> {
             feeds.refreshFeedsQuietly();
             OfficialTemplatesFreshen.refreshQuiet(sink, ProxyEnvironment.ambient()::gitHttpProxy);
-            prices.refreshQuietly();
         };
     }
 
     /**
-     * Full cycle: store feeds, official templates and the price table, the startup-cache sweep, then prune/warmup
+     * Full cycle: store feeds and official templates, the startup-cache sweep, then prune/warmup
      * enqueue, then stamp. Failures inside each are already quiet.
      */
     void runMaintenanceCycle() {

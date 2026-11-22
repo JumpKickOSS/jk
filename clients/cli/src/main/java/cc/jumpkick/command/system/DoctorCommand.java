@@ -21,6 +21,7 @@ import cc.jumpkick.command.toolchain.ShellInstallerBlock;
 import cc.jumpkick.compat.BuildTool;
 import cc.jumpkick.compat.InstalledTool;
 import cc.jumpkick.compat.ToolRegistry;
+import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.JkCacheConfig;
 import cc.jumpkick.config.WorkspaceGroup;
 import cc.jumpkick.discovery.SymlinkProvisioner;
@@ -42,6 +43,7 @@ import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.MachineOutput;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.terminal.posix.PosixPasswd;
+import cc.jumpkick.updates.UpdateState;
 import cc.jumpkick.winhost.HostRow;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.protocol.CacheInventoryAck;
@@ -130,6 +132,7 @@ public final class DoctorCommand implements CliCommand {
         Check lock = projectRow("lock", members, dir -> checkLock(dir, lockProbe));
         Check pins = projectRow("pins", members, dir -> check(DoctorChecks.pins(dir, JkVersion.VERSION)));
         Check suites = check(DoctorChecks.suiteReads(JkDirs.state()));
+        Check updates = check(DoctorChecks.updates(UpdateState.dir(), GlobalConfig.updatesCheck()));
         Check shell = checkShell();
         Check path = DoctorPath.check(ProcessEnv.get("PATH"), JkDirs.current().binDirectory(), Os.isWindows());
         Check mvn = checkMavenSpy(MavenSpyJar.current());
@@ -188,6 +191,7 @@ public final class DoctorCommand implements CliCommand {
                             lock,
                             pins,
                             suites,
+                            updates,
                             shell,
                             path,
                             mvn,
@@ -211,8 +215,9 @@ public final class DoctorCommand implements CliCommand {
         CommandWedge.envelopeStart();
         CliOutput.out(CommandWedge.menu("Doctor"));
 
-        List<Check> checks = new ArrayList<>(
-                List.of(config, client, engine, cache, state, jdk, jdkPatch, lock, pins, suites, shell, path, mvn, m2));
+        List<Check> checks = new ArrayList<>(List.of(
+                config, client, engine, cache, state, jdk, jdkPatch, lock, pins, suites, updates, shell, path, mvn,
+                m2));
         if (group != null) checks.add(group);
         for (Check c : checks) printCheck(c, t);
         for (String line : StoredLogins.render(logins, t)) CliOutput.out(line);
@@ -771,6 +776,7 @@ public final class DoctorCommand implements CliCommand {
                 lock,
                 pins,
                 null,
+                null,
                 shell,
                 null,
                 mvn,
@@ -789,7 +795,7 @@ public final class DoctorCommand implements CliCommand {
                 windows);
     }
 
-    /** As the report above, with the {@code suites} and {@code path} rows when they are given. */
+    /** As the report above, with the {@code suites}, {@code updates} and {@code path} rows when they are given. */
     public static String reportJson(
             Check config,
             Check client,
@@ -801,6 +807,7 @@ public final class DoctorCommand implements CliCommand {
             Check lock,
             Check pins,
             @Nullable Check suites,
+            @Nullable Check updates,
             Check shell,
             @Nullable Check path,
             Check mvn,
@@ -828,6 +835,7 @@ public final class DoctorCommand implements CliCommand {
                 .token("lock", checkJson(lock))
                 .token("pins", checkJson(pins));
         if (suites != null) head = head.token("suites", checkJson(suites));
+        if (updates != null) head = head.token("updates", checkJson(updates));
         head = head.token("shell", checkJson(shell));
         if (path != null) head = head.token("path", checkJson(path));
         return head.token("mvn", checkJson(mvn))

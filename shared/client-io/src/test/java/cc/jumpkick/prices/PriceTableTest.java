@@ -123,20 +123,4 @@ class PriceTableTest {
         assertThatThrownBy(() -> PriceTable.parse(new byte[] {(byte) 0xff, (byte) 0xfe}))
                 .hasMessageContaining("UTF-8");
     }
-
-    @Test
-    void a_published_table_splits_into_the_signed_bytes_and_its_signature() throws IOException {
-        String content = "published = 2026-11-20T00:00:00Z\n# a comment\n";
-        byte[] file = (content + "# signature QUJD\n").getBytes(StandardCharsets.UTF_8);
-
-        PriceTable.Signed signed = PriceTable.signed(file);
-
-        assertThat(new String(signed.content(), StandardCharsets.UTF_8)).isEqualTo(content);
-        assertThat(signed.signature()).isEqualTo("QUJD");
-        assertThatThrownBy(() -> PriceTable.signed(content.getBytes(StandardCharsets.UTF_8)))
-                .hasMessageContaining("no signature line");
-        assertThatThrownBy(() -> PriceTable.signed((content + "# signature QUJD").getBytes(StandardCharsets.UTF_8)))
-                .as("the signature line ends with LF")
-                .hasMessageContaining("no signature line");
-    }
 }
