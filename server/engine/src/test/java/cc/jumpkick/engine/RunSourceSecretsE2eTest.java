@@ -236,7 +236,8 @@ class RunSourceSecretsE2eTest extends EngineServerHarness {
             String testJvm = Files.readString(dump);
             assertThat(testJvm)
                     .as("the test JVM's environment")
-                    .contains("PATH=")
+                    // Windows keeps the variable's own spelling, Path, under a PATH lookup.
+                    .containsPattern("(?im)^path=")
                     .doesNotContain(CANARY);
             BuildRecord record = settled(project);
             assertThat(String.valueOf(record)).doesNotContain(CANARY);

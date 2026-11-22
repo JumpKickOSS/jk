@@ -8,6 +8,7 @@ import cc.jumpkick.cli.engine.IsolatedHome;
 import cc.jumpkick.cli.testing.Capture;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.model.command.Exit;
+import cc.jumpkick.util.DirKeys;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -54,9 +55,11 @@ class PluginCommandBrokenConfigTest {
             withDir[0] = run(command, "-C", dir.toString());
         });
 
+        // The answer shows the path as PathDisplay does, forward-slashed on every host.
+        String named = ANSWER + DirKeys.slashes(config.toString()) + ":";
         assertThat(inProject[0]).as("in the project").isEqualTo(Exit.CONFIG);
-        assertThat(inProjectErr).contains(ANSWER + config + ":");
+        assertThat(inProjectErr).contains(named);
         assertThat(withDir[0]).as("with -C").isEqualTo(Exit.CONFIG);
-        assertThat(withDirConsole.out() + withDirConsole.err()).contains(ANSWER + config + ":");
+        assertThat(withDirConsole.out() + withDirConsole.err()).contains(named);
     }
 }

@@ -8,6 +8,7 @@ import cc.jumpkick.cli.engine.IsolatedHome;
 import cc.jumpkick.cli.testing.Capture;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.model.command.Exit;
+import cc.jumpkick.util.DirKeys;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -45,6 +46,10 @@ class UserConfigBrokenExitTest {
         });
 
         assertThat(exit[0]).as(verb + " exit").isEqualTo(Exit.CONFIG);
-        assertThat(console.out() + console.err()).as(verb + " output").contains(config + ":");
+        // A failure wedge shows the path forward-slashed (PathDisplay); the build's line keeps the
+        // host's form. The two differ only on Windows.
+        assertThat(console.out() + console.err())
+                .as(verb + " output")
+                .containsAnyOf(config + ":", DirKeys.slashes(config.toString()) + ":");
     }
 }
