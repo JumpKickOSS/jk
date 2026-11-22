@@ -179,8 +179,8 @@ final class GraphOpCommand implements CliCommand {
     }
 
     /** Options passed through to the worker by name. */
-    static final List<String> SETTINGS =
-            List.of("view", "kind", "visibility", "extends", "implements", "annotated", "also", "module", "library");
+    static final List<String> SETTINGS = List.of(
+            "view", "kind", "visibility", "extends", "implements", "annotated", "also", "module", "library", "via");
 
     /** {@code code} → {@code Code}: how a group names itself on a status line. */
     static String label(String group) {

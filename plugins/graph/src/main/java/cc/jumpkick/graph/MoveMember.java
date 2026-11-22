@@ -21,7 +21,10 @@ import cc.jumpkick.codegraph.Decl;
 import cc.jumpkick.codegraph.GraphNode;
 import cc.jumpkick.codegraph.Linker;
 import cc.jumpkick.codegraph.Scope;
+import cc.jumpkick.host.AtomicWrites;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -43,21 +46,21 @@ import org.jspecify.annotations.Nullable;
  * type, an import the old type no longer needs goes, and the moved code gets the imports and
  * qualifiers it needs where it lands. Anything that would break or change behaviour without a
  * compile error (instance state, an override, a member one side cannot see, a use javac did not
- * index, a string naming it) writes nothing and is listed. An instance method or field moves only to
- * the class its type extends, a pull-up: its uses bind there as written, and another subclass that
- * declares the method gets {@code @Override}; the {@code pull-up} operation takes only that. The edit
- * goes through the rename's write
- * path and undo record; the engine then compiles the modules it touched and checks that the moved
- * symbols have the references the old ones had ({@code phase=verify}), or undoes it whole ({@code
- * phase=undo}).
+ * index) writes nothing and is listed; a string naming the member is listed and left. An instance
+ * method moves through a field or parameter of the target type ({@link InstanceMove}). The {@code
+ * pull-up} operation moves an instance member to the class its type extends: its uses bind there as
+ * written, and another subclass that declares the method gets {@code @Override}. The edit goes
+ * through the rename's write path and undo record; the engine then compiles the modules it touched
+ * and checks that the moved symbols have the references the old ones had ({@code phase=verify}), or
+ * undoes it whole ({@code phase=undo}).
  */
 final class MoveMember {
 
     private MoveMember() {}
 
-    private static final Pattern PACKAGE = Pattern.compile("(?m)^\\s*package\\s+([\\w.]+)\\s*;");
+    static final Pattern PACKAGE = Pattern.compile("(?m)^\\s*package\\s+([\\w.]+)\\s*;");
 
-    private static final Pattern IMPORT = Pattern.compile("(?m)^\\s*import\\s+(static\\s+)?([\\w.]+(?:\\.\\*)?)\\s*;");
+    static final Pattern IMPORT = Pattern.compile("(?m)^\\s*import\\s+(static\\s+)?([\\w.]+(?:\\.\\*)?)\\s*;");
 
     private static final List<String> KINDS = List.of("class", "enum", "record");
 
@@ -108,8 +111,13 @@ final class MoveMember {
         Path out = w.out();
         Map<String, String> options = r.options();
         String phase = options.get("phase");
-        if ("verify".equals(phase)) return GraphService.Reply.of(w, RenameProof.verify(root, out, graph, true));
+        if ("verify".equals(phase)) {
+            String left = left(out);
+            String proven = RenameProof.verify(root, out, graph, true);
+            return GraphService.Reply.of(w, proven.startsWith("Proven") ? proven + left : proven);
+        }
         if ("undo".equals(phase)) {
+            left(out);
             return GraphService.Reply.of(w, undo(root, out, options.getOrDefault("why", "the code does not compile")));
         }
         List<String> a = r.args();
@@ -121,15 +129,24 @@ final class MoveMember {
         // Type#member, as javadoc writes it, is Type.member.
         String address = a.get(0).strip().replace('#', '.');
         try {
-            return GraphService.Reply.of(w, move(w, graph, address, target, upOnly, r.budget()));
+            return GraphService.Reply.of(w, move(w, graph, address, target, upOnly, options.get("via"), r.budget()));
         } catch (RenameRefusal refused) {
             return GraphService.Reply.of(w, String.valueOf(refused.getMessage()));
         }
     }
 
-    /** Moves {@code address} to {@code target}, or with {@code upOnly} (null: the class its type extends). */
+    /**
+     * Moves {@code address} to {@code target}, or with {@code upOnly} (null: the class its type
+     * extends); an instance method goes through the route {@code via} names.
+     */
     private static String move(
-            GraphService.Workspace w, CodeGraph g, String address, @Nullable String target, boolean upOnly, int budget)
+            GraphService.Workspace w,
+            CodeGraph g,
+            String address,
+            @Nullable String target,
+            boolean upOnly,
+            @Nullable String via,
+            int budget)
             throws IOException {
         String stale = SafeDelete.edited(w.indexes(), "Not moved", "move");
         if (stale != null) throw new RenameRefusal(stale);
@@ -142,12 +159,17 @@ final class MoveMember {
                             : canonical(p.fromBin) + " does not extend " + canonical(p.toBin)
                                     + "; a pull-up moves a member to the class its type extends.");
         }
+        if (!upOnly && p.up) {
+            return "Not moved, nothing is written: " + canonical(p.toBin) + " is the class " + canonical(p.fromBin)
+                    + " extends; a pull-up moves " + p.what + " there (jk code pull-up, MCP pull_up).";
+        }
         if (!p.up && !p.members.stream().allMatch(m -> m.modifiers().contains("static"))) {
-            p.h.instance(w, g, p.from, p.fromBin, p.members, p.field);
+            if (!p.field) return InstanceMove.move(p, via, budget);
+            p.h.instance(w, g, p.from, p.fromBin, p.members, true);
             List<String> answer = new ArrayList<>();
-            answer.add("Not moved, nothing is written: " + p.what + " is an instance "
-                    + (p.field ? "field" : "method") + "; a move takes static members, or an instance member"
-                    + " up to the class its type extends. What ties it to " + canonical(p.fromBin) + ":");
+            answer.add("Not moved, nothing is written: " + p.what + " is an instance field; a move takes a method"
+                    + " or a static field, a pull-up an instance member to the class its type extends."
+                    + " What ties it to " + canonical(p.fromBin) + ":");
             answer.addAll(p.h.lines());
             return Budget.lines(answer, budget, "Raise the budget");
         }
@@ -165,7 +187,7 @@ final class MoveMember {
     }
 
     /** One move as it is worked out: the two types, the members, the edits of each file, the hazards. */
-    private static final class Plan {
+    static final class Plan {
         final GraphService.Workspace w;
         final CodeGraph g;
         final Map<String, FileEdit> files = new TreeMap<>();
@@ -198,6 +220,9 @@ final class MoveMember {
 
         /** The uses of the moved symbols left outside the moved code, by file. */
         final Map<String, Integer> outside = new TreeMap<>();
+
+        /** The strings that spell the member's name, as {@code rel:line  text}: listed, left as they are. */
+        final List<String> strings = new ArrayList<>();
 
         /** A null {@code target} is the class the member's type extends. */
         Plan(GraphService.Workspace w, CodeGraph g, String address, @Nullable String target) {
@@ -293,7 +318,7 @@ final class MoveMember {
                     }
                     continue;
                 }
-                if (!up) staticImports(f, fromBin, toBin, name);
+                if (!up) MoveImports.statics(f, fromBin, toBin, name);
                 for (ReferenceIndex.Span s : f.spans) {
                     String moved = symbols.get(s.symbol());
                     if (moved == null || f == from && inside(members, s.line())) continue;
@@ -309,14 +334,15 @@ final class MoveMember {
         /** The hazards no single use shows: sources javac did not index, strings, visibility, clashes, hiding. */
         void check() throws IOException {
             if (up) {
-                h.strings(w, g, from, members, name);
+                for (String s : MoveHazards.strings(w, from, members, name))
+                    h.add("string", "  a string names it (reflection?)  " + s);
                 h.collisions(to, toBin, name, field);
                 reach();
                 if (!field) overriders();
                 return;
             }
             h.unindexed(w, g, fromType, name);
-            h.strings(w, g, from, members, name);
+            strings.addAll(MoveHazards.strings(w, from, members, name));
             h.visibility(at, members.getFirst(), what, toBin, toType, outside, files);
             h.collisions(to, toBin, name, field);
             h.hiding(g, fromType, name, field, types);
@@ -411,7 +437,7 @@ final class MoveMember {
             String block = reindent(String.join("\n\n", blocks), fromIndent, toIndent);
             Op insert = new Op(closing, closing, lead + block + "\n");
             to.ops.add(insert);
-            removeImports(files);
+            MoveImports.remove(files);
 
             RenamePlan plan = new RenamePlan(what, canonical(toBin));
             List<String[]> refs = new ArrayList<>();
@@ -419,7 +445,7 @@ final class MoveMember {
             for (FileEdit f : files.values()) {
                 if (!f.imports.isEmpty() || !f.staticImports.isEmpty()) {
                     imports += f.imports.size() + f.staticImports.size();
-                    f.ops.add(importOp(f));
+                    f.ops.add(MoveImports.op(f));
                 }
                 if (f.ops.isEmpty()) {
                     for (Mark m : f.marks) refs.add(ref(m.symbol(), f.rel, lineNumber(f.text, m.at())));
@@ -440,6 +466,7 @@ final class MoveMember {
                 uses += f.marks.stream().filter(m -> m.kind() != 'd').count();
             RenameStore.write(w.root(), w.out(), plan);
             RenameStore.writeProof(w.out(), RenameOp.touched(g, plan), symbols, refs);
+            left(w.out(), strings);
             List<String> answer = new ArrayList<>();
             answer.add((up ? "Pulled up " : "Moved ") + what + " to " + canonical(toBin) + ": " + uses
                     + (uses == 1 ? " use" : " uses") + " and " + imports + (imports == 1 ? " import" : " imports")
@@ -447,6 +474,10 @@ final class MoveMember {
                     + (plan.after.size() == 1 ? " file" : " files") + "; each use javac bound.");
             plan.lines.forEach(
                     (rel, lines) -> answer.add("  " + rel + (lines.isEmpty() ? "" : ":" + RenamePlan.numbers(lines))));
+            if (!strings.isEmpty()) {
+                answer.add("Strings that spell " + name + ", left as they are (reflection?):");
+                for (String s : strings) answer.add("  " + s);
+            }
             return answer;
         }
 
@@ -538,7 +569,7 @@ final class MoveMember {
      * know unqualified is a hazard. {@code qualifiers} are the ends of the type qualifiers of moved
      * symbols, rewritten with them.
      */
-    private record Body(
+    record Body(
             Resolver at,
             MoveHazards h,
             FileEdit from,
@@ -601,7 +632,7 @@ final class MoveMember {
                 ops.add(new Op(s.start(), s.start(), at.ref(to, owner) + "."));
                 return;
             }
-            String imported = staticImport(text, canonical(owner), ReferenceIndex.simpleName(s.symbol()));
+            String imported = MoveImports.staticImport(text, canonical(owner), ReferenceIndex.simpleName(s.symbol()));
             if (imported != null) {
                 to.staticImports.add(imported);
             } else if (!up) {
@@ -702,7 +733,7 @@ final class MoveMember {
      * type javac resolved ({@code Order.}, {@code org.acme.Order::}, {@code Order#}), 0 for an
      * expression; {@code null} when the name is unqualified.
      */
-    private static int @Nullable [] qualifier(FileEdit f, ReferenceIndex.Span s) {
+    static int @Nullable [] qualifier(FileEdit f, ReferenceIndex.Span s) {
         String t = f.text;
         int k = before(t, s.start());
         if (k < 0) return null;
@@ -722,81 +753,6 @@ final class MoveMember {
             }
         }
         return new int[] {end, end, 0};
-    }
-
-    /** Rewrites {@code import static <from>.<name>;} to the target in {@code f}; the line's references may be any count. */
-    private static void staticImports(FileEdit f, String fromBin, String toBin, String name) {
-        Matcher m = Pattern.compile("(?m)^\\s*import\\s+static\\s+(" + Pattern.quote(canonical(fromBin)) + ")\\.("
-                        + Pattern.quote(name) + ")\\s*;")
-                .matcher(f.text);
-        while (m.find()) {
-            f.ops.add(new Op(m.start(1), m.end(1), canonical(toBin)));
-            f.free.add(m.start(1));
-        }
-    }
-
-    /**
-     * Drops each single-type import of an edited file whose every use the edits took away: the uses of
-     * the source type that now name the target, and in the source's file the uses inside the code
-     * that moved out. An import nothing used before the move stays as it was.
-     */
-    private static void removeImports(Map<String, FileEdit> files) {
-        for (FileEdit f : files.values()) {
-            if (f.ops.isEmpty()) continue;
-            Matcher m = Pattern.compile("(?m)^[ \\t]*import\\s+([\\w.]+)\\s*;[ \\t]*\\n")
-                    .matcher(f.text);
-            while (m.find()) {
-                String imported = m.group(1);
-                if (f.needs.contains(imported)) continue;
-                boolean taken = false;
-                boolean used = false;
-                for (ReferenceIndex.Span s : f.spans) {
-                    if (!s.symbol().startsWith("T ")
-                            || !canonical(s.symbol().substring(2)).equals(imported)) continue;
-                    if (importLine(f.text, s.start())) continue;
-                    if (f.ops.stream()
-                            .anyMatch(op -> op.start() < op.end() && op.start() <= s.start() && s.end() <= op.end())) {
-                        taken = true;
-                    } else {
-                        used = true;
-                    }
-                }
-                if (taken && !used) f.ops.add(new Op(m.start(), m.end(), ""));
-            }
-        }
-    }
-
-    /** The import lines {@code f} needs, inserted after its last import, else after its package line. */
-    static Op importOp(FileEdit f) {
-        StringBuilder lines = new StringBuilder();
-        for (String i : f.imports) lines.append("import ").append(i).append(";\n");
-        for (String i : f.staticImports)
-            lines.append("import static ").append(i).append(";\n");
-        Matcher m = IMPORT.matcher(f.text);
-        int last = -1;
-        while (m.find()) last = m.end();
-        if (last >= 0) {
-            int at = f.text.indexOf('\n', last);
-            at = at < 0 ? f.text.length() : at + 1;
-            return new Op(at, at, lines.toString());
-        }
-        Matcher p = PACKAGE.matcher(f.text);
-        if (p.find()) {
-            int at = f.text.indexOf('\n', p.end());
-            at = at < 0 ? f.text.length() : at + 1;
-            return new Op(at, at, "\n" + lines);
-        }
-        return new Op(0, 0, lines + "\n");
-    }
-
-    /** The {@code a.b.Owner.name} or {@code a.b.Owner.*} a source's static import names {@code member} by, or {@code null}. */
-    private static @Nullable String staticImport(String text, String owner, String member) {
-        Matcher m = IMPORT.matcher(text);
-        while (m.find()) {
-            if (m.group(1) == null) continue;
-            if (m.group(2).equals(owner + "." + member) || m.group(2).equals(owner + ".*")) return m.group(2);
-        }
-        return null;
     }
 
     /** The declarations named {@code name} in the source type, one per overload, with the lines each takes. */
@@ -881,7 +837,7 @@ final class MoveMember {
     }
 
     /** Where {@code offset} of the text before {@code ops} stands after them. */
-    private static int mapped(List<Op> ops, int offset) {
+    static int mapped(List<Op> ops, int offset) {
         int out = offset;
         for (Op op : ops) {
             if (op.end() <= offset) out += op.text().length() - (op.end() - op.start());
@@ -889,7 +845,7 @@ final class MoveMember {
         return out;
     }
 
-    private static List<Op> shifted(List<Op> ops, int by) {
+    static List<Op> shifted(List<Op> ops, int by) {
         return ops.stream()
                 .map(o -> new Op(o.start() + by, o.end() + by, o.text()))
                 .toList();
@@ -983,6 +939,40 @@ final class MoveMember {
         String top = top(binary);
         int d = top.lastIndexOf('.');
         return d < 0 ? "" : top.substring(0, d);
+    }
+
+    /** Where a move records the strings it left: they end its proven answer with "Not done". */
+    private static final String LEFT = "move-left";
+
+    /** Records {@code strings} for the check after the move, or forgets the last move's when there are none. */
+    private static void left(Path out, List<String> strings) throws IOException {
+        Path file = RenameStore.dir(out).resolve(LEFT);
+        if (strings.isEmpty()) {
+            Files.deleteIfExists(file);
+            return;
+        }
+        Files.createDirectories(file.getParent());
+        AtomicWrites.replace(file, String.join("\n", strings) + "\n");
+    }
+
+    /**
+     * The line a proven move ends with while a string it listed still spells the name, read once and
+     * forgotten; {@code ""} when there is none.
+     */
+    private static String left(Path out) throws IOException {
+        Path file = RenameStore.dir(out).resolve(LEFT);
+        if (!Files.isRegularFile(file)) return "";
+        List<String> places = new ArrayList<>();
+        for (String l : Files.readAllLines(file, StandardCharsets.UTF_8)) {
+            int gap = l.indexOf("  ");
+            if (!l.isBlank()) places.add(gap < 0 ? l : l.substring(0, gap));
+        }
+        Files.deleteIfExists(file);
+        if (places.isEmpty()) return "";
+        List<String> shown = places.subList(0, Math.min(places.size(), 3));
+        return "\nNot done: a string still spells the moved name at " + String.join(", ", shown)
+                + (places.size() > shown.size() ? " and " + (places.size() - shown.size()) + " more" : "")
+                + "; change each one that means the moved member.";
     }
 
     /** Undoes the last move whose modules did not compile; the answer's line. */

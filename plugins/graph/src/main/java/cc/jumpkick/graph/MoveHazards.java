@@ -244,9 +244,13 @@ final class MoveHazards {
         }
     }
 
-    /** String literals spelling the member's name in JVM sources outside the moved lines: reflection breaks on a move. */
-    void strings(GraphService.Workspace w, CodeGraph g, FileEdit from, List<Member> members, String name)
+    /**
+     * The string literals spelling the member's name in JVM sources outside the moved lines, as {@code
+     * rel:line  text}: reflection that finds it by name breaks on a move.
+     */
+    static List<String> strings(GraphService.Workspace w, FileEdit from, List<Member> members, String name)
             throws IOException {
+        List<String> out = new ArrayList<>();
         String quoted = "\"" + name + "\"";
         for (String rel : RenameText.files(w.root())) {
             if (!RenameText.jvmSource(rel)) continue;
@@ -257,13 +261,11 @@ final class MoveHazards {
                 if (rel.equals(from.rel) && inside(members, i + 1)) continue;
                 int at = lines[i].indexOf(quoted);
                 if (at >= 0 && RenameText.inString(lines[i], at + 1)) {
-                    add(
-                            "string",
-                            "  a string names it (reflection?)  " + rel + ":" + (i + 1) + "  "
-                                    + RenamePlan.clip(lines[i]));
+                    out.add(rel + ":" + (i + 1) + "  " + RenamePlan.clip(lines[i]));
                 }
             }
         }
+        return out;
     }
 
     /** Callers the target's or the member's visibility would shut out once it moves. */

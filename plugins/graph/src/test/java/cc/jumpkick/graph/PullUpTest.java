@@ -10,7 +10,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * A move of an instance member to the class its type extends pulls it up: the code lands in the
+ * A pull-up moves an instance member to the class its type extends: the code lands in the
  * superclass with the imports it needs, every use binds to it there unedited, another subclass that
  * declares the method gets {@code @Override}, then it compiles and the pulled-up symbols are proven
  * to have the references the old ones had. What would change without a compile error (state the
@@ -127,7 +127,7 @@ class PullUpTest {
     void aMethodMovesUpWithItsImportsAndAnotherSubclassOverridesItThenProves(@TempDir Path dir) throws IOException {
         RenameFixture f = new RenameFixture(dir, shop());
 
-        String answer = f.move("Book.label", "Item");
+        String answer = f.pullUp("Book.label", "Item");
 
         assertThat(answer)
                 .startsWith("Pulled up Book.label() to org.acme.base.Item: 3 uses and 1 import, 1 @Override in"
@@ -173,7 +173,7 @@ class PullUpTest {
     void aFieldMovesUpAndItsUsesBindThere(@TempDir Path dir) throws IOException {
         RenameFixture f = new RenameFixture(dir, shop());
 
-        assertThat(f.move("Book.shelf", "org.acme.base.Item"))
+        assertThat(f.pullUp("Book.shelf", "org.acme.base.Item"))
                 .startsWith("Pulled up Book.shelf to org.acme.base.Item: ");
 
         assertThat(f.read(BASE + "Item.java")).contains("""
@@ -188,13 +188,13 @@ class PullUpTest {
     void stateTheSuperclassDoesNotHaveIsListedAndNothingWritten(@TempDir Path dir) throws IOException {
         RenameFixture f = new RenameFixture(dir, shop());
 
-        assertThat(f.move("Book.summary", "Item"))
+        assertThat(f.pullUp("Book.summary", "Item"))
                 .startsWith("Not moved, nothing is written: pulling up Book.summary() to org.acme.base.Item would"
                         + " break or change:")
                 .contains("uses Book.label, which org.acme.base.Item does not have  " + SHOP + "Book.java:29")
                 .contains("uses Book.pages, which org.acme.base.Item does not have  " + SHOP + "Book.java:29");
-        assertThat(f.move("Book.code", "Item")).contains("Book.code is private; its own type would not see it in");
-        assertThat(f.move("Book.stock", "Item"))
+        assertThat(f.pullUp("Book.code", "Item")).contains("Book.code is private; its own type would not see it in");
+        assertThat(f.pullUp("Book.stock", "Item"))
                 .contains("Book.stock is protected; " + SHOP + "Shelf.java uses it and would not see it in"
                         + " org.acme.base.Item");
         assertThat(f.read(SHOP + "Book.java")).isEqualTo(BOOK);
@@ -205,9 +205,9 @@ class PullUpTest {
     void aSuperCallAndAnOverrideEverySubclassWouldInheritAreHazards(@TempDir Path dir) throws IOException {
         RenameFixture f = new RenameFixture(dir, shop());
 
-        assertThat(f.move("Book.plain", "Item"))
+        assertThat(f.pullUp("Book.plain", "Item"))
                 .contains("calls super, which in org.acme.base.Item is its own superclass  " + SHOP + "Book.java:33");
-        assertThat(f.move("Book.toString", "Item"))
+        assertThat(f.pullUp("Book.toString", "Item"))
                 .contains("toString is a method of Object; in org.acme.base.Item it would override it for every"
                         + " subclass")
                 .contains("overrides a supertype's method; in org.acme.base.Item it would override it for every"
@@ -221,7 +221,7 @@ class PullUpTest {
         files.put(SHOP + "Toy.java", TOY.replace("public String label() {", "public String label(String prefix) {"));
         RenameFixture f = new RenameFixture(dir, files);
 
-        assertThat(f.move("Book.label", "Item"))
+        assertThat(f.pullUp("Book.label", "Item"))
                 .contains("Toy.label takes other parameters; a call may pick the pulled-up method instead  " + SHOP
                         + "Toy.java:11");
         assertThat(f.read(SHOP + "Book.java")).isEqualTo(BOOK);
@@ -232,8 +232,11 @@ class PullUpTest {
         RenameFixture f = new RenameFixture(dir, shop());
 
         assertThat(f.move("Book.label", "Toy"))
-                .startsWith("Not moved, nothing is written: Book.label() is an instance method; a move takes static"
-                        + " members, or an instance member up to the class its type extends.");
+                .isEqualTo("Not moved, nothing is written: Book.label() is an instance method, and neither a field of"
+                        + " Book nor a parameter of it holds a org.acme.shop.Toy to call it on.");
+        assertThat(f.move("Book.label", "Item"))
+                .startsWith("Not moved, nothing is written: org.acme.base.Item is the class org.acme.shop.Book"
+                        + " extends; a pull-up moves Book.label() there");
         assertThat(f.read(SHOP + "Book.java")).isEqualTo(BOOK);
     }
 

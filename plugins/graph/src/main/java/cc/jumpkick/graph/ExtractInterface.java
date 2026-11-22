@@ -158,7 +158,7 @@ final class ExtractInterface {
             from.ops.add(new Op(lineAt, lineAt, indent(line(from.text, lineAt)) + "@Override\n"));
             overrides++;
         }
-        if (!from.imports.isEmpty()) from.ops.add(MoveMember.importOp(from));
+        if (!from.imports.isEmpty()) from.ops.add(MoveImports.op(from));
 
         List<String> places = places(w, g, files, from.rel, bin, methods);
 

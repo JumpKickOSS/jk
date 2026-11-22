@@ -121,18 +121,26 @@ public final class CodeGraphTool implements McpTool {
 
     /**
      * {@code move}: a static method (every overload) or static field moved to another class, enum or
-     * record in one call, every use javac bound edited, then compiled and proven, or undone whole;
-     * what would break or change without a compile error writes nothing and is listed. It writes, so
-     * it is not read-only.
+     * record in one call, or an instance method through a field or parameter of the target type (the
+     * route {@code via} names when there is more than one), every use javac bound edited, then
+     * compiled and proven, or undone whole; what would break or change without a compile error
+     * writes nothing and is listed. It writes, so it is not read-only.
      */
     public static McpTool move() {
         return new CodeGraphTool(
                 new Spec(
                         "move",
-                        "Move static Type.method (every overload) or Type.field to the class, enum or record `to`;"
-                                + " edits every use and import, proves it, or writes nothing and lists the hazards.",
+                        "Move Type.method or static Type.field to the class, enum or record `to`; an instance method"
+                                + " through a field or parameter of `to`. Edits every use and import, proves it,"
+                                + " or writes nothing and lists the routes or hazards.",
                         McpSchemas.object(
-                                props(Map.of("address", McpSchemas.string(), "to", McpSchemas.string())),
+                                props(Map.of(
+                                        "address",
+                                        McpSchemas.string(),
+                                        "to",
+                                        McpSchemas.string(),
+                                        "via",
+                                        McpSchemas.string("An instance method's route, as the last move listed: r1"))),
                                 List.of("address", "to"))),
                 "move",
                 in -> List.of(required(in, "address"), required(in, "to")));
@@ -319,7 +327,7 @@ public final class CodeGraphTool implements McpTool {
     /** The operation's named settings a call carries, as {@code key=value}. */
     private List<String> options(McpCall in) {
         List<String> out = new ArrayList<>();
-        for (String key : List.of("view", "kind", "visibility", "extends", "implements", "annotated", "also")) {
+        for (String key : List.of("view", "kind", "visibility", "extends", "implements", "annotated", "also", "via")) {
             String v = optional(in, key);
             if (v != null && !v.isBlank()) out.add(key + "=" + v);
         }

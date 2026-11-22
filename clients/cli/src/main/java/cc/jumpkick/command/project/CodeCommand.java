@@ -120,8 +120,14 @@ public final class CodeCommand extends GroupCommand {
                         List.of(Param.of("symbol", Arity.ONE, "Type.method (every overload), Type.field or Type"))),
                 op(
                         "move",
-                        "Move a static method or field, editing every use",
-                        List.of(BUDGET),
+                        "Move a method or static field, editing every use",
+                        List.of(
+                                Opt.value(
+                                        "<route>",
+                                        "The route an instance method takes, as the last move listed: r1, r2.",
+                                        "-w",
+                                        "--via"),
+                                BUDGET),
                         List.of(MEMBER, Param.of("type", Arity.ONE, "the class, enum or record it moves to"))),
                 op(
                         "pull-up",

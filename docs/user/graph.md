@@ -736,6 +736,7 @@ until they answer for it, rename reports it as a candidate or hazard as above.
 ```bash
 jk code delete OrderService.legacyTotal          # only if nothing uses it; else lists what does
 jk code move PriceMath.round Money               # a static method or field, every use edited
+jk code move Order.visit Customer --via r2       # an instance method, through the route listed
 jk code pull-up Book.label                       # an instance member up to the class Book extends
 jk code extract-interface Book Priced price,total  # a new interface Book implements
 ```
@@ -750,7 +751,21 @@ where its uses bind as written. Naming that class is optional; a class the type 
 refused. Both write nothing and list what would break or change
 behaviour without a compile error (state the target does not have, a `super` call, a member one side
 cannot see, an override). Like `rename`, each then compiles the modules it touched and undoes the
-edit whole when they do not compile.
+edit whole when they do not compile. A string that spells the moved name (reflection) does not stop
+a `move`: it is listed at `file:line`, and the answer ends `Not done` while one is left.
+
+`move` takes an instance method too, through a route to an instance of the target: a field of the
+method's type that holds one, or a parameter of the method of the target type. With a field
+`customer`, `order.greeting()` becomes `order.customer.greeting()`; with a parameter `c`,
+`order.visit(c, 2)` becomes `c.visit(2)`; a call that cannot see a private field reads it through
+the type's getter (`order.getCustomer().greeting()`) when all that getter does is return it. The moved method reads that field or parameter as `this`,
+and when it uses anything else of its old type, that instance is passed in as a new first
+parameter (`order.customer.label(order)`). With one route the move runs at once and says which;
+with more, or with one some call cannot take (a field it cannot see, a `null` argument, a receiver
+that would run twice or not at all), it writes nothing and lists each route (`r1`, `r2`, ...) with
+what each call would read; `--via r2` (MCP `via`) moves it through that one. A call through the
+route fails where that field or argument is `null`. A method that overrides, implements or is
+overridden is refused, as is one with overloads; a target the type extends is a `pull-up`.
 
 `extract-interface` creates an interface beside the class (a qualified name puts it in that
 package) declaring the public instance methods named, every overload of each, or by default every

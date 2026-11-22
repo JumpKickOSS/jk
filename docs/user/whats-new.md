@@ -15,6 +15,10 @@ JumpKick shows you this page's new entries after it updates itself.
 - **MCP `move`.** Moves a static method or field to another type, editing every use and import,
   then compiles and proves it; what would break is listed and nothing is written. On the extended
   tool list ([MCP](mcp.md)).
+- **`jk code move` moves an instance method.** Through a field or parameter of the target type:
+  with one, every call goes through it at once; with more, the answer lists them and `--via`
+  (MCP `via`) picks one. A string spelling the name is listed, not a reason to stop
+  ([Code graph](graph.md#delete-move-pull-up-and-extract-an-interface)).
 - **MCP `pull_up`.** Pulls an instance method or field up to the class its type extends, then
   compiles and proves it; what would break is listed and nothing is written. On the extended tool
   list ([MCP](mcp.md)).

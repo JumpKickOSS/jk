@@ -14,7 +14,7 @@ import org.junit.jupiter.api.io.TempDir;
  * edits every use javac bound (a qualifier, a method reference, a static import, a doc link, an
  * unqualified call in the source type), fixes the imports on both sides, then compiles and proves the
  * moved symbols have the references the old ones had. What would break or change without a compile
- * error is listed and nothing is written.
+ * error is listed and nothing is written; a string spelling the name is listed and left.
  */
 class MoveMemberTest {
 
@@ -225,18 +225,18 @@ class MoveMemberTest {
     }
 
     @Test
-    void anInstanceMethodIsNotMovedAndWhatTiesItToItsTypeIsListed(@TempDir Path dir) throws IOException {
-        RenameFixture f = new RenameFixture(dir, shop());
+    void anInstanceFieldIsNotMovedAndWhatTiesItToItsTypeIsListed(@TempDir Path dir) throws IOException {
+        Map<String, String> files = shop();
+        String order = ORDER.replace("    private String status;\n", "    private String status;\n\n    int lines;\n");
+        files.put(SHOP + "Order.java", order);
+        RenameFixture f = new RenameFixture(dir, files);
 
-        String answer = f.move("Order.summary", "Formats");
+        String answer = f.move("Order.lines", "Formats");
 
         assertThat(answer)
-                .startsWith("Not moved, nothing is written: Order.summary() is an instance method; a move takes static"
-                        + " members, or an instance member up to the class its type extends.")
-                .contains("instance state: Order.status  " + SHOP + "Order.java:34")
-                .contains("1 use reaches it through an instance of org.acme.shop.Order:")
-                .contains(SHOP + "Checkout.java:13");
-        assertThat(f.read(SHOP + "Order.java")).isEqualTo(ORDER);
+                .startsWith("Not moved, nothing is written: Order.lines is an instance field; a move takes a method"
+                        + " or a static field, a pull-up an instance member to the class its type extends.");
+        assertThat(f.read(SHOP + "Order.java")).isEqualTo(order);
     }
 
     @Test
@@ -257,7 +257,7 @@ class MoveMemberTest {
     }
 
     @Test
-    void aStringNamingTheMemberIsAHazard(@TempDir Path dir) throws IOException {
+    void aStringNamingTheMemberIsListedAndTheMoveIsNotDoneWhileItIsLeft(@TempDir Path dir) throws IOException {
         Map<String, String> files = shop();
         files.put(SHOP + "Probe.java", """
                 package org.acme.shop;
@@ -271,9 +271,13 @@ class MoveMemberTest {
         RenameFixture f = new RenameFixture(dir, files);
 
         assertThat(f.move("Order.join", "Formats"))
-                .startsWith("Not moved, nothing is written")
-                .contains("a string names it (reflection?)  " + SHOP + "Probe.java:5");
-        assertThat(f.read(SHOP + "Order.java")).isEqualTo(ORDER);
+                .startsWith("Moved Order.join() (2 overloads) to org.acme.text.Formats: ")
+                .contains("Strings that spell join, left as they are (reflection?):\n  " + SHOP
+                        + "Probe.java:5  return Order.class.getMethod(\"join\", String.class, String.class);");
+        assertThat(f.checkMove())
+                .startsWith("Proven: it compiles")
+                .endsWith("\nNot done: a string still spells the moved name at " + SHOP + "Probe.java:5; change"
+                        + " each one that means the moved member.");
     }
 
     @Test
