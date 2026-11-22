@@ -318,7 +318,7 @@ def dollars(by: dict, questions: list[dict], renames: list[dict]) -> str:
     lines += [f"| {LABELS[d]} | {cell(q, d)} | {cell(n, d)} |" for d in drivers]
     lines += ["", "An API list-price estimate, not a bill: the tokens each agent reported in the runs above, "
               f"priced at its vendor's published API list price for its model, read {' and '.join(dates)} "
-              "([prices](../../bench/agent-loop/prices.toml)). An agent on a subscription pays its plan instead. "
+              "([prices](../../shared/client-io/src/main/resources/cc/jumpkick/prices/prices.toml)). An agent on a subscription pays its plan instead. "
               "Each kind of token (input, output, cache read, cache write) is the median per task, summed over the "
               "tasks the agent ran both ways; the sum is priced, then divided by the number of tasks."
               + (f" Left out, with no price row for its model: {'; '.join(sorted(set(unpriced)))}." if unpriced else "")]

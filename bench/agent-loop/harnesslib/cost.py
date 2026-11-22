@@ -1,8 +1,10 @@
-"""A run's estimated API cost from its token buckets and prices.toml.
+"""A run's estimated API cost from its token buckets and the price table built into JumpKick.
 
-Every row gets ``cost_est_usd`` (None when its model has no price row) and ``price_key``, the row of
-prices.toml it was priced by. The estimate is the API list price of the tokens the CLI reported, whether
-the run was billed per token or ran on a subscription; ``cost_usd`` stays what the CLI itself reported.
+The table is the product's own prices.toml (shared/client-io, cc/jumpkick/prices), so the bench and
+the engine price tokens from one file. Every row gets ``cost_est_usd`` (None when its model has no
+price row) and ``price_key``, the row of prices.toml it was priced by. The estimate is the API list
+price of the tokens the CLI reported, whether the run was billed per token or ran on a subscription;
+``cost_usd`` stays what the CLI itself reported.
 """
 from __future__ import annotations
 
@@ -10,7 +12,8 @@ import functools
 import tomllib
 from pathlib import Path
 
-PRICES = Path(__file__).resolve().parents[1] / "prices.toml"
+PRICES = (Path(__file__).resolve().parents[3]
+          / "shared/client-io/src/main/resources/cc/jumpkick/prices/prices.toml")
 # Drivers whose reasoning_tokens are reported apart from output_tokens (agy's, when its total says so);
 # every other driver's output count already holds them, so adding them would bill them twice.
 REASONING_APART = {"agy"}

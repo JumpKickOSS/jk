@@ -339,7 +339,8 @@ how the agent navigated: graph calls, `Grep`/`Glob`/`Read` calls, and the graph'
 questions. `--first-run N` numbers a day's further runs from N, so they do not replace its earlier ones.
 Every row also carries `jk_calls` (jk's MCP tools and shell `jk` calls), wall time split into model, tool
 and jk time (from the transcript's stamps: Claude Code, Codex and cursor-agent pair calls with results),
-and `cost_est_usd`, the API list price of its tokens from [`prices.toml`](prices.toml) (each row sourced
+and `cost_est_usd`, the API list price of its tokens from JumpKick's own price table,
+[`prices.toml`](../../shared/client-io/src/main/resources/cc/jumpkick/prices/prices.toml) (each row sourced
 and dated; a model without a row reports tokens only). For a subscription CLI that is an API-equivalent
 estimate, not a bill. `cost-report ROWS.jsonl…` gives the medians per driver, model, effort, task and arm,
 and what arm `--a` (default `jk`) saves against `--b` (`jk-before`) and `--c` (`jk-nograph`) in cost,

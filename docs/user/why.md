@@ -436,7 +436,7 @@ With JumpKick's code graph a question cost the agents **$0.019–$0.079** per ta
 | Vendor E | $0.079 / $0.767 | $0.060 / $0.395 |
 | Vendor F | $0.021 / $0.056 | $0.008 / $0.029 |
 
-An API list-price estimate, not a bill: the tokens each agent reported in the runs above, priced at its vendor's published API list price for its model, read 2026-11-17 ([prices](../../bench/agent-loop/prices.toml)). An agent on a subscription pays its plan instead. Each kind of token (input, output, cache read, cache write) is the median per task, summed over the tasks the agent ran both ways; the sum is priced, then divided by the number of tasks. Left out, with no price row for its model: Vendor C, fast.
+An API list-price estimate, not a bill: the tokens each agent reported in the runs above, priced at its vendor's published API list price for its model, read 2026-11-17 ([prices](../../shared/client-io/src/main/resources/cc/jumpkick/prices/prices.toml)). An agent on a subscription pays its plan instead. Each kind of token (input, output, cache read, cache write) is the median per task, summed over the tasks the agent ran both ways; the sum is priced, then divided by the number of tasks. Left out, with no price row for its model: Vendor C, fast.
 <!-- agents-dollars:end -->
 
 ### How small a repository
