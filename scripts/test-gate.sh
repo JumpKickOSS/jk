@@ -229,7 +229,7 @@ mkdir -p "$repo/.jk/test"
 { waiting && printf '\n[[class]]\nname = "b.HandTest"   # by hand\nreason = "flaky"\n'; } >"$repo/.jk/test/quarantine.toml"
 git -C "$repo" add -A && git -C "$repo" commit -qm landed
 tip="$(git -C "$repo" rev-parse HEAD)"
-echo done >"$WORK/ka/TK-F0001"
+echo "done" >"$WORK/ka/TK-F0001"
 gate 33
 [[ "$(verdict 33)" == "GREEN $tip" ]] || fail "the gate after the landing was not green: $(cat "$WORK/logs/integ-gate-33.log")"
 clean 33
