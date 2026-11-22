@@ -11,6 +11,231 @@
 
 [[row]]
 dim = "agents"
+subject = "agents.agy.questions.cache-read-tokens.gemini-3.8-flash-high"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 4660267
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.questions.cache-read-tokens.gemini-3.8-flash-high"
+project = "change-tasks"
+tool = "jk-agentsline"
+kind = "count"
+value = 997735
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 3
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.questions.cache-read-tokens.gemini-3.8-flash-high"
+project = "change-tasks"
+tool = "jk-agyrules"
+kind = "count"
+value = 3533436
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.questions.cache-read-tokens.gemini-3.8-flash-high"
+project = "change-tasks"
+tool = "jk-agyrules+section"
+kind = "count"
+value = 0
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.questions.cache-read-tokens.gemini-3.8-flash-high"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 4718584
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 3
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.questions.cache-write-tokens.gemini-3.8-flash-high"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 0
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.questions.cache-write-tokens.gemini-3.8-flash-high"
+project = "change-tasks"
+tool = "jk-agentsline"
+kind = "count"
+value = 0
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 3
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.questions.cache-write-tokens.gemini-3.8-flash-high"
+project = "change-tasks"
+tool = "jk-agyrules"
+kind = "count"
+value = 0
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.questions.cache-write-tokens.gemini-3.8-flash-high"
+project = "change-tasks"
+tool = "jk-agyrules+section"
+kind = "count"
+value = 0
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.questions.cache-write-tokens.gemini-3.8-flash-high"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 0
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 3
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.questions.input-tokens.gemini-3.8-flash-high"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 1023556
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.questions.input-tokens.gemini-3.8-flash-high"
+project = "change-tasks"
+tool = "jk-agentsline"
+kind = "count"
+value = 382823
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 3
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.questions.input-tokens.gemini-3.8-flash-high"
+project = "change-tasks"
+tool = "jk-agyrules"
+kind = "count"
+value = 814259
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.questions.input-tokens.gemini-3.8-flash-high"
+project = "change-tasks"
+tool = "jk-agyrules+section"
+kind = "count"
+value = 40199
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.questions.input-tokens.gemini-3.8-flash-high"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 594566
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 3
+
+[[row]]
+dim = "agents"
 subject = "agents.agy.questions.non-graph-nav"
 project = "change-tasks"
 tool = "jk"
@@ -81,6 +306,81 @@ band = 0.25
 runs = 1
 date = "2026-11-04"
 commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 3
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.questions.output-tokens.gemini-3.8-flash-high"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 87235
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.questions.output-tokens.gemini-3.8-flash-high"
+project = "change-tasks"
+tool = "jk-agentsline"
+kind = "count"
+value = 43145
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 3
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.questions.output-tokens.gemini-3.8-flash-high"
+project = "change-tasks"
+tool = "jk-agyrules"
+kind = "count"
+value = 199702
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.questions.output-tokens.gemini-3.8-flash-high"
+project = "change-tasks"
+tool = "jk-agyrules+section"
+kind = "count"
+value = 1764
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.questions.output-tokens.gemini-3.8-flash-high"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 53051
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-21"
+commit = "389b6f0f1"
 host-id = "c9ab742f7b18"
 tasks = 3
 
@@ -233,6 +533,486 @@ date = "2026-11-04"
 commit = "1eb1c51d7"
 host-id = "c9ab742f7b18"
 tasks = 3
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.renames.cache-read-tokens.gemini-3.8-flash-high"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 6159704.5
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.renames.cache-read-tokens.gemini-3.8-flash-high"
+project = "change-tasks"
+tool = "jk-agyrules"
+kind = "count"
+value = 40954
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.renames.cache-read-tokens.gemini-3.8-flash-high"
+project = "change-tasks"
+tool = "jk-agyrules+section"
+kind = "count"
+value = 0
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.renames.cache-read-tokens.gemini-3.8-flash-high"
+project = "change-tasks"
+tool = "jk-graph"
+kind = "count"
+value = 2533563.0
+unit = "tokens"
+band = 0.25
+runs = 2
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.renames.cache-read-tokens.gemini-3.8-flash-high"
+project = "change-tasks"
+tool = "jk-graphify"
+kind = "count"
+value = 3498976.5
+unit = "tokens"
+band = 0.25
+runs = 2
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.renames.cache-read-tokens.gemini-3.8-flash-high"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 10620493.5
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.renames.cache-read-tokens.gemini-3.8-flash-high"
+project = "change-tasks"
+tool = "mvn"
+kind = "count"
+value = 6939351
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.renames.cache-read-tokens.gemini-3.8-flash-high"
+project = "change-tasks"
+tool = "mvn-graphify"
+kind = "count"
+value = 2965894.5
+unit = "tokens"
+band = 0.25
+runs = 2
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.renames.cache-write-tokens.gemini-3.8-flash-high"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 0.0
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.renames.cache-write-tokens.gemini-3.8-flash-high"
+project = "change-tasks"
+tool = "jk-agyrules"
+kind = "count"
+value = 0
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.renames.cache-write-tokens.gemini-3.8-flash-high"
+project = "change-tasks"
+tool = "jk-agyrules+section"
+kind = "count"
+value = 0
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.renames.cache-write-tokens.gemini-3.8-flash-high"
+project = "change-tasks"
+tool = "jk-graph"
+kind = "count"
+value = 0.0
+unit = "tokens"
+band = 0.25
+runs = 2
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.renames.cache-write-tokens.gemini-3.8-flash-high"
+project = "change-tasks"
+tool = "jk-graphify"
+kind = "count"
+value = 0.0
+unit = "tokens"
+band = 0.25
+runs = 2
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.renames.cache-write-tokens.gemini-3.8-flash-high"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 0.0
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.renames.cache-write-tokens.gemini-3.8-flash-high"
+project = "change-tasks"
+tool = "mvn"
+kind = "count"
+value = 0
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.renames.cache-write-tokens.gemini-3.8-flash-high"
+project = "change-tasks"
+tool = "mvn-graphify"
+kind = "count"
+value = 0.0
+unit = "tokens"
+band = 0.25
+runs = 2
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.renames.input-tokens.gemini-3.8-flash-high"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 580639.5
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.renames.input-tokens.gemini-3.8-flash-high"
+project = "change-tasks"
+tool = "jk-agyrules"
+kind = "count"
+value = 202994
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.renames.input-tokens.gemini-3.8-flash-high"
+project = "change-tasks"
+tool = "jk-agyrules+section"
+kind = "count"
+value = 102525
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.renames.input-tokens.gemini-3.8-flash-high"
+project = "change-tasks"
+tool = "jk-graph"
+kind = "count"
+value = 286239.0
+unit = "tokens"
+band = 0.25
+runs = 2
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.renames.input-tokens.gemini-3.8-flash-high"
+project = "change-tasks"
+tool = "jk-graphify"
+kind = "count"
+value = 241608.5
+unit = "tokens"
+band = 0.25
+runs = 2
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.renames.input-tokens.gemini-3.8-flash-high"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 1567733.5
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.renames.input-tokens.gemini-3.8-flash-high"
+project = "change-tasks"
+tool = "mvn"
+kind = "count"
+value = 624279
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.renames.input-tokens.gemini-3.8-flash-high"
+project = "change-tasks"
+tool = "mvn-graphify"
+kind = "count"
+value = 273235.5
+unit = "tokens"
+band = 0.25
+runs = 2
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.renames.output-tokens.gemini-3.8-flash-high"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 42775.5
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.renames.output-tokens.gemini-3.8-flash-high"
+project = "change-tasks"
+tool = "jk-agyrules"
+kind = "count"
+value = 11393
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.renames.output-tokens.gemini-3.8-flash-high"
+project = "change-tasks"
+tool = "jk-agyrules+section"
+kind = "count"
+value = 3221
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.renames.output-tokens.gemini-3.8-flash-high"
+project = "change-tasks"
+tool = "jk-graph"
+kind = "count"
+value = 22241.0
+unit = "tokens"
+band = 0.25
+runs = 2
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.renames.output-tokens.gemini-3.8-flash-high"
+project = "change-tasks"
+tool = "jk-graphify"
+kind = "count"
+value = 16867.0
+unit = "tokens"
+band = 0.25
+runs = 2
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.renames.output-tokens.gemini-3.8-flash-high"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 94526.5
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.renames.output-tokens.gemini-3.8-flash-high"
+project = "change-tasks"
+tool = "mvn"
+kind = "count"
+value = 56275
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.renames.output-tokens.gemini-3.8-flash-high"
+project = "change-tasks"
+tool = "mvn-graphify"
+kind = "count"
+value = 23828.0
+unit = "tokens"
+band = 0.25
+runs = 2
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 1
 
 [[row]]
 dim = "agents"
@@ -476,6 +1256,321 @@ tasks = 1
 
 [[row]]
 dim = "agents"
+subject = "agents.claude-code.questions.cache-read-tokens.claude-sonnet-5-5"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 262512
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.questions.cache-read-tokens.claude-sonnet-5-5"
+project = "change-tasks"
+tool = "jk+section"
+kind = "count"
+value = 16258
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.questions.cache-read-tokens.claude-sonnet-5-5"
+project = "change-tasks"
+tool = "jk+shipped"
+kind = "count"
+value = 16580
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.questions.cache-read-tokens.claude-sonnet-5-5"
+project = "change-tasks"
+tool = "jk-graph"
+kind = "count"
+value = 749924.0
+unit = "tokens"
+band = 0.25
+runs = 5
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 5
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.questions.cache-read-tokens.claude-sonnet-5-5"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 2052767.0
+unit = "tokens"
+band = 0.25
+runs = 4
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.questions.cache-read-tokens.claude-sonnet-5-5"
+project = "change-tasks"
+tool = "jk-nograph-noline"
+kind = "count"
+value = 1071360
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 4
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.questions.cache-read-tokens.claude-sonnet-5-5"
+project = "change-tasks"
+tool = "jk-noline"
+kind = "count"
+value = 33632.0
+unit = "tokens"
+band = 0.25
+runs = 4
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.questions.cache-write-tokens.claude-sonnet-5-5"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 74238
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.questions.cache-write-tokens.claude-sonnet-5-5"
+project = "change-tasks"
+tool = "jk+section"
+kind = "count"
+value = 2505
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.questions.cache-write-tokens.claude-sonnet-5-5"
+project = "change-tasks"
+tool = "jk+shipped"
+kind = "count"
+value = 2687
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.questions.cache-write-tokens.claude-sonnet-5-5"
+project = "change-tasks"
+tool = "jk-graph"
+kind = "count"
+value = 118714.0
+unit = "tokens"
+band = 0.25
+runs = 5
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 5
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.questions.cache-write-tokens.claude-sonnet-5-5"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 245975.5
+unit = "tokens"
+band = 0.25
+runs = 4
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.questions.cache-write-tokens.claude-sonnet-5-5"
+project = "change-tasks"
+tool = "jk-nograph-noline"
+kind = "count"
+value = 113205
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 4
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.questions.cache-write-tokens.claude-sonnet-5-5"
+project = "change-tasks"
+tool = "jk-noline"
+kind = "count"
+value = 12013.0
+unit = "tokens"
+band = 0.25
+runs = 4
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.questions.input-tokens.claude-sonnet-5-5"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 54
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.questions.input-tokens.claude-sonnet-5-5"
+project = "change-tasks"
+tool = "jk+section"
+kind = "count"
+value = 6
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.questions.input-tokens.claude-sonnet-5-5"
+project = "change-tasks"
+tool = "jk+shipped"
+kind = "count"
+value = 6
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.questions.input-tokens.claude-sonnet-5-5"
+project = "change-tasks"
+tool = "jk-graph"
+kind = "count"
+value = 80.0
+unit = "tokens"
+band = 0.25
+runs = 5
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 5
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.questions.input-tokens.claude-sonnet-5-5"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 162.0
+unit = "tokens"
+band = 0.25
+runs = 4
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.questions.input-tokens.claude-sonnet-5-5"
+project = "change-tasks"
+tool = "jk-nograph-noline"
+kind = "count"
+value = 80
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 4
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.questions.input-tokens.claude-sonnet-5-5"
+project = "change-tasks"
+tool = "jk-noline"
+kind = "count"
+value = 6.0
+unit = "tokens"
+band = 0.25
+runs = 4
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 1
+
+[[row]]
+dim = "agents"
 subject = "agents.claude-code.questions.non-graph-nav"
 project = "change-tasks"
 tool = "jk"
@@ -576,6 +1671,111 @@ band = 0.25
 runs = 4
 date = "2026-11-04"
 commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.questions.output-tokens.claude-sonnet-5-5"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 4213
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.questions.output-tokens.claude-sonnet-5-5"
+project = "change-tasks"
+tool = "jk+section"
+kind = "count"
+value = 240
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.questions.output-tokens.claude-sonnet-5-5"
+project = "change-tasks"
+tool = "jk+shipped"
+kind = "count"
+value = 259
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.questions.output-tokens.claude-sonnet-5-5"
+project = "change-tasks"
+tool = "jk-graph"
+kind = "count"
+value = 15704.0
+unit = "tokens"
+band = 0.25
+runs = 5
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 5
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.questions.output-tokens.claude-sonnet-5-5"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 40868.5
+unit = "tokens"
+band = 0.25
+runs = 4
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.questions.output-tokens.claude-sonnet-5-5"
+project = "change-tasks"
+tool = "jk-nograph-noline"
+kind = "count"
+value = 16161
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 4
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.questions.output-tokens.claude-sonnet-5-5"
+project = "change-tasks"
+tool = "jk-noline"
+kind = "count"
+value = 419.0
+unit = "tokens"
+band = 0.25
+runs = 4
+date = "2026-11-21"
+commit = "389b6f0f1"
 host-id = "c9ab742f7b18"
 tasks = 1
 
@@ -788,6 +1988,726 @@ date = "2026-11-04"
 commit = "1eb1c51d7"
 host-id = "c9ab742f7b18"
 tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.renames.cache-read-tokens.claude-sonnet-5-5"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 78044
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.renames.cache-read-tokens.claude-sonnet-5-5"
+project = "change-tasks"
+tool = "jk+section"
+kind = "count"
+value = 31802
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.renames.cache-read-tokens.claude-sonnet-5-5"
+project = "change-tasks"
+tool = "jk+shipped"
+kind = "count"
+value = 32448
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.renames.cache-read-tokens.claude-sonnet-5-5"
+project = "change-tasks"
+tool = "jk-graph-first"
+kind = "count"
+value = 367885
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 3
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.renames.cache-read-tokens.claude-sonnet-5-5"
+project = "change-tasks"
+tool = "jk-graphify"
+kind = "count"
+value = 278526
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 3
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.renames.cache-read-tokens.claude-sonnet-5-5"
+project = "change-tasks"
+tool = "jk-hooks"
+kind = "count"
+value = 209323
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 3
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.renames.cache-read-tokens.claude-sonnet-5-5"
+project = "change-tasks"
+tool = "jk-hooks-lean"
+kind = "count"
+value = 391721
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 3
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.renames.cache-read-tokens.claude-sonnet-5-5"
+project = "change-tasks"
+tool = "jk-hooks-replace"
+kind = "count"
+value = 790655.0
+unit = "tokens"
+band = 0.25
+runs = 4
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 3
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.renames.cache-read-tokens.claude-sonnet-5-5"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 444309
+unit = "tokens"
+band = 0.25
+runs = 5
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.renames.cache-read-tokens.claude-sonnet-5-5"
+project = "change-tasks"
+tool = "jk-noline"
+kind = "count"
+value = 24572.5
+unit = "tokens"
+band = 0.25
+runs = 4
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.renames.cache-read-tokens.claude-sonnet-5-5"
+project = "change-tasks"
+tool = "mvn"
+kind = "count"
+value = 94863.0
+unit = "tokens"
+band = 0.25
+runs = 6
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.renames.cache-read-tokens.claude-sonnet-5-5"
+project = "change-tasks"
+tool = "mvn-graphify"
+kind = "count"
+value = 114666
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.renames.cache-write-tokens.claude-sonnet-5-5"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 23791
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.renames.cache-write-tokens.claude-sonnet-5-5"
+project = "change-tasks"
+tool = "jk+section"
+kind = "count"
+value = 4139
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.renames.cache-write-tokens.claude-sonnet-5-5"
+project = "change-tasks"
+tool = "jk+shipped"
+kind = "count"
+value = 4462
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.renames.cache-write-tokens.claude-sonnet-5-5"
+project = "change-tasks"
+tool = "jk-graph-first"
+kind = "count"
+value = 70832
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 3
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.renames.cache-write-tokens.claude-sonnet-5-5"
+project = "change-tasks"
+tool = "jk-graphify"
+kind = "count"
+value = 42170
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 3
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.renames.cache-write-tokens.claude-sonnet-5-5"
+project = "change-tasks"
+tool = "jk-hooks"
+kind = "count"
+value = 43568
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 3
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.renames.cache-write-tokens.claude-sonnet-5-5"
+project = "change-tasks"
+tool = "jk-hooks-lean"
+kind = "count"
+value = 74764
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 3
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.renames.cache-write-tokens.claude-sonnet-5-5"
+project = "change-tasks"
+tool = "jk-hooks-replace"
+kind = "count"
+value = 78329.5
+unit = "tokens"
+band = 0.25
+runs = 4
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 3
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.renames.cache-write-tokens.claude-sonnet-5-5"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 80800
+unit = "tokens"
+band = 0.25
+runs = 5
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.renames.cache-write-tokens.claude-sonnet-5-5"
+project = "change-tasks"
+tool = "jk-noline"
+kind = "count"
+value = 11012.0
+unit = "tokens"
+band = 0.25
+runs = 4
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.renames.cache-write-tokens.claude-sonnet-5-5"
+project = "change-tasks"
+tool = "mvn"
+kind = "count"
+value = 17499.0
+unit = "tokens"
+band = 0.25
+runs = 6
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.renames.cache-write-tokens.claude-sonnet-5-5"
+project = "change-tasks"
+tool = "mvn-graphify"
+kind = "count"
+value = 18173
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.renames.input-tokens.claude-sonnet-5-5"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 28
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.renames.input-tokens.claude-sonnet-5-5"
+project = "change-tasks"
+tool = "jk+section"
+kind = "count"
+value = 12
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.renames.input-tokens.claude-sonnet-5-5"
+project = "change-tasks"
+tool = "jk+shipped"
+kind = "count"
+value = 12
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.renames.input-tokens.claude-sonnet-5-5"
+project = "change-tasks"
+tool = "jk-graph-first"
+kind = "count"
+value = 40
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 3
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.renames.input-tokens.claude-sonnet-5-5"
+project = "change-tasks"
+tool = "jk-graphify"
+kind = "count"
+value = 36
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 3
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.renames.input-tokens.claude-sonnet-5-5"
+project = "change-tasks"
+tool = "jk-hooks"
+kind = "count"
+value = 32
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 3
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.renames.input-tokens.claude-sonnet-5-5"
+project = "change-tasks"
+tool = "jk-hooks-lean"
+kind = "count"
+value = 44
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 3
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.renames.input-tokens.claude-sonnet-5-5"
+project = "change-tasks"
+tool = "jk-hooks-replace"
+kind = "count"
+value = 86.0
+unit = "tokens"
+band = 0.25
+runs = 4
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 3
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.renames.input-tokens.claude-sonnet-5-5"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 78
+unit = "tokens"
+band = 0.25
+runs = 5
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.renames.input-tokens.claude-sonnet-5-5"
+project = "change-tasks"
+tool = "jk-noline"
+kind = "count"
+value = 7.0
+unit = "tokens"
+band = 0.25
+runs = 4
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.renames.input-tokens.claude-sonnet-5-5"
+project = "change-tasks"
+tool = "mvn"
+kind = "count"
+value = 22.0
+unit = "tokens"
+band = 0.25
+runs = 6
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.renames.input-tokens.claude-sonnet-5-5"
+project = "change-tasks"
+tool = "mvn-graphify"
+kind = "count"
+value = 20
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.renames.output-tokens.claude-sonnet-5-5"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 639
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.renames.output-tokens.claude-sonnet-5-5"
+project = "change-tasks"
+tool = "jk+section"
+kind = "count"
+value = 243
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.renames.output-tokens.claude-sonnet-5-5"
+project = "change-tasks"
+tool = "jk+shipped"
+kind = "count"
+value = 243
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.renames.output-tokens.claude-sonnet-5-5"
+project = "change-tasks"
+tool = "jk-graph-first"
+kind = "count"
+value = 18501
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 3
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.renames.output-tokens.claude-sonnet-5-5"
+project = "change-tasks"
+tool = "jk-graphify"
+kind = "count"
+value = 3632
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 3
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.renames.output-tokens.claude-sonnet-5-5"
+project = "change-tasks"
+tool = "jk-hooks"
+kind = "count"
+value = 2559
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 3
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.renames.output-tokens.claude-sonnet-5-5"
+project = "change-tasks"
+tool = "jk-hooks-lean"
+kind = "count"
+value = 19726
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 3
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.renames.output-tokens.claude-sonnet-5-5"
+project = "change-tasks"
+tool = "jk-hooks-replace"
+kind = "count"
+value = 22278.0
+unit = "tokens"
+band = 0.25
+runs = 4
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 3
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.renames.output-tokens.claude-sonnet-5-5"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 24875
+unit = "tokens"
+band = 0.25
+runs = 5
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.renames.output-tokens.claude-sonnet-5-5"
+project = "change-tasks"
+tool = "jk-noline"
+kind = "count"
+value = 3632.0
+unit = "tokens"
+band = 0.25
+runs = 4
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.renames.output-tokens.claude-sonnet-5-5"
+project = "change-tasks"
+tool = "mvn"
+kind = "count"
+value = 2278.5
+unit = "tokens"
+band = 0.25
+runs = 6
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.renames.output-tokens.claude-sonnet-5-5"
+project = "change-tasks"
+tool = "mvn-graphify"
+kind = "count"
+value = 2302
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 2
 
 [[row]]
 dim = "agents"
@@ -1151,6 +3071,96 @@ tasks = 2
 
 [[row]]
 dim = "agents"
+subject = "agents.codex.questions.cache-read-tokens.gpt-6.1-terra"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 657280
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.codex.questions.cache-read-tokens.gpt-6.1-terra"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 1838848
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.codex.questions.cache-write-tokens.gpt-6.1-terra"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 0
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.codex.questions.cache-write-tokens.gpt-6.1-terra"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 0
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.codex.questions.input-tokens.gpt-6.1-terra"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 123748
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.codex.questions.input-tokens.gpt-6.1-terra"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 242982
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 7
+
+[[row]]
+dim = "agents"
 subject = "agents.codex.questions.non-graph-nav"
 project = "change-tasks"
 tool = "jk"
@@ -1176,6 +3186,36 @@ band = 0.25
 runs = 1
 date = "2026-11-04"
 commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.codex.questions.output-tokens.gpt-6.1-terra"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 2259
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.codex.questions.output-tokens.gpt-6.1-terra"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 5451
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-21"
+commit = "389b6f0f1"
 host-id = "c9ab742f7b18"
 tasks = 7
 
@@ -1241,6 +3281,126 @@ tasks = 7
 
 [[row]]
 dim = "agents"
+subject = "agents.codex.renames.cache-read-tokens.gpt-6.1-terra"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 293248
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.codex.renames.cache-read-tokens.gpt-6.1-terra"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 1449472
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.codex.renames.cache-write-tokens.gpt-6.1-terra"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 0
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.codex.renames.cache-write-tokens.gpt-6.1-terra"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 0
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.codex.renames.input-tokens.gpt-6.1-terra"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 40188
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.codex.renames.input-tokens.gpt-6.1-terra"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 103997
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.codex.renames.output-tokens.gpt-6.1-terra"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 846
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.codex.renames.output-tokens.gpt-6.1-terra"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 4780
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 7
+
+[[row]]
+dim = "agents"
 subject = "agents.codex.renames.tokens"
 project = "change-tasks"
 tool = "jk"
@@ -1298,6 +3458,276 @@ date = "2026-11-04"
 commit = "1eb1c51d7"
 host-id = "c9ab742f7b18"
 tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.questions.cache-read-tokens.composer-2.5"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 386432
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.questions.cache-read-tokens.composer-2.5"
+project = "change-tasks"
+tool = "jk-cursorrules"
+kind = "count"
+value = 423392
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.questions.cache-read-tokens.composer-2.5"
+project = "change-tasks"
+tool = "jk-cursorrules+section"
+kind = "count"
+value = 39296
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.questions.cache-read-tokens.composer-2.5"
+project = "change-tasks"
+tool = "jk-cursorrules2"
+kind = "count"
+value = 96512
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.questions.cache-read-tokens.composer-2.5"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 14397728.0
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.questions.cache-read-tokens.composer-2.5"
+project = "change-tasks"
+tool = "jk-noline"
+kind = "count"
+value = 1218528
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 4
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.questions.cache-write-tokens.composer-2.5"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 0
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.questions.cache-write-tokens.composer-2.5"
+project = "change-tasks"
+tool = "jk-cursorrules"
+kind = "count"
+value = 0
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.questions.cache-write-tokens.composer-2.5"
+project = "change-tasks"
+tool = "jk-cursorrules+section"
+kind = "count"
+value = 0
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.questions.cache-write-tokens.composer-2.5"
+project = "change-tasks"
+tool = "jk-cursorrules2"
+kind = "count"
+value = 0
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.questions.cache-write-tokens.composer-2.5"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 0.0
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.questions.cache-write-tokens.composer-2.5"
+project = "change-tasks"
+tool = "jk-noline"
+kind = "count"
+value = 0
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 4
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.questions.input-tokens.composer-2.5"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 87222
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.questions.input-tokens.composer-2.5"
+project = "change-tasks"
+tool = "jk-cursorrules"
+kind = "count"
+value = 94830
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.questions.input-tokens.composer-2.5"
+project = "change-tasks"
+tool = "jk-cursorrules+section"
+kind = "count"
+value = 8120
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.questions.input-tokens.composer-2.5"
+project = "change-tasks"
+tool = "jk-cursorrules2"
+kind = "count"
+value = 23396
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.questions.input-tokens.composer-2.5"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 504717.0
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.questions.input-tokens.composer-2.5"
+project = "change-tasks"
+tool = "jk-noline"
+kind = "count"
+value = 87752
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 4
 
 [[row]]
 dim = "agents"
@@ -1386,6 +3816,96 @@ band = 0.25
 runs = 1
 date = "2026-11-04"
 commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 4
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.questions.output-tokens.composer-2.5"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 8104
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.questions.output-tokens.composer-2.5"
+project = "change-tasks"
+tool = "jk-cursorrules"
+kind = "count"
+value = 8493
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.questions.output-tokens.composer-2.5"
+project = "change-tasks"
+tool = "jk-cursorrules+section"
+kind = "count"
+value = 432
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.questions.output-tokens.composer-2.5"
+project = "change-tasks"
+tool = "jk-cursorrules2"
+kind = "count"
+value = 1713
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.questions.output-tokens.composer-2.5"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 72213.0
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.questions.output-tokens.composer-2.5"
+project = "change-tasks"
+tool = "jk-noline"
+kind = "count"
+value = 20060
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-21"
+commit = "389b6f0f1"
 host-id = "c9ab742f7b18"
 tasks = 4
 
@@ -1571,6 +4091,306 @@ tasks = 4
 
 [[row]]
 dim = "agents"
+subject = "agents.cursor.renames.cache-read-tokens.composer-2.5"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 1363680.0
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.renames.cache-read-tokens.composer-2.5"
+project = "change-tasks"
+tool = "jk-cursorrules"
+kind = "count"
+value = 199296
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.renames.cache-read-tokens.composer-2.5"
+project = "change-tasks"
+tool = "jk-cursorrules+section"
+kind = "count"
+value = 121888
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.renames.cache-read-tokens.composer-2.5"
+project = "change-tasks"
+tool = "jk-cursorrules2"
+kind = "count"
+value = 254208
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 4
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.renames.cache-read-tokens.composer-2.5"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 1744864.0
+unit = "tokens"
+band = 0.25
+runs = 4
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.renames.cache-write-tokens.composer-2.5"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 0.0
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.renames.cache-write-tokens.composer-2.5"
+project = "change-tasks"
+tool = "jk-cursorrules"
+kind = "count"
+value = 0
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.renames.cache-write-tokens.composer-2.5"
+project = "change-tasks"
+tool = "jk-cursorrules+section"
+kind = "count"
+value = 0
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.renames.cache-write-tokens.composer-2.5"
+project = "change-tasks"
+tool = "jk-cursorrules2"
+kind = "count"
+value = 0
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 4
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.renames.cache-write-tokens.composer-2.5"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 0.0
+unit = "tokens"
+band = 0.25
+runs = 4
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.renames.input-tokens.composer-2.5"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 89465.0
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.renames.input-tokens.composer-2.5"
+project = "change-tasks"
+tool = "jk-cursorrules"
+kind = "count"
+value = 61057
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.renames.input-tokens.composer-2.5"
+project = "change-tasks"
+tool = "jk-cursorrules+section"
+kind = "count"
+value = 15861
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.renames.input-tokens.composer-2.5"
+project = "change-tasks"
+tool = "jk-cursorrules2"
+kind = "count"
+value = 44142
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 4
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.renames.input-tokens.composer-2.5"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 156470.5
+unit = "tokens"
+band = 0.25
+runs = 4
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.renames.output-tokens.composer-2.5"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 11509.5
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.renames.output-tokens.composer-2.5"
+project = "change-tasks"
+tool = "jk-cursorrules"
+kind = "count"
+value = 2456
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.renames.output-tokens.composer-2.5"
+project = "change-tasks"
+tool = "jk-cursorrules+section"
+kind = "count"
+value = 880
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.renames.output-tokens.composer-2.5"
+project = "change-tasks"
+tool = "jk-cursorrules2"
+kind = "count"
+value = 3228
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 4
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.renames.output-tokens.composer-2.5"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 15839.5
+unit = "tokens"
+band = 0.25
+runs = 4
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 7
+
+[[row]]
+dim = "agents"
 subject = "agents.cursor.renames.tokens"
 project = "change-tasks"
 tool = "jk"
@@ -1721,6 +4541,186 @@ tasks = 7
 
 [[row]]
 dim = "agents"
+subject = "agents.grok.questions.cache-read-tokens.grok-4.7"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 196096
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.questions.cache-read-tokens.grok-4.7"
+project = "change-tasks"
+tool = "jk+section"
+kind = "count"
+value = 17664
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.questions.cache-read-tokens.grok-4.7"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 14978432.0
+unit = "tokens"
+band = 0.25
+runs = 2
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.questions.cache-read-tokens.grok-4.7"
+project = "change-tasks"
+tool = "jk-noline"
+kind = "count"
+value = 390144
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 4
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.questions.cache-write-tokens.grok-4.7"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 0
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.questions.cache-write-tokens.grok-4.7"
+project = "change-tasks"
+tool = "jk+section"
+kind = "count"
+value = 0
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.questions.cache-write-tokens.grok-4.7"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 0.0
+unit = "tokens"
+band = 0.25
+runs = 2
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.questions.cache-write-tokens.grok-4.7"
+project = "change-tasks"
+tool = "jk-noline"
+kind = "count"
+value = 0
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 4
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.questions.input-tokens.grok-4.7"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 186625
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.questions.input-tokens.grok-4.7"
+project = "change-tasks"
+tool = "jk+section"
+kind = "count"
+value = 9355
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.questions.input-tokens.grok-4.7"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 1265664.0
+unit = "tokens"
+band = 0.25
+runs = 2
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.questions.input-tokens.grok-4.7"
+project = "change-tasks"
+tool = "jk-noline"
+kind = "count"
+value = 108759
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 4
+
+[[row]]
+dim = "agents"
 subject = "agents.grok.questions.non-graph-nav"
 project = "change-tasks"
 tool = "jk"
@@ -1776,6 +4776,66 @@ band = 0.25
 runs = 3
 date = "2026-11-04"
 commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 4
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.questions.output-tokens.grok-4.7"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 15254
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.questions.output-tokens.grok-4.7"
+project = "change-tasks"
+tool = "jk+section"
+kind = "count"
+value = 508
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.questions.output-tokens.grok-4.7"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 197751.0
+unit = "tokens"
+band = 0.25
+runs = 2
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.questions.output-tokens.grok-4.7"
+project = "change-tasks"
+tool = "jk-noline"
+kind = "count"
+value = 20157
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
 host-id = "c9ab742f7b18"
 tasks = 4
 
@@ -1898,6 +4958,426 @@ date = "2026-11-04"
 commit = "1eb1c51d7"
 host-id = "c9ab742f7b18"
 tasks = 4
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.renames.cache-read-tokens.grok-4.7"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 127872
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.renames.cache-read-tokens.grok-4.7"
+project = "change-tasks"
+tool = "jk+section"
+kind = "count"
+value = 54784
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.renames.cache-read-tokens.grok-4.7"
+project = "change-tasks"
+tool = "jk-graph"
+kind = "count"
+value = 1444992
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 3
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.renames.cache-read-tokens.grok-4.7"
+project = "change-tasks"
+tool = "jk-graphify"
+kind = "count"
+value = 1810048
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 3
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.renames.cache-read-tokens.grok-4.7"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 2918016
+unit = "tokens"
+band = 0.25
+runs = 5
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.renames.cache-read-tokens.grok-4.7"
+project = "change-tasks"
+tool = "mvn"
+kind = "count"
+value = 1487360
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.renames.cache-read-tokens.grok-4.7"
+project = "change-tasks"
+tool = "mvn-graphify"
+kind = "count"
+value = 1303552
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.renames.cache-write-tokens.grok-4.7"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 0
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.renames.cache-write-tokens.grok-4.7"
+project = "change-tasks"
+tool = "jk+section"
+kind = "count"
+value = 0
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.renames.cache-write-tokens.grok-4.7"
+project = "change-tasks"
+tool = "jk-graph"
+kind = "count"
+value = 0
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 3
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.renames.cache-write-tokens.grok-4.7"
+project = "change-tasks"
+tool = "jk-graphify"
+kind = "count"
+value = 0
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 3
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.renames.cache-write-tokens.grok-4.7"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 0
+unit = "tokens"
+band = 0.25
+runs = 5
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.renames.cache-write-tokens.grok-4.7"
+project = "change-tasks"
+tool = "mvn"
+kind = "count"
+value = 0
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.renames.cache-write-tokens.grok-4.7"
+project = "change-tasks"
+tool = "mvn-graphify"
+kind = "count"
+value = 0
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.renames.input-tokens.grok-4.7"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 116061
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.renames.input-tokens.grok-4.7"
+project = "change-tasks"
+tool = "jk+section"
+kind = "count"
+value = 15275
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.renames.input-tokens.grok-4.7"
+project = "change-tasks"
+tool = "jk-graph"
+kind = "count"
+value = 194918
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 3
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.renames.input-tokens.grok-4.7"
+project = "change-tasks"
+tool = "jk-graphify"
+kind = "count"
+value = 222521
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 3
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.renames.input-tokens.grok-4.7"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 412247
+unit = "tokens"
+band = 0.25
+runs = 5
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.renames.input-tokens.grok-4.7"
+project = "change-tasks"
+tool = "mvn"
+kind = "count"
+value = 129944
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.renames.input-tokens.grok-4.7"
+project = "change-tasks"
+tool = "mvn-graphify"
+kind = "count"
+value = 140003
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.renames.output-tokens.grok-4.7"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 11911
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.renames.output-tokens.grok-4.7"
+project = "change-tasks"
+tool = "jk+section"
+kind = "count"
+value = 1517
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.renames.output-tokens.grok-4.7"
+project = "change-tasks"
+tool = "jk-graph"
+kind = "count"
+value = 21883
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 3
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.renames.output-tokens.grok-4.7"
+project = "change-tasks"
+tool = "jk-graphify"
+kind = "count"
+value = 21192
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 3
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.renames.output-tokens.grok-4.7"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 50851
+unit = "tokens"
+band = 0.25
+runs = 5
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.renames.output-tokens.grok-4.7"
+project = "change-tasks"
+tool = "mvn"
+kind = "count"
+value = 15995
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.renames.output-tokens.grok-4.7"
+project = "change-tasks"
+tool = "mvn-graphify"
+kind = "count"
+value = 19558
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 2
 
 [[row]]
 dim = "agents"
@@ -2111,6 +5591,186 @@ tasks = 2
 
 [[row]]
 dim = "agents"
+subject = "agents.muse.questions.cache-read-tokens.muse-spark-1.3-contributor"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 440276
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.muse.questions.cache-read-tokens.muse-spark-1.3-contributor"
+project = "change-tasks"
+tool = "jk-musemd"
+kind = "count"
+value = 34146
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.muse.questions.cache-read-tokens.muse-spark-1.3-contributor"
+project = "change-tasks"
+tool = "jk-musemd+section"
+kind = "count"
+value = 17265
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.muse.questions.cache-read-tokens.muse-spark-1.3-contributor"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 22517543
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.muse.questions.cache-write-tokens.muse-spark-1.3-contributor"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 0
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.muse.questions.cache-write-tokens.muse-spark-1.3-contributor"
+project = "change-tasks"
+tool = "jk-musemd"
+kind = "count"
+value = 0
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.muse.questions.cache-write-tokens.muse-spark-1.3-contributor"
+project = "change-tasks"
+tool = "jk-musemd+section"
+kind = "count"
+value = 0
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.muse.questions.cache-write-tokens.muse-spark-1.3-contributor"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 0
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.muse.questions.input-tokens.muse-spark-1.3-contributor"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 303592
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.muse.questions.input-tokens.muse-spark-1.3-contributor"
+project = "change-tasks"
+tool = "jk-musemd"
+kind = "count"
+value = 26214
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.muse.questions.input-tokens.muse-spark-1.3-contributor"
+project = "change-tasks"
+tool = "jk-musemd+section"
+kind = "count"
+value = 42734
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.muse.questions.input-tokens.muse-spark-1.3-contributor"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 1394118
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 8
+
+[[row]]
+dim = "agents"
 subject = "agents.muse.questions.non-graph-nav"
 project = "change-tasks"
 tool = "jk"
@@ -2166,6 +5826,66 @@ band = 0.25
 runs = 1
 date = "2026-11-04"
 commit = "1eb1c51d7"
+host-id = "c9ab742f7b18"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.muse.questions.output-tokens.muse-spark-1.3-contributor"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 43473
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.muse.questions.output-tokens.muse-spark-1.3-contributor"
+project = "change-tasks"
+tool = "jk-musemd"
+kind = "count"
+value = 2628
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.muse.questions.output-tokens.muse-spark-1.3-contributor"
+project = "change-tasks"
+tool = "jk-musemd+section"
+kind = "count"
+value = 3374
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.muse.questions.output-tokens.muse-spark-1.3-contributor"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 238565
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-21"
+commit = "389b6f0f1"
 host-id = "c9ab742f7b18"
 tasks = 8
 
@@ -2288,6 +6008,246 @@ date = "2026-11-04"
 commit = "1eb1c51d7"
 host-id = "c9ab742f7b18"
 tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.muse.renames.cache-read-tokens.muse-spark-1.3-contributor"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 285215
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.muse.renames.cache-read-tokens.muse-spark-1.3-contributor"
+project = "change-tasks"
+tool = "jk-musemd"
+kind = "count"
+value = 123769
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.muse.renames.cache-read-tokens.muse-spark-1.3-contributor"
+project = "change-tasks"
+tool = "jk-musemd+section"
+kind = "count"
+value = 101286
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.muse.renames.cache-read-tokens.muse-spark-1.3-contributor"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 11020208
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.muse.renames.cache-write-tokens.muse-spark-1.3-contributor"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 0
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.muse.renames.cache-write-tokens.muse-spark-1.3-contributor"
+project = "change-tasks"
+tool = "jk-musemd"
+kind = "count"
+value = 0
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.muse.renames.cache-write-tokens.muse-spark-1.3-contributor"
+project = "change-tasks"
+tool = "jk-musemd+section"
+kind = "count"
+value = 0
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.muse.renames.cache-write-tokens.muse-spark-1.3-contributor"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 0
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.muse.renames.input-tokens.muse-spark-1.3-contributor"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 215499
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.muse.renames.input-tokens.muse-spark-1.3-contributor"
+project = "change-tasks"
+tool = "jk-musemd"
+kind = "count"
+value = 52543
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.muse.renames.input-tokens.muse-spark-1.3-contributor"
+project = "change-tasks"
+tool = "jk-musemd+section"
+kind = "count"
+value = 63886
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.muse.renames.input-tokens.muse-spark-1.3-contributor"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 655607
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.muse.renames.output-tokens.muse-spark-1.3-contributor"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 26166
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.muse.renames.output-tokens.muse-spark-1.3-contributor"
+project = "change-tasks"
+tool = "jk-musemd"
+kind = "count"
+value = 7683
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.muse.renames.output-tokens.muse-spark-1.3-contributor"
+project = "change-tasks"
+tool = "jk-musemd+section"
+kind = "count"
+value = 5455
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.muse.renames.output-tokens.muse-spark-1.3-contributor"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 68538
+unit = "tokens"
+band = 0.25
+runs = 3
+date = "2026-11-21"
+commit = "389b6f0f1"
+host-id = "c9ab742f7b18"
+tasks = 7
 
 [[row]]
 dim = "agents"

@@ -913,11 +913,12 @@ final class ParityRules {
             List.of("docs/user/why.md", "docs/user/comparison.md", "docs/user/graph.md");
 
     /**
-     * The blocks {@code bench/scoreboard --render} writes: from the banked rows ({@code wall-}) and
-     * from the checked-in graph retrieval results ({@code graph-}).
+     * The blocks {@code bench/scoreboard --render} writes: from the banked rows ({@code wall-}),
+     * from the checked-in graph retrieval results ({@code graph-}) and from the checked-in
+     * change-task results ({@code agents-}).
      */
     private static final Pattern GENERATED = Pattern.compile(
-            "<!-- (?:wall-(?:table|claims|strip)|graph-(?:table|claims)|agents-(?:claims|questions|renames|curve)):(begin|end) -->");
+            "<!-- (?:wall-(?:table|claims|strip)|graph-(?:table|claims)|agents-(?:claims|questions|renames|curve|dollars)):(begin|end) -->");
 
     /** The agent-loop table, banked by hand from {@code bench/agent-loop}, not by the scoreboard. */
     private static final Pattern AGENT_TABLE = Pattern.compile("agents-reach-green");

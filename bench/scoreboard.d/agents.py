@@ -19,6 +19,14 @@ new hundred). Per driver and arm, over accepted runs:
   agents.<driver>.questions.turns           per-question median turns, summed over the questions
   agents.<driver>.questions.tokens          the same for tokens (input, output, cache read and write)
   agents.<driver>.renames.turns / .tokens   the same over the method-rename tasks
+  agents.<driver>.<group>.<kind>-tokens.<model>
+                                            the same for each kind of token a vendor prices apart
+                                            (input, output, cache-read, cache-write), per model
+                                            version. Dollars are never banked: the docs price these
+                                            sums at render time with prices.toml (harnesslib/cost.py),
+                                            so a new price re-prices every claim and fails no row.
+
+Every agent row carries the host the change-task runs ran on, not the host that derives it.
 
 `tool` is the arm (`jk`, `jk-nograph`), so jk without the graph is the comparison row beside each.
 A subtype question is not counted: it is answered from declarations, and grep is as cheap there.
@@ -34,9 +42,10 @@ import sys
 import tomllib
 from pathlib import Path
 
-TIERS = ("night", "release")
-
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "agent-loop"))
+from harnesslib import cost  # noqa: E402
+
+TIERS = ("night", "release")
 
 JK_TREE = Path(__file__).resolve().parent.parent.parent
 RESULTS = JK_TREE / "bench" / "agent-loop" / "results"
@@ -106,6 +115,7 @@ def groups(by: dict[tuple[str, str, str], list[dict]]) -> dict[tuple[str, str, s
 def agent_rows(by: dict[tuple[str, str, str], list[dict]]) -> list[dict]:
     found: list[dict] = []
     for (driver, arm, group), tasks in sorted(groups(by).items()):
+        first = len(found)
         runs = min(len(rs) for rs in tasks.values())
         sums = {
             "turns": sum(statistics.median(r["turns"] for r in rs) for rs in tasks.values()),
@@ -118,7 +128,39 @@ def agent_rows(by: dict[tuple[str, str, str], list[dict]]) -> list[dict]:
                 statistics.median(1 - (r.get("graph_share") or 0.0) for r in rs) for rs in tasks.values())
             found.append(row(f"agents.{driver}.questions.non-graph-nav", arm, round(share, 3), "share", runs,
                              len(tasks)))
+        model = next(iter(tasks.values()))[0].get("model")
+        for kind, n in (_by_kind(tasks, list(tasks)) or {}).items():
+            found.append(row(f"agents.{driver}.{group}.{kind}-tokens.{model}", arm, n, "tokens", runs, len(tasks)))
+        host = _host(tasks)
+        for r in found[first:]:
+            r["host-id"] = host
     return found
+
+
+def _host(cells: dict) -> str | None:
+    """The host most of these runs ran on."""
+    hosts = [r["host"] for rs in cells.values() for r in rs if r.get("host")]
+    return max(set(hosts), key=hosts.count) if hosts else None
+
+
+def _by_kind(cells: dict, tasks: list[str]) -> dict[str, float] | None:
+    """Per-task median of each kind of token, summed over the tasks; None when a task reported no tokens."""
+    per_task = [[k for r in cells[t] if (k := cost.kinds(r)) is not None] for t in tasks]
+    if not all(per_task):
+        return None
+    return {kind: sum(statistics.median(k[kind] for k in runs) for runs in per_task) for kind in cost.KINDS}
+
+
+def _usd(cells: dict, tasks: list[str]) -> float | None:
+    """The API list price of the tasks' tokens by kind, today's prices.toml; None without a price row."""
+    tokens = _by_kind(cells, tasks)
+    first = cells[tasks[0]][0]
+    return cost.usd(first.get("model"), first.get("driver"), tokens) if tokens else None
+
+
+def _retrieved(rs: list[dict]) -> str:
+    """The date the price row of these runs' model was read from its vendor's page."""
+    return cost.prices()[cost.price_key(rs[0].get("model"))]["retrieved"]
 
 
 def row(subject: str, arm: str, value: float, unit: str, runs: int, tasks: int) -> dict:
@@ -210,7 +252,7 @@ def _sums(cells: dict, tasks: list[str]) -> dict:
 
     return {"correct": sum(1 for t in tasks for r in cells[t] if r.get("accepted")),
             "runs": sum(len(cells[t]) for t in tasks), "turns": med("turns"), "tokens": med("tokens"),
-            "wall": med("wall_s"), "share": statistics.median(
+            "wall": med("wall_s"), "usd": _usd(ok, tasks), "share": statistics.median(
                 statistics.median(r.get("graph_share") or 0.0 for r in ok[t]) for t in tasks)}
 
 
@@ -239,6 +281,47 @@ def comparison_table(rows: list[dict], unit: str) -> str:
               "the shell alike. "
               "Medians per task, summed over the tasks each agent ran on both arms; results: "
               + ", ".join(f"`{s}`" for s in sets) + "."]
+    return "\n".join(lines)
+
+
+def _dollars(x: float) -> str:
+    return f"${x:.3f}" if x < 1 else f"${x:,.2f}"
+
+
+def dollars(by: dict, questions: list[dict], renames: list[dict]) -> str:
+    """Cost per task with the graph and without it, each agent's runs priced at its vendor's API list price."""
+    def per_task(rows):
+        return {r["driver"]: (r["jk"]["usd"] / r["tasks"], r["off"]["usd"] / r["tasks"]) for r in rows
+                if r["jk"]["usd"] is not None and r["off"]["usd"] is not None}
+
+    q, n = per_task(questions), per_task(renames)
+    drivers = [d for d in LABELS if d in q or d in n]
+    if not drivers:
+        return "_No priced change-task results with and without the graph yet._"
+    dates = sorted({_retrieved(rs) for (d, _, _), rs in by.items() if d in drivers})
+    unpriced = [LABELS[r["driver"]] for r in questions + renames if r["driver"] not in drivers]
+
+    def span(costs, i):
+        xs = [c[i] for c in costs.values()]
+        return f"{_dollars(min(xs))}–{_dollars(max(xs))}"
+
+    def cell(costs, d):
+        return f"{_dollars(costs[d][0])} / {_dollars(costs[d][1])}" if d in costs else "—"
+    sentences = []
+    if q:
+        sentences.append(f"With JumpKick's code graph a question cost the agents **{span(q, 0)}** per task, "
+                         f"against **{span(q, 1)}** without it.")
+    if n:
+        sentences.append(f"A rename cost **{span(n, 0)}** per task, against **{span(n, 1)}**.")
+    lines = [" ".join(sentences), "", "| Agent | Per question, JumpKick / without the graph | Per rename |",
+             "|---|---|---|"]
+    lines += [f"| {LABELS[d]} | {cell(q, d)} | {cell(n, d)} |" for d in drivers]
+    lines += ["", "An API list-price estimate, not a bill: the tokens each agent reported in the runs above, "
+              f"priced at its vendor's published API list price for its model, read {' and '.join(dates)} "
+              "([prices](../../bench/agent-loop/prices.toml)). An agent on a subscription pays its plan instead. "
+              "Each kind of token (input, output, cache read, cache write) is the median per task, summed over the "
+              "tasks the agent ran both ways; the sum is priced, then divided by the number of tasks."
+              + (f" Left out, with no price row for its model: {'; '.join(sorted(set(unpriced)))}." if unpriced else "")]
     return "\n".join(lines)
 
 
@@ -293,15 +376,32 @@ def claims(questions: list[dict], renames: list[dict], points: list[dict], link:
 
     def span(xs, what):
         return em(f"{min(xs) * 100:.0f}–{max(xs):.0%} {what}")
+
+    def priced(rows, what, note=""):
+        """The dollar saving first, then what a task cost with the graph and without it."""
+        rows = [r for r in rows if r["jk"]["usd"] is not None and r["off"]["usd"] is not None]
+        if not rows:
+            return ""
+        each = [(r["jk"]["usd"] / r["tasks"], r["off"]["usd"] / r["tasks"]) for r in rows]
+        return (f"{span(cut(rows, 'usd'), 'less')}, {_dollars(min(a for a, _ in each))}–"
+                f"{_dollars(max(a for a, _ in each))} {what} instead of {_dollars(min(b for _, b in each))}–"
+                f"{_dollars(max(b for _, b in each))}{note}")
     sentences = []
     if questions:
         t, k = cut(questions, "turns"), cut(questions, "tokens")
+        paid = priced(questions, "a question", " (an estimate at API list prices)")
+        lead = (f"With JumpKick's code graph, their answers cost {paid}, and took {span(k, 'fewer tokens')} and "
+                f"{span(t, 'fewer back-and-forth turns')}" if paid else
+                f"With JumpKick's code graph, they answered in {span(t, 'fewer back-and-forth turns')} and used "
+                f"{span(k, 'fewer tokens')}")
         sentences.append(f"We asked coding agents from {len(questions)} vendors questions like \"who calls this method?\" "
-                         f"With JumpKick's code graph, they answered in {span(t, 'fewer back-and-forth turns')} and used "
-                         f"{span(k, 'fewer tokens')} than without it.")
+                         f"{lead} than without it.")
     if renames:
         t, k = cut(renames, "turns"), cut(renames, "tokens")
-        sentences.append(f"Renaming a method everywhere it is used took {span(t, 'fewer turns')} and "
+        paid = priced(renames, "a rename")
+        sentences.append(f"Renaming a method everywhere it is used cost {paid}, with {span(k, 'fewer tokens')} and "
+                         f"{span(t, 'fewer turns')}." if paid else
+                         f"Renaming a method everywhere it is used took {span(t, 'fewer turns')} and "
                          f"{span(k, 'fewer tokens')}.")
     small = [p for p in points if all(a["tokens"] is not None and b["tokens"] is not None and a["tokens"] < b["tokens"]
                                       for a, b in p["drivers"].values())]
@@ -391,6 +491,7 @@ def render(board: list[dict], host: str) -> None:
         _splice(doc, "questions", comparison_table(questions, "questions"))
         _splice(doc, "renames", comparison_table(renames, "renames"))
         _splice(doc, "curve", curve_table(points))
+        _splice(doc, "dollars", dollars(by, questions, renames))
     tiers = models()
     for doc in MODEL_DOCS:
         _splice(doc, "models", models_table(tiers))

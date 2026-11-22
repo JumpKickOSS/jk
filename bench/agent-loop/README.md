@@ -343,7 +343,11 @@ and `cost_est_usd`, the API list price of its tokens from [`prices.toml`](prices
 and dated; a model without a row reports tokens only). For a subscription CLI that is an API-equivalent
 estimate, not a bill. `cost-report ROWS.jsonl…` gives the medians per driver, model, effort, task and arm,
 and what arm `--a` (default `jk`) saves against `--b` (`jk-before`) and `--c` (`jk-nograph`) in cost,
-tokens, turns and wall.
+tokens, turns and wall. The scoreboard banks the change tasks' tokens, never dollars: one row per arm,
+model version and kind of token, `agents.<driver>.<questions|renames>.<kind>-tokens.<model>`
+(`bench/scoreboard --dim agents`). `bench/scoreboard --render` prices those sums with today's
+`prices.toml` and writes the cost per task with and without the graph into the headline claim and
+[why.md](../../docs/user/why.md#what-it-costs), so a new price re-prices every claim and fails no row.
 
 `graph-counterfactual` prices a search hook offline from runs already made: it replays each search
 in the transcripts against the graph and counts the reads of never-edited files an earlier graph

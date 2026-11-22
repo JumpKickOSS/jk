@@ -23,6 +23,9 @@ A row is one (dimension, subject, project, tool, kind). Kinds:
   absolute-wall  published seconds and peak RSS, behind the quiet gate and the calibration run; a
                  row taken on a busy or drifting host is `noisy` and neither banked nor judged.
 
+A row is banked under the measuring host unless the dimension names another: one derived from
+checked-in results (the agents dimension) names the host those results were run on.
+
 Every value is lower-is-better. A jk row worse than its banked value by more than its band fails the
 run (exit 1) and prints the commit range since the line was banked. A row better by more than the
 improvement threshold is rewritten in scoreboard.toml: an improvement is banked, never a failure.
@@ -137,7 +140,7 @@ def judge(board: list[dict], measured: list[dict], host: str, today: str, commit
             notes.append(f"noisy     {m['subject']} [{m['tool']}]: {m['noisy']}; recorded, not banked or judged")
             continue
         row = {k: m[k] for k in KEY}
-        row["host-id"] = host
+        row["host-id"] = m.get("host-id") or host
         k = key(row)
         kind = m["kind"]
         band = m.get("band", DEFAULT_BAND[kind])
@@ -225,6 +228,10 @@ def selftest() -> int:
     assert not f and b[0]["value"] == 1000 and "unstable" in n[0], n
     b, f, n = judge(base, [{**m(7)[0], "subject": "new"}], host, today, "def")
     assert len(b) == 2 and "seeded" in n[0], n
+    _, f, _ = judge(base, m(1021, **{"host-id": "elsewhere"}), host, today, "def")
+    assert not f, "a row measured on another host is not judged against this host's bank"
+    b, f, _ = judge(base, m(1021, **{"host-id": host}), "derived-here", today, "def")
+    assert f and all(r["host-id"] == host for r in b), "a row that names its host is judged on that host"
     gbase = [{**base[0], "tool": "gradle"}]
     b, f, n = judge(gbase, [{**m(5000)[0], "tool": "gradle"}], host, today, "def")
     assert not f and b[0]["value"] == 5000, (f, b)

@@ -32,19 +32,38 @@ def price_key(model: str | None) -> str | None:
     return max(hits, key=len) if hits else None
 
 
-def estimate(row: dict) -> dict:
-    key = price_key(row.get("model"))
-    if key is None or row.get("tokens") is None:
-        return {"cost_est_usd": None, "price_key": key}
-    p = prices()[key]
+# The token kinds a vendor prices apart, in the order a price row lists them.
+KINDS = ("input", "output", "cache-read", "cache-write")
+
+
+def kinds(row: dict) -> dict[str, int] | None:
+    """A run's tokens by the kind each is priced as; None when the run reported no tokens."""
+    if row.get("tokens") is None:
+        return None
     output = int(row.get("output_tokens") or 0)
-    write = p.get("cache_write", p["input"])
-    if row.get("driver") in CACHE_1H:
-        write = p.get("cache_write_1h", write)
     if row.get("driver") in REASONING_APART:
         output += int(row.get("reasoning_tokens") or 0)
-    usd = (int(row.get("input_tokens") or 0) * p["input"]
-           + int(row.get("cache_read_tokens") or 0) * p.get("cached_input", p["input"])
-           + int(row.get("cache_write_tokens") or 0) * write
-           + output * p["output"]) / 1_000_000
-    return {"cost_est_usd": round(usd, 5), "price_key": key}
+    return {"input": int(row.get("input_tokens") or 0), "output": output,
+            "cache-read": int(row.get("cache_read_tokens") or 0),
+            "cache-write": int(row.get("cache_write_tokens") or 0)}
+
+
+def usd(model: str | None, driver: str | None, tokens: dict[str, float]) -> float | None:
+    """The API list price of tokens by kind on model, as driver's CLI is billed; None without a price row."""
+    key = price_key(model)
+    if key is None:
+        return None
+    p = prices()[key]
+    write = p.get("cache_write", p["input"])
+    if driver in CACHE_1H:
+        write = p.get("cache_write_1h", write)
+    return (tokens["input"] * p["input"] + tokens["cache-read"] * p.get("cached_input", p["input"])
+            + tokens["cache-write"] * write + tokens["output"] * p["output"]) / 1_000_000
+
+
+def estimate(row: dict) -> dict:
+    key = price_key(row.get("model"))
+    tokens = kinds(row)
+    if key is None or tokens is None:
+        return {"cost_est_usd": None, "price_key": key}
+    return {"cost_est_usd": round(usd(row.get("model"), row.get("driver"), tokens), 5), "price_key": key}

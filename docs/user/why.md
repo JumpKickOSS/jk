@@ -61,7 +61,7 @@ The measure is turns, tokens and wall time to green on broken builds, against Ma
 given the same agent tooling: [Agents reach green](#agents-reach-green).
 
 <!-- agents-claims:begin -->
-We asked coding agents from 6 vendors questions like "who calls this method?" With JumpKick's code graph, they answered in **66–91% fewer back-and-forth turns** and used **72–98% fewer tokens** than without it. Renaming a method everywhere it is used took **75–91% fewer turns** and **78–98% fewer tokens**. The graph pays off even on tiny projects: the smallest we tested, gs-multi-module, has just **83 lines of code**. ([The tables](#asking-about-the-code).)
+We asked coding agents from 6 vendors questions like "who calls this method?" With JumpKick's code graph, their answers cost **62–95% less**, $0.019–$0.079 a question instead of $0.056–$1.40 (an estimate at API list prices), and took **72–98% fewer tokens** and **66–91% fewer back-and-forth turns** than without it. Renaming a method everywhere it is used cost **71–86% less**, $0.008–$0.060 a rename instead of $0.029–$0.395, with **78–98% fewer tokens** and **75–91% fewer turns**. The graph pays off even on tiny projects: the smallest we tested, gs-multi-module, has just **83 lines of code**. ([The tables](#asking-about-the-code).)
 <!-- agents-claims:end -->
 
 ### 2. Never type `clean` again
@@ -420,6 +420,24 @@ and rebuilds until the compiler stops naming a site. Hidden acceptance tests che
 
 JumpKick is each agent as `jk agents` sets it up (Vendor C and D with JumpKick's rules file), one run per task on the current build; without the graph, three to five runs per task, the graph hidden from MCP and the shell alike. Medians per task, summed over the tasks each agent ran on both arms; results: `2026-11-01-change-tasks`, `2026-11-02-change-tasks`, `2026-11-04-change-tasks`.
 <!-- agents-renames:end -->
+
+### What it costs
+
+The same questions and renames in dollars:
+
+<!-- agents-dollars:begin -->
+With JumpKick's code graph a question cost the agents **$0.019–$0.079** per task, against **$0.056–$1.40** without it. A rename cost **$0.008–$0.060** per task, against **$0.029–$0.395**.
+
+| Agent | Per question, JumpKick / without the graph | Per rename |
+|---|---|---|
+| Vendor A, mid-tier | $0.046 / $0.200 | $0.016 / $0.088 |
+| Vendor B, frontier | $0.070 / $1.40 | $0.053 / $0.370 |
+| Vendor D | $0.019 / $0.414 | $0.011 / $0.067 |
+| Vendor E | $0.079 / $0.767 | $0.060 / $0.395 |
+| Vendor F | $0.021 / $0.056 | $0.008 / $0.029 |
+
+An API list-price estimate, not a bill: the tokens each agent reported in the runs above, priced at its vendor's published API list price for its model, read 2026-11-17 ([prices](../../bench/agent-loop/prices.toml)). An agent on a subscription pays its plan instead. Each kind of token (input, output, cache read, cache write) is the median per task, summed over the tasks the agent ran both ways; the sum is priced, then divided by the number of tasks. Left out, with no price row for its model: Vendor C, fast.
+<!-- agents-dollars:end -->
 
 ### How small a repository
 
