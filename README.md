@@ -74,6 +74,18 @@ YAML, the migration, the Dockerfile and the test that name them.
 We asked coding agents from 6 vendors questions like "who calls this method?" With JumpKick's code graph, their answers cost **62–95% less**, $0.019–$0.079 a question instead of $0.056–$1.40 (an estimate at API list prices), and took **72–98% fewer tokens** and **66–91% fewer back-and-forth turns** than without it. Renaming a method everywhere it is used cost **71–86% less**, $0.008–$0.060 a rename instead of $0.029–$0.395, with **78–98% fewer tokens** and **75–91% fewer turns**. The graph pays off even on tiny projects: the smallest we tested, gs-multi-module, has just **83 lines of code**. ([The tables](docs/user/why.md#asking-about-the-code).)
 <!-- agents-claims:end -->
 
+### What JumpKick saves you
+
+JumpKick counts the tokens and dollars it saves your agents, live in the dashboard and in `jk stats`,
+and, soon, your whole team's in JumpKick Dojo.
+
+Each code answer and each refactoring your agent gets from JumpKick is credited what one code-graph
+call saved that agent in the benchmark above, priced at the API list price of the model it was on.
+The figure is an estimate and says so, with the date of its prices. An agent we have not benchmarked
+is not guessed at: its calls are left out of the total, and the total says how many. The totals are
+kept per project and overall, in `jk stats -O jsonl` and the dashboard's API, in a form that adds up
+across machines. ([How it is counted](docs/user/web.md#tokens-and-dollars-saved).)
+
 ### Change it safely
 
 `rename` renames a method, a field with its accessors, a type or a package, or moves a type, in
