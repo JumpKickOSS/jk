@@ -16,6 +16,7 @@ import cc.jumpkick.cli.engine.JobCancelledException;
 import cc.jumpkick.cli.engine.WireStream;
 import cc.jumpkick.cli.run.AggregateContext;
 import cc.jumpkick.cli.run.BuildPlanConsole;
+import cc.jumpkick.cli.run.CliSessionTranscript;
 import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
@@ -361,15 +362,27 @@ public final class InstallCommand {
                             + " has no `main` class set in [application]");
             return Exit.USAGE;
         }
+        // The install's transcript is its run's details.jsonl, one file across its passes, so `jk
+        // results` reads this install and not the run before it. A caller that keeps its own keeps it.
+        if (CliSessionTranscript.active() == null) {
+            transcript = CliSessionTranscript.openAcrossJobs(projectDir, "install", List.of(verb.split(" ")));
+        }
+        int exit = Exit.SOFTWARE;
         // A standalone project installs as a workspace of one: the same passes, the same shelf.
         try {
-            return runWorkspaceInstall(cwdScope.workspaceRoot(), cwdScope);
+            exit = runWorkspaceInstall(cwdScope.workspaceRoot(), cwdScope);
+            return exit;
         } finally {
             InstallLock.Hold held = installHold;
             installHold = null;
             if (held != null) held.close();
+            CliSessionTranscript.finish(transcript, exit, global.verbose);
+            transcript = null;
         }
     }
+
+    /** The transcript this install keeps while it runs, or null when it keeps none. */
+    private @Nullable CliSessionTranscript transcript;
 
     /**
      * Set once a pass has replaced the engine: the pass that follows re-shelves under the new
@@ -536,7 +549,7 @@ public final class InstallCommand {
         view.setPlanCoord(BuildRun.projectGaLabel(pass.wsRoot()));
         view.setWindowTitle("JumpKick - Installing " + BuildRun.projectGavLabel(pass.wsRoot()) + "...");
         AggregateContext agg = new AggregateContext(view);
-        var run = new WorkspaceRunView(new WorkspaceRunView.Chrome("Install", true), pass.wsRoot(), null, false);
+        var run = new WorkspaceRunView(new WorkspaceRunView.Chrome("Install", true), pass.wsRoot(), transcript, false);
         WorkspaceResult result;
         try {
             result = EngineClient.buildWorkspace(EnginePaths.current(), pass.req(), run.live(view, agg));
@@ -579,7 +592,7 @@ public final class InstallCommand {
      * lines and one wedge.
      */
     private int installWorkspaceHeadless(WorkspacePass pass, boolean json) throws IOException {
-        var run = new WorkspaceRunView(new WorkspaceRunView.Chrome("Install", true), pass.wsRoot(), null, json);
+        var run = new WorkspaceRunView(new WorkspaceRunView.Chrome("Install", true), pass.wsRoot(), transcript, json);
         long start = Clock.SYSTEM.nanos();
         WorkspaceResult result;
         try {

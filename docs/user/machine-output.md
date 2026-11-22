@@ -385,6 +385,12 @@ and every later build adds its own `job` line (jid, build number, that run's `de
 same file, so a session with twenty rebuilds is one `details.jsonl` rather than twenty to stitch in
 build order. The dev events carry no `progress`.
 
+`jk install` of a project keeps one the same way: `session-start` (command `install`, argv
+`install` or `install -S`), the build and tests of its first engine job, a `job` line for each
+later pass (JumpKick's own tree installs in more than one), and `session-finish`. So after an install
+that ran tests, `jk results -O jsonl` prints that install's rows, `error` and `class-finish` with
+`passedOnRerun` included, and not the run before it.
+
 With `-v`, the CLI prints `Details: <path>` and `Results: <target/jk-results.md>` after a
 run. `jk results -v` / `jk results -d -v` print the path on stderr, then the file. MCP
 `details` (resource `jk://runs/latest/details`) is a **budgeted tail**; the CLI flag dumps

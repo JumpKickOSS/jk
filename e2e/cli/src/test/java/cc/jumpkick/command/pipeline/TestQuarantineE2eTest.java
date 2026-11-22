@@ -4,10 +4,12 @@ package cc.jumpkick.command.pipeline;
 import static cc.jumpkick.cli.testing.JkRun.run;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cli.testing.Capture;
 import cc.jumpkick.util.MarkdownReports;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -16,7 +18,8 @@ import org.junit.jupiter.api.io.TempDir;
  * {@code .jk/test/quarantine.toml}: a class that fails and then passes on a re-run under one stamp
  * as often as the default threshold says goes into it on its own; a run whose only failures are in
  * quarantined classes succeeds and says so in one line; a failure outside the quarantine still fails
- * it; {@code --quarantined} runs only the quarantined classes.
+ * it; {@code --quarantined} runs only the quarantined classes. An install that runs the tests keeps
+ * its own transcript, so {@code jk results -O jsonl} names the class that passed on its re-run.
  */
 // Network: JUnit from Central; forked test JVMs.
 @Tag("integration")
@@ -64,25 +67,7 @@ class TestQuarantineE2eTest {
     @Test
     void a_class_that_passes_on_a_rerun_twice_is_quarantined_on_its_own(@TempDir Path tmp) throws Exception {
         Path runs = tmp.resolve("flaky-runs");
-        Path project = project(tmp, """
-                package com.example;
-
-                import static org.junit.jupiter.api.Assertions.assertEquals;
-
-                import java.nio.file.Files;
-                import java.nio.file.Path;
-                import org.junit.jupiter.api.Test;
-
-                class FlakyTest {
-                    @Test
-                    void fails_every_other_run() throws Exception {
-                        Path runs = Path.of("%s");
-                        int run = Files.exists(runs) ? Integer.parseInt(Files.readString(runs).strip()) + 1 : 1;
-                        Files.writeString(runs, Integer.toString(run));
-                        assertEquals(0, run %% 2, "run " + run);
-                    }
-                }
-                """.formatted(runs.toString().replace("\\", "\\\\")));
+        Path project = project(tmp, failsEveryOtherRun(runs));
         String dir = project.toString();
         String cache = tmp.resolve("cache").toString();
         Path results = project.resolve("target/jk-results.md");
@@ -125,6 +110,83 @@ class TestQuarantineE2eTest {
         assertThat(MarkdownReports.strip(Files.readString(results)))
                 .contains("**1 failed**")
                 .contains("quarantined flaky test failed, not your change: com.example.FlakyTest");
+    }
+
+    @Test
+    void an_install_says_in_its_transcript_which_class_passed_on_its_rerun(@TempDir Path tmp) throws Exception {
+        Path project = project(tmp, failsEveryOtherRun(tmp.resolve("flaky-runs")));
+        String dir = project.toString();
+        String cache = tmp.resolve("cache").toString();
+        String[] install = {
+            "install",
+            "-C",
+            dir,
+            "--cache-dir",
+            cache,
+            "--bin-dir",
+            tmp.resolve("bin").toString(),
+            "--lib-dir",
+            tmp.resolve("lib").toString(),
+            "--m2-dir",
+            tmp.resolve("m2").toString()
+        };
+        assertThat(run("lock", "-C", dir, "--cache-dir", cache)).isEqualTo(0);
+
+        assertThat(run(install)).as("install 1 fails in FlakyTest").isEqualTo(4);
+        List<String> red = transcript(dir);
+        assertThat(red.getFirst())
+                .as("jk results prints the install's own run")
+                .contains("\"type\":\"session-start\"")
+                .contains("\"command\":\"install\"");
+        assertThat(red)
+                .filteredOn(row -> row.contains("\"type\":\"error\""))
+                .as("each error names the class it failed in")
+                .isNotEmpty()
+                .allSatisfy(row -> assertThat(row)
+                        .contains("\"code\":\"test-failure\"")
+                        .contains("\"testClass\":\"com.example.FlakyTest\""));
+
+        assertThat(run(install))
+                .as("install 2 runs FlakyTest again, and it passes")
+                .isEqualTo(0);
+        List<String> green = transcript(dir);
+        assertThat(green.getFirst()).contains("\"command\":\"install\"");
+        assertThat(green)
+                .filteredOn(row -> row.contains("\"type\":\"class-finish\"")
+                        && row.contains("\"testClass\":\"com.example.FlakyTest\""))
+                .singleElement()
+                .asString()
+                .contains("\"passedOnRerun\":true");
+    }
+
+    /** The rows {@code jk results -O jsonl} prints for the project at {@code dir}. */
+    private static List<String> transcript(String dir) {
+        return Capture.stdout(() -> run("results", "-O", "jsonl", "-C", dir))
+                .lines()
+                .toList();
+    }
+
+    /** The source of a {@code com.example.FlakyTest} that fails on odd runs, counted in {@code runs}. */
+    private static String failsEveryOtherRun(Path runs) {
+        return """
+                package com.example;
+
+                import static org.junit.jupiter.api.Assertions.assertEquals;
+
+                import java.nio.file.Files;
+                import java.nio.file.Path;
+                import org.junit.jupiter.api.Test;
+
+                class FlakyTest {
+                    @Test
+                    void fails_every_other_run() throws Exception {
+                        Path runs = Path.of("%s");
+                        int run = Files.exists(runs) ? Integer.parseInt(Files.readString(runs).strip()) + 1 : 1;
+                        Files.writeString(runs, Integer.toString(run));
+                        assertEquals(0, run %% 2, "run " + run);
+                    }
+                }
+                """.formatted(runs.toString().replace("\\", "\\\\"));
     }
 
     /** A new stamp: an edit to a test source re-runs every class. */
