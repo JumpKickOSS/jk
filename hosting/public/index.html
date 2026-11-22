@@ -1439,7 +1439,7 @@ We asked coding agents from 6 vendors questions like "who calls this method?" Wi
         <div class="row-copy">
           <div class="row-num">04 · Flaky tests, quarantined</div>
           <h3>A flaky test stops failing your agent's runs. Automatically.</h3>
-          <p>A test class that fails and then passes with nothing changed is flaky. JumpKick keeps each class's recent runs, and when one has passed on a re-run in 2 of its last 20, quarantines it on its own, in a file you check in. It still runs and its failures are still reported, but they no longer fail the run, and the verdict says so in one line. <code>jk flaky</code> lists, shows and releases them.</p>
+          <p>JumpKick quarantines a test class that passes on a re-run in 2 of its last 20 runs: it still runs and is reported, but it no longer fails the run.</p>
         </div>
         <div class="viz" aria-hidden="true">
           <div class="viz-title">jk test · .jk/test/quarantine.toml</div>

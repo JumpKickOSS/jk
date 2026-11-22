@@ -4,75 +4,25 @@ The highlights of each JumpKick release, newest first: the improvements and fixe
 Every release's full list of changes is on its [GitHub Release](https://github.com/JumpKickOSS/jk/releases).
 JumpKick shows you this page's new entries after it updates itself.
 
-## 0.54.1
+## 0.60.0
 
-- **A config key JumpKick does not know is reported.** A key of `~/.jk/config.toml` this release
-  does not read is ignored, never translated: `jk doctor` warns on it, the dashboard's
-  Configuration panel lists it, and a command says so once per key
-  ([Configuration](config.md#a-key-jumpkick-does-not-know)).
-- **Breaking: rebuild your plugin against this release's SDK.** `ProtocolWriter`, `ProjectFacts`,
-  `RepositoryRoute` and `RuntimeEntry` (was `PackageIo.RuntimeEntry`) import from
-  `cc.jumpkick.plugin`; move `sdk` and the SDK pin with them
-  ([Plugins](plugins.md#third-party-and-vendored-plugins)).
-- **A signed image push.** `jk image --sigstore`, or `[image] sigstore = true`, signs the pushed
-  image's SLSA provenance with Sigstore keyless, as `jk publish --sigstore` signs a jar, and
-  attaches it in a DSSE envelope beside the Sigstore bundle that verifies it. The provenance now
-  names the command, the JumpKick version and the git commit too
-  ([Images](images.md#a-signed-push)).
-- **Flaky tests are quarantined.** A test class that fails and then passes on a re-run with
-  nothing changed in 2 of its last 20 runs goes into `.jk/test/quarantine.toml`, which you check
-  in. A run whose only failures are in quarantined classes passes and says so in one line; the
-  classes still run, and `jk test --quarantined` runs only them. `jk flaky list`, `show`, `issue`
-  and `release` (MCP `flaky`) list the flaky and quarantined classes, show one with its history,
-  track one under an issue in any ticket system (its id, its URL or both) and release one; a
-  release resets the class's count and keeps its history. `[test] quarantine` sets the threshold
-  ([Test](test.md#flaky-tests-are-quarantined-jk-flaky)). The dashboard lists them with
-  their recent runs on the project's **Flaky tests** tab, and a toast says when a class goes in.
-- **JumpKick updates itself only when nothing is using it.** The engine reads the current release
-  from the signed update manifest it already checks every four hours, holds the download to the
-  checksums the manifest lists, and installs it only when no build has run for 10 minutes and no
-  command, watcher, IDE or MCP agent is connected, or before the next command starts an engine
-  when none is running. On CI it never replaces itself mid-run.
-  `[updates] check = false` turns it off ([Install](install.md#updates)).
-- **Code questions and refactorings move to `jk code`.** `jk code usages` (was `jk graph callers`),
-  `rename`, `read`, `find`, `query` and `rules`, and new `delete`, `move` and `pull-up`. `jk graph`
-  keeps `build`, `path` and `neighbors`; the old names are gone. MCP `callers` is now `usages`, and
-  the skill topic `graph` is now `code` ([Code graph](graph.md)).
-- **MCP `run` is now `build`.** It starts what `jk build` and `jk test` do: `test` (the default),
-  `build`, `compile`, `gate`, `guard`, `assemble`, `native`, `image`, `clean` and `format`.
-  `id=<id>` reads an earlier verdict, here and on `diagnostics` and `details`. A lock is
-  `deps(action=lock)`; `update`, `install`, `publish` and `import` are their own tools
-  ([MCP](mcp.md)).
-- **MCP `delete`.** Deletes a method, field or type nothing uses, then compiles; with a use left it
-  writes nothing and lists each one. On the extended tool list ([MCP](mcp.md)).
-- **MCP `move`.** Moves a static method or field to another type, editing every use and import,
-  then compiles and proves it; what would break is listed and nothing is written. On the extended
-  tool list ([MCP](mcp.md)).
-- **`jk code move` moves an instance method.** Through a field or parameter of the target type:
-  with one, every call goes through it at once; with more, the answer lists them and `--via`
-  (MCP `via`) picks one. A string spelling the name is listed, not a reason to stop
-  ([Code graph](graph.md#delete-move-pull-up-and-extract-an-interface)).
-- **MCP `pull_up`.** Pulls an instance method or field up to the class its type extends, then
-  compiles and proves it; what would break is listed and nothing is written. On the extended tool
-  list ([MCP](mcp.md)).
-- **`jk code extract-interface` and MCP `extract_interface`.** Creates an interface from a class's
-  public methods (`--methods`, MCP `methods`), makes the class implement it, and in the same edit
-  switches each variable, parameter, field and return type that uses only those methods to the
-  interface, then compiles it, or undoes it whole. Every place left is listed with its reason;
-  `--no-switch` (MCP `switch: false`) creates the interface alone. On the extended tool list
-  ([Code graph](graph.md#delete-move-pull-up-and-extract-an-interface)).
-- **What another version of a dependency breaks, before you move it.**
-  `jk code usages dep:guava@33.4.8-jre` lists the API that version removes, renames or changes, up
-  or down, and each place in your code that uses it. MCP `update`'s preview counts them per move
-  ([Code graph](graph.md#what-another-version-of-a-dependency-breaks)).
-- **An update starts from a clean cache.** The first engine start after an update discards the
-  cache, history and JDK inventory the previous version wrote and rebuilds them; logins, trust,
-  `config.toml` and downloaded jars stay ([Install](install.md#on-disk-layout)).
-- **`jk watch` and `jk dev` on Linux see a save made from another machine.** A project on NFS,
-  SMB or a Windows drive under WSL is polled every 2 s, as on macOS; inotify never heard those.
-- **`jk audit --vex <file>` writes OpenVEX.** A finding in a jar only tests, annotation processors
-  or dev runs use is `not_affected`, the jar not present; every other finding is
-  `under_investigation` ([Publish](publish.md#openvex)).
+- **Ask about your code and refactor it with `jk code`.** `jk code usages` lists every use of a
+  method, field or type; `rename`, `delete`, `move`, `pull-up` and `extract-interface` edit them
+  all, compile, and undo the edit whole if it fails ([Code graph](graph.md)).
+- **Flaky tests are quarantined instead of failing your build.** A class that passes on a re-run
+  in 2 of its last 20 runs goes into `.jk/test/quarantine.toml` and its failures stop failing the
+  run. `jk flaky` (MCP `flaky`) lists, shows, tracks and releases them
+  ([Test](test.md#flaky-tests-are-quarantined-jk-flaky)).
+- **See the tokens and dollars JumpKick saved your agents.** The dashboard, its status bar,
+  `jk stats` and each episode's receipt keep a running total, per project and overall: what code
+  questions and refactorings saved, estimated at API list prices
+  ([Web](web.md#tokens-and-dollars-saved)).
+- **JumpKick updates itself only when nothing is using it.** The engine takes the release its one
+  signed update check names, every four hours, and installs it after 10 idle minutes with nothing
+  connected, never on CI. `[updates] check = false` turns it off ([Install](install.md#updates)).
+- **Plugins build against one SDK package.** `ProtocolWriter`, `ProjectFacts`, `RepositoryRoute`
+  and `RuntimeEntry` import from `cc.jumpkick.plugin`, and a plugin pins `sdk` and its SDK
+  dependency to this release ([Plugins](plugins.md#third-party-and-vendored-plugins)).
 
 ## 0.54.0
 
