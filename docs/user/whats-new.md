@@ -31,7 +31,8 @@ JumpKick shows you this page's new entries after it updates itself.
 - **JumpKick updates itself only when nothing is using it.** The engine reads the current release
   from the signed update manifest it already checks every four hours, holds the download to the
   checksums the manifest lists, and installs it only when no build has run for 10 minutes and no
-  command, watcher, IDE or MCP agent is connected. On CI it never replaces itself mid-run.
+  command, watcher, IDE or MCP agent is connected, or before the next command starts an engine
+  when none is running. On CI it never replaces itself mid-run.
   `[updates] check = false` turns it off ([Install](install.md#updates)).
 - **Code questions and refactorings move to `jk code`.** `jk code usages` (was `jk graph callers`),
   `rename`, `read`, `find`, `query` and `rules`, and new `delete`, `move` and `pull-up`. `jk graph`

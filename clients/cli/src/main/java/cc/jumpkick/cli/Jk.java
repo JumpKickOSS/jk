@@ -92,6 +92,9 @@ public final class Jk {
             System.exit(Exit.SOFTWARE);
             return;
         }
+        // With no engine running, a downloaded release installs first and the installed client
+        // runs the command.
+        RestartUpdate.applyIfDue(args);
         var superseded = SupersededClient.handOff(args);
         if (superseded.isPresent()) {
             StartupPulse.release();

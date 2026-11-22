@@ -77,7 +77,9 @@ downloads it once it has had no build for two minutes, or after it has waited ha
 builds, and verifies it against the manifest and the release's own signature. It installs the
 download only when it is idle: no build for 10 minutes and nothing connected to it, no running
 command, `jk watch`, `jk dev`, IDE build server, or MCP agent served in those 10 minutes. The new
-engine then takes over, and your next command runs the new release.
+engine then takes over, and your next command runs the new release. When no engine is running at
+all (it stopped, or the machine restarted), the next command that would start one installs the
+download first and runs on the new release.
 
 ```bash
 jk self update --check      # is there a newer release? installs nothing
@@ -120,8 +122,8 @@ a **What's new** dialog with the highlights of every release you moved across
 ([What's new](whats-new.md)); the first command you run at a terminal prints the same line with a
 link to the release notes.
 
-Before 1.0 updates are compulsory, and the engine installs a downloaded release the next time it is
-idle whatever you answered; Yes only gets it sooner. `"ask"` and `"never"` in the config file are ignored (JumpKick says
+Before 1.0 updates are compulsory, and JumpKick installs a downloaded release the next time the engine is
+idle or starts, whatever you answered; Yes only gets it sooner. `"ask"` and `"never"` in the config file are ignored (JumpKick says
 so once), and only `JK_SELF_UPDATE=never` turns them off. Development builds (`-SNAPSHOT`) never
 update themselves. On CI the engine checks but never downloads or installs a release, so a run never replaces its own
 JumpKick; the installer or wrapper that sets up the runner fetches the latest release.
