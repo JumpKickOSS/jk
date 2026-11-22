@@ -184,18 +184,28 @@ applies with `[http] enabled = false` or `[mcp] enabled = false` too. Details: [
 
 ```toml
 [agents]
-# read-usage = false       # default true: read the tokens Claude Code and Codex count
+# read-usage = false       # default true: read the tokens your coding agent counts
 ```
 
 Each episode's receipt ([results](machine-output.md), [web](web.md#what-jumpkick-saved)) ends with
-the tokens its agent used, when the agent is Claude Code or Codex: the engine reads them from the
-agent's own session files, Claude Code's under `~/.claude/projects/` (`$CLAUDE_CONFIG_DIR` when set)
-for the episode's checkout and Codex's under `~/.codex/sessions/` (`$CODEX_HOME` when set), counting
-what the agent recorded from the episode's start to its last step. Only the token counts and the
-model's id are read, never a message: each count becomes a number as it is read, a model id that
-does not look like one reads `unknown`, and a line that cannot be read is logged by file and line
-number alone. Two sessions of the same agent working in one checkout at once are both counted.
-Other agents show no count. The dashboard's bell and the next command at a terminal say once that it
+the tokens its agent used, read from the agent's own session files for the episode's checkout,
+counting what the agent recorded from the episode's start to its last step:
+
+| Agent | Session files (the variable that moves them, when set) |
+|---|---|
+| Claude Code | `~/.claude/projects/<checkout>/*.jsonl` (`$CLAUDE_CONFIG_DIR`) |
+| Codex | `~/.codex/sessions/**/*.jsonl` (`$CODEX_HOME`) |
+| Grok | `~/.grok/sessions/<checkout>/<session>/usage.json` (`$GROK_HOME`) |
+| Copilot CLI | `~/.copilot/session-state/<session>/events.jsonl` (`$COPILOT_HOME`) |
+| Muse | `~/.local/share/muse/sessions/**/session.jsonl` (`$XDG_DATA_HOME`) |
+| Antigravity | `~/.gemini/antigravity-cli/conversations/*.db` |
+
+Copilot CLI writes its count only when its session ends, for the whole session, so the count lands
+on the episode the session ended in or after. Cursor's agent keeps no count on disk and shows none.
+Only the token counts and the model's id are read, never a message: each count becomes a number as
+it is read, a model id that does not look like one reads `unknown`, and a line that cannot be read
+is logged by file and line number alone. Two sessions of the same agent working in one checkout at
+once are both counted. Other agents show no count. The dashboard's bell and the next command at a terminal say once that it
 is on. It is machine-scoped: `~/.jk/config.toml` only, read at each receipt.
 
 ## WSL

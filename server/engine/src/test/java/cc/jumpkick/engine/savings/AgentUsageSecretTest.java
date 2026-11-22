@@ -98,7 +98,7 @@ class AgentUsageSecretTest {
         String receipt;
         String api;
         try {
-            AgentUsage usage = new AgentUsage(claude, null, () -> true);
+            AgentUsage usage = new AgentUsage(Map.of(AgentUsage.Agent.CLAUDE_CODE, claude), () -> true);
             receipt = Objects.requireNonNull(EpisodeReceipt.markdown(journal, log, usage, run));
             journal.append(run, BuildJournal.Snapshot.NONE);
             log.runFinished(run);
@@ -139,5 +139,72 @@ class AgentUsageSecretTest {
                         .doesNotContain(SECRET);
             }
         }
+    }
+
+    @Test
+    void only_numbers_leave_the_files_of_grok_copilot_muse_and_antigravity() throws IOException {
+        String model = "\"" + SECRET + "\"";
+        AgentUsageTest.write(
+                root.resolve("grok/sessions/%2Fws%2Fapp/s1/usage.json"),
+                AgentUsageTest.grokUsage(
+                        AgentUsageTest.grokTurn(1, T + 1_000, AgentUsageTest.grokModel("grok-4.5-build", 10, 0, 1)),
+                        AgentUsageTest.grokTurn(2, T + 1_100, AgentUsageTest.grokModel(SECRET, 20, 0, 2)),
+                        AgentUsageTest.grokTurn(3, T + 1_200, AgentUsageTest.grokModel("grok-4.5-build", 1, 0, 1))
+                                .replace("\"outputTokens\":1", "\"outputTokens\":" + model)));
+        AgentUsageTest.write(
+                root.resolve("copilot/session-state/s1/events.jsonl"),
+                AgentUsageTest.copilotStart(T, PROJECT),
+                "{\"type\":\"user.message\",\"data\":{\"content\":\"export TOKEN=" + SECRET + "\"}}",
+                AgentUsageTest.copilotShutdown(
+                        T + 1_500,
+                        AgentUsageTest.copilotModel(SECRET, 30, 0, 0, 3) + ","
+                                + AgentUsageTest.copilotModel("gpt-5.1", 1, 0, 0, 1)
+                                        .replace("\"outputTokens\":1", "\"outputTokens\":" + model)),
+                "{\"type\":\"session.shutdown\",\"data\":{\"modelMetrics\":" + SECRET);
+        AgentUsageTest.write(
+                root.resolve("muse/sessions/2026/11/21/s1/session.jsonl"),
+                AgentUsageTest.museMeta("m1", PROJECT),
+                AgentUsageTest.museCompleted("c1", T + 1_000, SECRET, 40, 0, 4),
+                AgentUsageTest.museCompleted("c2", T + 1_100, "muse-spark-1.3", 1, 0, 1)
+                        .replace("\"output_tokens\":1", "\"output_tokens\":" + model),
+                "{\"payload_type\":\"runtime.session\",\"payload\":{\"event\":{\"kind\":\"model_completed\","
+                        + "\"text\":\"" + SECRET + "\"");
+        // The recorded conversation hides the secret in step text, an error and a model's name.
+        AgentUsageTest.antigravityConversation(root.resolve("antigravity"), "c1.db");
+
+        ByteArrayOutputStream logged = new ByteArrayOutputStream();
+        Log.install(
+                new PrintStream(logged, true, StandardCharsets.UTF_8),
+                System.Logger.Level.DEBUG,
+                UnaryOperator.identity());
+        StringBuilder out = new StringBuilder();
+        try {
+            Map<AgentUsage.Agent, Path> homes = Map.of(
+                    AgentUsage.Agent.GROK, root.resolve("grok"),
+                    AgentUsage.Agent.COPILOT, root.resolve("copilot"),
+                    AgentUsage.Agent.MUSE, root.resolve("muse"),
+                    AgentUsage.Agent.ANTIGRAVITY, root.resolve("antigravity"));
+            AgentUsage usage = new AgentUsage(homes, () -> true);
+            for (String client : List.of("grok", "github-copilot-cli", "muse", "antigravity")) {
+                AgentTokens tokens = Objects.requireNonNull(usage.read(client, PROJECT, T, T + 5_000, Long.MAX_VALUE));
+                assertThat(tokens.byModel()).as(client).containsKey(AgentTokens.UNKNOWN);
+                out.append(tokens.line())
+                        .append('\n')
+                        .append(MiniJson.write(tokens.toMap()))
+                        .append('\n');
+            }
+        } finally {
+            Log.install(System.err, System.Logger.Level.INFO, UnaryOperator.identity());
+        }
+
+        assertThat(out.toString())
+                .contains("Grok's own count")
+                .contains("Copilot's own count")
+                .contains("Muse's own count")
+                .contains("Antigravity's own count")
+                .doesNotContain(SECRET);
+        assertThat(logged.toString(StandardCharsets.UTF_8))
+                .contains("not a usage record")
+                .doesNotContain(SECRET);
     }
 }

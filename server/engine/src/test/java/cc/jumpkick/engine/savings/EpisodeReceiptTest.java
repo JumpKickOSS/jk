@@ -180,7 +180,7 @@ class EpisodeReceiptTest {
                 transcript,
                 AgentUsageTest.claudeLine(T - 5_000, "msg_0", "claude-opus-5-5", 999, 0, 0, 999),
                 AgentUsageTest.claudeLine(T + 1_500, "msg_1", "claude-opus-5-5", 100, 2_000, 40_000, 900));
-        AgentUsage usage = new AgentUsage(claude, null, () -> true);
+        AgentUsage usage = new AgentUsage(Map.of(AgentUsage.Agent.CLAUDE_CODE, claude), () -> true);
         act(LABEL, T + 1_000, Fact.Kind.GRAPH, "usages");
         BuildRecord last = run(LABEL, T + 2_000, 51, null);
         journaled(last);
@@ -203,9 +203,40 @@ class EpisodeReceiptTest {
                 .containsEntry("total", 43_000L)
                 .containsEntry("cacheRead", 40_000L);
 
-        assertThat(EpisodeReceipt.markdown(journal, log, new AgentUsage(claude, null, () -> false), last))
+        assertThat(EpisodeReceipt.markdown(
+                        journal, log, new AgentUsage(Map.of(AgentUsage.Agent.CLAUDE_CODE, claude), () -> false), last))
                 .as("with reading off the receipt has no token line")
                 .doesNotContain("Tokens");
+    }
+
+    @Test
+    void a_count_of_a_whole_session_lands_once_on_the_episode_it_ended_in_or_after() throws Exception {
+        Path copilot = root.resolve("copilot");
+        long gap = EpisodeInference.DEFAULT_IDLE_GAP_MILLIS;
+        // One Copilot session ended between the two episodes, another after the last.
+        AgentUsageTest.write(
+                copilot.resolve("session-state/a/events.jsonl"),
+                AgentUsageTest.copilotStart(T, "/ws/app"),
+                AgentUsageTest.copilotShutdown(T + 5_000, AgentUsageTest.copilotModel("gpt-5.1", 100, 0, 0, 10)));
+        AgentUsageTest.write(
+                copilot.resolve("session-state/b/events.jsonl"),
+                AgentUsageTest.copilotStart(T + gap, "/ws/app"),
+                AgentUsageTest.copilotShutdown(
+                        T + 2 * gap + 60_000, AgentUsageTest.copilotModel("gpt-5.1", 200, 0, 0, 20)));
+        String label = "github-copilot-cli 51c0";
+        String copilotSession = log.open("mcp", "github-copilot-cli", label, "/ws/app");
+        act(label, T + 1_000, Fact.Kind.GRAPH, "usages");
+        act(label, T + 2 * gap, Fact.Kind.GRAPH, "usages");
+        AgentUsage usage = new AgentUsage(Map.of(AgentUsage.Agent.COPILOT, copilot), () -> true);
+
+        Map<String, EpisodeReceipt> receipts = EpisodeReceipt.forSession(journal, log, usage, copilotSession);
+
+        assertThat(receipts).hasSize(2);
+        assertThat(receipts.values().stream()
+                        .map(r -> Objects.requireNonNull(r.tokens()).sum().total())
+                        .sorted()
+                        .toList())
+                .containsExactly(110L, 220L);
     }
 
     @Test

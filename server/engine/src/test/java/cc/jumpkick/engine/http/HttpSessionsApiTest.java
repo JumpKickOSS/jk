@@ -44,7 +44,7 @@ class HttpSessionsApiTest extends HttpEngineServerHarness {
                 () -> now[0],
                 EpisodeInference.DEFAULT_IDLE_GAP_MILLIS,
                 SessionExpiry.DEFAULT.toMillis());
-        server.setSessions(log, new AgentUsage(claude, null, () -> true));
+        server.setSessions(log, new AgentUsage(Map.of(AgentUsage.Agent.CLAUDE_CODE, claude), () -> true));
         id = log.open("mcp", "claude-code", LABEL, "/ws/app");
         for (int i = 0; i < 3; i++) {
             log.action(

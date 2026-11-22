@@ -76,8 +76,10 @@ public record EpisodeReceipt(
         Optional<SessionLog.Page> page = sessions.session(sessionId, 0, Integer.MAX_VALUE);
         if (page.isEmpty()) return Map.of();
         List<Episode> episodes = new ArrayList<>();
+        List<Long> starts = new ArrayList<>();
         for (Map<String, Object> m : page.get().episodes()) {
             Episode e = Episode.of(m);
+            starts.add(e.startedAt());
             if (only == null || only.equals(e.id())) episodes.add(e);
         }
         if (episodes.isEmpty()) return Map.of();
@@ -95,7 +97,11 @@ public record EpisodeReceipt(
         String client = MiniJson.str(page.get().session(), "client");
         long now = current == null ? 0 : current.finishedAt();
         for (Episode e : episodes) {
-            AgentTokens tokens = usage.read(client, e.project(), e.startedAt(), Math.max(e.lastAt(), now));
+            long next = starts.stream()
+                    .filter(t -> t > e.startedAt())
+                    .min(Long::compare)
+                    .orElse(Long.MAX_VALUE);
+            AgentTokens tokens = usage.read(client, e.project(), e.startedAt(), Math.max(e.lastAt(), now), next);
             if (tokens != null) out.computeIfPresent(e.id(), (id, r) -> r.withTokens(tokens));
         }
         return out;

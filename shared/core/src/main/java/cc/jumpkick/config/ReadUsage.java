@@ -9,14 +9,14 @@ import org.tomlj.TomlTable;
 
 /**
  * {@code [agents] read-usage}: whether jk reads an agent's own token counts from its session files
- * (Claude Code's and Codex's) for an episode's receipt. On unless the user-global file says {@code
+ * (Claude Code's, Codex's, Grok's, Copilot CLI's, Muse's and Antigravity's) for an episode's receipt. On unless the user-global file says {@code
  * false}; a missing or unreadable file, or a value that is not a boolean, leaves it on. Machine-scoped:
  * {@code ~/.jk/config.toml} only. Each surface tells the person once that it is on ({@link #firstNotice}).
  */
 public final class ReadUsage {
 
     /** The once-only notice, its first line. */
-    public static final String NOTICE = "jk reads token counts, numbers only, from Claude Code and Codex session files";
+    public static final String NOTICE = "jk reads token counts, numbers only, from coding agents' session files";
 
     /** The once-only notice, its second line: how to turn it off. */
     public static final String OFF = "turn it off with [agents] read-usage = false in ~/.jk/config.toml";

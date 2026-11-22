@@ -64,7 +64,7 @@ home, and removes them when it stops. An engine that has not paired is listed bu
   what changed since the run before, and the first failing test or error. Clicking the chip opens
   the run page. The timeline ends with what the episode **saved** so far: the figures of the
   [saved panel](#what-jumpkick-saved) it counted, over its own runs and actions (`nothing yet`
-  before it counted any), and the tokens a Claude Code or Codex agent used by its own count
+  before it counted any), and the tokens the agent used by its own count, for an agent that records them
   ([config](config.md#agents-token-counts)), refreshed when one of its runs finishes. **Earlier episodes** of the
   session fold below it, each with what it saved; open one for its timeline.
 - **This session changed**: the files its runs changed, migrations (`V7 new`), dependency

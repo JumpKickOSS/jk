@@ -559,6 +559,14 @@ in     = "shared/core/src/main/java/cc/jumpkick/config/InstalledFonts.java"
 reason = "lists the operating system's font directories, which are not a jk layout"
 
 [[guards.single-home-root.allow]]
+in     = "server/engine/src/main/java/cc/jumpkick/engine/savings/AgentUsage.java"
+reason = "reads another program's XDG_DATA_HOME to find Muse's session files"
+
+[[guards.single-home-root.allow]]
+in     = "docs/user/config.md"
+reason = "names where Muse, another program, keeps its session files under XDG_DATA_HOME"
+
+[[guards.single-home-root.allow]]
 in     = "shared/core/src/test/java/cc/jumpkick/config/TerminalFontsRealTest.java"
 reason = "fixtures for the terminal config files TerminalFonts reads under another program's data directory"
 
