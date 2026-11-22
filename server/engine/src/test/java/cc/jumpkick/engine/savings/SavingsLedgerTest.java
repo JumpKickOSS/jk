@@ -108,8 +108,8 @@ class SavingsLedgerTest {
 
     @Test
     void an_action_counts_a_question_answered_a_refactoring_applied_or_its_edits_and_a_failed_one_nothing() {
-        assertThat(SavingsLedger.of(acted("usages", ActionRecord.OK, "/ws", 0, null)
-                                .action())
+        assertThat(SavingsLedger.of(
+                                acted("usages", ActionRecord.OK, "/ws", 0, null).action())
                         .graphCalls())
                 .isEqualTo(1);
         assertThat(SavingsLedger.of(

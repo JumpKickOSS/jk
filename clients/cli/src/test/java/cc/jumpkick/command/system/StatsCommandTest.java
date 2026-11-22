@@ -59,7 +59,7 @@ class StatsCommandTest {
                         "Steps served from the cache: 40",
                         "Test suites not re-run: 2",
                         "Test classes not re-run: 6",
-                        "Code-graph questions answered: 9",
+                        "Code questions answered: 9",
                         "Refactorings applied: 1",
                         "Dependency edits made: 3",
                         "Guard violations stopped: 2 in 1 run",
@@ -71,6 +71,8 @@ class StatsCommandTest {
         List<List<String>> rows = StatsCommand.projectRows(List.of(
                 "{\"scope\":\"project\",\"coord\":\"g:app\",\"dir\":\"/ws/app\",\"savedMillis\":1500,\"stepsSkipped\":4}",
                 "{\"scope\":\"project\",\"dir\":\"/tmp/loose\",\"graphCalls\":2}"));
+        assertThat(StatsCommand.PROJECT_COLUMNS)
+                .containsExactly("Project", "Time", "Cached", "Code", "Refactorings", "Edits", "Guards");
         assertThat(rows)
                 .containsExactly(
                         List.of("g:app", "1.5s", "4", "0", "0", "0", "0"),

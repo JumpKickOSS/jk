@@ -12,7 +12,7 @@ import org.junit.jupiter.api.Test;
 class JkResultsReceiptTest {
 
     private static final String RECEIPT =
-            "## Saved in this episode\n\nFix rounding · 2 runs\n\n- Code-graph questions answered: 3\n";
+            "## Saved in this episode\n\nFix rounding · 2 runs\n\n- Code questions answered: 3\n";
 
     private static final BuildRecord RUN = BuildRecord.running(
                     7, "test", "/ws/app", "g:app", null, 1_700_000_000_000L, "9.9", "mcp")

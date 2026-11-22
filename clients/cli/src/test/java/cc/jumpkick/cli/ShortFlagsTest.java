@@ -20,7 +20,10 @@ import org.junit.jupiter.api.Test;
  */
 class ShortFlagsTest {
 
-    /** {@code command path → long option}: no letter is left once the shared and global options are placed. */
+    /**
+     * {@code command path → long option}: no letter is left once the shared and global options are
+     * placed, or the option was chosen long-only ({@code stats --since}).
+     */
     private static final Set<String> LONG_ONLY = Set.of(
             "install --with",
             "install --ver",
@@ -39,7 +42,8 @@ class ShortFlagsTest {
             "tool install --ver",
             "tool install --bin",
             "tool install --destination",
-            "guard --schema");
+            "guard --schema",
+            "stats --since");
 
     @Test
     void every_visible_option_has_a_short_form_unique_in_its_command() {

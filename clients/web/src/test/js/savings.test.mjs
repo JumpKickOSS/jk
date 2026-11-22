@@ -45,6 +45,7 @@ test('every figure jk stats prints has a tile, in its order', () => {
   assert.equal(by.steps.note, '2 test suites');
   assert.equal(by.classes.value, 6);
   assert.equal(by.graph.value, 9);
+  assert.equal(by.graph.label, 'code answers');
   assert.equal(by.refactorings.value, '1 · 3');
   assert.equal(by.guards.value, 2);
   assert.equal(by.guards.note, 'in 1 run');

@@ -165,14 +165,13 @@ class EpisodeReceiptTest {
                         + "Working in app · 2 runs\n\n"
                         + "- Build and test time avoided: ~2m 05s (estimate, 75% measured)\n"
                         + "- Steps served from the cache: 2 (2 test suites)\n"
-                        + "- Code-graph questions answered: 1\n");
+                        + "- Code questions answered: 1\n");
     }
 
     @Test
     void an_episode_that_saved_nothing_says_so() {
         Savings nothing = Savings.empty(Savings.EPISODE, null, "/ws/app", null, T, T);
         String md = new EpisodeReceipt("s.1", "Working in app", nothing).markdown();
-        assertThat(md)
-                .endsWith("Working in app · 0 runs\n\nNothing saved yet: no cache hits, graph answers or edits\n");
+        assertThat(md).endsWith("Working in app · 0 runs\n\nNothing saved yet: no cache hits, code answers or edits\n");
     }
 }

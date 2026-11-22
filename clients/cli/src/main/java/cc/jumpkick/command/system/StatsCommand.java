@@ -43,6 +43,10 @@ public final class StatsCommand implements CliCommand {
     /** Projects the text table lists; the rest are in the total. */
     private static final int PROJECT_ROWS = 10;
 
+    /** The per-project table's columns, in the order {@link #projectRows} fills them. */
+    static final List<String> PROJECT_COLUMNS =
+            List.of("Project", "Time", "Cached", "Code", "Refactorings", "Edits", "Guards");
+
     @Override
     public String name() {
         return "stats";
@@ -94,10 +98,7 @@ public final class StatsCommand implements CliCommand {
         }
         List<String> projects = rows.subList(1, rows.size());
         if (!projects.isEmpty()) {
-            for (String line : Table.render(
-                    "By project",
-                    List.of("Project", "Time", "Skipped", "Graph", "Refactorings", "Edits", "Guards"),
-                    projectRows(projects))) {
+            for (String line : Table.render("By project", PROJECT_COLUMNS, projectRows(projects))) {
                 CliOutput.out(line);
             }
         }
@@ -159,7 +160,7 @@ public final class StatsCommand implements CliCommand {
         out.add(List.of("Steps served from the cache", count(row, "stepsSkipped")));
         out.add(List.of("Test suites not re-run", count(row, "suitesSkipped")));
         out.add(List.of("Test classes not re-run", count(row, "testClassesNotRerun")));
-        out.add(List.of("Code-graph questions answered", count(row, "graphCalls")));
+        out.add(List.of("Code questions answered", count(row, "graphCalls")));
         out.add(List.of("Refactorings applied", count(row, "refactorings")));
         out.add(List.of("Dependency edits made", count(row, "edits")));
         long stops = Jsonl.longValue(row, "guardStops", 0);

@@ -193,7 +193,7 @@ same panel for that project. Both cover the last 7 days and show what `jk stats`
 | time avoided | Build and test time the cache avoided. An estimate: each run's cold-cache critical path less its wall ([Cache](cache.md)); `measured` is the share of cache hits backed by a measured time |
 | steps from cache | Steps whose result came from the cache instead of running, and of those, test suites |
 | classes not re-run | Test classes a red re-run left out because they passed under the same inputs ([Test](test.md)) |
-| graph answers | Code-graph questions an agent asked through MCP (`query`, `usages`, `read`, `find`) |
+| code answers | Code questions an agent asked through MCP (`query`, `usages`, `read`, `find`) |
 | refactorings · edits | Refactorings the code graph applied (`rename`, which also moves a type or a package), and dependency edits made: each coordinate a `deps` call added, removed or pinned, each applied `update` or `workspace` change |
 | guard stops | Guard-rule violations a run stopped before a commit, each rule broken in each file counted once however many runs it stopped, and the runs they stopped |
 
