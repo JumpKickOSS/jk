@@ -82,6 +82,9 @@ public final class McpContext {
     /** Every connection that has said {@code initialize}, by the session id the engine minted for it. */
     private final McpConnections connections = new McpConnections();
 
+    /** The applications {@code run} started, each stopped with the session that started it. */
+    private final McpApps apps = new McpApps();
+
     /**
      * Shared memoized cache/store walker (same supplier as {@code GET /api/cache}) — {@code
      * disk}/{@code doctor}/{@code jk://disk} must not re-walk multi-GiB stores per call.

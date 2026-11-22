@@ -63,6 +63,9 @@ final class BuildFields {
     @Nullable
     DevReady devReady;
 
+    @Nullable
+    String runLog;
+
     List<BuildBlock.AuditIgnore> auditIgnores;
     EnvConfig env;
 
@@ -121,6 +124,7 @@ final class BuildFields {
         testJvm = b.testJvm();
         devSidecars = b.devSidecars();
         devReady = b.devReady();
+        runLog = b.runLog();
         auditIgnores = b.auditIgnores();
         env = b.env();
         buildInfo = b.buildInfo();
@@ -171,6 +175,7 @@ final class BuildFields {
                 testJvm,
                 devSidecars,
                 devReady,
+                runLog,
                 auditIgnores,
                 env,
                 buildInfo,

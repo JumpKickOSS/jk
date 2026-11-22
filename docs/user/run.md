@@ -13,6 +13,15 @@ is not available on this path.
 `jk run` is a **wrapper** around the process: Ctrl-C is owned by JumpKick (cancels the
 engine job, then the process). It is not `exec`-replace.
 
+An agent starts the app over MCP instead: [`run`](mcp.md#run) builds, starts it with its output in
+`target/jk-app.log`, waits until its port answers, and reads and stops it. An app that also writes
+its own log file names it, relative to the module, so `run(action=logs)` tails it too:
+
+```toml
+[run]
+log = "logs/app.log"
+```
+
 ### JVM flags
 
 `[application] jvm-args` lists flags for the app JVM, placed before the classpath. `jk run` and `jk dev` both pass them.

@@ -132,6 +132,12 @@ public record StatusSnapshot(
          * {@code lastEventAt}, {@code ahead}.
          */
         List<Map<String, Object>> jobs,
+        /**
+         * Every application MCP {@code run} started that is still running, oldest first: {@code dir},
+         * {@code name}, {@code pid}, {@code url} (empty until it answered), {@code startedAt},
+         * {@code startedBy} (the session's label).
+         */
+        List<Map<String, Object>> apps,
         /** Which engine this is ({@code EngineIdentity#toMap}); empty where a caller has none to give. */
         Map<String, Object> identity,
         /** What held work back since the engine started; all zero where a caller has none to give. */
@@ -139,6 +145,7 @@ public record StatusSnapshot(
 
     public StatusSnapshot {
         jobs = jobs == null ? List.of() : List.copyOf(jobs);
+        apps = apps == null ? List.of() : List.copyOf(apps);
         identity = identity == null ? Map.of() : Map.copyOf(identity);
         backpressure = backpressure == null ? Backpressure.NONE : backpressure;
     }
@@ -246,6 +253,7 @@ public record StatusSnapshot(
                 0,
                 0,
                 jobs,
+                List.of(),
                 Map.of(),
                 Backpressure.NONE);
     }
@@ -315,6 +323,7 @@ public record StatusSnapshot(
                 0,
                 0,
                 0,
+                List.of(),
                 List.of(),
                 Map.of(),
                 Backpressure.NONE);
@@ -424,6 +433,7 @@ public record StatusSnapshot(
         m.put("mcpLoadedConnections", mcpLoadedConnections);
         m.put("mcpActiveConnections", mcpActiveConnections);
         m.put("jobs", jobs);
+        m.put("apps", apps);
         m.put("identity", identity);
         m.put("backpressure", backpressure.toMap());
         return m;

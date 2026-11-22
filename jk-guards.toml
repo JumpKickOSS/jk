@@ -1883,6 +1883,10 @@ in     = "cc.jumpkick.engine.plugin.WarmWorkers#registerShutdownHook"
 reason = "the shutdown hook that stops warm plugin workers"
 
 [[guards.request-thread-carries-session.allow]]
+in     = "cc.jumpkick.engine.http.mcp.McpApps#hookExit"
+reason = "the shutdown hook that stops the applications MCP run started"
+
+[[guards.request-thread-carries-session.allow]]
 in     = "cc.jumpkick.engine.plugin.WarmWorkers$Worker#<init>"
 reason = "a warm worker's reader outlives any one request; each run brings its own"
 

@@ -112,6 +112,7 @@ public final class EngineVitals {
                 mcp.loaded(),
                 mcp.active(),
                 jobs.get(),
+                http == null ? List.of() : http.mcpApps(),
                 identity(),
                 backpressure());
     }

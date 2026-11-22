@@ -346,6 +346,16 @@
               <dt data-tip="Tasks the cache or an up-to-date check skipped, across this session's runs">tasks cached</dt><dd>{{ sessionService.cachedPct == null ? '—' : sessionService.cachedPct + '%' }}</dd>
             </dl>
           </section>
+          <!-- Apps an agent started with MCP app: where each answers and the session that started it. -->
+          <section v-if="runningApps().length" class="panel">
+            <div class="rail-head"><span class="lbl">apps running</span></div>
+            <dl class="kv">
+              <template v-for="a in runningApps()" :key="a.key">
+                <dt :data-tip="a.dir">{{ a.name }}</dt>
+                <dd><a v-if="a.url" :href="a.url" target="_blank" rel="noopener">{{ a.address }}</a><span v-else class="dim">{{ a.address }}</span> <span class="dim" data-tip="Started by this session; stopped when it ends">· {{ a.startedBy }}</span></dd>
+              </template>
+            </dl>
+          </section>
           <!-- Engine vitals: the host's CPU and RAM, the cache, the builds running (detail on Admin). -->
           <section class="panel engine-card">
             <div class="rail-head"><span class="lbl">engine</span><span class="spacer"></span><a href="#status" class="small" @click.prevent="setView('status')">Admin</a></div>

@@ -275,7 +275,8 @@ public final class LiveVitals implements AutoCloseable {
             int mcpActiveConnections,
             long idleDropped,
             StatusSnapshot.Backpressure backpressure,
-            List<Map<String, Object>> jobs) {
+            List<Map<String, Object>> jobs,
+            List<Map<String, Object>> apps) {
 
         static PresentStatus of(StatusSnapshot s) {
             int loadPp = s.systemCpuLoad() < 0 ? -1 : (int) Math.round(s.systemCpuLoad() * 100);
@@ -307,7 +308,8 @@ public final class LiveVitals implements AutoCloseable {
                     s.mcpActiveConnections(),
                     s.idleDropped(),
                     s.backpressure(),
-                    s.jobs());
+                    s.jobs(),
+                    s.apps());
         }
 
         private static long mib(long bytes) {

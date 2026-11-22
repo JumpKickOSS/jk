@@ -185,14 +185,17 @@ class McpContractTest {
     }
 
     @Test
-    void a_call_of_run_is_an_unknown_tool_that_points_at_build() {
+    void run_refuses_a_kind_in_one_line_that_points_at_build() {
         result("diagnostics", "{}"); // mint the session the next call rides
         String body = mcp.handle(
                         "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\","
                                 + "\"params\":{\"name\":\"run\",\"arguments\":{\"kind\":\"test\"}}}",
                         session)
                 .body();
-        assertThat(body).contains("-32602").contains("unknown tool: run; builds and tests are build(kind=");
+        assertThat(body)
+                .contains("\"isError\":true")
+                .contains("run starts the app; builds and tests are build(kind=")
+                .doesNotContain("-32602");
         assertThat(lastSpec).as("no job started").isNull();
     }
 

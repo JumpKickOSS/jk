@@ -541,6 +541,12 @@ public final class HttpEngineServer implements AutoCloseable {
         return h == null ? new McpConnections.Counts(0, 0, 0) : h.connectionCounts();
     }
 
+    /** The applications MCP {@code run} started that are still running; empty when MCP is not mounted. */
+    public List<Map<String, Object>> mcpApps() {
+        McpHandler h = mcp;
+        return h == null ? List.of() : h.apps();
+    }
+
     /** The served base URL, e.g. {@code http://127.0.0.1:8910/} — actual bound port, so 0 works. */
     public @Nullable String url() {
         HttpServer s = server;
@@ -602,6 +608,8 @@ public final class HttpEngineServer implements AutoCloseable {
             executor = null;
         }
         liveVitals.close();
+        McpHandler h = mcp;
+        if (h != null) h.stopApps();
         Decisions d = decisions;
         if (d != null) d.alerts().close();
     }

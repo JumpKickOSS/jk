@@ -83,26 +83,31 @@ public final class McpJobRuns {
     public static Map<String, Object> run(McpCall in, @Nullable String pinnedKind) {
         Path groupRoot = groupRoot(in);
         if (groupRoot != null) return runGroup(in, pinnedKind, groupRoot);
-        McpContext ctx = in.ctx();
         JobSpec spec = decode(in, pinnedKind);
-        boolean wait = in.flagOr("wait", true);
+        if (!in.flagOr("wait", true)) {
+            return in.text(McpAgentText.running(spec.kind(), acceptedJid(in, spec)));
+        }
+        return in.text(verdict(in, spec));
+    }
+
+    /**
+     * Start {@code spec}, park for it as {@code run} does, and answer its verdict text: {@code OK …},
+     * {@code FAIL …}, or the {@code TIMEOUT …} continuation when {@code timeout_s} ran out first.
+     */
+    public static String verdict(McpCall in, JobSpec spec) {
+        McpContext ctx = in.ctx();
         int timeoutS = timeoutS(in);
         long triggeredAt = Clock.SYSTEM.millis();
         long jid = acceptedJid(in, spec);
-        if (!wait) {
-            return in.text(McpAgentText.running(spec.kind(), jid));
-        }
         // Parked waits yield their RPC admission permit — 16 waiting agents must not 503 the surface.
         McpCallProgress progress = new McpCallProgress(in, jid);
         boolean done =
                 ctx.admissionYield().yielding(() -> waitUntilGone(ctx, jid, timeoutS * ctx.waitSecondMs(), progress));
-        if (!done) {
-            return in.text(McpAgentText.timeout(spec.kind(), jid));
-        }
+        if (!done) return McpAgentText.timeout(spec.kind(), jid);
         Map<String, Object> last = ctx.admissionYield().yielding(() -> finishedJob(ctx, jid, in.dir(), triggeredAt));
         String text = McpAgentText.of(ctx, last);
         if (text == null) text = "FAIL " + spec.kind() + " jid=" + jid + "\nno run record\n";
-        return in.text(text + AnchorsLeft.after(spec.dir(), text) + overlap(ctx, last) + McpHolds.totalLine(jid));
+        return text + AnchorsLeft.after(spec.dir(), text) + overlap(ctx, last) + McpHolds.totalLine(jid);
     }
 
     /**

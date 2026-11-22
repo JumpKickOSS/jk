@@ -70,6 +70,9 @@ home, and removes them when it stops. An engine that has not paired is listed bu
   changes, the newest guard run's outcome, and the tests its runs fixed and broke.
 - **How JumpKick served the agent**: tool calls (every action and run), runs, JumpKick's wall time across
   them, and the share of tasks the cache or an up-to-date check skipped.
+- **Apps running**: each application an agent started with MCP [`run`](mcp.md#run), where it
+  answers (`localhost:8080`, a link), and the session that started it (`claude-code 3f9a`).
+  Absent when none runs.
 - **Engine**: host CPU and RAM, the action cache's size and the builds running, with a link to
   Admin.
 

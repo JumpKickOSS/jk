@@ -689,6 +689,14 @@
       },
       "additionalProperties": false
     },
+    "run": {
+      "type": "object",
+      "description": "[run] table: what jk knows about the running application beyond its command (docs/user/mcp.md#run).",
+      "properties": {
+        "log": { "type": "string", "description": "A file the application writes its log to, relative to the module. The MCP run tool's logs action tails it after the app's stdout and stderr." }
+      },
+      "additionalProperties": false
+    },
     "format": {
       "type": "object",
       "description": "[format]: how jk format and jk guard shape Java and Kotlin sources (docs/user/format.md).",

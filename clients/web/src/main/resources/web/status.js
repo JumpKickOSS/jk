@@ -4,7 +4,7 @@
 // storage and system meters those payloads drive. Spread into the root component's `methods`.
 
 import { get, getText, hardRefreshForEpoch, noteEngineEpoch, noteEngineIdentity } from './api.js';
-import { ago, backpressureLine as backpressureText, idleDroppedLine as idleDroppedText, workerBudgetLine as workerBudgetText } from './format.js';
+import { ago, backpressureLine as backpressureText, idleDroppedLine as idleDroppedText, runningApps as runningAppsOf, workerBudgetLine as workerBudgetText } from './format.js';
 import { outcomeOf } from './outcome.js';
 
 export const statusMethods = {
@@ -357,6 +357,10 @@ export const statusMethods = {
   buildsRunning() {
     if (this.connection === 'live') return this.runningCardCount();
     return this.status?.activeBuildPlans ?? 0;
+  },
+  /** The apps MCP {@code run} started that are still running, for the console's rail. */
+  runningApps() {
+    return runningAppsOf(this.status);
   },
   /** The workers budget row, same words as {@code jk engine status}. Empty when unreported. */
   workerBudgetLine() {

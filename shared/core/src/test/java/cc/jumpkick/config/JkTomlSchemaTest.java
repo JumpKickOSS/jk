@@ -136,6 +136,13 @@ class JkTomlSchemaTest {
     }
 
     @Test
+    void run_properties_are_exactly_the_parser_s_run_keys() throws Exception {
+        String run = table(table(Files.readString(SCHEMA), "properties"), "run");
+        assertThat(keysOf(table(run, "properties"))).containsExactlyInAnyOrderElementsOf(ManifestRun.KEYS);
+        assertThat(Jsonl.bool(run, "additionalProperties", true)).isFalse();
+    }
+
+    @Test
     void audit_properties_are_exactly_the_parser_s_audit_keys() throws Exception {
         String schema = Files.readString(SCHEMA);
         String audit = table(table(schema, "properties"), "audit");

@@ -190,3 +190,19 @@ export function gib(bytes) {
 export function count(n) {
   return n == null ? '—' : n.toLocaleString();
 }
+
+/**
+ * The rail's running apps, from {@code status.apps}: each app MCP {@code run} started, where it answers
+ * ({@code localhost:8080}, or {@code starting} before it has) and the session that started it.
+ */
+export function runningApps(status) {
+  const apps = Array.isArray(status?.apps) ? status.apps : [];
+  return apps.map((a) => ({
+    key: String(a.pid),
+    name: a.name || '',
+    dir: a.dir || '',
+    url: a.url || '',
+    address: a.url ? String(a.url).replace(/^https?:\/\//, '').replace(/\/$/, '') : 'starting',
+    startedBy: a.startedBy || '',
+  }));
+}

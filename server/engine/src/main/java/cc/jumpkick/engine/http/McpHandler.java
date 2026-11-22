@@ -8,6 +8,7 @@ import cc.jumpkick.engine.http.api.CacheSnapshot;
 import cc.jumpkick.engine.http.api.EngineHttpJobs;
 import cc.jumpkick.engine.http.api.ProgressTokenRegistry;
 import cc.jumpkick.engine.http.api.StatusSnapshot;
+import cc.jumpkick.engine.http.mcp.McpApps;
 import cc.jumpkick.engine.http.mcp.McpCall;
 import cc.jumpkick.engine.http.mcp.McpConnection;
 import cc.jumpkick.engine.http.mcp.McpConnections;
@@ -169,6 +170,21 @@ public final class McpHandler {
         return ctx.connections().counts();
     }
 
+    /** The applications {@code run} started that are still running, as the dashboard lists them. */
+    public List<Map<String, Object>> apps() {
+        return ctx.apps().rows();
+    }
+
+    /** The registry of the applications {@code run} started; test seam. */
+    McpApps appRegistry() {
+        return ctx.apps();
+    }
+
+    /** Stop every application {@code run} started: the engine stops serving. */
+    public void stopApps() {
+        ctx.apps().stopAll();
+    }
+
     /** Serve another tool registry; tests only. */
     void tools(McpTools tools) {
         this.tools = tools;
@@ -200,6 +216,7 @@ public final class McpHandler {
         McpConnections connections = ctx.connections();
         sessions.whenConnectionEnds(id -> {
             connections.close(id);
+            ctx.apps().stopOwnedBy(id);
             ctx.progressTokens().forget(id);
             updateOffer.forget(id);
         });
@@ -248,6 +265,7 @@ public final class McpHandler {
         if (closed) {
             ctx.progressTokens().forget(sessionId);
             updateOffer.forget(sessionId);
+            ctx.apps().stopOwnedBy(sessionId);
         }
         SessionLog log = ctx.sessions();
         if (closed && c != null && log != null) log.end(ORIGIN, c.label());

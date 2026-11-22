@@ -155,6 +155,7 @@ class LiveVitalsTest {
                 b.mcpLoadedConnections(),
                 b.mcpActiveConnections(),
                 b.jobs(),
+                b.apps(),
                 b.identity(),
                 backpressure);
     }
@@ -202,6 +203,7 @@ class LiveVitalsTest {
                 loaded,
                 active,
                 b.jobs(),
+                b.apps(),
                 b.identity(),
                 b.backpressure());
     }

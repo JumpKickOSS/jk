@@ -546,6 +546,9 @@ public final class JkBuildParser {
         if (!devSidecars.isEmpty()) build = build.withDevSidecars(devSidecars);
         Optional<DevReady> devReady = ManifestBuild.parseDevReady(result);
         if (devReady.isPresent()) build = build.withDevReady(devReady.get());
+        // [run] log is read by the MCP run tool alone; never a build input.
+        String runLog = ManifestRun.parseLog(result);
+        if (runLog != null) build = build.withRunLog(runLog);
         // [audit] is a report policy, not a build input; it folds into the same block as [test] and [dev].
         List<BuildBlock.AuditIgnore> auditIgnores = ManifestBuild.parseAuditIgnores(result);
         if (!auditIgnores.isEmpty()) build = build.withAuditIgnores(auditIgnores);

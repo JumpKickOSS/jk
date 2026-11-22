@@ -90,7 +90,7 @@ says what to send instead. An unknown tool is a JSON-RPC error. The extended
 tools answer `structuredContent` (`schema` + `type`, like the rest of the machine model;
 `schema` stays **1** until 1.0) with a one-line text summary.
 
-`build` runs the tests (`kind` defaults to `test`), waits, and the reply is the verdict. `id=<id>` (no `kind`) reads an earlier one. `run` is not a tool: a call of it is refused as unknown, pointing at `build`.
+`build` runs the tests (`kind` defaults to `test`), waits, and the reply is the verdict. `id=<id>` (no `kind`) reads an earlier one. `run` starts the application ([below](#run)); a `run` call with a `kind` is refused, pointing at `build`.
 It does not carry a dashboard link, a session id, or a trigger. The journal still records who
 asked; the human report is `target/jk-results.md` and [Web](web.md). `details` and
 `jk://runs/latest/*` answer for the bound `dir`, never a sibling worktree's run.
@@ -236,6 +236,7 @@ The whole registry:
 | **`status`** | Engine vitals (pid, version, heap, the MCP session counts `mcpMaxSessions`, `mcpLoadedConnections`, `mcpActiveConnections`) and the `jobs` array — every live and queued job as the same row `jk engine status -O jsonl` and `GET /api/status` carry (`jid`, `kind`, `dir`, `state`, `since`, `workers`, `lastEventAt`, `ahead`) |
 | **`project`** | Project card (coord, java, members, last run) |
 | **`build`** | Start a build or test job and, by default, wait. The reply is the verdict (see above). [`goal`](#goal) names the task. `jid` waits on a job already started instead. `decision=<id>` continues the call a [`NEEDS-YOU`](#decisions) answered. `kind` is `test` (default) \| `build` \| `compile` \| `gate` (`jk test -g`: the guard suites with the guard lanes, the bar before work is handed back) \| `guard` (`jk guard`: the lanes, no tests) \| `assemble` \| `native` \| `image` \| `clean` \| `format`. Any other kind is refused, naming the tool that starts it: `lock` is `deps(action=lock)`, `update` is `update(apply=true)`, and `publish`, `install` and `import` are their own tools. `modules` limits modules and `classes` test classes (an array or one comma-separated string; the CLI repeats `-S`); `suites`, `include_tags`, `exclude_tags`, `affected` and `skip_tests` select as the CLI flags do, and an argument `build` does not know is refused by name. Its card names `kind`, `dir`, `modules`, `classes`, `suites`, `jid`, `id` and `decision`; the other fields are accepted as listed here. The job fields are the body of `POST /api/build`, so the same JSON starts the same job on either. `id=<id>` with no `kind` reads an earlier verdict, or waits when `<id>` is a running job's `jid`. `wait=false` answers the `jid` at once; `timeout_s` (default 240) bounds one wait. `deadline_s` caps the job's wall time; default is the engine's `detached-deadline-ms` (1 hour), `0` = none. `kind=test` defaults to the **unit** suite — do not pass every suite as a habit. With `dir` at a [group root](groups.md#agents), the job runs in each selected member in turn (`modules` names members) and the reply is each member's verdict and a total. A `build`, `test`, `gate`, `guard` or other job that builds the tree and passes in a checkout with a graph waits for the graph's refresh (10 s at most) only when a file that defines or uses an anchor changed since the last one, and, when a hand edit changed a name another file still uses (a SQL column, a config key, the variable that sets it, a route), ends with `Your edit changed these names; these places still use the old one:` and those places, in five files at most, and the `usages` call that lists the rest ([After a hand edit](graph.md#after-a-hand-edit)); otherwise it adds nothing, and `[graph] anchor-tail = "off"` turns it off. The CLI never prints these lines |
+| **`run`** | Run the application ([below](#run)). `action` is required: `start` builds it as `jk run` does (tests skipped), starts it and waits until it answers, the reply a verdict; `logs` tails its stdout and stderr, then the file `log` or `[run] log` names (`request` narrows both to one request's lines, `lines` caps them); `stop` stops it. An app is stopped by the next start in its project, when the session that started it ends, and when the engine stops. A `kind` is refused: builds and tests are `build` |
 | **`cancel`** | Cancel by **`jid`**, or every live job for a `dir` |
 | **`history`** | Recent runs as **summaries**, a page at a time (filters: dir, projectId, success, kind, limit, next); `details` and `diagnostics` read one run in depth |
 | **`diagnostics`** | Problems past the verdict cap, or one file with full snippets (`file`) |
@@ -287,6 +288,68 @@ from what it did. The episode records which (`titleSource`: `goal`, `lastGoal` o
 The goal is kept to one line of at most 120 characters, and the project's secrets are masked in it,
 as in every action summary, before it is stored, served or streamed. The graph's question tools
 take no `goal`.
+
+### `run`
+
+`run` runs the application an agent is debugging without a shell job, a sleep, or a `curl` in a
+loop. Every call names its `action`; a call with a `kind` is refused with one line, because builds
+and tests are [`build`](#tools). `run(action=start)` builds the project as
+[`jk run`](run.md#jk-run) does, then starts the program that plan names, with stdout and stderr in
+`target/jk-app.log`, and waits for it:
+
+| What the project says | What `run` waits for |
+|---|---|
+| `port` on the call | that port to accept a connection |
+| [`[dev] ready`](run.md#the-apps-own-readiness-dev-ready) | that URL to answer 2xx/3xx, or `ready-pattern` to match the app's output |
+| nothing | the first port the app's output says it listens on (`Tomcat started on port 8080`, `Listening on http://0.0.0.0:8080`) to accept a connection |
+
+The wait is `[dev] ready-timeout`, 60 s by default. A port that already answers before the app
+starts is a failure: something else listens there. The reply is one line:
+
+```
+READY app shop pid 4242 · http://localhost:8080 · 7.3s
+```
+
+A build that fails answers its own verdict (`FAIL build …`), and nothing starts. An app that exits
+first, or does not answer in time (it is stopped), is `FAIL` with the last 40 lines of its output:
+
+```
+FAIL app shop pid 4242 · exited with 1 before port 8080 answered · 3.1s
+***************************
+APPLICATION FAILED TO START
+…
+log: target/jk-app.log
+```
+
+`UP app shop pid 4242 · its output named no port in 60s; port=N waits for one` is an app that is
+still running but said nothing about a port: pass `port`. A second start in the same project
+stops the first and starts again on the new build. `args` are the program's arguments, and
+`timeout_s` bounds the wait for the build as it does for `build`.
+
+`run(action=logs)` reads the app's stdout and stderr: that is what `run` promises to keep. An app
+that writes its own log file as well names it with `log=<path>` on the call or with `[run] log`
+in its `jk.toml` (relative to the module); its tail follows, and the two share the budget. Each
+source answers its last 60 lines (`lines`, at most 400; 16,000 characters in all). `request` keeps
+only the lines of one request, each with the exception, stack frames and `Caused by:` lines under
+it, so one failed request reads alone. `request=/…/` is a Java regex; anything else is text the
+line must contain (a request id, a path, a thread name). A regex that runs for two seconds stops
+and answers what it matched before then, and says so.
+
+```
+LOG app shop · running pid 4242
+== stdout and stderr · 2 lines for req=a1
+INFO  [exec-1] GET /api/orders/7 req=a1
+ERROR [exec-1] order 7 failed req=a1
+== logs/app.log · 1 line for req=a1
+WARN  order 7 retried req=a1
+```
+
+`run(action=stop)` stops it (`STOPPED app shop pid 4242 · ran 3m 12s`): the app is asked to exit,
+and whatever of it is left after five seconds is killed. An app is also stopped when the session
+that started it ends (`DELETE /mcp`, or its [expiry](#session-expiry)) and when the engine stops,
+so one an agent forgets does not outlive it. The dashboard lists every running app with the
+session that started it ([Web](web.md#the-console)). `run` is on the extended list, not the
+default one.
 
 ### `new`
 

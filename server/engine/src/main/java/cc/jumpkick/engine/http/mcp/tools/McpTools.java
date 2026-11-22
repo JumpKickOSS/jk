@@ -37,12 +37,6 @@ import org.jspecify.annotations.Nullable;
  */
 public final class McpTools {
 
-    /** A tool name agents still reach for when they mean {@code build}. */
-    static final String RUN = "run";
-
-    /** What an unknown {@link #RUN} call adds to its error: where builds and tests are. */
-    static final String RUN_POINTER = "; builds and tests are build(kind=…)";
-
     /** The wire name of the explicit bind; the one call that never binds implicitly. */
     public static final String BIND = "bind";
 
@@ -150,6 +144,7 @@ public final class McpTools {
                 new DiagnosticsTool(),
                 new DetailsTool(),
                 new BuildTool(),
+                new RunTool(),
                 new WhyTool(),
                 new ExplainTool(),
                 new AffectedTestsTool(),
@@ -285,7 +280,7 @@ public final class McpTools {
         String name = rawName == null ? null : String.valueOf(rawName);
         if (name == null || name.isBlank()) throw new McpError(-32602, "tools/call requires name");
         McpTool tool = byName.get(name);
-        if (tool == null) throw new McpError(-32602, "unknown tool: " + name + (RUN.equals(name) ? RUN_POINTER : ""));
+        if (tool == null) throw new McpError(-32602, "unknown tool: " + name);
         Map<String, Object> args = params.get("arguments") instanceof Map<?, ?> a ? (Map<String, Object>) a : Map.of();
         McpCall call = new McpCall(ctx, args, progressTokenOf(params), connection, outbound);
         try {

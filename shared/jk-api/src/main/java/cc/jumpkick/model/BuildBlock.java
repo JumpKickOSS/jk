@@ -177,6 +177,11 @@ public record BuildBlock(
          */
         @Nullable DevReady devReady,
         /**
+         * {@code [run] log} — a file the application writes its own log to, relative to the module,
+         * which the MCP {@code run} tool tails beside the app's stdout and stderr; null for none.
+         */
+        @Nullable String runLog,
+        /**
          * {@code [audit] ignore} — advisories {@code jk audit} reports but does not gate on,
          * each with its reason and an optional expiry date. Read by the audit alone; never an
          * action-key input.
@@ -261,6 +266,7 @@ public record BuildBlock(
             List.of(),
             TestJvm.EMPTY,
             List.of(),
+            null,
             null,
             List.of(),
             EnvConfig.EMPTY,
@@ -436,6 +442,11 @@ public record BuildBlock(
     /** The same block with the {@code [dev]} probe of the application set. */
     public BuildBlock withDevReady(@Nullable DevReady ready) {
         return with(f -> f.devReady = ready);
+    }
+
+    /** The same block with {@code [run] log} set. */
+    public BuildBlock withRunLog(@Nullable String log) {
+        return with(f -> f.runLog = log);
     }
 
     /** The same block with {@code [javac]} set. */
