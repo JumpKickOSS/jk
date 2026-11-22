@@ -36,6 +36,7 @@ import cc.jumpkick.engine.journal.JournalWriter;
 import cc.jumpkick.engine.journal.SessionJournal;
 import cc.jumpkick.engine.machine.MachineEnvironments;
 import cc.jumpkick.engine.notices.Notices;
+import cc.jumpkick.engine.notices.QuarantineNotice;
 import cc.jumpkick.engine.notices.ReadUsageNotice;
 import cc.jumpkick.engine.notices.UpdatedNotice;
 import cc.jumpkick.engine.plugin.MemoryHolds;
@@ -61,6 +62,7 @@ import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.run.JkThreads;
+import cc.jumpkick.runtime.TestFlakes;
 import cc.jumpkick.runtime.base.BuildMetrics;
 import cc.jumpkick.runtime.base.HostBusy;
 import cc.jumpkick.winhost.SetupEnvironment;
@@ -166,6 +168,9 @@ public final class EngineServer implements AutoCloseable {
     private final MemoryHolds.Listener memoryHolds;
 
     private final Suspensions.Listener suspensions;
+
+    /** Puts each test class a run quarantines on the bell. */
+    private final Consumer<TestFlakes.Quarantined> quarantines;
 
     private final GraphCompiles graphCompiles;
 
@@ -453,6 +458,7 @@ public final class EngineServer implements AutoCloseable {
         this.notices = new Notices(JkDirs.state().resolve(Notices.FILE), Clock.SYSTEM);
         notices.follow(decisions);
         this.changeNotices = new ChangeNotices(ChangeJournal::current, notices);
+        this.quarantines = QuarantineNotice.on(notices);
         journalWriter.onFinished(sessionLog::runFinished);
         journalWriter.onReceipt(r -> EpisodeReceipt.markdown(journal, sessionLog, agentUsage, r));
         drain.predecessorRuns(this::foldPredecessorRun);
@@ -758,6 +764,7 @@ public final class EngineServer implements AutoCloseable {
     /** Everything between a won election and the accept loop. */
     private void start(EngineElection.Won won) throws IOException {
         MemoryHolds.listen(memoryHolds);
+        TestFlakes.listen(quarantines);
         Suspensions.system().beatOn(beat -> JkThreads.platform().execute(beat));
         Suspensions.system().listen(suspensions);
         GraphRunner.compiler(graphCompiles);
@@ -1156,6 +1163,7 @@ public final class EngineServer implements AutoCloseable {
     private void cleanup() {
         // The process-wide hooks this engine set go with it, unless another engine has set its own.
         MemoryHolds.detach(memoryHolds);
+        TestFlakes.detach(quarantines);
         Suspensions.system().detach(suspensions);
         GraphRunner.detachCompiler(graphCompiles);
         if (selfUpdate != null) selfUpdate.close();

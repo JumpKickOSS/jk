@@ -182,10 +182,14 @@ episodes and a page of its timeline ([HTTP](../contributors/http.md#get-apisessi
 
 ## The project page
 
-A project's page has two tabs. **Runs** holds its tiles, the run page and its build history;
+A project's page has three tabs. **Runs** holds its tiles, the run page and its build history;
 **Sessions** (`#project/<id>/sessions`) lists every session whose project is this one, newest
 first, with the episodes it spent here (title, outcome, runs, actions, wall, when), for answering
-"what happened here yesterday". A session's name opens it on the console. **Build** in the header
+"what happened here yesterday". A session's name opens it on the console. **Flaky tests**
+(`#project/<id>/flaky`) lists the checkout's quarantined test classes, with the reason, the date and
+the issue from `jk-quarantine.toml`, and every other class that passed on a re-run in its last runs,
+each with those runs as a row of cells, oldest first: green passed, amber passed on a re-run, red
+failed ([quarantine](test.md#flaky-tests-are-quarantined-jk-quarantinetoml)). **Build** in the header
 starts a build of the checkout the page shows; the page then follows it.
 
 ### What JumpKick saved
@@ -296,6 +300,8 @@ Project routes use a durable **project id**, not a filesystem path:
 #project/<projectId>                 # follows the newest run
 #project/<projectId>?dir=<checkout>  # one worktree of a repository several build under
 #project/<projectId>/run/<n>         # pinned to build #n
+#project/<projectId>/sessions        # the Sessions tab
+#project/<projectId>/flaky           # the Flaky tests tab
 #project/<projectId>/files
 ```
 
@@ -432,7 +438,8 @@ marked. Older history is not kept in the bell: the menu's last line, **See all a
 
 Besides decisions, the bell rings once for each batch of changes JumpKick makes outside your
 projects (an edit of `config.toml`, a stored login, a cache clean, an import's repositories) and
-for each machine-setup result. Installs of a JDK, Node.js or a tool don't ring: builds fetch them
+for each machine-setup result, and when a test run quarantines a flaky test class: the toast under
+the bell links to the project's Flaky tests tab. Installs of a JDK, Node.js or a tool don't ring: builds fetch them
 as a matter of course. They are in Activity under **Installs**.
 
 ### Notifications

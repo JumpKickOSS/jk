@@ -459,6 +459,28 @@ The default scope set is defined once — `DependencyTreeStyle.defaultScopeOrder
 `runtime`) — and shared verbatim by `jk tree` and this endpoint. Declared-only is the default on
 both; `transitive=1` matches `jk tree -t` / `--transitive`.
 
+### `GET /api/project/flaky`
+
+The project page's **Flaky tests** tab: `GET /api/project/flaky?dir=<checkout>`. It reads the
+checkout's `jk-quarantine.toml` and the per-class test histories JumpKick keeps under its state
+directory for the modules at or under `dir`
+([test.md](../user/test.md#flaky-tests-are-quarantined-jk-quarantinetoml)).
+
+`{ dir, policy: { flakes, runs }, file, error?, classes: [{ name, module, history, flakes,
+quarantined?: { reason, since, issue? } }] }`
+
+`classes` lists every class the file holds, then every other class that passed on a re-run in its
+last `policy.runs` runs, the quarantined first and then by `flakes`, the re-run passes in that
+window. `history` is that window, oldest first, one character a run: `.` passed, `R` passed on a
+re-run, `F` failed; empty for a class the file holds that no history records. `module` is the
+entry's module key (`.` for the root; empty when the entry holds the class in every module).
+`policy.flakes` is 0 when the root's `[test] quarantine = false`. A file that cannot be read lists no
+entry and says why in `error`. A missing `dir` is a **400**, one that is not a directory a **404**.
+
+When a run quarantines a class, the engine adds a notice of kind `quarantine` to the bell
+(`QuarantineNotice`), linking to `#project/<id>/flaky?dir=<checkout>`; the `notice` frame shows it
+in every tab in use as the toast under the bell.
+
 ### `GET /api/project/model`
 
 The checkout's modules as Eclipse JDT projects, for the VS Code extension's Java language server

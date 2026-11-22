@@ -317,7 +317,7 @@ export const consoleMethods = {
     }
   },
   projectTabHash(tab) {
-    return buildProjectHash({ projectId: this.selectedProjectId, dir: this.selectedProjectDir, sessions: tab === 'sessions' });
+    return buildProjectHash({ projectId: this.selectedProjectId, dir: this.selectedProjectDir, tab });
   },
   consoleHash(id) {
     return buildConsoleHash(id);

@@ -10,7 +10,8 @@ JumpKick shows you this page's new entries after it updates itself.
   nothing changed in 2 of its last 20 runs goes into `jk-quarantine.toml`, which you check in. A
   run whose only failures are in quarantined classes passes and says so in one line; the classes
   still run, and `jk test --quarantined` runs only them. `[test] quarantine` sets the threshold
-  ([Test](test.md#flaky-tests-are-quarantined-jk-quarantinetoml)).
+  ([Test](test.md#flaky-tests-are-quarantined-jk-quarantinetoml)). The dashboard lists them with
+  their recent runs on the project's **Flaky tests** tab, and a toast says when a class goes in.
 - **Code questions and refactorings move to `jk code`.** `jk code usages` (was `jk graph callers`),
   `rename`, `read`, `find`, `query` and `rules`, and new `delete`, `move` and `pull-up`. `jk graph`
   keeps `build`, `path` and `neighbors`; the old names are gone. MCP `callers` is now `usages`, and

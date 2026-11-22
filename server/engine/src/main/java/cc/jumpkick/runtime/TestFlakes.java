@@ -6,6 +6,7 @@ import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.Log;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TestFailureInfo;
 import cc.jumpkick.run.TestSummary;
@@ -15,11 +16,16 @@ import java.nio.file.Path;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
+import java.util.function.Consumer;
+import java.util.stream.Stream;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Each test class's recent runs, and the quarantine they feed. Every run of a suite appends each
@@ -31,7 +37,7 @@ import java.util.TreeSet;
  * a clean keeps it: a {@code # <module dir>} line, then {@code <class>\t<outcomes>}, the outcomes
  * one character per run, oldest first ({@link Outcome#mark}), the last {@value #KEEP} kept.
  */
-final class TestFlakes {
+public final class TestFlakes {
 
     /** The warning a class jk has just quarantined carries. */
     static final String QUARANTINED = "test-quarantined";
@@ -63,7 +69,121 @@ final class TestFlakes {
     /** Held while this engine reads and rewrites a history or the quarantine file. */
     private static final Object LOCK = new Object();
 
+    /** jk has just put {@code classes} of the module at {@code module} (a quarantine module key) under {@code root} in quarantine. */
+    public record Quarantined(Path root, String module, List<String> classes) {}
+
+    private static final Consumer<Quarantined> NONE = q -> {};
+
+    private static volatile Consumer<Quarantined> listener = NONE;
+
     private TestFlakes() {}
+
+    /** Tell {@code l} of each class jk quarantines from now on, in place of the listener set before. */
+    public static synchronized void listen(Consumer<Quarantined> l) {
+        listener = Objects.requireNonNull(l);
+    }
+
+    /** Detach {@code l} when it is still the listener; one another engine set since stays. */
+    public static synchronized void detach(Consumer<Quarantined> l) {
+        if (listener == l) listener = NONE;
+    }
+
+    /**
+     * One class the dashboard lists: its last {@code history} outcomes, oldest first ({@link
+     * Outcome#mark}), how many of them passed on a re-run, and its quarantine entry, if any.
+     */
+    public record Row(
+            String className, String module, String history, int flakes, TestQuarantine.@Nullable Entry held) {}
+
+    /**
+     * A workspace's flaky and quarantined classes: the quarantined first, then by re-run passes.
+     * {@code error} says why {@value TestQuarantine#FILE} could not be read, which lists no entry.
+     */
+    public record Report(
+            TestQuarantine.Policy policy,
+            List<Row> rows,
+            @Nullable String error) {}
+
+    /**
+     * The classes of the modules under {@code root} that passed on a re-run in the policy's window,
+     * and every class {@value TestQuarantine#FILE} holds, with the histories under {@code stateDir}.
+     */
+    public static Report report(Path stateDir, Path root) {
+        TestQuarantine.Policy policy = TestQuarantine.Policy.of(root);
+        TestQuarantine q = TestQuarantine.NONE;
+        String error = null;
+        try {
+            q = TestQuarantine.read(root);
+        } catch (IOException | RuntimeException e) {
+            error = TestQuarantine.FILE + " unreadable: " + e.getMessage();
+        }
+        Map<String, Map<String, String>> modules = histories(stateDir, root);
+        List<Row> rows = new ArrayList<>();
+        Set<String> listed = new TreeSet<>();
+        for (TestQuarantine.Entry e : q.entries()) {
+            boolean seen = false;
+            for (var m : modules.entrySet()) {
+                String marks = m.getValue().get(e.className());
+                if (marks == null || !e.holds(m.getKey(), e.className())) continue;
+                rows.add(row(e.className(), m.getKey(), marks, policy, e));
+                listed.add(m.getKey() + '\t' + e.className());
+                seen = true;
+            }
+            if (!seen) rows.add(new Row(e.className(), e.module(), "", 0, e));
+        }
+        modules.forEach((module, classes) -> classes.forEach((cls, marks) -> {
+            if (!listed.contains(module + '\t' + cls) && flakes(marks, policy.runs()) > 0)
+                rows.add(row(cls, module, marks, policy, null));
+        }));
+        rows.sort(Comparator.comparing((Row r) -> r.held() == null)
+                .thenComparing(Comparator.comparingInt(Row::flakes).reversed())
+                .thenComparing(Row::module)
+                .thenComparing(Row::className));
+        return new Report(policy, List.copyOf(rows), error);
+    }
+
+    private static Row row(
+            String cls,
+            String module,
+            String marks,
+            TestQuarantine.Policy policy,
+            TestQuarantine.@Nullable Entry held) {
+        return new Row(cls, module, last(marks, policy.runs()), flakes(marks, policy.runs()), held);
+    }
+
+    /**
+     * The histories under {@code stateDir} of the modules at or under {@code root}, by quarantine
+     * module key; a file that cannot be read is left out.
+     */
+    static Map<String, Map<String, String>> histories(Path stateDir, Path root) {
+        Path top = root.toAbsolutePath().normalize();
+        Map<String, Map<String, String>> out = new TreeMap<>();
+        Path dir = stateDir.resolve("test-history");
+        List<Path> files;
+        try {
+            files = PathUtil.childFiles(dir).stream()
+                    .filter(f -> f.getFileName().toString().endsWith(".tsv"))
+                    .toList();
+        } catch (IOException e) {
+            Log.debug("test histories not listed", e);
+            return out;
+        }
+        for (Path f : files) {
+            try {
+                String head;
+                try (Stream<String> lines = Files.lines(f)) {
+                    head = lines.findFirst().orElse("");
+                }
+                if (!head.startsWith("# ")) continue;
+                Path module = Path.of(head.substring(2).trim()).normalize();
+                if (!module.startsWith(top)) continue;
+                out.put(TestQuarantine.moduleKey(top, module), read(f));
+            } catch (IOException | RuntimeException e) {
+                Log.debug("test history not read: " + f, e);
+            }
+        }
+        return out;
+    }
 
     /** The history file of the module at {@code moduleDir}, under {@code stateDir}. */
     static Path historyFile(Path stateDir, Path moduleDir) {
@@ -208,6 +328,12 @@ final class TestFlakes {
                     QUARANTINED,
                     "quarantined " + cls + ": passed on a re-run " + policy.flakes() + " of its last " + policy.runs()
                             + " runs");
+        }
+        if (added.isEmpty()) return;
+        try {
+            listener.accept(new Quarantined(root.toAbsolutePath().normalize(), module, List.copyOf(added)));
+        } catch (RuntimeException e) {
+            Log.debug("quarantine not announced", e);
         }
     }
 }

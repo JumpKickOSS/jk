@@ -25,6 +25,7 @@ import { cardMethods } from './cards.js';
 import { BuildBars, ModuleDepGraph } from './chart.js';
 import { CodeView } from './code.js';
 import { FileViewer } from './fileviewer.js';
+import { flakyComputed, flakyData, flakyMethods } from './flaky.js';
 import { consoleComputed, consoleData, consoleMethods } from './consoleview.js';
 import { DecisionDialog, decisionData, decisionMethods } from './decisions.js';
 import { whatsNewData, whatsNewMethods } from './whatsnew.js';
@@ -108,6 +109,7 @@ export const appOptions = {
     ...activityData(routeFromHash()),
     ...installData(),
     ...savingsData(),
+    ...flakyData(),
     view: routeFromHash().view, // 'console' | 'projects' | 'project' | 'status' | 'new' | 'activity'
     selectedProjectId: routeFromHash().projectId, // durable id (#project/<id>)
     filesOpen: !!routeFromHash().files, // #project/<id>/files[/<rel>]
@@ -117,7 +119,7 @@ export const appOptions = {
     codeLineErr: !!routeFromHash().lineErr,
     codeMsg: routeFromHash().msg || '',
     pinnedRun: routeFromHash().run || 0, // #project/<id>/run/<n>: 0 follows the newest run
-    projectTab: routeFromHash().tab, // the project page's tab: 'runs' | 'sessions'
+    projectTab: routeFromHash().tab, // the project page's tab: 'runs' | 'sessions' | 'flaky'
     // The checkout the route names (#project/<id>?dir=…) — picked on the page, or carried by an
     // MCP / CLI link. Null while the id implies its one checkout; projectDir() folds in the
     // engine's answer.
@@ -176,6 +178,7 @@ export const appOptions = {
       this.loadProjectHistory(); // so the Projects tab is populated the moment it's opened
       if (this.view === 'project' && this.selectedProjectId) this.loadProjectMeta(this.selectedProjectId);
       if (this.view === 'project' && this.projectTab === 'sessions') this.loadProjectSessions();
+      if (this.flakyFor) this.loadProjectFlaky();
       if (this.view === 'new') this.enterWizard();
       if (this.view === 'activity') this.loadActivity();
       if (routeFromHash().whatsNew) this.openWhatsNew();
@@ -229,8 +232,13 @@ export const appOptions = {
     ...projectComputed,
     ...savingsComputed,
     ...consoleComputed,
+    ...flakyComputed,
   },
   watch: {
+    // The Flaky tests tab opening, or the checkout it shows becoming known or changing, reads it.
+    flakyFor(dir) {
+      if (dir) this.loadProjectFlaky(dir);
+    },
     // The run page names its episode and attempt: the episode's session page loads when it changes.
     runEpisodeId(id) {
       if (id) this.loadRunEpisode();
@@ -243,6 +251,7 @@ export const appOptions = {
   methods: {
     ...projectMethods,
     ...savingsMethods,
+    ...flakyMethods,
     ...consoleMethods,
     ...decisionMethods,
     ...notifyMethods,
@@ -288,6 +297,7 @@ export const appOptions = {
       this.unseen = 0;
       this.runEpisodePage = null;
       this.projectSessions = null;
+      this.flaky = null;
       this.browser = null;
       this.help = false;
       this.wizard = emptyWizard();
@@ -441,8 +451,11 @@ export const appOptions = {
           if (this.authModal || this.connection === 'unauthorized') return;
           // The stream's presence ping and the notifications the engine routes through this tab.
           if (this.notifyEvent(event)) return;
-          // The bell's notices and the machine's seen marker.
-          if (this.noticeEvent(event)) return;
+          // The bell's notices and the machine's seen marker; a quarantine re-reads the Flaky tests tab.
+          if (this.noticeEvent(event)) {
+            this.flakyNoticed(event.data);
+            return;
+          }
           // A WSL operation's progress, on the Windows engine's Machine page (machine.js).
           if (this.machineEvent(event)) return;
           if (event.type === SSE.engines) {

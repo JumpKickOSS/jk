@@ -510,7 +510,7 @@ test('routes: the console is the landing page and selects a session; the project
   const tab = routeFromHash('#project/p1/sessions?dir=%2Fw');
   assert.deepEqual([tab.view, tab.projectId, tab.tab, tab.dir], ['project', 'p1', 'sessions', '/w']);
   assert.equal(routeFromHash('#project/p1').tab, 'runs');
-  assert.equal(buildProjectHash({ projectId: 'p1', sessions: true }), '#project/p1/sessions');
+  assert.equal(buildProjectHash({ projectId: 'p1', tab: 'sessions' }), '#project/p1/sessions');
   assert.equal(buildProjectHash({ projectId: 'p1', run: 4 }), '#project/p1/run/4');
 });
 

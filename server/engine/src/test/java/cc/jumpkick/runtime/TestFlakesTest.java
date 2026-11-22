@@ -16,6 +16,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.function.Consumer;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -169,6 +171,68 @@ class TestFlakesTest {
         assertThat(TestFlakes.quarantinedFailures(ctx, root, module, red(failure("a.FlakyTest"))))
                 .isEmpty();
         assertThat(ctx.warnings).singleElement().asString().startsWith(TestFlakes.UNREADABLE + " jk-quarantine.toml");
+    }
+
+    @Test
+    void a_quarantine_is_told_to_the_listener_once_with_the_module_and_its_classes() {
+        List<TestFlakes.Quarantined> heard = new CopyOnWriteArrayList<>();
+        Path here = root.toAbsolutePath().normalize();
+        Consumer<TestFlakes.Quarantined> listener = q -> {
+            if (q.root().equals(here)) heard.add(q);
+        };
+        TestFlakes.listen(listener);
+        try {
+            run(RED);
+            run(RERUN_PASS);
+            assertThat(heard).as("under the threshold").isEmpty();
+            run(RED);
+            run(RERUN_PASS);
+            run(RED);
+            run(RERUN_PASS);
+        } finally {
+            TestFlakes.detach(listener);
+        }
+        assertThat(heard).containsExactly(new TestFlakes.Quarantined(here, "app", List.of("a.FlakyTest")));
+    }
+
+    @Test
+    void the_report_lists_the_quarantined_first_then_the_classes_that_passed_on_a_rerun_in_the_window()
+            throws IOException {
+        Path other = Files.createDirectories(root.resolve("lib"));
+        Path elsewhere = Files.createDirectories(tmp.resolve("other-ws/app"));
+        TestFlakes.record(ctx, state, root, other, Map.of("b.OnceTest", TestFlakes.Outcome.PASSED_ON_RERUN));
+        TestFlakes.record(ctx, state, root, elsewhere, Map.of("c.AwayTest", TestFlakes.Outcome.PASSED_ON_RERUN));
+        run(Map.of("a.OkTest", TestFlakes.Outcome.PASSED, "a.RedTest", TestFlakes.Outcome.FAILED));
+        for (int i = 0; i < 2; i++) {
+            run(RED);
+            run(RERUN_PASS);
+        }
+        TestQuarantine.read(root)
+                .with(new TestQuarantine.Entry("a.ByHandTest", "", "hangs on CI", "2026-11-01", "https://x/1"))
+                .write(root);
+
+        TestFlakes.Report report = TestFlakes.report(state, root);
+
+        assertThat(report.error()).isNull();
+        assertThat(report.policy()).isEqualTo(TestQuarantine.Policy.DEFAULT);
+        assertThat(report.rows())
+                .extracting(r -> r.module() + " " + r.className() + " " + r.history() + " " + r.flakes())
+                .containsExactly("app a.FlakyTest FRFR 2", " a.ByHandTest  0", "lib b.OnceTest R 1");
+        assertThat(report.rows().get(0).held()).isNotNull();
+        assertThat(report.rows().get(1).held())
+                .extracting(TestQuarantine.Entry::issue)
+                .isEqualTo("https://x/1");
+        assertThat(report.rows().get(2).held()).isNull();
+    }
+
+    @Test
+    void the_report_says_why_an_unreadable_quarantine_lists_nothing() throws IOException {
+        Files.writeString(root.resolve(TestQuarantine.FILE), "[[class]\n");
+        run(RERUN_PASS);
+        TestFlakes.Report report = TestFlakes.report(state, root);
+        assertThat(report.error()).startsWith("jk-quarantine.toml unreadable: ");
+        assertThat(report.rows()).singleElement().satisfies(r -> assertThat(r.held())
+                .isNull());
     }
 
     /** A step context that keeps its warnings as {@code <code> <message>}. */

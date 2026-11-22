@@ -51,6 +51,7 @@ export function parseTruthy(raw) {
  *  #project/<id>
  *  #project/<id>/run/<buildNumber>            (pin one run; without it the page follows the newest)
  *  #project/<id>/sessions                     (the project's Sessions tab)
+ *  #project/<id>/flaky                        (the project's Flaky tests tab; flaky.js)
  *  #project/<id>/files
  *  #project/<id>/files/<rel/path>?line=<n>
  *  #project/<id>/files/<rel/path>?line=<n>&col=<c>&err=true&msg=<note>  (fail-report / OSC-8)
@@ -149,8 +150,8 @@ export function routeFromHash(hash = typeof location !== 'undefined' ? location.
     if (segs[1] === 'run') {
       return routeFields({ view: 'project', projectId: id, dir, run: parseLine(segs[2]) });
     }
-    if (segs[1] === 'sessions') {
-      return routeFields({ view: 'project', projectId: id, dir, tab: 'sessions' });
+    if (segs[1] === 'sessions' || segs[1] === 'flaky') {
+      return routeFields({ view: 'project', projectId: id, dir, tab: segs[1] });
     }
     return routeFields({ view: 'project', projectId: id, dir });
   }
@@ -162,12 +163,13 @@ export function buildConsoleHash(sessionId) {
   return sessionId ? '#console/' + encodeURIComponent(sessionId) : '#console';
 }
 
-export function buildProjectHash({ projectId, dir, files, path, line, col, err, msg, run, sessions } = {}) {
+/** A project route; `tab` is 'sessions' or 'flaky' for those tabs, anything else the Runs tab. */
+export function buildProjectHash({ projectId, dir, files, path, line, col, err, msg, run, tab } = {}) {
   if (!projectId) return '#projects';
   let h = '#project/' + encodeURIComponent(projectId);
   const query = [];
-  if (sessions && !files && !path) {
-    h += '/sessions';
+  if ((tab === 'sessions' || tab === 'flaky') && !files && !path) {
+    h += '/' + tab;
   } else if (run > 0 && !files && !path) {
     h += '/run/' + run;
   } else {

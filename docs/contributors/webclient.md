@@ -31,6 +31,7 @@ stopped providing.
 | `strip.js` | A run as one line: what it is doing, one cell per module, and which modules the run page opens (failed, slow) |
 | `status.js` | The Status view: the `/api/{status,cache,metrics,log,config}` reads and its meters |
 | `projects.js` | The Projects tab and Project page: history records grouped per project, and the run the page follows or pins |
+| `flaky.js` | The project's Flaky tests tab: `GET /api/project/flaky` as rows of recent-run cells, read again when the tab opens, its checkout changes or a `quarantine` notice arrives |
 | `coverage.js` | `<run-coverage>`: the Coverage block on the focused run — the record's `coverage[]` rows, deltas against the previous coverage run, the `/report/<report token>/<id>/` link |
 | `delta.js` | `<run-delta>`: the iteration strip — a record's `delta` as chips with the rows behind them |
 | `sessions.js` | Who asked: origin labels, the followed-or-pinned run, the pin route |
@@ -317,13 +318,18 @@ Source files hang off the same route:
 #project/<projectId>?dir=<checkout>  (one worktree of an id several build under)
 #project/<projectId>/run/<n>         (pinned to build #n — a history row or console click; Follow newest clears it)
 #project/<projectId>/sessions        (the Sessions tab)
+#project/<projectId>/flaky           (the Flaky tests tab)
 #project/<projectId>/files
 #project/<projectId>/files/src/Main.java?line=42&dir=<checkout>
 ```
 
-The project page has two tabs, **Runs** and **Sessions**. Sessions renders `projectSessionRows`
-(`console.js`) over one read, `GET /api/sessions?limit=200&project=<id>`: the engine answers only
-the sessions that worked on this project, each with its episodes on it.
+The project page has three tabs, **Runs**, **Sessions** and **Flaky tests**. Sessions renders
+`projectSessionRows` (`console.js`) over one read, `GET /api/sessions?limit=200&project=<id>`: the
+engine answers only the sessions that worked on this project, each with its episodes on it. Flaky
+tests renders `flakyModel` (`flaky.js`) over `GET /api/project/flaky?dir=<checkout>`
+([HTTP](http.md#get-apiprojectflaky)); a watcher on `flakyFor` (the checkout while the tab is open)
+reads it, and a `notice` frame of kind `quarantine` reads it again. That notice is also the toast:
+the bell's preview card shows it in the tab in use, as for any notice.
 
 The **run page** above the build history renders `projectRun` (`projects.js`): the
 pinned record when the route names a build number the project has, else the newest — a live

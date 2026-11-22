@@ -879,6 +879,10 @@ then delete its entry to release it; you can also add an entry by hand.
 whether a fix holds. It cannot be combined with `--class`; add `-r` to run classes that already
 passed under the same inputs.
 
+The dashboard's project page lists the quarantined and the flaky classes with their recent runs on
+its **Flaky tests** tab, and the bell rings with a toast when a run quarantines a class
+([dashboard](web.md#the-project-page)).
+
 The threshold is the workspace root's:
 
 ```toml

@@ -98,6 +98,38 @@ class HttpApiProjectTest extends HttpEngineServerHarness {
     }
 
     @Test
+    void api_project_flaky_lists_the_quarantine_with_its_policy() throws Exception {
+        Path ws = stateDir.resolve("flaky-ws");
+        Files.createDirectories(ws);
+        Files.writeString(ws.resolve("jk.toml"), "name = \"ws\"\n[test]\nquarantine = { flakes = 3, runs = 30 }\n");
+        Files.writeString(ws.resolve("jk-quarantine.toml"), """
+                [[class]]
+                name = "com.acme.OrdersTest"
+                module = "orders"
+                reason = "hangs"
+                since = 2026-11-20
+                issue = "https://example.com/88"
+                """);
+        String auth = "Bearer " + token();
+
+        assertThat(get("/api/project/flaky", "Authorization", auth).statusCode())
+                .isEqualTo(400);
+        assertThat(get("/api/project/flaky?dir=" + encDir(ws.resolve("gone")), "Authorization", auth)
+                        .statusCode())
+                .isEqualTo(404);
+
+        HttpResponse<String> resp = get("/api/project/flaky?dir=" + encDir(ws), "Authorization", auth);
+        assertThat(resp.statusCode()).isEqualTo(200);
+        assertThat(resp.body())
+                .contains("\"policy\":{\"flakes\":3,\"runs\":30}")
+                .contains("\"file\":\"jk-quarantine.toml\"")
+                .contains("\"name\":\"com.acme.OrdersTest\",\"module\":\"orders\",\"history\":\"\",\"flakes\":0")
+                .contains("\"quarantined\":{\"reason\":\"hangs\",\"since\":\"2026-11-20\","
+                        + "\"issue\":\"https://example.com/88\"}")
+                .doesNotContain("\"error\"");
+    }
+
+    @Test
     void api_project_model_serves_one_jdt_project_per_module() throws Exception {
         Path ws = stateDir.resolve("model-ws");
         Files.createDirectories(ws.resolve("lib/src/main/java"));

@@ -2813,6 +2813,14 @@ details.earlier .tl { margin-top: 6px; }
 .tabs a.active { color: var(--cn); border-bottom-color: var(--cn); }
 .tabs a:hover { color: var(--tx); }
 .proj-session { margin-bottom: 12px; }
+/* The Flaky tests tab: one cell per recent run, oldest first. */
+.flaky-panel .panel-head { gap: 8px; }
+.flaky-cells { display: inline-flex; gap: 2px; vertical-align: middle; }
+.flaky-cell { width: 8px; height: 14px; border-radius: 2px; background: var(--bd2); }
+.flaky-cell.pass { background: var(--okc); }
+.flaky-cell.rerun { background: var(--warn); }
+.flaky-cell.fail { background: var(--err); }
+.flaky-issue { margin-left: 8px; color: var(--cn); }
 .proj-session .sess-host { text-decoration: none; }
 .ep-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
 .ep-list li { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12.5px; }
