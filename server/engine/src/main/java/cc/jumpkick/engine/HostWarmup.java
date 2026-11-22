@@ -2,6 +2,7 @@
 package cc.jumpkick.engine;
 
 import cc.jumpkick.config.EnvValues;
+import cc.jumpkick.config.JkConfigLoader;
 import cc.jumpkick.config.JkEngineConfig;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.Log;
@@ -103,7 +104,8 @@ public final class HostWarmup {
     private static void calibrateHost(Consumer<String> log) {
         try {
             if (needsCalibration()) {
-                Calibration cal = Calibration.ensure(null, false, true);
+                // The probe's resolve GET is a background request: a host offline by config makes none.
+                Calibration cal = Calibration.ensure(null, false, !JkConfigLoader.hostOffline());
                 log.accept(
                         cal.present() && cal.measured()
                                 ? "jk engine: idle host calibration saved"

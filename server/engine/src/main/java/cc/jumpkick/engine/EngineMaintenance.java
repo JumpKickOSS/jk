@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine;
 
+import cc.jumpkick.config.JkConfigLoader;
 import cc.jumpkick.engine.plugin.StartupCaches;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.Log;
@@ -19,6 +20,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 
 /**
@@ -30,7 +32,8 @@ import java.util.function.Consumer;
  *   <li>If wall-clock ≥ 12 h since the last maintenance stamp, run store-feed refresh + templates
  *       freshen + the startup-cache sweep ({@link StartupCaches}) + enqueue cache prune / host
  *       calibration. Heap {@code System.gc()} is
- *       performed only at the end of that workset by the engine (never mid-chore).
+ *       performed only at the end of that workset by the engine (never mid-chore). A host offline
+ *       by {@link JkConfigLoader#hostOffline} skips the feeds and templates and runs the rest.
  * </ul>
  *
  * <p>Does not sleep 12 h continuously — a suspended laptop still sees a due cycle on the next
@@ -46,6 +49,7 @@ public final class EngineMaintenance implements AutoCloseable {
 
     private final Consumer<String> log;
     private final Runnable fetches;
+    private final BooleanSupplier offline;
     private final Runnable onMaintenanceDue;
     private final Path stampFile;
     private final Path configFile;
@@ -68,14 +72,23 @@ public final class EngineMaintenance implements AutoCloseable {
     /** Test seam: injectable stamp + config paths. */
     EngineMaintenance(
             Consumer<String> log, StoreFeedRefresh feeds, Runnable onMaintenanceDue, Path stampFile, Path configFile) {
-        this(log, fetches(log, feeds), onMaintenanceDue, stampFile, configFile);
+        this(log, fetches(log, feeds), JkConfigLoader::hostOffline, onMaintenanceDue, stampFile, configFile);
     }
 
-    /** Test seam: {@code fetches} stands for the cycle's network half (feeds, templates). */
+    /**
+     * Test seam: {@code fetches} stands for the cycle's network half (feeds, templates), which runs
+     * only while {@code offline} is false.
+     */
     EngineMaintenance(
-            Consumer<String> log, Runnable fetches, Runnable onMaintenanceDue, Path stampFile, Path configFile) {
+            Consumer<String> log,
+            Runnable fetches,
+            BooleanSupplier offline,
+            Runnable onMaintenanceDue,
+            Path stampFile,
+            Path configFile) {
         this.log = log != null ? log : s -> {};
         this.fetches = Objects.requireNonNull(fetches, "fetches");
+        this.offline = Objects.requireNonNull(offline, "offline");
         this.onMaintenanceDue = onMaintenanceDue != null ? onMaintenanceDue : () -> {};
         this.stampFile = stampFile;
         this.configFile = configFile;
@@ -180,12 +193,13 @@ public final class EngineMaintenance implements AutoCloseable {
     }
 
     /**
-     * Full cycle: store feeds and official templates, the startup-cache sweep, then prune/warmup
-     * enqueue, then stamp. Failures inside each are already quiet.
+     * Full cycle: store feeds and official templates unless the host is offline, the startup-cache
+     * sweep, then prune/warmup enqueue, then stamp. Failures inside each are already quiet.
      */
     void runMaintenanceCycle() {
         if (closed.get()) return;
-        fetches.run();
+        // Read per cycle, from the user config and not the session: no request asked for this fetch.
+        if (!offline.getAsBoolean()) fetches.run();
         // A snapshot jk's caches unmapped for 12 h go on this cycle too, not only when an engine starts.
         StartupCaches.sweepQuietly(log);
         try {

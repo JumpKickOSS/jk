@@ -47,7 +47,10 @@ is set.
 repository or mirror whose URL is `file:` — a directory on this disk, such as an air-gapped mirror
 or a Maven local repository — as it reads them online; a repository or mirror reached over the
 network is asked nothing, and what the store already holds from it answers instead. See
-[Repositories § Offline](repositories.md#offline).
+[Repositories § Offline](repositories.md#offline). Set in `~/.jk/config.toml` or by
+`JK_OFFLINE`, it also stops every fetch the engine makes in the background: the update check,
+the 12-hour refresh of the library registry, the JDK catalog and the official templates, and the
+resolve request of the host calibration probe.
 
 **`notify`:** `auto` (default) sends an OSC desktop notification when a build’s ETA **or**
 elapsed time is ≥ 1 minute; `always`/`true` always; `never`/`false` never.
