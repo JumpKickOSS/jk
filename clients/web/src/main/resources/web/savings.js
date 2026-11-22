@@ -53,7 +53,7 @@ export function savingsTiles(row) {
     { key: 'classes', label: 'classes not re-run', value: row.testClassesNotRerun || 0,
       tip: 'Test classes a re-run left out because they passed under the same inputs' },
     { key: 'graph', label: 'code answers', value: row.graphCalls || 0,
-      tip: 'Code-graph questions an agent asked instead of reading files' },
+      tip: 'Code questions an agent asked instead of reading files' },
     { key: 'refactorings', label: 'refactorings · edits',
       value: (row.refactorings || 0) + ' · ' + (row.edits || 0),
       tip: 'Refactorings the code graph applied and dependency edits made through jk' },
