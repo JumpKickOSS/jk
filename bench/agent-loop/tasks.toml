@@ -341,6 +341,25 @@ working and every test passing.
 """
 test   = ["jk", "-u", "-x", "-a", "test", "-S", "OwnerContactTests", "-S", "OwnerControllerTests", "-S", "ClinicServiceTests"]
 
+# An instance move: a method planted in Pet that reads the pet's name and its type goes to PetType,
+# taking the Pet. Callers outside Pet cannot see its private field type, so each reaches the type
+# through getType(); one is in a lambda, one in another package with a doc link. The hidden check
+# reads where it is declared and calls every caller. Compare the move card listed (jk-graph) with it
+# unlisted (jk) and with no graph (jk-nograph).
+[tasks.petclinic-move-type-label]
+repo   = "spring-petclinic"
+kind   = "move"
+tools  = ["jk", "mvn"]
+inject = [
+  { file = "src/main/java/org/springframework/samples/petclinic/owner/Pet.java", from = "\tpublic void addVisit(Visit visit) {", to = "\tpublic String typeLabel() {\n\t\treturn getName() + \" the \" + this.type.getName();\n\t}\n\n\tpublic void addVisit(Visit visit) {" },
+]
+prompt = """
+A pet's type label belongs with the pet type. Move `Pet.typeLabel()` into `PetType` as a public
+instance method `typeLabel(Pet pet)` with the same behaviour, so `Pet` no longer declares it, and
+keep every caller working and every test passing.
+"""
+test   = ["jk", "-u", "-x", "-a", "test", "-S", "PetTypeLabelMoveTests", "-S", "OwnerControllerTests", "-S", "ClinicServiceTests"]
+
 [tasks.petclinic-rename-owner-customer]
 repo   = "spring-petclinic"
 kind   = "rename"
