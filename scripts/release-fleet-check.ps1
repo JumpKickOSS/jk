@@ -1,21 +1,26 @@
-# After a release is published: put this Windows machine on it from nothing and time it. Stops
-# every engine, DELETES %USERPROFILE%\.jk, installs with the published `irm install.ps1 | iex`,
-# brings the jk checkout to the released commit and builds it twice (cold, then warm).
+# After a release is published: put this Windows machine on it, keeping only the stored logins, and
+# time it. One host of release-fleet.sh's walk, in the order release-fleet-check.sh keeps: drain
+# (wait until the engine runs no job, queues none and has no agent session; a host busy past
+# JK_FLEET_DRAIN_S, default 3600, is left as it was), stop every engine and wait until none is alive,
+# empty %USERPROFILE%\.jk but its creds, install with the published `irm install.ps1 | iex`, copy
+# -FleetProfile to %USERPROFILE%\.jk\config.toml, start the engine and check it answers as the
+# release, then bring the jk checkout to the released commit and build it twice (cold, then warm).
 # Windows PowerShell 5.1 or later.
 #
 # Usage:
-#   powershell -NoProfile -ExecutionPolicy Bypass -File release-fleet-check.ps1 -Version <version> [-Checkout <dir>]
+#   powershell -NoProfile -ExecutionPolicy Bypass -File release-fleet-check.ps1 -Version <version> [-Checkout <dir>] [-FleetProfile <file>]
 #   powershell -NoProfile -ExecutionPolicy Bypass -File release-fleet-check.ps1 -RemoveOnly <dir>
 #   powershell -NoProfile -ExecutionPolicy Bypass -File release-fleet-check.ps1 -Version <version> -CheckoutOnly <dir>
 # -RemoveOnly runs the home's delete step alone against <dir> (what scripts/test-release-fleet-check.ps1
-# drives) and exits 0 when <dir> is gone. -CheckoutOnly runs the checkout step alone against <dir>:
-# prints "usable" and exits 0 when <dir> was brought to tag v<version>, else prints why not.
+# drives) and exits 0 when <dir> holds nothing but creds. -CheckoutOnly runs the checkout step alone
+# against <dir>: prints "usable" and exits 0 when <dir> was brought to tag v<version>, else prints
+# why not.
 #
-# The home goes in an order that never leaves a home with no jk in it: every process running from
-# it or naming it on its command line is stopped and waited for (a worker JVM, a git a test left
-# behind), everything but bin is deleted, and bin goes last. When a file will not go, bin stays, so
-# the profile's activate line and `jk` keep working, and the failure names the process holding
-# each file (Windows Restart Manager).
+# The home is emptied in an order that never leaves a home with no jk in it: every process running
+# from it or naming it on its command line is stopped and waited for (a worker JVM, a git a test left
+# behind), everything but bin and creds is deleted, and bin goes last; creds stays. When a file will
+# not go, bin stays, so the profile's activate line and `jk` keep working, and the failure names the
+# process holding each file (Windows Restart Manager).
 # -Checkout defaults to %USERPROFILE%\src\oss\jk. It is fast-forwarded to tag v<version> only when it
 # is on main, clean, and holds no commit origin lacks; otherwise it is left alone, reported, and
 # %USERPROFILE%\src\oss\jk-fleet is used instead (under the same rule).
@@ -23,10 +28,11 @@
 # JK_HOME other than %USERPROFILE%\.jk.
 #
 # Prints progress, then one line:
-#   RESULT host=… os=… cores=… ram_gb=… jk=… commit=… install_s=… build1_s=… build2_s=… checkout=… note=… success=true|false
+#   RESULT host=… os=… cores=… ram_gb=… jk=… commit=… install_s=… build1_s=… build2_s=… checkout=… profile=… note=… success=true|false
 param(
     [string] $Version,
     [string] $Checkout = (Join-Path $env:USERPROFILE "src\oss\jk"),
+    [string] $FleetProfile,
     [string] $RemoveOnly,
     [string] $CheckoutOnly
 )
@@ -111,13 +117,15 @@ function LongPath([string] $path) {
 }
 function ShortPath([string] $path) { if ($path.StartsWith('\\?\')) { return $path.Substring(4) } else { return $path } }
 
-# Delete $dir with bin last. Returns "" when $dir is gone, else why not (bin then still stands).
+# Empty $dir but its creds, bin last. Returns "" when nothing but creds is left, else why not (bin
+# then still stands).
 function Remove-JkHome([string] $dir) {
     $long = LongPath $dir
     if (-not (Test-Path -LiteralPath $long)) { return "" }
     Stop-ProcessesUnder (ShortPath $long)
     $bin = $long.TrimEnd('\') + '\bin'   # Join-Path refuses the \\?\ form
-    $rest = { Get-ChildItem -LiteralPath $long -Force | Where-Object { $_.FullName -ne $bin } }
+    $creds = $long.TrimEnd('\') + '\creds'
+    $rest = { Get-ChildItem -LiteralPath $long -Force | Where-Object { $_.FullName -ne $bin -and $_.FullName -ne $creds } }
     # A file a process just let go of can stay locked for a moment (an antivirus scan, a closing handle).
     for ($try = 0; $try -lt 5; $try++) {
         & $rest | ForEach-Object { Remove-Item -LiteralPath $_.FullName -Recurse -Force -ErrorAction SilentlyContinue }
@@ -132,19 +140,32 @@ function Remove-JkHome([string] $dir) {
         $holders = Get-FileHolders $left
         foreach ($l in $holders) { Write-Host "fleet-check: held: $l" }
         $what = if ($holders) { ($holders | Select-Object -First 3) -join "; " } else { "$($left.Count) entries left, holder unknown; first $($left[0])" }
-        return "could not delete $(ShortPath $long), bin kept ($what)"
+        return "could not empty $(ShortPath $long), bin kept ($what)"
     }
-    for ($try = 0; $try -lt 5 -and (Test-Path -LiteralPath $long); $try++) {
-        Remove-Item -LiteralPath $long -Recurse -Force -ErrorAction SilentlyContinue
-        if (Test-Path -LiteralPath $long) { Start-Sleep -Milliseconds 500 }
+    for ($try = 0; $try -lt 5 -and (Test-Path -LiteralPath $bin); $try++) {
+        Remove-Item -LiteralPath $bin -Recurse -Force -ErrorAction SilentlyContinue
+        if (Test-Path -LiteralPath $bin) { Start-Sleep -Milliseconds 500 }
     }
-    if (Test-Path -LiteralPath $long) {
-        $left = @(Get-ChildItem -LiteralPath $long -Force -Recurse -File -ErrorAction SilentlyContinue | ForEach-Object { ShortPath $_.FullName })
+    if (Test-Path -LiteralPath $bin) {
+        $left = @(Get-ChildItem -LiteralPath $bin -Force -Recurse -File -ErrorAction SilentlyContinue | ForEach-Object { ShortPath $_.FullName })
         $holders = Get-FileHolders $left
         foreach ($l in $holders) { Write-Host "fleet-check: held: $l" }
         return "could not delete $(ShortPath $bin) ($(($holders | Select-Object -First 3) -join '; '))"
     }
     return ""
+}
+
+# Whether `jk engine status -O json` shows an engine with nothing to interrupt: none running, or one
+# with no job, no queued build and no agent (MCP) session. A connection alone (this status request,
+# a dashboard tab) is nothing to interrupt. "stopped" when no engine of this home is alive at all.
+function Engine-State([string] $json) {
+    try { $s = $json | ConvertFrom-Json } catch { return "busy" }
+    $ours = @($s.engines | Where-Object { $_.otherHome -eq $false })
+    if (-not $s.running -and $ours.Count -eq 0) { return "stopped" }
+    if (-not $s.running) { return "idle" }
+    if (@($s.jobs).Count -gt 0) { return "busy" }
+    if ($s.queuedBuildPlans -gt 0 -or $s.mcpActiveConnections -gt 0) { return "busy" }
+    return "idle"
 }
 
 # Whether $dir can be brought to tag v$Version: on main, clean, nothing origin lacks; then
@@ -183,7 +204,7 @@ $r = [ordered]@{
     os = "Windows-" + [Environment]::OSVersion.Version.ToString() + "-" + $env:PROCESSOR_ARCHITECTURE
     cores = [Environment]::ProcessorCount
     ram_gb = [math]::Round((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory / 1GB)
-    jk = "none"; commit = "none"; install_s = "-"; build1_s = "-"; build2_s = "-"; checkout = "none"; note = "none"; success = "false"
+    jk = "none"; commit = "none"; install_s = "-"; build1_s = "-"; build2_s = "-"; checkout = "none"; profile = "none"; note = "none"; success = "false"
 }
 function Result { "RESULT " + (($r.GetEnumerator() | ForEach-Object { "$($_.Key)=$($_.Value)" }) -join " ") }
 function Fail([string] $why) {
@@ -198,9 +219,26 @@ try { $published = (Invoke-RestMethod "$Site/releases/latest/VERSION").ToString(
 if ($published -ne $Version) { Fail "refusing: $Site/releases/latest/VERSION is '$published', not $Version" }
 if ($env:JK_HOME -and ($env:JK_HOME -ne $HomeDir)) { Fail "refusing: JK_HOME is $env:JK_HOME, not $HomeDir" }
 
-# 0. every engine of this home stops
-if (Test-Path $Jk) { & $Jk engine stop -A --no-ansi; if ($LASTEXITCODE -ne 0) { Write-Host "fleet-check: engine stop -A failed; continuing" } }
-# 1. the home goes, bin last, after every process under it has stopped
+if ($FleetProfile -and -not (Test-Path -LiteralPath $FleetProfile -PathType Leaf)) { Fail "refusing: -FleetProfile names $FleetProfile, which is no file" }
+$DrainS = if ($env:JK_FLEET_DRAIN_S) { [int]$env:JK_FLEET_DRAIN_S } else { 3600 }
+function Status-Json { if (Test-Path $Jk) { (& $Jk engine status -O json --no-ansi 2>$null | Select-String '"type":"engine-status"' | Select-Object -Last 1) -as [string] } else { "" } }
+
+# 0. drain: wait until this home's engine has nothing to interrupt, then stop every engine of it
+if (Test-Path $Jk) {
+    $w = [Diagnostics.Stopwatch]::StartNew()
+    while ((Engine-State (Status-Json)) -eq "busy") {
+        if ($w.Elapsed.TotalSeconds -gt $DrainS) { Fail "drain: the engine stayed busy for ${DrainS}s (jobs or agent sessions); the host is left as it was" }
+        Write-Host "fleet-check: draining: the engine is busy; looking again in 30 s"
+        Start-Sleep -Seconds 30
+    }
+    & $Jk engine stop -A --no-ansi; if ($LASTEXITCODE -ne 0) { Write-Host "fleet-check: engine stop -A failed; waiting for the engines to exit" }
+    $w = [Diagnostics.Stopwatch]::StartNew()
+    while ((Engine-State (Status-Json)) -ne "stopped") {
+        if ($w.Elapsed.TotalSeconds -gt $DrainS) { Fail "drain: an engine of $HomeDir is still alive after ${DrainS}s; the host is left as it was" }
+        Start-Sleep -Seconds 5
+    }
+}
+# 1. wipe: the home goes but its creds, bin last, after every process under it has stopped
 $why = Remove-JkHome $HomeDir
 if ($why) { Fail $why }
 
@@ -216,6 +254,16 @@ $vv = (& $Jk --version -v --no-ansi 2>&1 | Out-String)
 if ($vv -match '(?m)^jk (\S+)') { $r.jk = $Matches[1] }
 if ($vv -match 'client .* commit ([0-9a-f]+)') { $r.commit = $Matches[1] }
 if ($r.jk -ne $Version) { Fail "the installed jk reports '$($r.jk)', not $Version" }
+
+# 2b. the fleet's machine settings, then the engine, which must answer as the release
+if ($FleetProfile) {
+    Copy-Item -LiteralPath $FleetProfile -Destination (Join-Path $HomeDir "config.toml") -Force
+    $r.profile = Split-Path -Leaf $FleetProfile
+}
+& $Jk engine start --no-ansi
+if ($LASTEXITCODE -ne 0) { Fail "the engine did not start" }
+$st = Status-Json
+if ($st -notmatch ('"version":"' + [regex]::Escape($Version) + '"')) { Fail "the engine does not answer as $Version" }
 
 # 3. the checkout at the released commit, or the fleet checkout when the usual one is someone's work
 $why = Usable $Checkout

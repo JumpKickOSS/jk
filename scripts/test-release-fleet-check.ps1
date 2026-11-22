@@ -1,10 +1,11 @@
-# Fixture test for release-fleet-check.ps1's home delete (-RemoveOnly), on Windows:
+# Fixture test for release-fleet-check.ps1's home delete (-RemoveOnly), on Windows. "Emptied" means
+# nothing is left but creds, which keeps the stored login it held:
 #  1. a process that names the home on its command line and holds a file under it is stopped, and
-#     the home goes;
-#  2. a home whose store nests past MAX_PATH (as the template store's g8 trees do) goes;
+#     the home is emptied;
+#  2. a home whose store nests past MAX_PATH (as the template store's g8 trees do) is emptied;
 #  3. a process that holds a file under the home without naming it is not stopped: the delete
 #     fails naming that process and the file, everything but bin is gone, and bin is still there;
-#     once that process exits, the next run deletes the home;
+#     once that process exits, the next run empties the home;
 #  4. the checkout step (-CheckoutOnly) brings a clean checkout on main to the release tag even when
 #     it holds a local tag origin moved, which a plain `git fetch --tags` refuses.
 # Windows PowerShell 5.1 or later. Usage: powershell -NoProfile -ExecutionPolicy Bypass -File scripts\test-release-fleet-check.ps1
@@ -17,8 +18,9 @@ function Check([bool] $ok, [string] $what) {
 }
 function New-Home([string] $name) {
     $h = Join-Path $root $name
-    foreach ($d in "bin", "lib\jk-engine", "state\engine", "test-homes\slot\tmp") { New-Item -ItemType Directory -Force (Join-Path $h $d) | Out-Null }
+    foreach ($d in "bin", "creds\forge", "lib\jk-engine", "state\engine", "test-homes\slot\tmp") { New-Item -ItemType Directory -Force (Join-Path $h $d) | Out-Null }
     Set-Content (Join-Path $h "bin\jk.cmd") "@echo jk"
+    Set-Content (Join-Path $h "creds\forge\github.com") "token"
     Set-Content (Join-Path $h "lib\jk-engine\jk-engine.jar") "jar"
     return $h
 }
@@ -31,6 +33,11 @@ function Start-Holder([string] $file, [bool] $encoded) {
     while (-not (Test-Path "$file.ready") -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 100 }
     if (-not (Test-Path "$file.ready")) { throw "holder for $file never opened it" }
     return $p
+}
+# Whether $h holds nothing but creds, and creds still holds its login.
+function Emptied([string] $h) {
+    $left = @(Get-ChildItem -LiteralPath ("\\?\" + $h) -Force | ForEach-Object { $_.Name })
+    return ($left.Count -eq 1) -and ($left[0] -eq "creds") -and ((Get-Content (Join-Path $h "creds\forge\github.com")) -eq "token")
 }
 function Remove-Only([string] $dir) {
     $ErrorActionPreference = "Continue"
@@ -55,8 +62,8 @@ try {
     $h1 = New-Home "named home"
     $holders += Start-Holder (Join-Path $h1 "test-homes\slot\tmp\jk-git-1.err") $false
     $r = Remove-Only $h1
-    Check ($r.code -eq 0) "a holder naming the home is stopped and the home goes (exit $($r.code)): $($r.out.Trim())"
-    Check (-not (Test-Path -LiteralPath $h1)) "the named home is gone"
+    Check ($r.code -eq 0) "a holder naming the home is stopped and the home is emptied (exit $($r.code)): $($r.out.Trim())"
+    Check (Emptied $h1) "the named home holds nothing but creds"
     Check ($r.out -match "stopping powershell.exe") "the stop is reported"
 
     # 2. past MAX_PATH: Remove-Item without the \\?\ form fails there with "Could not find a part of the path"
@@ -68,8 +75,8 @@ try {
     [IO.File]::WriteAllText($deep + "\Note.java", "class Note {}")
     Check ($deep.Length -gt 300) "the fixture nests past MAX_PATH ($($deep.Length) characters)"
     $r = Remove-Only $h3
-    Check ($r.code -eq 0) "a home nested past MAX_PATH goes (exit $($r.code)): $($r.out.Trim())"
-    Check (-not (Test-Path -LiteralPath $h3)) "the deep home is gone"
+    Check ($r.code -eq 0) "a home nested past MAX_PATH is emptied (exit $($r.code)): $($r.out.Trim())"
+    Check (Emptied $h3) "the deep home holds nothing but creds"
 
     # 3. not named: the delete fails, names the holder, and keeps bin
     $h2 = New-Home "hidden home"
@@ -84,8 +91,8 @@ try {
     Stop-Process -Id $hidden.Id -Force
     Wait-Process -Id $hidden.Id -Timeout 15 -ErrorAction SilentlyContinue
     $r = Remove-Only $h2
-    Check ($r.code -eq 0) "once the holder exits the home goes (exit $($r.code))"
-    Check (-not (Test-Path -LiteralPath $h2)) "the hidden home is gone"
+    Check ($r.code -eq 0) "once the holder exits the home is emptied (exit $($r.code))"
+    Check (Emptied $h2) "the hidden home holds nothing but creds"
 
     # 4. a stale local tag: origin holds A, B with v0.9.0 at A; the clone moves v0.9.0 to B; then
     #    origin gains C tagged v1.0.0, the release.

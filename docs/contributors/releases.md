@@ -603,12 +603,21 @@ from `repo/` and held to `jk-repo-<version>.sha256`), an update from the previou
 `jk self update` and back with `jk self rollback`, and a reinstall killed mid-unpack that leaves the
 previous `jk` working. `scripts/release-fleet.sh <version>` then runs `release-fleet-check.sh` (Linux,
 WSL, macOS) or `release-fleet-check.ps1` (Windows PowerShell 5.1) on every machine of the fleet over
-ssh: each stops its engines, deletes its `~/.jk`, installs from jumpkick.build, fast-forwards its JumpKick
-checkout to the tag and times a cold and a warm `jk build`, printing one `RESULT` line the driver
-appends to a Markdown table. Both refuse unless jumpkick.build serves the version they are given.
-On Windows the home goes with `bin` last, after every process running from it or naming it has
-stopped; a file that still will not go leaves `bin` (and so `jk`) in place and the failure names the
-process holding it (`scripts/test-release-fleet-check.ps1` holds this). A checkout fetches only
+ssh, one host at a time so the rest of the fleet keeps working. Each host drains: it waits until its
+engine runs no job, queues no build and has no agent (MCP) session connected, and a host still busy
+after `JK_FLEET_DRAIN_S` (default 3600 s) is left as it was, its row saying so. Then it stops every
+engine of the home and waits until none is alive, empties `~/.jk` but `~/.jk/creds` (config, caches,
+history, engine state and installs all go; nothing is migrated), installs from jumpkick.build,
+copies the fleet's machine settings from `scripts/fleet-profiles/<target>.toml` to
+`~/.jk/config.toml` when that file exists, starts the engine and requires it to answer as the
+release, fast-forwards its JumpKick checkout to the tag and times a cold and a warm `jk build`,
+printing one `RESULT` line the driver appends to a Markdown table. Secrets outside `~/.jk`, such as
+the Central token, are never touched. Both refuse unless jumpkick.build serves the version they are
+given. Nothing in it interrupts running work, so the integrator runs it after a release without
+asking. On Windows the home is emptied with `bin` last, after every process running from it or
+naming it has stopped; a file that still will not go leaves `bin` (and so `jk`) in place and the
+failure names the process holding it (`scripts/test-release-fleet-check.ps1` holds this; the `.sh`
+test holds that only creds survive the wipe and which engine states count as busy). A checkout fetches only
 `main` and the release tag, so a local tag that origin has since moved does not set it aside
 (`scripts/test-release-fleet-check.sh` and the `.ps1` hold this).
 Finally bump `.jk/ci/ci-bootstrap-version` to the release, and with it raise this tree's
