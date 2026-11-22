@@ -30,7 +30,7 @@ Three kinds of row:
 |---|---|---|
 | `count` | work counters load does not move: tasks run, bytes and files written, files under `target/` touched, output size | any time |
 | `paired-wall` | the candidate JumpKick against a baseline JumpKick, interleaved A B A B; the median of the pair ratios with a bootstrap 95 % CI | any time |
-| `absolute-wall` | published seconds and peak RSS: JumpKick, Gradle and Maven on petclinic (`wall`), JumpKick on its own tree (`dogfood`), the cold and hot `jk lock` of Now in Android's 27-module workspace (`lock`, from the jk-examples overlay or `$JK_NIA_OVERLAY`) | night, quiet host only |
+| `absolute-wall` | published seconds and peak RSS: JumpKick, Gradle and Maven on petclinic (`wall`), JumpKick on its own tree (`dogfood`), the cold and hot `jk lock` of Now in Android's 27-module workspace (`lock`, from the jk-examples overlay or `$JK_NIA_OVERLAY`), and JumpKick against a large repository's own Maven or Gradle build: one edit to a verdict, every commit of a CI replay, a fresh checkout served from a shared cache (`suite`, [bench/suite](../../bench/suite/README.md); the replay and the fresh checkout in the release tier) | night, quiet host only |
 
 A JumpKick `count` or `absolute-wall` row above its banked value by more than its band (exact for task
 and file counts, 2–5 % plus a small absolute slack for bytes, 15 % for seconds) fails the run and

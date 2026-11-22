@@ -1,0 +1,21 @@
+# The big-suite harness's fixtures (bench/suite/measure). One [[fixture]] per public repository,
+# pinned to a commit: the replay walks the first-parent history that ends there, and the edit and
+# morning arms build that commit.
+#
+#   build         the repository's own build tool, the one JumpKick is compared with
+#   import        the file `jk import` reads; its jk.toml and lock are written into every checkout
+#   edit          the main source the inner-loop arm edits: a private method appended to the class,
+#                 so the class's bytecode changes and every test that reads it must run again
+#   maven-args    switches that turn off what JumpKick has no counterpart for (lint, coverage)
+#   tests         what the pinned commit's suite holds under Maven (surefire XML) and JumpKick
+#                 (`Tests:` line), counted on 2026-11-21; a run that sees fewer says so
+
+[[fixture]]
+name = "thealgorithms-java"
+url = "https://github.com/TheAlgorithms/Java.git"
+commit = "f4d6708297f86629a9e415070935b903ea8b1858"
+build = "maven"
+import = "pom.xml"
+edit = "src/main/java/com/thealgorithms/maths/GCD.java"
+maven-args = ["-Dcheckstyle.skip", "-Dpmd.skip", "-Dspotbugs.skip", "-Djacoco.skip"]
+tests = { maven = 10265, jk = 10268 }

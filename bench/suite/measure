@@ -1,0 +1,541 @@
+#!/usr/bin/env python3
+"""The big-suite bench: JumpKick against a large repository's own Maven or Gradle build.
+
+    bench/suite/measure --arm edit                        # seconds from a one-file edit to a verdict
+    bench/suite/measure --arm replay --commits 200        # CI: the last 200 commits, one pipeline each
+    bench/suite/measure --arm replay --cache-remote URL   # plus JumpKick reading and writing a shared cache
+    bench/suite/measure --arm morning --cache-remote URL  # a fresh checkout of a commit CI built
+    bench/suite/measure --fixture thealgorithms-java --out DIR --runs 5
+
+The fixtures are in fixtures.toml beside this script, each a public repository pinned to a commit.
+Clones and working copies live under $SUITE_HOME (default $JK_BENCH_HOME/suite), never in this tree.
+JumpKick runs each project through `jk import` and `jk lock` before any timed command; those are
+untimed, as a project that has adopted JumpKick commits its jk.toml and lock.
+
+Arms (each writes its rows to DIR/rows.jsonl; README.md beside this script has the details):
+
+  edit     one warm working copy per tool, one untimed test run, then --runs timed runs, each after
+           a private method is appended to the fixture's `edit` file: `jk test` against `mvn test`
+           or `gradle test`, the verdict and its test count recorded
+  replay   the last --commits first-parent commits ending at the pinned one, oldest first; every
+           commit on a fresh checkout, as a CI runner sees it: the build tool's test pipeline, JumpKick
+           cold (an empty action cache and a fresh engine; the dependency store stays warm, as a CI
+           dependency cache keeps Maven's), and with --cache-remote JumpKick on a fresh runner
+           sharing a cache that every earlier commit wrote to
+  morning  a fresh checkout of the pinned commit, --runs times: JumpKick cold, JumpKick reading the
+           shared cache the replay filled (it never writes), and the build tool
+
+JumpKick runs on private engines (their own JK_STATE_DIR), stopped by process id once their run is
+over; the user's engine and cache are never touched. Every row records the host block and tool
+versions, and every replayed commit is kept in DIR/replay.jsonl, so a cut-short replay resumes.
+"""
+
+from __future__ import annotations
+
+import argparse
+import collections
+import datetime as dt
+import hashlib
+import json
+import os
+import re
+import secrets
+import shutil
+import signal
+import statistics
+import subprocess
+import sys
+import time
+import tomllib
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE.parent))
+import benchtools  # noqa: E402
+
+SUITE_HOME = benchtools.scratch("SUITE_HOME", "suite")
+FIXTURES = HERE / "fixtures.toml"
+ARMS = ("edit", "replay", "morning")
+# Statuses a step finishes with when it did its work, as opposed to being skipped.
+RAN = ("SUCCESS", "FAILED", "FAILURE", "ERROR")
+# Steps an action cache can serve, whether or not a run hit them; with every step that did hit, the
+# denominator of the hit rate. Bookkeeping steps (parse, resolve, stamp) run every time by design.
+CACHEABLE = frozenset({"compile-java", "compile-kotlin", "compile-groovy", "compile-test", "run-tests"})
+
+
+def jk_binary() -> str:
+    if os.environ.get("JK_BIN"):
+        return os.environ["JK_BIN"]
+    candidate = benchtools.jk_home() / "bin" / "jk"
+    return str(candidate) if candidate.is_file() else (shutil.which("jk") or str(candidate))
+
+
+JK = jk_binary()
+
+
+def jk_home() -> Path:
+    """The home the measured client was installed into, so a release installed apart runs its own engine."""
+    home = Path(JK).resolve().parent.parent
+    return home if (home / "lib").is_dir() else benchtools.jk_home()
+
+
+def load_fixtures(names: list[str]) -> list[dict]:
+    fixtures = tomllib.loads(FIXTURES.read_text(encoding="utf-8"))["fixture"]
+    unknown = sorted(set(names) - {f["name"] for f in fixtures})
+    if unknown:
+        raise SystemExit(f"suite: no fixture named {', '.join(unknown)} in {FIXTURES}")
+    return [f for f in fixtures if not names or f["name"] in names]
+
+
+# --------------------------------------------------------------------------- checkouts
+
+def git(*args: str, cwd: Path | None = None) -> str:
+    res = subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True)
+    if res.returncode:
+        raise SystemExit(f"suite: git {' '.join(args)} failed: {res.stderr.strip()[-600:]}")
+    return res.stdout.strip()
+
+
+def mirror(fx: dict) -> Path:
+    """A full clone of the fixture under $SUITE_HOME/clones, fetched once and then reused."""
+    path = SUITE_HOME / "clones" / fx["name"]
+    partial = subprocess.run(["git", "config", "--get", "remote.origin.partialclonefilter"], cwd=path,
+                             capture_output=True).returncode == 0 if path.is_dir() else False
+    if partial:
+        # A partial clone's shared checkouts of older commits come out without the files it never fetched.
+        shutil.rmtree(path)
+    if not (path / ".git").is_dir():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        git("clone", "-q", "--no-checkout", fx["url"], str(path))
+    if subprocess.run(["git", "cat-file", "-e", f"{fx['commit']}^{{commit}}"], cwd=path).returncode:
+        git("fetch", "-q", "origin", cwd=path)
+    return path
+
+
+def checkout(fx: dict, sha: str, dest: Path) -> Path:
+    """A fresh working copy of one commit, as a CI runner's checkout is."""
+    shutil.rmtree(dest, ignore_errors=True)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    git("clone", "-q", "--shared", "--no-checkout", str(mirror(fx)), str(dest))
+    git("checkout", "-q", "--detach", sha, cwd=dest)
+    if not (dest / fx["import"]).is_file():
+        raise SystemExit(f"suite: the checkout of {sha} in {dest} has no {fx['import']}")
+    return dest
+
+
+def history(fx: dict, commits: int) -> list[str]:
+    """The last `commits` first-parent commits ending at the pinned one, oldest first."""
+    return list(reversed(git("rev-list", "--first-parent", "-n", str(commits), fx["commit"], cwd=mirror(fx)).split()))
+
+
+# --------------------------------------------------------------------------- JumpKick
+
+def jk_env(state: Path, cache: Path, *, remote: str | None = None, write: bool = False, ci: bool = False) -> dict:
+    """A private engine and action cache; the user's store stays shared, so dependencies are warm."""
+    env = {k: v for k, v in os.environ.items() if k not in ("CI", "JK_CACHE_REMOTE", "JK_CACHE_REMOTE_WRITE")}
+    env.update(JK_HOME=str(jk_home()), JK_STATE_DIR=str(state), JK_CACHE_DIR=str(cache), JK_CACHE_REMOTE=remote or "off")
+    if remote:
+        env["JK_CACHE_REMOTE_WRITE"] = "true" if write else "false"
+        env["JK_CACHE_KEY_SEED"] = team_seed()
+    if ci:
+        env["CI"] = "1"
+    return env
+
+
+def team_seed() -> str:
+    """The seed every runner and checkout of the bench's team shares, as a team sets one for its CI.
+
+    Without it a suite whose result read the environment stays on the machine that ran it
+    (docs/user/cache.md). Kept under $SUITE_HOME so a replay and a later morning build agree.
+    """
+    path = SUITE_HOME / "team-cache-seed"
+    if not path.is_file():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(secrets.token_urlsafe(32), encoding="utf-8")
+        path.chmod(0o600)
+    return path.read_text(encoding="utf-8").strip()
+
+
+def stop_engines(state: Path) -> None:
+    """Stop every JVM this harness started on `state`, by process id: the engine and its workers.
+
+    A JVM is this run's when its environment carries JK_STATE_DIR=`state` or its command line names
+    the directory (the engine's heap dump path, a worker's GC log).
+    """
+    mine = os.fsencode(state) + b"/"
+    env = b"JK_STATE_DIR=" + os.fsencode(state)
+    pids = []
+    for entry in Path("/proc").iterdir():
+        if not entry.name.isdigit() or int(entry.name) == os.getpid():
+            continue
+        try:
+            args = (entry / "cmdline").read_bytes().split(b"\0")
+            if not os.path.basename(args[0]).startswith(b"java"):
+                continue
+            if any(mine in a or a.endswith(os.fsencode(state)) for a in args) or env in (entry / "environ").read_bytes().split(b"\0"):
+                pids.append(int(entry.name))
+        except OSError:
+            continue
+    for pid in pids:
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+    deadline = time.monotonic() + 15
+    while pids and time.monotonic() < deadline:
+        pids = [p for p in pids if Path(f"/proc/{p}").exists()]
+        time.sleep(0.2)
+    for pid in pids:
+        try:
+            os.kill(pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+
+
+def fresh(path: Path) -> Path:
+    stop_engines(path)
+    shutil.rmtree(path, ignore_errors=True)
+    path.mkdir(parents=True)
+    return path
+
+
+def adopt(fx: dict, work: Path, log: Path) -> None:
+    """`jk import` and `jk lock` on a prep engine that stays warm: untimed, as a committed jk.toml is."""
+    env = jk_env(SUITE_HOME / "state" / "prep", SUITE_HOME / "cache" / "prep")
+    for cmd in ([JK, "import", fx["import"], "--no-ansi"], [JK, "lock", "--no-ansi"]):
+        res = run_logged(cmd, work, env, log)
+        if res.returncode:
+            raise StepFailed(f"{' '.join(cmd[1:3])} exited {res.returncode}; see {log}")
+
+
+class StepFailed(Exception):
+    pass
+
+
+def steps_of(events: Path) -> tuple[collections.Counter, int | None]:
+    """(Counter of (step, outcome), tests the run reported) from a `-O jsonl` stream.
+
+    Outcome is `ran`, `hit` (restored from an action cache, local or shared), `up-to-date` or
+    `skipped` (nothing to do).
+    """
+    steps: collections.Counter = collections.Counter()
+    tests = None
+    for line in events.read_text(encoding="utf-8", errors="replace").splitlines():
+        try:
+            e = json.loads(line)
+        except ValueError:
+            continue
+        if e.get("type") == "task-finish":
+            status, label = e.get("status", ""), e.get("label") or ""
+            outcome = ("ran" if status in RAN else "hit" if "cache hit" in label
+                       else "up-to-date" if label == "up to date" else "skipped")
+            steps[(e.get("task", "?"), outcome)] += 1
+        elif e.get("type") == "module-finish" and isinstance(e.get("tests"), dict):
+            tests = (tests or 0) + int(e["tests"].get("total", 0))
+    return steps, tests
+
+
+# --------------------------------------------------------------------------- Maven and Gradle
+
+TOOLS: benchtools.Tools | None = None
+
+
+def build_env(fx: dict, work: Path) -> dict:
+    env = {k: v for k, v in os.environ.items() if k not in benchtools.STRIPPED and k != "CI"}
+    home, _ = benchtools.java_for_project(work, fx["build"])
+    env["JAVA_HOME"] = str(home)
+    env["PATH"] = f"{home / 'bin'}{os.pathsep}{env.get('PATH', '')}"
+    if fx["build"] == "gradle":
+        env["GRADLE_USER_HOME"] = str(SUITE_HOME / "gradle-home")
+    return env
+
+
+def build_cmd(fx: dict, *, ci: bool) -> list[str]:
+    """The test pipeline in the repository's own tool. CI runs Gradle without its daemon or build cache."""
+    if fx["build"] == "maven":
+        return [str(TOOLS.maven_bin), "-B", "-q", *fx.get("maven-args", []), "test"]
+    flags = ["--no-daemon", "--no-build-cache"] if ci else ["--build-cache"]
+    return [str(TOOLS.gradle_bin), "-q", *flags, *fx.get("gradle-args", []), "test"]
+
+
+def surefire_tests(work: Path) -> int | None:
+    """Tests run, summed over every JUnit XML report Maven or Gradle wrote."""
+    total, seen = 0, False
+    for pattern in ("**/target/surefire-reports/TEST-*.xml", "**/build/test-results/**/TEST-*.xml"):
+        for report in work.glob(pattern):
+            head = report.read_text(encoding="utf-8", errors="replace")[:4000]
+            m = re.search(r"<testsuite\b[^>]*?\btests=\"(\d+)\"", head)
+            if m:
+                total, seen = total + int(m.group(1)), True
+    return total if seen else None
+
+
+# --------------------------------------------------------------------------- timing
+
+def run_logged(cmd: list[str], cwd: Path, env: dict, log: Path, stdout: Path | None = None) -> subprocess.CompletedProcess:
+    log.parent.mkdir(parents=True, exist_ok=True)
+    with open(log, "a", encoding="utf-8") as fh:
+        fh.write(f"$ {' '.join(cmd)}  (in {cwd})\n")
+        fh.flush()
+        out = open(stdout, "w", encoding="utf-8") if stdout else fh
+        try:
+            res = subprocess.run(cmd, cwd=cwd, env=env, stdout=out, stderr=fh)
+        finally:
+            if stdout:
+                out.close()
+        fh.write(f"[exit {res.returncode}]\n\n")
+    return res
+
+
+def timed(cmd: list[str], cwd: Path, env: dict, log: Path, events: Path | None = None) -> tuple[float, int]:
+    t0 = time.monotonic()
+    rc = run_logged(cmd, cwd, env, log, events).returncode
+    return time.monotonic() - t0, rc
+
+
+def p90(samples: list[float]) -> float:
+    ordered = sorted(samples)
+    return ordered[max(0, -(-9 * len(ordered) // 10) - 1)]
+
+
+def jk_test(work: Path, env: dict, log: Path, events: Path) -> dict:
+    wall, rc = timed([JK, "test", "--no-ansi", "-O", "jsonl"], work, env, log, events)
+    steps, tests = steps_of(events)
+    return {"s": round(wall, 2), "rc": rc, "tests": tests, "steps": {f"{k}:{o}": n for (k, o), n in sorted(steps.items())}}
+
+
+def build_test(fx: dict, work: Path, log: Path, *, ci: bool) -> dict:
+    wall, rc = timed(build_cmd(fx, ci=ci), work, build_env(fx, work), log)
+    return {"s": round(wall, 2), "rc": rc, "tests": surefire_tests(work)}
+
+
+# --------------------------------------------------------------------------- arms
+
+def edit_file(work: Path, fx: dict, tag: int) -> None:
+    """Append a private method before the class's closing brace: new bytecode, the same API."""
+    path = work / fx["edit"]
+    text = path.read_text(encoding="utf-8")
+    cut = text.rstrip().rfind("}")
+    path.write_text(f"{text[:cut]}\n    private static int suiteEdit{tag}() {{\n        return {tag};\n    }}\n{text[cut:]}",
+                    encoding="utf-8")
+
+
+def arm_edit(fx: dict, tools: list[str], runs: int, out: Path) -> list[dict]:
+    rows = []
+    for tool in tools:
+        work = checkout(fx, fx["commit"], SUITE_HOME / "work" / fx["name"] / f"edit-{tool}")
+        log = out / "logs" / fx["name"] / f"edit-{tool}.log"
+        samples, verdicts, tests, steps = [], [], None, None
+        state = SUITE_HOME / "state" / "edit"
+        try:
+            if tool == "jk":
+                adopt(fx, work, log)
+                env = jk_env(fresh(state), fresh(SUITE_HOME / "cache" / "edit"))
+                run = lambda: jk_test(work, env, log, out / "logs" / fx["name"] / "edit-jk.jsonl")  # noqa: E731
+            else:
+                run = lambda: build_test(fx, work, log, ci=False)  # noqa: E731
+            prime = run()
+            if prime["rc"]:
+                raise StepFailed(f"the untimed first test run exited {prime['rc']}; see {log}")
+            for i in range(runs):
+                edit_file(work, fx, i + 1)
+                r = run()
+                git("checkout", "-q", "--", fx["edit"], cwd=work)
+                samples.append(r["s"])
+                verdicts.append(r["rc"])
+                tests, steps = r["tests"], r.get("steps")
+        except StepFailed as e:
+            rows.append({"fixture": fx["name"], "arm": "edit", "tool": tool, "status": str(e)})
+            continue
+        finally:
+            stop_engines(state)
+        rows.append({"fixture": fx["name"], "arm": "edit", "tool": tool, "runs": runs, "samples": samples,
+                     "median_s": round(statistics.median(samples), 2), "p90_s": p90(samples),
+                     "verdicts": verdicts, "tests": tests, "steps": steps, "command": " ".join(
+                         [Path(JK).name, "test"] if tool == "jk" else build_cmd(fx, ci=False))})
+    return rows
+
+
+def replay_one(fx: dict, sha: str, variant: str, remote: str | None, out: Path) -> dict:
+    work = checkout(fx, sha, SUITE_HOME / "work" / fx["name"] / f"replay-{variant}")
+    log = out / "logs" / fx["name"] / "replay" / f"{sha[:10]}-{variant}.log"
+    record = {"fixture": fx["name"], "sha": sha, "variant": variant, "load": os.getloadavg()[0],
+              "jk_sha256": jk_digest(), "at": round(time.time())}
+    if variant == fx["build"]:
+        return {**record, **build_test(fx, work, log, ci=True)}
+    state = SUITE_HOME / "state" / "runner"
+    try:
+        adopt(fx, work, log)
+        shared = variant == "jk-shared"
+        env = jk_env(fresh(state), fresh(SUITE_HOME / "cache" / "runner"), remote=remote if shared else None,
+                     write=shared, ci=True)
+        return {**record, **jk_test(work, env, log, log.with_suffix(".jsonl"))}
+    except StepFailed as e:
+        return {**record, "status": str(e)}
+    finally:
+        stop_engines(state)
+
+
+def summarize(fx: dict, arm: str, variant: str, records: list[dict], usd_per_minute: float | None) -> dict:
+    timed_ = [r for r in records if "s" in r]
+    row = {"fixture": fx["name"], "arm": arm, "tool": variant, "commits": len(records),
+           "failed": sum(1 for r in records if r.get("rc") or "status" in r),
+           "load_max": max((r.get("load", 0) for r in records), default=0),
+           "first_at": min((r.get("at", 0) for r in records), default=0)}
+    if not timed_:
+        return {**row, "status": "no commit ran"}
+    builds = sorted({r["jk_sha256"] for r in records if r.get("jk_sha256") and variant.startswith("jk")})
+    if len(builds) > 1:
+        return {**row, "status": f"jk was reinstalled during the replay ({', '.join(builds)}); start it again"}
+    minutes = [r["s"] / 60 for r in timed_]
+    row.update(median_min=round(statistics.median(minutes), 3), p90_min=round(p90(minutes), 3),
+               runner_min_per_100=round(statistics.mean(minutes) * 100, 1))
+    if usd_per_minute is not None:
+        row["usd_per_100"] = round(statistics.mean(minutes) * 100 * usd_per_minute, 2)
+    if variant.startswith("jk"):
+        by_kind: collections.Counter = collections.Counter()
+        outcomes: collections.Counter = collections.Counter()
+        for r in timed_:
+            for key, n in r.get("steps", {}).items():
+                kind, outcome = key.rsplit(":", 1)
+                outcomes[(kind, outcome)] += n
+                if outcome in ("hit", "up-to-date"):
+                    by_kind[kind] += n
+        cached_kinds = CACHEABLE | {k for (k, o) in outcomes if o == "hit"}
+        hits = sum(n for (k, o), n in outcomes.items() if o == "hit")
+        ran = sum(n for (k, o), n in outcomes.items() if o == "ran" and k in cached_kinds)
+        row["skipped_by_kind"] = dict(sorted(by_kind.items()))
+        row["hit_rate"] = round(hits / (hits + ran), 3) if hits + ran else 0.0
+    return row
+
+
+def arm_replay(fx: dict, tools: list[str], commits: int, remote: str | None, usd: float | None, out: Path,
+               deadline: float | None) -> list[dict]:
+    """One summary row per variant once every commit has run; none while the replay is unfinished."""
+    variants = [t for t in (fx["build"], "jk-cold", "jk-shared") if t in tools]
+    if "jk-shared" in variants and not remote:
+        variants.remove("jk-shared")
+        print("suite: replay without --cache-remote: the jk-shared variant is not run", file=sys.stderr)
+    done_file = out / "replay.jsonl"
+    done = {}
+    if done_file.is_file():
+        for line in done_file.read_text(encoding="utf-8").splitlines():
+            r = json.loads(line)
+            done[(r["fixture"], r["sha"], r["variant"])] = r
+    shas = history(fx, commits)
+    for i, sha in enumerate(shas, 1):
+        for variant in variants:
+            if (fx["name"], sha, variant) in done:
+                continue
+            if deadline is not None and time.monotonic() > deadline:
+                print(f"suite: replay stopped at commit {i} of {len(shas)}; the same --out resumes it", file=sys.stderr)
+                return []
+            r = replay_one(fx, sha, variant, remote, out)
+            done[(fx["name"], sha, variant)] = r
+            with open(done_file, "a", encoding="utf-8") as fh:
+                fh.write(json.dumps(r) + "\n")
+            print(f"  {fx['name']} {i}/{len(shas)} {sha[:10]} {variant}: "
+                  f"{r.get('s', '-')} s exit {r.get('rc', r.get('status'))}", flush=True)
+    return [summarize(fx, "replay", v, [done[(fx["name"], s, v)] for s in shas], usd) for v in variants]
+
+
+def arm_morning(fx: dict, tools: list[str], runs: int, remote: str | None, out: Path) -> list[dict]:
+    rows = []
+    for variant in [t for t in ("jk-cold", "jk-shared", fx["build"]) if t in tools]:
+        if variant == "jk-shared" and not remote:
+            rows.append({"fixture": fx["name"], "arm": "morning", "tool": variant, "status": "no --cache-remote"})
+            continue
+        records = []
+        for i in range(runs):
+            work = checkout(fx, fx["commit"], SUITE_HOME / "work" / fx["name"] / f"morning-{variant}")
+            log = out / "logs" / fx["name"] / f"morning-{variant}.log"
+            if variant == fx["build"]:
+                records.append(build_test(fx, work, log, ci=False))
+                continue
+            state = SUITE_HOME / "state" / "morning"
+            try:
+                adopt(fx, work, log)
+                env = jk_env(fresh(state), fresh(SUITE_HOME / "cache" / "morning"),
+                             remote=remote if variant == "jk-shared" else None)
+                records.append(jk_test(work, env, log, out / "logs" / fx["name"] / f"morning-{variant}-{i}.jsonl"))
+            except StepFailed as e:
+                records.append({"status": str(e)})
+            finally:
+                stop_engines(state)
+        samples = [r["s"] for r in records if "s" in r]
+        row = {"fixture": fx["name"], "arm": "morning", "tool": variant, "runs": len(samples), "samples": samples,
+               "verdicts": [r.get("rc", r.get("status")) for r in records], "tests": records[-1].get("tests")}
+        if samples:
+            row.update(median_s=round(statistics.median(samples), 2), p90_s=p90(samples))
+        if variant.startswith("jk") and samples:
+            row["hit_rate"] = summarize(fx, "morning", variant, records, None).get("hit_rate")
+        rows.append(row)
+    return rows
+
+
+# --------------------------------------------------------------------------- main
+
+def jk_digest() -> str:
+    """The first 16 hex digits of the jk client's sha256: a reinstall mid-replay shows as a second value."""
+    return hashlib.sha256(Path(JK).resolve().read_bytes()).hexdigest()[:16]
+
+
+def jk_version() -> str:
+    env = dict(os.environ, JK_HOME=str(jk_home()))
+    return subprocess.run([JK, "--version"], capture_output=True, text=True, env=env).stdout.strip()
+
+
+def main(argv: list[str]) -> int:
+    global TOOLS
+    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    ap.add_argument("--arm", action="append", choices=ARMS, help="repeatable; default every arm")
+    ap.add_argument("--fixture", action="append", default=[], help="repeatable; default every fixture")
+    ap.add_argument("--tool", action="append", help="jk, maven or gradle for edit; jk-cold, jk-shared or the build "
+                                                    "tool for replay and morning (repeatable; default all)")
+    ap.add_argument("--runs", type=int, default=5, help="timed runs per edit and morning row (default 5)")
+    ap.add_argument("--commits", type=int, default=200, help="commits the replay walks (default 200)")
+    ap.add_argument("--cache-remote", help="the shared cache the jk-shared variant uses (its credential comes from "
+                                           "the environment, as JumpKick reads it)")
+    ap.add_argument("--max-minutes", type=float, help="stop the replay between commits after this long; "
+                                                      "the same --out resumes it")
+    ap.add_argument("--usd-per-runner-minute", type=float, help="price one runner minute; rows then carry usd_per_100")
+    ap.add_argument("--out", type=Path, help="results directory (default $SUITE_HOME/results/<stamp>)")
+    benchtools.add_arguments(ap)
+    ns = ap.parse_args(argv)
+    benchtools.use_flags(ns)
+    arms = ns.arm or list(ARMS)
+    fixtures = load_fixtures(ns.fixture)
+    TOOLS = benchtools.resolve(allow_stale=ns.allow_stale_tools, offline=ns.offline_tools,
+                               need=tuple(sorted({f["build"] for f in fixtures})))
+    out = ns.out or SUITE_HOME / "results" / dt.datetime.now().strftime("%Y%m%d-%H%M%S")
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "rows.jsonl").unlink(missing_ok=True)
+    stamp = benchtools.stamp(TOOLS)
+    deadline = time.monotonic() + ns.max_minutes * 60 if ns.max_minutes else None
+    for fx in fixtures:
+        every = {"edit": ["jk", fx["build"]], "replay": [fx["build"], "jk-cold", "jk-shared"],
+                 "morning": ["jk-cold", "jk-shared", fx["build"]]}
+        for arm in arms:
+            tools = [t for t in every[arm] if not ns.tool or t in ns.tool]
+            start = benchtools.conditions()
+            if arm == "edit":
+                rows = arm_edit(fx, tools, ns.runs, out)
+            elif arm == "replay":
+                rows = arm_replay(fx, tools, ns.commits, ns.cache_remote, ns.usd_per_runner_minute, out, deadline)
+            else:
+                rows = arm_morning(fx, tools, ns.runs, ns.cache_remote, out)
+            for row in rows:
+                row.update(commit=fx["commit"], build=fx["build"], load_start=start["load"], load_end=benchtools.conditions()["load"],
+                           jk_version=jk_version(), **stamp)
+                with open(out / "rows.jsonl", "a", encoding="utf-8") as fh:
+                    fh.write(json.dumps(row) + "\n")
+                shown = {k: row[k] for k in ("median_s", "p90_s", "median_min", "p90_min", "hit_rate", "failed",
+                                             "status", "tests") if k in row}
+                print(f"{fx['name']} {arm} [{row['tool']}] {shown}", flush=True)
+    stop_engines(SUITE_HOME / "state" / "prep")
+    print(f"rows: {out / 'rows.jsonl'}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
