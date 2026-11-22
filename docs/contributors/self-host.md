@@ -145,6 +145,14 @@ QUEUE_CHECKOUT=~/src/jk-queue-checkout scripts/queue/loop.sh
 from a checkout other than `QUEUE_CHECKOUT`; the header of `scripts/queue/loop.sh` lists its
 settings, and `scripts/test-queue.sh` holds it to the rules above in scratch repositories.
 
+**Pausing.** While `pause` exists in the queue's repository, the queue and the
+[Full tier loop](#the-full-tier-loop) start no batch or cycle: the one in flight finishes, each loop
+says once that it is paused, with the file's first line as the reason (the queue on its output, the
+Full loop in `full-runs.log`), and looks again every `QUEUE_POLL` or `FULL_POLL` seconds, however
+long the pause lasts. `scripts/queue/status.sh` adds a line saying the queue is paused and why.
+Removing the file resumes both. `scripts/bench-night.sh pause` and `resume` write and remove it
+for a night of benches.
+
 ### Docs-only changes
 
 A change is docs-only when every file it touches is a doc (a file under `docs/` or `hosting/`, or a

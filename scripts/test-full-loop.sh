@@ -9,7 +9,9 @@
 # tickets why. After two red cycles the queue lands only the fix (a revert of the batch's commit, or
 # a commit for its ticket) and holds the rest, until a green cycle lifts the hold. Two gates in a row
 # green only because a class passed on the gate's re-run are green cycles that name the class: green
-# moves, no ticket is told, and the queue is not held.
+# moves, no ticket is told, and the queue is not held. While the pause file exists the loop starts no
+# cycle, even one it was waiting on the gate lock for, and says once in full-runs.log that it is
+# paused and why; removing the file resumes it.
 set -euo pipefail
 
 unset "${!GATE_@}" "${!FULL_@}" "${!QUEUE_@}"
@@ -40,7 +42,9 @@ KA
 chmod +x "$WORK/bin/jk" "$WORK/bin/ka"
 export PATH="$WORK/bin:$PATH" KA_LOG="$WORK/ka.log"
 : >"$KA_LOG"
+fake_flock=""
 if ! command -v flock >/dev/null 2>&1; then
+  fake_flock=1
   printf '%s\n' '#!/usr/bin/env bash' 'shift 3' 'exec "$@"' >"$WORK/bin/flock"
   chmod +x "$WORK/bin/flock"
 fi
@@ -232,5 +236,39 @@ grep -q '^comment|TK-XXXX1|.*conflicts with later work' "$KA_LOG" || fail "x's t
 grep -q '^move|' "$KA_LOG" && fail "a culprit that was not reverted had its ticket reopened"
 [[ -z "$(git -C "$WORK/fco" status --porcelain)" ]] || fail "the conflicting revert left the Full checkout dirty"
 [[ "$(git --git-dir="$QUEUE_REPO" for-each-ref refs/queue/full-revert)" == "" ]] || fail "a conflicting revert was submitted"
+
+# --- paused: no cycle starts, even the one the loop waited on the gate lock for, however many looks
+# it takes; full-runs.log says so once with the reason; removing the file resumes it ---
+land z z.txt "TK-ZZZZ1: z"
+n="$(gated)"
+echo "a bench night" >"$QUEUE_REPO/pause"
+rc=0
+FULL_CHECKOUT="$WORK/fco" FULL_LOG_DIR="$logs" bash "$ROOT/scripts/gate/full-loop.sh" --cycle || rc=$?
+[[ "$rc" -eq 4 ]] || fail "a cycle started while paused exited $rc, want 4"
+# Where flock is real, the loop is already waiting on the gate lock when the pause starts.
+if [[ -z "$fake_flock" ]]; then
+  rm "$QUEUE_REPO/pause"
+  exec 8>>"$GATE_LOCK"
+  flock 8
+fi
+FULL_POLL=1 full >"$WORK/paused.out" 2>&1 8>&- &
+looping=$!
+if [[ -z "$fake_flock" ]]; then
+  sleep 1
+  echo "a bench night" >"$QUEUE_REPO/pause"
+  flock -u 8
+  exec 8>&-
+fi
+for _ in $(seq 100); do runs | grep -q '^full paused' && break; sleep 0.1; done
+sleep 3
+kill -0 "$looping" 2>/dev/null || fail "the paused loop ended: $(cat "$WORK/paused.out")"
+[[ "$(gated)" -eq "$n" ]] || fail "a paused loop started a gate"
+[[ "$(runs | grep -c '^full paused .*: a bench night (')" -eq 1 ]] || fail "the log does not say once that it is paused and why: $(runs)"
+rm "$QUEUE_REPO/pause"
+for _ in $(seq 200); do kill -0 "$looping" 2>/dev/null || break; sleep 0.1; done
+if kill -0 "$looping" 2>/dev/null; then kill "$looping"; fail "the loop did not resume: $(runs)"; fi
+wait "$looping" || fail "the resumed loop failed: $(cat "$WORK/paused.out")"
+runs | grep -q '^full resumed ' || fail "the log does not say the loop resumed: $(runs)"
+[[ "$(gated)" -eq $((n + 1)) ]] || fail "the resumed loop did not gate the new tip: $(runs)"
 
 echo "test-full-loop: ok ($(gated) Full gates, $(reruns | wc -l | tr -d ' ') re-runs)"

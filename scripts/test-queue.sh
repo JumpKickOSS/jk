@@ -9,7 +9,9 @@
 # branch that leaves the queue any other way is recorded as dropped; when origin/main moves during a
 # gate the queue does not force its push, and lands the batch on the new origin/main next time, or
 # at once when what moved it is docs-only. A batch that touches only docs no test reads is gated
-# with the docs tier; one that touches a doc a test reads, or code, with the Queue tier.
+# with the docs tier; one that touches a doc a test reads, or code, with the Queue tier. While the
+# pause file exists the loop starts no batch, even one it was waiting on the gate lock for, logs once
+# that it is paused and why, and status says so; removing the file resumes it.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -32,7 +34,9 @@ printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$WORK/bin/jk"
 chmod +x "$WORK/bin/jk"
 export PATH="$WORK/bin:$PATH"
 # macOS has no flock: there the loop's lock is a stand-in that runs the batch.
+fake_flock=""
 if ! command -v flock >/dev/null 2>&1; then
+  fake_flock=1
   printf '%s\n' '#!/usr/bin/env bash' 'shift 3' 'exec "$@"' >"$WORK/bin/flock"
   chmod +x "$WORK/bin/flock"
 fi
@@ -235,4 +239,46 @@ lines="$(wc -l <"$WORK/queue.git/queue-batches.log")"
 queue || fail "an empty queue failed"
 [[ "$(wc -l <"$WORK/queue.git/queue-batches.log")" -eq "$lines" ]] || fail "an empty queue ran a batch"
 
-echo "test-queue: ok ($lines batches)"
+# --- paused: no batch starts, even the one the loop waited on the gate lock for, however many looks
+# it takes; the loop says so once with the reason, status says so; removing the file resumes it ---
+git -C "$dev" fetch -q
+branch p origin/main docs/p.md p
+submit p || fail "submitting p failed"
+gates="$(wc -l <"$WORK/logs/tiers.log")"
+echo "a bench night" >"$WORK/queue.git/pause"
+rc=0
+env QUEUE_REPO="$WORK/queue.git" QUEUE_CHECKOUT="$WORK/co" QUEUE_GATE="$WORK/gate.sh" QUEUE_LOG_DIR="$WORK/logs" \
+  bash "$Q/loop.sh" --batch || rc=$?
+[[ "$rc" -eq 4 ]] || fail "a batch started while paused exited $rc, want 4"
+# Where flock is real, the loop is already waiting on the gate lock when the pause starts.
+if [[ -z "$fake_flock" ]]; then
+  rm "$WORK/queue.git/pause"
+  exec 8>>"$WORK/gate.lock"
+  flock 8
+fi
+queue QUEUE_POLL=1 >"$WORK/paused.out" 2>&1 8>&- &
+looping=$!
+if [[ -z "$fake_flock" ]]; then
+  sleep 1
+  echo "a bench night" >"$WORK/queue.git/pause"
+  flock -u 8
+  exec 8>&-
+fi
+for _ in $(seq 100); do grep -q '^queue: paused' "$WORK/paused.out" && break; sleep 0.1; done
+sleep 3
+kill -0 "$looping" 2>/dev/null || fail "the paused loop ended: $(cat "$WORK/paused.out")"
+[[ "$(wc -l <"$WORK/logs/tiers.log")" -eq "$gates" ]] || fail "a paused loop started a gate"
+[[ "$(grep -c '^queue: paused .*: a bench night (' "$WORK/paused.out")" -eq 1 ]] ||
+  fail "the loop does not say once that it is paused and why: $(cat "$WORK/paused.out")"
+status p | grep -q '^p: waiting ' || fail "p does not wait through the pause: $(status p)"
+status p | grep -qx 'the queue is paused: a bench night; it starts no batch until the pause file is removed' ||
+  fail "status does not say the queue is paused: $(status p)"
+rm "$WORK/queue.git/pause"
+for _ in $(seq 200); do kill -0 "$looping" 2>/dev/null || break; sleep 0.1; done
+if kill -0 "$looping" 2>/dev/null; then kill "$looping"; fail "the loop did not resume: $(cat "$WORK/paused.out")"; fi
+wait "$looping" || fail "the resumed loop failed: $(cat "$WORK/paused.out")"
+grep -q '^queue: resumed' "$WORK/paused.out" || fail "the loop does not say it resumed: $(cat "$WORK/paused.out")"
+holds docs/p.md || fail "p did not land after the pause: $(status p)"
+status p | grep -q 'paused' && fail "status still says paused: $(status p)"
+
+echo "test-queue: ok ($(wc -l <"$WORK/queue.git/queue-batches.log") batches)"

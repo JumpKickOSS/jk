@@ -17,8 +17,8 @@
 #   scripts/bench-night.sh run --until 01:00 [--dry-run]   # the night; --dry-run lists it, runs no agent
 #   scripts/bench-night.sh status                          # the night's done, running, left, ETA and tables
 #   scripts/bench-night.sh smoke                           # tier 0 for every agent now, one line each
-#   scripts/bench-night.sh pause                           # stop the queue and Full loops between gates
-#   scripts/bench-night.sh resume                          # start them again as they were
+#   scripts/bench-night.sh pause                           # the queue and Full loops start no gate
+#   scripts/bench-night.sh resume                          # they start gates again
 #   scripts/bench-night.sh prepare                         # set up and build the corpus repositories
 #
 # The dry run prints each step's cells and minutes, when the night would end, and the cells that would
@@ -27,31 +27,27 @@
 # starts. `status` reads the night's progress under $NIGHT_STATE/night, running or ended.
 #
 # `run` checks first, and refuses a real run on any failure: the installed jk is this tree's version
-# and lists every MCP tool a step calls; the queue and Full loops are not running; no gate holds the
-# gate lock (which it then holds to the end). It names every agent CLI that is not logged in and every
+# and lists every MCP tool a step calls; the queue and Full loops are paused; no gate holds the gate
+# lock (which it then holds to the end). It names every agent CLI that is not logged in and every
 # corpus repository not set up, and skips their cells; it never logs in. An agent whose two cells in a
 # row end in an error row (a preflight or a login refused) is skipped for the rest of the step.
 #
-# `pause` takes the gate lock, so it waits for a batch or Full cycle in flight to finish, saves each
-# loop's command line, directory, output file and environment under $NIGHT_STATE, and stops the
-# loop's process group (the loop and its flock waiting for the lock). `resume` starts each saved loop
-# in its own session. A loop is the process running `bash scripts/queue/loop.sh` or
-# `bash scripts/gate/full-loop.sh` in $NIGHT_RUNNER; no other process is touched.
+# `pause` writes the queue's pause file, <QUEUE_REPO>/pause, with its reason: while it exists the
+# loops keep running but start no batch or Full cycle, however long the night. It then waits for the
+# gate lock, so a batch or cycle in flight finishes before it returns. `resume` removes the file, and
+# each loop starts its next gate at its next look. No process is stopped or started.
 #
-#   NIGHT_RUNNER    the checkout the loops run from (default ~/src/jk-queue-runner)
-#   NIGHT_STATE     saved loops, the night's progress and its log (default /var/tmp/jk-bench-night)
+#   QUEUE_REPO      the merge queue's repository, which holds the pause file (default ~/src/jk-queue.git)
+#   NIGHT_STATE     the night's progress and its log (default /var/tmp/jk-bench-night)
 #   NIGHT_EXTRA     step 4's file of commands, run from this tree (default none)
 #   NIGHT_HARNESS   the directory of smoke-test and change-tasks, from this tree (default bench/agent-loop)
 #   GATE_LOCK       the lock every gate on this host takes (default /var/tmp/fleet-gate.lock)
-#   QUEUE_CHECKOUT, FULL_CHECKOUT
-#                   what `resume` gives a loop whose environment could not be saved (default
-#                   ~/src/jk-queue-checkout, ~/src/jk-full-checkout)
 #   NIGHT_DRIVERS, NIGHT_FIRST, NIGHT_SKIP, NIGHT_NOGRAPH, NIGHT_MAX_MINUTES, NIGHT_RESULTS
 #                   the plan's (bench/agent-loop/night-plan)
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-RUNNER="${NIGHT_RUNNER:-$HOME/src/jk-queue-runner}"
+PAUSE="${QUEUE_REPO:-$HOME/src/jk-queue.git}/pause"
 STATE="${NIGHT_STATE:-/var/tmp/jk-bench-night}"
 LOCK="${GATE_LOCK:-/var/tmp/fleet-gate.lock}"
 PLAN="$ROOT/bench/agent-loop/night-plan"
@@ -60,8 +56,6 @@ RESULTS="${NIGHT_RESULTS:-$ROOT/bench/agent-loop/results}"
 HARNESS="${NIGHT_HARNESS:-bench/agent-loop}"
 SUMMARY="$ROOT/bench/agent-loop/night-summary"
 CORPUS="$("$PLAN" corpus)" || exit 2
-LOOPS=(queue full)
-declare -A LOOP_SCRIPT=([queue]=scripts/queue/loop.sh [full]=scripts/gate/full-loop.sh)
 
 die() {
   echo "bench-night: $*" >&2
@@ -71,22 +65,6 @@ say() { echo "$*" | tee -a "${LOG:-/dev/null}"; }
 hm() { date -d "@$1" +%H:%M; }
 mins() { echo "$((($1 + 59) / 60)) min"; }
 clock() { printf '%d:%02d' $(($1 / 3600)) $(($1 % 3600 / 60)); }
-
-# loop_pid <queue|full>: the pid of that loop's driver in $RUNNER, or nothing.
-loop_pid() {
-  local pid
-  for pid in $(pgrep -f "^bash ${LOOP_SCRIPT[$1]//./\\.}( |\$)"); do
-    [ "$(readlink "/proc/$pid/cwd" 2>/dev/null)" = "$RUNNER" ] && echo "$pid"
-  done
-}
-
-# loop_unplaced <queue|full>: pids running that loop's command whose directory cannot be read.
-loop_unplaced() {
-  local pid
-  for pid in $(pgrep -f "^bash ${LOOP_SCRIPT[$1]//./\\.}( |\$)"); do
-    readlink "/proc/$pid/cwd" >/dev/null 2>&1 || echo "$pid"
-  done
-}
 
 # login <driver> <model>: nothing when its CLI is logged in, else why not. Never logs in. Copilot keeps
 # its login in the system credential store, which no command reads without a model call: only its
@@ -124,62 +102,24 @@ login() {
 }
 
 pause() {
-  { mkdir -p "$STATE/loops" && chmod 700 "$STATE"; } || die "cannot write $STATE"
+  { mkdir -p "$(dirname "$PAUSE")" &&
+    echo "bench night: scripts/bench-night.sh pause on $(hostname), $(date '+%F %H:%M %Z')" >"$PAUSE.tmp" &&
+    mv "$PAUSE.tmp" "$PAUSE"; } || die "cannot write the pause file $PAUSE"
+  echo "the queue and Full loops are paused: they start no gate until scripts/bench-night.sh resume ($PAUSE)"
   exec 9>>"$LOCK" || die "cannot open the gate lock $LOCK"
   echo "waiting for the gate lock $LOCK (a batch or Full cycle in flight finishes first)"
-  flock -w "${NIGHT_PAUSE_WAIT:-10800}" 9 || die "the gate lock stayed taken; nothing was stopped"
-  local name pid pgid
-  for name in "${LOOPS[@]}"; do
-    pid="$(loop_unplaced "$name" | xargs)"
-    [ -z "$pid" ] || echo "$name loop: pid $pid runs ${LOOP_SCRIPT[$name]} in a directory this user cannot read; left alone"
-    pid="$(loop_pid "$name")"
-    if [ -z "$pid" ]; then
-      echo "$name loop: not running in $RUNNER"
-      continue
-    fi
-    [ "$(wc -w <<<"$pid")" -eq 1 ] || die "$name loop: several drivers run in $RUNNER ($pid); stop them by hand"
-    rm -f "$STATE/loops/$name".*
-    (umask 077 && cat "/proc/$pid/environ" >"$STATE/loops/$name.environ" 2>/dev/null) ||
-      { rm -f "$STATE/loops/$name.environ"; echo "$name loop: its environment is unreadable; resume uses QUEUE_CHECKOUT and FULL_CHECKOUT"; }
-    cat "/proc/$pid/cmdline" >"$STATE/loops/$name.cmdline"
-    readlink "/proc/$pid/fd/1" >"$STATE/loops/$name.out" 2>/dev/null || true
-    pgid="$(ps -o pgid= -p "$pid" | tr -d ' ')"
-    if [ "$pgid" = "$pid" ]; then
-      kill -TERM -- "-$pgid"
-    else
-      # shellcheck disable=SC2046 # one pid per word: the loop's children
-      kill -TERM "$pid" $(pgrep -P "$pid")
-    fi
-    echo "$name loop: stopped (pid $pid); saved in $STATE/loops"
-  done
+  flock -w "${NIGHT_PAUSE_WAIT:-10800}" 9 || die "a gate still holds $LOCK; the loops stay paused"
+  flock -u 9
+  echo "no gate runs"
 }
 
 resume() {
-  local name pid out argv envs
-  for name in "${LOOPS[@]}"; do
-    pid="$(loop_pid "$name")"
-    if [ -n "$pid" ]; then
-      echo "$name loop: already running (pid $pid)"
-      continue
-    fi
-    if [ -f "$STATE/loops/$name.cmdline" ]; then
-      mapfile -d '' argv <"$STATE/loops/$name.cmdline"
-    else
-      argv=(bash "${LOOP_SCRIPT[$name]}")
-    fi
-    if [ -f "$STATE/loops/$name.environ" ]; then
-      mapfile -d '' envs <"$STATE/loops/$name.environ"
-    else
-      envs=("HOME=$HOME" "PATH=$PATH" "QUEUE_CHECKOUT=${QUEUE_CHECKOUT:-$HOME/src/jk-queue-checkout}"
-        "FULL_CHECKOUT=${FULL_CHECKOUT:-$HOME/src/jk-full-checkout}")
-    fi
-    out="$(cat "$STATE/loops/$name.out" 2>/dev/null)"
-    case "$out" in /dev/* | pipe:* | socket:* | "") out="$STATE/$name-loop.out" ;; esac
-    (cd "$RUNNER" && env -i "${envs[@]}" setsid -f "${argv[@]}" >>"$out" 2>&1 </dev/null) ||
-      die "$name loop: did not start"
-    rm -f "$STATE/loops/$name".*
-    echo "$name loop: started in $RUNNER (${argv[*]}), output to $out"
-  done
+  if [ ! -f "$PAUSE" ]; then
+    echo "the queue and Full loops are not paused ($PAUSE)"
+    return 0
+  fi
+  rm -f "$PAUSE" || die "cannot remove the pause file $PAUSE"
+  echo "the queue and Full loops are resumed: each starts its next gate at its next look"
 }
 
 # prepare: every corpus repository a cell needs, checked out at its pin and built by this jk. A repository
@@ -253,7 +193,7 @@ run() {
   [ "$dry" -eq 1 ] && LOG=/dev/null
   say "bench night: $(date '+%F %H:%M') until $(hm "$deadline"), on $(hostname)$([ "$dry" -eq 1 ] && echo ', dry run: no agent runs')"
 
-  local problems=() line name pid
+  local problems=() line
   local want installed
   want="$(sed -nE 's/^version *= *"([^"]+)".*/\1/p' "$ROOT/jk.toml" | head -1)-SNAPSHOT"
   installed="$(jk --version 2>/dev/null | awk '{print $2}')"
@@ -261,12 +201,7 @@ run() {
   if [ -n "$installed" ]; then
     line="$("$PLAN" tools 2>&1)" || problems+=("$line")
   fi
-  for name in "${LOOPS[@]}"; do
-    pid="$(loop_pid "$name")"
-    [ -z "$pid" ] || problems+=("the $name loop is running (pid $pid): scripts/bench-night.sh pause")
-    pid="$(loop_unplaced "$name" | xargs)"
-    [ -z "$pid" ] || problems+=("pid $pid runs ${LOOP_SCRIPT[$name]} in a directory this user cannot read")
-  done
+  [ -f "$PAUSE" ] || problems+=("the queue and Full loops are not paused: scripts/bench-night.sh pause")
   exec 9>>"$LOCK" || die "cannot open the gate lock $LOCK"
   flock -n 9 || problems+=("a gate holds $LOCK")
   [ "$dry" -eq 1 ] && flock -u 9

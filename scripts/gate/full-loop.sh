@@ -28,7 +28,12 @@
 # it. A hold that names nothing (no batch was found) lands nothing until a person adds a
 # `ticket <id>` or `commit <sha>` line to it.
 #
-# Usage: scripts/gate/full-loop.sh [--once]
+# While <QUEUE_REPO>/pause exists the loop starts no cycle: a cycle in flight finishes, the loop logs
+# once in full-runs.log that it is paused, with the file's first line as the reason, and looks again
+# every FULL_POLL seconds, however long the pause; removing the file resumes it, and full-runs.log
+# says so. scripts/bench-night.sh pause and resume write and remove it.
+#
+# Usage: scripts/gate/full-loop.sh [--once]     (--once runs one cycle, after the pause if there is one)
 #
 #   QUEUE_REPO       the merge queue's repository (default ~/src/jk-queue.git): its queue-batches.log
 #                    is read, and this loop's state is written beside it: full-runs.log (one line per
@@ -62,16 +67,32 @@
     cp "$0" "$D/full-loop/full-loop.sh" || exit 2
     cp "$H/rerun-classes.sh" "$H/flaky.sh" "$H/green.sh" "$D/full-loop/" || exit 2
     cp "$H/../queue/branch-tier.sh" "$H/../queue/submit.sh" "$H/../queue/common.sh" "$D/full-loop/queue/" || exit 2
+    paused=""
     while :; do
+      if [ -f "$repo/pause" ]; then
+        if [ -z "$paused" ]; then
+          paused=1
+          echo "full paused $(date -u +%Y-%m-%dT%H:%M:%SZ): $(head -1 "$repo/pause" 2>/dev/null | grep . || echo 'no reason given') ($repo/pause)" >>"$repo/full-runs.log"
+        fi
+        sleep "${FULL_POLL:-300}"
+        continue
+      fi
+      [ -z "$paused" ] || echo "full resumed $(date -u +%Y-%m-%dT%H:%M:%SZ)" >>"$repo/full-runs.log"
+      paused=""
       flock -w 7200 "${GATE_LOCK:-/var/tmp/fleet-gate.lock}" bash "$D/full-loop/full-loop.sh" --cycle
       rc=$?
+      # Paused while it waited for the lock: it gated nothing, and waits out the pause above.
+      [ "$rc" -eq 4 ] && continue
+      [ "$rc" -eq 1 ] && [ -f "$repo/pause" ] && continue
       [ "$rc" -eq 0 ] || [ "$rc" -eq 3 ] || exit "$rc"
       [ "${1:-}" = --once ] && exit 0
       if [ "$rc" -eq 3 ]; then sleep "${FULL_POLL:-300}"; else sleep "${FULL_YIELD:-10}"; fi
     done
   fi
 
-  # --- one cycle; exit 0 when one ran, 3 when origin/main has not moved, 2 when it could not gate ---
+  # --- one cycle; exit 0 when one ran, 3 when origin/main has not moved, 4 when paused, 2 when it
+  # could not gate ---
+  [ ! -f "$repo/pause" ] || exit 4
   V="$repo/full-verdicts"
   short() { git rev-parse --short=12 "$1"; }
   log() { echo "$*" >>"$repo/full-runs.log"; }

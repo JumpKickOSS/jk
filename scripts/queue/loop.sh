@@ -28,7 +28,12 @@
 # branches. A batch that could not gate at all (a dirty checkout, a failed fetch, no verdict) puts
 # its branches back to waiting and stops the loop for a person to look.
 #
-# Usage: scripts/queue/loop.sh [--once]
+# While <QUEUE_REPO>/pause exists the loop starts no batch: a batch in flight finishes, the loop logs
+# once that it is paused, with the file's first line as the reason, and looks again every QUEUE_POLL
+# seconds, however long the pause; removing the file resumes it. scripts/bench-night.sh pause and
+# resume write and remove it, and scripts/queue/status.sh says the queue is paused.
+#
+# Usage: scripts/queue/loop.sh [--once]     (--once runs one batch, after the pause if there is one)
 #
 #   QUEUE_REPO      the queue's bare repository (default ~/src/jk-queue.git); created when missing
 #   QUEUE_CHECKOUT  the clean checkout batches are built and gated in; its origin holds main (required)
@@ -53,16 +58,31 @@
     mkdir -p "$S" "$D" || exit 2
     # Run a copy, so a batch that changes this script changes the loop only when it is restarted.
     cp "$0" "$D/loop-running.sh" || exit 2
+    paused=""
     while :; do
+      if [ -f "$repo/pause" ]; then
+        if [ -z "$paused" ]; then
+          paused=1
+          echo "queue: paused $(date -u +%Y-%m-%dT%H:%M:%SZ): $(head -1 "$repo/pause" 2>/dev/null | grep . || echo 'no reason given') ($repo/pause)"
+        fi
+        sleep "${QUEUE_POLL:-60}"
+        continue
+      fi
+      [ -z "$paused" ] || echo "queue: resumed $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+      paused=""
       flock -w 7200 "${GATE_LOCK:-/var/tmp/fleet-gate.lock}" bash "$D/loop-running.sh" --batch
       rc=$?
+      # Paused while it waited for the lock: it gated nothing, and waits out the pause above.
+      [ "$rc" -eq 4 ] && continue
+      [ "$rc" -eq 1 ] && [ -f "$repo/pause" ] && continue
       [ "$rc" -eq 0 ] || [ "$rc" -eq 3 ] || exit "$rc"
       [ "${1:-}" = --once ] && exit 0
       [ "$rc" -eq 3 ] && sleep "${QUEUE_POLL:-60}"
     done
   fi
 
-  # --- one batch; exit 0 when one ran, 3 when nothing waits, 2 when it could not gate ---
+  # --- one batch; exit 0 when one ran, 3 when nothing waits, 4 when paused, 2 when it could not gate ---
+  [ ! -f "$repo/pause" ] || exit 4
   record() { # <branch> <line>...: where the branch stands now
     mkdir -p "$(dirname "$S/$1")" && printf '%s\n' "${@:2}" >"$S/$1.tmp" && mv "$S/$1.tmp" "$S/$1"
   }

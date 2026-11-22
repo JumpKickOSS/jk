@@ -392,10 +392,10 @@ library question's `find`); "no-code-tools" is `jk-nograph`.
 scripts/bench-night.sh prepare                          # every corpus repository at its pin, built (no agent)
 scripts/bench-night.sh smoke                            # tier 0 now, every agent, one PASS or FAIL line each
 scripts/bench-night.sh run --until 07:00 --dry-run      # every cell, minutes per step, when it ends
-scripts/bench-night.sh pause                            # stop the merge queue and Full loops between gates
+scripts/bench-night.sh pause                            # the merge queue and Full loops start no gate
 scripts/bench-night.sh run --until 07:00                # the night, under systemd-inhibit
 scripts/bench-night.sh status                           # from another shell: done, running, left, ETA, tables
-scripts/bench-night.sh resume                           # start both loops again as they were
+scripts/bench-night.sh resume                           # both loops start gates again
 ```
 
 `--until` is read in the host's time zone; name another one when it differs (`--until "01:00 MST"`).
@@ -412,7 +412,7 @@ running with its time so far, cells left, the time they are expected to take and
 night ends), then its tables so far. An agent CLI that is not logged in, a
 corpus repository not set up, and an agent whose two cells in a row end in an error row have their
 cells skipped and named. A real run refuses when the installed jk is not the tree's version or lacks
-an MCP tool a step calls, when a loop runs, or when a gate holds the gate lock, which it then holds to
+an MCP tool a step calls, when the loops are not paused, or when a gate holds the gate lock, which it then holds to
 the end. Rows land in `results/<date>-change-tasks/`, where the scoreboard reads them; nothing is
 banked or rendered: that is a separate, reviewed step.
 
@@ -425,24 +425,17 @@ code tool and hit, wall, turns, tokens by kind, dollars, first tool, code-tool c
 text after the tool, tool errors, turn cap). Dollars are the tokens at the API list prices of
 `prices.toml`, whose `published` date the header names. A no-code-tools cell's hit is `n/a`.
 
-`pause` takes the gate lock (`/var/tmp/fleet-gate.lock`), so a batch or Full cycle in flight finishes
-first, saves each loop's command line, directory, output and environment under
-`/var/tmp/jk-bench-night/loops/`, and stops the loop's process group; `resume` starts each in its own
-session. By hand, from the loops' checkout on the gate host:
+`pause` writes the merge queue's pause file, `~/src/jk-queue.git/pause` (`QUEUE_REPO`), with its
+reason on the first line: while it exists the queue and Full loops keep running but start no batch
+or Full cycle, however long the night, and say once that they are paused and why. It then waits for
+the gate lock (`/var/tmp/fleet-gate.lock`), so a batch or cycle in flight finishes before it returns.
+`resume` removes the file, and each loop starts its next gate at its next look. By hand, on the gate
+host:
 
 ```bash
-# pause: wait for the gate lock, then stop each loop's process group (the loop and its waiting flock)
-exec 9>>/var/tmp/fleet-gate.lock && flock 9
-for s in scripts/queue/loop.sh scripts/gate/full-loop.sh; do
-  for p in $(pgrep -f "^bash $s"); do
-    [ "$(readlink /proc/$p/cwd)" = "$HOME/src/jk-queue-runner" ] && kill -TERM -- "-$p"
-  done
-done
-exec 9>&-
-# resume
-cd ~/src/jk-queue-runner
-QUEUE_CHECKOUT=~/src/jk-queue-checkout setsid -f bash scripts/queue/loop.sh >>/var/tmp/jk-queue/loop.out 2>&1 </dev/null
-FULL_CHECKOUT=~/src/jk-full-checkout setsid -f bash scripts/gate/full-loop.sh >>/var/tmp/jk-queue/full-loop.out 2>&1 </dev/null
+echo "bench night" >~/src/jk-queue.git/pause                  # pause
+exec 9>>/var/tmp/fleet-gate.lock && flock 9 && exec 9>&-      # wait for a gate in flight
+rm ~/src/jk-queue.git/pause                                   # resume
 ```
 
 `bench/jar-size/` is the neighbouring bench; this one measures the loop, that one the artefact.

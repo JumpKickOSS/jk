@@ -5,36 +5,21 @@
 # in, and no agent runs; an agent cut by NIGHT_SKIP or the skip file leaves steps 2 and 3 only; smoke
 # names an agent that is not logged in and runs nothing; a real run over a fake harness runs every cell
 # past its deadline, logs how far past with what is done and left, `status` gives done, running, left
-# and an ETA while it runs, and the night ends with its tables, the tool hit rate in them; a real run
-# refuses while a loop runs; pause stops a loop in the runner checkout and resume starts it again with
-# the environment it had. Only processes started here are touched: a loop is found by its directory,
-# which is this test's scratch runner.
+# and an ETA while it runs, and the night ends with its tables, the tool hit rate in them; pause writes
+# the queue's pause file with its reason and waits for a gate holding the lock; resume removes it, and
+# a real run then refuses because the loops are not paused.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 WORK="$(mktemp -d "${TMPDIR:-/var/tmp}/jk-bench-night.XXXXXX")"
-RUNNER="$WORK/runner"
-
-loops() { # the pids of fake loops running in this test's runner
-  local pid
-  for pid in $(pgrep -f '^bash scripts/(queue/loop|gate/full-loop)\.sh' || true); do
-    [ "$(readlink "/proc/$pid/cwd" 2>/dev/null)" = "$RUNNER" ] && echo "$pid"
-  done
-  return 0
-}
-cleanup() {
-  local pid
-  for pid in $(loops); do kill -TERM -- "-$pid" 2>/dev/null || kill -TERM "$pid" 2>/dev/null || true; done
-  rm -rf "$WORK"
-}
-trap cleanup EXIT
+trap 'rm -rf "$WORK"' EXIT
 
 fail() {
   echo "test-bench-night: $*" >&2
   exit 1
 }
 
-mkdir -p "$WORK/bin" "$WORK/home/.config/muse" "$WORK/gr/repos/spring-petclinic" "$RUNNER/scripts/queue"
+mkdir -p "$WORK/bin" "$WORK/home/.config/muse" "$WORK/gr/repos/spring-petclinic"
 touch "$WORK/home/.config/muse/auth.json" "$WORK/gr/repos/spring-petclinic/jk.toml"
 want="$(sed -nE 's/^version *= *"([^"]+)".*/\1/p' "$ROOT/jk.toml" | head -1)-SNAPSHOT"
 
@@ -76,15 +61,10 @@ for line in sys.stdin:
 esac
 EOF
 chmod +x "$WORK/bin/jk"
-cat >"$RUNNER/scripts/queue/loop.sh" <<EOF
-#!/usr/bin/env bash
-echo "\$QUEUE_CHECKOUT" >>"$WORK/loop-started"
-while :; do sleep 1; done
-EOF
 
 night() {
   env -u XAI_API_KEY -u JK_BENCH_CLAUDE HOME="$WORK/home" PATH="$WORK/bin:$PATH" GRAPH_RETRIEVAL_HOME="$WORK/gr" \
-    NIGHT_RUNNER="$RUNNER" NIGHT_STATE="$WORK/state" GATE_LOCK="$WORK/gate.lock" NIGHT_INHIBITED=1 \
+    QUEUE_REPO="$WORK/queue.git" NIGHT_STATE="$WORK/state" GATE_LOCK="$WORK/gate.lock" NIGHT_INHIBITED=1 \
     bash "$ROOT/scripts/bench-night.sh" "$@"
 }
 
@@ -196,22 +176,30 @@ rm "$WORK/state/skip"
 if NIGHT_DRIVERS=cursor night smoke >"$WORK/smoke" 2>&1; then fail "smoke passed an agent not logged in"; fi
 grep -q '^FAIL cursor composer-2.5/default: cursor-agent is not logged in' "$WORK/smoke" ||
   fail "smoke does not name cursor's login: $(cat "$WORK/smoke")"
-# A loop of another user or sandbox on this host is a problem the run names; none other may show.
-if grep 'problem:' "$WORK/dry" | grep -qv 'in a directory this user cannot read'; then
+# The loops are not paused yet: the only problem the dry run names.
+if grep 'problem:' "$WORK/dry" | grep -qv 'the queue and Full loops are not paused'; then
   fail "the dry run saw a problem: $(grep 'problem:' "$WORK/dry")"
 fi
+grep -q 'problem: the queue and Full loops are not paused' "$WORK/dry" || fail "the dry run does not say the loops run on: $(cat "$WORK/dry")"
 [ ! -e "$WORK/calls" ] || fail "the dry run ran an agent or jk: $(cat "$WORK/calls")"
 
 # A real run over a fake harness, its soft deadline seconds away: the first cell waits until the deadline
-# is past, `status` reads the night meanwhile, and every cell then still runs. Processes this user cannot
-# read (another sandbox's loops) would refuse a real run, so here pgrep leaves them out.
-mkdir -p "$WORK/harness" "$WORK/hostbin" "$WORK/results"
-real_pgrep="$(command -v pgrep)"
-cat >"$WORK/hostbin/pgrep" <<EOF
-#!/usr/bin/env bash
-for p in \$("$real_pgrep" "\$@"); do readlink "/proc/\$p/cwd" >/dev/null 2>&1 && echo "\$p"; done
-exit 0
-EOF
+# is past, `status` reads the night meanwhile, and every cell then still runs. Pause comes first: it
+# writes the pause file with its reason, and waits for a gate that holds the lock to finish.
+mkdir -p "$WORK/harness" "$WORK/results"
+exec 8>>"$WORK/gate.lock"
+flock 8
+night pause >"$WORK/pause" 2>&1 8>&- &
+pausing=$!
+for _ in $(seq 50); do [ -f "$WORK/queue.git/pause" ] && break; sleep 0.1; done
+grep -q '^bench night: scripts/bench-night.sh pause on ' "$WORK/queue.git/pause" ||
+  fail "pause did not write the pause file with its reason: $(cat "$WORK/queue.git/pause" "$WORK/pause" 2>&1)"
+sleep 0.5
+kill -0 "$pausing" 2>/dev/null || fail "pause returned while a gate held the lock: $(cat "$WORK/pause")"
+flock -u 8
+exec 8>&-
+wait "$pausing" || fail "pause failed: $(cat "$WORK/pause")"
+grep -q '^no gate runs$' "$WORK/pause" || fail "pause does not say no gate runs: $(cat "$WORK/pause")"
 cat >"$WORK/harness/smoke-test" <<EOF
 #!/usr/bin/env bash
 echo "smoke-test \$*" >>"$WORK/ran"
@@ -239,11 +227,11 @@ os.makedirs(out, exist_ok=True)
 open(os.path.join(out, "rows.jsonl"), "a").write(json.dumps(row) + "\n")
 ' "\$@"
 EOF
-chmod +x "$WORK/harness/smoke-test" "$WORK/harness/change-tasks" "$WORK/hostbin/pgrep"
+chmod +x "$WORK/harness/smoke-test" "$WORK/harness/change-tasks"
 echo "echo step four >>'$WORK/ran-extra'" >"$WORK/extra"
 real_night() {
   NIGHT_EXTRA="$WORK/extra" NIGHT_DRIVERS="claude-code copilot" NIGHT_HARNESS="$WORK/harness" NIGHT_RESULTS="$WORK/results" \
-    AGENT_LOOP_HOME="$WORK/agent-loop" PATH="$WORK/hostbin:$PATH" night "$@"
+    AGENT_LOOP_HOME="$WORK/agent-loop" night "$@"
 }
 deadline="$(date -d '+3 seconds' '+%F %T')"
 real_night run --until "$deadline" >"$WORK/run" 2>&1 &
@@ -280,25 +268,13 @@ grep -qE "^$(($(wc -l <<<"$plan") + 1)) done, 0 running, 0 left" "$WORK/status2"
 [ "$(cat "$WORK/ran-extra" 2>/dev/null)" = "step four" ] || fail "step 4 did not run past the deadline"
 [ ! -e "$WORK/calls" ] || fail "the real run ran an agent or jk: $(cat "$WORK/calls")"
 
-# A loop in the runner checkout: a real run refuses, and nothing runs.
-(cd "$RUNNER" && QUEUE_CHECKOUT=/queue-checkout setsid -f bash scripts/queue/loop.sh >/dev/null 2>&1 </dev/null)
-for _ in $(seq 50); do [ -n "$(loops)" ] && break; sleep 0.1; done
-pid="$(loops)"
-[ -n "$pid" ] || fail "the fake queue loop did not start"
-if night run --until 07:00 >"$WORK/real" 2>&1; then fail "a run started while the queue loop ran"; fi
-grep -q "the queue loop is running (pid $pid)" "$WORK/real" || fail "the refusal does not name the loop: $(cat "$WORK/real")"
-[ ! -e "$WORK/calls" ] || fail "a refused run ran an agent or jk: $(cat "$WORK/calls")"
-
-# Pause stops it and saves it; resume starts it again with its environment.
-night pause >"$WORK/pause" 2>&1 || fail "pause failed: $(cat "$WORK/pause")"
-for _ in $(seq 50); do [ -z "$(loops)" ] && break; sleep 0.1; done
-[ -z "$(loops)" ] || fail "pause left the queue loop running"
-[ -s "$WORK/state/loops/queue.cmdline" ] || fail "pause did not save the loop's command line"
+# Resume removes the pause file; a real run then refuses, and nothing runs.
 night resume >"$WORK/resume" 2>&1 || fail "resume failed: $(cat "$WORK/resume")"
-for _ in $(seq 50); do [ -n "$(loops)" ] && break; sleep 0.1; done
-[ -n "$(loops)" ] || fail "resume did not start the queue loop: $(cat "$WORK/resume")"
-for _ in $(seq 50); do [ "$(wc -l <"$WORK/loop-started")" -ge 2 ] && break; sleep 0.1; done
-[ "$(sed -n 2p "$WORK/loop-started")" = /queue-checkout ] || fail "the resumed loop lost its environment: $(cat "$WORK/loop-started")"
-night resume >"$WORK/resume2" 2>&1
-grep -q 'queue loop: already running' "$WORK/resume2" || fail "a second resume did not see the running loop"
+[ ! -e "$WORK/queue.git/pause" ] || fail "resume left the pause file"
+night resume >"$WORK/resume2" 2>&1 || fail "a second resume failed"
+grep -q 'not paused' "$WORK/resume2" || fail "a second resume does not say the loops are not paused: $(cat "$WORK/resume2")"
+if night run --until 07:00 >"$WORK/real" 2>&1; then fail "a run started while the loops were not paused"; fi
+grep -q "the queue and Full loops are not paused: scripts/bench-night.sh pause" "$WORK/real" ||
+  fail "the refusal does not name the pause: $(cat "$WORK/real")"
+[ ! -e "$WORK/calls" ] || fail "a refused run ran an agent or jk: $(cat "$WORK/calls")"
 echo "test-bench-night: ok"
