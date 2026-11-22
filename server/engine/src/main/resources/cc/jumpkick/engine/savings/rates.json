@@ -10,7 +10,36 @@
         "input": 11,
         "output": 3666,
         "cacheRead": 179026,
-        "cacheWrite": 17174
+        "cacheWrite": 17174,
+        "sizes": [
+          {
+            "loc": 3635,
+            "tasks": 1,
+            "graphCalls": 1,
+            "input": 4,
+            "output": 433,
+            "cacheRead": 16465,
+            "cacheWrite": -3017
+          },
+          {
+            "loc": 188332,
+            "tasks": 3,
+            "graphCalls": 3,
+            "input": 11,
+            "output": 3520,
+            "cacheRead": 100881,
+            "cacheWrite": 17638
+          },
+          {
+            "loc": 679533,
+            "tasks": 4,
+            "graphCalls": 6,
+            "input": 12,
+            "output": 4277,
+            "cacheRead": 245191,
+            "cacheWrite": 20307
+          }
+        ]
       },
       "rename": {
         "tasks": 7,
@@ -18,7 +47,63 @@
         "input": 7,
         "output": 3462,
         "cacheRead": 52324,
-        "cacheWrite": 8144
+        "cacheWrite": 8144,
+        "sizes": [
+          {
+            "loc": 83,
+            "tasks": 1,
+            "graphCalls": 1,
+            "input": 2,
+            "output": 882,
+            "cacheRead": 5173,
+            "cacheWrite": 1678
+          },
+          {
+            "loc": 416,
+            "tasks": 1,
+            "graphCalls": 1,
+            "input": 4,
+            "output": 1051,
+            "cacheRead": 13689,
+            "cacheWrite": 2348
+          },
+          {
+            "loc": 3635,
+            "tasks": 1,
+            "graphCalls": 1,
+            "input": 2,
+            "output": 688,
+            "cacheRead": 5560,
+            "cacheWrite": 1755
+          },
+          {
+            "loc": 17862,
+            "tasks": 1,
+            "graphCalls": 1,
+            "input": 6,
+            "output": 2240,
+            "cacheRead": 24267,
+            "cacheWrite": 4113
+          },
+          {
+            "loc": 188332,
+            "tasks": 2,
+            "graphCalls": 2,
+            "input": 15,
+            "output": 9155,
+            "cacheRead": 127616,
+            "cacheWrite": 18732
+          },
+          {
+            "loc": 679533,
+            "tasks": 1,
+            "graphCalls": 1,
+            "input": 6,
+            "output": 1065,
+            "cacheRead": 62344,
+            "cacheWrite": 9652
+          }
+        ]
       }
     },
     "grok": {
@@ -30,7 +115,36 @@
         "input": 119893,
         "output": 20277,
         "cacheRead": 1642482,
-        "cacheWrite": 0
+        "cacheWrite": 0,
+        "sizes": [
+          {
+            "loc": 3635,
+            "tasks": 1,
+            "graphCalls": 1,
+            "input": 21000,
+            "output": 4142,
+            "cacheRead": 99200,
+            "cacheWrite": 0
+          },
+          {
+            "loc": 188332,
+            "tasks": 3,
+            "graphCalls": 3,
+            "input": 130129,
+            "output": 20152,
+            "cacheRead": 1009280,
+            "cacheWrite": 0
+          },
+          {
+            "loc": 679533,
+            "tasks": 4,
+            "graphCalls": 5,
+            "input": 133530,
+            "output": 23580,
+            "cacheRead": 2331059,
+            "cacheWrite": 0
+          }
+        ]
       },
       "rename": {
         "tasks": 7,
@@ -38,7 +152,63 @@
         "input": 29619,
         "output": 3894,
         "cacheRead": 279014,
-        "cacheWrite": 0
+        "cacheWrite": 0,
+        "sizes": [
+          {
+            "loc": 83,
+            "tasks": 1,
+            "graphCalls": 1,
+            "input": 25022,
+            "output": 3816,
+            "cacheRead": 120576,
+            "cacheWrite": 0
+          },
+          {
+            "loc": 416,
+            "tasks": 1,
+            "graphCalls": 1,
+            "input": 32697,
+            "output": 4499,
+            "cacheRead": 136960,
+            "cacheWrite": 0
+          },
+          {
+            "loc": 3635,
+            "tasks": 1,
+            "graphCalls": 1,
+            "input": 38705,
+            "output": 4725,
+            "cacheRead": 158208,
+            "cacheWrite": 0
+          },
+          {
+            "loc": 17862,
+            "tasks": 1,
+            "graphCalls": 2,
+            "input": 17832,
+            "output": 2382,
+            "cacheRead": 74368,
+            "cacheWrite": 0
+          },
+          {
+            "loc": 188332,
+            "tasks": 2,
+            "graphCalls": 4,
+            "input": 26139,
+            "output": 3835,
+            "cacheRead": 433344,
+            "cacheWrite": 0
+          },
+          {
+            "loc": 679533,
+            "tasks": 1,
+            "graphCalls": 1,
+            "input": 59544,
+            "output": 5795,
+            "cacheRead": 492288,
+            "cacheWrite": 0
+          }
+        ]
       }
     },
     "agy": {
@@ -50,7 +220,36 @@
         "input": 40548,
         "output": -1400,
         "cacheRead": 749502,
-        "cacheWrite": 0
+        "cacheWrite": 0,
+        "sizes": [
+          {
+            "loc": 3635,
+            "tasks": 1,
+            "graphCalls": 1,
+            "input": 88759,
+            "output": 2782,
+            "cacheRead": 96405,
+            "cacheWrite": 0
+          },
+          {
+            "loc": 188332,
+            "tasks": 3,
+            "graphCalls": 8,
+            "input": 51828,
+            "output": -6086,
+            "cacheRead": 732083,
+            "cacheWrite": 0
+          },
+          {
+            "loc": 679533,
+            "tasks": 4,
+            "graphCalls": 17,
+            "input": 32403,
+            "output": 559,
+            "cacheRead": 796117,
+            "cacheWrite": 0
+          }
+        ]
       },
       "rename": {
         "tasks": 7,
@@ -58,7 +257,63 @@
         "input": 194963,
         "output": 11876,
         "cacheRead": 1511363,
-        "cacheWrite": 0
+        "cacheWrite": 0,
+        "sizes": [
+          {
+            "loc": 83,
+            "tasks": 1,
+            "graphCalls": 1,
+            "input": 171164,
+            "output": 4183,
+            "cacheRead": 225757,
+            "cacheWrite": 0
+          },
+          {
+            "loc": 416,
+            "tasks": 1,
+            "graphCalls": 1,
+            "input": 163050,
+            "output": 3742,
+            "cacheRead": 371920,
+            "cacheWrite": 0
+          },
+          {
+            "loc": 3635,
+            "tasks": 1,
+            "graphCalls": 1,
+            "input": 156587,
+            "output": 6311,
+            "cacheRead": 373186,
+            "cacheWrite": 0
+          },
+          {
+            "loc": 17862,
+            "tasks": 1,
+            "graphCalls": 1,
+            "input": 222185,
+            "output": 13337,
+            "cacheRead": 795195,
+            "cacheWrite": 0
+          },
+          {
+            "loc": 188332,
+            "tasks": 2,
+            "graphCalls": 2,
+            "input": 211036,
+            "output": 20364,
+            "cacheRead": 2799822,
+            "cacheWrite": 0
+          },
+          {
+            "loc": 679533,
+            "tasks": 1,
+            "graphCalls": 1,
+            "input": 229682,
+            "output": 14832,
+            "cacheRead": 3213838,
+            "cacheWrite": 0
+          }
+        ]
       }
     },
     "cursor": {
@@ -70,7 +325,36 @@
         "input": 45543,
         "output": 7080,
         "cacheRead": 1552704,
-        "cacheWrite": 0
+        "cacheWrite": 0,
+        "sizes": [
+          {
+            "loc": 3635,
+            "tasks": 1,
+            "graphCalls": 1,
+            "input": 2398,
+            "output": 622,
+            "cacheRead": 52096,
+            "cacheWrite": 0
+          },
+          {
+            "loc": 188332,
+            "tasks": 3,
+            "graphCalls": 3,
+            "input": 40556,
+            "output": 8031,
+            "cacheRead": 998293,
+            "cacheWrite": 0
+          },
+          {
+            "loc": 679533,
+            "tasks": 4,
+            "graphCalls": 5,
+            "input": 57164,
+            "output": 7801,
+            "cacheRead": 2185472,
+            "cacheWrite": 0
+          }
+        ]
       },
       "rename": {
         "tasks": 7,
@@ -78,7 +362,63 @@
         "input": 13630,
         "output": 1912,
         "cacheRead": 220795,
-        "cacheWrite": 0
+        "cacheWrite": 0,
+        "sizes": [
+          {
+            "loc": 83,
+            "tasks": 1,
+            "graphCalls": 1,
+            "input": 3086,
+            "output": 1068,
+            "cacheRead": 69504,
+            "cacheWrite": 0
+          },
+          {
+            "loc": 416,
+            "tasks": 1,
+            "graphCalls": 1,
+            "input": 1660,
+            "output": 980,
+            "cacheRead": 49712,
+            "cacheWrite": 0
+          },
+          {
+            "loc": 3635,
+            "tasks": 1,
+            "graphCalls": 1,
+            "input": 2661,
+            "output": 1159,
+            "cacheRead": 79808,
+            "cacheWrite": 0
+          },
+          {
+            "loc": 17862,
+            "tasks": 1,
+            "graphCalls": 1,
+            "input": 2790,
+            "output": 1430,
+            "cacheRead": 74432,
+            "cacheWrite": 0
+          },
+          {
+            "loc": 188332,
+            "tasks": 2,
+            "graphCalls": 2,
+            "input": 34899,
+            "output": 3724,
+            "cacheRead": 526384,
+            "cacheWrite": 0
+          },
+          {
+            "loc": 679533,
+            "tasks": 1,
+            "graphCalls": 1,
+            "input": 15418,
+            "output": 1300,
+            "cacheRead": 219344,
+            "cacheWrite": 0
+          }
+        ]
       }
     },
     "muse": {
@@ -90,7 +430,36 @@
         "input": 121170,
         "output": 21677,
         "cacheRead": 2453030,
-        "cacheWrite": 0
+        "cacheWrite": 0,
+        "sizes": [
+          {
+            "loc": 3635,
+            "tasks": 1,
+            "graphCalls": 1,
+            "input": 16448,
+            "output": 252,
+            "cacheRead": 36834,
+            "cacheWrite": 0
+          },
+          {
+            "loc": 188332,
+            "tasks": 3,
+            "graphCalls": 3,
+            "input": 120075,
+            "output": 22650,
+            "cacheRead": 2060897,
+            "cacheWrite": 0
+          },
+          {
+            "loc": 679533,
+            "tasks": 4,
+            "graphCalls": 5,
+            "input": 142771,
+            "output": 25378,
+            "cacheRead": 3171548,
+            "cacheWrite": 0
+          }
+        ]
       },
       "rename": {
         "tasks": 7,
@@ -98,7 +467,63 @@
         "input": 44011,
         "output": 4237,
         "cacheRead": 1073499,
-        "cacheWrite": 0
+        "cacheWrite": 0,
+        "sizes": [
+          {
+            "loc": 83,
+            "tasks": 1,
+            "graphCalls": 1,
+            "input": 36035,
+            "output": 2740,
+            "cacheRead": 270638,
+            "cacheWrite": 0
+          },
+          {
+            "loc": 416,
+            "tasks": 1,
+            "graphCalls": 1,
+            "input": 15161,
+            "output": 344,
+            "cacheRead": 209642,
+            "cacheWrite": 0
+          },
+          {
+            "loc": 3635,
+            "tasks": 1,
+            "graphCalls": 1,
+            "input": 29259,
+            "output": 1260,
+            "cacheRead": 411649,
+            "cacheWrite": 0
+          },
+          {
+            "loc": 17862,
+            "tasks": 1,
+            "graphCalls": 1,
+            "input": 28727,
+            "output": 4192,
+            "cacheRead": 504276,
+            "cacheWrite": 0
+          },
+          {
+            "loc": 188332,
+            "tasks": 2,
+            "graphCalls": 4,
+            "input": 71430,
+            "output": 7372,
+            "cacheRead": 2122352,
+            "cacheWrite": 0
+          },
+          {
+            "loc": 679533,
+            "tasks": 1,
+            "graphCalls": 2,
+            "input": 22604,
+            "output": 2173,
+            "cacheRead": 424690,
+            "cacheWrite": 0
+          }
+        ]
       }
     },
     "codex": {
@@ -110,7 +535,36 @@
         "input": 17804,
         "output": 570,
         "cacheRead": 201500,
-        "cacheWrite": 0
+        "cacheWrite": 0,
+        "sizes": [
+          {
+            "loc": 3635,
+            "tasks": 1,
+            "graphCalls": 1,
+            "input": 1434,
+            "output": 146,
+            "cacheRead": 44800,
+            "cacheWrite": 0
+          },
+          {
+            "loc": 188332,
+            "tasks": 3,
+            "graphCalls": 3,
+            "input": 24655,
+            "output": 500,
+            "cacheRead": 123520,
+            "cacheWrite": 0
+          },
+          {
+            "loc": 679533,
+            "tasks": 4,
+            "graphCalls": 5,
+            "input": 16967,
+            "output": 697,
+            "cacheRead": 279629,
+            "cacheWrite": 0
+          }
+        ]
       },
       "rename": {
         "tasks": 7,
@@ -118,7 +572,63 @@
         "input": 9116,
         "output": 562,
         "cacheRead": 165175,
-        "cacheWrite": 0
+        "cacheWrite": 0,
+        "sizes": [
+          {
+            "loc": 83,
+            "tasks": 1,
+            "graphCalls": 1,
+            "input": 2231,
+            "output": 378,
+            "cacheRead": 90880,
+            "cacheWrite": 0
+          },
+          {
+            "loc": 416,
+            "tasks": 1,
+            "graphCalls": 1,
+            "input": 5323,
+            "output": 334,
+            "cacheRead": 94336,
+            "cacheWrite": 0
+          },
+          {
+            "loc": 3635,
+            "tasks": 1,
+            "graphCalls": 1,
+            "input": 6997,
+            "output": 733,
+            "cacheRead": 109056,
+            "cacheWrite": 0
+          },
+          {
+            "loc": 17862,
+            "tasks": 1,
+            "graphCalls": 1,
+            "input": -391,
+            "output": 330,
+            "cacheRead": 79616,
+            "cacheWrite": 0
+          },
+          {
+            "loc": 188332,
+            "tasks": 2,
+            "graphCalls": 2,
+            "input": 14822,
+            "output": 849,
+            "cacheRead": 267776,
+            "cacheWrite": 0
+          },
+          {
+            "loc": 679533,
+            "tasks": 1,
+            "graphCalls": 1,
+            "input": 20005,
+            "output": 461,
+            "cacheRead": 246784,
+            "cacheWrite": 0
+          }
+        ]
       }
     }
   }

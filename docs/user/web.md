@@ -231,7 +231,14 @@ write) the agent spent without the graph less what it spent with it, the median 
 up over the tasks and divides by the graph calls the agent made in them with the graph. Each code
 answer (`query`, `usages`, `read`, `find`) is credited what one graph call saved in the code-question
 tasks, and each refactoring what one saved in the rename tasks, at the rates measured for the agent
-whose MCP client asked: Claude Code, Codex, Cursor, Grok, Muse or Antigravity. A call from an agent
+whose MCP client asked: Claude Code, Codex, Cursor, Grok, Muse or Antigravity.
+
+A search over a large codebase costs an agent far more than one over a small one, so the benchmark
+also measures that rate in each repository it ran in, from a few hundred lines to several hundred
+thousand. A call is credited the rate of the repository nearest its project's size: the non-blank
+lines of the project's Java, Kotlin and Groovy sources, main and test, outside build output, counted
+at most once an hour. A call whose project JumpKick cannot count is credited the rate over every
+task. A call from an agent
 the benchmark has not run, or of a kind it has not measured for that agent, is not credited at
 another agent's rates and not counted as zero: it is left out of the total, and the figure says how
 many calls were (`not measured by the bench, not counted`).
@@ -244,7 +251,8 @@ read from its vendor's page. Tokens on a model the table has no price for are co
 of the dollars, and the tip says how many; they are priced once a table that knows the model
 arrives. An agent on a subscription pays its plan instead. A cached step or a test class not re-run
 saves time but no tokens the benchmark has measured, so it adds none. The rates ship with JumpKick
-and change with a new release.
+and change with a new release; the tip names the date of the newest benchmark run behind them, and
+**how it is estimated** on the panel, or **est.** in the status bar, opens this section.
 
 Nothing new is recorded for it: the engine adds up the run records and session actions it keeps,
 so a period reaches back only as far as `[history]` keeps runs and a session keeps its last 1000

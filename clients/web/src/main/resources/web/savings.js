@@ -63,13 +63,17 @@ export function fmtUsd(micros) {
     : '$' + usd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+/** How the tokens and dollars saved are estimated (docs/user/web.md). */
+export const TOKENS_METHOD = 'https://github.com/JumpKickOSS/jk/blob/main/docs/user/web.md#tokens-and-dollars-saved';
+
 /**
  * The tokens and dollars a row saved the agents, marked as the estimate they are, with the date of
- * the API list prices behind the dollars and the calls left out because the bench has not measured
- * their agent or kind; null for no row.
+ * the bench runs behind the tokens, of the API list prices behind the dollars, the calls left out
+ * because the bench has not measured their agent or kind, and the link to the method; null for no row.
  */
 export function tokensSaved(row) {
   if (!row) return null;
+  const bench = row.ratesMeasured ? ' of ' + row.ratesMeasured : '';
   const date = row.pricesRetrieved ? ' of ' + row.pricesRetrieved : '';
   const unpriced = row.tokensUnpriced ? '; ' + fmtTokens(row.tokensUnpriced) + ' tokens on models with no price' : '';
   const n = row.callsNotMeasured || 0;
@@ -77,7 +81,8 @@ export function tokensSaved(row) {
   return {
     tokens: '~' + fmtTokens(row.tokensSaved),
     usd: '~' + fmtUsd(row.usdSavedMicros),
-    tip: 'Estimate from bench runs, at API list prices' + date + unpriced + notMeasured,
+    tip: 'Estimate from bench runs' + bench + ', at API list prices' + date + unpriced + notMeasured,
+    method: TOKENS_METHOD,
   };
 }
 
@@ -90,7 +95,8 @@ export function savingsTiles(row) {
   return [
     { key: 'saved', label: 'time avoided', value: saved.value, note: saved.note,
       tip: 'Build and test time the cache avoided: an estimate from each run’s cold-cache critical path' },
-    { key: 'tokens', label: 'tokens saved', value: tokens.tokens, note: tokens.usd + ' · estimate', tip: tokens.tip },
+    { key: 'tokens', label: 'tokens saved', value: tokens.tokens, note: tokens.usd + ' · estimate', tip: tokens.tip,
+      href: tokens.method },
     { key: 'steps', label: 'steps from cache', value: row.stepsSkipped || 0, note: (row.suitesSkipped || 0) + ' test suites',
       tip: 'Steps whose result came from the cache instead of running' },
     { key: 'classes', label: 'classes not re-run', value: row.testClassesNotRerun || 0,

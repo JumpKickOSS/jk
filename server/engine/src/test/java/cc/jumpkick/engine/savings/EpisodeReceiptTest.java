@@ -138,7 +138,7 @@ class EpisodeReceiptTest {
     private static TokensSaved claudeQuestion() {
         SavingsRates.Agent agent =
                 Objects.requireNonNull(SavingsRates.shipped().agents().get("claude-code"));
-        return TokensSaved.of(agent.model(), agent.question());
+        return TokensSaved.of(agent.model(), agent.question().all());
     }
 
     @Test

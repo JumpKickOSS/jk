@@ -43,6 +43,7 @@ public final class SavingsLedger {
                 sessions == null ? List.of() : sessions.actionsSince(since),
                 SavingsRates.shipped(),
                 new AgentModels(usage),
+                ProjectLines.counted(),
                 since,
                 until);
     }
@@ -53,6 +54,7 @@ public final class SavingsLedger {
             List<SessionLog.Acted> actions,
             SavingsRates rates,
             AgentModels models,
+            ProjectLines lines,
             long since,
             long until) {
         for (SessionLog.Acted a : actions) {
@@ -78,7 +80,7 @@ public final class SavingsLedger {
         for (SessionLog.Acted a : actions) {
             ActionRecord action = a.action();
             if (action.at() > until) continue;
-            Savings row = of(action, saved(action, a.client(), rates, models));
+            Savings row = of(action, saved(action, a.client(), rates, models, lines));
             if (row.nothing()) continue;
             all = all.plus(row);
             String dir = action.project();
@@ -169,13 +171,14 @@ public final class SavingsLedger {
     }
 
     /**
-     * The tokens {@code a} saved its agent, on the model {@code models} finds it was on; null when the
-     * bench has no rate for its agent and kind ({@link SavingsRates#saved}).
+     * The tokens {@code a} saved its agent, on the model {@code models} finds it was on, at the rate
+     * for its project's size; null when the bench has no rate for its agent and kind ({@link
+     * SavingsRates#saved}).
      */
     static @Nullable TokensSaved saved(
-            ActionRecord a, @Nullable String client, SavingsRates rates, AgentModels models) {
+            ActionRecord a, @Nullable String client, SavingsRates rates, AgentModels models, ProjectLines lines) {
         if (!savesTokens(a)) return TokensSaved.NONE;
-        return rates.saved(a, client, models.at(client, a.project(), a.at()));
+        return rates.saved(a, client, models.at(client, a.project(), a.at()), lines.of(a.project()));
     }
 
     /**

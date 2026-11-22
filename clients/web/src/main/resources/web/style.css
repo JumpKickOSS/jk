@@ -1175,6 +1175,8 @@ table.stats.history td.ok { color: var(--ok); }
 }
 
 .kpi { font: 700 17px/1.2 var(--mono); color: var(--bright); overflow-wrap: anywhere; }
+.tile-link { font: 600 11px/1.2 var(--mono); color: var(--cn); text-decoration: none; }
+.tile-link:hover { text-decoration: underline; }
 .kpi.ok { color: var(--ok); }
 
 .panels { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; margin-bottom: 14px; }
@@ -1736,6 +1738,7 @@ button.browse:hover::before {
 .sb-item { display: inline-flex; align-items: center; gap: 6px; color: var(--dim); white-space: nowrap; }
 .sb-item .ico { width: 14px; height: 14px; color: var(--mu); }
 .sb-item b { color: var(--bright); font-weight: 700; }
+.sb-item a { color: inherit; text-decoration: underline dotted; }
 .sb-div { width: 1px; height: 14px; background: rgba(var(--cn-rgb), 0.14); flex: none; }
 
 /* Live indicator (moved here from the header) — dot + label, coloured by connection state; the

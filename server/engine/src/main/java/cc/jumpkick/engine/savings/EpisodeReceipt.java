@@ -95,8 +95,14 @@ public record EpisodeReceipt(
         List<ActionRecord> actions = new ArrayList<>();
         for (Map<String, Object> m : page.get().actions()) actions.add(ActionRecord.of(m));
         String client = MiniJson.str(page.get().session(), "client");
-        Map<String, EpisodeReceipt> out =
-                fold(episodes, runs, actions, SavingsRates.shipped(), new AgentModels(usage), client);
+        Map<String, EpisodeReceipt> out = fold(
+                episodes,
+                runs,
+                actions,
+                SavingsRates.shipped(),
+                new AgentModels(usage),
+                ProjectLines.counted(),
+                client);
         long now = current == null ? 0 : current.finishedAt();
         for (Episode e : episodes) {
             long next = starts.stream()
@@ -131,6 +137,7 @@ public record EpisodeReceipt(
             List<ActionRecord> actions,
             SavingsRates rates,
             AgentModels models,
+            ProjectLines lines,
             @Nullable String client) {
         for (ActionRecord a : actions) {
             if (SavingsLedger.savesTokens(a)) models.note(client, a.project(), a.at());
@@ -141,7 +148,7 @@ public record EpisodeReceipt(
             for (BuildRecord r : runs) if (e.id().equals(r.episode())) saved = saved.plus(SavingsLedger.of(r));
             for (ActionRecord a : actions) {
                 if (e.id().equals(a.episode()) && !ActionRecord.RUN.equals(a.kind())) {
-                    saved = saved.plus(SavingsLedger.of(a, SavingsLedger.saved(a, client, rates, models)));
+                    saved = saved.plus(SavingsLedger.of(a, SavingsLedger.saved(a, client, rates, models, lines)));
                 }
             }
             out.put(e.id(), new EpisodeReceipt(e.id(), e.title(), saved, null));

@@ -356,10 +356,24 @@ def _per_call(jk: dict, off: dict, both: list[str]) -> dict | None:
     return {"tasks": tasks, "graphCalls": int(calls) if float(calls).is_integer() else calls, **{RATE_KINDS[k]: round(saved[k] / calls) for k in cost.KINDS}}
 
 
+def _by_size(jk: dict, off: dict, both: list[str], repos: dict) -> list[dict]:
+    """The same rate per repository the tasks ran on, with its lines of code, smallest first: the
+    saving of a graph call in a repository of about that size. A repository with no rate is left out."""
+    out = []
+    for repo in sorted({repos[t] for t in both}):
+        loc = _loc(repo)
+        rate = _per_call(jk, off, [t for t in both if repos[t] == repo]) if loc is not None else None
+        if rate is not None:
+            out.append({"loc": loc, **rate})
+    return sorted(out, key=lambda r: r["loc"])
+
+
 def rates(by: dict) -> str:
     """Tokens one graph call saved in the question tasks and in the rename tasks, per agent on its
-    default model, as JSON, with the model and whether its cache writes are priced at the 1-hour rate.
-    No prices: the engine prices the tokens with the product's price table when it shows them."""
+    default model, as JSON, with the model and whether its cache writes are priced at the 1-hour rate:
+    over every task, and per repository size under `sizes`. No prices: the engine prices the tokens
+    with the product's price table when it shows them."""
+    repos = {t: spec["repo"] for t, spec in tomllib.loads((RESULTS.parent / "tasks.toml").read_text())["tasks"].items()}
     agents, measured = {}, set()
     for driver in LABELS:
         entry = {}
@@ -371,7 +385,7 @@ def rates(by: dict) -> str:
             rate = _per_call(jk, off, both)
             if rate is None:
                 continue
-            entry[action] = rate
+            entry[action] = {**rate, "sizes": _by_size(jk, off, both, repos)}
             measured.update(str(r.get("date", "")) for cells in (jk, off) for t in both for r in cells[t])
         model = next((rs[0].get("model") for (d, _, _), rs in by.items() if d == driver), None)
         if not entry or not model:

@@ -12,11 +12,16 @@ import cc.jumpkick.runtime.TestsNotRerun;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.atomic.AtomicLong;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 class SavingsLedgerTest {
 
@@ -205,7 +210,8 @@ class SavingsLedgerTest {
                 run("p-app", "/ws/app", T + 1, null, List.of(), List.of(), List.of(mainPrintln, otherRule)),
                 run("p-lib", "/ws/lib", T, null, List.of(), List.of(), List.of(mainPrintln)));
 
-        List<Savings> rows = SavingsLedger.fold(runs, List.of(), RATES, benchModels(), T - 1, T + 10);
+        List<Savings> rows =
+                SavingsLedger.fold(runs, List.of(), RATES, benchModels(), ProjectLines.NONE, T - 1, T + 10);
 
         Savings all = rows.getFirst();
         assertThat(all.guardViolations())
@@ -252,7 +258,7 @@ class SavingsLedgerTest {
                 acted("deps", ActionRecord.OK, "/ws/other", 1, null),
                 acted("find", ActionRecord.ERROR, "/ws/app", 0, "p-app"));
 
-        List<Savings> rows = SavingsLedger.fold(runs, actions, RATES, benchModels(), T - 1, T + 10);
+        List<Savings> rows = SavingsLedger.fold(runs, actions, RATES, benchModels(), ProjectLines.NONE, T - 1, T + 10);
 
         Savings all = rows.getFirst();
         assertThat(all.scope()).isEqualTo(Savings.ALL);
@@ -301,6 +307,7 @@ class SavingsLedgerTest {
                         null)),
                 RATES,
                 benchModels(),
+                ProjectLines.NONE,
                 T,
                 T + 50);
         assertThat(rows).singleElement().satisfies(all -> assertThat(all.nothing())
@@ -309,7 +316,7 @@ class SavingsLedgerTest {
 
     @Test
     void a_row_maps_to_the_fields_jk_stats_and_the_dashboard_read() {
-        Savings all = SavingsLedger.fold(List.of(), List.of(), RATES, benchModels(), 5, 9)
+        Savings all = SavingsLedger.fold(List.of(), List.of(), RATES, benchModels(), ProjectLines.NONE, 5, 9)
                 .getFirst();
         assertThat(all.toMap())
                 .containsOnlyKeys(
@@ -345,7 +352,9 @@ class SavingsLedgerTest {
         TokensSaved.Counts question = new TokensSaved.Counts(10, 1000, 200_000, 0, 20_000);
         TokensSaved.Counts rename = new TokensSaved.Counts(5, 500, 50_000, 0, 5_000);
         TokensSaved.Counts codexQuestion = new TokensSaved.Counts(20_000, 600, 200_000, 0, 0);
-        assertThat(Objects.requireNonNull(RATES.agents().get("claude-code")).question())
+        assertThat(Objects.requireNonNull(RATES.agents().get("claude-code"))
+                        .question()
+                        .all())
                 .as("Claude Code writes its cache for an hour")
                 .isEqualTo(question);
         List<SessionLog.Acted> actions = List.of(
@@ -355,7 +364,8 @@ class SavingsLedgerTest {
                 acted("query", ActionRecord.ERROR, "/ws/lib", 0, "p-lib", "codex-mcp-client"),
                 acted("deps", ActionRecord.OK, "/ws/lib", 1, "p-lib", "codex-mcp-client"));
 
-        List<Savings> rows = SavingsLedger.fold(List.of(), actions, RATES, benchModels(), T - 1, T + 10);
+        List<Savings> rows =
+                SavingsLedger.fold(List.of(), actions, RATES, benchModels(), ProjectLines.NONE, T - 1, T + 10);
 
         TokensSaved claude = TokensSaved.of("claude-sonnet-5-5", question.plus(rename));
         TokensSaved codex = TokensSaved.of("gpt-6.1-terra", codexQuestion);
@@ -377,13 +387,13 @@ class SavingsLedgerTest {
     void the_model_the_agent_was_on_prices_its_tokens_and_a_model_without_a_price_is_left_out_and_said() {
         ActionRecord usages = acted("usages", ActionRecord.OK, "/ws/app", 0, "p-app", "claude-code")
                 .action();
-        TokensSaved onOpus = Objects.requireNonNull(RATES.saved(usages, "claude-code", "claude-opus-5-5"));
+        TokensSaved onOpus = Objects.requireNonNull(RATES.saved(usages, "claude-code", "claude-opus-5-5", 0));
         assertThat(onOpus.byModel()).containsOnlyKeys("claude-opus-5-5");
         assertThat(onOpus.priced(PRICES).usdMicros())
                 .as("the bench's tokens at the model jk read the agent was on: Opus, not Sonnet")
                 .isEqualTo(40 + 20_000 + 40_000 + 160_000);
         assertThat(onOpus.priced(PRICES).retrieved()).hasToString("2026-11-16");
-        TokensSaved unknown = Objects.requireNonNull(RATES.saved(usages, "claude-code", "claude-next-7"));
+        TokensSaved unknown = Objects.requireNonNull(RATES.saved(usages, "claude-code", "claude-next-7", 0));
         assertThat(unknown.priced(PRICES)).isEqualTo(new TokensSaved.Priced(0, unknown.total(), null));
         assertThat(unknown.text(PRICES, 0))
                 .isEqualTo("~221k, ~$0.000 (estimate, API list prices; 221k on models with no price)");
@@ -401,15 +411,15 @@ class SavingsLedgerTest {
                 .as("an agent the bench never ran is not credited at another agent's rates")
                 .isNull();
         assertThat(RATES.agentOf(null)).isNull();
-        assertThat(RATES.saved(rename, "a-new-agent", null)).isNull();
-        assertThat(RATES.saved(rename, "codex", null))
+        assertThat(RATES.saved(rename, "a-new-agent", null, 0)).isNull();
+        assertThat(RATES.saved(rename, "codex", null, 0))
                 .as("the bench has no codex rename")
                 .isNull();
         assertThat(RATES.saved(
-                        acted("rename", ActionRecord.ERROR, "/ws", 0, null).action(), "a-new-agent", null))
+                        acted("rename", ActionRecord.ERROR, "/ws", 0, null).action(), "a-new-agent", null, 0))
                 .as("a failed call saves nothing, measured or not")
                 .isEqualTo(TokensSaved.NONE);
-        assertThat(RATES.saved(acted("deps", ActionRecord.OK, "/ws", 1, null).action(), "a-new-agent", null))
+        assertThat(RATES.saved(acted("deps", ActionRecord.OK, "/ws", 1, null).action(), "a-new-agent", null, 0))
                 .as("the bench measures no tokens for a dependency edit")
                 .isEqualTo(TokensSaved.NONE);
 
@@ -419,11 +429,13 @@ class SavingsLedgerTest {
                 acted("query", ActionRecord.OK, "/ws/lib", 0, "p-lib", "some-new-agent"),
                 acted("rename", ActionRecord.OK, "/ws/lib", 0, "p-lib", "codex"),
                 acted("query", ActionRecord.ERROR, "/ws/lib", 0, "p-lib", "some-new-agent"));
-        List<Savings> rows = SavingsLedger.fold(List.of(), actions, RATES, benchModels(), T - 1, T + 10);
+        List<Savings> rows =
+                SavingsLedger.fold(List.of(), actions, RATES, benchModels(), ProjectLines.NONE, T - 1, T + 10);
 
         Savings all = rows.getFirst();
-        TokensSaved.Counts question =
-                Objects.requireNonNull(RATES.agents().get("claude-code")).question();
+        TokensSaved.Counts question = Objects.requireNonNull(RATES.agents().get("claude-code"))
+                .question()
+                .all();
         assertThat(all.tokens())
                 .as("only the measured agent's call")
                 .isEqualTo(TokensSaved.of("claude-sonnet-5-5", question));
@@ -441,11 +453,53 @@ class SavingsLedgerTest {
     }
 
     @Test
+    void a_call_is_credited_the_rate_measured_in_the_repository_nearest_its_projects_size(@TempDir Path ws)
+            throws IOException {
+        SavingsRates rates = SavingsRates.parse("""
+                {"measured": "2026-11-04",
+                 "agents": {
+                   "codex": {"model": "gpt-6.1-terra", "cacheWrite1h": false,
+                     "question": {"tasks": 3, "graphCalls": 3, "input": 2000, "output": 0, "cacheRead": 0,
+                                  "cacheWrite": 0,
+                                  "sizes": [
+                                    {"loc": 100, "tasks": 1, "graphCalls": 1, "input": 100, "output": 0,
+                                     "cacheRead": 0, "cacheWrite": 0},
+                                    {"loc": 10000, "tasks": 2, "graphCalls": 2, "input": 5000, "output": 0,
+                                     "cacheRead": 0, "cacheWrite": 0}]}}}}
+                """);
+        Path small = Files.createDirectories(ws.resolve("small/src/main/java"));
+        Files.writeString(small.resolve("A.java"), "class A {\n\n  int x;\n}\n".repeat(50));
+        Path large = Files.createDirectories(ws.resolve("large/src/main/kotlin"));
+        Files.writeString(large.resolve("B.kt"), "val b = 1\n".repeat(2_000));
+        ProjectLines lines = new ProjectLines(rates.largest(), ProjectLinesTest.at(new AtomicLong(T)));
+        assertThat(lines.of(ws.resolve("small").toString())).isEqualTo(150);
+        assertThat(lines.of(ws.resolve("large").toString())).isEqualTo(2_000);
+
+        List<SessionLog.Acted> actions = List.of(
+                acted("usages", ActionRecord.OK, ws.resolve("small").toString(), 0, "p-small", "codex"),
+                acted("find", ActionRecord.OK, ws.resolve("large").toString(), 0, "p-large", "codex"),
+                acted("read", ActionRecord.OK, ws.resolve("gone").toString(), 0, "p-gone", "codex"));
+        List<Savings> rows = SavingsLedger.fold(List.of(), actions, rates, benchModels(), lines, T - 1, T + 10);
+
+        assertThat(rows.subList(1, rows.size()))
+                .extracting(Savings::projectId, r -> r.tokens().total())
+                .as("150 lines is nearest the 100-line repository, 2000 the 10000-line one by ratio; "
+                        + "a checkout no longer there gets the rate over every task")
+                .containsExactlyInAnyOrder(tuple("p-small", 100L), tuple("p-large", 5_000L), tuple("p-gone", 2_000L));
+    }
+
+    @Test
     void the_shipped_table_credits_every_agent_it_names_and_the_built_in_prices_know_claude_codes_model() {
         SavingsRates shipped = SavingsRates.shipped();
         assertThat(shipped.measured()).matches("\\d{4}-\\d{2}-\\d{2}");
         assertThat(shipped.agents().values())
-                .allSatisfy(a -> assertThat(a.question().total()).isPositive());
+                .allSatisfy(a -> assertThat(a.question().all().total()).isPositive());
+        assertThat(shipped.agents().values())
+                .as("every agent's question rate is measured by repository size, smallest first")
+                .allSatisfy(a -> assertThat(a.question().sizes())
+                        .isNotEmpty()
+                        .isSortedAccordingTo(Comparator.comparingLong(SavingsRates.Sized::lines)));
+        assertThat(shipped.largest()).isPositive();
         assertThat(shipped.agents().get("claude-code"))
                 .satisfies(
                         a -> assertThat(PriceTable.builtIn().price(a.model())).isPresent());
@@ -454,7 +508,7 @@ class SavingsLedgerTest {
     @Test
     void the_rows_carry_the_tokens_by_model_so_rows_from_many_machines_add_up() {
         List<SessionLog.Acted> actions = List.of(acted("usages", ActionRecord.OK, "/ws/app", 0, "p-app", "codex"));
-        Savings all = SavingsLedger.fold(List.of(), actions, RATES, benchModels(), T - 1, T + 10)
+        Savings all = SavingsLedger.fold(List.of(), actions, RATES, benchModels(), ProjectLines.NONE, T - 1, T + 10)
                 .getFirst();
         assertThat(all.toMap())
                 .containsEntry("tokensSaved", 220_600L)

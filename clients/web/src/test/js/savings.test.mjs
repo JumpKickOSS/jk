@@ -9,7 +9,7 @@ import { pathToFileURL } from 'node:url';
 const spa = (name) => import(pathToFileURL(path.join(process.env.JK_APP_DIR, name)));
 const {
   SAVINGS_DAYS, TOTAL_QUERY, savingsQuery, savingsRow, savedTime, savingsTiles, receiptTiles, savingsComputed,
-  tokensSaved, fmtTokens, fmtUsd,
+  tokensSaved, fmtTokens, fmtUsd, TOKENS_METHOD,
 } = await spa('savings.js');
 const { fmtDuration } = await spa('format.js');
 
@@ -74,15 +74,20 @@ test('the status bar keeps a running total over all the history kept, and the op
   assert.equal(savingsComputed.savingsTotalAll.call({ savingsTotal: null }), null);
 });
 
-test('the tokens and dollars saved say they are an estimate and whose prices', () => {
+test('the tokens and dollars saved say they are an estimate, of which bench runs and prices, and link the method', () => {
   assert.deepEqual(tokensSaved(all), {
-    tokens: '~1.2M', usd: '~$0.840', tip: 'Estimate from bench runs, at API list prices of 2026-11-17',
+    tokens: '~1.2M', usd: '~$0.840',
+    tip: 'Estimate from bench runs of 2026-11-04, at API list prices of 2026-11-17',
+    method: TOKENS_METHOD,
   });
+  assert.match(TOKENS_METHOD, /\/docs\/user\/web\.md#tokens-and-dollars-saved$/);
   assert.equal(tokensSaved({}).tip, 'Estimate from bench runs, at API list prices');
   assert.equal(tokensSaved({ ...all, tokensUnpriced: 2_500 }).tip,
-    'Estimate from bench runs, at API list prices of 2026-11-17; 3k tokens on models with no price');
+    'Estimate from bench runs of 2026-11-04, at API list prices of 2026-11-17; 3k tokens on models with no price');
   assert.equal(tokensSaved({ ...all, callsNotMeasured: 1 }).tip,
-    'Estimate from bench runs, at API list prices of 2026-11-17; 1 call not measured by the bench, not counted');
+    'Estimate from bench runs of 2026-11-04, at API list prices of 2026-11-17; 1 call not measured by the bench, not counted');
+  assert.equal(savingsTiles(all).find((t) => t.key === 'tokens').href, TOKENS_METHOD, 'the method is one click away');
+  assert.equal(savingsTiles(all).filter((t) => t.href).length, 1);
   assert.equal(tokensSaved(null), null);
   assert.equal(fmtTokens(950), '950');
   assert.equal(fmtTokens(12_500), '13k');

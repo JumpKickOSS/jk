@@ -381,7 +381,7 @@
       <section v-if="savingsAll" class="panel wide savings-panel">
         <div class="panel-head"><span class="lbl">saved, every project</span><span class="spacer"></span><span class="mono dim">last {{ savingsDays }} days · <code>jk stats</code></span></div>
         <div class="tiles">
-          <div v-for="t in savingsTiles(savingsAll)" :key="t.key" class="tile" :data-tip="t.tip"><span class="lbl">{{ t.label }}</span><span class="kpi">{{ t.value }}</span><span v-if="t.note" class="kpi-sm dim">{{ t.note }}</span></div>
+          <div v-for="t in savingsTiles(savingsAll)" :key="t.key" class="tile" :data-tip="t.tip"><span class="lbl">{{ t.label }}</span><span class="kpi">{{ t.value }}</span><span v-if="t.note" class="kpi-sm dim">{{ t.note }}</span><a v-if="t.href" class="tile-link" :href="t.href" target="_blank" rel="noopener">how it is estimated</a></div>
         </div>
       </section>
       <p v-if="projectsList.length === 0" class="empty">
@@ -561,7 +561,7 @@
       <section v-if="savingsProject" class="panel wide savings-panel">
         <div class="panel-head"><span class="lbl">saved on this project</span><span class="spacer"></span><span class="mono dim">last {{ savingsDays }} days · <code>jk stats</code></span></div>
         <div class="tiles">
-          <div v-for="t in savingsTiles(savingsProject)" :key="t.key" class="tile" :data-tip="t.tip"><span class="lbl">{{ t.label }}</span><span class="kpi">{{ t.value }}</span><span v-if="t.note" class="kpi-sm dim">{{ t.note }}</span></div>
+          <div v-for="t in savingsTiles(savingsProject)" :key="t.key" class="tile" :data-tip="t.tip"><span class="lbl">{{ t.label }}</span><span class="kpi">{{ t.value }}</span><span v-if="t.note" class="kpi-sm dim">{{ t.note }}</span><a v-if="t.href" class="tile-link" :href="t.href" target="_blank" rel="noopener">how it is estimated</a></div>
         </div>
       </section>
 
@@ -1014,8 +1014,8 @@
     <footer class="statusbar">
       <div class="sb-left">
         <span class="sb-item"><jk-icon name="activity"></jk-icon>Builds Running&nbsp;<b>{{ buildsRunning() }}</b></span>
-        <span v-if="savingsTotalAll" class="sb-item" :data-tip="tokensSaved(savingsTotalAll).tip"><jk-icon name="bolt"></jk-icon>Saved&nbsp;<b>{{ tokensSaved(savingsTotalAll).tokens }} tokens · {{ tokensSaved(savingsTotalAll).usd }}</b>&nbsp;est.</span>
-        <span v-if="savingsTotalProject" class="sb-item" :data-tip="tokensSaved(savingsTotalProject).tip">This project&nbsp;<b>{{ tokensSaved(savingsTotalProject).tokens }} · {{ tokensSaved(savingsTotalProject).usd }}</b></span>
+        <span v-if="savingsTotalAll" class="sb-item" :data-tip="tokensSaved(savingsTotalAll).tip"><jk-icon name="bolt"></jk-icon>Saved&nbsp;<b>{{ tokensSaved(savingsTotalAll).tokens }} tokens · {{ tokensSaved(savingsTotalAll).usd }}</b>&nbsp;<a :href="tokensSaved(savingsTotalAll).method" target="_blank" rel="noopener">est.</a></span>
+        <span v-if="savingsTotalProject" class="sb-item" :data-tip="tokensSaved(savingsTotalProject).tip">This project&nbsp;<b>{{ tokensSaved(savingsTotalProject).tokens }} · {{ tokensSaved(savingsTotalProject).usd }}</b>&nbsp;<a :href="tokensSaved(savingsTotalProject).method" target="_blank" rel="noopener">est.</a></span>
       </div>
       <span class="spacer"></span>
       <div class="conn" :class="connection" :data-tip="connectionLabel()">
