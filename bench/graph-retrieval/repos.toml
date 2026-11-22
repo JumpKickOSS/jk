@@ -50,6 +50,6 @@ lang   = "java"
 # jk's own tree: a large multi-module Java workspace that jk builds natively (no import).
 [repos.jk]
 url    = "~/src/oss/jk"     # the local checkout; the repository is private
-commit = "1d0d441ed10b0ce5fa2bc85c696e1eb898a0c1b2"
+commit = "4991b6af10c5a79700923427e0da13e3c5ea4822"
 lang   = "java"
 native = true

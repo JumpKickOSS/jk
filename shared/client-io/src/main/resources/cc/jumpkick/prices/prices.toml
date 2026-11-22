@@ -29,6 +29,15 @@ source = "https://platform.claude.com/docs/en/about-claude/pricing"
 retrieved = "2026-11-17"
 note = "cache_write is the 5m write; 1h write is 8.00. Cache hits 0.05x base input. Full 1M context at standard pricing. Fast mode 8.00 in / 40.00 out. Batch: 2.00 in / 10.00 out."
 
+[models."gpt-6.2-sol"]
+vendor = "openai"
+input = 2.0
+cached_input = 0.1
+output = 10.0
+source = "https://developers.openai.com/api/docs/pricing"
+retrieved = "2026-11-22"
+note = "Standard tier, short context (<=272K input). Long context (>272K): 4.00 / 0.20 / 15.00. The page prices cache writes apart, as a 30-minute write (2.50; long context 5.00) and a 12-hour write (5.00; long context 10.00), which match neither the 5-minute nor the 1-hour field here, so a write is priced as input."
+
 [models."gpt-6.1-terra"]
 vendor = "openai"
 input = 1.0

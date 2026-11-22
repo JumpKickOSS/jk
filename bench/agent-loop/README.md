@@ -164,6 +164,7 @@ below, and a finding when the run had something to say; the transcript sits besi
 | `agy` | `agy -p` in the sandbox with the tool's MCP server. File tools are the custom agent `agent-loop` (`view_file`, `list_dir`, `grep_search`, `find_by_name`, `replace_file_content`, `multi_replace_file_content`, `write_to_file`; no shell, no subagents). MCP is `call_mcp_tool`. `--effort`. No turn-cap flag: `--print-timeout` plus the harness killing the process group, including once model steps pass `--max-turns` | the API's |
 | `cursor` | `cursor-agent -p --output-format stream-json` in the sandbox with the tool's MCP server (the workspace's `.cursor/mcp.json`, `--approve-mcps`), a throwaway `HOME` with a copied login and a CLI config that denies `Shell(*)`, `--force --trust`. cursor-agent takes no system prompt, so it leads the prompt. The model id carries the effort (`claude-sonnet-5-5-medium`). No turn-cap flag: the harness kills the process group once model calls pass `--max-turns`. Change tasks only | the API's |
 | `muse` | `muse exec --json` in the sandbox with the tool's MCP server. Tools are muse's defaults with `--disable-shell`, `--disable-web-tools`, and `subagent_delegation_mode = "off"`; `run.toolset` is not set, because it names built-in tools only and setting it drops every MCP tool. `--max-model-steps` is the turn budget: one step is one model call (`model.*.response`), and a call that requests tools is still one step (the tool tasks are not). That is the same unit as claude-code and grok `--max-turns`. `--reasoning-effort` is the effort, `--approval-mode never --disable-sandbox` leaves approvals off. The system prompt is `run.system_prompt` in the throwaway settings (there is no system-prompt flag) | the API's |
+| `copilot` | `copilot -p --output-format json` in the sandbox with the tool's MCP server (`--additional-mcp-config`, `--disable-builtin-mcps`), `--allow-all-tools --allow-all-paths --deny-tool shell`, a throwaway `COPILOT_HOME` so the user's MCP servers, hooks, instructions and settings stay out (the login stays in the system credential store). The model is `fusion`, Copilot's router, and the effort its Fusion tier, which only `settings.json` sets, so the throwaway home's carries it; another model takes the effort as `--reasoning-effort`. Copilot takes no system prompt, so it leads the prompt. Each row names the models Fusion routed to (`routed_models`) and the AI units the session reported (`copilot_aiu`). No turn-cap flag: the harness kills the process group once model calls pass `--max-turns`. Change tasks only | Copilot's AI credits |
 | `api` | a Messages-API tool-use loop: MCP tools bridged through the harness, file tools confined to the sandbox; needs `ANTHROPIC_API_KEY` and the `anthropic` SDK. `--effort` is sent as `output_config.effort` | the API's |
 
 `--model` and `--effort` apply to every LLM driver. The defaults are per driver; `harness --dry-run` and the table header print the model id and the effort that were used. A section whose runs could not be kept off the built-in shell says so in that header.
@@ -283,8 +284,8 @@ bench/agent-loop/change-tasks --task commons-lang-rename-indexof --arm jk --arm 
 bench/agent-loop/change-tasks --render
 ```
 
-`--driver` is `claude-code` (the default), `grok`, `agy`, `cursor`, `muse` or `codex` (shell only: it gets the shell
-prompts), each as in the driver table above;
+`--driver` is `claude-code` (the default), `grok`, `agy`, `cursor`, `muse`, `copilot` or `codex` (shell only: it gets
+the shell prompts), each as in the driver table above;
 `--model` picks among a driver's models (`cursor`: `composer-2.5`, `claude-sonnet-5-5-medium`, …);
 `--context` sets a context window in tokens where the CLI takes one (grok's per-model `context_window`,
 which sets when it compacts) and is recorded on every row with the model, the effort, the CLI and its
@@ -357,32 +358,44 @@ would have cost), each as tokens times the API calls that carried them.
 
 ## A night of benches
 
-`scripts/bench-night.sh` runs what the agent bench owes on the gate host, in priority order, until
-a deadline. Its plan is `night-plan plan`: step 1 re-runs the change tasks the published agent claims
-use, each agent on its prescription arm, one run per cell; step 2 is the refactoring tasks (delete,
-the two moves, pull-up, extract interface) on `jk-graph`, `jk` and `jk-nograph`; step 3 the commands
-in `$NIGHT_EXTRA`, while time is left; step 4, only with `NIGHT_NOGRAPH=1`, `jk-nograph` again for
-the claims' tasks, three runs a cell. agy runs Gemini 4 Neon (`--model gemini-4-neon-high`,
-`$NIGHT_AGY_MODEL`).
+`scripts/bench-night.sh` runs what the agent bench owes on the gate host, in order, until a deadline,
+every agent on its pinned model and effort, one run per cell and no repetitions. Its plan is
+`night-plan plan`, in the tiers of [agent-bench.md](../../docs/contributors/agent-bench.md#the-standard):
+tier 0 is `smoke-test`, tier 1 the screen (`night-plan`'s `TIER1`: a caller and an impact question, a
+rename, and the delete, move, pull-up and extract-interface refactorings), tier 2 a sliver: the other
+tasks the published claims use. "With the code tools" is each agent's prescription arm, or `jk-graph`
+for a refactoring, whose tools only the extended list carries; "no-code-tools" is `jk-nograph`.
+
+| Step | What |
+|---|---|
+| 1 | the new agent (`$NIGHT_FIRST`, default `copilot`) alone, tiers 0, 1 and 2 with the code tools, so a problem with it shows first |
+| 2 | no-code-tools: every task of tiers 1 and 2, every agent (`NIGHT_NOGRAPH=0` leaves the step out) |
+| 3 | with the code tools: tiers 0, 1 and 2, every agent but the new one |
+| 4 | the commands in `$NIGHT_EXTRA`, while time is left |
 
 ```bash
-scripts/bench-night.sh prepare                          # set up the corpus repositories (no agent)
-scripts/bench-night.sh run --until 07:00 --dry-run      # every cell, its expected time, who is not logged in
+scripts/bench-night.sh prepare                          # every corpus repository at its pin, built (no agent)
+scripts/bench-night.sh smoke                            # tier 0 now, every agent, one PASS or FAIL line each
+scripts/bench-night.sh run --until 07:00 --dry-run      # every cell, minutes per step, what misses the deadline
 scripts/bench-night.sh pause                            # stop the merge queue and Full loops between gates
 scripts/bench-night.sh run --until 07:00                # the night, under systemd-inhibit
 scripts/bench-night.sh resume                           # start both loops again as they were
 ```
 
+`--until` is read in the host's time zone; name another one when it differs (`--until "01:00 MST"`).
+`NIGHT_SKIP=copilot` leaves an agent out of steps 2 and 3 from the start; during the night, a name
+written into `/var/tmp/jk-bench-night/skip` (one per line) does the same for every cell not yet started.
+
 A cell's expected time is the median of its newest series' baseline, warmup, agent and verification
 seconds in `results/*/rows.jsonl` (the run's own model first); a cell never run takes its driver and
-arm's runs on the same repository, and the dry run says which. A cell starts only when it fits before
-the deadline; one still running at the deadline is stopped. An agent CLI that is not logged in, a
+arm's runs on the same repository, then other agents' runs of the task or of its repository, and the
+dry run says which; a smoke cell takes the smoke rows'. A cell starts only when it fits before the
+deadline; one still running at the deadline is stopped. An agent CLI that is not logged in, a
 corpus repository not set up, and an agent whose two cells in a row end in an error row have their
 cells skipped and named. A real run refuses when the installed jk is not the tree's version or lacks
 an MCP tool a step calls, when a loop runs, or when a gate holds the gate lock, which it then holds to
 the end. Rows land in `results/<date>-change-tasks/`, where the scoreboard reads them; nothing is
-banked or rendered: that is a separate, reviewed step. agy's rows count in the claims once
-`change-tasks`' default agy model is Gemini 4 Neon.
+banked or rendered: that is a separate, reviewed step.
 
 `pause` takes the gate lock (`/var/tmp/fleet-gate.lock`), so a batch or Full cycle in flight finishes
 first, saves each loop's command line, directory, output and environment under

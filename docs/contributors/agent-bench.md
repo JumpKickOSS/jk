@@ -4,6 +4,37 @@ How to tell whether a change to what agents read ([agent-integration.md](agent-i
 them better. The bench is `bench/agent-loop/` (commands and arms: its
 [README](../../bench/agent-loop/README.md)); this page is the method, and the traps it has hit.
 
+## The standard
+
+One model and one effort per agent, the same in every bench (`change-tasks`' `DEFAULT_MODEL` and
+`DEFAULT_EFFORT`, which `smoke-test`, `screen-ff` and `night-plan` use), each id as the agent's own CLI
+lists it:
+
+| Agent | CLI | Model | Effort |
+|---|---|---|---|
+| Claude Code | `claude` | `claude-opus-5-5` (Claude Opus 5.5) | `medium` |
+| Codex | `codex` | `gpt-6.2-sol` (GPT-6.2-Sol) | `medium` |
+| Copilot | `copilot` | `fusion` (Copilot Fusion, which routes to a model of its choosing) | `standard` (the Fusion tier) |
+| Antigravity | `agy` | `gemini-4-neon-medium` (Gemini 4 Neon) | `medium`, part of the model id |
+| Grok | `grok` | `grok-4.7` | `high` |
+| Cursor | `cursor-agent` | `composer-2.5` (Composer 2.5, not the fast variant) | none: `default` is recorded |
+| Muse | `muse` | `muse-spark-1.3-contributor` | `max` |
+
+A row is priced at its model's row in the product's price table
+(`shared/client-io/src/main/resources/cc/jumpkick/prices/prices.toml`); Muse's contributor model at
+the standard `muse-spark-1.3` row. Fusion has no per-token list price: a Copilot row records the models
+Fusion routed to and the AI units it used, and no cost. Rows are banked per model, so a new pin starts a
+new series for that agent, and the claims re-render only from series on the pinned models.
+
+**Tiers.** Every agent, one run per cell, never repeated. The no-code-tools arm (`jk-nograph`) runs
+only when asked for: `screen-ff --arm agent=jk-nograph`, or the night's step 2.
+
+| Tier | What | When |
+|---|---|---|
+| 0 smoke | `smoke-test`: the fixture's caller question and rename, minutes per agent | A new agent or model, or a change that may stop an agent reaching the graph at all |
+| 1 screen | `night-plan`'s `TIER1`: a caller and an impact question, a rename, and the delete, move, pull-up and extract-interface refactorings | Every change, and every night |
+| 2 sliver | the other tasks the published claims use, with the code tools | Fresh numbers for the claims |
+
 ## Method
 
 **Breadth first, one run per cell.** With the graph, an agent repeats itself closely: tokens move a
@@ -11,19 +42,16 @@ few percent between runs and correctness does not change. A screen is every agen
 tasks, one run each, before anything runs twice. Breadth (more tasks, more agents) says more than depth.
 
 ```bash
-bench/agent-loop/smoke-test --driver codex --arm jk                        # tier 0: minutes
+scripts/bench-night.sh smoke                                               # tier 0, every agent: one line each
+bench/agent-loop/smoke-test --driver codex --arm jk                        # tier 0, one agent: minutes
 bench/agent-loop/screen-ff --series 33 --task petclinic-rename-addvisit …   # a screen, every agent
 bench/agent-loop/screen-ff --series 33 --confirm --task …                  # rerun only what surprised
 ```
 
-| Tier | What | When |
-|---|---|---|
-| 0 smoke | `smoke-test`: a 127-line fixture, one caller question and one rename | A new agent, or a change that may stop an agent reaching the graph at all |
-| 1 screen | `screen-ff` on the few tasks the change can show, every agent, one run | Every change |
-| 2 collection | `screen-ff` on every task (`--runs` only for the no-graph arm) | Fresh numbers for the docs, or a new agent |
-
-A night of owed runs on the gate host, in priority order until a deadline, with the merge queue paused:
-`scripts/bench-night.sh` ([README](../../bench/agent-loop/README.md#a-night-of-benches)).
+A night on the gate host runs the tiers in order until a deadline, with the merge queue paused:
+`scripts/bench-night.sh` ([README](../../bench/agent-loop/README.md#a-night-of-benches)). A new agent
+goes first and alone through tiers 0 to 2, so a problem with it shows early; then the no-code-tools
+baseline; then every other agent with the code tools.
 
 **Fail fast.** Read the verdict as soon as the first agents finish. Stop a screen the moment the change
 is plainly worse or plainly irrelevant; never let a run go long to "be sure". Change one thing per
@@ -34,8 +62,8 @@ the text under test: a change no agent saw reads as a change that did nothing.
 
 **Depth only where it decides.** `--confirm` reruns once the cells that lost correctness or moved more
 than 30% in tokens or turns against the baseline. The no-graph arm is heavy-tailed (turn caps,
-failures, 2–3x swings), so it is collected with `--runs 3`, and only when the docs need it or a new
-agent joins: changes to the graph tools do not touch it.
+failures, 2–3x swings), and changes to the graph tools do not touch it: it runs only when the claims
+need a new baseline or a new agent joins, one run per cell like every other arm.
 
 **Compare like with like.** The baseline is a series on the same build era, each agent on its
 prescription (`screen-ff`'s `PRESCRIPTIONS`; `--arm agent=arm` tries another against it). Every row

@@ -34,7 +34,6 @@ A subtype question is not counted: it is answered from declarations, and grep is
 
 from __future__ import annotations
 
-import ast
 import json
 import re
 import statistics
@@ -64,8 +63,8 @@ def cells() -> dict[tuple[str, str, str], list[dict]]:
     """Every (driver, arm, task) cell of the current tasks, from its newest series, every run kept."""
     sys.path.insert(0, str(RESULTS.parent))
     tasks = tomllib.loads((RESULTS.parent / "tasks.toml").read_text())["tasks"]
-    models = _default_models()
-    efforts = _default_efforts()
+    models = {d: m for d, (m, _) in CLAIMED.items()}
+    efforts = {d: e for d, (_, e) in CLAIMED.items()}
     by: dict[tuple[str, str, str], dict[tuple[str, int], list[dict]]] = {}
     for f in sorted(RESULTS.glob("*/rows.jsonl")):
         for line in f.read_text().splitlines():
@@ -82,16 +81,14 @@ def cells() -> dict[tuple[str, str, str], list[dict]]:
     return {k: v[max(v)] for k, v in by.items()}
 
 
-def _default_efforts() -> dict[str, str]:
-    text = (RESULTS.parent / "change-tasks").read_text()
-    m = re.search(r"DEFAULT_EFFORT = (\{.*?\})", text, re.S)
-    return ast.literal_eval(m.group(1)) if m else {}
-
-
-def _default_models() -> dict[str, str]:
-    text = (RESULTS.parent / "change-tasks").read_text()
-    start = text.index("DEFAULT_MODEL = ")
-    return ast.literal_eval(text[start + len("DEFAULT_MODEL = "):text.index("}", start) + 1])
+# The banked series the claims render from: each agent's model and effort as its claims' rows were
+# measured, and the corpus lines where the corpus has moved on since (jk's tree, at 1d0d441ed). New runs
+# use change-tasks' pins (DEFAULT_MODEL, DEFAULT_EFFORT); once a baseline on those pins is banked, they
+# replace these and CLAIMED_LOC goes.
+CLAIMED = {"claude-code": ("claude-sonnet-5-5", "medium"), "grok": ("grok-4.7", "high"),
+           "agy": ("gemini-3.8-flash-high", "high"), "cursor": ("composer-2.5", "medium"),
+           "muse": ("muse-spark-1.3-contributor", "xhigh"), "codex": ("gpt-6.1-terra", "medium")}
+CLAIMED_LOC = {"jk": 679533}
 
 
 def _graph_question(task: str, kind: str) -> bool:
@@ -200,7 +197,7 @@ def measure(ctx) -> list[dict]:
 # User docs name agents by vendor and tier, never by product.
 # Each agent's arm with the graph as `jk agents` sets it up: Cursor and agy with jk's rules file.
 PRESCRIPTION = {"claude-code": "jk", "grok": "jk", "muse": "jk", "cursor": "jk-cursorrules", "agy": "jk-agyrules",
-                "codex": "jk"}
+                "codex": "jk", "copilot": "jk"}
 LABELS = {"claude-code": "Vendor A, mid-tier", "grok": "Vendor B, frontier", "agy": "Vendor C, fast",
           "cursor": "Vendor D", "muse": "Vendor E", "codex": "Vendor F"}
 QUESTIONS = JK_TREE / "bench" / "graph-retrieval" / "questions"
@@ -396,6 +393,8 @@ def rates(by: dict) -> str:
 
 
 def _loc(repo: str) -> int | None:
+    if repo in CLAIMED_LOC:
+        return CLAIMED_LOC[repo]
     f = QUESTIONS / f"{repo}.json"
     return json.loads(f.read_text())["loc"] if f.is_file() else None
 
@@ -489,8 +488,6 @@ def models(prescription_only: bool = True) -> list[dict]:
     """Each agent's default model against every other model it ran, on the tasks both ran with its
     prescription: the newest series of each (driver, model, task)."""
     tasks = tomllib.loads((RESULTS.parent / "tasks.toml").read_text())["tasks"]
-    defaults = _default_models()
-    efforts = _default_efforts()
     newest: dict[tuple[str, str, str], dict[tuple[str, int], list[dict]]] = {}
     for f in sorted(RESULTS.glob("*/rows.jsonl")):
         for line in f.read_text().splitlines():
@@ -506,7 +503,7 @@ def models(prescription_only: bool = True) -> list[dict]:
     out = []
     for driver in LABELS:
         mine = {m for (d, m, _) in cells if d == driver}
-        default = f"{defaults.get(driver)}/{efforts.get(driver)}"
+        default = "/".join(CLAIMED.get(driver, ("", "")))
         for model in sorted(mine - {default}):
             both = sorted(t for (d, m, t) in cells if d == driver and m == model
                           and (driver, default, t) in cells)

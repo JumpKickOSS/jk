@@ -1,4 +1,4 @@
-"""The LLM drivers: headless claude, grok, agy, and muse, plus a Messages-API tool-use loop.
+"""The LLM drivers: headless claude, grok, agy, cursor, muse, codex and copilot, plus a Messages-API tool-use loop.
 
 Each gets the same fixed system prompt, the tool's MCP server, and file tools on the sandbox.
 Turns, tokens and wall come from the harness's own clock and the CLI's usage fields; the
@@ -255,7 +255,8 @@ def _run_streaming(cmd: list[str], cwd: Path, env: dict, max_seconds: int, trans
 
 # Each driver's command, as `shutil.which` looks it up. Claude Code's is a setting: `$JK_BENCH_CLAUDE`
 # names another launcher (one that signs in to a second account, say) that passes its arguments through.
-CLI = {"claude-code": "claude", "grok": "grok", "agy": "agy", "cursor": "cursor-agent", "muse": "muse", "codex": "codex"}
+CLI = {"claude-code": "claude", "grok": "grok", "agy": "agy", "cursor": "cursor-agent", "muse": "muse", "codex": "codex",
+       "copilot": "copilot"}
 
 
 def cli(driver: str) -> str:
@@ -1803,4 +1804,168 @@ def codex(tool: str, sandbox: Path, model: str, max_turns: int, max_seconds: int
         return AgentResult(False, turns, usage, None, summary, finding, extra)
     claimed = bool(re.match(r"\s*GREEN\b", reply))
     finding = "" if claimed else (f"agent stopped: {reply.strip()[:200]}" if reply.strip() else "agent stopped")
+    return AgentResult(claimed, turns, usage, None, summary, finding, extra)
+
+
+# --------------------------------------------------------------------------------- copilot
+
+# Copilot CLI's built-in tools, under the names the other drivers use.
+COPILOT_TOOLS = {"view": "Read", "edit": "Edit", "apply_patch": "Edit", "create": "Write", "grep": "Grep",
+                 "glob": "Glob", "bash": "Bash", "powershell": "Bash", "local_shell": "Bash"}
+# Tools that are neither a file nor an MCP tool and still not a shell: copilot's bookkeeping.
+COPILOT_QUIET = {"report_intent", "task_complete", "update_todo", "think"}
+
+
+def _copilot_call(data: dict) -> tuple[str, dict]:
+    """The harness name and arguments of a ``tool.execution_start``: ``mcp__<server>__<tool>`` for MCP."""
+    args = data.get("arguments") if isinstance(data.get("arguments"), dict) else {}
+    server = data.get("mcpConfigServerName") or data.get("mcpServerName")
+    if server and data.get("mcpToolName"):
+        return f"mcp__{server}__{data['mcpToolName']}", args
+    name = str(data.get("toolName") or "")
+    return COPILOT_TOOLS.get(name, name), args
+
+
+def _copilot_summary(events: list[dict]) -> list[dict]:
+    out: list[dict] = []
+    for ev in events:
+        data = ev.get("data") if isinstance(ev.get("data"), dict) else {}
+        if ev.get("type") == "tool.execution_start":
+            name, args = _copilot_call(data)
+            out.append({"tool_use": name, "input": json.dumps(args)[:200]})
+        elif ev.get("type") == "assistant.message" and str(data.get("content") or "").strip():
+            out.append({"text": str(data["content"])[:300]})
+    return out
+
+
+def _copilot_turns(events: list[dict]) -> int:
+    """Model calls: one assistant message per call."""
+    return sum(1 for ev in events if ev.get("type") == "assistant.message")
+
+
+def _copilot_usage(events: list[dict]) -> tuple[dict, list[str], float | None]:
+    """Tokens summed over every model call (``session.usage_record``), the models Fusion routed to, and the
+    AI units the session reports (its ``totalNanoAiu``, in units). Copilot's input count includes the cached
+    tokens, so they are taken out."""
+    raw: dict[str, int] = {}
+    routed: list[str] = []
+    aiu = None
+    for ev in events:
+        data = ev.get("data") if isinstance(ev.get("data"), dict) else {}
+        if ev.get("type") == "session.usage_record":
+            u = data.get("usage") if isinstance(data.get("usage"), dict) else {}
+            for k in ("inputTokens", "outputTokens", "cacheReadTokens", "cacheWriteTokens", "reasoningTokens"):
+                raw[k] = raw.get(k, 0) + int(u.get(k) or 0)
+            model = u.get("responseModel") or u.get("model")
+            if model and model not in routed:
+                routed.append(str(model))
+        elif ev.get("type") == "model.call_final_result" and data.get("model") and data["model"] not in routed:
+            routed.append(str(data["model"]))
+        elif ev.get("type") == "session.usage_checkpoint" and data.get("totalNanoAiu") is not None:
+            aiu = float(data["totalNanoAiu"]) / 1e9
+    if not raw:
+        return {}, routed, aiu
+    cached = raw["cacheReadTokens"] + raw["cacheWriteTokens"]
+    usage = {
+        "input_tokens": max(0, raw["inputTokens"] - cached),
+        "output_tokens": raw["outputTokens"],
+        "cache_read_input_tokens": raw["cacheReadTokens"],
+        "cache_creation_input_tokens": raw["cacheWriteTokens"],
+        "reasoning_tokens": raw["reasoningTokens"],
+    }
+    return usage, routed, aiu
+
+
+def _copilot_session_events(home: Path) -> list[dict]:
+    """The session's own event log under the throwaway ``COPILOT_HOME``: every event, also those the
+    stdout stream leaves out (usage records)."""
+    out: list[dict] = []
+    for log in sorted(home.glob("session-state/*/events.jsonl")):
+        for line in log.read_text(errors="replace").splitlines():
+            try:
+                ev = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(ev, dict):
+                out.append(ev)
+    return out
+
+
+def copilot(tool: str, sandbox: Path, model: str, max_turns: int, max_seconds: int, transcript_path: Path,
+            effort: str = "standard") -> AgentResult:
+    """`copilot -p --output-format json` with a throwaway ``COPILOT_HOME``, no shell, the run's MCP servers
+    and the same prompt.
+
+    The login stays where `copilot login` put it (the system credential store); the throwaway home keeps
+    the user's MCP servers, hooks, instructions and settings out, and holds the Fusion tier: ``model`` is
+    ``fusion`` and ``effort`` its tier (standard, high, max), which only settings.json sets. A model other
+    than Fusion takes ``effort`` as its reasoning effort instead. Copilot takes no system prompt, so the
+    system prompt leads the user prompt. There is no turn-cap flag: the harness kills the run once model
+    calls pass ``max_turns``.
+    """
+    if not shutil.which("copilot"):
+        raise RuntimeError("the `copilot` CLI is not on PATH")
+    server, registered = servers(tool, sandbox)
+    homes = Path.home() / ".cache" / "jk-bench" / "copilot-homes"
+    homes.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="run-", dir=homes, ignore_cleanup_errors=True) as tmp:
+        home = Path(tmp)
+        fusion = model in ("fusion", "auto")
+        (home / "settings.json").write_text(json.dumps({"fusionTier": effort} if fusion else {}) + "\n")
+        mcp = {name: {"type": "local", "command": cfg["command"], "args": list(cfg.get("args", [])),
+                      "env": jk_server_env(), "tools": ["*"]} for name, cfg in registered.items()}
+        calls = {"n": 0}
+
+        def on_event(ev: dict) -> str | None:
+            if ev.get("type") == "assistant.message":
+                calls["n"] += 1
+                if calls["n"] > max_turns:
+                    return "kill"
+            return None
+
+        prompt = system_prompt(tool, sandbox, server) + "\n\n" + user_prompt()
+        cmd = [
+            "copilot", "-p", prompt,
+            "--output-format", "json",
+            "--model", model,
+            "--allow-all-tools", "--allow-all-paths",
+            "--deny-tool", "shell",
+            "--disable-builtin-mcps",
+            "--additional-mcp-config", json.dumps({"mcpServers": mcp}),
+            "--no-ask-user",
+            "--no-auto-update",
+        ]
+        if not fusion:
+            cmd += ["--reasoning-effort", effort]
+        env = no_graph_path(home, {**os.environ, "COPILOT_HOME": str(home), "COPILOT_AUTO_UPDATE": "false"})
+        events, stderr, stop = _run_streaming(cmd, sandbox, env, max_seconds, transcript_path, on_event)
+        session = _copilot_session_events(home)
+    usage, routed, aiu = _copilot_usage(session or events)
+    every = session or events
+    turns = _copilot_turns(every)
+    summary = _copilot_summary(every)
+    used = [step["tool_use"] for step in summary if step.get("tool_use")]
+    outside = sorted({n for n in used if not n.startswith("mcp__") and n not in COPILOT_QUIET
+                      and n not in {"Read", "Edit", "Write", "Grep", "Glob"}})
+    extra = {"effort": effort, "file_tools_only": not outside, "server": server, "model_usage": None,
+             "routed_models": routed, "copilot_aiu": aiu}
+    if outside:
+        return AgentResult(False, turns, usage, None, summary,
+                           f"agent used a tool outside the file and MCP set: {', '.join(outside)}", extra)
+    failed = next((ev for ev in every if ev.get("type") == "session.error"), None)
+    replies = [ev["data"] for ev in every if ev.get("type") == "assistant.message"
+               and isinstance(ev.get("data"), dict) and not ev["data"].get("toolRequests")]
+    text = str(replies[-1].get("content") or "") if replies else ""
+    if failed is not None or not text:
+        finding = (json.dumps(failed.get("data"))[:300] if failed else "copilot exited without a final answer"
+                   + (f": {stderr[:300]}" if stderr else ""))
+        if stop == "wall":
+            finding = f"time budget exhausted ({max_seconds}s)"
+        elif stop == "turns":
+            finding = f"turn budget exhausted ({max_turns})"
+        if _startup_failure(finding) or _startup_failure(stderr):
+            extra["abort"] = True
+        return AgentResult(False, turns, usage, None, summary, finding, extra)
+    claimed = bool(re.match(r"\s*GREEN\b", text))
+    finding = "" if claimed else (f"agent stopped: {text.strip()[:200]}" if text.strip() else "agent stopped")
     return AgentResult(claimed, turns, usage, None, summary, finding, extra)

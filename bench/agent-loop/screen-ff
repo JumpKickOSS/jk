@@ -27,7 +27,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 PRESCRIPTIONS = {"claude-code": "jk", "cursor": "jk-cursorrules", "grok": "jk", "muse": "jk", "agy": "jk-agyrules",
-                 "codex": "jk"}
+                 "codex": "jk", "copilot": "jk"}
 # Tasks whose baseline needs Docker (petclinic's Testcontainers Postgres test); skipped while it is down.
 NEEDS_DOCKER = {"petclinic-rename-addvisit"}
 # Ratio of the new median to the baseline's past which a measure counts as better or worse, over all

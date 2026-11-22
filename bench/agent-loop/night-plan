@@ -1,31 +1,48 @@
 #!/usr/bin/env python3
-"""The agent benches a night owes, in priority order, each with the wall time its earlier runs took.
+"""The agent benches a night owes, in order, each with the wall time its earlier runs took.
 
-    bench/agent-loop/night-plan plan     # one line per change-tasks invocation, tab-separated
+    bench/agent-loop/night-plan plan     # one line per cell, tab-separated
+    bench/agent-loop/night-plan agents   # one line per agent: driver, model, effort, prescription arm
     bench/agent-loop/night-plan tools    # exit 1 when the installed jk's MCP lists lack a tool a step needs
     bench/agent-loop/night-plan corpus   # the directory of the corpus repositories the tasks run on
 
-scripts/bench-night.sh runs the plan. Each line is one cell (driver, arm, task):
+scripts/bench-night.sh runs the plan. Each line is one cell, one run of one agent on one task and arm:
 
-    step  driver  arm  task  repo  runs  first_run  model  est_s  source
+    step  tier  driver  arm  task  repo  runs  first_run  model  effort  est_s  source
 
-Step 1 re-runs every change task the published agent claims use, each agent on its prescription arm
-(the arm the claims compare with jk-nograph). Step 2 is the refactoring tasks on jk-graph, jk and
-jk-nograph. Step 4, only with NIGHT_NOGRAPH=1, re-runs jk-nograph for the claims' tasks, three runs a
-cell. Step 3 has no cells here: bench-night.sh runs its commands from a file.
+Every agent runs its pinned model and effort (change-tasks' DEFAULT_MODEL and DEFAULT_EFFORT), one run
+a cell, never repeated. The tiers:
 
-`model` is `-` for the driver's default. `est_s` is the cell's seconds over all its runs: per run, the
-median of baseline, warmup, agent and verification seconds over the newest series of that cell in
-results/*/rows.jsonl; without one, the median over the same driver and arm's cells on the same
-repository and kind (question or edit), then over all that driver and arm's cells, then the run's
---max-minutes cap. `source` says which. Sandbox copying is not in the rows and not in the estimate.
+    0  smoke-test: the two-task fixture (task `smoke`, repo `-`)
+    1  a screen: TIER1, the code questions, a rename and the four workbench refactorings
+    2  a sliver of the collection: the other tasks the published claims use
 
-Environment: NIGHT_DRIVERS (step 1, default every agent with published claims), NIGHT_REFACTOR_DRIVERS
-(step 2, default claude-code), NIGHT_AGY_MODEL (default gemini-4-neon-high), NIGHT_NOGRAPH,
-NIGHT_RESULTS (the results directory, default results/ beside this file), NIGHT_MAX_MINUTES (default 30).
+A task runs "with the tools" on the agent's prescription arm, or on jk-graph for a refactoring, whose
+tools only the extended list carries; "without" is jk-nograph, no JumpKick code tools. The steps:
+
+    1  the new agent (NIGHT_FIRST, default copilot) alone, tiers 0, 1 and 2 with the tools, so a problem
+       with it shows first
+    2  without the tools: every task of tiers 1 and 2, every agent (NIGHT_NOGRAPH=0 leaves it out)
+    3  with the tools: tiers 0, 1 and 2, every agent but the new one, which step 1 ran
+
+Within a step, tier 1 comes before tier 2 and each task runs every agent before the next task, so a
+deadline cuts tasks, not agents. Step 4 has no cells here: bench-night.sh runs its commands from a file.
+
+`est_s` is the cell's seconds: the median of baseline, warmup, agent and verification seconds over the
+newest series of that cell in results/*/rows.jsonl, the model's own runs first; without one, the median
+over the same driver and arm's cells on the same repository and kind (question or edit), then over all
+that driver and arm's cells; then any agent's cells of the same task and arm, of the same repository,
+kind and arm, of the same repository and kind on any arm; then the run's --max-minutes cap. A smoke
+cell's comes from the smoke rows under $AGENT_LOOP_HOME/smoke/. `source` says which. Sandbox copying
+is not in the rows and not in the estimate.
+
+Environment: NIGHT_DRIVERS (default every agent change-tasks pins), NIGHT_FIRST, NIGHT_SKIP (agents left
+out of steps 2 and 3), NIGHT_NOGRAPH, NIGHT_RESULTS (the results directory, default results/ beside this
+file), NIGHT_MAX_MINUTES (default 30).
 """
 from __future__ import annotations
 
+import ast
 import importlib.util
 import json
 import os
@@ -35,12 +52,16 @@ import tomllib
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-REFACTORINGS = ["petclinic-delete-dead-code", "petclinic-move-phone-format", "petclinic-move-type-label",
-                "petclinic-pullup-display-name", "petclinic-extract-interface-contact"]
-REFACTOR_ARMS = ["jk-graph", "jk", "jk-nograph"]
-# The tools each step's arms call by name: the renamed loop and graph cards, then the refactorings.
+# Tier 1, the screen: a caller question and an impact question, a rename, and the four workbench refactorings.
+TIER1 = ["petclinic-callers-addpet", "cl-impact-ispackage", "petclinic-rename-telephone",
+         "petclinic-delete-dead-code", "petclinic-move-phone-format", "petclinic-pullup-display-name",
+         "petclinic-extract-interface-contact"]
+REFACTOR_KINDS = {"delete", "move", "pull-up", "extract-interface"}
+# The tools each surface must list: the loop and graph cards, then the refactorings.
 NEEDED = {"default": ["build", "usages"], "extended": ["delete", "move", "pull_up", "extract_interface"]}
-FIRST_RUN = {1: 100, 2: 200, 4: 300}
+FIRST_RUN = {1: 100, 2: 200, 3: 300}
+SMOKE_TASKS = 2
+SMOKE_CAP_S = 4 * 60
 
 
 def _scoreboard_agents():
@@ -50,19 +71,33 @@ def _scoreboard_agents():
     return mod
 
 
-def _rows(results: Path, tasks: dict) -> dict[tuple[str, str, str, str], list[dict]]:
+def pins() -> tuple[dict[str, str], dict[str, str]]:
+    """change-tasks' DEFAULT_MODEL and DEFAULT_EFFORT: every agent's pinned model and effort."""
+    text = (HERE / "change-tasks").read_text()
+
+    def table(name: str) -> dict[str, str]:
+        start = text.index(f"{name} = ") + len(name) + 3
+        return ast.literal_eval(text[start:text.index("}", start) + 1])
+
+    return table("DEFAULT_MODEL"), table("DEFAULT_EFFORT")
+
+
+def _read(files) -> list[dict]:
+    out = []
+    for f in sorted(files):
+        out += [json.loads(line) for line in f.read_text().splitlines() if line.strip()]
+    return out
+
+
+def _rows(rows: list[dict], tasks: dict) -> dict[tuple[str, str, str, str], list[dict]]:
     """Every (driver, arm, task, model) cell's newest series."""
     by: dict[tuple[str, str, str, str], dict[tuple[str, int], list[dict]]] = {}
-    for f in sorted(results.glob("*/rows.jsonl")):
-        for line in f.read_text().splitlines():
-            if not line.strip():
-                continue
-            r = json.loads(line)
-            if r.get("task") not in tasks or r.get("wall_s") is None:
-                continue
-            series = (str(r.get("date", "")), int(r.get("run") or 0) // 100)
-            key = (r.get("driver", "claude-code"), r["arm"], r["task"], str(r.get("model")))
-            by.setdefault(key, {}).setdefault(series, []).append(r)
+    for r in rows:
+        if r.get("task") not in tasks or r.get("wall_s") is None:
+            continue
+        series = (str(r.get("date", "")), int(r.get("run") or 0) // 100)
+        key = (r.get("driver", "claude-code"), r["arm"], r["task"], str(r.get("model")))
+        by.setdefault(key, {}).setdefault(series, []).append(r)
     return {k: v[max(v)] for k, v in by.items()}
 
 
@@ -99,45 +134,92 @@ def estimate(cells: dict, tasks: dict, driver: str, arm: str, task: str, model: 
             models = sorted({k[3] for k in hits})
             return (statistics.median(med(v) for v in hits.values()),
                     f"{what} of {driver}/{arm} ({len(hits)} cells, {', '.join(models)})")
+    like = f"{spec['repo']} {_family(spec)}s"
+    for what, near in ((f"{task} on {arm}", lambda a, t: a == arm and t == task),
+                       (f"{like} on {arm}", lambda a, t: a == arm and _like(tasks[t], spec)),
+                       (f"{like} on any arm", lambda a, t: _like(tasks[t], spec))):
+        others = {k: v for k, v in cells.items() if near(k[1], k[2])}
+        if others:
+            return statistics.median(med(v) for v in others.values()), f"{what} by any agent ({len(others)} cells)"
     return cap_s, "no runs: the time cap"
+
+
+def _like(a: dict, b: dict) -> bool:
+    return a["repo"] == b["repo"] and _family(a) == _family(b)
+
+
+def smoke_estimate(rows: list[dict], driver: str, model: str) -> tuple[float, str]:
+    """Seconds of one smoke-test of the two default tasks: that model's median run, else every agent's."""
+    for mine, what in ((True, f"{driver}'s smoke runs"), (False, "every agent's smoke runs")):
+        rs = [_seconds(r) for r in rows if r.get("wall_s") is not None
+              and (not mine or (r.get("driver") == driver and r.get("model") == model))]
+        if rs:
+            return SMOKE_TASKS * statistics.median(rs), f"{what} ({len(rs)})"
+    return SMOKE_TASKS * SMOKE_CAP_S, "no smoke runs: the time cap"
+
+
+def claimed(tasks: dict, rows: list[dict], graph_question) -> list[str]:
+    """The tasks the published claims use: graph questions and renames with a measured row, whatever its model
+    (the scoreboard keeps only the pinned models' rows, so a new pin would otherwise empty the list)."""
+    out = set()
+    for r in rows:
+        t = r.get("task")
+        if t in tasks and "accepted" in r:
+            kind = tasks[t].get("kind", "")
+            if graph_question(t, kind) or kind.startswith("rename"):
+                out.add(t)
+    return sorted(out)
 
 
 def plan() -> list[tuple]:
     sb = _scoreboard_agents()
     tasks = tomllib.loads((HERE / "tasks.toml").read_text())["tasks"]
     results = Path(os.environ.get("NIGHT_RESULTS") or HERE / "results")
-    cells = _rows(results, tasks)
-    cap_s = 60.0 * int(os.environ.get("NIGHT_MAX_MINUTES") or 30)
-    agy_model = os.environ.get("NIGHT_AGY_MODEL") or "gemini-4-neon-high"
-    drivers = (os.environ.get("NIGHT_DRIVERS") or " ".join(sb.LABELS)).split()
-    refactor_drivers = (os.environ.get("NIGHT_REFACTOR_DRIVERS") or "claude-code").split()
+    rows = _read(results.glob("*/rows.jsonl"))
+    cells = _rows(rows, tasks)
+    sys.path.insert(0, str(HERE.parent))
+    import benchtools  # noqa: PLC0415
 
-    # The claims' tasks are those the published cells hold: graph questions and renames.
-    claimed = sorted({t for (_, _, t), rs in sb.cells().items()
-                      if sb._graph_question(t, rs[0]["kind"]) or rs[0]["kind"].startswith("rename")})
+    smoke_rows = _read((benchtools.scratch("AGENT_LOOP_HOME", "agent-loop") / "smoke").glob("*/rows.jsonl"))
+    cap_s = 60.0 * int(os.environ.get("NIGHT_MAX_MINUTES") or 30)
+    models, efforts = pins()
+    drivers = (os.environ.get("NIGHT_DRIVERS") or " ".join(models)).split()
+    first = os.environ.get("NIGHT_FIRST", "copilot")
+    skip = set((os.environ.get("NIGHT_SKIP") or "").split())
+    tier2 = [t for t in claimed(tasks, rows, sb._graph_question) if t not in TIER1]
     out = []
 
-    models = sb._default_models()
+    def with_tools(driver: str, task: str) -> str:
+        return "jk-graph" if tasks[task].get("kind") in REFACTOR_KINDS else sb.PRESCRIPTION.get(driver, "jk")
 
-    def add(step: int, driver: str, arm: str, task: str, runs: int) -> None:
-        model = agy_model if driver == "agy" else "-"
-        one, source = estimate(cells, tasks, driver, arm, task, agy_model if driver == "agy" else models.get(driver, ""),
-                               cap_s)
-        out.append((step, driver, arm, task, tasks[task]["repo"], runs, FIRST_RUN[step], model, round(one * runs), source))
+    def smoke(step: int, driver: str) -> None:
+        est, source = smoke_estimate(smoke_rows, driver, models[driver])
+        out.append((step, 0, driver, sb.PRESCRIPTION.get(driver, "jk"), "smoke", "-", 1, FIRST_RUN[step],
+                    models[driver], efforts[driver], round(est), source))
 
-    for driver in drivers:
-        arm = sb.PRESCRIPTION.get(driver, "jk")
-        model = agy_model if driver == "agy" else models.get(driver, "")
-        for task in sorted(claimed, key=lambda t: estimate(cells, tasks, driver, arm, t, model, cap_s)[0]):
-            add(1, driver, arm, task, 1)
-    for driver in refactor_drivers:
-        for task in REFACTORINGS:
-            for arm in REFACTOR_ARMS:
-                add(2, driver, arm, task, 1)
-    if os.environ.get("NIGHT_NOGRAPH") == "1":
-        for driver in drivers:
-            for task in claimed:
-                add(4, driver, "jk-nograph", task, 3)
+    def add(step: int, tier: int, driver: str, arm: str, task: str) -> None:
+        one, source = estimate(cells, tasks, driver, arm, task, models[driver], cap_s)
+        out.append((step, tier, driver, arm, task, tasks[task]["repo"], 1, FIRST_RUN[step], models[driver],
+                    efforts[driver], round(one), source))
+
+    if first in drivers:
+        smoke(1, first)
+        for tier, names in ((1, TIER1), (2, tier2)):
+            for task in names:
+                add(1, tier, first, with_tools(first, task), task)
+    rest = [d for d in drivers if d not in skip]
+    if os.environ.get("NIGHT_NOGRAPH") != "0":
+        for tier, names in ((1, TIER1), (2, tier2)):
+            for task in names:
+                for driver in rest:
+                    add(2, tier, driver, "jk-nograph", task)
+    rest = [d for d in rest if d != first]
+    for driver in rest:
+        smoke(3, driver)
+    for tier, names in ((1, TIER1), (2, tier2)):
+        for task in names:
+            for driver in rest:
+                add(3, tier, driver, with_tools(driver, task), task)
     return out
 
 
@@ -166,6 +248,12 @@ def main() -> int:
     if what == "plan":
         for line in plan():
             print("\t".join(str(x) for x in line))
+        return 0
+    if what == "agents":
+        sb = _scoreboard_agents()
+        models, efforts = pins()
+        for driver in (os.environ.get("NIGHT_DRIVERS") or " ".join(models)).split():
+            print("\t".join([driver, models[driver], efforts[driver], sb.PRESCRIPTION.get(driver, "jk")]))
         return 0
     if what == "tools":
         return tools()

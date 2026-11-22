@@ -125,13 +125,18 @@ ARMS = {
 }
 
 DRIVERS = {"claude-code": agents.claude_code, "grok": agents.grok, "agy": agents.agy, "cursor": agents.cursor,
-           "muse": agents.muse, "codex": agents.codex}
+           "muse": agents.muse, "codex": agents.codex, "copilot": agents.copilot}
 # Agents with no file tools of their own: they read and search through a shell, so they get the shell prompts.
 SHELL_DRIVERS = {"codex"}
-DEFAULT_MODEL = {"claude-code": "claude-sonnet-5-5", "grok": "grok-4.7", "agy": "gemini-3.8-flash-high",
-                 "cursor": "composer-2.5", "muse": "muse-spark-1.3-contributor", "codex": "gpt-6.1-terra"}
-DEFAULT_EFFORT = {"claude-code": "medium", "grok": "high", "agy": "high", "cursor": "medium", "muse": "xhigh",
-                  "codex": "medium"}
+# The bench standard: one model and one effort per agent, each as its own CLI names it (its model list or
+# help). Rows are banked per model, so changing one starts a new series for that agent. agy's and
+# cursor's efforts are part of the model id; cursor's Composer has none, so `default` is recorded.
+# Copilot's effort is its Fusion tier.
+DEFAULT_MODEL = {"claude-code": "claude-opus-5-5", "grok": "grok-4.7", "agy": "gemini-4-neon-medium",
+                 "cursor": "composer-2.5", "muse": "muse-spark-1.3-contributor", "codex": "gpt-6.2-sol",
+                 "copilot": "fusion"}
+DEFAULT_EFFORT = {"claude-code": "medium", "grok": "high", "agy": "medium", "cursor": "default", "muse": "max",
+                  "codex": "medium", "copilot": "standard"}
 
 # Each CLI's names for the same moves.
 NAV_TEXT = {"Grep", "Glob", "Read", "read_file", "grep", "list_dir", "view_file", "grep_search", "find_by_name",
@@ -532,6 +537,12 @@ def jk_build_id() -> str:
     return hashlib.sha1("|".join(parts).encode()).hexdigest()[:12]
 
 
+def corpus_rev(task: dict) -> str:
+    """The commit of the corpus tree a task runs on; empty when it is not a repository."""
+    return subprocess.run(["git", "-C", str(CORPUS / task["repo"]), "rev-parse", "HEAD"], capture_output=True,
+                          text=True).stdout.strip()
+
+
 def prepare(task: dict, tool: str, question: bool, sandbox: Path) -> dict:
     """The sandbox up to the agent: the repository materialised, its baseline built (and tested), and
     jk's graph built. Identical for every agent, arm and run of a repository on one jk build, so it is
@@ -539,8 +550,7 @@ def prepare(task: dict, tool: str, question: bool, sandbox: Path) -> dict:
     new entry, and entries of older builds are deleted. Only a baseline that came out as the task
     expects, with a graph, is kept."""
     cmd = ["jk", "-u", "-x", "-a", "build", "-S"] if question else test_cmd(tool, task=task)
-    rev = subprocess.run(["git", "-C", str(CORPUS / task["repo"]), "rev-parse", "HEAD"], capture_output=True,
-                         text=True).stdout.strip()
+    rev = corpus_rev(task)
     build = jk_build_id()
     # A task that plants files or edits has a sandbox of its own: shared by repository, the first task's
     # sandbox stood in for every later task of that repository, and a planted trap never reached the agent.
@@ -622,8 +632,9 @@ JK_SERVER_ARG = re.compile(r'"(?:ServerName|server_name|serverName|server)":\s*"
 def call_events(ev: dict) -> list[tuple[str, str, bool]]:
     """The tool-call starts and ends one transcript event carries: (``start`` or ``end``, call id, whether the
     call is jk's). Claude Code pairs a tool_use block with a tool_result block; codex an item.started with
-    the item.completed of the same id; cursor-agent a started tool_call with its completed one; muse a task
-    scheduled under ``tool:<call id>`` with that call's tool.result. agy's tool step carries its own duration:
+    the item.completed of the same id; cursor-agent a started tool_call with its completed one; copilot a
+    tool.execution_start with its tool.execution_complete; muse a task scheduled under ``tool:<call id>`` with
+    that call's tool.result. agy's tool step carries its own duration:
     (``span``, milliseconds, is jk)."""
     out: list[tuple[str, str, bool]] = []
     message = ev.get("message")
@@ -657,6 +668,11 @@ def call_events(ev: dict) -> list[tuple[str, str, bool]]:
         params = (step.get("tool_info") or {}).get("parameters") if isinstance(step.get("tool_info"), dict) else {}
         is_jk = step.get("tool_name") == "call_mcp_tool" and bool(JK_SERVER_ARG.search(json.dumps(params or {})))
         out.append(("span", str(int(float(step["duration_seconds"]) * 1000)), is_jk))
+    data = ev.get("data") if isinstance(ev.get("data"), dict) else {}
+    if kind in ("tool.execution_start", "tool.execution_complete") and data.get("toolCallId"):
+        # copilot: the start carries the tool's name, its completion only the call id.
+        is_jk = agents._copilot_call(data)[0].startswith("mcp__jk__")
+        out.append(("start" if kind == "tool.execution_start" else "end", data["toolCallId"], is_jk))
     payload = ev.get("payload") if isinstance(ev.get("payload"), dict) else {}
     key = str((payload.get("event") or {}).get("idempotency_key") or "") if isinstance(payload.get("event"), dict) else ""
     if ev.get("payload_type") == "task.lifecycle.scheduled" and key.startswith("tool:"):
@@ -763,7 +779,9 @@ def _run_one(name: str, task: dict, arm: str, run_no: int, ns, run_root: Path) -
            "context": getattr(ns, "context", None), "cli": agents.cli(ns.driver),
            "cli_version": cli_version(ns.driver), "outcome": "error", "finding": "",
            "sandbox": str(sandbox), "host": benchtools.host_id(), "jk_build": jk_build_id(), "jk_version": jk_version(),
-           "test_excluded": test_excludes() or None, "anchor_tail": anchor_tail() or None}
+           "test_excluded": test_excludes() or None, "anchor_tail": anchor_tail() or None,
+           # A re-pinned corpus is other code: its rows are a series of their own.
+           "corpus": corpus_rev(task) or None}
     try:
         # A question needs the classes (the graph's compiled facts), not a test run.
         prep = prepare(task, tool, question, sandbox)
@@ -850,6 +868,10 @@ def _run_one(name: str, task: dict, arm: str, run_no: int, ns, run_root: Path) -
             cost_usd=None if res.cost_usd is None else round(res.cost_usd, 4),
             claimed=bool(re.search(r"(?m)^\s*DONE\b", reply)), reply=reply[:300],
             agent_finding=res.finding, jk_calls=jk_calls(res.transcript), **navigation(res.transcript, sandbox))
+        # A router (copilot's Fusion) answers with models of its own choosing: the row names them.
+        for key in ("routed_models", "copilot_aiu"):
+            if res.extra.get(key) is not None:
+                row[key] = res.extra[key]
         if res.extra.get("abort"):
             row["finding"] = f"the {ns.driver} CLI did not start: {res.finding}"[:300]
             return row
