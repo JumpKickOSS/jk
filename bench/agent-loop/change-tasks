@@ -340,6 +340,20 @@ def write_agents_md(sandbox: Path) -> None:
         raise RuntimeError(f"jk agents wrote no AGENTS.md section (exit {p.returncode}): {(p.stdout + p.stderr)[-300:]}")
 
 
+def edit_section(text: str, line: str | None, edits: list[tuple[str, str]]) -> str:
+    """`text` (an AGENTS.md) with an arm's changes to jk's section: each `(old, new)` replaced once, then
+    `line` as its last bullet, above the end marker. An `old` the section does not hold means the section
+    moved on and the arm measures nothing, so it raises."""
+    for old, new in edits:
+        if old not in text:
+            raise RuntimeError(f"the arm edits text jk's AGENTS.md section no longer holds: {old[:80]!r}")
+        text = text.replace(old, new, 1)
+    if line:
+        end = text.index("<!-- END:jumpkick -->")
+        text = text[:end] + line + "\n" + text[end:]
+    return text
+
+
 def graph_edges(build_output: str) -> int | None:
     """The edge count `jk graph build` reports (`4,812 nodes · 11,903 edges from …`), or None."""
     m = re.search(r"([\d,]+) edges", build_output)
@@ -883,13 +897,10 @@ def _run_one(name: str, task: dict, arm: str, run_no: int, ns, run_root: Path) -
             # What a jk user's repository holds: jk's AGENTS.md section. Claude Code reads AGENTS.md
             # itself; a CLAUDE.md import of it adds context and nothing else.
             write_agents_md(sandbox)
-            if spec.get("agents_line"):
+            if spec.get("agents_line") or spec.get("section_edit"):
                 agents_md = sandbox / "AGENTS.md"
-                text = agents_md.read_text()
-                anchor = "- Before handing work back:"
-                at = text.index(anchor)
-                end = text.index("\n", at) + 1
-                agents_md.write_text(text[:end] + spec["agents_line"] + "\n" + text[end:])
+                agents_md.write_text(edit_section(agents_md.read_text(), spec.get("agents_line"),
+                                                  spec.get("section_edit", [])))
             for rel, text in spec.get("files", {}).items():
                 target = sandbox / rel
                 target.parent.mkdir(parents=True, exist_ok=True)
