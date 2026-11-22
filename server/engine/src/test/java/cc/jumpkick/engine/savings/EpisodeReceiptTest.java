@@ -200,6 +200,7 @@ class EpisodeReceiptTest {
         Map<String, Object> tokens = (Map<String, Object>) saved.get("tokens");
         assertThat(tokens)
                 .containsEntry("agent", "Claude Code")
+                .containsEntry("wholeSession", false)
                 .containsEntry("total", 43_000L)
                 .containsEntry("cacheRead", 40_000L);
 
@@ -237,6 +238,14 @@ class EpisodeReceiptTest {
                         .sorted()
                         .toList())
                 .containsExactly(110L, 220L);
+        EpisodeReceipt first = receipts.values().stream()
+                .filter(r -> Objects.requireNonNull(r.tokens()).sum().total() == 110L)
+                .findFirst()
+                .orElseThrow();
+        assertThat(first.markdown()).endsWith("- Tokens the agent used: 110 (Copilot's own count, whole session)\n");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> tokens = (Map<String, Object>) first.toMap().get("tokens");
+        assertThat(tokens).containsEntry("wholeSession", true);
     }
 
     @Test

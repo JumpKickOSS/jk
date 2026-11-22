@@ -201,12 +201,14 @@ counting what the agent recorded from the episode's start to its last step:
 | Antigravity | `~/.gemini/antigravity-cli/conversations/*.db` |
 
 Copilot CLI writes its count only when its session ends, for the whole session, so the count lands
-on the episode the session ended in or after. Cursor's agent keeps no count on disk and shows none.
+on the episode the session ended in or after and is labelled `whole session`. Cursor's agent keeps no count on disk and shows none.
 Only the token counts and the model's id are read, never a message: each count becomes a number as
 it is read, a model id that does not look like one reads `unknown`, and a line that cannot be read
 is logged by file and line number alone. Two sessions of the same agent working in one checkout at
 once are both counted. Other agents show no count. The dashboard's bell and the next command at a terminal say once that it
 is on. It is machine-scoped: `~/.jk/config.toml` only, read at each receipt.
+`JK_AGENTS_READ_USAGE=false` (or `true`) overrides the file; the engine reads its own environment,
+the one it started with.
 
 ## WSL
 

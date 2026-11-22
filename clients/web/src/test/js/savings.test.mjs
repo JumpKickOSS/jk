@@ -82,3 +82,10 @@ test("an episode's receipt ends with the tokens its agent counted, labelled as t
   assert.match(t.tip, /read from its own session files/);
   assert.deepEqual(receiptTiles({ scope: 'episode', runs: 0, tokens: { ...tokens, total: 0 } }), []);
 });
+
+test("a count of a whole session is labelled whole session", () => {
+  const tokens = { agent: 'Copilot', wholeSession: true, input: 100, cacheWrite: 0, cacheRead: 0, output: 10, total: 110, models: [] };
+  const [t] = receiptTiles({ scope: 'episode', runs: 0, tokens });
+  assert.equal(t.note, 'Copilot’s own count, whole session');
+  assert.match(t.tip, /whole session/);
+});

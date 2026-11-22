@@ -60,7 +60,8 @@ refactorings; dependency edits; guard violations stopped), or `Nothing saved yet
 When the agent records its token counts (Claude Code, Codex, Grok, Copilot CLI, Muse,
 Antigravity), a last line gives the tokens it used over the episode by its own count (`Tokens the
 agent used: 43,000 (Claude Code's own count, 40,000 read from its cache)`), read from its session
-files ([config](config.md#agents-token-counts)).
+files ([config](config.md#agents-token-counts)); Copilot CLI's count, which covers a whole session,
+says `whole session` after the agent.
 The dashboard's console ends the episode with the same figures
 ([web](web.md#what-jumpkick-saved)).
 

@@ -16,8 +16,10 @@ import org.jspecify.annotations.Nullable;
  *
  * @param agent who counted them, as the receipt names it ({@code Claude Code}, {@code Codex})
  * @param byModel the counts per model id, {@link #UNKNOWN} for one that has no model id's shape
+ * @param wholeSession the agent counts a whole session at its end (Copilot CLI), so the figure is
+ *     its session's, not only this episode's
  */
-public record AgentTokens(String agent, Map<String, Counts> byModel) {
+public record AgentTokens(String agent, Map<String, Counts> byModel, boolean wholeSession) {
 
     /** The model of a count whose model id was missing or did not look like one. */
     public static final String UNKNOWN = "unknown";
@@ -76,6 +78,7 @@ public record AgentTokens(String agent, Map<String, Counts> byModel) {
     public Map<String, Object> toMap() {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("agent", agent);
+        m.put("wholeSession", wholeSession);
         m.putAll(sum().toMap());
         List<Map<String, Object>> models = new ArrayList<>();
         byModel.entrySet().stream().sorted(Map.Entry.comparingByKey()).forEach(e -> {
@@ -88,11 +91,15 @@ public record AgentTokens(String agent, Map<String, Counts> byModel) {
         return m;
     }
 
-    /** The receipt's line: {@code Tokens the agent used: 1,234 (Claude Code's own count, 1,000 from its cache)}. */
+    /**
+     * The receipt's line: {@code Tokens the agent used: 1,234 (Claude Code's own count, 1,000 read from
+     * its cache)}, with {@code whole session} after the count's owner when it is a whole session's.
+     */
     public String line() {
         Counts s = sum();
+        String session = wholeSession ? ", whole session" : "";
         String cached = s.cacheRead() > 0 ? ", " + grouped(s.cacheRead()) + " read from its cache" : "";
-        return "Tokens the agent used: " + grouped(s.total()) + " (" + agent + "'s own count" + cached + ")";
+        return "Tokens the agent used: " + grouped(s.total()) + " (" + agent + "'s own count" + session + cached + ")";
     }
 
     private static String grouped(long n) {

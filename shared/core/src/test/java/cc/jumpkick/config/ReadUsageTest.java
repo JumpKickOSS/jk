@@ -6,10 +6,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-/** {@code [agents] read-usage}: on unless the file says false, and its notice once per surface. */
+/** {@code [agents] read-usage}: on unless the environment or the file says false, and its notice once per surface. */
 class ReadUsageTest {
 
     @TempDir
@@ -29,6 +30,30 @@ class ReadUsageTest {
         assertThat(on("[agents]\nread-usage = true\n")).isTrue();
         assertThat(on("[agents]\nread-usage = \"no\"\n")).as("not a boolean").isTrue();
         assertThat(on("[agents]\nread-usage = false\n")).isFalse();
+    }
+
+    @Test
+    void the_environment_overrides_the_file() throws IOException {
+        Path file = dir.resolve("config.toml");
+        Files.writeString(file, "[agents]\nread-usage = false\n");
+        TomlValues.clearCache();
+        assertThat(ReadUsage.on(file, Map.of(ReadUsage.ENV, "true")::get)).isTrue();
+        assertThat(ReadUsage.on(file, Map.of(ReadUsage.ENV, "maybe")::get))
+                .as("not a boolean")
+                .isFalse();
+        assertThat(ReadUsage.on(dir.resolve("missing.toml"), Map.of(ReadUsage.ENV, "false")::get))
+                .isFalse();
+        assertThat(ReadUsage.on(dir.resolve("missing.toml"), Map.<String, String>of()::get))
+                .isTrue();
+    }
+
+    @Test
+    void a_machine_that_saw_the_earlier_wording_sees_this_one_once() throws IOException {
+        Path state = dir.resolve("state");
+        Files.createDirectories(state);
+        Files.createFile(state.resolve("read-usage-noticed-" + ReadUsage.CLI));
+        assertThat(ReadUsage.firstNotice(state, ReadUsage.CLI)).isTrue();
+        assertThat(ReadUsage.firstNotice(state, ReadUsage.CLI)).isFalse();
     }
 
     @Test

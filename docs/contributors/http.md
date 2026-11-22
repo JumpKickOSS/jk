@@ -770,9 +770,9 @@ its start and last fact, added up over the runs the journal placed in it and eve
 (not only the page's). When the session's agent records its token counts
 ([config](../user/config.md#agents-token-counts)) and `[agents] read-usage` is on, `saved.tokens` is
 the tokens it used from the episode's start to its last fact (to the next episode's start for
-Copilot CLI, which counts a whole session at its end) by its own count, read from its session files: `{ agent, input, cacheWrite, cacheRead, output, total, models:
+Copilot CLI, which counts a whole session at its end) by its own count, read from its session files: `{ agent, wholeSession, input, cacheWrite, cacheRead, output, total, models:
 [{ model, input, cacheWrite, cacheRead, output, total }] }`, a `model` that does not look like a
-model id reading `unknown`. An action is `{ seq, at, kind, summary, headline?, outcome, millis,
+model id reading `unknown` and `wholeSession` true for a count of a whole session. An action is `{ seq, at, kind, summary, headline?, outcome, millis,
 episode, project?, buildNumber? }`: `kind` is `run` or the MCP tool (`query`, `usages`, `read`,
 `find`, `rename`, `deps`, `update`, `workspace`), `summary` one line of what it asked (`callers
 PricingRules.weekendUplift`), `headline` the first line of its answer (`3 callers`), `outcome`

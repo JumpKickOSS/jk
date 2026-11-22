@@ -82,8 +82,10 @@ export function receiptTiles(row) {
   const tokens = row.tokens;
   if (tokens && tokens.total > 0) {
     tiles.push({ key: 'tokens', label: 'agent tokens', value: count(tokens.total),
-      note: tokens.agent + '’s own count',
-      tip: 'Tokens the agent used in this episode, read from its own session files: '
+      note: tokens.agent + '’s own count' + (tokens.wholeSession ? ', whole session' : ''),
+      tip: 'Tokens the agent used in '
+        + (tokens.wholeSession ? 'the whole session this episode ended in or after' : 'this episode')
+        + ', read from its own session files: '
         + count(tokens.cacheRead || 0) + ' read from its cache, ' + count(tokens.output || 0) + ' output' });
   }
   return tiles;

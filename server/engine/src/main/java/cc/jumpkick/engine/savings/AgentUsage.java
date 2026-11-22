@@ -145,7 +145,7 @@ public final class AgentUsage {
                 if (e.at() >= since && e.at() <= last) byModel.merge(e.model(), e.counts(), AgentTokens.Counts::plus);
             }
         }
-        return byModel.isEmpty() ? null : new AgentTokens(agent.label, byModel);
+        return byModel.isEmpty() ? null : new AgentTokens(agent.label, byModel, agent.wholeSession);
     }
 
     /** A Muse subagent's checkout, which its file does not name: its parent session's, two directories up. */
