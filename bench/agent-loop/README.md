@@ -374,9 +374,11 @@ would have cost), each as tokens times the API calls that carried them.
 every agent on its pinned model and effort, one run per cell and no repetitions. Its plan is
 `night-plan plan`, in the tiers of [agent-bench.md](../../docs/contributors/agent-bench.md#the-standard):
 tier 0 is `smoke-test`, tier 1 the screen (`night-plan`'s `TIER1`: a caller and an impact question, a
-rename, and the delete, move, pull-up and extract-interface refactorings), tier 2 a sliver: the other
-tasks the published claims use. "With the code tools" is each agent's prescription arm, or `jk-graph`
-for a refactoring, whose tools only the extended list carries; "no-code-tools" is `jk-nograph`.
+rename, the delete, move, pull-up and extract-interface refactorings on petclinic and again on
+commons-lang, a library question and what a dependency version change breaks), tier 2 a sliver: the
+other tasks the published claims use. "With the code tools" is each agent's prescription arm, or
+`jk-graph` for a refactoring or another task whose `code_tool` only the extended list carries (the
+library question's `find`); "no-code-tools" is `jk-nograph`.
 
 | Step | What |
 |---|---|

@@ -131,6 +131,40 @@ Which methods call `org.springframework.samples.petclinic.owner.Owner.addPet` di
 """
 answer = ["PetController.initCreationForm", "PetController.processCreationForm", "PetController.updatePetDetails"]
 
+# A library question: the answer is in a locked jar, not in this repository. `jk code find -l` lists
+# it; the jar is outside the sandbox and the file tools cannot read a class file, and a guess from
+# memory lists the package-private interfaces (Tokenizer, CharSequenceTokenizer) or misses the newer
+# ones (SimilarityInput, ObjectSimilarityScore). Graded against javap of commons-text 1.15.0.
+[tasks.cl-library-text-interfaces]
+repo      = "commons-lang"
+kind      = "question"
+code_tool = "find"
+tools     = ["jk"]
+prompt = """
+Which public interfaces does the commons-text library this project locks declare? List each one by
+its simple name, nested ones included; annotation types do not count.
+"""
+answer = ["BiStringLookup", "Builder", "CharacterPredicate", "CommandVisitor", "EditDistance", "FormatFactory",
+          "ObjectSimilarityScore", "ReplacementsHandler", "SimilarityInput", "SimilarityScore", "StringLookup",
+          "StringMatcher", "TextRandomProvider"]
+
+# What a dependency version change breaks: classes planted in petclinic use spring-data-commons API
+# that 3.0.0 lacks or types otherwise, beside decoys that read like it (Sort.by(String...),
+# Sort.Order.asc, PageRequest.withSort) and compile against both. `jk code usages
+# dep:spring-data-commons@3.0.0` lists the four; graded against javac over the main sources with the
+# 3.0.0 jar in place of the locked one, which fails in exactly those four methods.
+[tasks.petclinic-depdiff-data-commons]
+repo      = "spring-petclinic"
+kind      = "question"
+code_tool = "usages"
+tools     = ["jk"]
+prompt = """
+We are considering moving spring-data-commons back from the locked version to 3.0.0. Which methods
+in the main sources would no longer compile against 3.0.0, because they use API of it that 3.0.0
+does not have or declares differently?
+"""
+answer = ["OwnerListings.cap", "OwnerListings.everyOwner", "OwnerListings.flipped", "OwnerListings.newestFirst"]
+
 [tasks.cl-callers-csu-indexof]
 repo   = "commons-lang"
 kind   = "question"
@@ -363,6 +397,88 @@ instance method `typeLabel(Pet pet)` with the same behaviour, so `Pet` no longer
 keep every caller working and every test passing.
 """
 test   = ["jk", "-u", "-x", "-a", "test", "-S", "PetTypeLabelMoveTests", "-S", "OwnerControllerTests", "-S", "ClinicServiceTests"]
+
+# The same four refactorings on commons-lang, about thirteen times petclinic's main sources, where a
+# name search returns hundreds of lines and StringUtils alone is nine thousand.
+
+# A delete: three methods planted in CharSequenceUtils and a type, each named as maybe dead. The type
+# is the only caller of one method; another collides with StringUtils.isEmpty, which hundreds of lines
+# call; the third is used only through a method reference and must stay. The hidden check reads which
+# declarations are left and calls the kept one.
+[tasks.commons-lang-delete-dead-code]
+repo      = "commons-lang"
+kind      = "delete"
+code_tool = "delete"
+tools     = ["jk"]
+inject    = [
+  { file = "src/main/java/org/apache/commons/lang3/CharSequenceUtils.java", from = "    public static CharSequence subSequence(final CharSequence cs, final int start) {", to = "    static boolean isEmpty(final CharSequence cs) {\n        return cs == null || cs.length() == 0;\n    }\n\n    static String legacyQuote(final CharSequence cs) {\n        return \"'\" + cs + \"'\";\n    }\n\n    static int length(final CharSequence cs) {\n        return cs == null ? 0 : cs.length();\n    }\n\n    public static CharSequence subSequence(final CharSequence cs, final int start) {" },
+]
+prompt = """
+Clean up dead code around `CharSequenceUtils`. Each of these may be unused:
+`CharSequenceUtils.isEmpty(CharSequence)`, `CharSequenceUtils.legacyQuote(CharSequence)`,
+`CharSequenceUtils.length(CharSequence)` and the class `CharSequenceLegacyQuoting`. Delete each one
+that nothing uses once the others you delete are gone, and keep each one that something still uses,
+by a call or any other way. Keep every test passing.
+"""
+test      = ["jk", "-u", "-x", "-a", "test", "-S", "CharSequenceUtilsDeadCodeTest", "-S", "CharSequenceUtilsTest", "-S", "StringUtilsEmptyBlankTest"]
+
+# A static move across packages: a method and the constant it reads, planted in StringUtils, go to
+# TextClips in the util package. Callers reach them every way javac binds a static: unqualified inside
+# StringUtils, a qualified call and a method reference from the builder package, static imports and a
+# doc link in StringUtils' own package. The hidden check reads where each is declared and calls every caller.
+[tasks.commons-lang-move-clip]
+repo      = "commons-lang"
+kind      = "move"
+code_tool = "move"
+tools     = ["jk"]
+inject    = [
+  { file = "src/main/java/org/apache/commons/lang3/StringUtils.java", from = "    public static final String CR = \"\\r\";\n", to = "    public static final String CR = \"\\r\";\n\n    /**\n     * What {@link #clip(String, int)} puts in place of the text it cuts.\n     */\n    public static final String CLIP_MARKER = \"...\";\n\n    /**\n     * Cuts a string to a width, ending it with {@link #CLIP_MARKER} when it is cut.\n     *\n     * @param str the string, may be null.\n     * @param maxWidth the width, at least the marker's length.\n     * @return the string, or its start and the marker.\n     */\n    public static String clip(final String str, final int maxWidth) {\n        if (str == null || str.length() <= maxWidth) {\n            return str;\n        }\n        return str.substring(0, maxWidth - CLIP_MARKER.length()) + CLIP_MARKER;\n    }\n\n    /**\n     * Cuts a string to ten characters, as {@link #clip(String, int)} does.\n     *\n     * @param str the string, may be null.\n     * @return the string, or its start and the marker.\n     */\n    public static String clipToTen(final String str) {\n        return clip(str, 10);\n    }\n" },
+]
+prompt = """
+Clipping belongs with the other text-width helpers. Move `StringUtils.clip(String, int)` and the
+constant `StringUtils.CLIP_MARKER` into `TextClips` in the `org.apache.commons.lang3.util` package, so
+each is declared there alone, still static and public, with the same behaviour. `StringUtils.clipToTen`
+stays in `StringUtils`. Keep every caller working and every test passing.
+"""
+test      = ["jk", "-u", "-x", "-a", "test", "-S", "TextClipsMoveTest", "-S", "StringUtilsTest", "-S", "ToStringBuilderTest"]
+
+# A pull-up: an instance method planted in ImmutablePair moves to Pair, its superclass, so MutablePair
+# has it too. A method of the same name planted in ImmutableTriple is the decoy and stays. Callers reach
+# it through an ImmutablePair, by a call and a method reference. The hidden check reads where each is
+# declared and calls it on a MutablePair.
+[tasks.commons-lang-pullup-same-sides]
+repo      = "commons-lang"
+kind      = "pull-up"
+code_tool = "pull_up"
+tools     = ["jk"]
+inject    = [
+  { file = "src/main/java/org/apache/commons/lang3/tuple/ImmutablePair.java", from = "    /**\n     * {@inheritDoc}\n     */\n    @Override\n    public L getLeft() {", to = "    /**\n     * Tests whether both sides of this pair are equal.\n     *\n     * @return whether the left and right elements are equal, both null included.\n     */\n    public boolean sameSides() {\n        return Objects.equals(getLeft(), getRight());\n    }\n\n    /**\n     * {@inheritDoc}\n     */\n    @Override\n    public L getLeft() {" },
+  { file = "src/main/java/org/apache/commons/lang3/tuple/ImmutableTriple.java", from = "    /**\n     * {@inheritDoc}\n     */\n    @Override\n    public L getLeft() {", to = "    /**\n     * Tests whether all three elements of this triple are equal.\n     *\n     * @return whether the left, middle and right elements are equal, nulls included.\n     */\n    public boolean sameSides() {\n        return Objects.equals(getLeft(), getMiddle()) && Objects.equals(getMiddle(), getRight());\n    }\n\n    /**\n     * {@inheritDoc}\n     */\n    @Override\n    public L getLeft() {" },
+]
+prompt = """
+Mutable pairs need the check immutable pairs have. Pull `ImmutablePair.sameSides()` up into `Pair`,
+its superclass, so it is declared once there and no longer in `ImmutablePair`, keeping its behaviour,
+and keep every caller working and every test passing.
+"""
+test      = ["jk", "-u", "-x", "-a", "test", "-S", "PairSameSidesTest", "-S", "PairTest", "-S", "ImmutablePairTest", "-S", "MutablePairTest", "-S", "ImmutableTripleTest"]
+
+# An extracted interface: ElapsedTime, three getters of StopWatch, which implements it. Two planted
+# classes read a stopwatch only through those getters and must take the interface; a planted decoy
+# also reads its message and must keep StopWatch. The hidden check reads the interface's methods, what
+# StopWatch implements and each planted method's parameter, and calls the two through a stub.
+[tasks.commons-lang-extract-interface-elapsed]
+repo      = "commons-lang"
+kind      = "extract-interface"
+code_tool = "extract_interface"
+tools     = ["jk"]
+prompt = """
+Code that only needs a stopwatch's elapsed time should not depend on `StopWatch`. Create an interface
+`ElapsedTime` in the `org.apache.commons.lang3.time` package declaring exactly `getDuration()`,
+`getNanoTime()` and `isStarted()`, make `StopWatch` implement it, and change each method parameter in
+that package that is used only through those three methods to take `ElapsedTime` instead. Keep every
+caller working and every test passing.
+"""
+test      = ["jk", "-u", "-x", "-a", "test", "-S", "ElapsedTimeExtractTest", "-S", "StopWatchTest"]
 
 [tasks.petclinic-rename-owner-customer]
 repo   = "spring-petclinic"

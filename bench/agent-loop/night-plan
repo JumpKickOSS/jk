@@ -14,11 +14,13 @@ Every agent runs its pinned model and effort (change-tasks' DEFAULT_MODEL and DE
 a cell, never repeated. The tiers:
 
     0  smoke-test: the two-task fixture (task `smoke`, repo `-`)
-    1  a screen: TIER1, the code questions, a rename and the four workbench refactorings
+    1  a screen: TIER1, the code questions, a rename, the four workbench refactorings on two repositories,
+       a library question and what a dependency version change breaks
     2  a sliver of the collection: the other tasks the published claims use
 
-A task runs "with the tools" on the agent's prescription arm, or on jk-graph for a refactoring, whose
-tools only the extended list carries; "without" is jk-nograph, no JumpKick code tools. The steps:
+A task runs "with the tools" on the agent's prescription arm, or on jk-graph for a refactoring or another
+task whose right tool (its `code_tool`) only the extended list carries; "without" is jk-nograph, no
+JumpKick code tools. The steps:
 
     1  the new agent (NIGHT_FIRST, default copilot) alone, tiers 0, 1 and 2 with the tools, so a problem
        with it shows first
@@ -52,13 +54,18 @@ import tomllib
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-# Tier 1, the screen: a caller question and an impact question, a rename, and the four workbench refactorings.
+# Tier 1, the screen: a caller question and an impact question, a rename, the four workbench refactorings on
+# petclinic and again on commons-lang, a library question and what a dependency version change breaks.
 TIER1 = ["petclinic-callers-addpet", "cl-impact-ispackage", "petclinic-rename-telephone",
          "petclinic-delete-dead-code", "petclinic-move-phone-format", "petclinic-pullup-display-name",
-         "petclinic-extract-interface-contact"]
+         "petclinic-extract-interface-contact", "commons-lang-delete-dead-code", "commons-lang-move-clip",
+         "commons-lang-pullup-same-sides", "commons-lang-extract-interface-elapsed", "cl-library-text-interfaces",
+         "petclinic-depdiff-data-commons"]
 REFACTOR_KINDS = {"delete", "move", "pull-up", "extract-interface"}
-# The tools each surface must list: the loop and graph cards, then the refactorings.
-NEEDED = {"default": ["build", "usages"], "extended": ["delete", "move", "pull_up", "extract_interface"]}
+# The code tools jk's default tools/list carries; a task whose `code_tool` is another runs on the extended list.
+DEFAULT_CODE_TOOLS = {"usages", "rename"}
+# The tools each surface must list: the loop and graph cards, then the refactorings and the library search.
+NEEDED = {"default": ["build", "usages"], "extended": ["delete", "move", "pull_up", "extract_interface", "find"]}
 FIRST_RUN = {1: 100, 2: 200, 3: 300}
 SMOKE_TASKS = 2
 SMOKE_CAP_S = 4 * 60
@@ -190,7 +197,9 @@ def plan() -> list[tuple]:
     out = []
 
     def with_tools(driver: str, task: str) -> str:
-        return "jk-graph" if tasks[task].get("kind") in REFACTOR_KINDS else sb.PRESCRIPTION.get(driver, "jk")
+        spec = tasks[task]
+        extended = spec.get("kind") in REFACTOR_KINDS or spec.get("code_tool", "usages") not in DEFAULT_CODE_TOOLS
+        return "jk-graph" if extended else sb.PRESCRIPTION.get(driver, "jk")
 
     def smoke(step: int, driver: str) -> None:
         est, source = smoke_estimate(smoke_rows, driver, models[driver])

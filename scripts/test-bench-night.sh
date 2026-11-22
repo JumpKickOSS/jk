@@ -63,7 +63,7 @@ case "\$*" in
   mcp) exec python3 -I -c '
 import json, sys
 names = {False: ["build", "diagnostics", "deps", "usages", "skill"],
-         True: ["build", "usages", "rename", "delete", "move", "pull_up", "extract_interface"]}
+         True: ["build", "usages", "rename", "delete", "move", "pull_up", "extract_interface", "find"]}
 for line in sys.stdin:
     msg = json.loads(line)
     if "id" not in msg:
@@ -119,6 +119,8 @@ assert ct.code_tool({"kind": "pull-up"}, "jk") is None
 assert ct.code_tool({"kind": "pull-up"}, "jk-graph") == "pull_up"
 assert ct.code_tool({"kind": "fix"}, "jk-graph") is None
 assert ct.code_tool({"kind": "fix", "code_tool": "usages"}, "jk") == "usages"
+assert ct.code_tool({"kind": "question", "code_tool": "find"}, "jk") is None
+assert ct.code_tool({"kind": "question", "code_tool": "find"}, "jk-graph") == "find"
 assert ct.code_tool_calls(spine, "usages") == 2
 assert ct.code_tool_calls([{"tool_use": "Bash", "input": '{"command": "jk code pull-up A.b"}'}], "pull_up") == 1
 assert ct.tool_errors(Path(sys.argv[2]), "claude-code") == 3
@@ -141,10 +143,14 @@ grep -q 'expected from cell ' "$WORK/dry" || fail "no expected time comes from a
 [ -z "$(awk -F'\t' '$1 == 3 && $3 == "copilot"' <<<"$plan")" ] || fail "step 3 repeats copilot"
 [ "$(awk -F'\t' '$1 == 2 {print $3}' <<<"$plan" | sort -u | wc -l)" -eq 7 ] || fail "step 2 lacks an agent"
 for task in petclinic-delete-dead-code petclinic-move-phone-format petclinic-pullup-display-name \
-  petclinic-extract-interface-contact; do
+  petclinic-extract-interface-contact commons-lang-delete-dead-code commons-lang-move-clip \
+  commons-lang-pullup-same-sides commons-lang-extract-interface-elapsed cl-library-text-interfaces; do
   grep -q -- "--driver claude-code --arm jk-graph --task $task " "$WORK/dry" || fail "step 3 lacks $task on jk-graph"
   grep -q -- "--arm jk-nograph --task $task " "$WORK/dry" || fail "step 2 lacks $task"
 done
+grep -q -- "--arm jk-nograph --task petclinic-depdiff-data-commons " "$WORK/dry" || fail "step 2 lacks petclinic-depdiff-data-commons"
+grep -q -- "--driver claude-code --arm jk --task petclinic-depdiff-data-commons " "$WORK/dry" ||
+  fail "step 3 lacks petclinic-depdiff-data-commons on the prescription arm"
 grep -q -- '--driver agy .* --model gemini-4-neon-medium --effort medium' "$WORK/dry" || fail "agy does not run Gemini 4 Neon, medium"
 grep -q -- '--driver copilot .* --model fusion --effort standard' "$WORK/dry" || fail "copilot does not run Fusion, standard"
 grep -q -- 'smoke-test --driver muse --arm jk --model muse-spark-1.3-contributor --effort max' "$WORK/dry" ||

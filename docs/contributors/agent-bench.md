@@ -32,7 +32,7 @@ only when asked for: `screen-ff --arm agent=jk-nograph`, or the night's step 2.
 | Tier | What | When |
 |---|---|---|
 | 0 smoke | `smoke-test`: the fixture's caller question and rename, minutes per agent | A new agent or model, or a change that may stop an agent reaching the graph at all |
-| 1 screen | `night-plan`'s `TIER1`: a caller and an impact question, a rename, and the delete, move, pull-up and extract-interface refactorings | Every change, and every night |
+| 1 screen | `night-plan`'s `TIER1`: a caller and an impact question, a rename, the delete, move, pull-up and extract-interface refactorings on petclinic and on commons-lang, a library question and what a dependency version change breaks | Every change, and every night |
 | 2 sliver | the other tasks the published claims use, with the code tools | Fresh numbers for the claims |
 
 ## Method
