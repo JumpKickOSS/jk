@@ -80,6 +80,70 @@ class GeneratorStepTest {
     }
 
     /**
+     * An entry that runs per input forks the tool once for each, into a directory of its own named
+     * after the file, with {@code ${in.name}} that name: two specs never share an output.
+     */
+    @Test
+    void an_entry_per_input_forks_the_tool_once_for_each_into_its_own_directory(@TempDir Path tmp) throws Exception {
+        FakeBuildIo io = new FakeBuildIo(tmp, "generate");
+        Path orders = FakeBuildIo.write(tmp.resolve("api/orders.yaml"), "openapi: 3.0.0");
+        Path petStore = FakeBuildIo.write(tmp.resolve("api/pet-store.yaml"), "openapi: 3.0.0");
+        io.extra("api", stubJar(tmp.resolve("tools/stub-gen-1.0.jar"), StubTool.class.getName()));
+
+        GeneratorStep.run(
+                io,
+                eachInput(entry(
+                        null, List.of("api/*.yaml"), List.of("-i", "${in}", "-o", "${out}", "-p", "acme.${in.name}"))));
+
+        Path out = tmp.resolve("scratch/generated/api");
+        assertThat(Files.readAllLines(out.resolve("orders/argv.txt")))
+                .containsExactly(
+                        "-i",
+                        orders.toString(),
+                        "-o",
+                        out.resolve("orders").toAbsolutePath().toString(),
+                        "-p",
+                        "acme.orders");
+        assertThat(Files.readAllLines(out.resolve("pet_store/argv.txt")))
+                .containsExactly(
+                        "-i",
+                        petStore.toString(),
+                        "-o",
+                        out.resolve("pet_store").toAbsolutePath().toString(),
+                        "-p",
+                        "acme.pet_store");
+        assertThat(out.resolve("argv.txt")).as("no run over all inputs").doesNotExist();
+        assertThat(io.labels()).containsExactly("api (2 inputs)");
+        assertThat(io.diagnostics())
+                .containsExactly(
+                        "warning: " + orders + ":3:1: deprecated `foo`",
+                        "warning: " + petStore + ":3:1: deprecated `foo`");
+    }
+
+    @Test
+    void two_inputs_that_would_share_a_run_are_refused_before_the_tool_runs(@TempDir Path tmp) throws Exception {
+        FakeBuildIo io = new FakeBuildIo(tmp, "generate");
+        Path yaml = FakeBuildIo.write(tmp.resolve("api/orders.yaml"), "a");
+        Path yml = FakeBuildIo.write(tmp.resolve("api/orders.yml"), "b");
+        io.extra("api", stubJar(tmp.resolve("tools/stub-gen-1.0.jar"), StubTool.class.getName()));
+
+        assertThatThrownBy(() -> GeneratorStep.run(
+                        io, eachInput(entry(null, List.of("api/*"), List.of("-i", "${in}", "-o", "${out}")))))
+                .hasMessage("[generate.api] " + yaml + " and " + yml
+                        + " both generate into \"orders\"; rename one of them");
+        assertThat(tmp.resolve("scratch/generated/api/orders")).doesNotExist();
+    }
+
+    @Test
+    void a_run_is_named_after_its_file_as_a_package_segment() {
+        assertThat(GeneratorStep.runName(Path.of("api/orders.yaml"))).isEqualTo("orders");
+        assertThat(GeneratorStep.runName(Path.of("api/Pet-Store.v2.yaml"))).isEqualTo("pet_store_v2");
+        assertThat(GeneratorStep.runName(Path.of("api/2024.yaml"))).isEqualTo("_2024");
+        assertThat(GeneratorStep.runName(Path.of("api/package.yaml"))).isEqualTo("package_");
+        assertThat(GeneratorStep.runName(Path.of("api/.yaml"))).isEqualTo("_yaml");
+    }
+
+    /**
      * An inherited table whose inputs name nothing under this module — a reactor parent's Avro
      * execution on a module with no schema — is a no-op that says so once, not a failed step: the
      * tool is not forked and the output dir is there, empty, for the compile that reads it.
@@ -471,6 +535,26 @@ class GeneratorStepTest {
                 List.of(),
                 List.of(),
                 null);
+    }
+
+    private static GeneratorEntry eachInput(GeneratorEntry entry) {
+        return new GeneratorEntry(
+                entry.name(),
+                entry.toolArtifact(),
+                entry.toolCoordinate(),
+                entry.main(),
+                entry.inputs(),
+                entry.unpack(),
+                entry.args(),
+                entry.contributes(),
+                entry.out(),
+                entry.classpath(),
+                entry.discard(),
+                entry.keyProbe(),
+                entry.reads(),
+                entry.env(),
+                entry.secretEnv(),
+                true);
     }
 
     /** {@link StubTool}'s class file in a jar, with the given {@code Main-Class} (none when null). */

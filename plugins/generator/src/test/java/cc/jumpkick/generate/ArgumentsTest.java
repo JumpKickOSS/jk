@@ -63,4 +63,14 @@ class ArgumentsTest {
         assertThat(Arguments.expand(List.of("--protoc", "${extra:protoc}", "-I${extra:protobuf-java}"), scope))
                 .containsExactly("--protoc", tools.resolve("protoc").toString(), "-I" + tools.resolve("protobuf-java"));
     }
+
+    @Test
+    void in_name_is_the_name_of_a_run_per_input_and_nothing_elsewhere() {
+        Arguments.Scope run = new Arguments.Scope(List.of(B), null, OUT.resolve("b"), MODULE, name -> MODULE, "b");
+
+        assertThat(Arguments.expand(List.of("-i", "${in}", "--api-package", "com.acme.api.${in.name}"), run))
+                .containsExactly("-i", B.toString(), "--api-package", "com.acme.api.b");
+        assertThatThrownBy(() -> Arguments.expand(List.of("com.acme.${in.name}"), SCOPE))
+                .hasMessageContaining("${in.name} names the run of one input");
+    }
 }

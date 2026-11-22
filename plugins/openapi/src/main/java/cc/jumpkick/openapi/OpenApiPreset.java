@@ -20,7 +20,9 @@ import java.util.Map;
  * The OpenAPI preset's code layer: {@code [openapi]} becomes one {@link GeneratorEntry} —
  * openapi-generator-cli's {@code generate} over the spec, into the generate stage, contributed as
  * sources — run by the generator plugin's step. The table's keys are the arguments a user would
- * otherwise spell out under {@code [generate.openapi]}.
+ * otherwise spell out under {@code [generate.openapi]}. A spec that is a glob generates every file
+ * it matches, each into its own directory and packages named after the file, so the supporting
+ * files and same-named models of two specs never meet.
  */
 public final class OpenApiPreset implements Plugin, BuildExtension {
 
@@ -59,11 +61,6 @@ public final class OpenApiPreset implements Plugin, BuildExtension {
         ctx.task(entry(ctx.config(), ctx.project()).task());
     }
 
-    /**
-     * The generator entry the table expands to. {@code package} is the root every generated package
-     * derives from; {@code api-package}, {@code model-package} and {@code invoker-package} each
-     * replace their derived name.
-     */
     /** {@code flag k=v,k2=v2}, in the table's order; nothing when the map is empty. */
     private static void mapping(List<String> args, String flag, Map<String, String> pairs) {
         if (pairs.isEmpty()) return;
@@ -73,9 +70,19 @@ public final class OpenApiPreset implements Plugin, BuildExtension {
         args.add(String.join(",", joined));
     }
 
+    /**
+     * The generator entry the table expands to. {@code package} is the root every generated package
+     * derives from; {@code api-package}, {@code model-package} and {@code invoker-package} each
+     * replace their derived name. Under a glob each package gains the spec's own segment:
+     * {@code api/orders.yaml} generates {@code <package>.orders}, its models in {@code
+     * <package>.orders.model}.
+     */
     static GeneratorEntry entry(PluginConfig config, ProjectFacts project) {
         String generator = config.string("generator");
-        String pkg = config.stringOpt("package").orElse(project.group() + ".api");
+        String spec = config.stringOpt("spec").orElse("api/*.yaml");
+        boolean eachSpec = GeneratorEntry.isGlob(spec);
+        String own = eachSpec ? ".${in.name}" : "";
+        String pkg = config.stringOpt("package").orElse(project.group() + ".api") + own;
         List<String> args = new ArrayList<>(List.of(
                 "generate",
                 "-i",
@@ -85,11 +92,11 @@ public final class OpenApiPreset implements Plugin, BuildExtension {
                 "-o",
                 "${out}",
                 "--api-package",
-                config.stringOpt("api-package").orElse(pkg),
+                config.stringOpt("api-package").map(p -> p + own).orElse(pkg),
                 "--model-package",
-                config.stringOpt("model-package").orElse(pkg + ".model"),
+                config.stringOpt("model-package").map(p -> p + own).orElse(pkg + ".model"),
                 "--invoker-package",
-                config.stringOpt("invoker-package").orElse(pkg),
+                config.stringOpt("invoker-package").map(p -> p + own).orElse(pkg),
                 "--package-name",
                 pkg));
         config.stringOpt("library").ifPresent(v -> args.addAll(List.of("--library", v)));
@@ -123,7 +130,6 @@ public final class OpenApiPreset implements Plugin, BuildExtension {
             args.add("--additional-properties");
             args.add(String.join(",", pairs));
         }
-        String spec = config.stringOpt("spec").orElse("api/*.yaml");
         return new GeneratorEntry(
                 "openapi",
                 TOOL,
@@ -137,7 +143,10 @@ public final class OpenApiPreset implements Plugin, BuildExtension {
                 List.of(),
                 List.of(),
                 null,
-                referencedFrom(spec));
+                referencedFrom(spec),
+                Map.of(),
+                Map.of(),
+                eachSpec);
     }
 
     /**
@@ -146,7 +155,7 @@ public final class OpenApiPreset implements Plugin, BuildExtension {
      * nothing, since the module directory holds the build's own outputs and would miss every time.
      */
     static List<String> referencedFrom(String spec) {
-        if (spec.contains("*") || spec.contains("?") || !spec.contains("/")) return List.of();
+        if (GeneratorEntry.isGlob(spec) || !spec.contains("/")) return List.of();
         String dir = spec.substring(0, spec.lastIndexOf('/'));
         return dir.isEmpty() || dir.equals(".") ? List.of() : List.of(dir);
     }

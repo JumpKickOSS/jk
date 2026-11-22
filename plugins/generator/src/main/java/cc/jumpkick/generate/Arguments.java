@@ -17,7 +17,8 @@ import org.jspecify.annotations.Nullable;
  * The generator's argument vocabulary: {@code ${in}} is the first input, {@code ${inputs}} all of
  * them, {@code ${unpacked}} the directory the entry's jar was extracted into, {@code ${out}} the
  * output dir, {@code ${module.dir}} the module root, {@code ${extra:<artifact>}} a step dependency
- * the step was handed — every one an absolute path. An argument that
+ * the step was handed — every one an absolute path — and, in a run per input, {@code ${in.name}}
+ * the name of that input's run. An argument that
  * is exactly {@code ${inputs}} becomes one argument per input; embedded in a longer argument the
  * inputs join with the platform path separator. Any other {@code ${…}} is the tool's own and
  * passes through untouched.
@@ -25,7 +26,7 @@ import org.jspecify.annotations.Nullable;
 final class Arguments {
 
     private static final Pattern VAR =
-            Pattern.compile("\\$\\{(in|inputs|unpacked|out|module\\.dir|extra:[A-Za-z0-9._-]+)}");
+            Pattern.compile("\\$\\{(in\\.name|in|inputs|unpacked|out|module\\.dir|extra:[A-Za-z0-9._-]+)}");
 
     /** A path under the module root named in an argument: what follows {@code ${module.dir}/} up to a separator. */
     private static final Pattern MODULE_PATH = Pattern.compile("\\$\\{module\\.dir}/([^\\s:;,\"'=]+)");
@@ -34,9 +35,20 @@ final class Arguments {
 
     /**
      * What the variables stand for in one run; {@code unpacked} is null when the entry unpacks
-     * nothing, and {@code extra} finds a step dependency by its artifact name.
+     * nothing, {@code extra} finds a step dependency by its artifact name, and {@code name} is the
+     * run's name when the tool runs once per input, else null.
      */
-    record Scope(List<Path> inputs, @Nullable Path unpacked, Path out, Path moduleDir, Function<String, Path> extra) {
+    record Scope(
+            List<Path> inputs,
+            @Nullable Path unpacked,
+            Path out,
+            Path moduleDir,
+            Function<String, Path> extra,
+            @Nullable String name) {
+
+        Scope(List<Path> inputs, @Nullable Path unpacked, Path out, Path moduleDir, Function<String, Path> extra) {
+            this(inputs, unpacked, out, moduleDir, extra, null);
+        }
 
         Scope(List<Path> inputs, @Nullable Path unpacked, Path out, Path moduleDir) {
             this(inputs, unpacked, out, moduleDir, name -> {
@@ -53,6 +65,13 @@ final class Arguments {
                 throw new IllegalArgumentException("${in} names the first input, and this run has none");
             }
             return inputs.getFirst();
+        }
+
+        String runName() {
+            if (name == null) {
+                throw new IllegalArgumentException("${in.name} names the run of one input, and this entry runs once");
+            }
+            return name;
         }
 
         Path unpackedDir() {
@@ -127,6 +146,7 @@ final class Arguments {
             while (m.find()) {
                 String value =
                         switch (m.group(1)) {
+                            case "in.name" -> scope.runName();
                             case "in" -> scope.first().toString();
                             case "inputs" -> scope.joined();
                             case "unpacked" -> scope.unpackedDir().toString();

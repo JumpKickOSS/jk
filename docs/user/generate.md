@@ -67,7 +67,7 @@ the protos into `unpack` ([Migration](migration.md#which-maven-plugins-import-an
 
 ```toml
 [openapi]
-spec      = "api/openapi.yaml"   # default api/*.yaml (the first match)
+spec      = "api/openapi.yaml"   # default api/*.yaml: every match, each into its own package
 generator = "spring"             # any openapi-generator generator: spring, java, kotlin-spring, …
 package   = "com.acme.api"       # the root: api + invoker package; models in <package>.model. Default <group>.api
 version   = "latest"             # openapi-generator-cli release; default latest, a bare version is exact
@@ -91,6 +91,14 @@ interface-only API a Boot module compiles with no extra libraries: `interfaceOnl
 `JsonNullable`, `useTags`. Any of them is overridden by `options`; another generator gets only
 what `options` says. Naming a `documentationProvider` in `options` leaves the annotation library to
 the generator, which checks the two together.
+
+A `spec` that is a glob generates every file it matches, one run each, into a directory and packages
+named after the file: `api/orders.yaml` lands in `<package>.orders`, its models in
+`<package>.orders.model` (an explicit `api-package`, `model-package` or `invoker-package` gains the
+same `.orders`), so the supporting files and same-named models of two specs never collide. The name
+is the file's, lower-cased, with any character a package cannot hold made `_` (`pet-store.yaml` is
+`pet_store`); two files that come to the same name fail the step. A `spec` that names one file runs
+once, into exactly the packages the table says.
 
 The worked example: [`05-recipes/codegen/openapi`](https://github.com/JumpKickOSS/jk-examples/tree/main/05-recipes/codegen/openapi) — a Boot controller
 implementing the generated interface. `jk import` writes this table from a POM's

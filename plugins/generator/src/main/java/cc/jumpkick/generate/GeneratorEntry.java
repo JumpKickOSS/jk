@@ -51,6 +51,10 @@ import org.jspecify.annotations.Nullable;
  *     whose value is laid on the tool's environment beside {@code env}: a password that stays out
  *     of the config, its token and the plan; a secret the module does not set leaves its variable
  *     unset
+ * @param eachInput the tool runs once per input rather than once over them all: {@code ${in}} is
+ *     that input, {@code ${out}} the directory named after it under the output ({@link
+ *     GeneratorStep#runName}), and {@code ${in.name}} that name, for a package a run's sources keep
+ *     apart from the others'
  */
 public record GeneratorEntry(
         String name,
@@ -67,7 +71,8 @@ public record GeneratorEntry(
         @Nullable KeyProbe keyProbe,
         List<String> reads,
         Map<String, String> env,
-        Map<String, String> secretEnv) {
+        Map<String, String> secretEnv,
+        boolean eachInput) {
 
     /** Where a generator's output joins the module. */
     public enum Contribution {
@@ -116,6 +121,42 @@ public record GeneratorEntry(
                         "[generate." + name + "] discard \"" + path + "\" is not under the output directory");
             }
         }
+    }
+
+    /** An entry whose tool runs once over all its inputs. */
+    public GeneratorEntry(
+            String name,
+            @Nullable String toolArtifact,
+            @Nullable String toolCoordinate,
+            @Nullable String main,
+            List<String> inputs,
+            @Nullable String unpack,
+            List<String> args,
+            Contribution contributes,
+            String out,
+            List<Path> classpath,
+            List<String> discard,
+            @Nullable KeyProbe keyProbe,
+            List<String> reads,
+            Map<String, String> env,
+            Map<String, String> secretEnv) {
+        this(
+                name,
+                toolArtifact,
+                toolCoordinate,
+                main,
+                inputs,
+                unpack,
+                args,
+                contributes,
+                out,
+                classpath,
+                discard,
+                keyProbe,
+                reads,
+                env,
+                secretEnv,
+                false);
     }
 
     /** An entry whose tool reads nothing beyond its {@code inputs}. */
@@ -208,6 +249,11 @@ public record GeneratorEntry(
                 List.of(),
                 (Map<String, String>) values.getOrDefault("env", Map.of()),
                 (Map<String, String>) values.getOrDefault("secret-env", Map.of()));
+    }
+
+    /** Whether a module-relative input names every file it matches rather than one path. */
+    public static boolean isGlob(String input) {
+        return Inputs.isGlob(input);
     }
 
     /** The step's name on the plan: {@code generate-<name>}, the name a manifest's {@code for-step} uses. */

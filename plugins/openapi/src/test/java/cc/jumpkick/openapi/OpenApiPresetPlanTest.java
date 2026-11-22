@@ -78,6 +78,7 @@ class OpenApiPresetPlanTest {
                 new PluginConfig(
                         "openapi",
                         Map.of(
+                                "spec", "api/openapi.yaml",
                                 "generator", "spring",
                                 "package", "com.ctrip.framework.apollo.openapi",
                                 "api-package", "com.ctrip.framework.apollo.openapi.api",
@@ -157,13 +158,73 @@ class OpenApiPresetPlanTest {
     @Test
     void another_generator_gets_only_the_tables_options_and_the_group_package() {
         GeneratorEntry entry = OpenApiPreset.entry(
-                new PluginConfig("openapi", Map.of("generator", "java", "options", Map.of("library", "native"))),
+                new PluginConfig(
+                        "openapi",
+                        Map.of(
+                                "spec",
+                                "api/openapi.yaml",
+                                "generator",
+                                "java",
+                                "options",
+                                Map.of("library", "native"))),
                 PROJECT);
 
-        assertThat(entry.inputs()).containsExactly("api/*.yaml");
         assertThat(entry.args())
                 .contains("--api-package", "com.acme.api", "--model-package", "com.acme.api.model")
                 .endsWith("--additional-properties", "library=native");
+    }
+
+    /**
+     * The default glob generates every spec it matches, each into its own directory and packages
+     * named after the file, so two specs' supporting files and same-named models never meet.
+     */
+    @Test
+    void a_glob_generates_each_spec_into_its_own_packages() {
+        GeneratorEntry entry = OpenApiPreset.entry(
+                new PluginConfig("openapi", Map.of("generator", "spring", "package", "com.acme.api")), PROJECT);
+
+        assertThat(entry.inputs()).containsExactly("api/*.yaml");
+        assertThat(entry.eachInput()).isTrue();
+        assertThat(entry.out()).isEqualTo("generated/openapi");
+        assertThat(entry.args())
+                .containsSubsequence(
+                        "--api-package",
+                        "com.acme.api.${in.name}",
+                        "--model-package",
+                        "com.acme.api.${in.name}.model",
+                        "--invoker-package",
+                        "com.acme.api.${in.name}",
+                        "--package-name",
+                        "com.acme.api.${in.name}");
+
+        GeneratorEntry named = OpenApiPreset.entry(
+                new PluginConfig(
+                        "openapi",
+                        Map.of(
+                                "spec", "specs/**/*.yml",
+                                "generator", "spring",
+                                "api-package", "com.acme.web",
+                                "model-package", "com.acme.dto")),
+                PROJECT);
+        assertThat(named.eachInput()).isTrue();
+        assertThat(named.args())
+                .containsSubsequence(
+                        "--api-package", "com.acme.web.${in.name}", "--model-package", "com.acme.dto.${in.name}");
+    }
+
+    /** A spec named outright is the one run, into the packages the table says. */
+    @Test
+    void a_spec_named_outright_runs_once() {
+        GeneratorEntry entry = OpenApiPreset.entry(
+                new PluginConfig(
+                        "openapi",
+                        Map.of("spec", "api/openapi.yaml", "generator", "spring", "package", "com.acme.api")),
+                PROJECT);
+
+        assertThat(entry.eachInput()).isFalse();
+        assertThat(entry.args())
+                .containsSubsequence("--api-package", "com.acme.api", "--model-package", "com.acme.api.model");
+        assertThat(String.join(" ", entry.args())).doesNotContain("${in.name}");
     }
 
     @Test

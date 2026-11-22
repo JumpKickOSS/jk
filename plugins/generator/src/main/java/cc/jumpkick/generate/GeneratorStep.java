@@ -12,6 +12,7 @@ import java.nio.file.PathMatcher;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -19,13 +20,15 @@ import java.util.jar.JarFile;
 import java.util.jar.Manifest;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import javax.lang.model.SourceVersion;
 import org.jspecify.annotations.Nullable;
 
 /**
  * The generate step's body: expand the entry's inputs, extract the jar it unpacks, fork
  * {@code java -cp <tool> <main> <args>} on the build's JDK with the output dir as the working
  * directory, report every located line the tool printed as a diagnostic, fail on a non-zero exit
- * with the output's tail. Schemas a {@code [schema-registry]} table pins join the inputs. Inputs that name no file under the module — a table a reactor parent
+ * with the output's tail; an entry that runs once per input forks the tool for each, into a
+ * directory of its own under the output. Schemas a {@code [schema-registry]} table pins join the inputs. Inputs that name no file under the module — a table a reactor parent
  * hands to a module with nothing to generate — leave the output empty and say so once, unless the
  * entry's key probe names what the tool reads instead.
  */
@@ -65,16 +68,94 @@ final class GeneratorStep {
         String toolArtifact = entry.toolArtifact();
         if (toolArtifact != null) classpath.addAll(ToolJars.classpath(exec.requireExtra(toolArtifact)));
         String main = entry.main() != null ? entry.main() : mainClass(classpath, entry);
-        List<String> args = Arguments.expand(
-                entry.args(), new Arguments.Scope(inputs, unpacked, out, exec.moduleDir(), exec::requireExtra));
         exec.label(entry.name() + " (" + describe(inputs, entry) + ")");
 
         Map<String, String> env = new LinkedHashMap<>(entry.env());
         for (Map.Entry<String, String> variable : entry.secretEnv().entrySet()) {
             exec.secret(variable.getValue()).ifPresent(value -> env.put(variable.getKey(), value));
         }
+        if (!entry.eachInput()) {
+            fork(
+                    exec,
+                    entry,
+                    classpath,
+                    main,
+                    env,
+                    new Arguments.Scope(inputs, unpacked, out, exec.moduleDir(), exec::requireExtra));
+            return;
+        }
+        Map<String, Path> runs = runs(entry, inputs);
+        for (Map.Entry<String, Path> run : runs.entrySet()) {
+            Path runOut = Files.createDirectories(out.resolve(run.getKey()));
+            fork(
+                    exec,
+                    entry,
+                    classpath,
+                    main,
+                    env,
+                    new Arguments.Scope(
+                            List.of(run.getValue()),
+                            unpacked,
+                            runOut,
+                            exec.moduleDir(),
+                            exec::requireExtra,
+                            run.getKey()));
+        }
+    }
+
+    /**
+     * Each input under the name of its run, in input order; two inputs that would share a name, and
+     * so an output directory and a package, are refused before the tool runs.
+     */
+    static Map<String, Path> runs(GeneratorEntry entry, List<Path> inputs) {
+        Map<String, Path> runs = new LinkedHashMap<>();
+        for (Path input : inputs) {
+            Path taken = runs.putIfAbsent(runName(input), input);
+            if (taken != null) {
+                throw new IllegalStateException("[generate." + entry.name() + "] " + taken + " and " + input
+                        + " both generate into \"" + runName(input) + "\"; rename one of them");
+            }
+        }
+        return runs;
+    }
+
+    /**
+     * The name an input's own run generates under, an output directory and a Java package segment
+     * at once: the file name without its extension, lower case, every character a package name
+     * cannot hold an underscore ({@code pet-store.yaml} is {@code pet_store}), with an underscore
+     * ahead of a leading digit and after a keyword.
+     */
+    static String runName(Path input) {
+        String file = input.getFileName().toString();
+        int dot = file.lastIndexOf('.');
+        String stem = (dot > 0 ? file.substring(0, dot) : file).toLowerCase(Locale.ROOT);
+        StringBuilder name = new StringBuilder(stem.length() + 1);
+        for (int i = 0; i < stem.length(); i++) {
+            char c = stem.charAt(i);
+            name.append((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_' ? c : '_');
+        }
+        if (name.isEmpty() || Character.isDigit(name.charAt(0))) name.insert(0, '_');
+        if (SourceVersion.isKeyword(name)) name.append('_');
+        return name.toString();
+    }
+
+    /**
+     * One fork of the tool over {@code scope}, its output directory the working directory: every
+     * located line it printed becomes a diagnostic, a non-zero exit fails the step with its tail,
+     * and what the entry discards is removed from what it wrote.
+     */
+    private static void fork(
+            TaskExec exec,
+            GeneratorEntry entry,
+            List<Path> classpath,
+            String main,
+            Map<String, String> env,
+            Arguments.Scope scope)
+            throws Exception {
+        List<String> args = Arguments.expand(entry.args(), scope);
         List<String> output = new ArrayList<>();
-        int exit = exec.java().classpath(classpath).mainClass(main).args(args).env(env).cwd(out).stream(output::add);
+        int exit = exec.java().classpath(classpath).mainClass(main).args(args).env(env).cwd(scope.out()).stream(
+                output::add);
         for (String line : output) {
             ToolDiagnostics.parse(line)
                     .ifPresent(d -> exec.diagnostic(
@@ -90,7 +171,7 @@ final class GeneratorStep {
             throw new IllegalStateException(main + " failed (exit " + exit + ")" + (cause == null ? "" : ": " + cause)
                     + (tail.isEmpty() ? "" : "\n" + String.join("\n", tail)));
         }
-        discard(out, entry.discard());
+        discard(scope.out(), entry.discard());
     }
 
     private static final Pattern UNCAUGHT = Pattern.compile("^Exception in thread \"[^\"]*\" (.+)$");
