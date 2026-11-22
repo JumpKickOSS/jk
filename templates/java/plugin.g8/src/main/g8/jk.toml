@@ -4,14 +4,15 @@ version = "0.1.0"
 description = "A JumpKick build plugin that owns the [$name$] table"
 java = $java$
 
-# The plugin SDK of the jk release that scaffolded this project (a development build of jk names
-# the newest release at or below it). src/main/resources/jk-plugin.toml names the same release as
-# its `sdk`: move the two together.
+# The plugin SDK of the JumpKick release that scaffolded this project (a development build of
+# JumpKick names the newest release at or below it). src/main/resources/jk-plugin.toml names the
+# same release as its `sdk`: move the two together.
 [dependencies]
 jk-plugin-sdk = "cc.jumpkick:jk-plugin-sdk:$jk_release$"
 
 # Null checking: every package is @NullMarked (package-info.java), and NullAway checks it at
-# compile time. The table brings JSpecify, Error Prone and NullAway at versions jk tests together.
+# compile time. The table brings JSpecify, Error Prone and NullAway at versions JumpKick tests
+# together.
 [nullness]
 
 # Test tiers: `jk test` runs what no suite claims; `@Tag("integration")` tests are the built-in

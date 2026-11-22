@@ -11,7 +11,7 @@ import cc.jumpkick.plugin.build.PluginCommandSpec;
 import java.util.List;
 
 /**
- * The code layer of the {@code [hello]} plugin. jk forks the jar as a worker and the SDK's
+ * The code layer of the {@code [hello]} plugin. JumpKick forks the jar as a worker and the SDK's
  * harness answers the protocol; {@link #register} is where a plugin adds steps, packagers and
  * commands. This one adds a {@code jk hello} command that greets with the consumer's
  * {@code [hello].greeting}.

@@ -64,7 +64,8 @@ ports     = [8080]
 aot-cache = true
 
 # Null checking: every package is @NullMarked (package-info.java), and NullAway checks it at
-# compile time. The table brings JSpecify, Error Prone and NullAway at versions jk tests together.
+# compile time. The table brings JSpecify, Error Prone and NullAway at versions JumpKick tests
+# together.
 [nullness]
 
 # Tests see every variable of your shell. Uncommented, this keeps them to these names: results
@@ -145,7 +146,8 @@ helidon-webserver-testing-junit5 = { group = "io.helidon.webserver.testing.junit
 hamcrest-all = { group = "org.hamcrest", name = "hamcrest-all" }
 
 # Null checking: every package is @NullMarked (package-info.java), and NullAway checks it at
-# compile time. The table brings JSpecify, Error Prone and NullAway at versions jk tests together.
+# compile time. The table brings JSpecify, Error Prone and NullAway at versions JumpKick tests
+# together.
 [nullness]
 
 # Tests see every variable of your shell. Uncommented, this keeps them to these names: results
@@ -251,7 +253,8 @@ aot-cache = true
 SERVER_PORT = "0"
 
 # Null checking: every package is @NullMarked (package-info.java), and NullAway checks it at
-# compile time. The table brings JSpecify, Error Prone and NullAway at versions jk tests together.
+# compile time. The table brings JSpecify, Error Prone and NullAway at versions JumpKick tests
+# together.
 [nullness]
 
 # Tests see every variable of your shell. Uncommented, this keeps them to these names: results
@@ -346,7 +349,8 @@ hamcrest-all = { group = "org.hamcrest", name = "hamcrest-all" }
 SERVER_PORT = "0"
 
 # Null checking: every package is @NullMarked (package-info.java), and NullAway checks it at
-# compile time. The table brings JSpecify, Error Prone and NullAway at versions jk tests together.
+# compile time. The table brings JSpecify, Error Prone and NullAway at versions JumpKick tests
+# together.
 [nullness]
 
 # Tests see every variable of your shell. Uncommented, this keeps them to these names: results
@@ -438,7 +442,8 @@ ports     = [8080]
 aot-cache = true
 
 # Null checking: every package is @NullMarked (package-info.java), and NullAway checks it at
-# compile time. The table brings JSpecify, Error Prone and NullAway at versions jk tests together.
+# compile time. The table brings JSpecify, Error Prone and NullAway at versions JumpKick tests
+# together.
 [nullness]
 
 # Tests see every variable of your shell. Uncommented, this keeps them to these names: results
@@ -526,7 +531,8 @@ helidon-webserver-testing-junit5 = { group = "io.helidon.webserver.testing.junit
 hamcrest-all = { group = "org.hamcrest", name = "hamcrest-all" }
 
 # Null checking: every package is @NullMarked (package-info.java), and NullAway checks it at
-# compile time. The table brings JSpecify, Error Prone and NullAway at versions jk tests together.
+# compile time. The table brings JSpecify, Error Prone and NullAway at versions JumpKick tests
+# together.
 [nullness]
 
 # Tests see every variable of your shell. Uncommented, this keeps them to these names: results
@@ -615,7 +621,8 @@ hamcrest-all = { group = "org.hamcrest", name = "hamcrest-all" }
 SERVER_PORT = "0"
 
 # Null checking: every package is @NullMarked (package-info.java), and NullAway checks it at
-# compile time. The table brings JSpecify, Error Prone and NullAway at versions jk tests together.
+# compile time. The table brings JSpecify, Error Prone and NullAway at versions JumpKick tests
+# together.
 [nullness]
 
 # Tests see every variable of your shell. Uncommented, this keeps them to these names: results
@@ -704,7 +711,8 @@ ports     = [8080]
 aot-cache = true
 
 # Null checking: every package is @NullMarked (package-info.java), and NullAway checks it at
-# compile time. The table brings JSpecify, Error Prone and NullAway at versions jk tests together.
+# compile time. The table brings JSpecify, Error Prone and NullAway at versions JumpKick tests
+# together.
 [nullness]
 
 # Tests see every variable of your shell. Uncommented, this keeps them to these names: results
@@ -788,7 +796,8 @@ helidon-webserver-testing-junit5 = { group = "io.helidon.webserver.testing.junit
 hamcrest-all = { group = "org.hamcrest", name = "hamcrest-all" }
 
 # Null checking: every package is @NullMarked (package-info.java), and NullAway checks it at
-# compile time. The table brings JSpecify, Error Prone and NullAway at versions jk tests together.
+# compile time. The table brings JSpecify, Error Prone and NullAway at versions JumpKick tests
+# together.
 [nullness]
 
 # Tests see every variable of your shell. Uncommented, this keeps them to these names: results
@@ -871,7 +880,8 @@ helidon-webserver-testing-junit5 = { group = "io.helidon.webserver.testing.junit
 hamcrest-all = { group = "org.hamcrest", name = "hamcrest-all" }
 
 # Null checking: every package is @NullMarked (package-info.java), and NullAway checks it at
-# compile time. The table brings JSpecify, Error Prone and NullAway at versions jk tests together.
+# compile time. The table brings JSpecify, Error Prone and NullAway at versions JumpKick tests
+# together.
 [nullness]
 
 # Tests see every variable of your shell. Uncommented, this keeps them to these names: results

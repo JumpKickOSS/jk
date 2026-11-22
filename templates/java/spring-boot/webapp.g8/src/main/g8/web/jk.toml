@@ -1,6 +1,6 @@
 name = "web"
-description = "The SPA: Vite + React, built by jk and packaged as a resource jar app serves from classpath:static"
+description = "The SPA: Vite + React, built by JumpKick and packaged as a resource jar app serves from classpath:static"
 
-# A node module: jk provisions the Node.js below, installs from package-lock.json, runs the build
-# script and packages dist/ under static/ in this module's jar, because app depends on it.
+# A node module: JumpKick provisions the Node.js below, installs from package-lock.json, runs the
+# build script and packages dist/ under static/ in this module's jar, because app depends on it.
 node = 24

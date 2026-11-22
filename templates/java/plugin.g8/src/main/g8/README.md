@@ -7,7 +7,7 @@ A JumpKick build plugin. It owns the `[$name$]` table of a consumer's `jk.toml` 
 jk.toml                                   # compiles against cc.jumpkick:jk-plugin-sdk
 src/main/resources/jk-plugin.toml         # [plugin] id, table, sdk, jk-compat; [schema]; [code]
 src/main/resources/META-INF/services/cc.jumpkick.plugin.Plugin
-src/main/java/.../$name;format="Camel"$Plugin.java   # the code layer jk forks as a worker
+src/main/java/.../$name;format="Camel"$Plugin.java   # the code layer JumpKick forks as a worker
 ```
 
 ```bash

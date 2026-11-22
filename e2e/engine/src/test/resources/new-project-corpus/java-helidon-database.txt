@@ -83,7 +83,8 @@ name      = "demo"
 ports     = [8080]
 aot-cache = true
 # Null checking: every package is @NullMarked (package-info.java), and NullAway checks it at
-# compile time. The table brings JSpecify, Error Prone and NullAway at versions jk tests together.
+# compile time. The table brings JSpecify, Error Prone and NullAway at versions JumpKick tests
+# together.
 [nullness]
 
 # Tests see every variable of your shell. Uncommented, this keeps them to these names: results
@@ -179,7 +180,8 @@ junit-jupiter = { group = "org.junit.jupiter", name = "junit-jupiter" }
 helidon-webserver-testing-junit5 = { group = "io.helidon.webserver.testing.junit5", name = "helidon-webserver-testing-junit5" }
 hamcrest-all = { group = "org.hamcrest", name = "hamcrest-all" }
 # Null checking: every package is @NullMarked (package-info.java), and NullAway checks it at
-# compile time. The table brings JSpecify, Error Prone and NullAway at versions jk tests together.
+# compile time. The table brings JSpecify, Error Prone and NullAway at versions JumpKick tests
+# together.
 [nullness]
 
 # Tests see every variable of your shell. Uncommented, this keeps them to these names: results
@@ -306,7 +308,8 @@ aot-cache  = false
 test-start = false
 
 # Null checking: every package is @NullMarked (package-info.java), and NullAway checks it at
-# compile time. The table brings JSpecify, Error Prone and NullAway at versions jk tests together.
+# compile time. The table brings JSpecify, Error Prone and NullAway at versions JumpKick tests
+# together.
 [nullness]
 
 # Tests see every variable of your shell. Uncommented, this keeps them to these names: results
@@ -419,7 +422,8 @@ aot-cache  = false
 test-start = false
 
 # Null checking: every package is @NullMarked (package-info.java), and NullAway checks it at
-# compile time. The table brings JSpecify, Error Prone and NullAway at versions jk tests together.
+# compile time. The table brings JSpecify, Error Prone and NullAway at versions JumpKick tests
+# together.
 [nullness]
 
 # Tests see every variable of your shell. Uncommented, this keeps them to these names: results
@@ -528,7 +532,8 @@ ports     = [8080]
 aot-cache = false
 
 # Null checking: every package is @NullMarked (package-info.java), and NullAway checks it at
-# compile time. The table brings JSpecify, Error Prone and NullAway at versions jk tests together.
+# compile time. The table brings JSpecify, Error Prone and NullAway at versions JumpKick tests
+# together.
 [nullness]
 
 # Tests see every variable of your shell. Uncommented, this keeps them to these names: results
@@ -639,7 +644,8 @@ modules = ["java.naming"]
 [jlink.training-env]
 SERVER_PORT = "0"
 # Null checking: every package is @NullMarked (package-info.java), and NullAway checks it at
-# compile time. The table brings JSpecify, Error Prone and NullAway at versions jk tests together.
+# compile time. The table brings JSpecify, Error Prone and NullAway at versions JumpKick tests
+# together.
 [nullness]
 
 # Tests see every variable of your shell. Uncommented, this keeps them to these names: results
@@ -737,7 +743,8 @@ hamcrest-all = { group = "org.hamcrest", name = "hamcrest-all" }
 # The tests run on an in-memory H2 (application-test.yaml).
 h2 = { group = "com.h2database", name = "h2" }
 # Null checking: every package is @NullMarked (package-info.java), and NullAway checks it at
-# compile time. The table brings JSpecify, Error Prone and NullAway at versions jk tests together.
+# compile time. The table brings JSpecify, Error Prone and NullAway at versions JumpKick tests
+# together.
 [nullness]
 
 # Tests see every variable of your shell. Uncommented, this keeps them to these names: results
@@ -850,7 +857,8 @@ ports     = [8080]
 aot-cache = false
 
 # Null checking: every package is @NullMarked (package-info.java), and NullAway checks it at
-# compile time. The table brings JSpecify, Error Prone and NullAway at versions jk tests together.
+# compile time. The table brings JSpecify, Error Prone and NullAway at versions JumpKick tests
+# together.
 [nullness]
 
 # Tests see every variable of your shell. Uncommented, this keeps them to these names: results
@@ -957,7 +965,8 @@ helidon-dbclient-jdbc = { group = "io.helidon.dbclient", name = "helidon-dbclien
 helidon-dbclient-hikari = { group = "io.helidon.dbclient", name = "helidon-dbclient-hikari" }
 
 # Null checking: every package is @NullMarked (package-info.java), and NullAway checks it at
-# compile time. The table brings JSpecify, Error Prone and NullAway at versions jk tests together.
+# compile time. The table brings JSpecify, Error Prone and NullAway at versions JumpKick tests
+# together.
 [nullness]
 
 # Tests see every variable of your shell. Uncommented, this keeps them to these names: results
@@ -1064,7 +1073,8 @@ name      = "demo"
 ports     = [8080]
 aot-cache = true
 # Null checking: every package is @NullMarked (package-info.java), and NullAway checks it at
-# compile time. The table brings JSpecify, Error Prone and NullAway at versions jk tests together.
+# compile time. The table brings JSpecify, Error Prone and NullAway at versions JumpKick tests
+# together.
 [nullness]
 
 # Tests see every variable of your shell. Uncommented, this keeps them to these names: results
@@ -1173,7 +1183,8 @@ aot-cache  = false
 test-start = false
 
 # Null checking: every package is @NullMarked (package-info.java), and NullAway checks it at
-# compile time. The table brings JSpecify, Error Prone and NullAway at versions jk tests together.
+# compile time. The table brings JSpecify, Error Prone and NullAway at versions JumpKick tests
+# together.
 [nullness]
 
 # Tests see every variable of your shell. Uncommented, this keeps them to these names: results
@@ -1273,7 +1284,8 @@ hamcrest-all = { group = "org.hamcrest", name = "hamcrest-all" }
 # The tests run on an in-memory H2 (application-test.yaml).
 h2 = { group = "com.h2database", name = "h2" }
 # Null checking: every package is @NullMarked (package-info.java), and NullAway checks it at
-# compile time. The table brings JSpecify, Error Prone and NullAway at versions jk tests together.
+# compile time. The table brings JSpecify, Error Prone and NullAway at versions JumpKick tests
+# together.
 [nullness]
 
 # Tests see every variable of your shell. Uncommented, this keeps them to these names: results

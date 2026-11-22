@@ -29,7 +29,8 @@ name      = "demo"
 aot-cache = true
 
 # Null checking: every package is @NullMarked (package-info.java), and NullAway checks it at
-# compile time. The table brings JSpecify, Error Prone and NullAway at versions jk tests together.
+# compile time. The table brings JSpecify, Error Prone and NullAway at versions JumpKick tests
+# together.
 [nullness]
 
 # Test tiers: `jk test` runs what no suite claims; `@Tag("integration")` tests are the built-in
@@ -82,7 +83,8 @@ name      = "demo"
 aot-cache = true
 
 # Null checking: every package is @NullMarked (package-info.java), and NullAway checks it at
-# compile time. The table brings JSpecify, Error Prone and NullAway at versions jk tests together.
+# compile time. The table brings JSpecify, Error Prone and NullAway at versions JumpKick tests
+# together.
 [nullness]
 
 # Test tiers: `jk test` runs what no suite claims; `@Tag("integration")` tests are the built-in

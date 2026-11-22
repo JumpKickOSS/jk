@@ -1,7 +1,7 @@
-# The declarative layer jk reads in-process: the table this plugin owns, the keys it accepts,
+# The declarative layer JumpKick reads in-process: the table this plugin owns, the keys it accepts,
 # and what it contributes. `sdk` is the jk-plugin-sdk release the code compiled against (the
 # version in jk.toml's [dependencies]): a consumer's lock pins the worker's SDK floor at it.
-# `jk-compat` is the oldest jk that loads the plugin.
+# `jk-compat` is the oldest JumpKick that loads the plugin.
 [plugin]
 id        = "hello"
 table     = "hello"
@@ -12,7 +12,7 @@ jk-compat = ">=0.13"
 [schema]
 greeting = { type = "string", default = "hello", hint = "the word the plugin says" }
 
-# The code layer: jk forks this jar as a worker (once the consumer has run
+# The code layer: JumpKick forks this jar as a worker (once the consumer has run
 # `jk trust plugin sha256:<the jar's hash>`) and asks it what it registers.
 [code]
 protocol-prefix = "##HELLO:"

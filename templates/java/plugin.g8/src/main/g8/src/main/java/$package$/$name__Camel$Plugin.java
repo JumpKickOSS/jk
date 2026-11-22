@@ -11,9 +11,9 @@ import cc.jumpkick.plugin.build.PluginCommandSpec;
 import java.util.List;
 
 /**
- * The code layer of the {@code [$name$]} plugin. jk forks the jar as a worker, finds this class
- * through {@code META-INF/services/cc.jumpkick.plugin.Plugin}, and the SDK's harness answers the
- * protocol. {@link #register} is where the plugin adds its steps, packagers and commands.
+ * The code layer of the {@code [$name$]} plugin. JumpKick forks the jar as a worker, finds this
+ * class through {@code META-INF/services/cc.jumpkick.plugin.Plugin}, and the SDK's harness answers
+ * the protocol. {@link #register} is where the plugin adds its steps, packagers and commands.
  */
 public final class $name;format="Camel"$Plugin implements Plugin, BuildPlugin {
 
