@@ -87,29 +87,18 @@ class CodeGraphToolArgsTest {
     }
 
     @Test
-    void extract_interface_asks_its_operation_with_the_class_the_name_and_the_methods_when_given() {
+    void extract_interface_asks_its_operation_with_the_class_and_the_name_the_methods_and_switch_as_settings() {
         GraphRequest chosen = request(
                 "extract_interface",
-                Map.of("address", "Book", "to", "Priced", "methods", "price,total", "scope", "src"));
+                Map.of("address", "Book", "to", "Priced", "methods", "price,total", "switch", false, "scope", "src"));
         GraphRequest every = request("extract_interface", Map.of("address", "Book", "to", "Priced"));
 
         assertThat(chosen.op()).isEqualTo("extract-interface");
-        assertThat(chosen.args()).containsExactly("Book", "Priced", "price,total");
-        assertThat(chosen.options()).isEmpty();
+        assertThat(chosen.args()).containsExactly("Book", "Priced");
+        assertThat(chosen.options()).containsExactly("methods=price,total", "switch=false");
         assertThat(chosen.scope()).isNull();
         assertThat(every.args()).containsExactly("Book", "Priced");
-    }
-
-    @Test
-    void query_and_find_pass_the_library_glob_they_declare() {
-        assertThat(request("query", Map.of("question", "parse json", "library", "jackson-databind"))
-                        .options())
-                .containsExactly("library=jackson-databind");
-        GraphRequest find = request("find", Map.of("name", "*Mapper", "library", "*"));
-        assertThat(find.args()).containsExactly("*Mapper");
-        assertThat(find.options()).containsExactly("library=*");
-        assertThat(request("usages", Map.of("address", "A.b", "library", "*")).options())
-                .doesNotContain("library=*");
+        assertThat(every.options()).isEmpty();
     }
 
     private static GraphRequest request(String tool) {

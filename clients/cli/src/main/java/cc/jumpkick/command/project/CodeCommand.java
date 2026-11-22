@@ -132,14 +132,16 @@ public final class CodeCommand extends GroupCommand {
                 op(
                         "extract-interface",
                         "Create an interface a class implements, from its methods",
-                        List.of(BUDGET),
+                        List.of(
+                                Opt.value(
+                                        "<a,b,c>",
+                                        "Methods, every overload (default: public, overriding none).",
+                                        "--methods"),
+                                Opt.flag("Only list the places that could take it; switch none.", "--no-switch"),
+                                BUDGET),
                         List.of(
                                 Param.of("class", Arity.ONE, "the class, enum or record"),
-                                Param.of("interface", Arity.ONE, "its name; qualified, it lands in that package"),
-                                Param.of(
-                                        "methods",
-                                        Arity.ZERO_OR_ONE,
-                                        "a,b,c (every overload; default: public ones overriding nothing)"))),
+                                Param.of("interface", Arity.ONE, "its name; qualified, it lands in that package"))),
                 op(
                         "rules",
                         "The guard rules and NOTE/WHY comments that govern a file",

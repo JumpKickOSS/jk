@@ -45,7 +45,9 @@ class ShortFlagsTest {
             "guard --schema",
             "test --quarantined",
             "stats --since",
-            "code move --via");
+            "code move --via",
+            "code extract-interface --methods",
+            "code extract-interface --no-switch");
 
     @Test
     void every_visible_option_has_a_short_form_unique_in_its_command() {

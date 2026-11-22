@@ -3,7 +3,6 @@ package cc.jumpkick.graph;
 
 import static cc.jumpkick.graph.JavaText.afterQualifier;
 import static cc.jumpkick.graph.JavaText.before;
-import static cc.jumpkick.graph.JavaText.importLine;
 import static cc.jumpkick.graph.JavaText.indent;
 import static cc.jumpkick.graph.JavaText.line;
 import static cc.jumpkick.graph.JavaText.lineNumber;
@@ -19,6 +18,7 @@ import cc.jumpkick.codegraph.CodeGraph;
 import cc.jumpkick.codegraph.Decl;
 import cc.jumpkick.codegraph.GraphNode;
 import cc.jumpkick.codegraph.Scope;
+import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.graph.MoveMember.FileEdit;
 import cc.jumpkick.graph.MoveMember.Op;
 import java.io.IOException;
@@ -39,9 +39,10 @@ import org.jspecify.annotations.Nullable;
 /**
  * The {@code extract-interface} operation: a new Java interface declaring chosen public instance
  * methods of a class (every overload of each; by default every public instance method that
- * overrides nothing), the class made to implement it with {@code @Override} on each, and the
- * variables of the class's type that call only those methods listed, as places that could take the
- * interface instead. The signatures are copied as written, with the imports their types need where
+ * overrides nothing), the class made to implement it with {@code @Override} on each, and every
+ * place outside the class that can take the interface retyped to it ({@code switch=false} only lists
+ * them), the other uses of the class listed with the reason each stays (see {@link
+ * InterfaceSwitch}). The signatures are copied as written, with the imports their types need where
  * the interface lands. The edit goes through the rename's write path and undo record; the engine then
  * compiles the modules it touched ({@code phase=verify}), or undoes it whole, the new file included,
  * when they do not compile ({@code phase=undo}).
@@ -56,10 +57,6 @@ final class ExtractInterface {
 
     /** Modifiers a class method may carry that an interface's abstract method does not. */
     private static final Set<String> DROPPED = Set.of("public", "final", "synchronized", "strictfp", "native");
-
-    /** Methods every interface type has, as {@code name(params)}: a call of one needs nothing extracted. */
-    private static final Set<String> OBJECT =
-            Set.of("toString()", "hashCode()", "equals(Ljava/lang/Object;)", "getClass()");
 
     static GraphService.Reply run(GraphService.Workspace w, CodeGraph graph, GraphService.Request r)
             throws IOException {
@@ -79,13 +76,14 @@ final class ExtractInterface {
                                     + ".");
         }
         List<String> a = r.args();
-        if (a.size() < 2 || a.get(0).isBlank() || a.get(1).isBlank()) {
+        if (a.size() != 2 || a.get(0).isBlank() || a.get(1).isBlank()) {
             throw new IllegalArgumentException("needs the class and the name of the interface");
         }
-        String methods = a.size() > 2 ? a.get(2) : "";
+        String methods = options.getOrDefault("methods", "");
+        boolean switching = EnvValues.parseBool(options.get("switch")).orElse(true);
         try {
             return GraphService.Reply.of(
-                    w, extract(w, graph, a.get(0).strip(), a.get(1).strip(), methods, r.budget()));
+                    w, extract(w, graph, a.get(0).strip(), a.get(1).strip(), methods, switching, r.budget()));
         } catch (RenameRefusal refused) {
             return GraphService.Reply.of(w, String.valueOf(refused.getMessage()));
         }
@@ -98,7 +96,13 @@ final class ExtractInterface {
     private record Method(String symbol, int name, int first, int body, String key, Set<String> mods) {}
 
     private static String extract(
-            GraphService.Workspace w, CodeGraph g, String type, String iface, String chosen, int budget)
+            GraphService.Workspace w,
+            CodeGraph g,
+            String type,
+            String iface,
+            String chosen,
+            boolean switching,
+            int budget)
             throws IOException {
         String stale = SafeDelete.edited(w.indexes(), "Not extracted", "extract the interface");
         if (stale != null) throw new RenameRefusal(stale);
@@ -158,22 +162,46 @@ final class ExtractInterface {
             from.ops.add(new Op(lineAt, lineAt, indent(line(from.text, lineAt)) + "@Override\n"));
             overrides++;
         }
-        if (!from.imports.isEmpty()) from.ops.add(MoveImports.op(from));
 
-        List<String> places = places(w, g, files, from.rel, bin, methods);
+        Set<String> keys = new TreeSet<>();
+        for (Method m : methods) keys.add(m.key());
+        List<InterfaceSwitch.Place> places = InterfaceSwitch.places(w, g, files, types, from.rel, bin, keys);
+        Map<InterfaceSwitch.Place, Op> retyped = new HashMap<>();
+        if (switching) {
+            for (InterfaceSwitch.Place p : places) {
+                if (p.reason() != null) continue;
+                Op op = new Op(p.start(), p.end(), at.ref(p.file(), ifaceBin));
+                p.file().ops.add(op);
+                retyped.put(p, op);
+            }
+            MoveImports.remove(files);
+        }
 
-        Map<Op, Integer> starts = new HashMap<>();
-        String after = MoveMember.apply(from.text, from.ops, starts);
+        RenamePlan plan = new RenamePlan(simple, ifaceName);
+        Map<InterfaceSwitch.Place, Integer> placed = new HashMap<>();
+        Map<String, String> afters = new HashMap<>();
         Set<Integer> changed = new TreeSet<>();
-        for (Op op : from.ops) {
-            int s = starts.getOrDefault(op, 0);
-            int first = lineNumber(after, s);
-            int last = lineNumber(after, s + Math.max(0, op.text().length() - 1));
-            for (int i = first; i <= last; i++) changed.add(i);
+        for (FileEdit f : files.values()) {
+            if (f.ops.isEmpty()) continue;
+            if (!f.imports.isEmpty()) f.ops.add(MoveImports.op(f));
+            Map<Op, Integer> starts = new HashMap<>();
+            String after = MoveMember.apply(f.text, f.ops, starts);
+            for (Map.Entry<InterfaceSwitch.Place, Op> e : retyped.entrySet()) {
+                if (e.getKey().file() == f) placed.put(e.getKey(), starts.get(e.getValue()));
+            }
+            Set<Integer> lines = new TreeSet<>();
+            for (Op op : f.ops) {
+                if (op.text().isEmpty()) continue;
+                int s = starts.getOrDefault(op, 0);
+                int first = lineNumber(after, s);
+                int last = lineNumber(after, s + Math.max(0, op.text().length() - 1));
+                for (int i = first; i <= last; i++) lines.add(i);
+            }
+            if (f == from) changed.addAll(lines);
+            afters.put(f.rel, after);
+            plan.edit(f.rel, f.text, after, lines);
         }
         String body = ifaceText(target, Decl.vis(cls), ifacePkg.equals(pkg(bin)), ifaceName, signatures);
-        RenamePlan plan = new RenamePlan(simple, ifaceName);
-        plan.edit(from.rel, from.text, after, changed);
         plan.after.put(ifaceRel, body);
         plan.lines.put(ifaceRel, new TreeSet<>());
         RenameStore.write(w.root(), w.out(), plan);
@@ -187,15 +215,65 @@ final class ExtractInterface {
                 + " implements it" + (overrides == 0 ? "" : ", " + overrides + " @Override") + ".");
         answer.add("  " + ifaceRel + "  new");
         answer.add("  " + from.rel + ":" + RenamePlan.numbers(changed));
-        if (places.isEmpty()) {
-            answer.add("No variable of type " + simple + " calls only these methods; nothing else could take "
-                    + ifaceName + " as it stands.");
-        } else {
-            answer.add("Could take " + ifaceName + " instead of " + simple + ", calling only its methods ("
-                    + places.size() + (places.size() == 1 ? " line):" : " lines):"));
-            answer.addAll(places);
-        }
+        answer.addAll(places(places, placed, afters, simple, ifaceName, switching));
         return Budget.lines(answer, budget, "Raise the budget");
+    }
+
+    /**
+     * The answer's list of places: those switched (or, with {@code switching} off, that could be),
+     * then those left with their reasons, each at its line after the edit.
+     */
+    private static List<String> places(
+            List<InterfaceSwitch.Place> places,
+            Map<InterfaceSwitch.Place, Integer> placed,
+            Map<String, String> afters,
+            String simple,
+            String ifaceName,
+            boolean switching) {
+        List<String> answer = new ArrayList<>();
+        Set<String> could = new LinkedHashSet<>();
+        Set<String> left = new LinkedHashSet<>();
+        for (InterfaceSwitch.Place p : places) {
+            String after = afters.getOrDefault(p.file().rel, p.file().text);
+            Integer moved = placed.get(p);
+            int offset = moved == null ? shifted(p.file().ops, p.start()) : moved;
+            String where =
+                    "  " + p.file().rel + ":" + lineNumber(after, offset) + "  " + RenamePlan.clip(line(after, offset));
+            InterfaceSwitch.Why why = p.reason();
+            if (why == null) {
+                could.add(where);
+                continue;
+            }
+            FileEdit seen = why.file();
+            String shown = seen == null
+                    ? why.text()
+                    : why.text() + " at " + seen.rel + ":"
+                            + lineNumber(afters.getOrDefault(seen.rel, seen.text), shifted(seen.ops, why.offset()));
+            left.add(where + "  (" + shown + ")");
+        }
+        if (could.isEmpty()) {
+            answer.add("Nothing outside " + simple + " could take " + ifaceName + " as it stands.");
+        } else {
+            answer.add((switching ? "Switched to " + ifaceName : "Could take " + ifaceName + " instead of " + simple)
+                    + ", calling only its methods (" + could.size() + (could.size() == 1 ? " line):" : " lines):"));
+            answer.addAll(could);
+        }
+        if (switching && !left.isEmpty()) {
+            answer.add("Left as " + simple + " (" + left.size() + (left.size() == 1 ? " line):" : " lines):"));
+            answer.addAll(left);
+        }
+        return answer;
+    }
+
+    /** Where {@code offset} of a file's text lands once {@code ops} are applied. */
+    private static int shifted(List<Op> ops, int offset) {
+        int out = offset;
+        for (Op op : ops) {
+            if (op.end() <= offset) {
+                out += op.text().length() - (op.end() - op.start());
+            }
+        }
+        return out;
     }
 
     /** The one workspace type {@code name} names. */
@@ -318,7 +396,7 @@ final class ExtractInterface {
     }
 
     /** The offset of the {@code {} (or {@code ;}) after the parameters and throws of the method named at {@code name}. */
-    private static int bodyStart(String t, int name) {
+    static int bodyStart(String t, int name) {
         int i = t.indexOf('(', name);
         int depth = 0;
         while (i >= 0 && i < t.length()) {
@@ -424,118 +502,5 @@ final class ExtractInterface {
                 .append(" {\n\n");
         s.append(String.join("\n\n", signatures)).append("\n}\n");
         return s.toString();
-    }
-
-    /**
-     * The variables of the class's type, outside its own file, through which nothing but the
-     * extracted methods (and {@link Object}'s) is called and which are not passed on: each could be
-     * declared as the interface. A variable that is only assigned to or from one of the same name
-     * counts with it.
-     */
-    private static List<String> places(
-            GraphService.Workspace w,
-            CodeGraph g,
-            Map<String, FileEdit> files,
-            String own,
-            String bin,
-            List<Method> methods) {
-        Set<String> keys = new TreeSet<>(OBJECT);
-        for (Method m : methods) keys.add(m.key());
-        String simple = canonical(bin).substring(canonical(bin).lastIndexOf('.') + 1);
-        Set<String> out = new LinkedHashSet<>();
-        for (String rel : RenameProof.javaFiles(g)) {
-            if (rel.equals(own)) continue;
-            String text = RenameText.read(w.root(), rel);
-            if (text == null || !text.contains(simple)) continue;
-            FileEdit f = MoveMember.edit(w, g, files, rel);
-            if (f == null) continue;
-            Map<String, List<int[]>> vars = new LinkedHashMap<>();
-            for (ReferenceIndex.Span s : f.spans) {
-                if (s.kind() != 'r' || !s.symbol().equals("T " + bin) || importLine(f.text, s.start())) continue;
-                int[] v = variable(f.text, s.end());
-                if (v != null)
-                    vars.computeIfAbsent(f.text.substring(v[0], v[1]), k -> new ArrayList<>())
-                            .add(new int[] {v[0], s.line()});
-            }
-            if (vars.isEmpty()) continue;
-            String code = masked(f.text);
-            for (Map.Entry<String, List<int[]>> e : vars.entrySet()) {
-                Set<Integer> declared = new TreeSet<>();
-                for (int[] d : e.getValue()) declared.add(d[0]);
-                if (!onlyCalls(f, code, e.getKey(), declared, keys)) continue;
-                for (int[] d : e.getValue())
-                    out.add("  " + rel + ":" + d[1] + "  " + RenamePlan.clip(line(f.text, d[0])));
-            }
-        }
-        return List.copyOf(out);
-    }
-
-    /** {@code [start, end)} of the variable a type name ending at {@code end} declares; {@code null} for any other use. */
-    private static int @Nullable [] variable(String t, int end) {
-        int i = end;
-        while (i < t.length() && Character.isWhitespace(t.charAt(i))) i++;
-        Matcher m = NAME.matcher(t).region(i, t.length());
-        if (!m.lookingAt()) return null;
-        int k = m.end();
-        while (k < t.length() && Character.isWhitespace(t.charAt(k))) k++;
-        // A name followed by ( is a method the type is the return type of.
-        if (k < t.length() && t.charAt(k) == '(') return null;
-        return new int[] {m.start(), m.end()};
-    }
-
-    /**
-     * Whether every use of {@code name} in {@code f}, its declarations aside, calls one of {@code keys}
-     * or assigns it to or from a variable of the same name.
-     */
-    private static boolean onlyCalls(FileEdit f, String code, String name, Set<Integer> declared, Set<String> keys) {
-        Matcher m = Pattern.compile("(?<![\\w$])" + Pattern.quote(name) + "(?![\\w$])")
-                .matcher(code);
-        while (m.find()) {
-            if (declared.contains(m.start())) continue;
-            int k = m.end();
-            while (k < code.length() && Character.isWhitespace(code.charAt(k))) k++;
-            if (k < code.length() && code.charAt(k) == '=' && (k + 1 >= code.length() || code.charAt(k + 1) != '=')) {
-                continue;
-            }
-            int b = before(code, m.start());
-            if (b >= 0 && code.charAt(b) == '=' && (b == 0 || "=!<>".indexOf(code.charAt(b - 1)) < 0)) {
-                int lhsEnd = before(code, b) + 1;
-                int lhsStart = lhsEnd;
-                while (lhsStart > 0 && Character.isJavaIdentifierPart(code.charAt(lhsStart - 1))) lhsStart--;
-                if (code.substring(lhsStart, lhsEnd).equals(name)) continue;
-                return false;
-            }
-            if (k >= code.length() || code.charAt(k) != '.') return false;
-            int c = k + 1;
-            while (c < code.length() && Character.isWhitespace(code.charAt(c))) c++;
-            String called = null;
-            for (ReferenceIndex.Span s : f.spans) {
-                if (s.start() == c && s.symbol().startsWith("M ")) {
-                    String sig = s.symbol().substring(s.symbol().indexOf('#') + 1);
-                    called = sig.substring(0, sig.indexOf(')') + 1);
-                    break;
-                }
-            }
-            if (called == null || !keys.contains(called)) return false;
-        }
-        return true;
-    }
-
-    /** {@code text} with its comments and literals blanked, newlines kept, so offsets still match. */
-    private static String masked(String text) {
-        StringBuilder out = new StringBuilder(text);
-        int i = 0;
-        while (i < text.length()) {
-            int p = past(text, i);
-            if (p == i) {
-                i++;
-                continue;
-            }
-            for (int k = i; k < p; k++) {
-                if (out.charAt(k) != '\n') out.setCharAt(k, ' ');
-            }
-            i = p;
-        }
-        return out.toString();
     }
 }

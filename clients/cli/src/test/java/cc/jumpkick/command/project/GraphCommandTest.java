@@ -8,6 +8,7 @@ import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
+import cc.jumpkick.model.command.Param;
 import cc.jumpkick.wire.protocol.GraphAck;
 import cc.jumpkick.wire.protocol.GraphRequest;
 import java.nio.file.Path;
@@ -85,6 +86,26 @@ class GraphCommandTest {
                 .putValue("via", "p1")
                 .build();
         assertThat(op("move").request(Path.of("/w"), in, false).options()).containsExactly("via=p1");
+    }
+
+    @Test
+    void anExtractedInterfaceNamesItsMethodsByOptionAndSwitchesUnlessToldNot() {
+        Invocation in = Invocation.builder()
+                .addPositional("Book")
+                .addPositional("Priced")
+                .putValue("methods", "price,total")
+                .flag("no-switch", true)
+                .build();
+        GraphRequest r = op("extract-interface").request(Path.of("/w"), in, false);
+        assertThat(r.args()).containsExactly("Book", "Priced");
+        assertThat(r.options()).containsExactly("methods=price,total", "switch=false");
+        Invocation bare = Invocation.builder()
+                .addPositional("Book")
+                .addPositional("Priced")
+                .build();
+        assertThat(op("extract-interface").request(Path.of("/w"), bare, false).options())
+                .isEmpty();
+        assertThat(op("extract-interface").parameters()).extracting(Param::name).containsExactly("class", "interface");
     }
 
     @Test

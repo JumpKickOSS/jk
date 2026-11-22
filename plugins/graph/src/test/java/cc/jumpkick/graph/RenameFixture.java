@@ -165,11 +165,23 @@ final class RenameFixture {
         return move("-", "-", "phase=verify");
     }
 
-    /** {@code extract-interface type name [methods]}, as the engine asks for it. */
+    /** {@code extract-interface type name [--methods a,b]}, as the engine asks for it. */
     String extract(String type, String name, String... methods) throws IOException {
-        List<String> args = new ArrayList<>(List.of(type, name));
-        if (methods.length > 0) args.add(String.join(",", methods));
-        return ask("extract-interface", args, 8000);
+        return methods.length == 0
+                ? ask("extract-interface", List.of(type, name), 8000)
+                : ask("extract-interface", List.of(type, name), 8000, "methods=" + String.join(",", methods));
+    }
+
+    /** {@code extract-interface type name --no-switch [--methods a,b]}: the interface alone, the places listed. */
+    String extractOnly(String type, String name, String... methods) throws IOException {
+        return methods.length == 0
+                ? ask("extract-interface", List.of(type, name), 8000, "switch=false")
+                : ask(
+                        "extract-interface",
+                        List.of(type, name),
+                        8000,
+                        "switch=false",
+                        "methods=" + String.join(",", methods));
     }
 
     /** The engine's check after an extracted interface: compile, then the proof, or the undo when the compile failed. */

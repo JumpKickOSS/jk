@@ -153,7 +153,7 @@ class McpToolRegistryTest {
                 .findFirst()
                 .orElseThrow();
         assertThat(row).doesNotContainKey("annotations");
-        assertThat(row.get("inputSchema")).asString().contains("address", "to", "methods", "required");
+        assertThat(row.get("inputSchema")).asString().contains("address", "to", "methods", "switch", "required");
     }
 
     @Test

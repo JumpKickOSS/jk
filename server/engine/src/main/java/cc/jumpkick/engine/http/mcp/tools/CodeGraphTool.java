@@ -183,16 +183,18 @@ public final class CodeGraphTool implements McpTool {
 
     /**
      * {@code extract_interface}: an interface declaring chosen public instance methods of a class, as
-     * {@code jk code extract-interface} makes it: the class implements it, then it is compiled, or
-     * undone whole; the variables that call only those methods are listed as places that could
-     * take the interface. It writes, so it is not read-only.
+     * {@code jk code extract-interface} makes it: the class implements it, each place that uses only
+     * those methods is switched to it ({@code switch: false} lists them instead), then it is compiled,
+     * or undone whole; every other use is listed with the reason it stays. It writes, so it is not
+     * read-only.
      */
     public static McpTool extractInterface() {
         return new CodeGraphTool(
                 new Spec(
                         "extract_interface",
-                        "Create interface `to` from public methods of class `address`, which implements it; proves it"
-                                + " compiles and lists each variable that could take the interface, at file:line.",
+                        "Create interface `to` from public methods of class `address`, which implements it; switches"
+                                + " each variable, parameter, field and return type that uses only them, proves it"
+                                + " compiles, and lists every other use with its reason, at file:line.",
                         McpSchemas.object(
                                 props(Map.of(
                                         "address",
@@ -201,15 +203,12 @@ public final class CodeGraphTool implements McpTool {
                                         McpSchemas.string(),
                                         "methods",
                                         McpSchemas.string("a,b: every overload of each; default every public one that"
-                                                + " overrides nothing"))),
+                                                + " overrides nothing"),
+                                        "switch",
+                                        McpSchemas.bool())),
                                 List.of("address", "to"))),
                 "extract-interface",
-                in -> {
-                    String methods = in.str("methods");
-                    return methods == null || methods.isBlank()
-                            ? List.of(required(in, "address"), required(in, "to"))
-                            : List.of(required(in, "address"), required(in, "to"), methods);
-                });
+                in -> List.of(required(in, "address"), required(in, "to")));
     }
 
     /** {@code query}: the symbols and connections a question is about, as {@code jk code query} answers it. */
@@ -342,12 +341,22 @@ public final class CodeGraphTool implements McpTool {
     /** The operation's named settings a call carries, as {@code key=value}. */
     private List<String> options(McpCall in) {
         List<String> out = new ArrayList<>();
-        for (String key :
-                List.of("view", "kind", "visibility", "extends", "implements", "annotated", "also", "via", "library")) {
+        for (String key : List.of(
+                "view",
+                "kind",
+                "visibility",
+                "extends",
+                "implements",
+                "annotated",
+                "also",
+                "via",
+                "library",
+                "methods")) {
             String v = optional(in, key);
             if (v != null && !v.isBlank()) out.add(key + "=" + v);
         }
         if (declared("transitive") && in.flag("transitive")) out.add("transitive=true");
+        if (declared("switch") && !in.flagOr("switch", true)) out.add("switch=false");
         return out;
     }
 

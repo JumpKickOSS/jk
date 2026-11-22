@@ -739,7 +739,7 @@ jk code delete OrderService.legacyTotal          # only if nothing uses it; else
 jk code move PriceMath.round Money               # a static method or field, every use edited
 jk code move Order.visit Customer --via p1       # an instance method, through the route listed
 jk code pull-up Book.label                       # an instance member up to the class Book extends
-jk code extract-interface Book Priced price,total  # a new interface Book implements
+jk code extract-interface Book Priced --methods price,total  # Book implements it; uses switch
 ```
 
 `delete` removes a method (every overload), a field or a type only when nothing uses it: no call or
@@ -771,14 +771,21 @@ route fails where that field or argument is `null`. A method that overrides, imp
 overridden is refused, as is one with overloads; a target the type extends is a `pull-up`.
 
 `extract-interface` creates an interface beside the class (a qualified name puts it in that
-package) declaring the public instance methods named, every overload of each, or by default every
-public instance method that overrides nothing. Each signature is copied as written, with the
-imports its types need; the class implements the interface, with `@Override` on each method. It
-refuses a generic class, a static or non-public method and a name already taken, writing nothing.
-Then it compiles, undoing the edit whole, the new file included, when that fails. Its answer lists
-at `file:line` each variable of the class's type, outside the class, that calls only the
-interface's methods and is not passed on: each could be declared as the interface instead. It does
-not change them.
+package) declaring the public instance methods `--methods` names, every overload of each, or by
+default every public instance method that overrides nothing; the answer names the methods it
+took. Each signature is copied as written, with the imports its types need; the class implements
+the interface, with `@Override` on each method. In the same edit, each variable, parameter, field
+and return type of the class's type outside it that uses only the interface's methods (or
+`Object`'s) is declared as the interface instead, with the imports that needs. A return type is
+switched only when every caller uses the result that way or keeps it in a switched variable. A
+place stays the class when retyping it could break or change an override, an overload, a method
+reference, a lambda's parameter, a record component or a field another file reads; constructor
+calls, casts, type arguments and static calls stay too. Each place left is listed at `file:line`
+with its reason (`calls pages()`, `passed on`, `show() overrides a method`). `--no-switch` (MCP
+`switch: false`) creates the interface alone and lists the places that could take it. It refuses
+a generic class, a static or non-public method and a name already taken, writing nothing. Then it
+compiles the modules it touched, undoing the edit whole, the new file and every switch included,
+when that fails.
 
 The [retrieval bench](../../bench/graph-retrieval/README.md) asks who calls a method, what
 implements or overrides it and where it is defined, on seven JVM repositories, and grades every

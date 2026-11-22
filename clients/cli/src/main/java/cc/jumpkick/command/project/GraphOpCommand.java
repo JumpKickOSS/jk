@@ -174,12 +174,23 @@ final class GraphOpCommand implements CliCommand {
         }
         if (in.isSet("transitive")) out.add("transitive=true");
         if (in.isSet("no-accessors")) out.add("accessors=false");
+        if (in.isSet("no-switch")) out.add("switch=false");
         return out;
     }
 
     /** Options passed through to the worker by name. */
     static final List<String> SETTINGS = List.of(
-            "view", "kind", "visibility", "extends", "implements", "annotated", "also", "module", "library", "via");
+            "view",
+            "kind",
+            "visibility",
+            "extends",
+            "implements",
+            "annotated",
+            "also",
+            "module",
+            "library",
+            "via",
+            "methods");
 
     /** {@code code} → {@code Code}: how a group names itself on a status line. */
     static String label(String group) {
