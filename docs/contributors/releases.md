@@ -611,7 +611,8 @@ after `JK_FLEET_DRAIN_S` (default 3600 s) is left as it was, its row saying so. 
 engine of the home and waits until none is alive, empties `~/.jk` but `~/.jk/creds` (config, caches,
 history, engine state and installs all go; nothing is migrated), installs from jumpkick.build,
 copies the fleet's machine settings from `scripts/fleet-profiles/<target>.toml` to
-`~/.jk/config.toml` when that file exists, starts the engine and requires it to answer as the
+`~/.jk/config.toml` when that file exists (none does: the fleet runs on JumpKick's defaults, and a host
+gets a profile only when it needs a setting), starts the engine and requires it to answer as the
 release, fast-forwards its JumpKick checkout to the tag and times a cold and a warm `jk build`,
 printing one `RESULT` line the driver appends to a Markdown table. Secrets outside `~/.jk`, such as
 the Central token, are never touched. Both refuse unless jumpkick.build serves the version they are

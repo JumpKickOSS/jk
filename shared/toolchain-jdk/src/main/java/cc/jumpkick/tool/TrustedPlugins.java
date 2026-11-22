@@ -21,7 +21,9 @@ import java.util.regex.Pattern;
  */
 public final class TrustedPlugins {
 
-    private static final String FILE_NAME = "trusted-plugins.toml";
+    /** The trust list's file under the state directory. */
+    public static final String FILE_NAME = "trusted-plugins.toml";
+
     private static final Pattern QUOTED = Pattern.compile("\"([^\"]*)\"");
 
     private final Path file;

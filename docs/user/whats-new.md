@@ -51,6 +51,9 @@ JumpKick shows you this page's new entries after it updates itself.
   `jk code usages dep:guava@33.4.8-jre` lists the API that version removes, renames or changes, up
   or down, and each place in your code that uses it. MCP `update`'s preview counts them per move
   ([Code graph](graph.md#what-another-version-of-a-dependency-breaks)).
+- **An update starts from a clean cache.** The first engine start after an update discards the
+  cache, history and JDK inventory the previous version wrote and rebuilds them; logins, trust,
+  `config.toml` and downloaded jars stay ([Install](install.md#on-disk-layout)).
 - **`jk watch` and `jk dev` on Linux see a save made from another machine.** A project on NFS,
   SMB or a Windows drive under WSL is polled every 2 s, as on macOS; inotify never heard those.
 - **`jk audit --vex <file>` writes OpenVEX.** A finding in a jar only tests, annotation processors

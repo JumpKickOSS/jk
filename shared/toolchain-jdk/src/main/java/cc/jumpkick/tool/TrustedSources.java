@@ -34,7 +34,9 @@ import org.jspecify.annotations.Nullable;
  */
 public final class TrustedSources {
 
-    private static final String FILE_NAME = "trusted-sources.toml";
+    /** The allowlist's file under the state directory. */
+    public static final String FILE_NAME = "trusted-sources.toml";
+
     private static final Pattern QUOTED = Pattern.compile("\"([^\"]*)\"");
     private static final Pattern ENCODED_SLASH_OR_DOT = Pattern.compile("%2[EeFf]");
 

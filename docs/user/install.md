@@ -224,14 +224,17 @@ rm -rf ~/.jk/store     # re-download everything, slow
 so the record of a nuke survives it ([what JumpKick changed](config.md#what-jumpkick-changed)).
 
 **Another version's cache and state are discarded, never read.** `cache/` and `state/` each hold a
-`jk-version` file naming the JumpKick that wrote them. When an engine starts with no engine of this
-home running and finds another version's name there, or none, JumpKick empties both roots and
-rebuilds what it needs: action cache, build and test history, JDK inventory, plugin trust. It says
-so in one line. `state/engine` (sockets, pid files, the install lock), `state/tmp` and the
-self-update record (an update to announce, a rollback's hold on auto-update) stay. Until
-1.0 nothing is migrated between versions. `creds/` is the one root every version reads as it is,
-and `store/`, `config.toml`, `config/`, `bin/`, `lib/` and `changes/` are left alone. While an
-older engine still drains its jobs after an update, the discard waits for the next start.
+`jk-version` file naming the JumpKick that wrote them, and `store/` a `jk-layout` file naming its
+layout. When an engine starts with no engine of this home running and finds another version's name
+in `cache/` or `state/`, JumpKick empties that root and rebuilds what it needs: action cache, build
+and test history, the JDK inventory (rescanned). It says so in one line. The store is emptied only
+when its layout changes, keeping this version's own jars; otherwise its bytes stay, checked against
+the lock's sha256 as always. `state/engine` (sockets, pid files, the install lock), `state/tmp`, the
+plugin and source trust lists (`jk trust`), and the self-update record and its highlights (an update
+to announce, a rollback's hold on auto-update) stay. Until 1.0 nothing is migrated between versions.
+`creds/` is the one root every version reads as it is, and `config.toml`, `config/`, `bin/`, `lib/`
+and `changes/` are left alone. While an older engine still drains its jobs after an update, the
+discard waits for the next start.
 
 The live engine jar is `~/.jk/lib/jk-engine/jk-engine-<version>.jar` (or
 `jk-engine-<version>.<epoch>.jar` when that name is already occupied), with the live pointer

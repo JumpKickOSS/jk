@@ -24,6 +24,12 @@ import java.nio.file.Path;
  */
 public final class JkStores {
 
+    /**
+     * The store's layout. Raise it when a change moves or reshapes what the store holds: a store of
+     * another layout is emptied on the next engine start, never migrated.
+     */
+    public static final int LAYOUT = 1;
+
     private JkStores() {}
 
     // ---- artifact store ----------------------------------------------------
