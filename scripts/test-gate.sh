@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Fixtures for the gate under scripts/gate/. The gate runs in a scratch repository against a
 # stand-in `jk`: green on a clean tip, one install that runs tests (the fast tier once, under the
-# engine the reinstall before it installed), a red push gate run once more and still red, red at
-# the reinstall when it fails, and refused on a dirty checkout. A class the stand-in quarantines
+# engine the reinstall before it installed), a push gate red in a class that passes when run once
+# more green and naming the class, twice in a row, red when the class fails again or the first run
+# was red outside a test class, red at the reinstall when it fails, and refused on a dirty checkout. A class the stand-in quarantines
 # leaves the checkout clean, gets a ticket, and goes to a stand-in merge queue in the quarantine
 # file with the ticket's id; it is not filed twice, a closed ticket takes its class out, an entry
 # with no ticket gets one, and a class that cannot get a ticket is not submitted. Last the Queue
@@ -37,14 +38,20 @@ fail() {
 }
 
 # --- run transcripts and a stand-in ka ---
-# A transcript as jk writes it: classes passed on re-run (a nested class of one among them), and a
-# line that is not JSON.
+# A transcript as jk writes it: classes passed on re-run (a nested class of one among them), one
+# that passed and had not failed, and a line that is not JSON.
 cat >"$WORK/rerun.jsonl" <<'EOF'
 {"schema":1,"type":"session-start","command":"install"}
 not json
 {"schema":1,"type":"warn","task":"run-tests","code":"tests-not-rerun","message":"9 test classes passed earlier","module":"cc.jumpkick:jk-engine"}
+{"schema":1,"type":"class-finish","task":"run-tests","module":"cc.jumpkick:jk-engine","testClass":"a.FlakyTest$Inner","tests":1,"failed":0,"skipped":0,"millis":4,"passedOnRerun":true}
+{"schema":1,"type":"class-finish","task":"run-tests","module":"cc.jumpkick:jk-engine","testClass":"a.FlakyTest","tests":2,"failed":0,"skipped":0,"millis":9,"passedOnRerun":true}
+{"schema":1,"type":"class-finish","task":"run-tests","module":"cc.jumpkick:jk-engine","testClass":"a.OtherTest","tests":1,"failed":0,"skipped":0,"millis":3,"passedOnRerun":true}
+{"schema":1,"type":"class-finish","task":"run-tests","module":"cc.jumpkick:jk-engine","testClass":"a.SteadyTest","tests":1,"failed":0,"skipped":0,"millis":3}
 {"schema":1,"type":"warn","task":"run-tests","code":"test-passed-on-rerun","message":"passed on a re-run with no input changed, so flaky or dependent on what ran before: a.FlakyTest, a.FlakyTest$Inner, a.OtherTest","module":"cc.jumpkick:jk-engine"}
 EOF
+[[ "$(bash "$ROOT/scripts/gate/flaky.sh" passed "$WORK/rerun.jsonl")" == "$(printf '%s\n' 'cc.jumpkick:jk-engine a.FlakyTest' 'cc.jumpkick:jk-engine a.OtherTest')" ]] ||
+  fail "the classes passed on the re-run were: $(bash "$ROOT/scripts/gate/flaky.sh" passed "$WORK/rerun.jsonl")"
 cat >"$WORK/red-other.jsonl" <<'EOF'
 {"schema":1,"type":"error","task":"run-tests","code":"test-failure","module":"cc.jumpkick:jk-engine","testClass":"a.FlakyTest"}
 {"schema":1,"type":"error","task":"compile-java","code":"compile","module":"cc.jumpkick:jk-engine","message":"cannot find symbol"}
@@ -55,6 +62,7 @@ cat >"$WORK/red-new.jsonl" <<'EOF'
 {"schema":1,"type":"workspace-finish","success":false}
 EOF
 cat >"$WORK/rerun-new.jsonl" <<'EOF'
+{"schema":1,"type":"class-finish","task":"run-tests","module":"cc.jumpkick:jk-engine","testClass":"b.NewTest","tests":1,"failed":0,"skipped":0,"millis":7,"passedOnRerun":true}
 {"schema":1,"type":"warn","task":"run-tests","code":"test-passed-on-rerun","message":"passed on a re-run with no input changed, so flaky or dependent on what ran before: b.NewTest","module":"cc.jumpkick:jk-engine"}
 EOF
 # A stand-in ka: `new` opens TK-F<n> (or fails under KA_FAIL) and logs its arguments, `show`
@@ -82,7 +90,7 @@ chmod +x "$WORK/bin/ka"
 tickets() { find "$WORK/ka" -type f | wc -l | tr -d ' '; }
 
 # --- the gate, against a stand-in jk ---
-# The stand-in logs each call, fails the push gate's first run when FAIL_PUSHGATE is set, the
+# The stand-in logs each call, fails the push gate's first FAIL_PUSHGATE runs, the
 # reinstall without tests when FAIL_REINSTALL is set, an exclusive test run when FAIL_INTEG is set
 # (the first one only under FAIL_INTEG_ONCE), the slow tier when FAIL_SLOW is set, the docs suite
 # when FAIL_DOCS is set and the first
@@ -126,7 +134,7 @@ case "$1" in
       exit 4
     fi
     [[ -n "${FAIL_REINSTALL:-}" && " $* " == *" -S "* ]] && { echo "error: compile failed"; exit 1; }
-    if [[ -n "${FAIL_PUSHGATE:-}" && " $* " == *" -g "* && "$(grep -c '^install -g' "$JK_CALLS")" -eq 1 ]]; then
+    if [[ -n "${FAIL_PUSHGATE:-}" && " $* " == *" -g "* && "$(grep -c '^install -g' "$JK_CALLS")" -le "$FAIL_PUSHGATE" ]]; then
       echo "FAIL a.FlakyTest"
       exit 4
     fi
@@ -182,9 +190,24 @@ grep -q '^FLAKY the quarantine on .* is current' "$WORK/logs/integ-gate-1.log" |
 if grep -q -- '-s slow' "$WORK/calls-1"; then fail "a Full tier with no base ran the slow tier: $(cat "$WORK/calls-1")"; fi
 grep -qx 'test -s docs -c --no-ansi' "$WORK/calls-1" || fail "the Full tier did not run the docs suite alone: $(cat "$WORK/calls-1")"
 
-gate 2 FAIL_PUSHGATE=1
-[[ "$(verdict 2)" == "RED" ]] || fail "a push gate green only on its re-run was not red: $(cat "$WORK/logs/integ-gate-2.log")"
-[[ "$(grep -c '^install -g -c$' "$WORK/calls-2")" -eq 2 ]] || fail "a red push gate did not run once more: $(cat "$WORK/calls-2")"
+# Red in a class that passes on the re-run: green, naming the class; and so again the next gate.
+for g in 2 36; do
+  gate "$g" FAIL_PUSHGATE=1 RESULTS_FIRST="$WORK/red-new.jsonl" RERUN_JSONL="$WORK/rerun-new.jsonl"
+  [[ "$(verdict "$g")" == "GREEN $tip" ]] || fail "a push gate green on its re-run was not green: $(cat "$WORK/logs/integ-gate-$g.log")"
+  [[ "$(grep -c '^install -g -c$' "$WORK/calls-$g")" -eq 2 ]] || fail "a red push gate did not run once more: $(cat "$WORK/calls-$g")"
+  grep -qx 'FLAKY cc.jumpkick:jk-engine b.NewTest passed on the re-run' "$WORK/logs/integ-gate-$g.log" ||
+    fail "the log does not name the class that passed on the re-run: $(cat "$WORK/logs/integ-gate-$g.log")"
+done
+# The class fails again: red, naming it, with no FLAKY line.
+gate 37 FAIL_PUSHGATE=2 RESULTS_FIRST="$WORK/red-new.jsonl" RERUN_JSONL="$WORK/red-new.jsonl"
+[[ "$(verdict 37)" == "RED" ]] || fail "a push gate red on its re-run was not red: $(cat "$WORK/logs/integ-gate-37.log")"
+if grep -q '^FLAKY .* passed on the re-run$' "$WORK/logs/integ-gate-37.log"; then fail "a class red twice was called flaky: $(cat "$WORK/logs/integ-gate-37.log")"; fi
+grep -q '^FAIL a.FlakyTest' "$WORK/logs/integ-gate-37.log" || fail "the log does not name the re-run's failure: $(cat "$WORK/logs/integ-gate-37.log")"
+# The first run red outside a test class: the re-run does not make it green.
+gate 38 FAIL_PUSHGATE=1 RESULTS_FIRST="$WORK/red-other.jsonl" RERUN_JSONL="$WORK/rerun-new.jsonl"
+[[ "$(verdict 38)" == "RED" ]] || fail "a push gate red outside a test class was green on its re-run: $(cat "$WORK/logs/integ-gate-38.log")"
+grep -q '^RERUN green, but the first run was red outside a test class' "$WORK/logs/integ-gate-38.log" ||
+  fail "the log does not say why the re-run did not count: $(cat "$WORK/logs/integ-gate-38.log")"
 
 gate 3 FAIL_REINSTALL=1
 [[ "$(verdict 3)" == "RED (reinstall)" ]] || fail "a failed reinstall did not stop the gate: $(cat "$WORK/logs/integ-gate-3.log")"
@@ -198,10 +221,12 @@ waiting() { git --git-dir="$WORK/queue.git" show "refs/queue/gate/quarantine:.jk
 subject() { git --git-dir="$WORK/queue.git" log -1 --format=%s refs/queue/gate/quarantine; }
 clean() { [[ -z "$(git -C "$repo" status --porcelain)" ]] || fail "gate $1 left the checkout dirty: $(git -C "$repo" status --porcelain)"; }
 
-# A red push gate whose re-run quarantines a class: still red, the checkout clean, one ticket, and
-# the queue holds the file with the class and the ticket's id, on the base and nothing else.
-gate 30 FAIL_PUSHGATE=1 QUARANTINE_ADD=a.FlakyTest
-[[ "$(verdict 30)" == "RED" ]] || fail "a red push gate was not red: $(cat "$WORK/logs/integ-gate-30.log")"
+# A push gate whose re-run passes and quarantines a class: green, the checkout clean, one ticket,
+# and the queue holds the file with the class and the ticket's id, on the base and nothing else.
+gate 30 FAIL_PUSHGATE=1 QUARANTINE_ADD=a.FlakyTest RESULTS_FIRST="$WORK/red-new.jsonl" RERUN_JSONL="$WORK/rerun.jsonl"
+[[ "$(verdict 30)" == "GREEN $tip" ]] || fail "a push gate green on its re-run was not green: $(cat "$WORK/logs/integ-gate-30.log")"
+grep -qx 'FLAKY cc.jumpkick:jk-engine a.FlakyTest passed on the re-run' "$WORK/logs/integ-gate-30.log" ||
+  fail "the log does not name the class that passed on the re-run: $(cat "$WORK/logs/integ-gate-30.log")"
 clean 30
 [[ "$(tickets)" -eq 1 ]] || fail "one quarantined class opened $(tickets) tickets"
 grep -q 'Flaky test FlakyTest' "$WORK/ka.new.log" || fail "the ticket does not name the class: $(cat "$WORK/ka.new.log")"
@@ -344,6 +369,8 @@ gate 10 GATE_TIER=queue GATE_BASE="$qbase" FAIL_INTEG_ONCE=1 RESULTS_FIRST="$WOR
 [[ "$(verdict 10)" == "GREEN $tip" ]] || fail "a run green on its re-run was not green: $(cat "$WORK/logs/integ-gate-10.log")"
 [[ "$(grep -c -- ' -X ' "$WORK/calls-10")" -eq 2 ]] || fail "the red run did not run once more: $(cat "$WORK/calls-10")"
 grep -q '^RERUN changed: .*EXIT=0' "$WORK/logs/integ-gate-10.log" || fail "the log does not say the run ran again"
+grep -qx 'FLAKY cc.jumpkick:jk-engine b.NewTest passed on the re-run' "$WORK/logs/integ-gate-10.log" ||
+  fail "the Queue tier does not name the class that passed on the re-run: $(cat "$WORK/logs/integ-gate-10.log")"
 
 # Red on the re-run too: red, naming the class and keeping its failure.
 gate 11 GATE_TIER=queue GATE_BASE="$qbase" FAIL_INTEG=1 RERUN_JSONL="$WORK/red-new.jsonl"
@@ -453,4 +480,4 @@ if [[ -z "${TEST_GATE_NESTED:-}" ]]; then
     fail "under a Queue-tier gate's environment: $(cat "$WORK/nested.log")"
 fi
 
-echo "test-gate: ok (30 gate runs, 5 of them quarantining; again under a gate's environment)"
+echo "test-gate: ok (33 gate runs, 5 of them quarantining; again under a gate's environment)"

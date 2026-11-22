@@ -8,6 +8,8 @@
 # Usage:
 #   scripts/gate/flaky.sh failed <details.jsonl>   `<module> <class>` of each failed class; exit 0
 #                                                  when the run failed only in test classes
+#   scripts/gate/flaky.sh passed <details.jsonl>   `<module> <class>` of each class that passed on a
+#                                                  re-run under the same inputs
 #   scripts/gate/flaky.sh take <saved>             save the quarantine file jk changed in this
 #                                                  checkout to <saved> and restore HEAD's
 #   scripts/gate/flaky.sh review <saved> <log>     open a ticket for each class jk added (in <saved>)
@@ -53,6 +55,16 @@ failed() {
     | sort -u)"
   [[ -z "$all" ]] || grep -v '^-$' <<<"$all" || true
   [[ -n "$all" ]] && ! grep -qx -- - <<<"$all"
+}
+
+# The classes the run passed after a run under the same inputs failed them, `<module> <class>` (a
+# nested class as its outermost one), from the `passedOnRerun` of their class-finish rows.
+passed() {
+  local details="${1:?usage: flaky.sh passed <details.jsonl>}"
+  [[ -f "$details" ]] || die "no run transcript at $details"
+  rows "$details" | jq -r '
+    select(.type == "class-finish" and .passedOnRerun == true and .testClass)
+    | "\(.module // "-") \(.testClass | sub("\\$.*"; ""))"' | sort -u
 }
 
 take() {
@@ -270,9 +282,10 @@ review() {
 {
   case "${1:-}" in
     failed) failed "${@:2}" ;;
+    passed) passed "${@:2}" ;;
     take) take "${@:2}" ;;
     review) review "${@:2}" ;;
-    *) die "usage: flaky.sh failed <details.jsonl> | take <saved> | review <saved> <log>" ;;
+    *) die "usage: flaky.sh failed <details.jsonl> | passed <details.jsonl> | take <saved> | review <saved> <log>" ;;
   esac
   exit
 }

@@ -7,7 +7,9 @@
 # the commit's revert to the queue, comments on its ticket and reopens it; when they pass on a
 # re-run, or the revert conflicts with later work, it reverts nothing and comments on the batch's
 # tickets why. After two red cycles the queue lands only the fix (a revert of the batch's commit, or
-# a commit for its ticket) and holds the rest, until a green cycle lifts the hold.
+# a commit for its ticket) and holds the rest, until a green cycle lifts the hold. Two gates in a row
+# green only because a class passed on the gate's re-run are green cycles that name the class: green
+# moves, no ticket is told, and the queue is not held.
 set -euo pipefail
 
 unset "${!GATE_@}" "${!FULL_@}" "${!QUEUE_@}"
@@ -24,7 +26,8 @@ fail() {
 
 # The stand-in jk passes the Branch tier; ka logs each call and says every ticket is done. The
 # stand-in gate passes the Queue tier always and the Full tier unless the tip carries red.txt or
-# flaky.txt, when cc.example.RedTest fails, and logs each Full gate's tip and base. The stand-in
+# flaky.txt, when cc.example.RedTest fails, and logs each Full gate's tip and base; on a tip whose
+# own commit writes once.txt the class passes on the gate's re-run, and the gate is green naming it. The stand-in
 # re-run fails that class on a commit that carries red.txt, and logs each commit it runs on.
 mkdir -p "$WORK/bin"
 printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$WORK/bin/jk"
@@ -50,6 +53,8 @@ cd "$GATE_CHECKOUT" && git checkout -q --detach "$tip"
 if [ "$GATE_TIER" = full ] && git ls-tree -r --name-only HEAD | grep -qxE '(red|flaky).txt'; then
   { echo "FAIL cc.example.RedTest"; echo "RED"; } >"$L"
   echo '{"type":"error","code":"test-failure","module":"core","testClass":"cc.example.RedTest$Inner"}' >"$GATE_LOG_DIR/g$n-rerun.jsonl"
+elif [ "$GATE_TIER" = full ] && git log -1 --name-only --format= HEAD | grep -qx once.txt; then
+  { echo "FLAKY core cc.example.RedTest passed on the re-run"; echo "GREEN $(git rev-parse HEAD)"; } >"$L"
 else
   echo "GREEN $(git rev-parse HEAD)" >"$L"
 fi
@@ -202,6 +207,20 @@ full || fail "the green cycle after the fix failed"
 runs | tail -1 | grep -q 'GREEN green; the queue.s hold is lifted' || fail "the green cycle does not say the hold lifted: $(runs)"
 queue || fail "the queue did not run after the hold"
 [[ "$(status e)" == "e: landed "* ]] || fail "the held branch did not land after the hold: $(status e)"
+
+# --- two cycles in a row green only on the gate's re-run: each moves green and names the class;
+# no ticket is told and the queue is not held ---
+: >"$KA_LOG"
+for k in 1 2; do
+  land "once$k" once.txt "TK-OOOO$k: lands beside a flaky class"
+  full || fail "flaky cycle $k failed"
+  [[ "$(origin green)" == "$(origin main)" ]] || fail "flaky cycle $k did not move green: $(runs)"
+  runs | tail -1 | grep -q "GREEN green; passed on the re-run: core cc.example.RedTest$" ||
+    fail "flaky cycle $k does not name the class that passed on the re-run: $(runs)"
+done
+[[ -f "$QUEUE_REPO/full-hold" ]] && fail "two flaky cycles held the queue: $(cat "$QUEUE_REPO/full-hold")"
+[[ "$(cat "$QUEUE_REPO/full-reds")" -eq 0 ]] || fail "a flaky cycle counted as red: $(cat "$QUEUE_REPO/full-reds")"
+[[ -s "$KA_LOG" ]] && fail "a flaky cycle told a ticket: $(cat "$KA_LOG")"
 
 # --- a confirmed culprit whose revert conflicts with a later batch is not reverted ---
 : >"$KA_LOG"

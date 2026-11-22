@@ -224,7 +224,7 @@ work on something else and read answers with `ka inbox`. Stopping without finish
   class, against the JumpKick it installed), the release suite, the slow tier when a plugin changed
   since `green`, and the shell fixtures. It does not
   block a push, so `main` may be red on it for a cycle or two; a class that fails and passes on
-  re-run is recorded, and past a threshold quarantined with a ticket
+  re-run leaves the gate green, is recorded, and past a threshold quarantined with a ticket
   ([self-host](docs/contributors/self-host.md#the-gate)). `scripts/gate/full-loop.sh` runs it back
   to back on the newest `main` and moves origin's `green` branch to each commit that passes;
   releases are cut from `green`. A red cycle names the batch that caused it on its tickets; when

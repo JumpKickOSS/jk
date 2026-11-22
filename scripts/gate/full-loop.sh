@@ -4,7 +4,9 @@
 # tier of scripts/gate/gate.sh, unless that commit was judged already. The gate's base is `green`,
 # so it runs the slow tier when a plugin changed since the last commit that passed.
 #
-# GREEN pushes the tip to origin's `green` branch as a fast-forward: releases are cut from it.
+# GREEN pushes the tip to origin's `green` branch as a fast-forward: releases are cut from it. A
+# gate green only because its failed classes passed on the re-run is GREEN, and its line in
+# full-runs.log names those classes; it neither counts as red nor holds the queue.
 # RED looks for the batch of the merge queue that made it red among those landed since `green`
 # (queue-batches.log): it bisects them, gating batch tips with the Full tier until the first red one
 # is known (each commit is gated once; full-verdicts keeps every verdict), and names it in
@@ -119,7 +121,8 @@
     echo 0 >"$repo/full-reds"
     held=""
     [ -f "$repo/full-hold" ] && held="; the queue's hold is lifted" && rm -f "$repo/full-hold"
-    log "full $n $stamp $(short "$tip") GREEN $pushed$held"
+    flaky="$(sed -n 's/^FLAKY \(.*\) passed on the re-run$/\1/p' "$D/integ-gate-$n.log" 2>/dev/null | paste -sd, - | sed 's/,/, /g')"
+    log "full $n $stamp $(short "$tip") GREEN $pushed$held${flaky:+; passed on the re-run: $flaky}"
     exit 0
   fi
 

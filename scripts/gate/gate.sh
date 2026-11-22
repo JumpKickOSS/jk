@@ -11,8 +11,10 @@
 # docs`, alone), the release suite, the slow tier when a plugin (a member under plugins/) or a root
 # build file changed since GATE_BASE, the release notes, and a check that
 # scripts/gate/test-reads.txt lists every doc the suites were seen reading
-# (scripts/gate/docs-only.sh check). A red `jk install -g` runs once more, so that jk records the
-# classes that pass on that re-run as flaky; its verdict stays red.
+# (scripts/gate/docs-only.sh check). A red `jk install -g` runs once more under the same inputs,
+# which runs only the classes that did not pass, and jk records those that pass now as flaky. When
+# the first run was red only in test classes, the re-run's verdict counts; a class still red there
+# keeps the gate red.
 #
 # The Queue tier (GATE_TIER=queue), the one that blocks a push from the merge queue: after the
 # reinstall, one install that runs every module's fast tier (`jk install -c`), then, under a
@@ -22,6 +24,9 @@
 # docs`). jk passes a run red only in the classes .jk/test/quarantine.toml holds; a run red in other
 # classes runs them once more under the same inputs, and passes when they pass there. Each class
 # still red is a `FAILED <module> <class>` line of the log, its failure in g<n>-failures.txt.
+#
+# In both tiers, each class that passed on such a re-run is a `FLAKY <module> <class> passed on the
+# re-run` line of the log, read from the `passedOnRerun` of its row in `jk results -O jsonl`.
 #
 # Every tier runs every quarantined class. jk records each class's runs and quarantines a flaky one
 # in the checkout; the gate saves that file, restores the checkout, and then opens a ticket for each
@@ -88,6 +93,10 @@
   }
   done_gate() { quarantine_review; echo "GATE$n DONE" >>"$L"; exit 0; }
   red() { echo "$1" >>"$L"; done_gate; }
+  # flaky_named <details.jsonl>: a FLAKY line in the log for each class that passed on the re-run.
+  flaky_named() {
+    bash scripts/gate/flaky.sh passed "$1" 2>/dev/null | sed 's/$/ passed on the re-run/; s/^/FLAKY /' >>"$L"
+  }
   # The FAIL/T/E lines of the pre-run log, then the gate stops red.
   pre_red() { noansi "$D/g$n-pre.log" | grep -aE "^(FAIL|T |E )" | tail -8 >>"$L"; red "RED (pre)"; }
 
@@ -197,6 +206,7 @@
         e=$?
         echo "RERUN $label: its failed classes once more under the same inputs, EXIT=$e $(date +%H:%M:%S)" >>"$L"
         jk results -O jsonl >"$out.jsonl" 2>/dev/null </dev/null
+        flaky_named "$out.jsonl"
         [ "$e" -eq 0 ] && return
       fi
       noansi "$out.log" | grep -aE "^(FAIL|T |E )|FAILED " | tail -20 >>"$L"
@@ -251,11 +261,22 @@
     [ "$s" -ne 0 ] && noansi "$D/g$n-snapshot.log" | grep -aE "FAILED |OutOfMemory" >>"$L"
     noansi "$D/g$n-snapshot.log" | grep -E "^(FAIL|T |OK|E )" | tail -8 >>"$L"
     # A red `jk install -g` runs once more under the same inputs, which runs only the classes that
-    # did not pass; jk records those that pass now as flaky. The verdict stays red.
+    # did not pass; jk records those that pass now as flaky. When the first run was red only in test
+    # classes, the re-run's verdict counts.
     if [ "$s" -ne 0 ]; then
+      jk results -O jsonl >"$D/g$n-snapshot.jsonl" 2>/dev/null
       jk install -g -c >"$D/g$n-rerun.log" 2>&1
-      echo "RERUN_EXIT=$? $(date +%H:%M:%S)" >>"$L"
+      rs=$?
+      echo "RERUN_EXIT=$rs $(date +%H:%M:%S)" >>"$L"
       jk results -O jsonl >"$D/g$n-rerun.jsonl" 2>/dev/null
+      flaky_named "$D/g$n-rerun.jsonl"
+      if [ "$rs" -ne 0 ]; then
+        noansi "$D/g$n-rerun.log" | grep -aE "^(FAIL|T |E )|FAILED " | tail -8 >>"$L"
+      elif bash scripts/gate/flaky.sh failed "$D/g$n-snapshot.jsonl" >/dev/null 2>&1; then
+        s=0
+      else
+        echo "RERUN green, but the first run was red outside a test class: the push gate stays red" >>"$L"
+      fi
     fi
   fi
 

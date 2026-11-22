@@ -121,8 +121,9 @@ since a run of several suites records what they read as one
 
 **Quarantine and re-run.** The gate uses JumpKick's own quarantine: a run red only in classes
 `.jk/test/quarantine.toml` holds passes, in every tier, and every tier still runs them. A run of the
-Queue tier red in other classes, and in nothing but classes, runs once more under the same inputs,
-which runs only those classes: it passes when they pass there, and JumpKick records them as flaky.
+Queue or Full tier red in other classes, and in nothing but classes, runs once more under the same
+inputs, which runs only those classes: it passes when they pass there, JumpKick records them as
+flaky, and the gate's log names each with a `FLAKY` line.
 The gate files a ticket for each class JumpKick quarantines and submits the file to the merge queue
 ([flaky tests](self-host.md#flaky-tests)).
 

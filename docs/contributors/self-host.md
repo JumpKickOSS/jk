@@ -76,12 +76,15 @@ to the merge queue (`g<n>-quarantine.log`). A class that cannot get a ticket is 
 file is not a build input, so a change to it selects no module in the Queue tier. To release a
 class by hand, close its ticket, or delete its entry with `jk flaky release` and submit that.
 
-The Queue tier does not stay red on a flake. Its install and each of its integration runs, red only
-in test classes, run once more under the same inputs, so only the failed classes run again; the
-classes that pass now are recorded as above, and the step passes when the re-run does. A class
-still red is a `FAILED <module> <class>` line of the gate's log, and its failure's message and stack
-go to `g<n>-failures.txt` beside it. A run red outside a class (a compile error, a dead test JVM) is
-not run again.
+Neither the Queue tier nor the Full tier stays red on a flake. The Queue tier's install and each of
+its integration runs, and the Full tier's `jk install -g`, red only in test classes, run once more
+under the same inputs, so only the failed classes run again; the classes that pass now are recorded
+as above, and the step passes when the re-run does. Each such class is a `FLAKY <module> <class>
+passed on the re-run` line of the gate's log, read from the `passedOnRerun` of its `class-finish`
+row in `jk results -O jsonl` ([machine output](../user/machine-output.md#event-vocabulary)). A class
+still red is a `FAILED <module> <class>` line of the Queue tier's log, and its failure's message and
+stack go to `g<n>-failures.txt` beside it. A run red outside a class (a compile error, a dead test
+JVM) stays red: the Queue tier does not run it again, and the Full tier's re-run does not count.
 
 ## The merge queue
 
@@ -178,6 +181,8 @@ that passed; before there is a `green`, it always does. Then:
 
 - **Green** pushes the tip to origin's `green` branch as a fast-forward. `green` is the newest commit
   that passed the Full tier, and releases are cut from it ([releases](releases.md#cutting-a-release-by-hand)).
+  A gate green because its failed classes passed on its re-run ([flaky tests](#flaky-tests)) is a
+  green cycle, and its line in `full-runs.log` names those classes.
 - **Red** finds the batch that made it red among the queue's batches landed since `green`
   (`queue-batches.log`). It bisects them: it gates batch tips with the Full tier until it knows the
   first red one, and gates no commit twice. It names that batch, with its branches and the log of
