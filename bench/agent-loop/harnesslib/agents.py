@@ -838,8 +838,9 @@ def _write_agy_home(home: Path, tool: str, sandbox: Path) -> str:
     token = real / ".gemini" / "antigravity-cli" / "antigravity-oauth-token"
     cli = home / ".gemini" / "antigravity-cli"
     cli.mkdir(parents=True)
-    # agy before 1.5 kept its login in this file; later releases keep it in the user's keyring, which a
-    # throwaway HOME still reaches (it is the desktop session's, not a file under HOME).
+    # agy before 1.5 kept its login in this file, and later releases fall back to it when the keyring
+    # cannot be reached. Otherwise the login is in the session keyring, which a throwaway HOME still
+    # reaches over D-Bus (see agy_env).
     if token.is_file():
         dest = cli / "antigravity-oauth-token"
         shutil.copy2(token, dest)
@@ -874,6 +875,21 @@ def _write_agy_home(home: Path, tool: str, sandbox: Path) -> str:
     if m2.is_dir():
         (home / ".m2").symlink_to(m2)
     return server
+
+
+# When agy sees an SSH session it reads its login from a file instead of the keyring. agy 1.5 keeps the
+# login in the keyring even when it was made over ssh, so a run from an ssh shell finds none and waits
+# for an interactive sign-in.
+AGY_SSH_MARKERS = ("SSH_CONNECTION", "SSH_CLIENT", "SSH_TTY")
+
+
+def agy_env(home: Path) -> dict[str, str]:
+    """The child environment for one agy run: the throwaway ``HOME``, the real Gradle home, and no SSH markers,
+    so agy reads its login from the session keyring whether the harness runs at the desk or over ssh."""
+    env = {k: v for k, v in os.environ.items() if k not in AGY_SSH_MARKERS}
+    env["HOME"] = str(home)
+    env["GRADLE_USER_HOME"] = str(_gradle_user_home())
+    return env
 
 
 def _agy_turns(events: list[dict]) -> int:
@@ -958,9 +974,7 @@ def agy(tool: str, sandbox: Path, model: str, max_turns: int, max_seconds: int, 
     with tempfile.TemporaryDirectory(prefix="jk-agent-loop-agy-") as tmp:
         home = Path(tmp)
         server = _write_agy_home(home, tool, sandbox)
-        env = dict(os.environ)
-        env["HOME"] = str(home)
-        env["GRADLE_USER_HOME"] = str(_gradle_user_home())
+        env = agy_env(home)
         responses = {"n": 0}
 
         def on_event(ev: dict) -> str | None:
