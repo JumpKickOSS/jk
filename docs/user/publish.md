@@ -319,6 +319,7 @@ exclusive repository groups — [Repositories](repositories.md).
 jk audit                       # report everything, gate at LOW
 jk audit -s HIGH       # gate at HIGH and above
 jk audit -O jsonl              # one JSON line per finding
+jk audit --vex audit.vex.json  # also write an OpenVEX document
 ```
 
 ### Exit status
@@ -388,6 +389,23 @@ calendar where `jk audit` runs, and expires after it.
 The text report says `ignored (reason)` for a covered finding and `ignore expired (reason, until
 …)` for a lapsed one; the JSON carries the same state. Unknown keys on either level are
 refused, so a misspelt `untill` cannot silently turn a dated ignore into a permanent one.
+
+### OpenVEX
+
+`jk audit --vex <file>` writes the findings as an [OpenVEX](https://openvex.dev) document as well
+as the normal report, whatever the verdict, so a scanner that reads VEX can drop what the project
+does not ship. The audited project is the product, named by its purl, and each vulnerable jar is a
+subcomponent. Only statements that cannot be wrong are made:
+
+| Status | When |
+|---|---|
+| `not_affected`, justification `component_not_present` | Every locked row of the jar is test, processor, dev or plugin scope: it is in no runtime classpath and no packaged artifact |
+| `under_investigation` | Anything else: a `main`, `runtime` or `export` jar ships, and a `provided` one is supplied by the platform the product runs on |
+
+A shipped jar is never called `not_affected`: whether its vulnerable code runs is not something a
+call graph proves, since reflection, `ServiceLoader` and auto-configuration reach code no call
+edge names. The lock's scopes are the workspace's, so a jar one member ships is `under_investigation`
+for every member. An `[audit] ignore` entry does not change a statement.
 
 ## Verify
 

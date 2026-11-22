@@ -45,6 +45,7 @@ class ShortFlagsTest {
             "guard --schema",
             "test --quarantined",
             "stats --since",
+            "audit --vex",
             "code move --via",
             "code extract-interface --methods",
             "code extract-interface --no-switch");

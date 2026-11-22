@@ -19,6 +19,7 @@ import java.nio.file.Path;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -136,8 +137,37 @@ class AuditCommandE2eTest {
         assertThat(Jsonl.str(line, "until")).isEqualTo(lapsed.toString());
     }
 
-    /** A manifest plus a lock stamped fresh against it, so the invisible freshen leaves the lock alone. */
+    /** The OpenVEX document is written whatever the gate says, and a test-only jar is not in the product. */
+    @Test
+    void vex_says_a_test_only_jar_is_not_present_and_a_shipped_one_is_under_investigation(@TempDir Path dir)
+            throws Exception {
+        project(dir, "", "test");
+        Run tested = audit(dir, "--output", "json", "--vex", "tested.vex.json");
+        project(dir, "", "main");
+        Run shipped = audit(dir, "--output", "json", "--vex", "shipped.vex.json");
+
+        assertThat(tested.exit()).as("stderr:%n%s", tested.err()).isEqualTo(Exit.FAILURE);
+        String notPresent = Jsonl.objectArray(Files.readString(dir.resolve("tested.vex.json")), "statements")
+                .getFirst();
+        assertThat(Jsonl.str(Objects.requireNonNull(Jsonl.nested(notPresent, "vulnerability")), "name"))
+                .isEqualTo("GHSA-test-1");
+        assertThat(Jsonl.str(Jsonl.objectArray(notPresent, "products").getFirst(), "@id"))
+                .isEqualTo("pkg:maven/com.foo/app@0.1.0");
+        assertThat(Jsonl.str(notPresent, "status")).isEqualTo("not_affected");
+        assertThat(Jsonl.str(notPresent, "justification")).isEqualTo("component_not_present");
+
+        assertThat(shipped.exit()).as("stderr:%n%s", shipped.err()).isEqualTo(Exit.FAILURE);
+        String present = Jsonl.objectArray(Files.readString(dir.resolve("shipped.vex.json")), "statements")
+                .getFirst();
+        assertThat(Jsonl.str(present, "status")).isEqualTo("under_investigation");
+    }
+
     private static void project(Path dir, String auditTable) throws IOException {
+        project(dir, auditTable, "main");
+    }
+
+    /** A manifest plus a lock stamped fresh against it, so the invisible freshen leaves the lock alone. */
+    private static void project(Path dir, String auditTable, String scope) throws IOException {
         Files.writeString(dir.resolve("jk.toml"), """
                 group = "com.foo"
                 name = "app"
@@ -154,8 +184,8 @@ class AuditCommandE2eTest {
                 version  = "1.0"
                 source   = "central+https://repo.maven.apache.org/maven2/"
                 checksum = "sha256:d65226949713c4c61a784f41c51167e7b0316f93764398ebba9e4336b3d954c2"
-                scopes   = ["main"]
-                """);
+                scopes   = ["%s"]
+                """.formatted(scope));
     }
 
     private Run audit(Path dir) {

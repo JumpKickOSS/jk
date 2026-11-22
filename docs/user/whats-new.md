@@ -47,6 +47,9 @@ JumpKick shows you this page's new entries after it updates itself.
   ([Code graph](graph.md#what-another-version-of-a-dependency-breaks)).
 - **`jk watch` and `jk dev` on Linux see a save made from another machine.** A project on NFS,
   SMB or a Windows drive under WSL is polled every 2 s, as on macOS; inotify never heard those.
+- **`jk audit --vex <file>` writes OpenVEX.** A finding in a jar only tests, annotation processors
+  or dev runs use is `not_affected`, the jar not present; every other finding is
+  `under_investigation` ([Publish](publish.md#openvex)).
 
 ## 0.54.0
 

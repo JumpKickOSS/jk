@@ -10,12 +10,17 @@ import cc.jumpkick.cli.engine.EngineRequests;
 import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.command.EnsureFreshLock;
+import cc.jumpkick.compile.CycloneDxSbom;
+import cc.jumpkick.config.TomlScan;
+import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jsonl.JsonFields;
 import cc.jumpkick.lock.LockPaths;
+import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
@@ -33,6 +38,7 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -62,6 +68,7 @@ public final class AuditCommand implements CliCommand {
     public List<Opt> options() {
         return List.of(
                 Opt.value("<level>", "Severity: CRITICAL|HIGH|MEDIUM|LOW. Default: LOW.", "-s", "--severity"),
+                Opt.value("<file>", "Also write the findings as an OpenVEX document.", "--vex"),
                 Opt.value("<url>", "Override the OSV batch query URL (for tests).", "--osv-batch-url")
                         .hide(),
                 Opt.value("<url>", "Override the OSV vulnerability lookup URL (for tests).", "--osv-vulns-url")
@@ -81,6 +88,7 @@ public final class AuditCommand implements CliCommand {
         this.osvVulnsUrl = in.value("osv-vulns-url").map(URI::create).orElse(null);
         String severity = in.value("severity").orElse("LOW");
         Path projectDir = global.workingDir();
+        Path vex = in.value("vex").map(projectDir::resolve).orElse(null);
         if (!Files.exists(ManifestPaths.manifestIn(projectDir))) {
             CommandWedge.printFail("Audit", "no jk.toml in " + PathDisplay.styledRaw(projectDir));
             return Exit.CONFIG;
@@ -130,12 +138,51 @@ public final class AuditCommand implements CliCommand {
         } else {
             CliOutput.out(report.renderMarkdown());
         }
+        if (vex != null) {
+            try {
+                writeVex(vex, projectDir, lockPath, report);
+            } catch (IOException | RuntimeException e) {
+                CommandWedge.printFail(
+                        "Audit", "could not write " + PathDisplay.styledRaw(vex) + ": " + e.getMessage());
+                return Exit.CANT_CREATE;
+            }
+        }
 
         int exit = exitFor(report, threshold);
         if (exit != Exit.SUCCESS) {
             CommandWedge.printFail("Audit", verdict(report, threshold));
         }
         return exit;
+    }
+
+    /**
+     * Writes {@code report} as OpenVEX ({@link AuditVex}). The product is the project at {@code
+     * projectDir}; a {@code group} or {@code version} it does not declare is its workspace root's.
+     */
+    static void writeVex(Path target, Path projectDir, Path lockPath, AuditReport report) throws IOException {
+        TomlScan own = TomlScan.scan(ManifestPaths.manifestIn(projectDir), "group", "name", "version");
+        Path root = lockPath.toAbsolutePath().getParent();
+        TomlScan workspace = root == null ? own : TomlScan.scan(ManifestPaths.manifestIn(root), "group", "version");
+        String group = declared(own, workspace, "group");
+        String name = declared(own, own, "name");
+        String version = declared(own, workspace, "version");
+        if (group == null || name == null || version == null) {
+            throw new IOException("the project declares no group, name and version to name it by");
+        }
+        String document = AuditVex.write(
+                "urn:uuid:" + UUID.randomUUID(),
+                CycloneDxSbom.purl(group, name, version),
+                "jk " + JkVersion.VERSION,
+                Clock.SYSTEM.instant(),
+                report.findings(),
+                LockfileReader.read(lockPath));
+        AtomicWrites.replace(target, document);
+    }
+
+    private static @Nullable String declared(TomlScan own, TomlScan workspace, String key) {
+        String value = own.get(key);
+        if (value == null || value.isBlank()) value = workspace.get(key);
+        return value == null || value.isBlank() ? null : value;
     }
 
     /**
