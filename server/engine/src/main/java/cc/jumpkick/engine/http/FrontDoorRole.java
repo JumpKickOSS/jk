@@ -62,7 +62,9 @@ public final class FrontDoorRole {
     private final Consumer<String> log;
 
     private long heardAt;
+    private long beatAt = Long.MIN_VALUE;
     private boolean relays;
+    private int port;
     private boolean leaving;
     private boolean holding;
     private int recentTakeovers;
@@ -83,14 +85,19 @@ public final class FrontDoorRole {
 
     /** A front door said it is there. */
     public synchronized void present() {
-        present(false);
+        present(false, 0);
     }
 
-    /** The front door is there; {@code relays} says it raises this engine's notifications for it. */
-    public synchronized void present(boolean relays) {
+    /**
+     * The front door is there; {@code relays} says it raises this engine's notifications for it, and
+     * {@code port} is the loopback port it serves on (0 when it did not say).
+     */
+    public synchronized void present(boolean relays, int port) {
         heardAt = clock.millis();
+        beatAt = heardAt;
         leaving = false;
         this.relays = relays;
+        this.port = port;
     }
 
     /**
@@ -99,7 +106,20 @@ public final class FrontDoorRole {
      * door that relays nothing, or stopped beating, leaves this engine notifying for itself.
      */
     public synchronized boolean relayed() {
-        return relays && !leaving && !holding && clock.millis() - heardAt <= 3 * HEARTBEAT_MS;
+        return relays && beating();
+    }
+
+    /**
+     * The loopback port of the front door that beats for this engine, under whose {@link
+     * FrontDoor#PREFIX} its pages are opened; 0 when none does, or it did not say where it serves.
+     */
+    public synchronized int frontDoorPort() {
+        return beating() ? port : 0;
+    }
+
+    /** A front door other than this engine beat within three beats and is not leaving. */
+    private boolean beating() {
+        return !leaving && !holding && beatAt != Long.MIN_VALUE && clock.millis() - beatAt <= 3 * HEARTBEAT_MS;
     }
 
     /** The front door said it is stopping. */

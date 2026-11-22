@@ -88,7 +88,11 @@ it through its own `DecisionAlerts` with the id `<engine>-<decision>`, the quest
 engine's label and the link `/engines/<engine>/#decision/<id>?t=<front-door token>`, and withdraws it
 on the engine's `decision` event for a settled state. An engine's `notice` frames that add a
 change-log notice are added to the front door's bell with the text prefixed and the link under the
-prefix; decision notices are not copied.
+prefix; decision notices are not copied. The same `present` carries `X-Jk-Front-Door-Port`, the
+loopback port the front door serves on; while it beats, a guest links its decisions (the MCP
+`NEEDS-YOU` result, URL elicitation, `jk decide`, a notification it raises itself) to
+`http://127.0.0.1:<port>/engines/<id>/#decision/<id>` rather than to its own port, and signs none of
+them with its own token, which the front door does not take (`FrontDoorRole.frontDoorPort`).
 
 Installing JumpKick into a WSL distro from a development build: a `-SNAPSHOT` Windows engine pins
 the newest published release at or below its version, which predates the branch you are trying.

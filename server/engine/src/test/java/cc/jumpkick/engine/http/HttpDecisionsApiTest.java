@@ -4,19 +4,30 @@ package cc.jumpkick.engine.http;
 import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.config.UiAsk;
+import cc.jumpkick.desktop.DesktopIdentity;
 import cc.jumpkick.engine.decisions.Decision;
+import cc.jumpkick.engine.decisions.DecisionAlerts;
 import cc.jumpkick.engine.decisions.DecisionForms;
 import cc.jumpkick.engine.decisions.DecisionQueue;
 import cc.jumpkick.engine.decisions.DecisionSurface;
+import cc.jumpkick.engine.decisions.Decisions;
+import cc.jumpkick.host.Guest;
+import cc.jumpkick.host.JkDirs;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jsonl.MiniJson;
 import java.net.URI;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 /**
  * {@code /api/decisions}: bearer-gated, listed and answered from the dashboard, which accepts or
@@ -134,5 +145,86 @@ class HttpDecisionsApiTest extends HttpEngineServerHarness {
         assertThat(MiniJson.str(MiniJson.parse(settled.substring("data: ".length())), "state"))
                 .as("an answer from another surface reaches the banner, which drops the decision")
                 .isEqualTo("accepted");
+    }
+
+    @TempDir
+    Path home;
+
+    /** Says it is there to the guest this server is, as the front door's heartbeat does. */
+    private void present(@Nullable String port) throws Exception {
+        HttpRequest.Builder b = HttpRequest.newBuilder(URI.create(baseUrl + "api/front-door/present"))
+                .header("Authorization", "Bearer " + token())
+                .POST(HttpRequest.BodyPublishers.noBody());
+        if (port != null) b.header(FrontDoor.PORT, port);
+        assertThat(client.send(b.build(), HttpResponse.BodyHandlers.ofString()).statusCode())
+                .isEqualTo(200);
+    }
+
+    /**
+     * A paired guest's decision is answered at the front door, beside the machine's other engines:
+     * its link (the MCP result, {@code jk decide}) and a notification it raises itself go
+     * under its prefix there, never to its own port, and carry none of its token, which the front
+     * door does not take. A front door that stopped beating, or one that does not say where it
+     * serves, leaves the guest linking to itself.
+     */
+    @Test
+    void a_paired_guests_decision_links_under_its_prefix_at_the_front_door() throws Exception {
+        String me = "3fcc9b6aa600";
+        server.setIdentity(new EngineIdentity(me, "linux", Guest.NONE, "box", "/home/me/.jk", "1.0"));
+        server.setFrontDoorRole(new FrontDoorRole(
+                new FrontDoorRole.Seat() {
+                    @Override
+                    public boolean take() {
+                        return false;
+                    }
+
+                    @Override
+                    public void release() {}
+
+                    @Override
+                    public FrontDoorRole.Reach verify() {
+                        return FrontDoorRole.Reach.UNKNOWN;
+                    }
+                },
+                Clock.SYSTEM,
+                () -> 0,
+                line -> {}));
+        List<List<String>> launched = new ArrayList<>();
+        DecisionAlerts.Launcher launcher = new DecisionAlerts.Launcher() {
+            @Override
+            public boolean launch(List<String> argv) {
+                launched.add(argv);
+                return true;
+            }
+
+            @Override
+            public @Nullable String output(List<String> argv) {
+                return argv.contains("--version") ? "notify-send 0.7.9\n" : null;
+            }
+        };
+        DesktopIdentity identity = new DesktopIdentity(
+                "Linux", JkDirs.of(name -> null, home.toString(), "Linux"), home, name -> null, argv -> true);
+        Decisions decisions = requireNonNull(server.decisions())
+                .ask(() -> UiAsk.NOTIFY)
+                .alerts(new DecisionAlerts(launcher, "Linux", name -> null, identity));
+        Decision d = open("update");
+
+        present("not-a-port");
+        assertThat(queue.link(d.id())).as("no port said").isEqualTo(baseUrl + "#decision/" + d.id());
+
+        present("8910");
+        String atFrontDoor = "http://127.0.0.1:8910/engines/" + me + "/#decision/" + d.id();
+        assertThat(queue.link(d.id())).isEqualTo(atFrontDoor);
+        assertThat(decisions.link(d.id())).isEqualTo(atFrontDoor);
+
+        // This front door relays nothing, so the guest notifies for itself: the front door's link, unsigned.
+        decisions.alert(d, requireNonNull(decisions.link(d.id())));
+        assertThat(launched).singleElement().satisfies(argv -> assertThat(String.join(" ", argv))
+                .contains(atFrontDoor)
+                .doesNotContain(token())
+                .doesNotContain(baseUrl));
+
+        present(null);
+        assertThat(queue.link(d.id())).as("an older front door").isEqualTo(baseUrl + "#decision/" + d.id());
     }
 }

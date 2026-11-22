@@ -169,16 +169,43 @@ class FrontDoorRoleTest {
     @Test
     void a_front_door_that_relays_takes_the_notifications_while_it_beats() {
         assertThat(role.relayed()).isFalse();
-        role.present(true);
+        role.present(true, 8910);
         assertThat(role.relayed()).isTrue();
         clock.advance(Duration.ofMillis(3 * FrontDoorRole.HEARTBEAT_MS + 1));
         assertThat(role.relayed()).as("three beats unheard").isFalse();
-        role.present(true);
+        role.present(true, 8910);
         role.leaving();
         assertThat(role.relayed()).as("leaving").isFalse();
-        role.present(false);
+        role.present(false, 0);
         assertThat(role.relayed()).as("an older front door relays nothing").isFalse();
         role.present();
         assertThat(role.relayed()).isFalse();
+    }
+
+    @Test
+    void a_beating_front_door_names_its_port_until_it_stops_leaves_or_this_guest_holds_8910() {
+        assertThat(role.frontDoorPort()).as("nothing heard").isZero();
+        role.present(true, 8910);
+        assertThat(role.frontDoorPort()).isEqualTo(8910);
+        clock.advance(Duration.ofMillis(3 * FrontDoorRole.HEARTBEAT_MS + 1));
+        assertThat(role.frontDoorPort()).as("three beats unheard").isZero();
+        role.present(false, 8910);
+        assertThat(role.frontDoorPort()).as("relaying or not, it serves there").isEqualTo(8910);
+        role.leaving();
+        assertThat(role.frontDoorPort()).as("leaving").isZero();
+        role.present();
+        assertThat(role.frontDoorPort()).as("an older front door says nothing").isZero();
+    }
+
+    @Test
+    void a_takeover_attempt_is_no_heartbeat() {
+        role.present(true, 8910);
+        free = false;
+        run(5);
+        assertThat(calls).as("the debounce ran out: another guest holds 8910").containsExactly("take");
+        assertThat(role.relayed()).isTrue();
+        clock.advance(Duration.ofMillis(FrontDoorRole.HEARTBEAT_MS + 1));
+        assertThat(role.relayed()).as("the try does not count as a beat").isFalse();
+        assertThat(role.frontDoorPort()).isZero();
     }
 }

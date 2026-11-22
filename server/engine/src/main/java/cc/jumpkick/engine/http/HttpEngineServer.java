@@ -193,12 +193,35 @@ public final class HttpEngineServer implements AutoCloseable {
         api.registerPrefix("POST", HttpDecisionsApi.PREFIX, decisionsApi::handleAnswer);
         queue.onChange(d -> events.publishDashboard(EventCatalog.SSE_DECISION, JsonOut.rawObject(d.toMap())));
         if (mcp != null) {
-            Decisions decisions = new Decisions(queue, id -> DashboardLinks.decision(url(), id), dashboards)
-                    .signAlerts(
-                            link -> Objects.requireNonNullElse(DashboardLinks.signed(link, tokens.tokenText()), link));
+            Decisions decisions = new Decisions(queue, id -> DashboardLinks.decision(decisionsUrl(), id), dashboards)
+                    .signAlerts(this::signedHere);
             this.decisions = decisions;
             mcp.decisions(decisions);
         }
+    }
+
+    /**
+     * The dashboard a decision of this engine is answered in: its pages under {@link FrontDoor#PREFIX}
+     * at the front door that beats for it, so the person opens it beside the machine's other engines;
+     * else this server's own. Null while this server is not serving.
+     */
+    private @Nullable String decisionsUrl() {
+        String own = url();
+        FrontDoorRole r = frontDoorRole;
+        EngineIdentity me = identity;
+        int port = r == null ? 0 : r.frontDoorPort();
+        if (own == null || me == null || port <= 0) return own;
+        return "http://127.0.0.1:" + port + FrontDoor.PREFIX + me.id() + "/";
+    }
+
+    /**
+     * {@code link} signed with this engine's token when it opens this server's own dashboard; as it
+     * is when it opens the front door's, which takes the front door's token and never this one.
+     */
+    private String signedHere(String link) {
+        String own = url();
+        if (own == null || !link.startsWith(own)) return link;
+        return Objects.requireNonNullElse(DashboardLinks.signed(link, tokens.tokenText()), link);
     }
 
     /** Which engine this is, answered token-free at {@link #IDENTITY}. Before {@link #start}. */
@@ -241,9 +264,11 @@ public final class HttpEngineServer implements AutoCloseable {
     /**
      * Makes this guest answer the front door's control messages ({@link FrontDoor#CONTROL}): {@code
      * present} (answering whether a dashboard is open here), {@code engines}, {@code leaving} and
-     * {@code step-aside}, each with this engine's own token. Before {@link #start}.
+     * {@code step-aside}, each with this engine's own token. While a front door beats, this engine's
+     * decisions link under its prefix there. Before {@link #start}.
      */
     public void setFrontDoorRole(FrontDoorRole role) {
+        this.frontDoorRole = role;
         // While the front door relays, this engine's notifications become alert events it raises.
         Decisions d = decisions;
         if (d != null) {
@@ -252,7 +277,9 @@ public final class HttpEngineServer implements AutoCloseable {
                     dec -> events.publishDashboard(EventCatalog.SSE_ALERT, JsonOut.rawObject(dec.toMap())));
         }
         api.register("POST", FrontDoor.CONTROL + "present", ex -> {
-            role.present(FrontDoor.RELAYS_ALERTS.equals(ex.getRequestHeaders().getFirst(FrontDoor.RELAYS)));
+            role.present(
+                    FrontDoor.RELAYS_ALERTS.equals(ex.getRequestHeaders().getFirst(FrontDoor.RELAYS)),
+                    port(ex.getRequestHeaders().getFirst(FrontDoor.PORT)));
             HttpResponses.sendJson(
                     ex, 200, JsonOut.object().put(FrontDoor.WATCHING, watched()).toString());
         });
@@ -271,6 +298,20 @@ public final class HttpEngineServer implements AutoCloseable {
                         ex,
                         200,
                         JsonOut.object().put("stepped", role.stepAside()).toString()));
+    }
+
+    /** The guest's claim on the front door, which says where the front door serves; null on a host. */
+    private volatile @Nullable FrontDoorRole frontDoorRole;
+
+    /** The front door's {@link FrontDoor#PORT} header as a port; 0 when it is missing or not one. */
+    static int port(@Nullable String header) {
+        if (header == null) return 0;
+        try {
+            int p = Integer.parseInt(header.strip());
+            return p > 0 && p <= 65_535 ? p : 0;
+        } catch (NumberFormatException e) {
+            return 0;
+        }
     }
 
     private volatile @Nullable String frontDoorHome;

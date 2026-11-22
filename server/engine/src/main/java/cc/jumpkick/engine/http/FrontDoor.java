@@ -80,6 +80,12 @@ public final class FrontDoor {
     /** {@link #RELAYS}' value: decisions' notifications ({@code alert} events) are raised by the front door. */
     public static final String RELAYS_ALERTS = "alerts";
 
+    /**
+     * The heartbeat's header that names the loopback port the front door serves on, so an engine it
+     * beats for links its decisions under its prefix there rather than to its own port.
+     */
+    public static final String PORT = "X-Jk-Front-Door-Port";
+
     /** Where a guest takes the front door's control messages, each with the guest's own token. */
     public static final String CONTROL = "/api/front-door/";
 
@@ -640,7 +646,11 @@ public final class FrontDoor {
                 .timeout(CONTROL_WAIT)
                 .header("Authorization", "Bearer " + pair.token())
                 .POST(HttpRequest.BodyPublishers.noBody());
-        if (message.equals("present") && relays) b.header(RELAYS, RELAYS_ALERTS);
+        if (message.equals("present")) {
+            if (relays) b.header(RELAYS, RELAYS_ALERTS);
+            int port = selfPort.getAsInt();
+            if (port > 0) b.header(PORT, String.valueOf(port));
+        }
         HttpRequest req = b.build();
         return client.sendAsync(req, HttpResponse.BodyHandlers.ofString())
                 .<@Nullable Map<String, Object>>thenApply(FrontDoor::controlAnswer)

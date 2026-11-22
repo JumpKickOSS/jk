@@ -169,7 +169,10 @@ and clicking it opens the decision under that engine's dashboard; the notificati
 decision is settled anywhere. The engine raises nothing itself while the front door relays for it;
 when the front door stops, or an older one relays nothing, the engine notifies for itself again. A
 WSL engine holding 8910 relays the same way, through Windows' notifications. Each change-log entry
-on an engine's bell is on the front door's bell too, named for the engine.
+on an engine's bell is on the front door's bell too, named for the engine. While the front door is
+there, the link a WSL engine gives for a decision (in an agent's tool result, in `jk decide`) opens
+it under that engine's dashboard at the front door, `http://127.0.0.1:8910/engines/<id>/`, not on
+the engine's own port.
 
 Only your own engine takes part in the front door. An engine in a test sandbox, in a private home
 (`JK_HOME` set) or under CI does none of it: it serves no engine list, never takes 8910, writes no

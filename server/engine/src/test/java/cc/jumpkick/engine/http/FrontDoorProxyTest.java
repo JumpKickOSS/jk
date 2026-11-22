@@ -68,6 +68,9 @@ class FrontDoorProxyTest extends HttpEngineServerHarness {
     /** Request bodies that reached the guest, by size. */
     private final List<Integer> bodies = new CopyOnWriteArrayList<>();
 
+    /** The front door's relay and port headers on each {@code present} that reached the guest. */
+    private final List<String> presents = new CopyOnWriteArrayList<>();
+
     /** Each {@code Origin} a request that reached the guest carried. */
     private final List<String> origins = new CopyOnWriteArrayList<>();
 
@@ -116,6 +119,10 @@ class FrontDoorProxyTest extends HttpEngineServerHarness {
                     + " referer=" + ex.getRequestHeaders().getFirst("Referer")
                     + " cookie=" + ex.getRequestHeaders().getFirst("Cookie"));
             String path = ex.getRequestURI().getPath();
+            if (path.equals(FrontDoor.CONTROL + "present")) {
+                presents.add(ex.getRequestHeaders().getFirst(FrontDoor.RELAYS) + " "
+                        + ex.getRequestHeaders().getFirst(FrontDoor.PORT));
+            }
             String dir = "/report/" + REPORT_TOKEN + "/r1";
             if (path.equals(dir) || path.equals(dir + "/")) {
                 ex.getResponseHeaders().set("Location", reportRedirect.replace("<port>", "" + guestPort));
@@ -352,6 +359,15 @@ class FrontDoorProxyTest extends HttpEngineServerHarness {
                 .as("the port answers as " + GUEST_ID)
                 .isEqualTo(502);
         assertThat(reached).isEmpty();
+    }
+
+    @Test
+    void the_heartbeat_tells_a_guest_whether_the_front_door_relays_and_the_port_it_serves_on() {
+        FrontDoor door = requireNonNull(server.frontDoor());
+        assertThat(door.tell("present")).isEqualTo(1);
+        door.relays(true);
+        assertThat(door.tell("present")).isEqualTo(1);
+        assertThat(presents).containsExactly("null " + server.port(), "alerts " + server.port());
     }
 
     @Test
