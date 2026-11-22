@@ -45,6 +45,7 @@ public final class GraphService {
             "delete",
             "move",
             "pull-up",
+            "extract-interface",
             "read",
             "find",
             "rules");
@@ -225,6 +226,7 @@ public final class GraphService {
         if ("rename".equals(r.op())) return RenameOp.run(w, build.graph(), r);
         if ("delete".equals(r.op())) return SafeDelete.run(w, build.graph(), r);
         if ("move".equals(r.op()) || "pull-up".equals(r.op())) return MoveMember.run(w, build.graph(), r);
+        if ("extract-interface".equals(r.op())) return ExtractInterface.run(w, build.graph(), r);
         if ("usages".equals(r.op())) {
             CodeGraph g = build.graph();
             Scope scope = Scope.of(r.scope(), r.modulePrefixes(), r.sourceSet(), g.modules());

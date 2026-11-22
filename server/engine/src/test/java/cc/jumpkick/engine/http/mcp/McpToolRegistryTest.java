@@ -98,8 +98,20 @@ class McpToolRegistryTest {
         assertThat(listed).containsExactly("run", "diagnostics", "deps", "usages", "rename", "skill");
         assertThat(listed).isEqualTo(tools.loopNames());
         assertThat(listed)
-                .doesNotContain("bind", "history", "manifest", "query", "read", "find", "delete", "move", "pull_up");
-        assertThat(tools.names()).contains("usages", "rename", "query", "read", "find", "delete", "move", "pull_up");
+                .doesNotContain(
+                        "bind",
+                        "history",
+                        "manifest",
+                        "query",
+                        "read",
+                        "find",
+                        "delete",
+                        "move",
+                        "pull_up",
+                        "extract_interface");
+        assertThat(tools.names())
+                .contains(
+                        "usages", "rename", "query", "read", "find", "delete", "move", "pull_up", "extract_interface");
     }
 
     @Test
@@ -132,6 +144,16 @@ class McpToolRegistryTest {
         Map<String, Object> schema = object(row, "inputSchema");
         assertThat(object(schema, "properties")).containsKeys("address", "to");
         assertThat(schema.get("required")).isEqualTo(List.of("address"));
+    }
+
+    @Test
+    void extract_interface_is_on_the_extended_list_and_writes() {
+        Map<String, Object> row = objects(McpTools.standard().listing(McpTools.Surface.ALL), "tools").stream()
+                .filter(t -> "extract_interface".equals(t.get("name")))
+                .findFirst()
+                .orElseThrow();
+        assertThat(row).doesNotContainKey("annotations");
+        assertThat(row.get("inputSchema")).asString().contains("address", "to", "methods", "required");
     }
 
     @Test

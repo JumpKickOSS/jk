@@ -323,6 +323,24 @@ every test passing.
 """
 test   = ["jk", "-u", "-x", "-a", "test", "-S", "PhoneNumbersMoveTests", "-S", "OwnerControllerTests", "-S", "ClinicServiceTests"]
 
+# An extracted interface: OwnerContact, the three contact getters of Owner, which implements it. A
+# planted class reads an owner only through those getters and must take the interface; a planted
+# decoy also reads the first name and must keep Owner. The hidden check reads the interface's
+# methods, what Owner implements and each planted method's parameter. Compare the extract_interface
+# card listed (jk-graph) with it unlisted (jk) and with no graph (jk-nograph).
+[tasks.petclinic-extract-interface-contact]
+repo   = "spring-petclinic"
+kind   = "extract-interface"
+tools  = ["jk", "mvn"]
+prompt = """
+Code that only needs an owner's contact details should not depend on `Owner`. Create an interface
+`OwnerContact` in the owner package declaring exactly `getAddress()`, `getCity()` and
+`getTelephone()`, make `Owner` implement it, and change each method parameter in the owner package
+that is used only through those three methods to take `OwnerContact` instead. Keep every caller
+working and every test passing.
+"""
+test   = ["jk", "-u", "-x", "-a", "test", "-S", "OwnerContactTests", "-S", "OwnerControllerTests", "-S", "ClinicServiceTests"]
+
 [tasks.petclinic-rename-owner-customer]
 repo   = "spring-petclinic"
 kind   = "rename"

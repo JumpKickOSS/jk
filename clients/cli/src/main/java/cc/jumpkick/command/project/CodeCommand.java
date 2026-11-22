@@ -14,7 +14,8 @@ import java.util.List;
 
 /**
  * {@code jk code}: questions about the code and edits to it, answered from the code graph: who uses
- * a symbol, its source, declarations by shape, what governs a file, and renames, deletes and moves
+ * a symbol, its source, declarations by shape, what governs a file, and renames, deletes, moves and
+ * extracted interfaces
  * that edit every use and prove the result compiles. Each refreshes the graph first. See {@code docs/user/graph.md}.
  */
 public final class CodeCommand extends GroupCommand {
@@ -127,6 +128,17 @@ public final class CodeCommand extends GroupCommand {
                         "Move an instance method or field up to the class its type extends",
                         List.of(BUDGET),
                         List.of(MEMBER, Param.of("type", Arity.ZERO_OR_ONE, "the class its type extends (default)"))),
+                op(
+                        "extract-interface",
+                        "Create an interface from a class's methods; the class implements it",
+                        List.of(BUDGET),
+                        List.of(
+                                Param.of("class", Arity.ONE, "the class, enum or record"),
+                                Param.of("interface", Arity.ONE, "its name; qualified, it lands in that package"),
+                                Param.of(
+                                        "methods",
+                                        Arity.ZERO_OR_ONE,
+                                        "a,b,c (every overload; default: each public one overriding nothing)"))),
                 op(
                         "rules",
                         "The guard rules and NOTE/WHY comments that govern a file",

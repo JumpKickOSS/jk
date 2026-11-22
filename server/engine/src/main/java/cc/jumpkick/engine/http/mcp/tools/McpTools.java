@@ -183,7 +183,8 @@ public final class McpTools {
                 CodeGraphTool.find(),
                 CodeGraphTool.delete(),
                 CodeGraphTool.move(),
-                CodeGraphTool.pullUp()));
+                CodeGraphTool.pullUp(),
+                CodeGraphTool.extractInterface()));
         return new McpTools(tools, LOOP);
     }
 

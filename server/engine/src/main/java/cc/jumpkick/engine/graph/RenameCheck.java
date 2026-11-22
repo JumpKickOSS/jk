@@ -13,7 +13,7 @@ import java.util.Map;
 import org.jspecify.annotations.Nullable;
 
 /**
- * A rename, a delete or a move proves itself before it answers, for the CLI and MCP alike: the engine
+ * A rename, a delete, a move or an extracted interface proves itself before it answers, for the CLI and MCP alike: the engine
  * compiles the modules the edit wrote in (main and tests, as a job), then the graph worker checks
  * that every renamed or moved symbol has exactly the references the old one had (a delete has
  * only the compile to pass), or undoes the edit whole when the compile failed. The worker names the
@@ -29,7 +29,7 @@ final class RenameCheck {
     }
 
     /** The graph operations that edit the tree and prove the edit. */
-    static final List<String> EDITS = List.of("rename", "delete", "move", "pull-up");
+    static final List<String> EDITS = List.of("rename", "delete", "move", "pull-up", "extract-interface");
 
     /** Where the worker leaves a rename's or a delete's proof. */
     static Path proof(Path root) {

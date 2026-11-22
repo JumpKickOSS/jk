@@ -22,7 +22,7 @@ import org.jspecify.annotations.Nullable;
 /**
  * The code graph's tools, named like the {@code jk code} subcommands they answer: {@code usages}
  * and {@code rename} on the default list, {@code query}, {@code read}, {@code find}, {@code
- * delete}, {@code move} and {@code pull_up} on the extended one.
+ * delete}, {@code move}, {@code pull_up} and {@code extract_interface} on the extended one.
  * Each refreshes the graph first (a walk and a snapshot load when nothing changed) and answers with
  * {@code Owner.member()} at {@code file:line}.
  */
@@ -162,6 +162,37 @@ public final class CodeGraphTool implements McpTool {
                     String to = in.str("to");
                     String address = required(in, "address");
                     return to == null || to.isBlank() ? List.of(address) : List.of(address, to);
+                });
+    }
+
+    /**
+     * {@code extract_interface}: an interface declaring chosen public instance methods of a class, as
+     * {@code jk code extract-interface} makes it: the class implements it, then it is compiled, or
+     * undone whole; the variables that call only those methods are listed as places that could
+     * take the interface. It writes, so it is not read-only.
+     */
+    public static McpTool extractInterface() {
+        return new CodeGraphTool(
+                new Spec(
+                        "extract_interface",
+                        "Create interface `to` from public methods of class `address`, which implements it; proves it"
+                                + " compiles and lists each variable that could take the interface, at file:line.",
+                        McpSchemas.object(
+                                props(Map.of(
+                                        "address",
+                                        McpSchemas.string(),
+                                        "to",
+                                        McpSchemas.string(),
+                                        "methods",
+                                        McpSchemas.string("a,b: every overload of each; default every public one that"
+                                                + " overrides nothing"))),
+                                List.of("address", "to"))),
+                "extract-interface",
+                in -> {
+                    String methods = in.str("methods");
+                    return methods == null || methods.isBlank()
+                            ? List.of(required(in, "address"), required(in, "to"))
+                            : List.of(required(in, "address"), required(in, "to"), methods);
                 });
     }
 

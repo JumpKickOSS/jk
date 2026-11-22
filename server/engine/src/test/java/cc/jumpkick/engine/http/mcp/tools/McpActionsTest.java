@@ -141,6 +141,27 @@ class McpActionsTest {
     }
 
     @Test
+    void an_extracted_interface_is_logged_with_the_class_and_the_interface() {
+        McpContext ctx = context();
+        McpConnection connection = ctx.connections().open("claude-code", null, McpRevision.LATEST, McpElicitModes.NONE);
+        String id = log.open("mcp", "claude-code", connection.label(), null);
+        McpTools tools = new McpTools(List.of(
+                tool("extract_interface", in -> in.text("Extracted org.acme.Priced from Book: 1 method (price)\n"))));
+
+        tools.call(
+                ctx,
+                call("extract_interface", Map.of("dir", project.toString(), "address", "Book", "to", "Priced")),
+                connection,
+                null);
+
+        SessionLog.Page page = log.session(id, 0, 10).orElseThrow();
+        assertThat(page.actions()).singleElement().satisfies(a -> assertThat(a)
+                .containsEntry("kind", "extract_interface")
+                .containsEntry("summary", "extract_interface Book → Priced")
+                .containsEntry("headline", "Extracted org.acme.Priced from Book: 1 method (price)"));
+    }
+
+    @Test
     void a_goal_titles_the_episode_a_call_without_one_is_served_and_a_new_goal_starts_the_next() {
         McpContext ctx = context();
         McpConnection connection = ctx.connections().open("claude-code", null, McpRevision.LATEST, McpElicitModes.NONE);

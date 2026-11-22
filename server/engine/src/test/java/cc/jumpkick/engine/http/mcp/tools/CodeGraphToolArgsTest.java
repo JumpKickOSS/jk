@@ -73,6 +73,20 @@ class CodeGraphToolArgsTest {
         assertThat(request("pull_up", Map.of("address", "Book.label")).args()).containsExactly("Book.label");
     }
 
+    @Test
+    void extract_interface_asks_its_operation_with_the_class_the_name_and_the_methods_when_given() {
+        GraphRequest chosen = request(
+                "extract_interface",
+                Map.of("address", "Book", "to", "Priced", "methods", "price,total", "scope", "src"));
+        GraphRequest every = request("extract_interface", Map.of("address", "Book", "to", "Priced"));
+
+        assertThat(chosen.op()).isEqualTo("extract-interface");
+        assertThat(chosen.args()).containsExactly("Book", "Priced", "price,total");
+        assertThat(chosen.options()).isEmpty();
+        assertThat(chosen.scope()).isNull();
+        assertThat(every.args()).containsExactly("Book", "Priced");
+    }
+
     private static GraphRequest request(String tool) {
         return request(tool, EVERY_SETTING);
     }

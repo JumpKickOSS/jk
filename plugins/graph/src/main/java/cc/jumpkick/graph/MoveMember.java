@@ -767,7 +767,7 @@ final class MoveMember {
     }
 
     /** The import lines {@code f} needs, inserted after its last import, else after its package line. */
-    private static Op importOp(FileEdit f) {
+    static Op importOp(FileEdit f) {
         StringBuilder lines = new StringBuilder();
         for (String i : f.imports) lines.append("import ").append(i).append(";\n");
         for (String i : f.staticImports)
@@ -851,8 +851,7 @@ final class MoveMember {
     }
 
     /** The file's edit, created on first use; {@code null} when javac's index does not describe it as it stands. */
-    private static @Nullable FileEdit edit(
-            GraphService.Workspace w, CodeGraph g, Map<String, FileEdit> files, String rel) {
+    static @Nullable FileEdit edit(GraphService.Workspace w, CodeGraph g, Map<String, FileEdit> files, String rel) {
         FileEdit f = files.get(rel);
         if (f != null) return f;
         String text = RenameText.read(w.root(), rel);
@@ -865,7 +864,7 @@ final class MoveMember {
     }
 
     /** {@code text} with {@code ops} applied; {@code starts}, when given, gets where each op's text begins in the result. */
-    private static String apply(String text, List<Op> ops, @Nullable Map<Op, Integer> starts) {
+    static String apply(String text, List<Op> ops, @Nullable Map<Op, Integer> starts) {
         List<Op> sorted = new ArrayList<>(ops);
         sorted.sort(Comparator.comparingInt(Op::start).thenComparingInt(Op::end));
         StringBuilder out = new StringBuilder(text.length() + 256);
@@ -919,7 +918,7 @@ final class MoveMember {
     }
 
     /** Every workspace type by its binary name. */
-    private static Map<String, GraphNode> types(CodeGraph g) {
+    static Map<String, GraphNode> types(CodeGraph g) {
         Map<String, GraphNode> out = new HashMap<>();
         for (GraphNode n : g.nodes()) {
             if (Decl.isType(n) && n.extra().get(Linker.QUALIFIED_NAME) instanceof String q) out.putIfAbsent(q, n);

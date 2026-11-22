@@ -165,6 +165,28 @@ final class RenameFixture {
         return move("-", "-", "phase=verify");
     }
 
+    /** {@code extract-interface type name [methods]}, as the engine asks for it. */
+    String extract(String type, String name, String... methods) throws IOException {
+        List<String> args = new ArrayList<>(List.of(type, name));
+        if (methods.length > 0) args.add(String.join(",", methods));
+        return ask("extract-interface", args, 8000);
+    }
+
+    /** The engine's check after an extracted interface: compile, then the proof, or the undo when the compile failed. */
+    String checkExtract() throws IOException {
+        String errors = compile();
+        if (errors != null) {
+            String line = errors.lines().findFirst().orElse("").strip();
+            return ask(
+                    "extract-interface",
+                    List.of("-", "-"),
+                    8000,
+                    "phase=undo",
+                    "why=the code does not compile (" + line + ")");
+        }
+        return ask("extract-interface", List.of("-", "-"), 8000, "phase=verify");
+    }
+
     private String ask(String op, List<String> args, int budget, String... options) throws IOException {
         Map<String, String> opts = new LinkedHashMap<>();
         for (String o : options) opts.put(o.substring(0, o.indexOf('=')), o.substring(o.indexOf('=') + 1));

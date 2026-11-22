@@ -43,8 +43,18 @@ class GraphCommandTest {
         assertThat(new CodeCommand().defaultSubcommand()).isNull();
         assertThat(new CodeCommand().subcommands())
                 .extracting(CliCommand::name)
-                .containsExactly("usages", "find", "read", "query", "rename", "delete", "move", "pull-up", "rules");
-        for (String name : List.of("usages", "delete", "move", "pull-up")) {
+                .containsExactly(
+                        "usages",
+                        "find",
+                        "read",
+                        "query",
+                        "rename",
+                        "delete",
+                        "move",
+                        "pull-up",
+                        "extract-interface",
+                        "rules");
+        for (String name : List.of("usages", "delete", "move", "pull-up", "extract-interface")) {
             Invocation in = Invocation.builder()
                     .addPositional("Book.label")
                     .addPositional("Item")

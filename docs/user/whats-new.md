@@ -18,6 +18,10 @@ JumpKick shows you this page's new entries after it updates itself.
 - **MCP `pull_up`.** Pulls an instance method or field up to the class its type extends, then
   compiles and proves it; what would break is listed and nothing is written. On the extended tool
   list ([MCP](mcp.md)).
+- **`jk code extract-interface` and MCP `extract_interface`.** Creates an interface from a class's
+  public methods, makes the class implement it, then compiles it, or undoes it; lists each variable
+  that could take the interface instead. On the extended tool list
+  ([Code graph](graph.md#delete-move-pull-up-and-extract-an-interface)).
 - **What another version of a dependency breaks, before you move it.**
   `jk code usages dep:guava@33.4.8-jre` lists the API that version removes, renames or changes, up
   or down, and each place in your code that uses it. MCP `update`'s preview counts them per move

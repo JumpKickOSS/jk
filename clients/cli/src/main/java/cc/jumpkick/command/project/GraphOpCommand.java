@@ -58,7 +58,7 @@ final class GraphOpCommand implements CliCommand {
 
     /** An answer that says nothing was found or nothing was written: the command exits 1. */
     private static final Pattern NOTHING =
-            Pattern.compile("^(No |Not (renamed|moved|deleted|pulled up)\\b)|\\nRolled back");
+            Pattern.compile("^(No |Not (renamed|moved|deleted|pulled up|extracted)\\b)|\\nRolled back");
 
     private final String group;
     private final String op;

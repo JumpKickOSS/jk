@@ -731,12 +731,13 @@ target module), naming each.
 A shared-surface name such as a JPA column or an HTTP route is what the graph's anchors model;
 until they answer for it, rename reports it as a candidate or hazard as above.
 
-## Delete, move and pull up
+## Delete, move, pull up and extract an interface
 
 ```bash
 jk code delete OrderService.legacyTotal          # only if nothing uses it; else lists what does
 jk code move PriceMath.round Money               # a static method or field, every use edited
 jk code pull-up Book.label                       # an instance member up to the class Book extends
+jk code extract-interface Book Priced price,total  # a new interface Book implements
 ```
 
 `delete` removes a method (every overload), a field or a type only when nothing uses it: no call or
@@ -750,6 +751,16 @@ refused. Both write nothing and list what would break or change
 behaviour without a compile error (state the target does not have, a `super` call, a member one side
 cannot see, an override). Like `rename`, each then compiles the modules it touched and undoes the
 edit whole when they do not compile.
+
+`extract-interface` creates an interface beside the class (a qualified name puts it in that
+package) declaring the public instance methods named, every overload of each, or by default every
+public instance method that overrides nothing. Each signature is copied as written, with the
+imports its types need; the class implements the interface, with `@Override` on each method. It
+refuses a generic class, a static or non-public method and a name already taken, writing nothing.
+Then it compiles, undoing the edit whole, the new file included, when that fails. Its answer lists
+at `file:line` each variable of the class's type, outside the class, that calls only the
+interface's methods and is not passed on: each could be declared as the interface instead. It does
+not change them.
 
 The [retrieval bench](../../bench/graph-retrieval/README.md) asks who calls a method, what
 implements or overrides it and where it is defined, on seven JVM repositories, and grades every
@@ -784,7 +795,8 @@ on every turn, and in measured agent runs `usages` and `rename` are the ones tha
 We asked coding agents from 6 vendors questions like "who calls this method?" With JumpKick's code graph, they answered in **66–91% fewer back-and-forth turns** and used **72–98% fewer tokens** than without it. Renaming a method everywhere it is used took **75–91% fewer turns** and **78–98% fewer tokens**. The graph pays off even on tiny projects: the smallest we tested, gs-multi-module, has just **83 lines of code**. ([The tables](why.md#asking-about-the-code).)
 <!-- agents-claims:end -->
 
-`query`, `read`, `find`, `delete`, `move` and `pull_up` (`jk code pull-up`) answer as their
+`query`, `read`, `find`, `delete`, `move`, `pull_up` (`jk code pull-up`) and `extract_interface`
+(`jk code extract-interface`) answer as their
 `jk code` subcommands do and are on the extended list (`tools/list` with `extended: true`, or
 `[mcp] tools = "all"`); every tool is callable by name either way. `neighbors`, `path` and
 `rules` are shell commands alone. See [MCP](mcp.md).

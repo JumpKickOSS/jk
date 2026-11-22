@@ -47,7 +47,7 @@ CORPUS = benchtools.scratch("GRAPH_RETRIEVAL_HOME", "graph-retrieval") / "repos"
 HOME = benchtools.scratch("AGENT_LOOP_HOME", "agent-loop") / "change-tasks"
 
 # jk's graph calls, on the extended tools/list; an arm that hides the graph drops them from every list.
-JK_GRAPH_TOOLS = ["usages", "rename", "query", "read", "find", "delete", "move", "pull_up"]
+JK_GRAPH_TOOLS = ["usages", "rename", "query", "read", "find", "delete", "move", "pull_up", "extract_interface"]
 # What a released jk (the jk-before arm) calls a graph tool the tree names otherwise: usages was callers.
 JK_RELEASED_GRAPH_TOOLS = ["callers"]
 # jk's default tools/list without its one graph card, usages.
