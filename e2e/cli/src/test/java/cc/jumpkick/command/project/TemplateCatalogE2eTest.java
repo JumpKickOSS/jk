@@ -24,6 +24,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.jar.JarFile;
 import java.util.jar.Manifest;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.DynamicTest;
@@ -42,9 +44,11 @@ import org.junit.jupiter.api.io.TempDir;
  * pairwise set in which every
  * layout the template declares and every option it asks appears, so a binding only a non-default
  * answer reaches is built too, and an option added to a template is built as soon as it is asked.
- * A plugin template builds against the SDK it pins, and its jar is checked for a plugin's shape:
- * from a release, the SDK this checkout publishes; from a {@code -SNAPSHOT}, which no repository
- * serves, the newest published release at or below it, from jumpkick.build. A
+ * A plugin template builds against the SDK this checkout publishes, and its jar is checked for a
+ * plugin's shape. A release's scaffold pins that SDK already; a {@code -SNAPSHOT}'s pins the newest
+ * published release at or below it, which predates whatever the checkout changed in the SDK, so the
+ * scaffold's pin is moved to the checkout's SDK before it builds, as {@code
+ * ThirdPartyPluginExampleTest} does with the sample. A
  * template that asks for a native binary is also linked with {@code jk native},
  * once, where a GraalVM is available ({@code GRAALVM_HOME} with {@code native-image}); elsewhere
  * that test is skipped by assumption. An Android template is scaffolded and format-checked
@@ -63,10 +67,13 @@ import org.junit.jupiter.api.io.TempDir;
 class TemplateCatalogE2eTest {
 
     /**
-     * The SDK pin a plugin template writes when this jk is a release: its own version, which this
-     * checkout publishes for the scaffold. A development build's pin names a published release.
+     * The version this checkout's SDK is published at for a plugin scaffold: the running version
+     * without a {@code -SNAPSHOT}, so the scaffold's no-snapshot rule accepts its pin.
      */
-    private static final String SDK_PIN = "cc.jumpkick:jk-plugin-sdk:" + JkVersion.VERSION + "\"";
+    private static final String SDK_VERSION = JkVersion.VERSION.replaceFirst("-SNAPSHOT$", "");
+
+    /** The SDK release a plugin scaffold's {@code jk.toml} pins. */
+    private static final Pattern SDK_PIN = Pattern.compile("cc\\.jumpkick:jk-plugin-sdk:([0-9][^\"]*)\"");
 
     /** The ask a template offers a GraalVM native executable with. */
     private static final String NATIVE = "native";
@@ -242,7 +249,7 @@ class TemplateCatalogE2eTest {
                     () -> name + " builds only with an Android SDK whose licenses are accepted (jk android"
                             + " licenses --yes), which this test does not do to the machine");
         }
-        boolean pinsSdk = manifest.contains(SDK_PIN);
+        boolean pinsSdk = pinCheckoutSdk(project, manifest);
         Path userConfig = JkDirs.userConfigFile();
         String priorConfig = Files.isRegularFile(userConfig) ? Files.readString(userConfig) : null;
         if (pinsSdk) {
@@ -325,14 +332,36 @@ class TemplateCatalogE2eTest {
     }
 
     /**
-     * The checkout's SDK, published once for the suite: a release's plugin template pins the SDK at
-     * this jk's version, which jumpkick.build serves only once the release ships, so this
-     * repository stands in for jumpkick, from the user's config, while that scaffold builds.
+     * Moves a plugin scaffold's SDK pin, in {@code jk.toml} and in its manifest's {@code sdk} and
+     * {@code jk-compat}, to {@link #SDK_VERSION}; whether the scaffold pins the SDK at all.
+     */
+    private static boolean pinCheckoutSdk(Path project, String manifest) throws IOException {
+        Matcher pinned = SDK_PIN.matcher(manifest);
+        if (!pinned.find()) return false;
+        String pin = pinned.group(1);
+        if (pin.equals(SDK_VERSION)) return true;
+        Files.writeString(
+                project.resolve("jk.toml"),
+                manifest.replace("jk-plugin-sdk:" + pin + "\"", "jk-plugin-sdk:" + SDK_VERSION + "\""));
+        Path pluginToml = project.resolve("src/main/resources/jk-plugin.toml");
+        if (Files.isRegularFile(pluginToml)) {
+            Files.writeString(
+                    pluginToml,
+                    Files.readString(pluginToml)
+                            .replace("\"" + pin + "\"", "\"" + SDK_VERSION + "\"")
+                            .replace("\">=" + pin + "\"", "\">=" + SDK_VERSION + "\""));
+        }
+        return true;
+    }
+
+    /**
+     * The checkout's SDK, published once for the suite at {@link #SDK_VERSION}, which jumpkick.build
+     * serves only once that release ships, if ever with these bytes: this repository stands in for
+     * jumpkick, from the user's config, while a plugin scaffold builds.
      */
     private String sdkRepo() throws IOException {
         if (sdkRepo == null)
-            sdkRepo = PublishedSdk.publish(scratch.resolve("sdk"), JkVersion.VERSION)
-                    .toString();
+            sdkRepo = PublishedSdk.publish(scratch.resolve("sdk"), SDK_VERSION).toString();
         return sdkRepo;
     }
 
