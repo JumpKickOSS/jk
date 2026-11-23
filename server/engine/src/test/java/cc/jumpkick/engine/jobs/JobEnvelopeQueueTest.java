@@ -166,7 +166,9 @@ class JobEnvelopeQueueTest {
                     .as("the job has its jid before it waits")
                     .isNotNegative()
                     .isLessThan(out.toString().indexOf("\"type\":\"job-queued\""));
-            assertThat(host.logs).anyMatch(l -> l.contains("waits for cache maintenance to let go of the cache"));
+            // The log line follows the wire frame, so it is waited for in its own right.
+            Await.until(Duration.ofSeconds(5), () -> List.copyOf(host.logs).stream()
+                    .anyMatch(l -> l.contains("waits for cache maintenance to let go of the cache")));
             assertThat(ran).isFalse();
         } finally {
             host.gate.writeLock().unlock();
