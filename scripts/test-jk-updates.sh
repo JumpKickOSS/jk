@@ -90,9 +90,11 @@ cat >"$REPO/rates.json" <<'EOF'
 EOF
 
 # Stand-ins for a Python that predates tomllib (macOS ships 3.9): one shadows python3 and passes
-# everything else to a real 3.11+, the others shadow every interpreter the scripts try.
+# everything else to a real 3.11+, the others shadow python3 and every versioned python3.N on PATH,
+# which are the interpreters the scripts try.
+mapfile -t pythons < <(echo python3; compgen -c python3. | grep -E '^python3\.[0-9]+$' | sort -t. -k2,2nr -u)
 real_python=
-for candidate in python3 python3.14 python3.13 python3.12 python3.11; do
+for candidate in "${pythons[@]}"; do
   if "$candidate" -c 'import tomllib' >/dev/null 2>&1; then
     real_python="$(command -v "$candidate")"
     break
@@ -106,7 +108,7 @@ old_python() { # path
   chmod +x "$1"
 }
 old_python "$WORK/old-python3/python3"
-for candidate in python3 python3.14 python3.13 python3.12 python3.11; do old_python "$WORK/old-pythons/$candidate"; done
+for candidate in "${pythons[@]}"; do old_python "$WORK/old-pythons/$candidate"; done
 
 refuses_naming "a refresh with no Python that has tomllib" "Python 3.11 or newer is required" \
   env PATH="$WORK/old-pythons:$PATH" bash "$UPDATES/scripts/refresh.sh" "$REPO"
@@ -121,6 +123,13 @@ cmp -s "$SRC/jdks.json" "$REPO/jdks.json" || fail "refresh did not copy the JDK 
 [[ "$(field "$REPO/pins.json" jk.stable.sha256)" == "$(sha "$SRC/releases/0.60.0/SHA256SUMS")" ]] \
   || fail "refresh pinned the wrong SHA256SUMS digest"
 
+# A host whose only Python with tomllib is a version newer than any this script knows.
+mkdir -p "$WORK/newer-python"
+printf '#!/bin/sh\nexec %s "$@"\n' "$real_python" >"$WORK/newer-python/python3.99"
+chmod +x "$WORK/newer-python/python3.99"
+passes "a refresh whose only Python with tomllib is python3.99" \
+  env PATH="$WORK/newer-python:$WORK/old-pythons:$PATH" bash "$UPDATES/scripts/refresh.sh" "$REPO"
+
 cp "$REPO/pins.json" "$WORK/pins.before"
 printf 'version 0.61.0\nissued 1795281631\nsignature %s\n' "$(sign "$WORK/other.pem" "$WORK/pointer")" \
   >"$SRC/releases/latest/LATEST"
@@ -134,8 +143,9 @@ refuses_naming "a key that is not the release key" "not the release key" \
   bash "$UPDATES/scripts/assemble.sh" "$REPO" "$WORK/key.pem"
 [[ ! -e "$REPO/updates.json" ]] || fail "a refused key wrote updates.json"
 
-passes "the first manifest" env JK_UPDATES_REQUIRE_TRUSTED_KEY=1 JK_UPDATES_PUBLISHED=2026-11-22T04:00:00Z \
-  bash "$UPDATES/scripts/assemble.sh" "$REPO" "$WORK/key.pem"
+passes "the first manifest, whose only Python with tomllib is python3.99" \
+  env PATH="$WORK/newer-python:$WORK/old-pythons:$PATH" JK_UPDATES_REQUIRE_TRUSTED_KEY=1 \
+  JK_UPDATES_PUBLISHED=2026-11-22T04:00:00Z bash "$UPDATES/scripts/assemble.sh" "$REPO" "$WORK/key.pem"
 openssl base64 -d -A -in "$REPO/updates.json.sig" -out "$WORK/sig.bin"
 openssl dgst -sha256 -verify "$WORK/public.pem" -signature "$WORK/sig.bin" "$REPO/updates.json" >/dev/null \
   || fail "updates.json.sig does not verify"
