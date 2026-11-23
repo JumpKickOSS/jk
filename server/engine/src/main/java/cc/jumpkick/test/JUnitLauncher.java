@@ -24,6 +24,7 @@ import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.orchestrator.NoTestsGuard;
 import cc.jumpkick.orchestrator.ResultAggregator;
+import cc.jumpkick.orchestrator.RetryPolicy;
 import cc.jumpkick.orchestrator.RunShortfall;
 import cc.jumpkick.orchestrator.SuiteReport;
 import cc.jumpkick.orchestrator.TestProgressListener;
@@ -866,10 +867,10 @@ public final class JUnitLauncher {
         // A run that passed at its planned heap lets a heap learned from an older, larger peak come down.
         if (heapRun.green(!first.failures().isEmpty())) heaps.relax(filledKey(javaHome));
         // A suite JVM that dies after reporting tests leaves no class name. Run the selection again.
-        boolean whole = SuiteRetry.wholeSuite(first, ranOut) && SuiteRetry.onlyHeap(first, ranOut);
-        List<String> again = whole ? selection() : SuiteRetry.classes(first, undispatched, ranOut);
+        boolean whole = SuiteRetry.POLICY.wholeSuite(first, ranOut) && SuiteRetry.POLICY.onlyHeap(first, ranOut);
+        List<String> again = whole ? selection() : SuiteRetry.POLICY.classes(first, undispatched, ranOut);
         if (!whole && again.isEmpty()) return first;
-        boolean killed = SuiteRetry.onlyKilled(first, ranOut);
+        boolean killed = SuiteRetry.POLICY.onlyKilled(first, ranOut);
         TestSummary second = rerun(javaHome, classpath, heap, again, listener, killed, whole ? null : first, ranOut);
         return second == null ? first : second;
     }
@@ -917,11 +918,11 @@ public final class JUnitLauncher {
         try {
             if (killed) {
                 HeapNotes.note(HeapNotes.line(heap, heap, true));
-                MarkdownTestReport.Tally share = share(classes);
+                RetryPolicy.Share share = share(classes);
                 heapRun.forget();
                 TestSummary again = rung(javaHome, classpath, classes, listener, heap, new CaptureBuffer())
                         .run();
-                return first == null ? again : SuiteRetry.merge(first, classes, share, again, firstRanOut);
+                return first == null ? again : SuiteRetry.POLICY.merge(first, classes, share, again, firstRanOut);
             }
             HeapScope.Key key = filledKey(javaHome);
             List<Long> ranOut = new ArrayList<>(List.of(heap));
@@ -929,7 +930,7 @@ public final class JUnitLauncher {
             boolean settledRanOut = firstRanOut;
             @Nullable TestSummary partial = null;
             List<String> selection = classes;
-            MarkdownTestReport.Tally share = share(selection);
+            RetryPolicy.Share share = share(selection);
             int diedExit = WorkerFate.EXIT_ON_OUT_OF_MEMORY;
             String diedOutput = "";
             List<String> diedCommand = List.of();
@@ -966,7 +967,7 @@ public final class JUnitLauncher {
                 }
                 TestSummary run = attempt.run();
                 boolean rungRanOut = heapRun.ranOut();
-                if (SuiteRetry.onlyHeap(run, rungRanOut)) {
+                if (SuiteRetry.POLICY.onlyHeap(run, rungRanOut)) {
                     // Nothing this rung reported outlives it; the record it displaced is the report's.
                     attempt.held().restore();
                     diedExit = WorkerFate.EXIT_ON_OUT_OF_MEMORY;
@@ -975,14 +976,14 @@ public final class JUnitLauncher {
                     continue;
                 }
                 TestSummary merged =
-                        settled == null ? run : SuiteRetry.merge(settled, selection, share, run, settledRanOut);
-                List<String> still = SuiteRetry.heapClasses(run, rungRanOut);
-                if (still.isEmpty() && !SuiteRetry.wholeSuite(run, rungRanOut)) {
+                        settled == null ? run : SuiteRetry.POLICY.merge(settled, selection, share, run, settledRanOut);
+                List<String> still = SuiteRetry.POLICY.heapClasses(run, rungRanOut);
+                if (still.isEmpty() && !SuiteRetry.POLICY.wholeSuite(run, rungRanOut)) {
                     heaps.good(key, next);
                     return merged;
                 }
                 partial = merged;
-                if (!SuiteRetry.wholeSuite(run, rungRanOut)) {
+                if (!SuiteRetry.POLICY.wholeSuite(run, rungRanOut)) {
                     settledRanOut = rungRanOut;
                     settled = merged;
                     selection = still;
@@ -996,8 +997,9 @@ public final class JUnitLauncher {
     }
 
     /** What the run so far recorded for {@code classes}; a rung for them must replace it, not add to it. */
-    private MarkdownTestReport.Tally share(List<String> classes) {
-        return Objects.requireNonNull(runMd, "runMd").tally(classes);
+    private RetryPolicy.Share share(List<String> classes) {
+        MarkdownTestReport.Tally tally = Objects.requireNonNull(runMd, "runMd").tally(classes);
+        return new RetryPolicy.Share(tally.passed(), tally.skipped(), tally.classes());
     }
 
     /**

@@ -6,6 +6,7 @@ import cc.jumpkick.host.GitCommand;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.ProcessEnv;
+import cc.jumpkick.orchestrator.DiscoveryRules;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.nio.file.Files;
@@ -649,7 +650,7 @@ public final class ClassReads {
                 join.accept(at, Kind.NATIVE, v[0]);
             }
             case "jdk.SocketRead", "jdk.SocketWrite" -> {
-                if (!local(v[1])) join.accept(at, Kind.HOST, SuiteReads.hostName(v[0], v[1]));
+                if (!local(v[1])) join.accept(at, Kind.HOST, DiscoveryRules.hostName(v[0], v[1]));
             }
             default -> {}
         }
@@ -881,7 +882,7 @@ public final class ClassReads {
         if (name.endsWith(".class") && under(p, layout.classTrees())) return Where.LOADED;
         if (under(p, layout.scratch())) return Where.KEYED;
         // jk's own probe agent, on every probed test JVM: the suite's key holds the code that cut it.
-        if (EnvProbeJar.isProbeJar(p)) return Where.KEYED;
+        if (DiscoveryRules.probeJar(p)) return Where.KEYED;
         if (osPath(p)) return Where.OS;
         if (layout.javaHome() != null && p.startsWith(layout.javaHome())) return Where.KEYED;
         // What the suite's key holds whole (the classpath, the test runner, the plugin workers it

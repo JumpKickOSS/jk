@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.Processes;
+import cc.jumpkick.orchestrator.DiscoveryRules;
 import cc.jumpkick.task.FileHashMemo;
 import cc.jumpkick.task.PortablePath;
 import java.net.Inet4Address;
@@ -62,7 +63,7 @@ class SuiteReadsTest {
         Path lookalike = Files.writeString(tmp.resolve("env-probe-0123456789abcdef.jar"), "user's");
         SuiteReads.Observed seen =
                 new SuiteReads.Observed(new TreeSet<>(List.of(probeJar, lookalike)), Set.of(), Set.of(), true);
-        assertThat(SuiteReads.undeclared(seen, List.of())).containsExactly(lookalike);
+        assertThat(DiscoveryRules.undeclared(seen.files(), List.of())).containsExactly(lookalike);
     }
 
     @Test
@@ -92,8 +93,8 @@ class SuiteReadsTest {
         SuiteReads.Observed seen = SuiteReads.collect(recordings, tmp);
         assertThat(seen.files()).contains(data.toAbsolutePath().normalize());
         assertThat(seen.network()).isFalse();
-        Set<Path> undeclared =
-                SuiteReads.undeclared(seen, List.of(covered, probe, Path.of(System.getProperty("java.home"))));
+        Set<Path> undeclared = DiscoveryRules.undeclared(
+                seen.files(), List.of(covered, probe, Path.of(System.getProperty("java.home"))));
         assertThat(undeclared).contains(data.toAbsolutePath().normalize());
         assertThat(undeclared)
                 .doesNotContain(covered.resolve("in.txt").toAbsolutePath().normalize());
@@ -209,7 +210,7 @@ class SuiteReadsTest {
         Path tied = tmp.resolve("tied");
         Path readOnly = tmp.resolve("read-only");
         Path writtenOnly = tmp.resolve("written-only");
-        SuiteReads.FirstTouches touched = new SuiteReads.FirstTouches(tmp);
+        DiscoveryRules.FirstTouches touched = new DiscoveryRules.FirstTouches(tmp);
         touched.read(readFirst, 100);
         touched.wrote(readFirst, 200);
         touched.wrote(writtenFirst, 100);
@@ -234,7 +235,7 @@ class SuiteReadsTest {
         Path registry = tmp.resolve("home/.gradle/daemon/registry.bin");
         Path config = tmp.resolve("home/.docker/config.json");
         Path sibling = ws.resolve("b/fixture.json");
-        SuiteReads.FirstTouches touched = new SuiteReads.FirstTouches(ws.resolve("a/.."));
+        DiscoveryRules.FirstTouches touched = new DiscoveryRules.FirstTouches(ws.resolve("a/.."));
         touched.read(registry, 100);
         touched.wrote(registry, 200);
         touched.read(config, 100);
@@ -253,7 +254,7 @@ class SuiteReadsTest {
     void the_order_is_the_events_time_not_the_order_the_recordings_are_read(@TempDir Path tmp) {
         Path fixture = tmp.resolve("fixture.json");
         Path scratch = tmp.resolve("scratch.json");
-        SuiteReads.FirstTouches touched = new SuiteReads.FirstTouches(tmp);
+        DiscoveryRules.FirstTouches touched = new DiscoveryRules.FirstTouches(tmp);
         // The first recording read: this JVM rewrites the fixture, then reads the scratch file back.
         touched.wrote(fixture, 300);
         touched.read(scratch, 400);
@@ -310,9 +311,9 @@ class SuiteReadsTest {
                 Files.createDirectories(tmp.resolve("Program Files").resolve("bin"))
                         .resolve("tool"),
                 "#!/bin/sh\n");
-        assertThat(SuiteReads.executable(tool + " --flag " + tmp.resolve("an arg")))
+        assertThat(DiscoveryRules.executable(tool + " --flag " + tmp.resolve("an arg")))
                 .isEqualTo(tool.toString());
-        assertThat(SuiteReads.executable("git status --short")).isEqualTo("git");
+        assertThat(DiscoveryRules.executable("git status --short")).isEqualTo("git");
 
         Path module = Files.createDirectories(tmp.resolve("module"));
         SuiteReads.Discovered d = SuiteReads.Discovered.NONE.with(Set.of(), Set.of(tool.toString()), Set.of());
@@ -324,7 +325,7 @@ class SuiteReadsTest {
         assertThat(SuiteReads.load(module, TestSelection.DEFAULT).commands())
                 .as("read back as a run observes it, with this host's separators")
                 .containsExactly(tool.toString());
-        assertThat(SuiteReads.executable(slashed + " --flag")).isEqualTo(tool.toString());
+        assertThat(DiscoveryRules.executable(slashed + " --flag")).isEqualTo(tool.toString());
         assertThat(SuiteReads.tokens(module, TestSelection.DEFAULT, tmp))
                 .as("a program in the workspace, by its workspace path")
                 .containsExactly("proc:Program Files/bin/tool=" + FileHashMemo.contentHash(tool));
@@ -534,13 +535,13 @@ class SuiteReadsTest {
         long made = started - 492;
         FileTime cut = FileTime.from(made / 1_000, TimeUnit.SECONDS);
 
-        assertThat(SuiteReads.bornDuringRun(attrs(FileTime.fromMillis(made), FileTime.fromMillis(made)), started))
+        assertThat(DiscoveryRules.bornDuringRun(attrs(FileTime.fromMillis(made), FileTime.fromMillis(made)), started))
                 .as("a birth time the file system stamped finely")
                 .isFalse();
-        assertThat(SuiteReads.bornDuringRun(attrs(cut, FileTime.fromMillis(made + 3)), started))
+        assertThat(DiscoveryRules.bornDuringRun(attrs(cut, FileTime.fromMillis(made + 3)), started))
                 .as("a birth time cut to the second, bounded by the modification")
                 .isFalse();
-        assertThat(SuiteReads.bornDuringRun(attrs(cut, cut), started))
+        assertThat(DiscoveryRules.bornDuringRun(attrs(cut, cut), started))
                 .as("a file system that stamps whole seconds leaves the birth anywhere in that second")
                 .isTrue();
     }
@@ -551,9 +552,9 @@ class SuiteReadsTest {
         long started = 1_794_165_723_818L;
         FileTime cut = FileTime.from(started / 1_000, TimeUnit.SECONDS);
 
-        assertThat(SuiteReads.bornDuringRun(attrs(cut, FileTime.fromMillis(started + 40)), started))
+        assertThat(DiscoveryRules.bornDuringRun(attrs(cut, FileTime.fromMillis(started + 40)), started))
                 .isTrue();
-        assertThat(SuiteReads.bornDuringRun(attrs(cut, FileTime.fromMillis(started - 60_000)), started))
+        assertThat(DiscoveryRules.bornDuringRun(attrs(cut, FileTime.fromMillis(started - 60_000)), started))
                 .as("a modification older than the birth, a copy keeping its source's time, bounds nothing")
                 .isTrue();
     }

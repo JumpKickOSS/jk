@@ -9,25 +9,26 @@ import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.engine.plugin.LearnedHeaps;
 import cc.jumpkick.engine.plugin.WorkerContainment;
 import cc.jumpkick.engine.plugin.WorkerFate;
-import cc.jumpkick.orchestrator.RunShortfall;
-import cc.jumpkick.run.TestFailureInfo;
-import cc.jumpkick.run.TestSummary;
+import cc.jumpkick.orchestrator.RetryPolicy;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Retries of a test item whose jk-planned heap ran out, up the {@link HeapLadder}, or whose worker
- * was killed for memory, once at the same heap. A user-pinned heap is left alone.
+ * The heap a suite JVM runs at and climbs to when it runs out, up the {@link HeapLadder}. A
+ * user-pinned heap is left alone. Which failures a retry answers, and how its run replaces them, is
+ * the orchestrator's ({@link RetryPolicy}); {@link #POLICY} reads a failure's text the way this
+ * engine's workers word it.
  */
 final class SuiteRetry {
 
     private SuiteRetry() {}
+
+    /** The retry rules over this engine's words for a memory kill and a heap that ran out. */
+    static final RetryPolicy POLICY =
+            new RetryPolicy(WorkerFate::retryableKill, WorkerFate::mentionsHeap, WorkerFate.EXIT_ON_OUT_OF_MEMORY);
 
     /** True when jk chose the suite heap: no {@code -K} and no heap flag in {@code userArgs}. */
     static boolean planned(List<String> userArgs) {
@@ -122,91 +123,6 @@ final class SuiteRetry {
     }
 
     /**
-     * A failure row that is this suite running out of heap — an {@link OutOfMemoryError} for the
-     * heap that escaped a test, or a runner that died of one — or a worker killed for memory. An
-     * error for the array size limit, metaspace or direct buffers, or a kill at the worker's own
-     * cap, is an ordinary failure.
-     */
-    static boolean retryable(TestFailureInfo failure, boolean ranOut) {
-        if (failure == null) return false;
-        String text = failure.message() + "\n" + failure.stack();
-        if (WorkerFate.retryableKill(text)) return true;
-        // A heap row counts only when a suite JVM of this run marked its own heap exhaustion
-        // ({@link #onOutOfMemory}): a test can print the words, or assert on a child's output.
-        if (!ranOut) return false;
-        if (escapedHeapError(failure)) return true;
-        if (WorkerFate.mentionsHeap(text)) return true;
-        return text.contains("exited " + WorkerFate.EXIT_ON_OUT_OF_MEMORY);
-    }
-
-    /** A test's own uncaught {@code java.lang.OutOfMemoryError: Java heap space} or GC-overhead error. */
-    static boolean escapedHeapError(TestFailureInfo failure) {
-        if (!OutOfMemoryError.class.getName().equals(failure.exceptionClass())) return false;
-        String message = failure.message();
-        return message.contains("Java heap space") || message.contains("GC overhead limit exceeded");
-    }
-
-    /** Every retryable failure of {@code summary} is a memory kill, not a heap exhaustion. */
-    static boolean onlyKilled(TestSummary summary, boolean ranOut) {
-        return summary.failures().stream().filter(f -> retryable(f, ranOut)).allMatch(SuiteRetry::killed);
-    }
-
-    static boolean killed(TestFailureInfo failure) {
-        if (failure == null) return false;
-        String text = failure.message() + "\n" + failure.stack();
-        return WorkerFate.retryableKill(text) && !WorkerFate.mentionsHeap(text);
-    }
-
-    /**
-     * Classes to run again. A worker row's class is the one it was dispatching; once a retry is
-     * due, {@code undispatched} — the classes a pool left queued when its workers died — joins it.
-     */
-    static List<String> classes(TestSummary summary, List<String> undispatched, boolean ranOut) {
-        Set<String> out = new LinkedHashSet<>();
-        if (summary == null) return List.of();
-        boolean due = false;
-        for (TestFailureInfo failure : summary.failures()) {
-            if (!retryable(failure, ranOut)) continue;
-            due = true;
-            if (!failure.className().isBlank()) out.add(failure.className());
-        }
-        if (due) out.addAll(undispatched);
-        return List.copyOf(out);
-    }
-
-    /**
-     * A retryable failure names no class: the suite JVM died after it had already reported tests, so
-     * the whole selection runs again.
-     */
-    static boolean wholeSuite(TestSummary summary, boolean ranOut) {
-        if (summary == null) return false;
-        for (TestFailureInfo failure : summary.failures()) {
-            if (retryable(failure, ranOut) && failure.className().isBlank()) return true;
-        }
-        return false;
-    }
-
-    /** Every failure is a heap exhaustion or a memory kill, not an assertion the tests made. */
-    static boolean onlyHeap(TestSummary summary, boolean ranOut) {
-        if (summary == null || summary.failures().isEmpty()) return false;
-        for (TestFailureInfo failure : summary.failures()) {
-            if (!retryable(failure, ranOut)) return false;
-        }
-        return true;
-    }
-
-    /** Classes whose failure is running out of heap, not a memory kill. */
-    static List<String> heapClasses(TestSummary summary, boolean ranOut) {
-        Set<String> out = new LinkedHashSet<>();
-        if (summary == null) return List.of();
-        for (TestFailureInfo failure : summary.failures()) {
-            if (!retryable(failure, ranOut) || killed(failure)) continue;
-            if (!failure.className().isBlank()) out.add(failure.className());
-        }
-        return List.copyOf(out);
-    }
-
-    /**
      * {@code who} ran out of every heap in {@code ranOut}, oldest first, on a ladder held to {@code
      * budget} and {@code ceiling}.
      */
@@ -227,41 +143,5 @@ final class SuiteRetry {
     static String pinned(String who, String pin) {
         String named = pin == null || pin.isBlank() ? "heap" : pin;
         return who + " ran out of the pinned heap " + named + "; raise -Xmx in [test] jvm-args or [jvm] args";
-    }
-
-    /**
-     * {@code second}, the retried classes' run, replaces what {@code first} holds for them: their
-     * failure rows, a blank-class heap row and the shortfall row for the classes the retry ran
-     * undispatched go, {@code share} — the passes, skips and classes the launch's report recorded
-     * for them before the retry — comes off the counts, and their walls are the retry's.
-     */
-    static TestSummary merge(
-            TestSummary first,
-            List<String> retried,
-            MarkdownTestReport.Tally share,
-            TestSummary second,
-            boolean ranOut) {
-        Set<String> drop = Set.copyOf(retried);
-        List<TestFailureInfo> kept = new ArrayList<>();
-        for (TestFailureInfo failure : first.failures()) {
-            String cls = failure.className();
-            if (drop.contains(cls) || (cls.isBlank() && retryable(failure, ranOut)) || RunShortfall.isRow(failure))
-                continue;
-            kept.add(failure);
-        }
-        long removed = first.failures().size() - kept.size();
-        kept.addAll(second.failures());
-        var walls = new LinkedHashMap<>(first.classWallMs());
-        walls.keySet().removeAll(drop);
-        second.classWallMs().forEach((k, v) -> walls.merge(k, v, Long::sum));
-        return new TestSummary(
-                Math.max(0, first.total() - removed - share.passed() - share.skipped()) + second.total(),
-                Math.max(0, first.succeeded() - share.passed()) + second.succeeded(),
-                Math.max(0, first.failed() - removed) + second.failed(),
-                Math.max(0, first.skipped() - share.skipped()) + second.skipped(),
-                Math.max(0, first.classes() - share.classes()) + second.classes(),
-                kept,
-                walls,
-                Math.max(first.workers(), second.workers()));
     }
 }

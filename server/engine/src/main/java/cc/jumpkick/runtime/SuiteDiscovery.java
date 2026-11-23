@@ -9,6 +9,7 @@ import cc.jumpkick.host.Log;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.orchestrator.DiscoveryRules;
 import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.task.InputGuard;
@@ -220,8 +221,8 @@ final class SuiteDiscovery {
         // Only files outside every keyed root are held while the recordings are read: a run that
         // writes and reads a hundred thousand files in its own sandbox costs nothing and still replays.
         Path workspace = WorkspaceScan.findRoot(moduleDir).orElse(moduleDir);
-        SuiteReads.Observed seen =
-                SuiteReads.collect(SuiteReads.recordingDir(target), moduleDir, workspace, SuiteReads.candidates(roots));
+        SuiteReads.Observed seen = SuiteReads.collect(
+                SuiteReads.recordingDir(target), moduleDir, workspace, DiscoveryRules.candidates(roots));
         if (!seen.complete()) {
             // Never silent: a suite that cannot replay runs on every build, so the result line, the
             // build's record, the forecast and doctor all say why.
@@ -231,13 +232,13 @@ final class SuiteDiscovery {
             return null;
         }
         SuiteReads.clearUnread(moduleDir);
-        Set<Path> read = SuiteReads.undeclared(seen, roots, workspace, run.startedMillis());
-        Set<Path> jkState = SuiteReads.under(read, JkDirs.state());
+        Set<Path> read = DiscoveryRules.undeclared(seen.files(), roots, workspace, run.startedMillis());
+        Set<Path> jkState = DiscoveryRules.under(read, JkDirs.state());
         if (!jkState.isEmpty()) {
             read.removeAll(jkState);
             ctx.warn(JK_STATE, jkStateWarning(jkState, JkDirs.state()));
         }
-        Set<String> started = SuiteReads.undeclaredCommands(seen, roots, workspace, run.startedMillis());
+        Set<String> started = DiscoveryRules.undeclaredCommands(seen.commands(), roots, workspace, run.startedMillis());
         Set<String> hosts = run.networkAllowed() ? Set.of() : seen.hosts();
         boolean reached = !hosts.isEmpty();
         SuiteReads.Discovered before = SuiteReads.load(moduleDir, run.selection());
@@ -420,7 +421,7 @@ final class SuiteDiscovery {
         Set<Path> paths = new TreeSet<>(files);
         for (String c : commands) {
             try {
-                // A recorded command is its program alone (SuiteReads.executable), spaces and all.
+                // A recorded command is its program alone (DiscoveryRules.executable), spaces and all.
                 Path p = Path.of(c);
                 if (p.isAbsolute()) paths.add(p);
             } catch (InvalidPathException bareName) {

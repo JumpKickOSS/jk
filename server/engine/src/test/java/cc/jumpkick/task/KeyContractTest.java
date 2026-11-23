@@ -66,6 +66,39 @@ class KeyContractTest {
                 .isTrue();
     }
 
+    /**
+     * What a suite was found to read keys it as tokens, so the code that keeps and reads them back
+     * moves the key by what it writes; the rules that decide which reads count are the orchestrator's.
+     */
+    @Test
+    void the_code_that_keeps_a_suites_discovered_reads_is_not_suite_code() {
+        assertThat(KeyContract.suiteCode("cc/jumpkick/test/SuiteReads.class")).isFalse();
+        assertThat(KeyContract.suiteCode("cc/jumpkick/test/SuiteReads$Discovered.class"))
+                .isFalse();
+        assertThat(KeyContract.SUITE.keeps("server/engine/src/main/java/cc/jumpkick/test/SuiteReads.java"))
+                .isFalse();
+        assertThat(KeyContract.suiteCode("cc/jumpkick/orchestrator/DiscoveryRules.class"))
+                .as("keyed by the orchestrator's classes")
+                .isFalse();
+        assertThat(KeyContract.suiteCode("cc/jumpkick/test/SuiteReadLists.class"))
+                .as("the rest of the suite package stays keyed")
+                .isTrue();
+    }
+
+    /** No key names the heap a suite JVM runs at, so the code that sizes it is not suite code either. */
+    @Test
+    void the_code_that_sizes_a_suites_heap_is_not_suite_code() {
+        assertThat(KeyContract.suiteCode("cc/jumpkick/test/SuiteRetry.class")).isFalse();
+        assertThat(KeyContract.SUITE.keeps("server/engine/src/main/java/cc/jumpkick/test/SuiteRetry.java"))
+                .isFalse();
+        assertThat(KeyContract.suiteCode("cc/jumpkick/orchestrator/RetryPolicy.class"))
+                .as("which failures a retry answers is keyed by the orchestrator's classes")
+                .isFalse();
+        assertThat(KeyContract.suiteCode("cc/jumpkick/test/JUnitLauncher.class"))
+                .as("the launcher that runs the retries stays keyed")
+                .isTrue();
+    }
+
     @Test
     void a_source_file_is_judged_by_the_class_it_compiles_to() {
         assertThat(KeyContract.entryOf("server/engine/src/main/java/cc/jumpkick/test/Discovery.java"))

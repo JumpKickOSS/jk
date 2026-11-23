@@ -596,15 +596,20 @@ and exclusions stay GA-scoped.
    produces or judges a result itself is a `KeyContract`, whose recorded digest folds into its
    actions' keys: `SUITE` (the package `cc.jumpkick.test` and the classes named for tests, suites
    or JUnit, which pick a suite's classes and build its JVM, but not `TestStampInputs`, which
-   writes the stamp and so moves it by what it writes) into run-tests stamps; `ARTIFACT` (the packagers and the zip they write through, the war, jlink, lib-dir and
+   writes the stamp, nor `SuiteReads`, which keeps and reads back a suite's discovered reads as the
+   stamp's tokens, so both move it by what they write, nor `SuiteRetry`, which sizes a suite JVM's
+   heap, which no key names) into run-tests stamps; `ARTIFACT` (the packagers and the zip they write through, the war, jlink, lib-dir and
    image steps, plugin staging, build-logic, Node.js steps and the guard runtime) into every
    `ActionKey.forArtifact` key; `NATIVE` (`NativeImageDriver`, which spells native-image's command
    line) into a native image's. The digest reads the contract's sources with comments and
    whitespace left out, and guard G167 (`key-contract-recorded`) is red until the recorded digest
    is theirs, printing the one to record; guard G164 (`suite-code-keyed`) keeps the selection and
    launch types inside `SUITE`. The code that judges a suite (counting the runner's events, a run
-   that ended short, an empty discovery, a `--class` that matched nothing, the failure text) and
-   decides which suites run (`SuiteChoice`: the suites a selection resolves to, whether the
+   that ended short, an empty discovery, a `--class` that matched nothing, the failure text, which
+   failures a retry answers and how its run replaces them, `RetryPolicy`), decides which of a
+   suite's recorded reads count as its inputs (`DiscoveryRules`: the events recorded, a file read
+   before the run wrote it, one outside every keyed root, a program started, a socket that left the
+   host) and decides which suites run (`SuiteChoice`: the suites a selection resolves to, whether the
    guard's green run covers it, whether its launch is the walled default tier) is
    its own module, `server/test-orchestrator`, in the one package `cc.jumpkick.orchestrator`; the
    engine bundles it, and a run-tests stamp names it as `orchestrator:<digest>`, the digest of

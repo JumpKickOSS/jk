@@ -80,24 +80,6 @@ public final class EnvProbeJar {
                 + (TestTelemetry.on() ? "" : NO_PROPS) + recordDir.toAbsolutePath();
     }
 
-    /**
-     * Whether {@code file} is a probe jar this class cut ({@code <cache>/env-reads/env-probe-*.jar}).
-     * jk hands it to every probed test JVM, and the JVM reads it whenever it loads a probe class,
-     * which may be late in the run (a {@code -Duser.timezone} test JVM loads one then): it is jk's
-     * own tool, never an input of the suite, and since every launch touches it, keying it would
-     * call it changed under any suite that ran beside another.
-     */
-    public static boolean isProbeJar(Path file) {
-        Path name = file.getFileName();
-        Path parent = file.getParent();
-        return name != null
-                && parent != null
-                && parent.getFileName() != null
-                && parent.getFileName().toString().equals(CacheTree.ENV_READS.entry())
-                && name.toString().startsWith("env-probe-")
-                && name.toString().endsWith(".jar");
-    }
-
     static Path jar(Path runnerJar, Path cacheDir) throws IOException {
         // The manifest's shape is part of the name: a jar cut before it changed is never taken for one after.
         String name = "env-probe-2-" + Hashing.sha256Hex(runnerJar).substring(0, 16) + ".jar";

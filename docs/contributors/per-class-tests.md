@@ -312,7 +312,7 @@ time, memoized per class tree content, and is measured the same way in shadow mo
 ## What is built
 
 **Records.** The test runner's listener opens a `jk.TestClass` window per top-level class
-(`ClassWindows`); the suite's recording settings enable it with `jdk.NativeLibraryLoad` (`SuiteReads`; JDK 22
+(`ClassWindows`); the suite's recording settings enable it with `jdk.NativeLibraryLoad` (`DiscoveryRules.recordingSettings`; JDK 22
 and later: the periodic `jdk.NativeLibrary` lists every library the JVM itself maps, libc included,
 and is no evidence of anything); the environment probe also repoints system-property
 reads at `PropLookups`, which writes `<pid>.props` beside the variables' `<pid>.lookups`.
@@ -340,7 +340,7 @@ What the shadow showed on real runs of jk-engine (940 classes) and what closed e
   `-c jk.harness=true` (`GitCommand.HARNESS`), which is left out. Before the mark 916 classes fell
   back to the module key for `process git`.
 - A code file gone once the run ended (a jar a test wrote in its own temp directory) is no input,
-  as a data file gone is not; and JumpKick's own env-probe agent jar (`EnvProbeJar.isProbeJar`) is keyed,
+  as a data file gone is not; and JumpKick's own env-probe agent jar (`DiscoveryRules.probeJar`) is keyed,
   as the suite's reads already treat it. Code files are charged to every later class of the JVM, so
   either one put most classes past their bound of 4.
 - A sibling's class tree beside its jar on the classpath (`<module>/target/classes`) is a class

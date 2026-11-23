@@ -164,6 +164,10 @@ final class EngineRules {
     @Allow(
             in = "server/engine/src/main/java/cc/jumpkick/runtime/workspace/WorkspaceResourcePhase.java",
             reason = "names the step and tier a suite's history is kept under, to size the run")
+    @Allow(
+            in = "server/engine/src/main/java/cc/jumpkick/test/SuiteReads.java",
+            reason =
+                    "keeps and reads back what a suite was found to read, as tokens of the stamp; the rules that decide which reads count are the orchestrator's")
     void suiteCodeKeyed(Text text, Violations v) {
         int naming = 0;
         for (String rel : text.files(ENGINE_MAIN)) {

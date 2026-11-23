@@ -3,6 +3,7 @@ package cc.jumpkick.test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.orchestrator.DiscoveryRules;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -130,10 +131,10 @@ class SuiteReadsMemoryTest {
         assertThat(child(tmp, "-Xmx256m", "mixed", recordings, ws)).contains("exit=0", "made");
         List<Path> roots = List.of(ws.resolve("sandbox"), ws.resolve("target"));
         SuiteReads.Observed whole = SuiteReads.collect(recordings, ws);
-        SuiteReads.Observed held = SuiteReads.collect(recordings, ws, ws, SuiteReads.candidates(roots));
+        SuiteReads.Observed held = SuiteReads.collect(recordings, ws, ws, DiscoveryRules.candidates(roots));
         assertThat(held.files().size()).isLessThan(whole.files().size());
-        Set<Path> fromWhole = SuiteReads.undeclared(whole, roots, ws, 0);
-        assertThat(SuiteReads.undeclared(held, roots, ws, 0))
+        Set<Path> fromWhole = DiscoveryRules.undeclared(whole.files(), roots, ws, 0);
+        assertThat(DiscoveryRules.undeclared(held.files(), roots, ws, 0))
                 .isEqualTo(fromWhole)
                 .hasSize(50);
     }
@@ -193,7 +194,7 @@ class SuiteReadsMemoryTest {
                 case "mixed" -> mixed(recordings, ws);
                 case "sandboxed" -> {
                     SuiteReads.Observed seen = SuiteReads.collect(
-                            recordings, ws, ws, SuiteReads.candidates(List.of(ws.resolve("sandbox"))));
+                            recordings, ws, ws, DiscoveryRules.candidates(List.of(ws.resolve("sandbox"))));
                     // The recording JVM's own reads (its classpath) are outside the workspace.
                     long inWs =
                             seen.files().stream().filter(f -> f.startsWith(ws)).count();
