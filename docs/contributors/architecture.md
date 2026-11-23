@@ -62,7 +62,8 @@ How JumpKick is structured today. For day-to-day usage see [user documentation](
   cautious overbook: more headroom, a 1.5x cap, pressure required): an engine
   process joins `HostLeases`, one `worker-leases` file per user and memory budget (`LeaseScope`:
   `jk-<user>-leases/host` or `cgroup-<id>` under `HostTemp.dir()`) under a file lock in which
-  every engine of that budget, whatever its home, records its budget, JVM cap, charged bytes, running JVMs,
+  every engine of that budget, whatever its home, except one started inside another recorded engine's
+  worker (that engine charges the worker's whole tree), records its budget, JVM cap, charged bytes, running JVMs,
   queued leases and worker pids, each grant is decided against the sums (made under the ledger's
   lock on the last reading, it stands only once a fresh reading taken under the file lock still
   admits it, its line written before that lock is let go; any other change to the line is written

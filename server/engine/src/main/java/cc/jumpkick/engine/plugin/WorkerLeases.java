@@ -67,10 +67,12 @@ import org.jspecify.annotations.Nullable;
  * <p>The budget, its cap and the JVM slot cap bound the host, not one process. An engine process
  * {@linkplain #shareHost joins} the {@link HostLeases} of its memory budget ({@link LeaseScope}),
  * and each grant counts the bytes and JVMs every other engine of that budget holds, whatever its
- * state directory, so a displaced engine still draining and its successor, or the nested engines of
- * a gate, together stay inside them. They lease against one budget and one JVM cap, the
- * ones the engine that was there first recorded. A ledger that joins nothing, as in a test JVM,
- * counts only its own leases against its own limits.
+ * state directory, so a displaced engine still draining and its successor, or engines with
+ * different homes side by side, together stay inside them. They lease against one budget and one
+ * JVM cap, the ones the engine that was there first recorded. An engine started inside another
+ * engine's worker, as a test's engine is inside a test JVM, keeps its own: that worker is charged
+ * at its whole tree's resident set. A ledger that joins nothing, as in a test JVM, counts only its
+ * own leases against its own limits.
  */
 public final class WorkerLeases {
 

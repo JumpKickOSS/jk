@@ -105,6 +105,46 @@ class LeaseScopeTest {
     }
 
     @Test
+    void an_engine_inside_a_worker_another_engine_charges_keeps_its_leases_at_home() throws Exception {
+        ProcessHandle engine = ProcessHandle.current().parent().orElse(null);
+        assumeTrue(engine != null && engine.info().startInstant().isPresent());
+        Path shared = Files.createDirectories(root.resolve("jk-me-leases/host"));
+        Path home = root.resolve("home");
+        HostLeases.Owner worker = HostLeases.Owner.current();
+        record(shared, HostLeases.Owner.of(engine), worker.pid() + ":" + worker.startedAtMillis());
+
+        assertThat(LeaseScope.outsideEveryWorker(shared, home, LeaseScope.ancestry(ProcessHandle.current())))
+                .isEqualTo(home);
+    }
+
+    @Test
+    void a_worker_pid_since_reused_or_a_gone_engine_leaves_the_leases_shared() throws Exception {
+        ProcessHandle engine = ProcessHandle.current().parent().orElse(null);
+        assumeTrue(engine != null && engine.info().startInstant().isPresent());
+        Path shared = Files.createDirectories(root.resolve("jk-me-leases/host"));
+        Path home = root.resolve("home");
+        HostLeases.Owner self = HostLeases.Owner.current();
+        assumeTrue(self.startedAtMillis() > 0);
+        var ancestors = LeaseScope.ancestry(ProcessHandle.current());
+
+        assertThat(LeaseScope.outsideEveryWorker(shared, home, ancestors)).isEqualTo(shared);
+
+        record(shared, HostLeases.Owner.of(engine), self.pid() + ":" + (self.startedAtMillis() - 60_000));
+        assertThat(LeaseScope.outsideEveryWorker(shared, home, ancestors)).isEqualTo(shared);
+
+        record(shared, new HostLeases.Owner(Integer.MAX_VALUE - 1L, 1), self.pid() + ":" + self.startedAtMillis());
+        assertThat(LeaseScope.outsideEveryWorker(shared, home, ancestors)).isEqualTo(shared);
+    }
+
+    @Test
+    void the_ancestry_starts_at_the_process_and_climbs_to_its_parent() {
+        ProcessHandle self = ProcessHandle.current();
+        var ancestry = List.copyOf(LeaseScope.ancestry(self));
+        assertThat(ancestry.getFirst()).isEqualTo(self.pid());
+        self.parent().ifPresent(parent -> assertThat(ancestry.get(1)).isEqualTo(parent.pid()));
+    }
+
+    @Test
     void the_user_name_is_kept_to_a_safe_directory_name() {
         assertThat(LeaseScope.userDir("bsant")).isEqualTo("jk-bsant-leases");
         assertThat(LeaseScope.userDir("DOMAIN\\me x")).isEqualTo("jk-DOMAIN_me_x-leases");
@@ -114,6 +154,13 @@ class LeaseScopeTest {
 
     private static HostLeases share(Path dir, long pid) {
         return new HostLeases(dir, new HostLeases.Owner(pid, 0), owner -> true, workers -> 0);
+    }
+
+    /** {@code dir}'s lease file holding one line: {@code engine} with an 8 GiB budget and {@code worker}. */
+    private static void record(Path dir, HostLeases.Owner engine, String worker) throws Exception {
+        Files.writeString(
+                dir.resolve(HostLeases.FILE),
+                engine.pid() + " " + engine.startedAtMillis() + " " + 8 * GIB + " 8 0 1 0 " + worker + "\n");
     }
 
     private Path group(String rel) throws Exception {

@@ -557,8 +557,12 @@ When the file cannot be read or written, an engine says so once in the engine lo
 against the others' last reading, and offers its line again, after a pause that doubles up to
 5 seconds, until the file takes it: a release is never lost to one failed write.
 The file costs each fork a few file-locked rewrites of a few hundred bytes, a fraction of a
-millisecond each. A test JVM's in-process engine keeps its own ledger, and a nested engine
-under `jk test` has its own state directory, so neither shares the host's limits.
+millisecond each. A test JVM's in-process engine keeps its own ledger. An engine started
+inside another engine's worker, such as a test's engine inside a `jk test` JVM, keeps its
+file in `<state>/engine` and says so in its log: the outer engine already charges that worker
+at the resident set of its whole tree, the inner engine and its forks included, so sharing
+would count them twice and leave the inner engine's forks waiting on memory that only the
+worker's own exit frees.
 
 A JVM's `-Xmx` is its ceiling, and the ceiling's lease is the `-Xmx` plus overhead of
 `max(160 MiB, 12% of -Xmx)`. The 12% is the resident cost of GC and thread structures

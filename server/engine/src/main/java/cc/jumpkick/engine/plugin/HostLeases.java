@@ -13,6 +13,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.ToIntFunction;
@@ -252,6 +253,29 @@ final class HostLeases {
             Thread.currentThread().interrupt();
             return false;
         }
+    }
+
+    /**
+     * The live engine in {@code dir}'s file that forked one of {@code ancestors}, a process that still
+     * runs and started when the line says; null when none did or the file cannot be read. An engine
+     * started inside another engine's worker is already charged there, its resident set counted with
+     * that worker's.
+     */
+    static @Nullable Owner forkedOneOf(Path dir, Set<Long> ancestors) {
+        String text;
+        try {
+            text = AtomicWrites.readString(dir.resolve(FILE));
+        } catch (IOException e) {
+            return null;
+        }
+        for (String raw : text.split("\n")) {
+            Entry e = raw.isBlank() ? null : Entry.parse(raw);
+            if (e == null || !e.owner.alive()) continue;
+            for (Worker w : e.line.workers()) {
+                if (ancestors.contains(w.pid()) && w.running().isPresent()) return e.owner;
+            }
+        }
+        return null;
     }
 
     /** The other engines' reading, read now. */

@@ -13,7 +13,9 @@ import java.nio.file.Path;
 import java.nio.file.attribute.PosixFileAttributeView;
 import java.nio.file.attribute.PosixFileAttributes;
 import java.nio.file.attribute.PosixFilePermission;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
@@ -28,6 +30,8 @@ import org.jspecify.annotations.Nullable;
  * group above sets one, and everywhere but Linux. The directory is {@code jk-<user>-leases/<budget>}
  * under {@link HostTemp#dir()}, {@code 0700}. An engine that cannot create it, or finds it owned
  * by someone else, open to others, or a link, keeps the file in its own state directory as before.
+ * So does an engine started inside a worker of an engine recorded there, such as a test's engine
+ * inside a test JVM: that engine already charges the worker's whole tree.
  */
 final class LeaseScope {
 
@@ -44,7 +48,30 @@ final class LeaseScope {
         String budget = budget(OwnCgroup.HOST, Os.isLinux());
         Path shared =
                 HostTemp.dir().resolve(userDir(System.getProperty("user.name"))).resolve(budget);
-        return usable(shared, engineDir);
+        return outsideEveryWorker(usable(shared, engineDir), engineDir, ancestry(ProcessHandle.current()));
+    }
+
+    /**
+     * {@code shared}, unless an engine recorded there forked one of {@code ancestors}: then {@code
+     * engineDir}, said in the engine log. That engine charges its worker at the resident set of the
+     * worker's whole tree, this engine and its forks included, so leasing those forks from the same
+     * total would count them twice, and a fork would wait on memory only its own ancestor's exit frees.
+     */
+    static Path outsideEveryWorker(Path shared, Path engineDir, Set<Long> ancestors) {
+        if (shared.equals(engineDir)) return shared;
+        HostLeases.Owner forker = HostLeases.forkedOneOf(shared, ancestors);
+        if (forker == null) return shared;
+        Log.info("jk engine: worker leases kept to this engine's home, not shared at " + shared
+                + ": it runs inside a worker of engine pid " + forker.pid() + ", which already charges its memory");
+        return engineDir;
+    }
+
+    /** {@code process} and every process above it, nearest first. */
+    static Set<Long> ancestry(ProcessHandle process) {
+        Set<Long> pids = new LinkedHashSet<>();
+        Optional<ProcessHandle> p = Optional.of(process);
+        while (p.isPresent() && pids.add(p.get().pid())) p = p.get().parent();
+        return pids;
     }
 
     /**
