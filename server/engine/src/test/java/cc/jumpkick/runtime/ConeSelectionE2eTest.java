@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.Request;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.resolver.ResolveObserver;
@@ -20,11 +21,16 @@ import cc.jumpkick.testing.TestCaches;
 import cc.jumpkick.wire.runtime.ModulePlan;
 import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
 import cc.jumpkick.wire.runtime.WorkspaceRequest;
+import java.net.Inet4Address;
+import java.net.InetAddress;
+import java.net.NetworkInterface;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.Collections;
 import java.util.List;
 import org.jspecify.annotations.Nullable;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -33,7 +39,7 @@ import org.junit.jupiter.api.io.TempDir;
  * Per-class selection on, over a real suite of three classes: after a body edit of one main class
  * the forecast prices the class whose cone holds it and the run runs that class alone, replaying
  * the others; an edit that breaks the class still fails the run. A file a replayed class read keys
- * the suite still.
+ * the suite still, and a suite that reached another host replays the classes that did not.
  */
 @Tag("integration")
 class ConeSelectionE2eTest {
@@ -215,6 +221,83 @@ class ConeSelectionE2eTest {
         assertThat(Jsonl.strArray(last(m), "wouldRunClasses"))
                 .as("the run that left ShellTest out still keys the sh it starts")
                 .containsExactly("demo.ReadsTest");
+    }
+
+    @Test
+    void a_suite_that_reached_another_host_is_priced_by_the_classes_the_run_runs(@TempDir Path tmp) throws Exception {
+        String address = nonLoopbackAddress();
+        Assumptions.assumeTrue(address != null, "this host has no address but loopback");
+        Path cache = TestCaches.dir("cone-selection-network-cache");
+        Path m = Files.createDirectories(tmp.resolve("ws/m"));
+        Files.writeString(m.resolve("jk.toml"), """
+                group   = "com.example"
+                name    = "m"
+                version = "1.0.0"
+                java    = 25
+
+                [test-dependencies]
+                junit-jupiter = "6.1.3"
+
+                [repositories]
+                central = "https://repo.maven.apache.org/maven2/"
+
+                [test]
+                cache = "cone"
+                """);
+        Files.createDirectories(m.resolve("src/main/java/demo"));
+        Files.writeString(m.resolve("src/main/java/demo/M.java"), "package demo; public class M {}\n");
+        Path tests = Files.createDirectories(m.resolve("src/test/java/demo"));
+        // Talks to this machine through an address that is not loopback: past the host, as far as
+        // the recording can tell, and still hermetic.
+        test(
+                tests,
+                "TalksTest",
+                ("java.net.InetAddress at = java.net.InetAddress.getByName(\"%s\");"
+                                + " try (var server = new java.net.ServerSocket(0, 1, at);"
+                                + " var client = new java.net.Socket(at, server.getLocalPort());"
+                                + " var accepted = server.accept()) {"
+                                + " client.getOutputStream().write(1); assertEquals(1, accepted.getInputStream().read()); }")
+                        .formatted(address));
+        test(tests, "QuietTest", "assertEquals(2, 1 + 1);");
+        BuildPlan lock = LockPlans.lockBuildPlan(m, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
+        assertThat(lock.run().success()).as("lock").isTrue();
+
+        assertThat(buildAsTheEngine(m, cache)).isEqualTo(TaskStatus.SUCCESS);
+        assertThat(Jsonl.longValue(last(m), "ran", 0))
+                .as("no class has a record yet")
+                .isEqualTo(2);
+
+        TaskForecast.Module forecast = forecast(m, cache);
+        assertThat(forecast.steps())
+                .filteredOn(t -> t.name().equals(TaskNames.RUN_TESTS))
+                .singleElement()
+                .satisfies(t -> assertThat(t.text())
+                        .contains(TaskForecast.TESTS_USE_NETWORK)
+                        .endsWith("~1 test · 1 class replayed"));
+        assertThat(forecast.rerunTests())
+                .as("the forecast prices the class that reached the host, as the run selects it")
+                .isEqualTo(1);
+        assertThat(buildAsTheEngine(m, cache)).isEqualTo(TaskStatus.SUCCESS);
+        assertThat(Jsonl.longValue(last(m), "ran", 0))
+                .as("TalksTest runs again; QuietTest replays")
+                .isEqualTo(1);
+    }
+
+    /** An address of an interface that is up and not loopback, or null when there is none. */
+    private static @Nullable String nonLoopbackAddress() throws Exception {
+        for (NetworkInterface nic : Collections.list(NetworkInterface.getNetworkInterfaces())) {
+            if (!nic.isUp() || nic.isLoopback()) continue;
+            for (InetAddress a : Collections.list(nic.getInetAddresses())) {
+                if (a instanceof Inet4Address && !a.isLoopbackAddress() && !a.isLinkLocalAddress())
+                    return a.getHostAddress();
+            }
+        }
+        return null;
+    }
+
+    /** As {@link #build}, under a request holding what its suites settle, as the engine's job runs every build. */
+    private static @Nullable TaskStatus buildAsTheEngine(Path dir, Path cache) throws Exception {
+        return Request.detached().with(SettledReads.SLOT, new SettledReads()).call(() -> build(dir, cache));
     }
 
     private static void test(Path dir, String name, String body) throws Exception {

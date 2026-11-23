@@ -1036,7 +1036,9 @@ final class TestSteps {
                                 s.dir,
                                 SessionContext.selectionFor(s.dir),
                                 () -> stamp.forecastKey(compact, layout.classesDir(), finalMainFp));
-        String priced = red || network || unread != null || stampKey == null
+        // A suite that reached another host stores no marker, yet the run still replays each class
+        // whose cone stands; the classes that reached it run again (TestClassRecording#unmoved).
+        String priced = red || unread != null || stampKey == null
                 ? tests
                 : pricedByCone(s, stamp, layout, compact, stampKey, bySource, tests);
         return new TaskForecast.Task(

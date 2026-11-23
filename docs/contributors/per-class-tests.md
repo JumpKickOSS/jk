@@ -237,7 +237,7 @@ result would differ, must run. Each known hole:
 | **Programs started** (a test that execs a built jar, `git`, a nested `jk`) | What a child process reads is not recorded. A class that started a program, or ran in a suite that started one outside every class's window, is unattributable and falls back to the module key, unless the command can read nothing its key does not hold (`git` in a repository the test made, a utility or a program the test wrote naming no file outside its temp roots, below). A checkout file a JumpKick test names through `RepoRoot.file`, a script it hands to `bash` say, is read once in the test JVM, so the suite's reads key it |
 | **Nested engines and worker jars** (jk-cli and jk-engine tests drive a real engine that loads plugin jars by path) | A worker jar keys a class that read it, as a code file, from then on in its JVM, so a class loader cached across classes keys every class after the first; a class in whose JVM a program was started (below); and a class keyed by its module. A class that did none of these never touched the jar's bytes ([below](#nested-engines-and-worker-jars)) |
 | **Line numbers and source file names** (a test asserting a stack trace) | Bytes are hashed whole, debug attributes included |
-| **The network** | A suite that reached past the host stores no marker, as today, and none of its classes replay |
+| **The network** | A suite that reached past the host stores no marker. A class that reached it never replays, and nor does any class of a suite whose pool reached it |
 | **A recording that did not finish** (a JVM killed, out of memory) | Every class of that JVM is unattributable for that run; no class record is stored for them |
 | **The clock, randomness, a value no input carries** | As today: a class whose result depends on no input is replayed with the result it had. Flakiness is reported (`test-passed-on-rerun`), not keyed |
 
@@ -255,7 +255,7 @@ full green run. In shadow mode the same comparison runs on every real run.
 - A run red beyond its classes (a worker that died mid-class, tests discovery announced and nobody
   reported): the class records of the launch are cleared, as the class ledger is today.
 - `-r`/`--redo`, `--coverage`, `--debug-jvm`, `--affected`, `[test] cache = "module"`.
-- A suite that reached the network.
+- A suite whose pool reached the network (outside every class's window).
 
 A red class runs again whatever its key (it has no green record), as under the class ledger today.
 A class that falls back to the module key runs whenever the suite stamp moves; that is per class,

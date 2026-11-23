@@ -1464,15 +1464,16 @@ uses the Gradle Tooling API or the Kotlin daemon from ever replaying. The same g
 suite reads and then replaces by renaming a temp file it wrote beside it, as the JDK refreshes its
 font cache under `~/.java/fonts` once the system's fonts change.
 
-**A suite that reaches the network is never replayed.** "Reaches the network" means a test JVM
+**A suite that reaches the network keeps no green result.** "Reaches the network" means a test JVM
 read from or wrote to a socket whose address is not this machine's: loopback (`localhost`,
 `127.0.0.1`, `::1`) and Unix-domain sockets do not count, and neither does a program the tests
 start (only the JVM's own sockets are recorded). Such a suite stores no green marker, so every build
 runs it, and every such run says why with the host it reached: `tests reached repo.example.com,
-so they rerun; [test] network = "allowed" caches them`. `jk explain` forecasts its run as `run
-tests · tests use the network`. Serve what the test needs from a stub on loopback, move the test to
-a suite such as `network` that the gate does not run, or set `[test] network = "allowed"` when its
-result depends on nothing the remote can change. A file under JumpKick's own state directory
+so they rerun; [test] network = "allowed" caches them`. Under `[test] cache = "cone"` the run
+replays the classes that did not reach it, and `jk explain` counts only the rest: `run tests ·
+tests use the network · ~2 tests · 40 classes replayed`. Serve what the test needs from a stub on
+loopback, move the test to a suite such as `network` that the gate does not run, or set `[test]
+network = "allowed"` when its result depends on nothing the remote can change. A file under JumpKick's own state directory
 (`~/.jk/state`: the engine's endpoint, pid and log files) is never keyed, since it changes with
 every engine restart; the build warns `tests read jk's own state, not keyed: <file>`, because a
 test that reads it is reaching past its sandbox.
