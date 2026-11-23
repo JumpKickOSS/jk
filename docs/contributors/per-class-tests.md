@@ -313,6 +313,11 @@ What the shadow showed on real runs of jk-engine (940 classes) and what closed e
 - The pool keeps up to `POOLED_READS_KEPT` (400) data files, not a class's 8: it is one list per
   suite, and past its bound every class was keyed on everything the suite read, which in jk-engine
   is every engine source, so any edit moved every key. jk-engine's pool is 180 template files.
+- A string constant spelling a workspace class is followed, so a name that is only data widens
+  every cone that reaches it. jk-client-io's `StoreCasGc` compared a jar's `Main-Class` with the
+  literal `cc.jumpkick.engine.EngineMain`, which put the whole engine in the cone of every class
+  reaching it: a body edit to one engine class reached 682 cones instead of 459. It now joins the
+  name at run time, so no constant spells it.
 
 - A class past its bound of 4 code files stands on the suite's code files (`SuiteCodeFiles`), not on
   its module. jk-engine's in-process compiles load 32 zinc and Scala jars from the local Maven

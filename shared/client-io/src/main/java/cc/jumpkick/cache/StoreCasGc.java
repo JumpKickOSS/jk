@@ -214,7 +214,10 @@ public final class StoreCasGc {
         return Kind.OTHER;
     }
 
-    private static final String ENGINE_MAIN = "cc.jumpkick.engine.EngineMain";
+    // Joined at run time, so no constant spells the class: a test's cone follows a string naming a
+    // workspace class, and this one is a manifest value, never loaded. As one literal it put the
+    // whole engine in the cone of every test that reaches this class.
+    private static final String ENGINE_MAIN = String.join(".", "cc.jumpkick.engine", "EngineMain");
     private static final String WORKER_MAIN = "cc.jumpkick.plugin.process.PluginMain";
 
     /** True when {@code blob} is a jar an install shelved: see {@link Kind#INSTALLED_JAR}. */
