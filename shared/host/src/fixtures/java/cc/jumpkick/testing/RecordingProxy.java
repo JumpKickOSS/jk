@@ -33,7 +33,8 @@ import org.junit.jupiter.api.extension.ExtensionContext;
  * mirror fails here by name instead of reaching the internet.
  *
  * <p>Register it with {@code @RegisterExtension} on an instance field; it binds before each test
- * and closes after it.
+ * and closes after it. A class that wants one proxy for all its methods holds it in a static field
+ * and calls {@link #start()} and {@link #close()} itself.
  */
 public final class RecordingProxy implements BeforeEachCallback, AfterEachCallback {
 
@@ -55,6 +56,16 @@ public final class RecordingProxy implements BeforeEachCallback, AfterEachCallba
 
     @Override
     public void beforeEach(ExtensionContext context) throws IOException {
+        start();
+    }
+
+    @Override
+    public void afterEach(ExtensionContext context) throws IOException {
+        close();
+    }
+
+    /** Bind {@code 127.0.0.1:0} and start refusing what it is handed. */
+    public void start() throws IOException {
         ServerSocket bound = new ServerSocket(0, 50, InetAddress.getLoopbackAddress());
         socket = bound;
         // A platform thread: it parks in accept() for the whole test.
@@ -63,8 +74,8 @@ public final class RecordingProxy implements BeforeEachCallback, AfterEachCallba
         accept.start();
     }
 
-    @Override
-    public void afterEach(ExtensionContext context) throws IOException {
+    /** Stop listening; the hosts written down so far stay readable. */
+    public void close() throws IOException {
         ServerSocket bound = socket;
         if (bound != null) bound.close();
         socket = null;

@@ -10,19 +10,23 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import org.jspecify.annotations.Nullable;
+import org.junit.jupiter.api.extension.AfterAllCallback;
 import org.junit.jupiter.api.extension.AfterEachCallback;
+import org.junit.jupiter.api.extension.BeforeAllCallback;
 import org.junit.jupiter.api.extension.BeforeEachCallback;
 import org.junit.jupiter.api.extension.ExtensionContext;
 
 /**
- * One per-method throwaway-root mechanism behind {@link IsolatedStore} and {@link IsolatedState},
- * on a class (every method) or on one method.
+ * One per-method throwaway-root mechanism behind {@link IsolatedStore}, {@link IsolatedState} and
+ * {@link IsolatedHome}, on a class (every method) or on one method; an {@link IsolatedHome#perClass}
+ * home is made once for the class instead.
  *
  * <p>Both annotations register this class, and JUnit registers a declaratively-requested extension
  * type once — so a class carrying both gets one instance that isolates both roots, in one temp-dir
  * lifecycle with one engine stop.
  */
-public final class IsolatedRootsExtension implements BeforeEachCallback, AfterEachCallback {
+public final class IsolatedRootsExtension
+        implements BeforeAllCallback, BeforeEachCallback, AfterEachCallback, AfterAllCallback {
 
     /** A jk layout root this extension can throw away: its marker annotation and its env name. */
     private record Root(Class<? extends Annotation> marker, String env, String tempPrefix) {
@@ -62,6 +66,26 @@ public final class IsolatedRootsExtension implements BeforeEachCallback, AfterEa
     private static final ExtensionContext.Namespace NS =
             ExtensionContext.Namespace.create(IsolatedRootsExtension.class);
 
+    /** Distinct keys: a method's store falls back to its class's, so one key would read the class's list. */
+    private static final String METHOD_REDIRECTS = "redirects";
+
+    private static final String CLASS_REDIRECTS = "class-redirects";
+
+    /** A {@link IsolatedHome#perClass} home, made before the class's first method. */
+    @Override
+    public void beforeAll(ExtensionContext ctx) throws Exception {
+        if (!homePerClass(ctx.getRequiredTestClass())) return;
+        Root home = ROOTS.stream()
+                .filter(r -> r.marker() == IsolatedHome.class)
+                .findFirst()
+                .orElseThrow();
+        PropertyRoots.Redirect redirect = PropertyRoots.redirect(home.property(), home.tempPrefix());
+        List<PropertyRoots.Redirect> redirects = new ArrayList<>();
+        redirects.add(redirect);
+        redirects.add(furnishHome(redirect.dir(), fromOrigin(ctx, ctx.getRequiredTestClass())));
+        ctx.getStore(NS).put(CLASS_REDIRECTS, redirects);
+    }
+
     @Override
     public void beforeEach(ExtensionContext ctx) throws Exception {
         Class<?> testClass = ctx.getRequiredTestClass();
@@ -71,13 +95,19 @@ public final class IsolatedRootsExtension implements BeforeEachCallback, AfterEa
                     .map(m -> m.isAnnotationPresent(root.marker()))
                     .orElse(false);
             if (!onMethod && !testClass.isAnnotationPresent(root.marker())) continue;
+            if (!onMethod && root.marker() == IsolatedHome.class && homePerClass(testClass)) continue;
             PropertyRoots.Redirect redirect = PropertyRoots.redirect(root.property(), root.tempPrefix());
             redirects.add(redirect);
             if (root.marker() == IsolatedHome.class) {
                 redirects.add(furnishHome(redirect.dir(), fromOrigin(ctx, testClass)));
             }
         }
-        ctx.getStore(NS).put("redirects", redirects);
+        ctx.getStore(NS).put(METHOD_REDIRECTS, redirects);
+    }
+
+    private static boolean homePerClass(Class<?> testClass) {
+        IsolatedHome home = testClass.getAnnotation(IsolatedHome.class);
+        return home != null && home.perClass();
     }
 
     /** The method's {@link IsolatedHome#officialCatalogFromOrigin}, else the class's. */
@@ -106,14 +136,23 @@ public final class IsolatedRootsExtension implements BeforeEachCallback, AfterEa
 
     @Override
     public void afterEach(ExtensionContext ctx) {
+        tearDown(ctx, METHOD_REDIRECTS);
+    }
+
+    @Override
+    public void afterAll(ExtensionContext ctx) {
+        tearDown(ctx, CLASS_REDIRECTS);
+    }
+
+    private static void tearDown(ExtensionContext ctx, String key) {
         @SuppressWarnings("unchecked")
         List<PropertyRoots.Redirect> redirects =
-                (List<PropertyRoots.Redirect>) ctx.getStore(NS).get("redirects");
+                (List<PropertyRoots.Redirect>) ctx.getStore(NS).get(key);
         if (redirects == null || redirects.isEmpty()) return;
         try {
             // While the overlays are still set, EnginePaths.current() resolves to the isolated
             // engine key — the ServiceLoader hook (EngineStopHook) stops exactly that engine so
-            // per-method daemons never accumulate.
+            // per-method (or per-class) daemons never accumulate.
             PropertyRoots.runTeardownHooks();
         } finally {
             for (PropertyRoots.Redirect r : redirects) {

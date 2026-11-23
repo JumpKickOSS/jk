@@ -29,7 +29,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
  * about the real catalog's origin says so with {@link #officialCatalogFromOrigin}.
  *
  * <p>Mechanics: sets the {@code jk.env.JK_HOME} and {@code jk.env.JK_M2_SETTINGS} overlays to the
- * per-method directory, materializes the engine assembly under it, and stops that home's engine
+ * per-method (or, with {@link #perClass}, per-class) directory, materializes the engine assembly under it, and stops that home's engine
  * after the method before the overlays are cleared and the directory deleted.
  */
 @Target({ElementType.TYPE, ElementType.METHOD})
@@ -42,4 +42,12 @@ public @interface IsolatedHome {
      * from its origin on github.com. On a method, wins over the class's annotation.
      */
     boolean officialCatalogFromOrigin() default false;
+
+    /**
+     * On a class: one home for all its methods, made before the first and thrown away after the
+     * last, so the class starts one engine rather than one per method. For a class whose methods
+     * write the home's {@code config.toml} once, in a {@code @BeforeAll}, and each build in a
+     * directory of its own. A method that carries the annotation itself still gets a home of its own.
+     */
+    boolean perClass() default false;
 }

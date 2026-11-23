@@ -14,11 +14,11 @@ import cc.jumpkick.testing.RecordingProxy;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -43,24 +43,24 @@ import org.junit.jupiter.params.provider.ValueSource;
  * <p>Hermetic: the fixture declares no dependencies, but every project's test scope still locks the
  * JUnit defaults jk injects, and on the tier's home that lock reads Central through the store every
  * sandbox on the host shares, so a failed fetch there would fail a success case with {@code
- * Exit.RESOLVE}. Each method gets an {@link IsolatedHome} whose {@code config.toml} mirrors every
- * repository and every feed to a loopback stub publishing those defaults, and whose {@code [network]
- * proxy} is a {@link RecordingProxy} that refuses everything; after each method the proxy must have
- * seen nothing.
+ * Exit.RESOLVE}. The class shares one {@link IsolatedHome}, and so one engine, whose {@code
+ * config.toml} mirrors every repository and every feed to a loopback stub publishing those defaults,
+ * and whose {@code [network] proxy} is a {@link RecordingProxy} that refuses everything; after each
+ * method the proxy must have seen nothing. Each method builds a workspace and a cache of its own.
  */
 @Tag("integration")
-@IsolatedHome
+@IsolatedHome(perClass = true)
 class WorkspaceStreamParityTest {
 
     /** Every repository and feed this class's builds read: the injected JUnit defaults and nothing else. */
-    @RegisterExtension
-    final LoopbackHttp mirror = new LoopbackHttp();
+    static final LoopbackHttp mirror = new LoopbackHttp();
 
-    @RegisterExtension
-    final RecordingProxy proxy = new RecordingProxy();
+    static final RecordingProxy proxy = new RecordingProxy();
 
-    @BeforeEach
-    void mirrorEverythingToTheStub() throws IOException {
+    @BeforeAll
+    static void mirrorEverythingToTheStub() throws IOException {
+        mirror.start();
+        proxy.start();
         new MavenStub(mirror)
                 .leaf("org.junit.jupiter", "junit-jupiter", DefaultTestDepsFixture.JUNIT_VERSION)
                 .leaf("org.junit.platform", "junit-platform-launcher", DefaultTestDepsFixture.JUNIT_VERSION);
@@ -83,6 +83,12 @@ class WorkspaceStreamParityTest {
                         + FreshEngineHostsTest.feedMirrors(mirror));
     }
 
+    @AfterAll
+    static void stopTheStub() throws IOException {
+        mirror.stop();
+        proxy.close();
+    }
+
     @AfterEach
     void nothingWasDialedPastTheStub() {
         assertThat(proxy.hosts()).as("hosts dialed past the loopback stub").isEmpty();
@@ -102,7 +108,7 @@ class WorkspaceStreamParityTest {
                 .as("%s on a workspace that compiles and has no suite\n%s", verb, console(streams))
                 .isEqualTo(Exit.SUCCESS);
         assertThat(mirror.requested())
-                .as("the injected JUnit defaults came from the stub")
+                .as("the injected JUnit defaults came from the stub, in this method or an earlier one")
                 .contains(MavenStub.path(
                         "org.junit.jupiter", "junit-jupiter", DefaultTestDepsFixture.JUNIT_VERSION, ".jar"));
 
