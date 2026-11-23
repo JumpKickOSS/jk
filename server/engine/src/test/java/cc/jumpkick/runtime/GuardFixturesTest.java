@@ -201,16 +201,16 @@ class GuardFixturesTest {
     }
 
     /**
-     * The compile key names classpath entries by content. The owning module's classes dir keeps
-     * its path across builds, so a path-keyed entry would reuse fixtures compiled against the
-     * previous build's bytecode after the module changed under them.
+     * The compile key names classpath entries by ABI. The owning module's classes dir keeps its
+     * path across builds, so a path-keyed entry would reuse fixtures compiled against a signature
+     * that is gone; a bytes-keyed one would recompile them on every method body edited in it.
      */
     @Test
-    void a_changed_classpath_entry_recompiles_the_fixtures(@TempDir Path root) throws Exception {
+    void the_fixtures_recompile_on_a_classpath_signature_change_alone(@TempDir Path root) throws Exception {
         Path src = Files.createDirectories(root.resolve("fx"));
         Path ok = Files.writeString(src.resolve("Ok.java"), "class Ok {}\n");
         Path moduleClasses = Files.createDirectories(root.resolve("target/classes/main"));
-        Files.writeString(moduleClasses.resolve("Dep.class"), "bytes-v1");
+        compileInto(root, moduleClasses, "public class Dep { public int f() { return 1; } }");
         Path out = root.resolve("target/jk-guards/fixtures/classes");
         int before = GuardFixtures.COMPILES.get();
 
@@ -219,15 +219,31 @@ class GuardFixturesTest {
         assertThat(GuardFixtures.compile(List.of(ok), List.of(moduleClasses), out))
                 .isNull();
         assertThat(GuardFixtures.COMPILES.get() - before)
-                .as("same sources, same classpath bytes: one javac")
+                .as("same sources, same classpath: one javac")
                 .isEqualTo(1);
 
-        Files.writeString(moduleClasses.resolve("Dep.class"), "bytes-v2-longer");
+        compileInto(root, moduleClasses, "public class Dep { public int f() { return 2 + Integer.parseInt(\"3\"); } }");
         assertThat(GuardFixtures.compile(List.of(ok), List.of(moduleClasses), out))
                 .isNull();
         assertThat(GuardFixtures.COMPILES.get() - before)
-                .as("the same path holding different bytes is a different classpath")
+                .as("a body edit on the classpath leaves the compiled fixtures")
+                .isEqualTo(1);
+
+        compileInto(
+                root, moduleClasses, "public class Dep { public int f() { return 1; } public int g() { return 0; } }");
+        assertThat(GuardFixtures.compile(List.of(ok), List.of(moduleClasses), out))
+                .isNull();
+        assertThat(GuardFixtures.COMPILES.get() - before)
+                .as("the same path holding a new signature is a different classpath")
                 .isEqualTo(2);
+    }
+
+    private static void compileInto(Path root, Path classes, String source) throws IOException {
+        Path src = Files.createDirectories(root.resolve("dep-src"));
+        Path file = Files.writeString(src.resolve("Dep.java"), source);
+        int exit = Objects.requireNonNull(ToolProvider.getSystemJavaCompiler())
+                .run(null, null, null, "-d", classes.toString(), file.toString());
+        assertThat(exit).isZero();
     }
 
     /** Break a fixture, then revert it: the reverted sources compile again rather than trust the emptied dir. */

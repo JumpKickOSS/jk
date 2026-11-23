@@ -31,7 +31,6 @@ import cc.jumpkick.model.GuardsConfig;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.runtime.base.GuardSuiteLibrary;
 import cc.jumpkick.task.ClasspathAbi;
-import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.task.FileHashMemo;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -604,16 +603,16 @@ public final class GuardFixtures {
         return cp;
     }
 
-    /** One javac for the files, skipped when the key file says these exact sources and classpath were compiled before. */
+    /** One javac for the files, skipped when the key file says these exact sources were compiled before against the same classpath ABI. */
     static @Nullable String compile(List<Path> files, List<Path> classpath, Path outDir) throws IOException {
         StringBuilder key = new StringBuilder();
         for (Path f : files)
             key.append(f).append('=').append(Hashing.sha256Hex(f)).append('\n');
-        // Classpath entries key by content, not by path: the module's own classes dir keeps its
-        // path across every build, and fixtures compiled against last build's bytecode would
-        // otherwise be reused after the module changed under them.
-        for (Path p : classpath)
-            key.append("cp:").append(ClasspathFingerprint.entry(p)).append('\n');
+        // Classpath entries key by ABI, not by path or bytes: the module's own classes dir keeps
+        // its path across every build, so a path key would reuse fixtures compiled against a
+        // signature that is gone; and javac reads only signatures and constants, so a bytes key
+        // recompiled every fixture on each method body edited in the owning module.
+        for (Path p : classpath) key.append("cp:").append(ClasspathAbi.token(p)).append('\n');
         String digest = Hashing.sha256Hex(key.toString().getBytes(StandardCharsets.UTF_8));
         Path keyFile = outDir.resolveSibling("fixtures.key");
         if (Files.isRegularFile(keyFile)
