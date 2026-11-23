@@ -619,7 +619,13 @@ and exclusions stay GA-scoped.
    with the fast tier's walls, but no heap, temp directory, port, worker count or jar path.
    `TestLaunch.forkSpec` derives it once per launch; the stamp keys each launch's spec as a
    `fork:` token and the launch runs from the same value, so a change to what it spells moves the
-   key of exactly the suites it spells it for, and a change to the plumbing around it moves none; `ARTIFACT` (the packagers and the zip they write through, the war, jlink, lib-dir and
+   key of exactly the suites it spells it for, and a change to the plumbing around it moves none.
+   What every suite JVM gets from JumpKick in its environment on every host is keyed by value as
+   well, as a `suite-env:` token (`SuiteEnvKeys.environment`): the names and constant values of
+   the sandbox (`TestEnv.constants`, the function the launch builds it with), the nested-engine
+   isolation, what a pooled worker's environment changes (`TestWorkerEnv.overrides`) and which
+   trees warm the sandbox store (`TestEnv.seeds`), with each host's directories spelled as
+   stand-ins (`@home`, `@tmp`), so the token holds no path; `ARTIFACT` (the packagers and the zip they write through, the war, jlink, lib-dir and
    image steps, plugin staging, build-logic, Node.js steps and the guard runtime) into every
    `ActionKey.forArtifact` key; `NATIVE` (`NativeImageDriver`, which spells native-image's command
    line) into a native image's. The digest reads the contract's sources with comments and

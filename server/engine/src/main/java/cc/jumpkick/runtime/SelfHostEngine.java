@@ -208,10 +208,19 @@ public final class SelfHostEngine {
         // (JK_ENGINE_TRANSPORT=tcp), so UDS path length does not constrain depth.
         Path stateDir = jkHome.resolve("engine-state").resolve(runId);
         Files.createDirectories(stateDir);
+        return nestedEngineTestEnv(jkHome.toAbsolutePath(), stateDir.toAbsolutePath());
+    }
+
+    /**
+     * The variables of a nested-engine suite whose sandbox home is {@code jkHome} and whose run's
+     * engine state is {@code stateDir}. Pure, so the stamp keys what a launch sets with stand-ins
+     * for the two directories ({@link SuiteEnvKeys#environment}).
+     */
+    static Map<String, String> nestedEngineTestEnv(Path jkHome, Path stateDir) {
         Map<String, String> env = new LinkedHashMap<>();
-        env.put("JK_HOME", jkHome.toAbsolutePath().toString());
-        env.put("JK_JDKS_DIR", jkHome.resolve("jdks").toAbsolutePath().toString());
-        env.put("JK_STATE_DIR", stateDir.toAbsolutePath().toString());
+        env.put("JK_HOME", jkHome.toString());
+        env.put("JK_JDKS_DIR", jkHome.resolve("jdks").toString());
+        env.put("JK_STATE_DIR", stateDir.toString());
         env.put("JK_HTTP_ENABLED", "false");
         env.put("JK_HTTP_PORT", "0");
         env.put("JK_STREAM_IDLE_MS", "45000");

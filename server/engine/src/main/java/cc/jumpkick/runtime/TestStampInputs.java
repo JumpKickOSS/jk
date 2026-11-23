@@ -265,7 +265,8 @@ public record TestStampInputs(
 
     /**
      * The stamp's identity tokens: environment values, tool identities, the JVM flags, what each
-     * launch starts its JVMs with, worker jars and test compiles. Read again on every call, as a
+     * launch starts its JVMs with, what every suite JVM gets from jk on any host, worker jars and
+     * test compiles. Read again on every call, as a
      * suite that recorded what it reads keys those reads on its next stamp.
      */
     List<String> extras() throws IOException {
@@ -273,6 +274,7 @@ public record TestStampInputs(
                 testStampExtras(facts.workerJars(), selection, facts.project(), jvmArgs, facts.dir(), identity));
         extras.add(suitesToken(suites));
         extras.addAll(forkTokens(facts.project(), selection, suites));
+        extras.add(SuiteEnvKeys.environment(facts.project()));
         String node = NodeTestStamp.nodeTestToken(facts.project(), facts.dir());
         if (node != null) extras.add(node);
         extras.addAll(SuiteEnvKeys.profileEnv(facts.project(), facts.profileName()));

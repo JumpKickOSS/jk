@@ -26,7 +26,8 @@ import org.jspecify.annotations.Nullable;
 /**
  * The environment a module's suite JVMs run in: the sandbox and the module's declared variables,
  * the nested-engine isolation, the locked Node.js and the active profile's {@code env}. A run-tests
- * stamp keys this class with the suite code ({@link cc.jumpkick.task.KeyContract#SUITE}).
+ * stamp keys this class with the suite code ({@link cc.jumpkick.task.KeyContract#SUITE}), and what
+ * it sets on every host by value ({@link SuiteEnvKeys#environment}).
  */
 final class SuiteEnvironment {
 

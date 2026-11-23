@@ -200,18 +200,41 @@ public final class TestEnv {
         Path sandboxHome = TestHomes.prepare(moduleDir);
         Path m2 = sandboxM2(sandboxHome);
         if (seed) warmStore(sandboxHome, m2);
-        out.put(JK_HOME, sandboxHome.toString());
-        out.put(JK_STATE_DIR, sandboxHome.resolve("state").toString());
-        out.put(JK_STORE_DIR, sandboxHome.resolve("store").toString());
-        out.put(JK_CACHE_DIR, sandboxHome.resolve("cache").toString());
-        out.put(JK_JDKS_DIR, sandboxHome.resolve("jdks").toString());
-        out.put(JK_M2_LOCAL, m2.toString());
         // Created and emptied at launch, not here: JUnitLauncher makes it. The slot already exists,
         // so its real spelling can be had now.
-        String testTmp = TestHomes.tmpFor(moduleDir).toString();
-        out.put(TMPDIR, testTmp);
-        out.put(TMP, testTmp);
-        out.put(TEMP, testTmp);
+        out.putAll(sandbox(sandboxHome, m2, TestHomes.tmpFor(moduleDir).toString()));
+        EnvConfig policy = project.build().env();
+        out.putAll(WorkerEnv.declared(policy, moduleDir, target));
+        Function<String, @Nullable String> buildEnv = BuildEnv.forModule(moduleDir);
+        Map<String, String> testEnv = TestEnvValues.resolve(
+                "[test].env",
+                project.build().testEnv(),
+                moduleDir,
+                target,
+                new TestEnvValues.Mode.Launch(buildEnv::apply));
+        WorkerEnv.fileSecrets(moduleDir, project.build().testEnv(), testEnv);
+        out.putAll(testEnv);
+        out.putIfAbsent(SearchCeiling.ENV, ceilings(out.get(TMPDIR), shortTempRoot()));
+        return WorkerEnv.policy(policy).with(out);
+    }
+
+    /**
+     * The variables of the sandbox under {@code home}, whose local repository is {@code m2} and whose
+     * temp root is {@code tmp}: the product layout, the temp root, the nested engine's listeners, the
+     * update policy, git's configuration and the keychain. Pure: {@link #forModule} hands it the
+     * prepared sandbox, {@link #constants} stand-ins, so the stamp keys exactly what a launch sets.
+     */
+    static Map<String, String> sandbox(Path home, Path m2, String tmp) {
+        Map<String, String> out = new LinkedHashMap<>();
+        out.put(JK_HOME, home.toString());
+        out.put(JK_STATE_DIR, home.resolve("state").toString());
+        out.put(JK_STORE_DIR, home.resolve("store").toString());
+        out.put(JK_CACHE_DIR, home.resolve("cache").toString());
+        out.put(JK_JDKS_DIR, home.resolve("jdks").toString());
+        out.put(JK_M2_LOCAL, m2.toString());
+        out.put(TMPDIR, tmp);
+        out.put(TMP, tmp);
+        out.put(TEMP, tmp);
         // Unique listeners: a nested engine must not steal the host's HTTP port or share its
         // UDS (UDS follows JK_HOME/state). Port 0 is OS-assigned; disable HTTP unless a test
         // opts in.
@@ -224,24 +247,40 @@ public final class TestEnv {
         // then depends on the suite, not on whoever runs it, and a `git config --global` a test
         // makes lands in the sandbox. JGit reads the same two variables (JGitEnvironment).
         out.put(GIT_CONFIG_NOSYSTEM, "1");
-        out.put(GIT_CONFIG_GLOBAL, sandboxHome.resolve(GIT_CONFIG_FILE).toString());
+        out.put(GIT_CONFIG_GLOBAL, home.resolve(GIT_CONFIG_FILE).toString());
         // The OS keychain is the sandbox's: a login's secret goes to a file under the sandbox home,
         // and a backend over the real Secret Service, macOS Keychain or Windows Credential Manager
         // refuses, so no test reads, writes or deletes the credentials of whoever runs it.
-        out.put(KeychainSandbox.ENV, sandboxHome.resolve(KeychainSandbox.DIR).toString());
-        EnvConfig policy = project.build().env();
-        out.putAll(WorkerEnv.declared(policy, moduleDir, target));
-        Function<String, @Nullable String> buildEnv = BuildEnv.forModule(moduleDir);
-        Map<String, String> testEnv = TestEnvValues.resolve(
-                "[test].env",
-                project.build().testEnv(),
-                moduleDir,
-                target,
-                new TestEnvValues.Mode.Launch(buildEnv::apply));
-        WorkerEnv.fileSecrets(moduleDir, project.build().testEnv(), testEnv);
-        out.putAll(testEnv);
-        out.putIfAbsent(SearchCeiling.ENV, ceilings(out.get(TMPDIR)));
-        return WorkerEnv.policy(policy).with(out);
+        out.put(KeychainSandbox.ENV, home.resolve(KeychainSandbox.DIR).toString());
+        return out;
+    }
+
+    /**
+     * What every test JVM of a module whose test settings are {@code jvm} gets from jk on any host,
+     * with each host's directories spelled under the stand-in roots {@code home} (the sandbox
+     * home), {@code tmp} (its temp root) and {@code userHome}: the fixed terminal, the locale and
+     * zone unless the module inherits the caller's, the sandbox ({@link #sandbox}) and the default
+     * search ceilings. The caller's variables and the module's declared ones are keyed apart.
+     */
+    public static Map<String, String> constants(TestJvm jvm, Path home, Path tmp, Path userHome) {
+        Map<String, String> out = new LinkedHashMap<>();
+        if (!jvm.inheritsLocale()) out.putAll(localeEnv(jvm, Os.isWindows(), Os.isDarwin()));
+        if (!jvm.inheritsTimezone()) out.put("TZ", jvm.timezone());
+        out.put("TERM", TERM);
+        out.putAll(sandbox(home, sandboxM2(home), tmp.toString()));
+        out.put(SearchCeiling.ENV, ceilings(tmp.toString(), userHome.resolve(SHORT_TEMP_DIR)));
+        return out;
+    }
+
+    /**
+     * Which trees warm a sandbox store before its suite runs: the store-relative trees linked into
+     * the host's pool ({@link TestStorePool}), and the JUnit Platform trees and injected test roots
+     * the seed copies and lists ({@link TestStoreSeed}).
+     */
+    public static String seeds() {
+        return "pool=" + String.join(",", TestStorePool.SHARED)
+                + ";trees=" + String.join(",", TestStoreSeed.TREES)
+                + ";roots=" + String.join(",", TestStoreSeed.TEST_ROOTS);
     }
 
     /**
@@ -297,7 +336,11 @@ public final class TestEnv {
      * ({@code ~/.jk-test-tmp}). What lies there a test made.
      */
     public static List<Path> tempRoots(Path moduleDir) {
-        return List.of(TestHomes.tmpFor(moduleDir), Path.of(System.getProperty("user.home"), SHORT_TEMP_DIR));
+        return List.of(TestHomes.tmpFor(moduleDir), shortTempRoot());
+    }
+
+    private static Path shortTempRoot() {
+        return Path.of(System.getProperty("user.home"), SHORT_TEMP_DIR);
     }
 
     /**
@@ -307,8 +350,7 @@ public final class TestEnv {
      * then never joins whatever project lies above that directory — the project under test, when a
      * module points its temp root into its own tree, or a workspace in the developer's home.
      */
-    static String ceilings(@Nullable String tmp) {
-        Path shortTmp = Path.of(System.getProperty("user.home"), SHORT_TEMP_DIR);
+    static String ceilings(@Nullable String tmp, Path shortTmp) {
         return tmp == null || tmp.isBlank() ? shortTmp.toString() : SearchPath.prepend(tmp, shortTmp.toString());
     }
 }
