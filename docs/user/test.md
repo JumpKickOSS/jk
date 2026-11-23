@@ -478,10 +478,11 @@ A module whose tests the filter drops reports `0 tests (all excluded by --exclud
 plain results line, and `-I` and `-E` naming the same tag selects nothing and says so. A `--class`
 that names a class the filter drops fails the run with the class, its tags and the flag to drop.
 
-**The default tier cannot reach the network.** A run of the default suite alone with no `-I` — the
-bare `jk test`, and the test step of `jk build` — in a module that routes tiers (a
-`[test.suites.<name>]` table of its own or its workspace root's claims a tag) hands every test JVM
-`JK_HTTP_DENY_HOSTS=*`, so a unit test that reaches a remote host (directly, or through an engine it
+**The default tier cannot reach the network.** In a module that routes tiers (a
+`[test.suites.<name>]` table of its own or its workspace root's claims a tag), a run with no `-I`
+hands every test JVM that runs the default suite `JK_HTTP_DENY_HOSTS=*`: the bare `jk test`, the test
+step of `jk build`, and the default suite's JVMs under `-s`, `-g` and `--all`, which never share their
+JVMs with a suite that claims a tag. So a unit test that reaches a remote host (directly, or through an engine it
 starts) fails at once with the host named. Any other suite may fetch; put such a test there. A
 module that sets `JK_HTTP_DENY_HOSTS` in `[test] env` keeps its own value (`""` lifts the wall), and
 any process honours the variable as a comma-separated host list.

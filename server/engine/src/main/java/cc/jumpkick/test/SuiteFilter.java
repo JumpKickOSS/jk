@@ -144,9 +144,12 @@ public final class SuiteFilter {
     public record Launch(Set<String> suites, SuiteSettings settings) {}
 
     /**
-     * How the selection's suites share test JVMs: the suites without settings of their own in one
-     * launch, then each suite with settings alone, since its env and flags are its JVMs' only. A
-     * test two launches' suites claim runs in each.
+     * How the selection's suites share test JVMs: the suites that claim no tag and carry no settings
+     * in one launch, the default suite's, walled like the fast tier whichever command runs it; the
+     * tag suites without settings in a second; then each suite with settings alone, since its env
+     * and flags are its JVMs' only. A tag suite beside the default suite would take its wall away, and
+     * an engine a tag suite's class starts would key every class after it in that JVM. A test two
+     * launches' suites claim runs in each.
      */
     public List<Launch> launches() {
         return launches(selected, declared);
@@ -158,15 +161,18 @@ public final class SuiteFilter {
      * class is compiled.
      */
     public static List<Launch> launches(List<String> selected, Map<String, DeclaredSuite> declared) {
-        Set<String> shared = new LinkedHashSet<>();
+        Set<String> untagged = new LinkedHashSet<>();
+        Set<String> tagged = new LinkedHashSet<>();
         List<Launch> own = new ArrayList<>();
         for (String suite : selected) {
             DeclaredSuite spec = declared.get(suite);
-            if (spec == null || spec.settings().isEmpty()) shared.add(suite);
-            else own.add(new Launch(Set.of(suite), spec.settings()));
+            if (spec != null && !spec.settings().isEmpty()) own.add(new Launch(Set.of(suite), spec.settings()));
+            else if (spec != null && !spec.tags().isEmpty()) tagged.add(suite);
+            else untagged.add(suite);
         }
         List<Launch> out = new ArrayList<>();
-        if (!shared.isEmpty()) out.add(new Launch(Collections.unmodifiableSet(shared), SuiteSettings.NONE));
+        if (!untagged.isEmpty()) out.add(new Launch(Collections.unmodifiableSet(untagged), SuiteSettings.NONE));
+        if (!tagged.isEmpty()) out.add(new Launch(Collections.unmodifiableSet(tagged), SuiteSettings.NONE));
         out.addAll(own);
         return out;
     }
@@ -361,6 +367,16 @@ public final class SuiteFilter {
         Predicate<String> runnable =
                 (readsTags() ? withTags(classTagsIn(testClasses, classpath)) : this).runnable(excludeClasses);
         return compiledClasses(testClasses, true).stream().anyMatch(runnable);
+    }
+
+    /**
+     * True when a class compiled under {@code testClasses} may hold a test this filter runs, by the
+     * tags it already reads ({@link #withTags}), an unread tag counting as present: false lets a
+     * launch of a tag suite that claims nothing in the module go unstarted.
+     */
+    public boolean runsCompiledClass(Path testClasses, List<String> excludeClasses) {
+        if (!Files.isDirectory(testClasses)) return true;
+        return compiledClasses(testClasses, true).stream().anyMatch(runnable(excludeClasses));
     }
 
     /**

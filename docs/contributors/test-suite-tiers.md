@@ -125,8 +125,11 @@ checksum) is a `network` test. Maven Central stays reachable for now: `jk new` l
 newest stable version of what it scaffolds there, and about twenty integration tests start with
 `jk new`.
 
-**The fast tier is walled off from the network.** The launcher hands every JVM of a run of the
-default suite alone (no `-s`, `-g`, `--all` or `-I`) in a module that routes tiers `JK_HTTP_DENY_HOSTS=*`: `Http` refuses a request to any
+**The fast tier is walled off from the network.** The launcher hands every JVM that runs the
+default suite in a module that routes tiers, in a run with no `-I`, `JK_HTTP_DENY_HOSTS=*`. The
+default suite and the suites that claim no tag share JVMs apart from every tag suite
+(`SuiteFilter.launches`), so under `-g` or `--all` they keep the wall, and an engine a `tree` or
+`slow` class starts cannot key the default suite's classes by the engine's bytes: `Http` refuses a request to any
 host but this one (loopback names and addresses) before it leaves the process, redirects and the
 Central failover included, with a `DeniedHostException` that names the host. Loopback stubs
 (`LoopbackHttp`, `MockMavenServer`) still answer. A unit test that needs a real repository or

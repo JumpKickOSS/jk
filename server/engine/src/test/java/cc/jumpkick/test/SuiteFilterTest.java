@@ -417,17 +417,51 @@ class SuiteFilterTest {
 
         assertThat(all.launches())
                 .extracting(SuiteFilter.Launch::suites, SuiteFilter.Launch::settings)
-                .containsExactly(tuple(Set.of("test", "slow"), SuiteSettings.NONE), tuple(Set.of("integration"), env));
+                .containsExactly(
+                        tuple(Set.of("test"), SuiteSettings.NONE),
+                        tuple(Set.of("slow"), SuiteSettings.NONE),
+                        tuple(Set.of("integration"), env));
         assertThat(Objects.requireNonNull(all.only(Set.of("integration"))).members())
                 .containsExactly("integration||.*");
-        assertThat(Objects.requireNonNull(all.only(Set.of("test", "slow"))).members())
-                .containsExactly("|integration,slow|.*", "slow||.*");
-        assertThat(SuiteFilter.of(module, false, List.of("test", "slow"), suites)
-                        .launches())
-                .as("integration not selected: one launch, as before")
-                .singleElement()
-                .extracting(SuiteFilter.Launch::settings)
-                .isEqualTo(SuiteSettings.NONE);
+        assertThat(Objects.requireNonNull(all.only(Set.of("test"))).members()).containsExactly("|integration,slow|.*");
+        assertThat(Objects.requireNonNull(all.only(Set.of("slow"))).members()).containsExactly("slow||.*");
+    }
+
+    /**
+     * The guard's selection runs the default suite and the untagged directory suites in JVMs of
+     * their own: a tag suite beside them would take the fast tier's wall off their JVMs.
+     */
+    @Test
+    void a_tag_suite_never_shares_the_default_suites_jvms(@TempDir Path module) {
+        Map<String, DeclaredSuite> suites = new LinkedHashMap<>();
+        SuiteSettings env = new SuiteSettings(Map.of("DENY", "remote"), List.of(), Map.of(), null);
+        suites.put(
+                "integration", new DeclaredSuite(List.of(), List.of("integration"), List.of(), List.of(), env, false));
+        suites.put("tree", DeclaredSuite.ofTags(List.of("tree")));
+
+        assertThat(SuiteFilter.launches(List.of("test", "integration", "e2e", "tree"), suites))
+                .extracting(SuiteFilter.Launch::suites)
+                .containsExactly(Set.of("test", "e2e"), Set.of("tree"), Set.of("integration"));
+        assertThat(SuiteFilter.launches(List.of("test", "e2e"), suites))
+                .as("no tag suite selected: one launch")
+                .extracting(SuiteFilter.Launch::suites)
+                .containsExactly(Set.of("test", "e2e"));
+    }
+
+    @Test
+    void a_launch_runs_a_compiled_class_only_when_its_suites_claim_one(@TempDir Path module) throws Exception {
+        Path classes = Files.createDirectories(module.resolve("target/test-classes/com/acme"));
+        Files.write(classes.resolve("FooTest.class"), new byte[0]);
+        Map<String, DeclaredSuite> suites = Map.of("tree", DeclaredSuite.ofTags(List.of("tree")));
+        SuiteFilter both = SuiteFilter.of(module, false, List.of("test", "tree"), suites)
+                .withTags(name -> new ClassTags(Set.of(), Set.of()));
+        Path testClasses = module.resolve("target/test-classes");
+
+        assertThat(Objects.requireNonNull(both.only(Set.of("test"))).runsCompiledClass(testClasses, List.of()))
+                .isTrue();
+        assertThat(Objects.requireNonNull(both.only(Set.of("tree"))).runsCompiledClass(testClasses, List.of()))
+                .as("no class carries the tree tag")
+                .isFalse();
     }
 
     @Test

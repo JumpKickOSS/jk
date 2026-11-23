@@ -44,7 +44,7 @@ class SuiteLaunchNamesTest {
 
         assertThat(namesAgree(m, List.of(TestSuites.DEFAULT), declared)).containsExactly("");
         assertThat(namesAgree(m, List.of(TestSuites.DEFAULT, "tree", "integration"), declared))
-                .containsExactly("test:integration", "test:test,tree");
+                .containsExactly("test:integration", "test:test", "test:tree");
         assertThat(SuiteResources.launchNames(
                         m,
                         false,
@@ -52,7 +52,7 @@ class SuiteLaunchNamesTest {
                                 List.of(TestSuites.DEFAULT, "tree", "integration"), false, List.of(), List.of()),
                         declared))
                 .as("as the forecast resolves the selection")
-                .containsExactly("test:integration", "test:test,tree");
+                .containsExactly("test:integration", "test:test", "test:tree");
     }
 
     @Test

@@ -37,7 +37,7 @@ class ConeForecastTest {
     private static final ClassDesc DEP = ClassDesc.of("demo.Dep");
 
     /** The launches the records of these tests stand for: the default suite's and a gate's. */
-    private static final List<String> LAUNCHES = List.of("", "test:test,tree");
+    private static final List<String> LAUNCHES = List.of("", "test:test");
 
     @Test
     void a_body_only_edit_replays_the_classes_that_never_ran_the_edited_class(@TempDir Path ws) throws Exception {
@@ -188,7 +188,7 @@ class ConeForecastTest {
         write(layout.classesDir(), "demo/Dep", dep());
         write(layout.testClassesDir(), "demo/T", caller("demo.T"));
         write(layout.testClassesDir(), "demo/U", plain("demo.U"));
-        String gate = "test:test,tree";
+        String gate = "test:test";
         writeRows(
                 layout.moduleRoot(),
                 null,

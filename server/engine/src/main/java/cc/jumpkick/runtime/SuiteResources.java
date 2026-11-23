@@ -173,7 +173,7 @@ record SuiteResources(Map<String, List<Path>> bySuite) {
      * no selected suite has settings of its own, else one launch per directory suite, its roots
      * first, its classes alone, and within it one per {@link SuiteFilter#launches} set of suites,
      * the results as one summary. A launch the {@code --class} patterns or the affected classes
-     * name nothing in is not started.
+     * name nothing in is not started, nor one whose suites claim no compiled class.
      */
     TestSummary launch(
             Path testClasses,
@@ -205,6 +205,8 @@ record SuiteResources(Map<String, List<Path>> bySuite) {
                     if (names.isEmpty()) continue;
                 } else if (!classPatterns.isEmpty()
                         && !unit.namesCompiledClass(testClasses, classPatterns, excludeClasses)) {
+                    continue;
+                } else if (!unit.runsCompiledClass(testClasses, excludeClasses)) {
                     continue;
                 }
                 String name = launchName(group.getKey(), shared);

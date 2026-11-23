@@ -8,6 +8,7 @@ import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.test.SuiteFilter;
 import cc.jumpkick.wire.EnginePaths;
 import java.util.List;
 import java.util.Map;
@@ -56,13 +57,47 @@ class TestLaunchFastTierWallsTest {
         assertThat(env.extras()).containsEntry(Http.DENY_HOSTS_ENV, Http.ANY_REMOTE_HOST);
     }
 
+    /**
+     * The guard's selection (test, integration, e2e, tree) walls the launch that runs the default
+     * suite, as a plain run does: an engine a class there started would key every class after it in
+     * that JVM by the engine's bytes.
+     */
+    @Test
+    void the_guards_launch_of_the_default_suite_is_walled() {
+        JkBuild guarded = JkBuildParser.parse("""
+                group = "t"
+                name = "m"
+                version = "1.0.0"
+
+                [test.suites.integration]
+                tags = ["integration"]
+                timeout = "5m"
+
+                [test.suites.tree]
+                tags = ["tree"]
+                """);
+        Set<String> withDefault =
+                SuiteFilter.launches(
+                                List.of("test", "integration", "e2e", "tree"),
+                                guarded.build().runSuites())
+                        .stream()
+                        .map(SuiteFilter.Launch::suites)
+                        .filter(suites -> suites.contains("test"))
+                        .findFirst()
+                        .orElseThrow();
+
+        assertThat(walls(withDefault, TestSelection.DEFAULT, guarded).extras())
+                .containsEntry(Http.DENY_HOSTS_ENV, Http.ANY_REMOTE_HOST)
+                .containsEntry(EnginePaths.NO_SPAWN_ENV, "1");
+    }
+
     @Test
     void a_tag_suites_launch_or_an_included_tag_may_fetch() {
         assertThat(walls(Set.of("integration"), TestSelection.DEFAULT, TIERED).extras())
                 .as("the integration suite's own launch")
                 .doesNotContainKeys(Http.DENY_HOSTS_ENV, EnginePaths.NO_SPAWN_ENV);
         assertThat(walls(Set.of("test", "slow"), TestSelection.DEFAULT, TIERED).extras())
-                .as("--all's launch of the default suite beside a tag suite")
+                .as("a launch of the default suite beside a tag suite")
                 .doesNotContainKeys(Http.DENY_HOSTS_ENV, EnginePaths.NO_SPAWN_ENV);
         TestSelection smoke = TestSelection.of(List.of(), false, List.of("smoke"), List.of());
         assertThat(walls(DEFAULT, smoke, TIERED).extras())
