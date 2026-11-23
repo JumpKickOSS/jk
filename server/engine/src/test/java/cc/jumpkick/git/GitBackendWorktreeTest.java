@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.git.GitBackendsTestSupport.BackendFactory;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import org.eclipse.jgit.api.Git;
@@ -81,6 +82,25 @@ class GitBackendWorktreeTest {
         GitFetcher.Worktree detached = backend.describeWorktree(repo).orElseThrow();
         assertThat(detached.branch()).as("a detached HEAD names the commit").isEqualTo(head.getName());
         assertThat(detached.dirty()).isFalse();
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("cc.jumpkick.git.GitBackendsTestSupport#backends")
+    void describing_a_checkout_leaves_its_index_alone(String name, BackendFactory factory, @TempDir Path tmp)
+            throws Exception {
+        Path repo = tmp.resolve("repo");
+        commit(repo);
+        GitBackend backend = factory.create(tmp.resolve("gitcache"));
+        // The same bytes with another modification time: a status that may refresh the index
+        // rewrites the file's entry, holding index.lock while it does.
+        Files.setLastModifiedTime(repo.resolve("a.txt"), FileTime.from(COMMIT_TIME));
+        Path index = repo.resolve(".git/index");
+        byte[] before = Files.readAllBytes(index);
+
+        assertThat(backend.describeWorktree(repo).orElseThrow().dirty()).isFalse();
+        assertThat(Files.readAllBytes(index))
+                .as("the user's index is read, never written")
+                .isEqualTo(before);
     }
 
     @ParameterizedTest(name = "{0}")

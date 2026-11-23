@@ -245,11 +245,13 @@ public final class GitCliExtension implements GitBackend {
         if (!Files.isDirectory(dir)) return Optional.empty();
         // Two commands, not five: a build with [build-info] asks this on every run. The branch
         // header of one status names HEAD's commit and branch beside the dirty entries, and one
-        // show prints the commit time and, on git 2.32+, the nearest tag.
+        // show prints the commit time and, on git 2.32+, the nearest tag. The checkout is the
+        // user's: without --no-optional-locks the status takes index.lock to refresh the index,
+        // which a git command of theirs then trips over, and a status killed mid-refresh leaves.
         ProcResult status = exec(
                 dir,
                 null,
-                List.of("status", "--porcelain=v2", "--branch", "--untracked-files=normal"),
+                List.of("--no-optional-locks", "status", "--porcelain=v2", "--branch", "--untracked-files=normal"),
                 localTimeoutSec);
         if (status.exit != 0) {
             if (status.output.contains("not a git repository")) return Optional.empty();
