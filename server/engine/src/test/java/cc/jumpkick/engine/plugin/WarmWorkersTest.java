@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.BooleanSupplier;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -88,6 +89,19 @@ class WarmWorkersTest {
         Seen seen = new Seen();
         outcome[0] = WarmWorkers.run(launch, spec, seen, () -> false);
         return seen;
+    }
+
+    /**
+     * Waits up to a minute for {@code done}; under host load a worker may take many seconds to start
+     * and say its pid. Callers assert on the condition afterwards, so a timeout fails there.
+     */
+    private static void await(BooleanSupplier done) throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(60);
+        while (!done.getAsBoolean() && System.nanoTime() - deadline < 0) Thread.sleep(25);
+    }
+
+    private static boolean saidChildPid(Seen seen) {
+        return seen.output.stream().anyMatch(l -> l.startsWith("child pid "));
     }
 
     @Test
@@ -205,8 +219,10 @@ class WarmWorkersTest {
             }
         });
         try {
-            for (int i = 0; i < 200 && hanging.pid < 0; i++) Thread.sleep(25);
-            assertThat(hanging.pid).isPositive();
+            await(() -> hanging.pid >= 0);
+            assertThat(hanging.pid)
+                    .as("the worker said its pid before the deadline")
+                    .isPositive();
             assertThat(WarmWorkers.busyCount())
                     .as("the idle worker taken for a run")
                     .isEqualTo(1);
@@ -234,8 +250,10 @@ class WarmWorkersTest {
             }
         });
         try {
-            for (int i = 0; i < 200 && busy.pid < 0; i++) Thread.sleep(25);
-            assertThat(busy.pid).isPositive();
+            await(() -> busy.pid >= 0);
+            assertThat(busy.pid)
+                    .as("the worker said its pid before the deadline")
+                    .isPositive();
 
             HostPressure.forTests(HostPressure.Level.WARN);
             assertThat(WarmWorkers.shedIdle(HostPressure.WARN_IDLE))
@@ -268,12 +286,10 @@ class WarmWorkersTest {
         Files.writeString(spec, "hang\n");
         Seen seen = new Seen();
         AtomicBoolean cancel = new AtomicBoolean();
-        // A cancel before the worker has said its pid stops it unseen, so the cancel waits for the
-        // pid; under host load a worker may take many seconds to get that far.
-        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(60);
+        // A cancel before the worker has said its pid stops it unseen, so the cancel waits for the pid.
         Thread.ofVirtual().start(() -> {
             try {
-                while (seen.pid < 0 && System.nanoTime() - deadline < 0) Thread.sleep(25);
+                await(() -> seen.pid >= 0);
             } catch (InterruptedException ignored) {
                 // the test is ending
             }
@@ -294,15 +310,19 @@ class WarmWorkersTest {
         Files.writeString(spec, "spawn\n");
         Seen seen = new Seen();
         AtomicBoolean cancel = new AtomicBoolean();
+        // A cancel before the worker has said its child's pid leaves nothing to check, so it waits.
         Thread.ofVirtual().start(() -> {
             try {
-                while (seen.output.stream().noneMatch(l -> l.startsWith("child pid "))) Thread.sleep(50);
+                await(() -> saidChildPid(seen));
             } catch (InterruptedException ignored) {
                 // the test is ending
             }
             cancel.set(true);
         });
         WarmWorkers.Outcome out = WarmWorkers.run(launch("a"), spec, seen, cancel::get);
+        assertThat(saidChildPid(seen))
+                .as("the worker said its child's pid before the deadline")
+                .isTrue();
         assertThat(out.died()).isTrue();
         long child = seen.output.stream()
                 .filter(l -> l.startsWith("child pid "))
