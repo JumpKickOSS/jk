@@ -32,8 +32,10 @@ import org.jspecify.annotations.Nullable;
  * Each test class's static cone: the class with every class nested in it, then every workspace class
  * reachable from them, each named by its bytes' digest. A class reaches another when its class file
  * names it anywhere: a class entry of its constant pool, a field or method descriptor, a signature,
- * an annotation, or a string constant spelling a workspace class's binary name. The walk stops at
- * the workspace's edge; what lies past it (the JDK, dependency jars) is keyed whole elsewhere.
+ * an annotation, or, in a class file that calls a method loading a class by name ({@link
+ * #LOADS_BY_NAME}), a string constant spelling a workspace class's binary name. Elsewhere such a
+ * string is data (a process argument, a manifest value) and reaches nothing. The walk stops at the
+ * workspace's edge; what lies past it (the JDK, dependency jars) is keyed whole elsewhere.
  *
  * <p>A cone that names {@code java.util.ServiceLoader} takes in every provider a workspace service
  * file lists. A cone that names a classpath-scanning entry point (Spring's test context, Quarkus,
@@ -92,6 +94,13 @@ public final class ClassCones {
             "org/reflections/",
             "org/jboss/weld/",
             "jakarta/enterprise/inject/se/");
+
+    /**
+     * Names of the methods that load a class by name: a class file naming none of them only passes
+     * its strings on as data. A class loaded by name through a workspace helper is caught by the
+     * class's record, which joins what it loaded outside its static cone.
+     */
+    static final Set<String> LOADS_BY_NAME = Set.of("forName", "loadClass", "findClass", "tryToLoadClass");
 
     private static final String SERVICE_LOADER = "java/util/ServiceLoader";
     private static final String SERVICES = "META-INF/services/";
@@ -352,7 +361,7 @@ public final class ClassCones {
     private static final Pattern DESCRIPTOR_NAME = Pattern.compile("L([\\w$]+(?:/[\\w$]+)*)[;<]");
     private static final Pattern BINARY_NAME = Pattern.compile("[\\w$]+(?:\\.[\\w$]+)+");
 
-    /** One class file's digest and every name its constant pool spells, by class entry, descriptor or string. */
+    /** One class file's digest and every name its constant pool spells, by class entry, descriptor or loaded string. */
     static ClassFile read(byte[] bytes) {
         Set<String> refs = new HashSet<>();
         int count = u2(bytes, 8);
@@ -387,9 +396,11 @@ public final class ClassCones {
             if (name.startsWith("[")) addDescriptorNames(name, refs);
             else refs.add(name);
         }
+        boolean loadsByName = false;
+        for (String s : utf8.values()) loadsByName |= LOADS_BY_NAME.contains(s);
         for (String s : utf8.values()) {
             addDescriptorNames(s, refs);
-            if (s.indexOf('.') > 0 && BINARY_NAME.matcher(s).matches()) refs.add(internal(s));
+            if (loadsByName && s.indexOf('.') > 0 && BINARY_NAME.matcher(s).matches()) refs.add(internal(s));
         }
         // The platform's own names reach nothing of the workspace; leaving them out keeps the index
         // small. The service loader stays: a cone naming it takes in the providers.

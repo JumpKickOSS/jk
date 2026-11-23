@@ -66,8 +66,12 @@ of its bytes. Workspace classes are those in the module's test and main class tr
 and every sibling module's output on the runtime classpath (read from the sibling's jar). A class
 reaches another when its class file names it anywhere: a constant-pool class entry, a field or
 method descriptor, a signature, an annotation, or a string constant that spells a workspace class's
-binary name (so `Class.forName("cc.acme.Impl")` with a literal is followed). The walk stops at the
-workspace edge; what lies past it is in the suite part.
+binary name in a class file that calls a method loading a class by name (`forName`, `loadClass`,
+`findClass`, `tryToLoadClass`), so `Class.forName("cc.acme.Impl")` with a literal is followed. In
+any other class file such a string is data, a process argument or a manifest value, and reaches
+nothing. A class loaded by name through a workspace helper is caught by the class's record, which
+joins what it loaded outside its static cone. The walk stops at the workspace edge; what lies past
+it is in the suite part.
 
 Dependency jars are keyed by jar, all of them, in the suite part, not by which classes reach which
 jar. Rejected: keying a class only on the jars its cone names. A library reaches another through
@@ -321,11 +325,11 @@ What the shadow showed on real runs of jk-engine (940 classes) and what closed e
 - The pool keeps up to `POOLED_READS_KEPT` (400) data files, not a class's 8: it is one list per
   suite, and past its bound every class was keyed on everything the suite read, which in jk-engine
   is every engine source, so any edit moved every key. jk-engine's pool is 180 template files.
-- A string constant spelling a workspace class is followed, so a name that is only data widens
-  every cone that reaches it. jk-client-io's `StoreCasGc` compared a jar's `Main-Class` with the
-  literal `cc.jumpkick.engine.EngineMain`, which put the whole engine in the cone of every class
-  reaching it: a body edit to one engine class reached 682 cones instead of 459. It now joins the
-  name at run time, so no constant spells it.
+- A string constant spelling a workspace class is followed only in a class file that loads a class
+  by name, so a name that is only data widens no cone. jk-client-io's `StoreCasGc` compares a jar's
+  `Main-Class` with the literal `cc.jumpkick.engine.EngineMain`, and the client spawns the engine
+  with it; followed, it put the whole engine in the cone of every class reaching them: a body edit
+  to one engine class reached 682 cones instead of 459.
 
 - A class past its bound of 4 code files stands on the suite's code files (`SuiteCodeFiles`), not on
   its module. jk-engine's in-process compiles load 32 zinc and Scala jars from the local Maven

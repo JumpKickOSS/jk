@@ -15,7 +15,8 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * A test class's static cone follows every workspace class its class files name, through a field's
- * type, a call, a nested class and a literal class name, stops at the workspace's edge, takes in a
+ * type, a call, a nested class and a class name it loads by name, but not one it only passes on as
+ * data, stops at the workspace's edge, takes in a
  * service file's providers when it names the service loader, and changes with any class in it.
  */
 class ClassConesTest {
@@ -75,6 +76,13 @@ class ClassConesTest {
     }
 
     @Test
+    void a_class_name_passed_on_as_data_reaches_nothing(@TempDir Path tmp) throws Exception {
+        Path root = tree(tmp.resolve("classes"), ConeSpawns.class, ConeNamed.class);
+        ClassCones.Cone cone = ClassCones.index(List.of(root)).cone(ConeSpawns.class.getName());
+        assertThat(cone.classes()).containsExactly(ConeSpawns.class.getName());
+    }
+
+    @Test
     void a_cone_naming_the_service_loader_takes_in_the_providers(@TempDir Path tmp) throws Exception {
         Path root = tree(tmp.resolve("classes"), ConeLoads.class, ConeProvider.class);
         Path services = Files.createDirectories(root.resolve("META-INF/services"));
@@ -131,6 +139,12 @@ class ConeFar {
 }
 
 class ConeNamed {}
+
+class ConeSpawns {
+    ProcessBuilder engine() {
+        return new ProcessBuilder("java", "-cp", "engine.jar", "cc.jumpkick.test.ConeNamed");
+    }
+}
 
 class ConeUnrelated {}
 
