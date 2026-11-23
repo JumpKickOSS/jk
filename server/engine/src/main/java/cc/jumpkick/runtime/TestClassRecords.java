@@ -28,6 +28,7 @@ import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.function.BiConsumer;
+import java.util.function.UnaryOperator;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -201,6 +202,13 @@ final class TestClassRecords {
      * cannot be written leaves the old one.
      */
     static void merge(Path moduleDir, String header, Map<String, Outcome> ran, RowMaker maker) throws IOException {
+        merge(moduleDir, header, ran, maker, UnaryOperator.identity());
+    }
+
+    /** As {@link #merge(Path, String, Map, RowMaker)}, each earlier row of a class that did not run as {@code kept} keeps it. */
+    static void merge(
+            Path moduleDir, String header, Map<String, Outcome> ran, RowMaker maker, UnaryOperator<String> kept)
+            throws IOException {
         Path file = file(moduleDir);
         Files.createDirectories(file.getParent());
         Set<String> done = new HashSet<>();
@@ -214,7 +222,7 @@ final class TestClassRecords {
                         String key = rowKeyOf(line);
                         if (key == null || done.contains(key)) continue;
                         Outcome o = ran.get(key);
-                        out.write(o == null ? line : maker.row(o, line));
+                        out.write(o == null ? kept.apply(line) : maker.row(o, line));
                         out.write('\n');
                         done.add(key);
                     }

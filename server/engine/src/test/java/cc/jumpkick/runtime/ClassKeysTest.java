@@ -525,6 +525,99 @@ class ClassKeysTest {
                 .isEqualTo("key");
     }
 
+    /**
+     * The key the selection takes of a class is the key its row holds while nothing it stands on
+     * moved, though the record file's header beside the row is rewritten by every run: a class that
+     * replayed in a run whose pool read what the run before's did not, beside an edit to a class
+     * outside its cone, replays the next time too, and still runs when the pool's file changes.
+     */
+    @Test
+    void a_class_that_replayed_keeps_its_key_when_the_pool_beside_it_moves(@TempDir Path ws) throws Exception {
+        Path classes = Files.createDirectories(ws.resolve("classes"));
+        copy(classes, "demo/T", FIXTURE + "ConeUnrelated");
+        copy(classes, "demo/U", FIXTURE + "ConeUnrelated");
+        copy(classes, "demo/Other", FIXTURE + "ConeUnrelated");
+        Path module = Files.createDirectories(ws.resolve("m"));
+        Path pooledFile = Files.writeString(ws.resolve("pool.txt"), "one");
+
+        recordRun(module, classes, ws, ClassReads.Observation.empty(), List.of("demo.T", "demo.U"));
+        assertThat(selected(module, classes, ws, "demo.U")).as("nothing moved").isNull();
+
+        copy(classes, "demo/Other", FIXTURE + "ConeNamed");
+        ClassReads.Observation pool = ClassReads.Observation.empty();
+        pool.addRead(pooledFile);
+        recordRun(module, classes, ws, pool, List.of("demo.T"));
+        assertThat(selected(module, classes, ws, "demo.T"))
+                .as("it ran beside this pool")
+                .isNull();
+        assertThat(selected(module, classes, ws, "demo.U"))
+                .as("it replayed beside this pool")
+                .isNull();
+
+        Files.writeString(pooledFile, "two");
+        assertThat(selected(module, classes, ws, "demo.U"))
+                .as("what the pool read changed")
+                .isEqualTo("key");
+    }
+
+    /** One run's records, as a suite's recording leaves them: the classes of {@code ran} ran, beside {@code pool}. */
+    private static void recordRun(Path module, Path classes, Path ws, ClassReads.Observation pool, List<String> ran)
+            throws Exception {
+        Map<String, ClassReads.Observation> seenByClass = new HashMap<>();
+        Map<String, TestClassRecords.Outcome> outcomes = new HashMap<>();
+        for (String c : ran) {
+            seenByClass.put(c, ClassReads.Observation.empty());
+            outcomes.put(TestClassRecords.rowKey("", c), new TestClassRecords.Outcome("", c, 1, 0, 0, 1_000, 1));
+        }
+        ClassReads.Attributed seen = new ClassReads.Attributed(seenByClass, pool, true, 1, 1);
+        String previous = TestClassRecords.header(TestClassRecords.file(module));
+        ClassShadow shadow = new ClassShadow(
+                ClassCones.index(List.of(classes)),
+                "suite",
+                ws,
+                ClassShadow.pooledOf(previous),
+                ClassShadow.observed(pool, ws),
+                Map.of(),
+                ClassKeys.SuiteReadSet.NONE,
+                ClassKeys.SuiteReadSet.NONE,
+                Long.MAX_VALUE,
+                false,
+                "stamp");
+        TestClassRecords.merge(
+                module,
+                TestClassRecords.header("g:m", seen, TestClassRecords.Lookups.none(), ws, null),
+                outcomes,
+                (o, prev) -> {
+                    ClassReads.Observation obs = seen.classes().get(o.testClass());
+                    return TestClassRecords.row(o, obs, TestClassRecords.Lookups.none(), ws, shadow.of(o, obs, prev));
+                },
+                shadow::kept);
+    }
+
+    /** Why the selection runs {@code testClass} over the records of {@code module}, null to replay it. */
+    private static @Nullable String selected(Path module, Path classes, Path ws, String testClass) {
+        Path file = TestClassRecords.file(module);
+        String header = TestClassRecords.header(file);
+        ClassShadow keys = new ClassShadow(
+                ClassCones.index(List.of(classes)),
+                "suite",
+                ws,
+                ClassShadow.pooledOf(header),
+                ClassKeys.Observed.NONE,
+                Map.of(),
+                ClassKeys.SuiteReadSet.NONE,
+                ClassKeys.SuiteReadSet.NONE,
+                SuiteCodeFiles.since(header, ws),
+                false,
+                "stamp");
+        List<String> rows = new ArrayList<>();
+        TestClassRecords.forEachRow(file, (key, row) -> {
+            if (key.equals(TestClassRecords.rowKey("", testClass))) rows.add(row);
+        });
+        assertThat(rows).as("one row of " + testClass).hasSize(1);
+        return keys.whyRun(rows.getFirst(), "", testClass);
+    }
+
     private static ClassShadow shadow(ClassCones.Index index, Path ws, ClassKeys.Observed pooled) {
         return shadow(index, ws, pooled, Map.of());
     }

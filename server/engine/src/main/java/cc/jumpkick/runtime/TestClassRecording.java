@@ -174,10 +174,15 @@ final class TestClassRecording {
                             code.more(),
                             stampKey);
                     ClassShadow s = shadow;
-                    TestClassRecords.merge(moduleDir, header, ran, (o, prev) -> {
-                        ClassReads.Observation obs = observation(seen, o);
-                        return TestClassRecords.row(o, obs, lookups, workspace, s.of(o, obs, prev));
-                    });
+                    TestClassRecords.merge(
+                            moduleDir,
+                            header,
+                            ran,
+                            (o, prev) -> {
+                                ClassReads.Observation obs = observation(seen, o);
+                                return TestClassRecords.row(o, obs, lookups, workspace, s.of(o, obs, prev));
+                            },
+                            s::kept);
                 }
                 if (!shadow.unsound().isEmpty()) {
                     Log.debug(ClassShadow.UNSOUND + " " + moduleDir + ": per-class selection would have replayed "

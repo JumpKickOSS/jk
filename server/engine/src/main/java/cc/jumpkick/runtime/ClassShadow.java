@@ -227,26 +227,72 @@ final class ClassShadow {
         String prevKey = carriedKey != null ? carriedKey : Jsonl.str(prev, "classKey");
         if (prevKey == null) return "no-key";
         if (!"passed".equals(Jsonl.str(prev, "outcome"))) return "red";
-        ClassCones.Cone cone = index.cone(testClass, Jsonl.strArray(prev, "reflective"));
         String fallback = Jsonl.str(prev, "fallback");
         if (fallback == null) fallback = ClassKeys.pooledFallback(pooledBefore);
-        ClassKeys.Key now = ClassKeys.key(
-                launch,
-                cone,
-                Jsonl.str(prev, carriedKey != null ? "coneUsedCarried" : "coneUsed"),
-                suitePart,
-                ClassKeys.identified(fromRow(prev), programs),
-                programs,
-                pooledBefore,
-                module,
-                readsBefore,
-                workspace,
-                fallback,
-                listings);
-        if (!now.key().equals(prevKey)) return fallback != null ? "module " + fallback : "key";
+        String now = rowKey(prev, launch, testClass, carriedKey != null, fallback, pooledBefore, readsBefore);
+        if (!now.equals(prevKey)) return fallback != null ? "module " + fallback : "key";
         boolean pastOwnCode = Jsonl.bool(prev, "codeMore", false) || pooledBefore.codeMore();
         if (fallback == null && pastOwnCode && codeSince >= Jsonl.longValue(prev, "ranAt", 0)) return "code moved";
         return null;
+    }
+
+    /**
+     * The key of the class a record {@code row} names, taken now over its cone, what the row says it
+     * read and which of its cone's classes ran ({@code carried}: the row's carried uses), beside
+     * {@code pooled} and the suite's discovered inputs {@code reads}.
+     */
+    private String rowKey(
+            String row,
+            String launch,
+            String testClass,
+            boolean carried,
+            @Nullable String fallback,
+            ClassKeys.Observed pooled,
+            ClassKeys.SuiteReadSet reads) {
+        return ClassKeys.key(
+                        launch,
+                        index.cone(testClass, Jsonl.strArray(row, "reflective")),
+                        Jsonl.str(row, carried ? "coneUsedCarried" : "coneUsed"),
+                        suitePart,
+                        ClassKeys.identified(fromRow(row), programs),
+                        programs,
+                        pooled,
+                        module,
+                        reads,
+                        workspace,
+                        fallback,
+                        listings)
+                .key();
+    }
+
+    /**
+     * The row of a class that did not run in this run, as the next selection will key it. Every row
+     * stands on the record file's header (what no class's window held) and the suite's discovered
+     * inputs, and this run rewrites both: a row keyed over the ones it replaces would read as moved
+     * the next time, though nothing it stands on did, and its class would run once for no change. So
+     * a row the selection replays over what the records were keyed before ({@link #whyRun} null)
+     * takes its key over what this run leaves. Any other row stays as it is, and so does one kept on
+     * its cone beside a pool that now started a program: it runs once more.
+     */
+    String kept(String row) {
+        String launch = Jsonl.str(row, "launch");
+        List<String> container = Jsonl.strArray(row, "container");
+        if (launch == null || container.isEmpty()) return row;
+        String testClass = TestClassRecords.className(container);
+        if (!index.contains(testClass) || whyRun(row, launch, testClass) != null) return row;
+        String fallback = Jsonl.str(row, "fallback");
+        if (fallback == null && ClassKeys.pooledFallback(pooledNow) != null) return row;
+        String out = rekeyed(row, "classKey", rowKey(row, launch, testClass, false, fallback, pooledNow, readsAfter));
+        if (Jsonl.str(row, "classKeyCarried") != null && whyRun(row, launch, testClass, true) == null)
+            out = rekeyed(
+                    out, "classKeyCarried", rowKey(row, launch, testClass, true, fallback, pooledNow, readsAfter));
+        return out;
+    }
+
+    /** {@code row} with its string field {@code field} holding {@code key}; the row writes it as {@link TestClassRecords#row} does. */
+    private static String rekeyed(String row, String field, String key) {
+        String was = Jsonl.quote(field) + ":" + Jsonl.quote(Jsonl.str(row, field));
+        return row.replace(was, Jsonl.quote(field) + ":" + Jsonl.quote(key));
     }
 
     /** Whether the class's outcome moved since {@code prev}: its verdict or its counts. */
