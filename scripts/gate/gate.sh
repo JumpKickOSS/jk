@@ -34,6 +34,11 @@
 # results` prints the latest run that kept one, and a run red in a transcript the gate cannot read
 # stays red, with a line saying which run jk printed.
 #
+# A red `jk guard` writes a `GUARD FAIL <check>` line for each check it failed, from its own
+# transcript: the id of each rule a guard lane broke, `<module> <task>` for each other step that
+# failed, and `format` when guard left the checkout changed. An internal error (exit 70) names no
+# check, nor does a transcript of another run.
+#
 # Every tier runs every quarantined class. jk records each class's runs and quarantines a flaky one
 # in the checkout; the gate saves that file, restores the checkout, and then opens a ticket for each
 # class jk added and submits the file, with their tickets and without the classes whose ticket
@@ -119,6 +124,21 @@
         end' 2>/dev/null)"
     echo "${c:-0}"
   }
+  # guard_failed <details.jsonl> <since>: a `GUARD FAIL <check>` line for each check the red guard
+  # run failed, read from its transcript: each rule a guard lane broke, by its id, and each other
+  # step that failed, as `<module> <task>`. A transcript of a run begun before <since> (epoch
+  # seconds), or of no build, is another run's: it names none.
+  guard_failed() {
+    jq -nrR --argjson since "$(($2 * 1000))" '
+      [inputs | fromjson? // empty] as $e
+      | ($e | map(select(.type == "session-start")) | .[0]) as $s
+      | if $s == null or $s.command != "build" or ($s.ts // 0) < $since then empty
+        else
+          def lane: (.task // "") | (. == "guard" or startswith("guard-"));
+          ($e[] | select(.type == "error" and lane) | .code // .task),
+          ($e[] | select(.type == "task-finish" and .status == "FAIL" and (lane | not)) | "\(.module // "-") \(.task)")
+        end' "$1" 2>/dev/null | grep . | sort -u | sed 's/^/GUARD FAIL /'
+  }
   # The FAIL/T/E lines of the pre-run log, then the gate stops red.
   pre_red() { noansi "$D/g$n-pre.log" | grep -aE "^(FAIL|T |E )" | tail -8 >>"$L"; red "RED (pre)"; }
 
@@ -160,12 +180,21 @@
   fi
   git status --porcelain >>"$L"
 
+  since="$(date +%s)"
   jk guard >"$D/g$n-guard.log" 2>&1
   g=$?
   echo "GUARD_EXIT=$g $(date +%H:%M:%S)" >>"$L"
   git status --porcelain >>"$L"
-  [ -n "$(git status --porcelain)" ] && { echo "GUARD LEFT CHANGES" >>"$L"; g=99; }
-  if [ "$g" -ne 0 ]; then
+  left=""
+  if [ -n "$(git status --porcelain)" ]; then
+    left=1
+    printf '%s\n' "GUARD LEFT CHANGES" "GUARD FAIL format" >>"$L"
+  fi
+  if [ "$g" -ne 0 ] && [ "$g" -ne 70 ]; then
+    jk results -O jsonl >"$D/g$n-guard.jsonl" 2>/dev/null </dev/null
+    guard_failed "$D/g$n-guard.jsonl" "$since" >>"$L"
+  fi
+  if [ "$g" -ne 0 ] || [ -n "$left" ]; then
     noansi "$D/g$n-guard.log" | grep -vE '^\s*$' | tail -20 >>"$L"
     red "RED (guard)"
   fi

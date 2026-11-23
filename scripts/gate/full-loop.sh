@@ -14,13 +14,14 @@
 # on the re-run is GREEN, and its line in full-runs.log names those classes; it neither counts as red
 # nor holds the queue.
 # RED reads what its own gate failed, from that gate's log: its red set, the test classes the
-# re-run still failed, the fixtures that failed and the steps that ended red. It looks for the batch
-# of the merge queue that made it red among those landed since `green` (queue-batches.log): it
-# bisects them, gating batch tips with the Full tier (each commit is gated once; full-verdicts keeps
-# every verdict) until it knows the first whose own gate fails one of the classes or fixtures this
-# gate fails, and names it in full-runs.log. A batch whose gate was red for something else is not
-# the culprit, and a red in no class or fixture (a step alone, such as guard) names no batch. Once
-# per batch it then tries to confirm one commit of it: the classes that failed both gates fail
+# re-run still failed, the fixtures and guard checks that failed and the steps that ended red. It
+# looks for the batch of the merge queue that made it red among those landed since `green`
+# (queue-batches.log): it bisects them, gating batch tips with the Full tier (each commit is gated once; full-verdicts keeps
+# every verdict) until it knows the first whose own gate fails one of the classes, fixtures or guard
+# checks this gate fails, and names it in full-runs.log. A batch whose gate was red for something
+# else is not the culprit, and a red in no class, fixture or guard check (a step alone, such as a
+# guard that exited 70, jk's internal error) names no batch. Once per batch it then tries to
+# confirm one commit of it: the classes that failed both gates fail
 # again at its tip and pass at its base, and a bisect of its commits with those classes finds the
 # one they fail with and pass without (scripts/gate/rerun-classes.sh). It reverts that commit on top
 # of the red tip, puts the revert through the Branch tier and submits it to the merge queue as
@@ -171,8 +172,9 @@
   empty="$(git hash-object -t tree /dev/null)"
   gate_of() { awk -v s="$1" '$1 == s { g = $3 } END { print g }' "$V"; }
   # red_set <gate>: what the gate failed, one sorted line each, read from its own log and re-run
-  # transcript: `class <module> <class>`, `fixture <script>`, `step <step>` for a `RED (<step>)`
-  # line and for an engine not at the tip, and `exit <STEP>` for each step that exited non-zero.
+  # transcript: `class <module> <class>`, `fixture <script>`, `guard <check>` for each `GUARD FAIL
+  # <check>` line, `step <step>` for a `RED (<step>)` line and for an engine not at the tip, and
+  # `exit <STEP>` for each step that exited non-zero.
   # The push gate's own exit is left out: the classes its re-run still failed stand for it.
   red_set() {
     local g="$1" L="$D/integ-gate-$1.log"
@@ -180,13 +182,15 @@
     {
       bash "$H/flaky.sh" failed "$D/g$g-rerun.jsonl" 2>/dev/null | sed 's/^/class /'
       sed -n 's/^FIXTURE FAIL \(.*\)$/fixture \1/p' "$L"
+      sed -n 's/^GUARD FAIL \(.*\)$/guard \1/p' "$L"
       sed -n 's/^RED (\(.*\))$/step \1/p' "$L"
       grep -aq '^ENGINE NOT AT TIP' "$L" && echo "step engine not at tip"
       sed -nE 's/^([A-Z_]+)_EXIT=[1-9][0-9]*( .*)?$/exit \1/p' "$L" | grep -vx 'exit PUSHGATE'
     } | sort -u
   }
-  # The entries of a red set a batch's change can be blamed for: its classes and fixtures.
-  blamable() { grep -E '^(class|fixture) ' || true; }
+  # The entries of a red set a batch's change can be blamed for: its classes, fixtures and guard
+  # checks.
+  blamable() { grep -E '^(class|fixture|guard) ' || true; }
 
   cd "$co" || exit 2
   [ -z "$(git status --porcelain)" ] || { echo "full-loop: $co is not clean" >&2; exit 2; }
@@ -243,7 +247,8 @@
       batches+=("$(git rev-list --count "$bt") $bn $bbase $bt")
     done < <(awk '$1 == "batch" && ($8 == "LANDED" || $10 == "LANDED") { print $2, $5, $7 }' <<<"$batchlog")
   fi
-  # shares <sha>: succeed when the commit's gate is red in a class or fixture this cycle's is.
+  # shares <sha>: succeed when the commit's gate is red in a class, fixture or guard check this
+  # cycle's is.
   shares() {
     [ -n "$(comm -12 <(printf '%s\n' "$blame") <(red_set "$(gate_of "$1")" | blamable))" ]
   }
@@ -270,7 +275,7 @@
     local lo hi mid list=() c
     classes="$D/full-$cn-classes"
     comm -12 <(printf '%s\n' "$blame") <(red_set "$(gate_of "$ctip")") | sed -n 's/^class //p' >"$classes"
-    [ -s "$classes" ] || { why="the red it shares with this cycle is in a fixture, not a test class to run again"; return 1; }
+    [ -s "$classes" ] || { why="the red it shares with this cycle is in a fixture or guard check, not a test class to run again"; return 1; }
     rerun "$ctip"
     case $? in
       1) ;;
@@ -327,8 +332,8 @@
 
   if [ -z "$culprit" ]; then
     why="the queue landed no batch since green"
-    [ "${#batches[@]}" -eq 0 ] || why="no batch landed since green fails at its own tip a class or fixture this gate fails"
-    [ -n "$blame" ] || why="this gate failed in no test class or fixture ($(grep . <<<"$redset" | tr '\n' ',' | sed 's/,$//; s/,/, /g'))"
+    [ "${#batches[@]}" -eq 0 ] || why="no batch landed since green fails at its own tip a class, fixture or guard check this gate fails"
+    [ -n "$blame" ] || why="this gate failed in no test class, fixture or guard check ($(grep . <<<"$redset" | tr '\n' ',' | sed 's/,$//; s/,/, /g'))"
     [ -n "$green" ] || why="origin has no green branch yet"
     log "full $n $stamp $(short "$tip") RED culprit unknown: $why; red cycles $reds; log $(hostname):$D/integ-gate-$n.log"
   else
@@ -341,7 +346,7 @@
     shared="$(comm -12 <(printf '%s\n' "$blame") <(red_set "$(gate_of "$ctip")") | cut -d' ' -f2- | tr '\n' ',' | sed 's/,$//; s/,/, /g')"
     log "full $n $stamp $(short "$tip") RED culprit batch $cn ($(short "$ctip"):$members) tickets $(tr '\n' ' ' <<<"${tickets:-<none>}" | sed 's/ $//'); its gate fails $shared too; red cycles $reds; log $(hostname):$D/integ-gate-$n.log, the batch's $(hostname):$cl"
     if ! grep -qx "$cn" <<<"$filed"; then
-      fails="$(grep -aE '^(FAIL|E |T )|FAILED |^GUARD_EXIT=[1-9]|^RED|^FIXTURE FAIL|^ENGINE NOT' "$D/integ-gate-$n.log" 2>/dev/null | head -8 | tr '\n' ';' | sed 's/;$//')"
+      fails="$(grep -aE '^(FAIL|E |T )|FAILED |^GUARD_EXIT=[1-9]|^GUARD FAIL|^RED|^FIXTURE FAIL|^ENGINE NOT' "$D/integ-gate-$n.log" 2>/dev/null | head -8 | tr '\n' ';' | sed 's/;$//')"
       if confirm && revert; then
         subject="$(git log -1 --format=%s "$bad")"
         told="$(sed -nE 's/^([A-Z][A-Z0-9]*-[A-Z0-9]+): .*/\1/p' <<<"$subject")"

@@ -14,8 +14,10 @@
 # paused and why; removing the file resumes it. A jk that cannot start its engine, before a gate or
 # when a gate is red at guard, is an infra failure: no verdict, no culprit, no red cycle, no hold. A
 # red cycle after an earlier red gate for something else names the batch whose gate fails what this
-# one fails, not the earlier one; a red in no class or fixture names no batch and never holds the
-# queue, and a red set unlike the last one counts as the first red cycle again.
+# one fails, not the earlier one; a red in no class, fixture or guard check (a guard that exited 70)
+# names no batch and never holds the queue, and a red set unlike the last one counts as the first
+# red cycle again. A red at guard in a rule names the batch whose own gate breaks that rule, and
+# tells its ticket why nothing is reverted.
 #
 # The loop runs as on a host of its own: it reaches the queue's state only over ssh (a stand-in that
 # runs the command here for the host queuehost), takes a gate lock that is not the queue's, and
@@ -39,8 +41,9 @@ fail() {
 # stand-in gate passes the Queue tier always and the Full tier unless the tip carries red.txt or
 # flaky.txt, when cc.example.RedTest fails, and logs each Full gate's tip and base; on a tip whose
 # own commit writes once.txt the class passes on the gate's re-run, and the gate is green naming it. A tip
-# whose own commit writes guard.txt is red at guard; one that carries other.txt fails
-# cc.example.OtherTest. The stand-in
+# whose own commit writes guard.txt is red at guard with jk's internal error (exit 70), naming no
+# check; one that carries lint.txt is red at guard in the rule no-system-out; one that carries
+# other.txt fails cc.example.OtherTest. The stand-in
 # re-run fails that class on a commit that carries red.txt, and logs each commit it runs on.
 mkdir -p "$WORK/bin"
 cat >"$WORK/bin/jk" <<JK
@@ -91,6 +94,8 @@ fi
   && git tag --list 'v*' >"$GATE_LOG_DIR/full-tags"
 if [ "$GATE_TIER" = full ] && git log -1 --name-only --format= HEAD | grep -qx guard.txt; then
   { echo "GUARD_EXIT=70"; echo "RED (guard)"; } >"$L"
+elif [ "$GATE_TIER" = full ] && git ls-tree -r --name-only HEAD | grep -qx lint.txt; then
+  { echo "GUARD_EXIT=1"; echo "GUARD FAIL no-system-out"; echo "RED (guard)"; } >"$L"
 elif [ "$GATE_TIER" = full ] && git ls-tree -r --name-only HEAD | grep -qx other.txt; then
   { echo "FAIL cc.example.OtherTest"; echo "RED"; } >"$L"
   echo '{"type":"error","code":"test-failure","module":"core","testClass":"cc.example.OtherTest"}' >"$GATE_LOG_DIR/g$n-rerun.jsonl"
@@ -407,7 +412,7 @@ full || fail "the cycle after jk started again failed: $(runs)"
 : >"$KA_LOG"
 land p guard.txt "TK-PPPP1: red at guard when gated"
 FULL_HOLD_AFTER=1 full || fail "the cycle red at guard failed: $(runs)"
-last_run_has -q "RED culprit unknown: this gate failed in no test class or fixture (exit GUARD, step guard)" \
+last_run_has -q "RED culprit unknown: this gate failed in no test class, fixture or guard check (exit GUARD, step guard)" \
   || fail "a red at guard alone named a batch or did not say why: $(runs)"
 [[ -f "$QUEUE_REPO/full-hold" ]] && fail "a red that names no batch held the queue: $(cat "$QUEUE_REPO/full-hold")"
 [[ -s "$KA_LOG" ]] && fail "a red that names no batch told a ticket: $(cat "$KA_LOG")"
@@ -441,5 +446,25 @@ runs_has -q "the queue's hold is lifted: this red names no batch" || fail "the l
 land n2 n2.txt "TK-NNNN1: n"
 full || fail "the cycle after the red at guard failed: $(runs)"
 [[ "$(origin green)" == "$(origin main)" ]] || fail "the tip did not pass after the red at guard: $(runs)"
+
+# --- a red at guard in a rule: the batch whose own gate breaks the same rule is named, a later
+# batch is not, and its ticket is told that a guard check is not run again or reverted ---
+: >"$KA_LOG"
+land l lint.txt "TK-LLLL1: breaks a guard rule"
+lbatch="$(git -C "$dev" rev-parse --short=12 "$(origin main)")"
+land q q.txt "TK-QQQQ1: q"
+full || fail "the cycle red at guard in a rule failed: $(runs)"
+runs_has -q "RED culprit batch [0-9]* ($lbatch: l@.* tickets TK-LLLL1; its gate fails no-system-out too; red cycles 1;" \
+  || fail "a red at guard in a rule did not name the batch that broke it: $(runs)"
+runs_has -q "reverts nothing: the red it shares with this cycle is in a fixture or guard check" \
+  || fail "the loop did not say why a guard check is not reverted: $(runs)"
+[[ "$(grep -c '^comment|TK-LLLL1|.*fail no-system-out' "$KA_LOG")" -eq 1 ]] || fail "the rule's batch was not told: $(cat "$KA_LOG")"
+grep -q 'TK-QQQQ1' "$KA_LOG" && fail "a batch that broke no rule was told: $(cat "$KA_LOG")"
+git -C "$dev" fetch -q && git -C "$dev" checkout -q -b unl origin/main
+tick && git -C "$dev" rm -q lint.txt && git -C "$dev" commit -qm "TK-LLLL1: keeps the guard rule"
+submit unl
+queue || fail "the queue did not run for l's fix"
+full || fail "the cycle after l's fix failed: $(runs)"
+[[ "$(origin green)" == "$(origin main)" ]] || fail "the tip did not pass after l's fix: $(runs)"
 
 echo "test-full-loop: ok ($(gated) Full gates, $(reruns | wc -l | tr -d ' ') re-runs)"

@@ -4,6 +4,9 @@
 # engine the reinstall before it installed), a push gate red in a class that passes when run once
 # more green and naming the class, twice in a row, red when the class fails again or the first run
 # was red outside a test class, red at the reinstall when it fails, and refused on a dirty checkout.
+# A red guard names each check it failed from its own transcript (each broken rule by its id, each
+# other failed step as `<module> <task>`, `format` when it left the checkout changed), and names
+# none when it exited 70 or when the transcript is another run's.
 # Each tier logs how many native images the reinstall and the install after it linked, and an
 # install that kept no transcript linked none. A class the stand-in quarantines
 # leaves the checkout clean, gets a ticket, and goes to a stand-in merge queue in the quarantine
@@ -27,7 +30,7 @@ set -euo pipefail
 # log directory, its checkout), and gate.sh and flaky.sh would read them in place of the defaults
 # each case here is written against. Neither the settings nor the stand-ins' switches carry in.
 unset "${!GATE_@}" "${!FLAKY_@}" "${!PRE_@}" POST_SCRIPTS FAIL_PUSHGATE FAIL_REINSTALL FAIL_INTEG \
-  FAIL_SLOW FAIL_DOCS FAIL_INTEG_ONCE FAIL_INSTALL_ONCE RESULTS_FIRST RERUN_JSONL RESULTS_RUN JK_CALLS KA_STATE FAIL_SCOREBOARD \
+  FAIL_SLOW FAIL_DOCS FAIL_INTEG_ONCE FAIL_INSTALL_ONCE RESULTS_FIRST RERUN_JSONL RESULTS_RUN JK_CALLS KA_STATE FAIL_SCOREBOARD FAIL_GUARD GUARD_DIRTIES \
   JK_CACHE_DIR JK_QUEUE_REMOTE BRANCH_TIER_BASE QUARANTINE_ADD KA_FAIL NATIVE_LINKED NATIVE_NO_TRANSCRIPT JK_HOME
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -131,7 +134,8 @@ tickets() { find "$WORK/ka" -type f | wc -l | tr -d ' '; }
 # prints $RESULTS_FIRST as the first run's transcript and $RERUN_JSONL as any later one's, each as
 # the transcript of the jk command it ran last (of $RESULTS_RUN when set), and
 # reports the checkout's HEAD as the engine's commit. A run that runs tests quarantines class
-# $QUARANTINE_ADD of mod/a in the checkout, as jk does past its threshold.
+# $QUARANTINE_ADD of mod/a in the checkout, as jk does past its threshold. `jk guard` exits
+# $FAIL_GUARD when it is set, and leaves the file guard-dirt in the checkout when GUARD_DIRTIES is.
 export HOME="$WORK/home"
 mkdir -p "$HOME/.jk/bin"
 cat >"$HOME/.jk/bin/jk" <<'EOF'
@@ -166,8 +170,12 @@ case "$1" in
     t="$RERUN_JSONL"
     [[ -n "${RESULTS_FIRST:-}" && "$(grep -c '^results -O' "$JK_CALLS")" -eq 1 ]] && t="$RESULTS_FIRST"
     ran="${RESULTS_RUN:-$(grep -vE '^(results|engine|--version)' "$JK_CALLS" | tail -1 | cut -d' ' -f1)}"
-    echo "{\"schema\":1,\"type\":\"session-start\",\"command\":\"$ran\"}"
+    echo "{\"schema\":1,\"ts\":$(($(date +%s) * 1000)),\"type\":\"session-start\",\"command\":\"$ran\"}"
     grep -v '"type":"session-start"' "$t" || true
+    ;;
+  guard)
+    [[ -z "${GUARD_DIRTIES:-}" ]] || echo dirt >guard-dirt
+    exit "${FAIL_GUARD:-0}"
     ;;
   test)
     [[ -n "${FAIL_SLOW:-}" && " $* " == *" -s slow "* ]] && { echo "FAIL a.AndroidE2eTest"; exit 4; }
@@ -283,6 +291,41 @@ gate 40 FAIL_PUSHGATE=1 RESULTS_RUN=build RESULTS_FIRST="$WORK/f15-guard.jsonl" 
 grep -qx 'RERUN green, but the gate cannot tell which classes failed (jk results printed the run of jk build, not this jk install): the push gate stays red' \
   "$WORK/logs/integ-gate-40.log" || fail "the log does not say which run jk results printed: $(cat "$WORK/logs/integ-gate-40.log")"
 if grep -q '^FLAKY .* passed on the re-run$' "$WORK/logs/integ-gate-40.log"; then fail "another run's classes were called flaky: $(cat "$WORK/logs/integ-gate-40.log")"; fi
+
+# A guard red in a rule and in a compile step: red at guard, naming the rule and the step, read
+# from the guard run's own transcript (jk records `jk guard` as a build), and nothing installed.
+cat >"$WORK/guard-red.jsonl" <<'EOF2'
+{"schema":1,"type":"task-finish","task":"compile-java","status":"FAIL","module":"m:core"}
+{"schema":1,"type":"error","task":"compile-java","code":"compile","module":"m:core","message":"cannot find symbol"}
+{"schema":1,"type":"error","task":"guard","code":"no-system-out","module":"m:cli","file":"cli/Main.java","line":6}
+{"schema":1,"type":"error","task":"guard-tree","code":"no-system-out","module":"m:web","file":"web/Boot.java","line":3}
+{"schema":1,"type":"task-finish","task":"guard","status":"FAIL","module":"m:cli"}
+{"schema":1,"type":"task-finish","task":"guard-tree","status":"FAIL","module":"m:web"}
+{"schema":1,"type":"error","task":"guard","code":"one-owner","module":"m:cli","message":"GUARD one-owner  no-bite"}
+EOF2
+gate 50 FAIL_GUARD=1 RESULTS_RUN=build RERUN_JSONL="$WORK/guard-red.jsonl"
+[[ "$(verdict 50)" == "RED (guard)" ]] || fail "a red guard did not stop the gate: $(cat "$WORK/logs/integ-gate-50.log")"
+got="$(grep '^GUARD FAIL ' "$WORK/logs/integ-gate-50.log" || true)"
+want="$(printf '%s\n' 'GUARD FAIL m:core compile-java' 'GUARD FAIL no-system-out' 'GUARD FAIL one-owner')"
+[[ "$got" == "$want" ]] || fail "a red guard named the checks:
+$got
+want:
+$want"
+if grep -q '^install' "$WORK/calls-50"; then fail "the gate installed after a red guard: $(cat "$WORK/calls-50")"; fi
+# jk's internal error names no check, and reads no transcript; nor does a transcript of another run.
+gate 51 FAIL_GUARD=70 RESULTS_RUN=build RERUN_JSONL="$WORK/guard-red.jsonl"
+[[ "$(verdict 51)" == "RED (guard)" ]] || fail "a guard that exited 70 did not stop the gate: $(cat "$WORK/logs/integ-gate-51.log")"
+if grep -q '^GUARD FAIL' "$WORK/logs/integ-gate-51.log"; then fail "a guard that exited 70 named a check: $(cat "$WORK/logs/integ-gate-51.log")"; fi
+if grep -q '^results' "$WORK/calls-51"; then fail "a guard that exited 70 read a transcript: $(cat "$WORK/calls-51")"; fi
+gate 52 FAIL_GUARD=1 RESULTS_RUN=install RERUN_JSONL="$WORK/guard-red.jsonl"
+[[ "$(verdict 52)" == "RED (guard)" ]] || fail "a red guard did not stop the gate: $(cat "$WORK/logs/integ-gate-52.log")"
+if grep -q '^GUARD FAIL' "$WORK/logs/integ-gate-52.log"; then fail "another run's transcript named a guard check: $(cat "$WORK/logs/integ-gate-52.log")"; fi
+# A guard that passes but leaves the checkout changed: red, naming format.
+gate 53 GUARD_DIRTIES=1
+[[ "$(verdict 53)" == "RED (guard)" ]] || fail "a guard that left changes did not stop the gate: $(cat "$WORK/logs/integ-gate-53.log")"
+[[ "$(grep '^GUARD FAIL ' "$WORK/logs/integ-gate-53.log")" == "GUARD FAIL format" ]] ||
+  fail "a guard that left changes did not name format: $(cat "$WORK/logs/integ-gate-53.log")"
+rm -f "$repo/guard-dirt"
 
 gate 3 FAIL_REINSTALL=1
 [[ "$(verdict 3)" == "RED (reinstall)" ]] || fail "a failed reinstall did not stop the gate: $(cat "$WORK/logs/integ-gate-3.log")"
@@ -578,4 +621,4 @@ if [[ -z "${TEST_GATE_NESTED:-}" ]]; then
     fail "under a Queue-tier gate's environment: $(cat "$WORK/nested.log")"
 fi
 
-echo "test-gate: ok (37 gate runs, 5 of them quarantining; again under a gate's environment)"
+echo "test-gate: ok (41 gate runs, 5 of them quarantining; again under a gate's environment)"

@@ -210,13 +210,16 @@ that passed; before there is a `green`, it always does. Then:
   A gate green because its failed classes passed on its re-run ([flaky tests](#flaky-tests)) is a
   green cycle, and its line in `full-runs.log` names those classes.
 - **Red** reads what its own gate failed, from that gate's log: its red set, the test classes still
-  red after the re-run, the fixtures that failed and the steps that ended red. It finds the batch
-  that made it red among the queue's batches landed since `green` (`queue-batches.log`). It bisects
-  them: it gates batch tips with the Full tier until it knows the first whose own gate fails one of
-  the classes or fixtures this gate fails, and gates no commit twice. A batch whose gate was red for
-  something else is not blamed, and a red in no class or fixture (guard alone, say) names no batch.
-  It names the batch, with its branches, the classes or fixtures both gates fail, this gate's log
-  and the batch's, in `full-runs.log`.
+  red after the re-run, the fixtures and guard checks that failed and the steps that ended red. A
+  red `jk guard` writes a `GUARD FAIL <check>` line in the gate's log for each check it failed, read
+  from its own transcript: the id of each rule a guard lane broke, `<module> <task>` for each other
+  step that failed, `format` when it left the checkout changed. It finds the batch that made it red
+  among the queue's batches landed since `green` (`queue-batches.log`). It bisects them: it gates
+  batch tips with the Full tier until it knows the first whose own gate fails one of the classes,
+  fixtures or guard checks this gate fails, and gates no commit twice. A batch whose gate was red
+  for something else is not blamed, and a red in no class, fixture or guard check names no batch: a
+  guard that exits 70, JumpKick's internal error, names no check. It names the batch, with its
+  branches, what both gates fail, this gate's log and the batch's, in `full-runs.log`.
 - **A confirmed culprit is reverted**, once per batch. The loop runs the classes both the batch's red gate
   and this one failed again (`scripts/gate/rerun-classes.sh`: the reinstall without tests, then those classes
   alone): they must fail at the batch's tip and pass at its base, and a bisect of the batch's
@@ -225,9 +228,9 @@ that passed; before there is a `green`, it always does. Then:
   `full-revert/<ticket>-<sha>`, which gates it like any branch; it never pushes `main`. It comments
   on the commit's ticket and reopens it (a ticket `done` or in `review` goes back to `ready`), so its
   worker fixes forward on top of the revert and submits again.
-- **Otherwise it reverts nothing**: when the red gate failed outside a test class, the classes pass
-  when run again, they fail before the batch too, or the revert conflicts with later work. It
-  comments once on each ticket the batch's commits name (a subject `<ticket>: …`), saying why;
+- **Otherwise it reverts nothing**: when the red both gates share is in no test class (a fixture
+  or a guard check), when the classes pass when run again, they fail before the batch too, or the
+  revert conflicts with later work. It comments once on each ticket the batch's commits name (a subject `<ticket>: …`), saying why;
   revert the batch's commits or fix forward, through the queue.
 - **Two red cycles in a row with the same red set** (`FULL_HOLD_AFTER`) write `full-hold` in the
   queue's repository: the culprit batch's tickets (`ticket <id>`) and commits (`commit <sha>`). While
