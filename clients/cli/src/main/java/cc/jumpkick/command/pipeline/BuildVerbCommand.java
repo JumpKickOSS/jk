@@ -34,6 +34,9 @@ import cc.jumpkick.wire.protocol.ProjectInfo;
 import cc.jumpkick.wire.runtime.WorkspaceResult;
 import cc.jumpkick.wire.runtime.WorkspaceTarget;
 import java.io.IOException;
+import java.io.InterruptedIOException;
+import java.net.SocketTimeoutException;
+import java.nio.channels.ClosedByInterruptException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -49,6 +52,9 @@ import org.jspecify.annotations.Nullable;
  * plan — settled the same way whatever the verb. A {@link BuildVerb} supplies what differs.
  */
 public final class BuildVerbCommand implements CliCommand {
+
+    /** The settle sentence of a run whose thread was interrupted before the engine finished. */
+    static final String INTERRUPTED = "Interrupted before the run finished";
 
     private final Supplier<BuildVerb> verbs;
     private final BuildVerb shape;
@@ -298,9 +304,11 @@ public final class BuildVerbCommand implements CliCommand {
                     runView.quarantined());
             return 1;
         } catch (IOException e) {
-            runView.finishEvent(false, BuildTails.elapsedMsSince(start), e.getMessage());
-            view.finishBuildPlanFailure(String.valueOf(e.getMessage()), List.of());
-            if (run.session() != null) run.session().error(String.valueOf(e.getMessage()));
+            String why = failureText(e);
+            runView.finishEvent(false, BuildTails.elapsedMsSince(start), why);
+            if (cutShort(e)) view.finishBuildPlanFailureCustom(why, List.of());
+            else view.finishBuildPlanFailure(why, List.of());
+            if (run.session() != null) run.session().error(why);
             run.notify(
                     BuildNotify.Outcome.FAILED,
                     entryDir,
@@ -340,9 +348,10 @@ public final class BuildVerbCommand implements CliCommand {
                     runView.quarantined());
             return code;
         } catch (IOException e) {
-            runView.finishEvent(false, BuildTails.elapsedMsSince(start), e.getMessage());
-            if (!json) CommandWedge.printFail(run.name(), e.getMessage());
-            if (run.session() != null) run.session().error(Errors.text(e));
+            String why = failureText(e);
+            runView.finishEvent(false, BuildTails.elapsedMsSince(start), why);
+            if (!json) CommandWedge.printFail(run.name(), why);
+            if (run.session() != null) run.session().error(why);
             run.notify(
                     BuildNotify.Outcome.FAILED, entryDir, 0, BuildTails.elapsedMsSince(start), runView.quarantined());
             return e instanceof EngineWireException ? Exit.CONFIG : Exit.SOFTWARE;
@@ -353,6 +362,21 @@ public final class BuildVerbCommand implements CliCommand {
                 elapsed,
                 verb.tails(run, runView, start),
                 settled -> run.notify(outcome(settled), entryDir, 0, elapsed, runView.quarantined()));
+    }
+
+    /** What a run that the engine stream ended on {@code e} settles with, never a bare "null". */
+    static String failureText(IOException e) {
+        return cutShort(e) ? INTERRUPTED : Errors.text(e);
+    }
+
+    /**
+     * Whether {@code e} is this thread being interrupted mid-run rather than the engine failing: an
+     * interrupted channel read throws with no message at all. A socket timeout is not an interrupt.
+     */
+    static boolean cutShort(IOException e) {
+        if (e instanceof ClosedByInterruptException) return true;
+        if (e instanceof InterruptedIOException && !(e instanceof SocketTimeoutException)) return true;
+        return Thread.currentThread().isInterrupted();
     }
 
     private static BuildNotify.Outcome outcome(WorkspaceRunView.Settled settled) {

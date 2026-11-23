@@ -9,6 +9,10 @@ import cc.jumpkick.cli.args.ArgParser;
 import cc.jumpkick.cli.args.ParseException;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.wire.runtime.WorkspaceTarget;
+import java.io.IOException;
+import java.io.InterruptedIOException;
+import java.net.SocketTimeoutException;
+import java.nio.channels.ClosedByInterruptException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -25,6 +29,31 @@ class BuildVerbCommandTest {
             BuildVerbCommand.nativeImage(),
             BuildVerbCommand.image(),
             BuildVerbCommand.train());
+
+    @Test
+    void a_run_cut_short_by_an_interrupt_says_so_rather_than_null() {
+        // An interrupted channel read throws with no message: printing it raw read "Failed to test null".
+        assertThat(BuildVerbCommand.failureText(new ClosedByInterruptException()))
+                .isEqualTo(BuildVerbCommand.INTERRUPTED);
+        assertThat(BuildVerbCommand.failureText(new InterruptedIOException())).isEqualTo(BuildVerbCommand.INTERRUPTED);
+        Thread.currentThread().interrupt();
+        try {
+            assertThat(BuildVerbCommand.failureText(new IOException())).isEqualTo(BuildVerbCommand.INTERRUPTED);
+        } finally {
+            Thread.interrupted();
+        }
+    }
+
+    @Test
+    void a_run_the_engine_failed_keeps_the_engine_sentence_and_never_prints_null() {
+        assertThat(BuildVerbCommand.failureText(new IOException("engine went away")))
+                .isEqualTo("engine went away");
+        assertThat(BuildVerbCommand.failureText(new SocketTimeoutException("Read timed out")))
+                .isEqualTo("Read timed out");
+        assertThat(BuildVerbCommand.failureText(new IOException()))
+                .isNotEqualTo("null")
+                .contains("IOException");
+    }
 
     @Test
     void every_build_command_declares_each_option_name_once() {
