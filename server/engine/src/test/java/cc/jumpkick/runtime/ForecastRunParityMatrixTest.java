@@ -67,7 +67,7 @@ import org.junit.jupiter.api.io.TempDir;
  * build runs, and are clean after it. Every fixture's first build runs under the key audit, and its
  * second build runs nothing ({@link SecondBuild}).
  */
-@Tag("integration")
+@Tag("release")
 class ForecastRunParityMatrixTest {
 
     /** The first-party worker whose jar the stub plugin's stands in for, while a test runs. */

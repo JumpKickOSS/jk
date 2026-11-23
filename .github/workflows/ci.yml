@@ -238,9 +238,9 @@ jobs:
           echo "curated integration lane: $((SECONDS - start))s of an 8 minute budget" \
             >> "$GITHUB_STEP_SUMMARY"
 
-      # The release tier: tests worth running once per release and on no other run, such as the
-      # dashboard's new-project wizard driven through Playwright's Chromium. They may fetch (the
-      # browser, the dashboard's CDN), which this job can.
+      # The release tier: tests too slow for every queue batch that a release must pass, such as the
+      # dashboard's new-project wizard driven through Playwright's Chromium; the Full tier runs it
+      # too. They may fetch (the browser, the dashboard's CDN, Maven Central), which this job can.
       - name: Release test tier
         run: jk test -s release --no-ansi
 

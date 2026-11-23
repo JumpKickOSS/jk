@@ -55,7 +55,7 @@ import org.junit.jupiter.params.provider.MethodSource;
  * test caches so repeat runs are warm.
  */
 // Out of the unit tier: network resolve of the Helidon BOM, JDK 27 forks, a server per case.
-@Tag("integration")
+@Tag("release")
 class HelidonTemplatesE2eTest {
 
     private static final Path ROOT = RepoRoot.find(HelidonTemplatesE2eTest.class);

@@ -59,7 +59,7 @@ import org.junit.jupiter.api.io.TempDir;
  * discovered inputs. Same-JVM tests cannot give this: the locale, time zone, user and {@code $HOME}
  * an engine sees are its process's.
  */
-@Tag("integration")
+@Tag("release")
 class CrossHostKeyEqualityTest {
 
     private static final String MANIFEST = """

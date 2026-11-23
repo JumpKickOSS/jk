@@ -563,7 +563,7 @@ jk test -g                       # the guard suites, which the Full tier (jk ins
 jk test -s tree                  # the tests that scan every module's sources (Branch, Queue, Full)
 jk test -s slow                  # framework / language e2e (nightly)
 jk test -s network               # talks to a real remote (nightly)
-jk test -s release               # a real browser (CI on the release tag)
+jk test -s release               # a real browser, the slowest end-to-ends (Full tier, CI on the release tag)
 jk test -s live                  # this machine's OS keychain (on demand, desktop only)
 jk test -s bench                 # microbenchmarks (nightly)
 jk test -A                       # every suite but the explicit ones (live, bench)

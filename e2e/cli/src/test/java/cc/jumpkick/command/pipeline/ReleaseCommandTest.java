@@ -21,7 +21,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /** {@code jk release}: tag the declared version, then move {@code jk.toml} to the next one. */
-@Tag("integration")
+@Tag("release")
 class ReleaseCommandTest {
 
     private static final String MANIFEST = """

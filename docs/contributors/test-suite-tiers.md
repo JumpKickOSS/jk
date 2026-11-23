@@ -46,7 +46,7 @@ Tag new heavy tests at class level:
 @Tag("integration") // engine/e2e / Jk.execute / workers
 @Tag("slow")        // Android / multi-minute / large downloads / waits out a real clock for 1s or more
 @Tag("network")     // talks to a real remote (Maven Central, a forge)
-@Tag("release")     // worth running once per release: a real browser (CI on the release tag)
+@Tag("release")     // too slow for every queue batch, run before each release: a real browser, a multi-minute end-to-end (the Full tier, CI on the release tag)
 @Tag("live")        // writes to this machine's own services (the OS keychain); desktop, on demand
 @Tag("bench")       // microbench only (never PR)
 @Tag("docs")        // walks the doc tree (docs/, the root Markdown); every gate tier runs it alone
@@ -151,6 +151,16 @@ other file outside every member (the root `jk.toml`, `jk-lock.toml`, `.jk/`, `te
 selects them all, and the Queue tier runs the whole `integration` suite. The changed modules'
 suites run with `--exclusive`: a module's dependents are not run, which is what the curated lane is
 for. In the other modules a curated class runs alone, so no class runs twice.
+
+**The slowest end-to-ends wait for the Full tier.** The Queue tier's integration step runs the
+integration suites of up to three heavy modules side by side, and its wall is set by their total
+CPU. A class of a minute or more that a release must pass, but that a batch rarely breaks, carries
+`@Tag("release")` instead: the Helidon scaffolds served end to end (`HelidonTemplatesE2eTest`,
+`HelidonQuickstartE2eTest`), publish and release against a local repository (`PublishCommandTest`,
+`ReleaseCommandTest`), the cross-host key proof (`CrossHostKeyEqualityTest`), the forecast-against-run
+matrix (`ForecastRunParityMatrixTest`), the mirror and group-root walks (`UserConfigMirrorTest`,
+`GroupRootE2eTest`). The Full tier runs them on every cycle, so a break blocks the next release, not
+the batch.
 
 **A docs-only batch skips the Queue tier.** When every file a batch changed is a doc that no test
 reads but those of the docs suite ([docs-only](self-host.md#docs-only-changes)), the queue gates
@@ -323,8 +333,9 @@ test cannot show a green CI run. Nothing runs the integration or slow tier on Wi
   then the curated integration lane and `jk audit -s HIGH` over the lock), the shell fixtures, the
   workflow lint and the commit-authorship scan. No coverage, no benches. After the curated lane, the
   self-host job runs `jk test -s release`: the tests a release must pass that are too slow or too
-  heavy for any other run, such as the dashboard's new-project wizard in Playwright's Chromium
-  (`NewProjectWizardE2eTest`). The tier may fetch (the browser, the dashboard's CDN). Beside it the
+  heavy for a queue batch, such as the dashboard's new-project wizard in Playwright's Chromium
+  (`NewProjectWizardE2eTest`); the Full tier runs them every cycle. The tier may fetch (the browser,
+  the dashboard's CDN, Maven Central). Beside it the
   `integration` job runs `jk test -s integration --continue`, and the Windows and macOS jobs wait
   for it. A red job stops the release.
 - **Nightly (`ci-nightly.yml`):** `jk test -s integration`, `-s slow`,
