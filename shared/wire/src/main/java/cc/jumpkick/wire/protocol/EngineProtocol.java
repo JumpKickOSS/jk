@@ -314,9 +314,9 @@ public final class EngineProtocol {
     public static final String ERR_ALREADY_RUNNING = "already-running";
 
     /**
-     * Server → client keep-alive while a long job runs. Resets client stream idle
-     * ({@code JK_STREAM_IDLE_MS}); clients ignore the payload. Interval: {@code JK_ENGINE_HEARTBEAT_MS}
-     * (default 30s; {@code 0} disables).
+     * Server → client keep-alive while a job, or a read served inline, runs. Resets client stream
+     * idle ({@code JK_STREAM_IDLE_MS}); the client's protocol reader drops the line. Interval:
+     * {@code JK_ENGINE_HEARTBEAT_MS} (default 30s; {@code 0} disables).
      */
     public static final String HEARTBEAT = "heartbeat";
 

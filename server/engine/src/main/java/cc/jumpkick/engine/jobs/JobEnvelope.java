@@ -127,6 +127,11 @@ public final class JobEnvelope {
         this.settlement = new JobSettlement(host, host, host, host);
     }
 
+    /** The heartbeat, deadline and grace bounds this envelope holds its jobs to. */
+    public JobLimits limits() {
+        return limits;
+    }
+
     /** Detached admission refusal: a same-fingerprint job is already in flight. */
     public static final class AlreadyRunning extends IllegalStateException {
         private final long jid;

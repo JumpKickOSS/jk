@@ -171,7 +171,12 @@ public final class EngineControls {
                     "on",
                     ENGINE_START,
                     "off: a client in this process neither holds nor waits for the host install lock."),
-            control("", "JK_ENGINE_HEARTBEAT_MS", "30000", ENGINE_START, "Heartbeat while async jobs run. 0 disables."),
+            control(
+                    "",
+                    "JK_ENGINE_HEARTBEAT_MS",
+                    "30000",
+                    ENGINE_START,
+                    "Heartbeat while jobs and reads run. 0 disables."),
             control(
                     "",
                     "JK_ENGINE_JOB_DEADLINE_MS",
