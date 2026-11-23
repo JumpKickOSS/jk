@@ -6,6 +6,7 @@ import cc.jumpkick.host.HostTemp;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.OwnerOnlyFiles;
+import cc.jumpkick.host.PathUtil;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
@@ -30,8 +31,14 @@ import org.jspecify.annotations.Nullable;
  * group above sets one, and everywhere but Linux. The directory is {@code jk-<user>-leases/<budget>}
  * under {@link HostTemp#dir()}, {@code 0700}. An engine that cannot create it, or finds it owned
  * by someone else, open to others, or a link, keeps the file in its own state directory as before.
- * So does an engine started inside a worker of an engine recorded there, such as a test's engine
- * inside a test JVM: that engine already charges the worker's whole tree.
+ *
+ * <p>An engine started inside a worker of an engine recorded in one of those directories, such as a
+ * test's engine inside a test JVM, leases in {@value #NESTED} under that directory instead, with
+ * every other engine started inside a worker of that budget's engines. The outer engine charges
+ * each worker at its whole tree's resident set, so the inner engines cannot lease from the outer
+ * total too: their forks would count twice, and would wait on memory only their own worker's exit
+ * frees. Nor can each lease alone, or from its worker's own group, which caps it at a share of the
+ * budget: the inner engines of two test JVMs would then each be granted that share.
  */
 final class LeaseScope {
 
@@ -43,27 +50,55 @@ final class LeaseScope {
     private static final Set<PosixFilePermission> OWNER_ONLY =
             Set.of(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE, PosixFilePermission.OWNER_EXECUTE);
 
+    /** The directory under a budget's where the engines inside its engines' workers share their leases. */
+    static final String NESTED = "nested";
+
     /** The directory this engine's leases are shared in; {@code engineDir} when they are its own. */
     static Path dir(Path engineDir) {
-        String budget = budget(OwnCgroup.HOST, Os.isLinux());
-        Path shared =
-                HostTemp.dir().resolve(userDir(System.getProperty("user.name"))).resolve(budget);
-        return outsideEveryWorker(usable(shared, engineDir), engineDir, ancestry(ProcessHandle.current()));
+        Path leases = HostTemp.dir().resolve(userDir(System.getProperty("user.name")));
+        Path inner = innerOf(leases, ancestry(ProcessHandle.current()));
+        Path shared = inner != null ? inner : leases.resolve(budget(OwnCgroup.HOST, Os.isLinux()));
+        return usable(shared, engineDir);
     }
 
     /**
-     * {@code shared}, unless an engine recorded there forked one of {@code ancestors}: then {@code
-     * engineDir}, said in the engine log. That engine charges its worker at the resident set of the
-     * worker's whole tree, this engine and its forks included, so leasing those forks from the same
-     * total would count them twice, and a fork would wait on memory only its own ancestor's exit frees.
+     * {@code <dir>/}{@value #NESTED} for the directory under {@code leases} where an engine recorded
+     * there forked one of {@code ancestors}, said in the engine log; null when no engine did. Each
+     * budget's directory is read, and the {@value #NESTED} ones below it, the deepest match winning:
+     * an engine inside a worker of an inner engine leases a level further down, apart from the inner
+     * engine that charges it.
      */
-    static Path outsideEveryWorker(Path shared, Path engineDir, Set<Long> ancestors) {
-        if (shared.equals(engineDir)) return shared;
-        HostLeases.Owner forker = HostLeases.forkedOneOf(shared, ancestors);
-        if (forker == null) return shared;
-        Log.info("jk engine: worker leases kept to this engine's home, not shared at " + shared
-                + ": it runs inside a worker of engine pid " + forker.pid() + ", which already charges its memory");
-        return engineDir;
+    static @Nullable Path innerOf(Path leases, Set<Long> ancestors) {
+        Path found = null;
+        HostLeases.Owner forker = null;
+        int deepest = -1;
+        for (Path budget : budgets(leases)) {
+            int depth = 0;
+            for (Path dir = budget; Files.isDirectory(dir, LinkOption.NOFOLLOW_LINKS); dir = dir.resolve(NESTED)) {
+                HostLeases.Owner owner = HostLeases.forkedOneOf(dir, ancestors);
+                if (owner != null && depth > deepest) {
+                    found = dir;
+                    forker = owner;
+                    deepest = depth;
+                }
+                depth++;
+            }
+        }
+        if (found == null || forker == null) return null;
+        Path inner = found.resolve(NESTED);
+        Log.info("jk engine: worker leases shared at " + inner + " with every engine inside a worker of " + found
+                + ": this engine runs inside a worker of engine pid " + forker.pid()
+                + ", which already charges its memory");
+        return inner;
+    }
+
+    /** The budget directories under {@code leases}; none when it cannot be listed. */
+    private static List<Path> budgets(Path leases) {
+        try {
+            return PathUtil.childDirectories(leases).stream().sorted().toList();
+        } catch (IOException | RuntimeException e) {
+            return List.of();
+        }
     }
 
     /** {@code process} and every process above it, nearest first. */

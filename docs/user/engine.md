@@ -558,11 +558,14 @@ against the others' last reading, and offers its line again, after a pause that 
 5 seconds, until the file takes it: a release is never lost to one failed write.
 The file costs each fork a few file-locked rewrites of a few hundred bytes, a fraction of a
 millisecond each. A test JVM's in-process engine keeps its own ledger. An engine started
-inside another engine's worker, such as a test's engine inside a `jk test` JVM, keeps its
-file in `<state>/engine` and says so in its log: the outer engine already charges that worker
-at the resident set of its whole tree, the inner engine and its forks included, so sharing
-would count them twice and leave the inner engine's forks waiting on memory that only the
-worker's own exit frees.
+inside another engine's worker, such as a test's engine inside a `jk test` JVM, records its
+line in `nested/worker-leases` under the outer engine's directory instead, and says so in its
+log: the outer engine already charges that worker at the resident set of its whole tree, the
+inner engine and its forks included, so sharing the outer file would count them twice and leave
+the inner engine's forks waiting on memory that only the worker's own exit frees. Every engine
+inside a worker of that budget's engines shares the one `nested` file, so the inner engines of
+two test JVMs lease from one budget and one JVM cap, not one each; an engine inside a worker of
+one of those leases one level further down, in `nested/nested`.
 
 A JVM's `-Xmx` is its ceiling, and the ceiling's lease is the `-Xmx` plus overhead of
 `max(160 MiB, 12% of -Xmx)`. The 12% is the resident cost of GC and thread structures

@@ -4,6 +4,7 @@ package cc.jumpkick.engine.plugin;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
+import cc.jumpkick.testing.Sleepers;
 import cc.jumpkick.testing.Symlinks;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -15,8 +16,8 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * Engines that draw on one memory budget share one lease file, whatever home each runs from: the
- * cgroup whose limit sets the budget names the directory, and a directory someone else could write
- * is refused for the engine's own.
+ * cgroup whose limit sets the budget names the directory, the engines inside its engines' workers
+ * share one beside it, and a directory someone else could write is refused for the engine's own.
  */
 class LeaseScopeTest {
 
@@ -104,36 +105,81 @@ class LeaseScopeTest {
         assertThat(LeaseScope.usable(link.resolve("host"), home)).isEqualTo(home);
     }
 
+    /**
+     * Two pooled test JVMs of one engine, each in a group of its own capped below the budget, each
+     * start an engine: both lease in one file beside the outer engine's, not one each.
+     */
     @Test
-    void an_engine_inside_a_worker_another_engine_charges_keeps_its_leases_at_home() throws Exception {
-        ProcessHandle engine = ProcessHandle.current().parent().orElse(null);
-        assumeTrue(engine != null && engine.info().startInstant().isPresent());
-        Path shared = Files.createDirectories(root.resolve("jk-me-leases/host"));
-        Path home = root.resolve("home");
-        HostLeases.Owner worker = HostLeases.Owner.current();
-        record(shared, HostLeases.Owner.of(engine), worker.pid() + ":" + worker.startedAtMillis());
+    void engines_inside_two_workers_of_one_engine_lease_from_one_total() throws Exception {
+        Path leases = root.resolve("var/tmp/jk-me-leases");
+        Process first = Sleepers.sleeper(120).start();
+        Process second = Sleepers.sleeper(120).start();
+        try {
+            HostLeases.Owner outer = HostLeases.Owner.current();
+            assumeTrue(outer.startedAtMillis() > 0);
+            Path host = LeaseScope.usable(leases.resolve(LeaseScope.HOST), root.resolve("home-outer"));
+            assertThat(host).isEqualTo(leases.resolve(LeaseScope.HOST));
+            record(host, outer, worker(first) + " " + worker(second));
+            Files.createDirectories(leases.resolve("cgroup-" + first.pid()));
+            Files.createDirectories(leases.resolve("cgroup-" + second.pid()));
 
-        assertThat(LeaseScope.outsideEveryWorker(shared, home, LeaseScope.ancestry(ProcessHandle.current())))
-                .isEqualTo(home);
+            Path fromFirst = LeaseScope.innerOf(leases, LeaseScope.ancestry(first.toHandle()));
+            Path fromSecond = LeaseScope.innerOf(leases, LeaseScope.ancestry(second.toHandle()));
+
+            Path nested = host.resolve(LeaseScope.NESTED);
+            assertThat(fromFirst).isEqualTo(nested).isEqualTo(fromSecond);
+            Path shared = LeaseScope.usable(nested, root.resolve("home-a"));
+            assertThat(shared).isEqualTo(nested);
+            HostLeases a = share(shared, 1001);
+            HostLeases b = share(LeaseScope.usable(nested, root.resolve("home-b")), 1002);
+            assertThat(a.publish(0, new HostLeases.Line(6 * GIB, 8, 5 * GIB, 2, 0, List.of())))
+                    .isTrue();
+            assertThat(b.fresh().bytes())
+                    .as("the first worker's inner engine holds")
+                    .isEqualTo(5 * GIB);
+            assertThat(b.budget(6 * GIB)).isEqualTo(6 * GIB);
+        } finally {
+            first.destroyForcibly();
+            second.destroyForcibly();
+        }
     }
 
     @Test
-    void a_worker_pid_since_reused_or_a_gone_engine_leaves_the_leases_shared() throws Exception {
+    void an_engine_inside_a_worker_of_an_inner_engine_leases_a_level_further_down() throws Exception {
+        Path leases = root.resolve("var/tmp/jk-me-leases");
+        Process worker = Sleepers.sleeper(120).start();
+        try {
+            HostLeases.Owner inner = HostLeases.Owner.current();
+            assumeTrue(inner.startedAtMillis() > 0);
+            Path nested =
+                    Files.createDirectories(leases.resolve(LeaseScope.HOST).resolve(LeaseScope.NESTED));
+            record(nested, inner, worker(worker));
+
+            assertThat(LeaseScope.innerOf(leases, LeaseScope.ancestry(worker.toHandle())))
+                    .isEqualTo(nested.resolve(LeaseScope.NESTED));
+        } finally {
+            worker.destroyForcibly();
+        }
+    }
+
+    @Test
+    void a_worker_pid_since_reused_a_gone_engine_or_no_engine_leaves_the_budget_s_own_file() throws Exception {
         ProcessHandle engine = ProcessHandle.current().parent().orElse(null);
         assumeTrue(engine != null && engine.info().startInstant().isPresent());
-        Path shared = Files.createDirectories(root.resolve("jk-me-leases/host"));
-        Path home = root.resolve("home");
+        Path leases = root.resolve("var/tmp/jk-me-leases");
         HostLeases.Owner self = HostLeases.Owner.current();
         assumeTrue(self.startedAtMillis() > 0);
         var ancestors = LeaseScope.ancestry(ProcessHandle.current());
 
-        assertThat(LeaseScope.outsideEveryWorker(shared, home, ancestors)).isEqualTo(shared);
+        assertThat(LeaseScope.innerOf(leases, ancestors)).as("no directory yet").isNull();
+        Path shared = Files.createDirectories(leases.resolve(LeaseScope.HOST));
+        assertThat(LeaseScope.innerOf(leases, ancestors)).as("no file").isNull();
 
         record(shared, HostLeases.Owner.of(engine), self.pid() + ":" + (self.startedAtMillis() - 60_000));
-        assertThat(LeaseScope.outsideEveryWorker(shared, home, ancestors)).isEqualTo(shared);
+        assertThat(LeaseScope.innerOf(leases, ancestors)).isNull();
 
         record(shared, new HostLeases.Owner(Integer.MAX_VALUE - 1L, 1), self.pid() + ":" + self.startedAtMillis());
-        assertThat(LeaseScope.outsideEveryWorker(shared, home, ancestors)).isEqualTo(shared);
+        assertThat(LeaseScope.innerOf(leases, ancestors)).isNull();
     }
 
     @Test
@@ -156,11 +202,18 @@ class LeaseScopeTest {
         return new HostLeases(dir, new HostLeases.Owner(pid, 0), owner -> true, workers -> 0);
     }
 
-    /** {@code dir}'s lease file holding one line: {@code engine} with an 8 GiB budget and {@code worker}. */
-    private static void record(Path dir, HostLeases.Owner engine, String worker) throws Exception {
+    /** {@code dir}'s lease file holding one line: {@code engine} with an 8 GiB budget and {@code workers}. */
+    private static void record(Path dir, HostLeases.Owner engine, String workers) throws Exception {
         Files.writeString(
                 dir.resolve(HostLeases.FILE),
-                engine.pid() + " " + engine.startedAtMillis() + " " + 8 * GIB + " 8 0 1 0 " + worker + "\n");
+                engine.pid() + " " + engine.startedAtMillis() + " " + 8 * GIB + " 8 0 1 0 " + workers + "\n");
+    }
+
+    /** {@code process} as the file names a worker: {@code <pid>:<start-epoch-millis>}. */
+    private static String worker(Process process) {
+        HostLeases.Owner owner = HostLeases.Owner.of(process.toHandle());
+        assumeTrue(owner.startedAtMillis() > 0);
+        return owner.pid() + ":" + owner.startedAtMillis();
     }
 
     private Path group(String rel) throws Exception {

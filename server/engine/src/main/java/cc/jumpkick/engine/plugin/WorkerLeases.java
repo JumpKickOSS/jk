@@ -70,9 +70,9 @@ import org.jspecify.annotations.Nullable;
  * state directory, so a displaced engine still draining and its successor, or engines with
  * different homes side by side, together stay inside them. They lease against one budget and one
  * JVM cap, the ones the engine that was there first recorded. An engine started inside another
- * engine's worker, as a test's engine is inside a test JVM, keeps its own: that worker is charged
- * at its whole tree's resident set. A ledger that joins nothing, as in a test JVM, counts only its
- * own leases against its own limits.
+ * engine's worker, as a test's engine is inside a test JVM, shares the {@linkplain LeaseScope#NESTED
+ * inner engines'} file instead: that worker is charged at its whole tree's resident set. A ledger
+ * that joins nothing, as in a test JVM, counts only its own leases against its own limits.
  */
 public final class WorkerLeases {
 

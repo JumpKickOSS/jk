@@ -63,7 +63,9 @@ How JumpKick is structured today. For day-to-day usage see [user documentation](
   process joins `HostLeases`, one `worker-leases` file per user and memory budget (`LeaseScope`:
   `jk-<user>-leases/host` or `cgroup-<id>` under `HostTemp.dir()`) under a file lock in which
   every engine of that budget, whatever its home, except one started inside another recorded engine's
-  worker (that engine charges the worker's whole tree), records its budget, JVM cap, charged bytes, running JVMs,
+  worker (that engine charges the worker's whole tree; every such inner engine of the budget shares
+  `nested/worker-leases` below it instead, so the inner engines of several workers lease from one
+  total), records its budget, JVM cap, charged bytes, running JVMs,
   queued leases and worker pids, each grant is decided against the sums (made under the ledger's
   lock on the last reading, it stands only once a fresh reading taken under the file lock still
   admits it, its line written before that lock is let go; any other change to the line is written
@@ -75,7 +77,7 @@ How JumpKick is structured today. For day-to-day usage see [user documentation](
   joins nothing, and a pooled test JVM of a suite that starts engines of its own
   (`ForkSpec.drivesEngines`) leases its memory but no JVM slot, so it never holds a slot that the
   forks of the engine it waits on need, and is priced at its process tree's resident peak, past
-  its own `-Xmx` lease when that is larger, since those forks lease from its own ledger alone (an
+  its own `-Xmx` lease when that is larger, since those forks lease from the inner engines' own `nested` file, not the host's (an
   auto-sized pool of them runs at half the suite's share, so the engines they wait on keep cores
   and memory of their own); a
   pooled test JVM of the engine's own suite outside the fast tier runs its engines in-process and
