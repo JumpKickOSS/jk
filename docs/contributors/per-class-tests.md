@@ -326,7 +326,12 @@ them (`suiteCode`, up to 128, each with its content and since when it has held i
 is replayed only when every one of them held since before the class finished. Whether a class's
 loads lay in its cone is decided when it runs and kept as its `fallback`. The suite's line holds
 counts, the bounded pool (up to 400 data files) and the suite's code files, never a class's
-content. The record file and the shadow log are written and read a row
+content. It names the launches it stands for (`launches`): a launch runs its own test JVMs, so what
+no window held in them is no input of another launch's classes. A run writes its line first and
+keeps, after it, each earlier line for the launches it did not start, so a `jk test -g` whose
+integration JVMs started a program or reached the network outside every class leaves the default
+suite's classes on the pool of the run that ran them (`TestClassRecords.headers`). The code-file
+list is the newest line's, merged across runs. The record file and the shadow log are written and read a row
 at a time; a row past 256 KiB (none this writes) is skipped as unreadable.
 
 **The memory bound.** One suite records at a time across the engine. What it holds outside the

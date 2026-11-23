@@ -17,6 +17,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -52,8 +53,8 @@ final class ClassShadow {
     private final String module;
     private final String suitePart;
     private final Path workspace;
-    private final ClassKeys.Observed pooledBefore;
-    private final ClassKeys.Observed pooledNow;
+    private final Function<String, ClassKeys.Observed> pooledBefore;
+    private final Function<String, ClassKeys.Observed> pooledNow;
     private final Map<String, String> programs;
     private final ClassKeys.SuiteReadSet readsBefore;
     private final ClassKeys.SuiteReadSet readsAfter;
@@ -80,8 +81,8 @@ final class ClassShadow {
 
     /**
      * The shadow of one run: cones from {@code index}, keys under {@code suitePart}; {@code
-     * pooledBefore} and {@code readsBefore} are what the records were keyed over before this run (the
-     * pool of the record file's header and the suite's discovered inputs), {@code
+     * pooledBefore} and {@code readsBefore} are what the records were keyed over before this run (each
+     * launch's pool, from the header it stands on, and the suite's discovered inputs), {@code
      * pooledNow} and {@code readsAfter} what this run leaves; {@code programs} the identity of each
      * program the suite's stamp keys, by name ({@link ClassKeys#programs}); {@code codeSince} is since when the code
      * files the record file's header lists have held still ({@link SuiteCodeFiles#since}) and {@code
@@ -92,8 +93,8 @@ final class ClassShadow {
             ClassCones.Index index,
             String suitePart,
             Path workspace,
-            ClassKeys.Observed pooledBefore,
-            ClassKeys.Observed pooledNow,
+            Function<String, ClassKeys.Observed> pooledBefore,
+            Function<String, ClassKeys.Observed> pooledNow,
             Map<String, String> programs,
             ClassKeys.SuiteReadSet readsBefore,
             ClassKeys.SuiteReadSet readsAfter,
@@ -124,7 +125,8 @@ final class ClassShadow {
                 obs == null || loadedMore ? List.of() : ClassKeys.reflective(index, o.testClass(), obs.loaded());
         ClassCones.Cone cone = index.cone(o.testClass(), reflective == null ? List.of() : reflective);
         String fallback = ClassKeys.fallback(cone, now, loadedMore, reflective == null, codePastBound);
-        if (fallback == null) fallback = ClassKeys.pooledFallback(pooledNow);
+        ClassKeys.Observed pooled = pooledNow.apply(o.launch());
+        if (fallback == null) fallback = ClassKeys.pooledFallback(pooled);
         if (index.full()) fallback = "index past its bound";
         String used = fallback == null ? used(cone, obs, o.testClass()) : null;
         ClassKeys.Key key = ClassKeys.key(
@@ -134,7 +136,7 @@ final class ClassShadow {
                 suitePart,
                 ClassKeys.identified(now, programs),
                 programs,
-                pooledNow,
+                pooled,
                 module,
                 readsAfter,
                 workspace,
@@ -153,7 +155,7 @@ final class ClassShadow {
                                 suitePart,
                                 ClassKeys.identified(now, programs),
                                 programs,
-                                pooledNow,
+                                pooled,
                                 module,
                                 readsAfter,
                                 workspace,
@@ -228,10 +230,11 @@ final class ClassShadow {
         if (prevKey == null) return "no-key";
         if (!"passed".equals(Jsonl.str(prev, "outcome"))) return "red";
         String fallback = Jsonl.str(prev, "fallback");
-        if (fallback == null) fallback = ClassKeys.pooledFallback(pooledBefore);
-        String now = rowKey(prev, launch, testClass, carriedKey != null, fallback, pooledBefore, readsBefore);
+        ClassKeys.Observed pooled = pooledBefore.apply(launch);
+        if (fallback == null) fallback = ClassKeys.pooledFallback(pooled);
+        String now = rowKey(prev, launch, testClass, carriedKey != null, fallback, pooled, readsBefore);
         if (!now.equals(prevKey)) return fallback != null ? "module " + fallback : "key";
-        boolean pastOwnCode = Jsonl.bool(prev, "codeMore", false) || pooledBefore.codeMore();
+        boolean pastOwnCode = Jsonl.bool(prev, "codeMore", false) || pooled.codeMore();
         if (fallback == null && pastOwnCode && codeSince >= Jsonl.longValue(prev, "ranAt", 0)) return "code moved";
         return null;
     }
@@ -281,11 +284,11 @@ final class ClassShadow {
         String testClass = TestClassRecords.className(container);
         if (!index.contains(testClass) || whyRun(row, launch, testClass) != null) return row;
         String fallback = Jsonl.str(row, "fallback");
-        if (fallback == null && ClassKeys.pooledFallback(pooledNow) != null) return row;
-        String out = rekeyed(row, "classKey", rowKey(row, launch, testClass, false, fallback, pooledNow, readsAfter));
+        ClassKeys.Observed pooled = pooledNow.apply(launch);
+        if (fallback == null && ClassKeys.pooledFallback(pooled) != null) return row;
+        String out = rekeyed(row, "classKey", rowKey(row, launch, testClass, false, fallback, pooled, readsAfter));
         if (Jsonl.str(row, "classKeyCarried") != null && whyRun(row, launch, testClass, true) == null)
-            out = rekeyed(
-                    out, "classKeyCarried", rowKey(row, launch, testClass, true, fallback, pooledNow, readsAfter));
+            out = rekeyed(out, "classKeyCarried", rowKey(row, launch, testClass, true, fallback, pooled, readsAfter));
         return out;
     }
 
@@ -317,7 +320,7 @@ final class ClassShadow {
                 Jsonl.strArray(row, "readNames"));
     }
 
-    /** What the record file's header says no window held; nothing when there is none. */
+    /** What a record file's {@code header} says no window held; nothing when there is none. */
     static ClassKeys.Observed pooledOf(@Nullable String header) {
         if (header == null) return ClassKeys.Observed.NONE;
         String pooled = Jsonl.nested(header, "pooled");

@@ -36,6 +36,9 @@ class ConeForecastTest {
 
     private static final ClassDesc DEP = ClassDesc.of("demo.Dep");
 
+    /** The launches the records of these tests stand for: the default suite's and a gate's. */
+    private static final List<String> LAUNCHES = List.of("", "test:test,tree");
+
     @Test
     void a_body_only_edit_replays_the_classes_that_never_ran_the_edited_class(@TempDir Path ws) throws Exception {
         BuildLayout layout = module(ws);
@@ -119,6 +122,7 @@ class ConeForecastTest {
         Path file = TestClassRecords.file(moduleDir);
         String pooledProcess = JsonFields.object()
                 .string("kind", "suite")
+                .array(TestClassRecords.LAUNCHES, List.of(""))
                 .token(
                         "pooled",
                         JsonFields.object()
@@ -216,6 +220,61 @@ class ConeForecastTest {
                 .isEqualTo(20);
     }
 
+    /**
+     * Each launch's classes stand on the pool of the header the run that last started that launch
+     * wrote: a later run of the integration suite whose test JVMs reached the network outside every
+     * class leaves the default suite's forecast as it was, and the integration suite's own classes
+     * still all run.
+     */
+    @Test
+    void another_launchs_pool_leaves_this_launchs_forecast(@TempDir Path ws) throws Exception {
+        BuildLayout layout = module(ws);
+        write(layout.classesDir(), "demo/Dep", dep());
+        write(layout.testClassesDir(), "demo/T", caller("demo.T"));
+        write(layout.testClassesDir(), "demo/U", plain("demo.U"));
+        String integration = "test:integration";
+        Path file = TestClassRecords.file(layout.moduleRoot());
+        Files.createDirectories(file.getParent());
+        String reachedHost = JsonFields.object()
+                .string("kind", "suite")
+                .array(TestClassRecords.LAUNCHES, List.of(integration))
+                .token(
+                        "pooled",
+                        JsonFields.object()
+                                .array("network", List.of("repo.maven.apache.org"))
+                                .finish())
+                .finish();
+        String quiet = JsonFields.object()
+                .string("kind", "suite")
+                .array(TestClassRecords.LAUNCHES, List.of(""))
+                .finish();
+        Files.writeString(
+                file,
+                String.join(
+                        "\n",
+                        reachedHost,
+                        quiet,
+                        row("", "T", 3, null),
+                        row("", "U", 2, null),
+                        row(integration, "U", 40, null),
+                        ""));
+
+        assertThat(replayed(layout, edit(SourceApiIndex.Kind.BODY_ONLY)))
+                .as("U replays in the default suite: the integration suite's pool is not its own")
+                .isEqualTo(2);
+        TestClassRecording.Replayed gate = Objects.requireNonNull(TestClassRecording.replayedAfter(
+                layout.moduleRoot(),
+                layout,
+                layout.testClassesDir(),
+                layout.classesDir(),
+                List.of(),
+                List.of(edit(SourceApiIndex.Kind.BODY_ONLY)),
+                List.of(),
+                Set.of(integration)));
+        assertThat(gate.classes()).as("its own pool reached another host").isZero();
+        assertThat(gate.ran()).isEqualTo(40);
+    }
+
     @Test
     void a_source_names_its_class_and_the_classes_nested_in_it(@TempDir Path ws) throws Exception {
         Path classes = ws.resolve("classes");
@@ -266,7 +325,7 @@ class ConeForecastTest {
     private static void writeRows(Path moduleDir, @Nullable String pooledCode, String... rows) throws Exception {
         Path file = TestClassRecords.file(moduleDir);
         Files.createDirectories(file.getParent());
-        JsonFields header = JsonFields.object().string("kind", "suite");
+        JsonFields header = JsonFields.object().string("kind", "suite").array(TestClassRecords.LAUNCHES, LAUNCHES);
         if (pooledCode != null) {
             header.token(
                     "pooled",
@@ -281,6 +340,7 @@ class ConeForecastTest {
         Files.createDirectories(file.getParent());
         String header = JsonFields.object()
                 .string("kind", "suite")
+                .array(TestClassRecords.LAUNCHES, LAUNCHES)
                 .array(SuiteCodeFiles.FIELD, suiteCode)
                 .finish();
         Files.writeString(file, header + "\n" + String.join("\n", rows) + "\n");
@@ -304,7 +364,10 @@ class ConeForecastTest {
                 file,
                 String.join(
                         "\n",
-                        JsonFields.object().string("kind", "suite").finish(),
+                        JsonFields.object()
+                                .string("kind", "suite")
+                                .array(TestClassRecords.LAUNCHES, LAUNCHES)
+                                .finish(),
                         row("T", 3, tUsed),
                         row("U", 2, null),
                         ""));

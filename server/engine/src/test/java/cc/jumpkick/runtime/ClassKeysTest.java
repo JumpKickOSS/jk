@@ -15,6 +15,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -560,23 +561,69 @@ class ClassKeysTest {
                 .isEqualTo("key");
     }
 
+    /**
+     * A launch runs its own test JVMs, so what one launch's JVMs did outside every window is no input
+     * of another launch's classes. A run of the integration suite whose pool started a program, or
+     * reached the network, left the default suite's classes keyed by their module, and a body-only
+     * engine edit then ran every class of jk-engine's default suite. Each launch's classes stand on
+     * the header of the run that last started that launch, and a later run of another launch keeps it.
+     */
+    @Test
+    void another_launchs_pool_is_no_input_of_this_launchs_classes(@TempDir Path ws) throws Exception {
+        Path classes = Files.createDirectories(ws.resolve("classes"));
+        copy(classes, "demo/T", FIXTURE + "ConeUnrelated");
+        copy(classes, "demo/U", FIXTURE + "ConeUnrelated");
+        Path module = Files.createDirectories(ws.resolve("m"));
+        String integration = "test:integration";
+        ClassReads.Observation started = ClassReads.Observation.empty();
+        started.addProcess("/usr/bin/setsid");
+
+        recordRun(module, classes, ws, ClassReads.Observation.empty(), "", List.of("demo.T"));
+        recordRun(module, classes, ws, started, integration, List.of("demo.U"));
+        assertThat(selected(module, classes, ws, "", "demo.T"))
+                .as("the integration suite's pool is not the default suite's")
+                .isNull();
+        assertThat(TestClassRecords.headers(TestClassRecords.file(module))).containsOnlyKeys("", integration);
+
+        recordRun(module, classes, ws, ClassReads.Observation.empty(), "", List.of("demo.U"));
+        assertThat(ClassShadow.pooledOf(TestClassRecords.headers(TestClassRecords.file(module))
+                                .get(integration))
+                        .processes())
+                .as("the default suite's next run keeps the integration suite's pool")
+                .containsExactly("/usr/bin/setsid");
+
+        recordRun(module, classes, ws, started, "", List.of("demo.U"));
+        assertThat(selected(module, classes, ws, "", "demo.T"))
+                .as("a launch's own pool still keys its classes")
+                .isEqualTo("module pooled process /usr/bin/setsid");
+    }
+
     /** One run's records, as a suite's recording leaves them: the classes of {@code ran} ran, beside {@code pool}. */
     private static void recordRun(Path module, Path classes, Path ws, ClassReads.Observation pool, List<String> ran)
+            throws Exception {
+        recordRun(module, classes, ws, pool, "", ran);
+    }
+
+    /** As {@link #recordRun(Path, Path, Path, ClassReads.Observation, List)}, the classes run in {@code launch}. */
+    private static void recordRun(
+            Path module, Path classes, Path ws, ClassReads.Observation pool, String launch, List<String> ran)
             throws Exception {
         Map<String, ClassReads.Observation> seenByClass = new HashMap<>();
         Map<String, TestClassRecords.Outcome> outcomes = new HashMap<>();
         for (String c : ran) {
             seenByClass.put(c, ClassReads.Observation.empty());
-            outcomes.put(TestClassRecords.rowKey("", c), new TestClassRecords.Outcome("", c, 1, 0, 0, 1_000, 1));
+            outcomes.put(
+                    TestClassRecords.rowKey(launch, c), new TestClassRecords.Outcome(launch, c, 1, 0, 0, 1_000, 1));
         }
         ClassReads.Attributed seen = new ClassReads.Attributed(seenByClass, pool, true, 1, 1);
-        String previous = TestClassRecords.header(TestClassRecords.file(module));
+        Function<String, ClassKeys.Observed> before =
+                TestClassRecording.pooledBy(TestClassRecords.headers(TestClassRecords.file(module)));
         ClassShadow shadow = new ClassShadow(
                 ClassCones.index(List.of(classes)),
                 "suite",
                 ws,
-                ClassShadow.pooledOf(previous),
-                ClassShadow.observed(pool, ws),
+                before,
+                l -> l.equals(launch) ? ClassShadow.observed(pool, ws) : before.apply(l),
                 Map.of(),
                 ClassKeys.SuiteReadSet.NONE,
                 ClassKeys.SuiteReadSet.NONE,
@@ -596,14 +643,19 @@ class ClassKeysTest {
 
     /** Why the selection runs {@code testClass} over the records of {@code module}, null to replay it. */
     private static @Nullable String selected(Path module, Path classes, Path ws, String testClass) {
+        return selected(module, classes, ws, "", testClass);
+    }
+
+    /** As {@link #selected(Path, Path, Path, String)}, for the class's row in {@code launch}. */
+    private static @Nullable String selected(Path module, Path classes, Path ws, String launch, String testClass) {
         Path file = TestClassRecords.file(module);
         String header = TestClassRecords.header(file);
         ClassShadow keys = new ClassShadow(
                 ClassCones.index(List.of(classes)),
                 "suite",
                 ws,
-                ClassShadow.pooledOf(header),
-                ClassKeys.Observed.NONE,
+                TestClassRecording.pooledBy(TestClassRecords.headers(file)),
+                l -> ClassKeys.Observed.NONE,
                 Map.of(),
                 ClassKeys.SuiteReadSet.NONE,
                 ClassKeys.SuiteReadSet.NONE,
@@ -612,10 +664,10 @@ class ClassKeysTest {
                 "stamp");
         List<String> rows = new ArrayList<>();
         TestClassRecords.forEachRow(file, (key, row) -> {
-            if (key.equals(TestClassRecords.rowKey("", testClass))) rows.add(row);
+            if (key.equals(TestClassRecords.rowKey(launch, testClass))) rows.add(row);
         });
         assertThat(rows).as("one row of " + testClass).hasSize(1);
-        return keys.whyRun(rows.getFirst(), "", testClass);
+        return keys.whyRun(rows.getFirst(), launch, testClass);
     }
 
     private static ClassShadow shadow(ClassCones.Index index, Path ws, ClassKeys.Observed pooled) {
@@ -628,8 +680,8 @@ class ClassKeysTest {
                 index,
                 "suite",
                 ws,
-                pooled,
-                pooled,
+                launch -> pooled,
+                launch -> pooled,
                 programs,
                 ClassKeys.SuiteReadSet.NONE,
                 ClassKeys.SuiteReadSet.NONE,

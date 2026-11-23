@@ -20,6 +20,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -27,6 +28,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.Semaphore;
+import java.util.function.Function;
 import java.util.function.Predicate;
 import org.jspecify.annotations.Nullable;
 
@@ -135,6 +137,7 @@ final class TestClassRecording {
                 Map<String, TestClassRecords.Outcome> ran = TestClassRecords.outcomes(ledger.recorded());
                 Path file = TestClassRecords.file(moduleDir);
                 String previous = TestClassRecords.header(file);
+                Map<String, String> headers = TestClassRecords.headers(file);
                 SuiteCodeFiles.Listed code =
                         SuiteCodeFiles.listed(previous, seen.code(), workspace, firstFinished(ran));
                 String header = TestClassRecords.header(
@@ -155,8 +158,13 @@ final class TestClassRecording {
                 }
                 List<String> extras = stampExtras.read();
                 String suitePart = ClassKeys.suitePart(extras, external, resourceDirs);
-                ClassKeys.Observed pooledBefore = ClassShadow.pooledOf(previous);
-                ClassKeys.Observed pooledNow = ClassShadow.observed(seen.pooled(), workspace);
+                Function<String, ClassKeys.Observed> pooledBefore = pooledBy(headers);
+                ClassKeys.Observed pool = ClassShadow.observed(seen.pooled(), workspace);
+                Set<String> launches = new HashSet<>();
+                for (TestClassRecords.Outcome o : ran.values()) launches.add(o.launch());
+                // This run's pool is what its own launches' JVMs left; any other launch keeps its own.
+                Function<String, ClassKeys.Observed> pooledNow =
+                        launch -> launches.contains(launch) ? pool : pooledBefore.apply(launch);
                 ClassShadow shadow;
                 // The index stands only while no recording is read anywhere in the engine.
                 try (RecordingReader.Permit permit = RecordingReader.Permit.acquire()) {
@@ -267,8 +275,8 @@ final class TestClassRecording {
      * whose key, taken now over its cone and what that record says it read, is still the key the
      * record was stored under, by its launch and class as the class ledger names it, with the counts
      * it replays. Nothing that class reaches changed since it passed. A class that reached past the
-     * host, or whose suite did outside every class, is never replayed, nor a class no longer in the
-     * workspace. Empty when the shadow is off ({@link TestTelemetry#shadow}): its keys are not kept.
+     * host, or whose launch's test JVMs did outside every class, is never replayed, nor a class no
+     * longer in the workspace, nor one of a launch no header stands for. Empty when the shadow is off ({@link TestTelemetry#shadow}): its keys are not kept.
      */
     static Map<String, TestClassLedger.Entry> unmoved(
             Path moduleDir,
@@ -352,13 +360,16 @@ final class TestClassRecording {
         if (!TestTelemetry.shadow()) return Split.NONE;
         Path file = TestClassRecords.file(moduleDir);
         String header = TestClassRecords.header(file);
-        if (header == null || reachedPastHost(Jsonl.nested(header, "pooled"))) return Split.NONE;
+        if (header == null) return Split.NONE;
+        Map<String, String> headers = TestClassRecords.headers(file);
         Path workspace = layout.workspaceRoot().toAbsolutePath().normalize();
         Roots roots = Roots.of(workspace, testClasses, mainClasses, runtimeCp);
         String suitePart = ClassKeys.suitePart(stampExtras, roots.external(), resourceDirs);
         ClassKeys.SuiteReadSet reads = readSet(moduleDir, selection, layout.workspaceRoot());
         Map<String, TestClassLedger.Entry> out = new TreeMap<>();
         Set<String> recorded = new HashSet<>();
+        // Whether a launch has no header, or its pool reached another host: none of its classes replays.
+        Map<String, Boolean> poolReached = new HashMap<>();
         long[] ran = {0};
         try {
             ONE.acquire();
@@ -373,8 +384,8 @@ final class TestClassRecording {
                     index,
                     suitePart,
                     workspace,
-                    ClassShadow.pooledOf(header),
-                    ClassKeys.Observed.NONE,
+                    pooledBy(headers),
+                    launch -> ClassKeys.Observed.NONE,
                     ClassKeys.programs(stampExtras),
                     reads,
                     reads,
@@ -386,7 +397,12 @@ final class TestClassRecording {
                 String cls = TestClassRecords.className(Jsonl.strArray(row, "container"));
                 if (launch == null || (launches != null && !launches.contains(launch)) || !index.contains(cls)) return;
                 recorded.add(cls);
-                if (reachedPastHost(row) || keys.whyRun(row, launch, cls) != null) {
+                if (poolReached.computeIfAbsent(launch, l -> {
+                            String own = headers.get(l);
+                            return own == null || reachedPastHost(Jsonl.nested(own, "pooled"));
+                        })
+                        || reachedPastHost(row)
+                        || keys.whyRun(row, launch, cls) != null) {
                     ran[0] += Jsonl.longValue(row, "tests", 0);
                     return;
                 }
@@ -420,8 +436,9 @@ final class TestClassRecording {
      * module's edit kept every declaration, none it ran ({@code coneUsed}). A worker jar the stamp
      * keys that is rebuilding ({@code rebuildingJars}) runs the classes that read it, those in whose
      * JVM a program was started ({@link ClassKeys#startedProgram}), and those keyed by their module,
-     * every class when the pool started a program ({@link ClassKeys#pooledFallback}); nothing
-     * replays when the pool read it. A class that read more code files than its record names, or ran
+     * every class of a launch whose pool started a program ({@link ClassKeys#pooledFallback});
+     * nothing of a launch replays when its pool read it, and a launch's pool is the one of the header
+     * its rows stand on ({@link TestClassRecords#headers}). A class that read more code files than its record names, or ran
      * beside a pool that did, stands on the suite's code files as the header lists them ({@link
      * SuiteCodeFiles}): it runs when one of them is rebuilding or changed after it finished, as the
      * selection decides it. The cones are walked over the classes on disk, the edit's own not yet
@@ -444,14 +461,11 @@ final class TestClassRecording {
         Path file = TestClassRecords.file(moduleDir);
         String header = TestClassRecords.header(file);
         if (header == null) return null;
-        if (reachedPastHost(Jsonl.nested(header, "pooled"))) return Replayed.NONE;
+        Map<String, String> headers = TestClassRecords.headers(file);
         Path workspace = layout.workspaceRoot().toAbsolutePath().normalize();
         Set<Path> jars = new HashSet<>();
         for (Path j : rebuildingJars) jars.add(j.toAbsolutePath().normalize());
-        String pooled = Jsonl.nested(header, "pooled");
-        if (readsAny(pooled, jars, workspace)) return Replayed.NONE;
-        boolean pooledProcess = ClassKeys.pooledFallback(ClassShadow.pooledOf(header)) != null;
-        boolean pooledCodeMore = pooled != null && Jsonl.bool(pooled, "codeMore", false);
+        Map<String, PoolAfter> pools = new HashMap<>();
         long codeSince = listsAny(header, jars, workspace) ? Long.MAX_VALUE : SuiteCodeFiles.since(header, workspace);
         Roots roots = Roots.of(workspace, testClasses, mainClasses, runtimeCp);
         long[] replayed = {0, 0, 0};
@@ -476,14 +490,18 @@ final class TestClassRecording {
             }
             TestClassRecords.forEachRow(file, (key, row) -> {
                 String cls = TestClassRecords.className(Jsonl.strArray(row, "container"));
-                if (!launches.contains(String.valueOf(Jsonl.str(row, "launch"))) || !index.contains(cls)) return;
+                String launch = String.valueOf(Jsonl.str(row, "launch"));
+                if (!launches.contains(launch) || !index.contains(cls)) return;
                 recorded.add(cls);
                 long tests = Jsonl.longValue(row, "tests", 0);
+                PoolAfter pool = pools.computeIfAbsent(launch, l -> PoolAfter.of(headers.get(l), jars, workspace));
                 boolean codeMoved = Jsonl.str(row, "fallback") == null
-                        && !pooledProcess
-                        && (pooledCodeMore || Jsonl.bool(row, "codeMore", false))
+                        && !pool.process()
+                        && (pool.codeMore() || Jsonl.bool(row, "codeMore", false))
                         && codeSince >= Jsonl.longValue(row, "ranAt", 0);
-                if (codeMoved || runsAfter(row, cls, index, moved, bodiesOnly, jars, pooledProcess, workspace)) {
+                if (pool.runsAll()
+                        || codeMoved
+                        || runsAfter(row, cls, index, moved, bodiesOnly, jars, pool.process(), workspace)) {
                     replayed[2] += tests;
                     return;
                 }
@@ -580,6 +598,30 @@ final class TestClassRecording {
             if (o.ranAt() > 0) first = Math.min(first, o.ranAt());
         }
         return first == Long.MAX_VALUE ? Clock.SYSTEM.millis() : first;
+    }
+
+    /**
+     * What a launch's pool says of every class of the launch once the rebuilding {@code jars} are
+     * built ({@link #replayedAfter}): all of them run ({@code runsAll}) when the launch has no header,
+     * its pool reached another host or may have read one of the jars; {@code process} when its pool
+     * started a program, which keys every class by its module; {@code codeMore} when its pool read
+     * more code files than it names.
+     */
+    private record PoolAfter(boolean runsAll, boolean process, boolean codeMore) {
+        static PoolAfter of(@Nullable String header, Set<Path> jars, Path workspace) {
+            if (header == null) return new PoolAfter(true, false, false);
+            String pool = Jsonl.nested(header, "pooled");
+            return new PoolAfter(
+                    reachedPastHost(pool) || readsAny(pool, jars, workspace),
+                    ClassKeys.pooledFallback(ClassShadow.pooledOf(header)) != null,
+                    pool != null && Jsonl.bool(pool, "codeMore", false));
+        }
+    }
+
+    /** Each launch's pool, from the header its rows stand on ({@link TestClassRecords#headers}); nothing for a launch none names. */
+    static Function<String, ClassKeys.Observed> pooledBy(Map<String, String> headers) {
+        Map<String, ClassKeys.Observed> pools = new HashMap<>();
+        return launch -> pools.computeIfAbsent(launch, l -> ClassShadow.pooledOf(headers.get(l)));
     }
 
     /** Whether a record row, or the pool of its header, says the network was reached. */

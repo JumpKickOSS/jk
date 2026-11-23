@@ -37,7 +37,9 @@ import org.jspecify.annotations.Nullable;
  * files, hosts, environment variables and system properties by name), attributed to it by its window
  * in the recording ({@link ClassReads}). Kept in jk's cache for the project, one file per module,
  * beside the suite's discovered inputs; a class that ran replaces its row, a class that did not keeps
- * the row of the run it last ran in.
+ * the row of the run it last ran in. The headers lead the file: a run's header (what no class's
+ * window held, the suite's code files, counts) stands for the launches it started, and an earlier
+ * one stays for each launch it did not ({@link #headers}).
  *
  * <p>Every row is bounded, whatever the class did: at most {@link ClassReads#READS_KEPT} files read,
  * with {@code readsMore} when it read more (it is then keyed on the files its suite was found to
@@ -196,10 +198,11 @@ final class TestClassRecords {
     }
 
     /**
-     * Rewrite the record file of {@code moduleDir} a row at a time: {@code header} first, then every
-     * earlier row, a class of {@code ran} replaced by what {@code maker} makes of it, then the classes
-     * of {@code ran} that had no row. Nothing but the row in hand is held. Best-effort: a file that
-     * cannot be written leaves the old one.
+     * Rewrite the record file of {@code moduleDir} a row at a time: {@code header} first, naming the
+     * launches of {@code ran} as the ones it stands for, then each earlier header for the launches
+     * this run did not start, then every earlier row, a class of {@code ran} replaced by what {@code
+     * maker} makes of it, then the classes of {@code ran} that had no row. Nothing but the row in hand
+     * is held. Best-effort: a file that cannot be written leaves the old one.
      */
     static void merge(Path moduleDir, String header, Map<String, Outcome> ran, RowMaker maker) throws IOException {
         merge(moduleDir, header, ran, maker, UnaryOperator.identity());
@@ -212,13 +215,23 @@ final class TestClassRecords {
         Path file = file(moduleDir);
         Files.createDirectories(file.getParent());
         Set<String> done = new HashSet<>();
+        Set<String> launches = new TreeSet<>();
+        for (Outcome o : ran.values()) launches.add(o.launch());
         Path staging = AtomicWrites.staging(file);
         try (BufferedWriter out = Files.newBufferedWriter(staging, StandardCharsets.UTF_8)) {
-            out.write(header);
+            out.write(withLaunches(header, launches));
             out.write('\n');
             if (Files.isRegularFile(file)) {
                 try (BufferedReader in = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
                     for (String line = bounded(in); line != null; line = bounded(in)) {
+                        String carried = carried(line, launches);
+                        if (carried != null) {
+                            if (!carried.isEmpty()) {
+                                out.write(carried);
+                                out.write('\n');
+                            }
+                            continue;
+                        }
                         String key = rowKeyOf(line);
                         if (key == null || done.contains(key)) continue;
                         Outcome o = ran.get(key);
@@ -249,6 +262,55 @@ final class TestClassRecords {
         } catch (IOException | RuntimeException unreadable) {
             return null;
         }
+    }
+
+    /**
+     * The header each launch's rows stand on, by launch: the newest header naming it. A launch runs
+     * its own test JVMs, so what no class's window held in one launch's JVMs (its pool) is no input of
+     * another launch's classes: a run of the integration suite whose pool reached the network leaves
+     * the default suite's classes standing on the pool of the run that ran them. Headers lead the
+     * file, one per run that still stands for a launch, so only those lines are read.
+     */
+    static Map<String, String> headers(Path file) {
+        Map<String, String> out = new HashMap<>();
+        if (!Files.isRegularFile(file)) return out;
+        try (BufferedReader in = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
+            for (String line = bounded(in); line != null; line = bounded(in)) {
+                if (line.isEmpty()) continue;
+                if (!"suite".equals(Jsonl.str(line, "kind"))) break;
+                for (String launch : Jsonl.strArray(line, LAUNCHES)) out.putIfAbsent(launch, line);
+            }
+        } catch (IOException | RuntimeException unreadable) {
+            // what cannot be read is no record
+        }
+        return out;
+    }
+
+    /** The header field naming the launches whose rows stand on that header. */
+    static final String LAUNCHES = "launches";
+
+    /** The header object {@code header} standing for {@code launches}, in place of whatever it named. */
+    static String withLaunches(String header, Collection<String> launches) {
+        List<String> named = List.copyOf(new TreeSet<>(launches));
+        if (!Jsonl.has(header, LAUNCHES))
+            return Jsonl.append(
+                    header, JsonFields.fields().array(LAUNCHES, named).body());
+        String was = Jsonl.quote(LAUNCHES) + ":" + Jsonl.array(Jsonl.strArray(header, LAUNCHES));
+        return header.replace(was, Jsonl.quote(LAUNCHES) + ":" + Jsonl.array(named));
+    }
+
+    /**
+     * An earlier header {@code line} as it carries over a run that started {@code launches}: standing
+     * for the launches it named that this run did not start, or empty when none is left. Null when
+     * the line is not a header.
+     */
+    private static @Nullable String carried(String line, Set<String> launches) {
+        if (line.isEmpty() || !"suite".equals(Jsonl.str(line, "kind"))) return null;
+        List<String> left = new ArrayList<>();
+        for (String launch : Jsonl.strArray(line, LAUNCHES)) {
+            if (!launches.contains(launch)) left.add(launch);
+        }
+        return left.isEmpty() ? "" : withLaunches(line, left);
     }
 
     /** {@code consumer} given each row of the record file by launch and class, one at a time. */
