@@ -410,8 +410,11 @@ engine change gates, each after a run that left its records: jk-engine 199 of 19
 the 198 it keyed: 170 by the module, 28 by a key that moved), jk-cli-e2e 135 of 135 (45 by the
 module, 89 by a key that moved, 1 red before), jk-engine-e2e 9 of 9 (all by the module). The
 module-keyed classes start the CLI, an engine, `git` or a build, or load code past their bound;
-neither later change replays a class that starts the CLI or an engine. How many of the 117 whose key
-moved those changes would replay is not measured.
+neither later change replays a class that starts the CLI or an engine. Under an engine with both
+(main at 7709bc7c5, same box, same edit, each suite after a forced run): jk-engine replayed 47 of
+197, 129 of its 1,386 class-seconds, the run-tests step 256 s against 245 s; jk-cli-e2e replayed 0
+of 130. The classes that replay are the cheap ones, so selection takes little off the Queue tier's
+integration step.
 
 With uses marked, on bocaminipc-2 after the same body-only edit of `SelfHostEngine`: 158 of
 jk-engine's 942 fast-tier classes run (849 before), 23 because a class whose code they ran moved and 135 keyed
