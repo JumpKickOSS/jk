@@ -150,11 +150,25 @@ public final class PlannerTest {
      * are left out; an entry not on disk holds no tag.
      */
     public static List<Path> tagClasspath(Path dir, JkBuild project, BuildLayout layout) throws IOException {
+        return TestOutputs.baseClasspath(
+                layout.classesDir(),
+                project,
+                layout,
+                forecastClasspaths(dir, project).testCompile(),
+                null);
+    }
+
+    /** The test JVM's classpath as the forecast names it, with no build: siblings by their jars. */
+    static List<Path> testRuntimeClasspath(Path dir, JkBuild project) throws IOException {
+        return forecastClasspaths(dir, project).testRuntime();
+    }
+
+    private static ModuleClasspaths forecastClasspaths(Path dir, JkBuild project) throws IOException {
         Path lockFile = LockPaths.lockFile(dir);
         Lockfile lock = Files.isRegularFile(lockFile)
                 ? MemberRows.view(LockfileReader.read(lockFile), lockFile, dir)
                 : Lockfile.empty("offline");
-        ModuleClasspaths classpaths = ModuleClasspaths.derive(
+        return ModuleClasspaths.derive(
                 dir,
                 project,
                 ModuleShape.of(project, dir, null),
@@ -162,7 +176,6 @@ public final class PlannerTest {
                 new ClasspathResolver(JkStores.storeCas()),
                 ModuleClasspaths.Contributions.NONE,
                 ModuleClasspaths.Mode.FORECAST);
-        return TestOutputs.baseClasspath(layout.classesDir(), project, layout, classpaths.testCompile(), null);
     }
 
     /**

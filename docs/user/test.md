@@ -27,8 +27,8 @@ jk build -g                      # package with the guards green (same flag on a
 jk build -A                       # package with the full suite green
 ```
 
-`--affected` and `--affected-since=<ref>` rank at most 20 test **classes**, print them as a
-table, and write `target/jk-tests-affected.md`. They do **not** run tests. `--affected` is
+`--affected` and `--affected-since=<ref>` rank test **classes**, print the top 20 as a
+table (`-O jsonl` carries every one), and write `target/jk-tests-affected.md`. They do **not** run tests. `--affected` is
 the git working tree (unstaged + untracked; last commit if the tree is clean).
 `--affected-since` is `ref...HEAD`. Neither is `jk explain`'s rebuild set. They cannot
 be combined (`--aff` is ambiguous). Refuse exits **2**; that file is not `jk-results.md`.
@@ -454,7 +454,7 @@ bind error; run again.
 ## Affected tests (WIP)
 
 ```bash
-jk test -f              # rank ≤20 classes for the working tree; print a table; do not run
+jk test -f              # rank classes for the working tree; print the top 20; do not run
 jk test -e HEAD~2 # same table for ref...HEAD (does not run)
 ```
 
@@ -462,19 +462,22 @@ jk test -e HEAD~2 # same table for ref...HEAD (does not run)
 It is **not** `--affected-since=HEAD` (that range is empty). The two flags cannot be combined.
 `--aff` is ambiguous.
 
-Both flags print the ranking as a table (Score · Class · Reason) and write
-`target/jk-tests-affected.md`. They do **not** run tests and do not replace
+Both flags print the 20 highest as a table (Score · Class · Reason) and write
+`target/jk-tests-affected.md`; with `-O jsonl` the row lists every ranked class. They do **not** run tests and do not replace
 `target/jk-results.md`. `-m` intersects the ranked list exactly as it intersects the
 build cone (`jk test -f -m api`). An edited test ranks first, unless the run's tags or
 `[test] exclude-classes` keep it out; then it is not listed. Only a class JUnit would find
 tests in is ranked: a helper or fixture under the test root, edited or using a changed type, is
-not listed. A test counts as using a type
+not listed. A class that has run before ranks by what JumpKick recorded of its last run in the
+selected suites ([class records](#what-a-suite-read-discovered-inputs)): first when its code ran a
+class compiled from a changed source or it read a changed file (`cone-ran:` and `reads:` reasons),
+lower when its cone only reaches such a class (`cone:`), and not at all when neither, whatever it
+names. A class with no record ranks by the changed types it uses, and a test counts as using a type
 however its bytecode names it: a call, a class literal, a method reference, a caught exception
 or an annotation's class value. A test's tags are read as `jk test` reads them, a tag composed
 in another module or a library included, from the class files and jars already on disk. Ranking
 refuse exits **2**. When the guess
-would be dishonest (`jk.toml` change, stale class files, too many types or modules, a
-dirty test outside the current suite), JumpKick prints `cannot rank affected tests` and tells
+would be dishonest (`jk.toml` change, stale class files, too many types or modules), JumpKick prints `cannot rank affected tests` and tells
 you to run `jk test`.
 
 ## One-run tag filters (`-I` / `-E`)

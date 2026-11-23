@@ -637,6 +637,88 @@ final class TestClassRecording {
         }
     }
 
+    /**
+     * How each class recorded under the launches named {@code launches} meets the files {@code
+     * changed} names (workspace-relative): {@code cone-ran:<class>} when its cone holds a class
+     * compiled from a changed source whose code it ran, {@code reads:<path>} when it read a changed
+     * file, or one under a directory it read more of than its record names, {@code cone:<class>}
+     * when its cone holds such a class it never ran, and the empty string when none. A class with no
+     * record under those launches is absent. The cones are walked over the classes on disk, so a
+     * changed source is found only once it is compiled.
+     */
+    static Map<String, String> overlaps(
+            Path moduleDir,
+            BuildLayout layout,
+            Path testClasses,
+            Path mainClasses,
+            List<Path> runtimeCp,
+            Collection<String> changed,
+            Set<String> launches)
+            throws IOException {
+        Path file = TestClassRecords.file(moduleDir);
+        if (!Files.isRegularFile(file)) return Map.of();
+        Path workspace = layout.workspaceRoot().toAbsolutePath().normalize();
+        Set<String> paths = new HashSet<>();
+        for (String c : changed) paths.add(c.replace('\\', '/'));
+        Roots roots = Roots.of(workspace, testClasses, mainClasses, runtimeCp);
+        Map<String, String> out = new TreeMap<>();
+        try {
+            ONE.acquire();
+        } catch (InterruptedException stopped) {
+            Thread.currentThread().interrupt();
+            return Map.of();
+        }
+        try (RecordingReader.Permit permit = RecordingReader.Permit.acquire()) {
+            ClassCones.Index index = ClassCones.index(roots.cone(), INDEX_CLASSES);
+            if (index.full()) return Map.of();
+            Map<String, String> moved = new TreeMap<>();
+            for (String path : paths) {
+                for (String cls : index.compiledFrom(path)) moved.putIfAbsent(cls, path);
+            }
+            TestClassRecords.forEachRow(file, (key, row) -> {
+                String cls = TestClassRecords.className(Jsonl.strArray(row, "container"));
+                if (!launches.contains(String.valueOf(Jsonl.str(row, "launch"))) || !index.contains(cls)) return;
+                String why = overlap(row, cls, index, moved, paths);
+                out.merge(cls, why, (a, b) -> strength(b) > strength(a) ? b : a);
+            });
+        } finally {
+            ONE.release();
+        }
+        return out;
+    }
+
+    /** How one record {@code row} meets the {@code moved} classes and changed {@code paths}, as {@link #overlaps} says. */
+    private static String overlap(
+            String row, String cls, ClassCones.Index index, Map<String, String> moved, Set<String> paths) {
+        for (String read : Jsonl.strArray(row, "reads")) {
+            if (paths.contains(read)) return "reads:" + read;
+        }
+        for (String root : Jsonl.strArray(row, "readRoots")) {
+            boolean deep = root.endsWith("**");
+            String dir = root.substring(0, root.length() - (deep ? 2 : 1));
+            for (String p : paths) {
+                if (p.startsWith(dir) && (deep || p.indexOf('/', dir.length()) < 0)) return "reads:" + p;
+            }
+        }
+        if (moved.isEmpty()) return "";
+        ClassCones.Cone cone = index.cone(cls, Jsonl.strArray(row, "reflective"));
+        String used = Jsonl.str(row, "coneUsed");
+        Predicate<String> ran = used == null ? c -> true : cone.ranBy(used);
+        String reached = "";
+        for (String c : moved.keySet()) {
+            if (!cone.contains(c)) continue;
+            if (ran.test(c)) return "cone-ran:" + c;
+            if (reached.isEmpty()) reached = "cone:" + c;
+        }
+        return reached;
+    }
+
+    /** The order of {@link #overlaps}' answers, the strongest highest. */
+    static int strength(String overlap) {
+        if (overlap.startsWith("cone-ran:") || overlap.startsWith("reads:")) return 2;
+        return overlap.isEmpty() ? 0 : 1;
+    }
+
     /** When the first of {@code ran} finished: the start of the run, as its records date it. */
     private static long firstFinished(Map<String, TestClassRecords.Outcome> ran) {
         long first = Long.MAX_VALUE;

@@ -108,18 +108,19 @@ public final class AffectedTestRun {
                 new AffectedTests.ModuleRow(rel.toString().isEmpty() ? "." : rel.toString(), coord, why);
 
         AffectedTests report = AffectedTestRanker.rank(new AffectedTestRanker.Inputs(
-                moduleDir,
-                coord,
-                wsRoot,
-                effectiveSel,
-                dirty,
-                pre,
-                current,
-                compiled,
-                tests,
-                production,
-                List.of(coneRow),
-                foreign));
+                        moduleDir,
+                        coord,
+                        wsRoot,
+                        effectiveSel,
+                        dirty,
+                        pre,
+                        current,
+                        compiled,
+                        tests,
+                        production,
+                        List.of(coneRow),
+                        foreign))
+                .capped();
         ctx.put(BuildPlanner.AFFECTED_TESTS, report);
         AffectedTests.Refuse refuse = report.refuse();
         if (refuse != null) {

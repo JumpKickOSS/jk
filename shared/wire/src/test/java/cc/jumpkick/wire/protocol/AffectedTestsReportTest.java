@@ -12,9 +12,9 @@ class AffectedTestsReportTest {
     @Test
     void an_empty_message_refuse_survives_the_round_trip() {
         AffectedTestsReport r = AffectedTestsReport.decode(
-                AffectedTestsReport.error("outside-selection", "").encode());
+                AffectedTestsReport.error("manifest", "").encode());
         assertThat(r.refused()).isTrue();
-        assertThat(r.refuseCode()).isEqualTo("outside-selection");
+        assertThat(r.refuseCode()).isEqualTo("manifest");
     }
 
     @Test

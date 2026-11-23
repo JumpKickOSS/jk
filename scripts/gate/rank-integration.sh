@@ -5,10 +5,17 @@
 #
 # A class ranks by how likely the range is to break it, then by cost:
 #   1. its own source changed (`edited`), or the curated lane names it (`curated`): always run;
-#   2. its source names a type whose source the range changed (`uses <Type>`);
-#   3. it failed, or passed only on a re-run, recently (`failed <n>x`): in `jk flaky list -O jsonl`
-#      (jk's per-class history on this machine) and in the newest gate logs (matched by simple name);
+#   2. jk ranks it high against the range (`jk test -e <base> -s integration`): its recorded last run
+#      ran a class compiled from a changed source or read a changed file (`cone-ran:<class>`,
+#      `reads:<path>`), or, with no record, its bytecode uses a changed type (`abi-import:<type>`, …);
+#   3. jk ranks it low (its recorded cone only reaches a changed class, `cone:<class>`), or it failed,
+#      or passed only on a re-run, recently (`failed <n>x`): in `jk flaky list -O jsonl` (jk's
+#      per-class history on this machine) and in the newest gate logs (matched by simple name);
 #   4. the rest, cheapest first, so that as many classes as fit run.
+# A class jk has a record of and does not rank is not near the change, whatever its source names.
+# Where jk cannot rank a module (it refuses, or <tip> is not the checked-out commit), rank 2 is the
+# classes whose source names a type whose source the range changed (`uses <Type>`), and the reason
+# goes to stderr.
 # Within each rank the cheaper class comes first. Classes are taken from the top while the sum of
 # their recorded walls stays within the budget; a class that does not fit is deferred and the next
 # one is tried. A class whose wall exceeds the pole is deferred unless it must run, since the step
@@ -37,6 +44,7 @@
 #   RANK_HISTORY_DIR  the gate logs read for failures (default $GATE_LOG_DIR, else /var/tmp/jk-gate)
 #   RANK_HISTORY_LOGS how many of the newest gate logs to read (default 100)
 #   RANK_FLAKY        a file holding `jk flaky list -O jsonl` (default: run it; `-` reads none)
+#   JK                the jk that ranks and lists flaky classes (default: jk on PATH)
 #   CURATED_REGISTRY  the curated lane's registry (default curated-integration.txt at the root)
 set -euo pipefail
 
@@ -126,9 +134,39 @@ if [[ -d "$history" ]]; then
 fi
 sort "$W/failures" | uniq -c | awk '{ print $2, $1 }' >"$W/failcount"
 
-# One row per class: module, class, edited, curated, used type, failures, seconds (blank: none).
+# jk's ranking of each module's integration classes against the range, from its class records:
+# `<class>\t<score>\t<reason>` per class it ranks, in $W/jk-<n>, or $W/jk-<n>.refused naming why
+# it could not. It ranks base...HEAD, so only a tip that is the checked-out commit is asked.
+jk_rank() {
+  local out="$W/jk-$1" mod="$2" why
+  if [[ "$(git rev-parse "$tip^{commit}")" != "$(git rev-parse HEAD)" ]]; then
+    echo "$tip is not the checked-out commit" >"$out.refused"
+    return
+  fi
+  (cd "$root" && "${JK:-jk}" test -e "$base" -m "$mod" -s integration -O jsonl --no-ansi 2>/dev/null </dev/null) |
+    jq -rR 'fromjson? // empty | select(.type == "affected-tests")
+      | if .refused then "REFUSED\t" + (.error // .refuseCode // "refused")
+        else "RANKED", (.rows[] | split("|") | "\(.[1])\t\(.[0])\t\(.[2:] | join("|"))") end' >"$out" 2>/dev/null || true
+  why="$(sed -n 's/^REFUSED\t//p' "$out" | head -1)"
+  if [[ -n "$why" ]]; then
+    echo "$why" >"$out.refused"
+  elif ! grep -qx RANKED "$out"; then
+    echo "it gave no ranking" >"$out.refused"
+  fi
+}
+
+# One row per class: module, class, edited, curated, near (jk's score and reason, or the source
+# scan's `uses <Type>`), failures, seconds (blank: none).
 : >"$W/rows"
+n=0
 for mod in "$@"; do
+  n=$((n + 1))
+  jk_rank "$n" "$mod"
+  ranked="$W/jk-$n"
+  if [[ -f "$ranked.refused" ]]; then
+    echo "rank-integration: $mod: jk could not rank ($(cat "$ranked.refused")); ranking by source text" >&2
+    ranked=""
+  fi
   git grep -lE '@Tag\("integration"\)' "$tip" -- "$mod/src/test" "$mod/src/e2e" 2>/dev/null |
     sed "s#^$tip:##" | grep -E '\.(java|kt|groovy)$' >"$W/files" || true
   : >"$W/mod-rows"
@@ -145,16 +183,19 @@ for mod in "$@"; do
       $1 == m && $2 == c { hit = 1 }
       END { exit !hit }
     ' "$registry" && curated=1
-    used=-
-    if [[ -s "$W/types" ]]; then
-      used="$(grep -owF -f "$W/types" <<<"$src" | grep -vxF "${cls##*.}" | head -1 || true)"
-      [[ -n "$used" ]] || used=-
+    near=-
+    if [[ -n "$ranked" ]]; then
+      near="$(awk -F'\t' -v c="$cls" '$1 == c && $3 != "test-src" { print $2 " " $3; exit }' "$ranked")"
+    elif [[ -s "$W/types" ]]; then
+      near="$(grep -owF -f "$W/types" <<<"$src" | grep -vxF "${cls##*.}" | head -1 || true)"
+      [[ -z "$near" ]] || near="100 uses $near"
     fi
+    [[ -n "$near" ]] || near=-
     fails="$(awk -v c="${cls##*.}" '$1 == c { print $2 }' "$W/failcount")"
     secs=""
     xml="$timings/$mod/target/failsafe-reports/TEST-$cls.xml"
     [[ -f "$xml" ]] && secs="$(grep -om1 '<testsuite [^>]*' "$xml" | sed -nE 's/.* time="([0-9.]+)".*/\1/p')"
-    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$mod" "$cls" "$edited" "$curated" "$used" "${fails:-0}" "$secs" >>"$W/mod-rows"
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$mod" "$cls" "$edited" "$curated" "$near" "${fails:-0}" "$secs" >>"$W/mod-rows"
   done <"$W/files"
   [[ -s "$W/mod-rows" ]] || echo "rank-integration: $mod has no integration classes at $tip" >&2
   cat "$W/mod-rows" >>"$W/rows"
@@ -172,7 +213,8 @@ awk -F'\t' -v budget="$budget" -v pole="$pole" '
       secs = f[7] == "" ? median : f[7] + 0
       if (f[3] == 1) { r = 0; why = "edited" }
       else if (f[4] == 1) { r = 0; why = "curated" }
-      else if (f[5] != "-") { r = 1; why = "uses " f[5] }
+      else if (f[5] != "-" && f[5] + 0 >= 80) { r = 1; why = substr(f[5], index(f[5], " ") + 1) }
+      else if (f[5] != "-") { r = 2; why = substr(f[5], index(f[5], " ") + 1) }
       else if (f[6] > 0) { r = 2; why = "failed " f[6] "x" }
       else { r = 3; why = "cost" }
       printf "%d\t%012.3f\t%s\t%s\t%s\t%s\t%s\n", r, secs, f[1], f[2], secs, f[7] == "" ? "~" : "", why

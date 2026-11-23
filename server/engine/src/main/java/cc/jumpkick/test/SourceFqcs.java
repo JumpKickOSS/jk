@@ -26,8 +26,7 @@ final class SourceFqcs {
     /** What a dirty source path is to the ranker. */
     enum Kind {
         MAIN,
-        TEST_SELECTED,
-        TEST_OUTSIDE,
+        TEST,
         NONE
     }
 
@@ -79,23 +78,22 @@ final class SourceFqcs {
         }
     }
 
-    /** Classify one module-relative source path ({@code /}-separated) against {@code suites}. */
-    Hit classify(String rel, Set<String> suites) {
+    /** Classify one module-relative source path ({@code /}-separated). */
+    Hit classify(String rel) {
         for (Root root : roots) {
             String prefix = root.rel() + "/";
             if (!rel.startsWith(prefix)) continue;
             String fqc = toFqc(rel.substring(prefix.length()));
             if (root.suite() == null) return new Hit(Kind.MAIN, fqc);
-            return suites.contains(root.suite()) ? new Hit(Kind.TEST_SELECTED, fqc) : new Hit(Kind.TEST_OUTSIDE, fqc);
+            return new Hit(Kind.TEST, fqc);
         }
-        return fallback(rel, suites);
+        return fallback(rel);
     }
 
     /** The string heuristics, for fake module dirs and paths outside every root. */
-    private static Hit fallback(String rel, Set<String> suites) {
+    private static Hit fallback(String rel) {
         if (AffectedTestRanker.isTestSource(rel)) {
-            Kind kind = AffectedTestRanker.suiteContains(rel, suites) ? Kind.TEST_SELECTED : Kind.TEST_OUTSIDE;
-            return new Hit(kind, AffectedTestRanker.fqcFromSource(rel));
+            return new Hit(Kind.TEST, AffectedTestRanker.fqcFromSource(rel));
         }
         if (AffectedTestRanker.isMainSource(rel)) {
             return new Hit(Kind.MAIN, AffectedTestRanker.fqcFromSource(rel));

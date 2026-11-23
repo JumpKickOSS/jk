@@ -4,6 +4,7 @@ package cc.jumpkick.test;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.task.ClassAbi;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -85,6 +86,24 @@ public record AffectedTests(
                 CAP,
                 candidateCount + other.candidateCount,
                 r);
+    }
+
+    /**
+     * Every ranked class, highest score first, ties by name: what machine output carries. The
+     * table, the markdown and MCP show {@link #capped}.
+     */
+    public AffectedTests sorted() {
+        if (refuse != null) return this;
+        List<Row> rows = new ArrayList<>(ranked);
+        rows.sort(Comparator.comparingInt(Row::score).reversed().thenComparing(Row::className));
+        return new AffectedTests(modules, changed, rows, cap, Math.max(candidateCount, rows.size()), null);
+    }
+
+    /** {@link #sorted}, at most {@link #CAP} classes, with the count of every candidate kept. */
+    public AffectedTests capped() {
+        AffectedTests all = sorted();
+        if (all.ranked.size() <= CAP) return all;
+        return new AffectedTests(modules, changed, all.ranked.subList(0, CAP), cap, all.candidateCount, null);
     }
 
     public Map<String, Object> toStructured() {

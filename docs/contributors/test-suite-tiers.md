@@ -176,11 +176,22 @@ the Queue tier runs them from the top while they fit the budget:
 
 1. **Must run:** a class whose own source the batch changed, and a class the curated lane names.
    These run whatever the budget says.
-2. **Uses a changed type:** its source names a type whose source file the batch changed.
-3. **Failed recently:** a failure or a pass only on a re-run in `jk flaky list -O jsonl` (the
+2. **Met the change when it last ran:** `jk test -e <base> -s integration -O jsonl` ranks the
+   module's classes from the record JumpKick kept of each one's last run on the gate host: its code ran
+   a class compiled from a changed source (`cone-ran:<class>`), or it read a changed file
+   (`reads:<path>`). A class with no record ranks here when its bytecode uses a changed type
+   (`abi-import:<type>` and the like). A class with a record that met nothing is not near the
+   change, whatever its source names.
+3. **Near the change, or failed recently:** a class whose recorded cone only reaches a changed
+   class (`cone:<class>`); a failure or a pass only on a re-run in `jk flaky list -O jsonl` (the
    class's last 20 runs on the gate host), or a `FAILED` or `FLAKY … passed on` line in the
    newest 100 gate logs.
 4. **The rest**, cheapest first, so that as many classes as fit run.
+
+Where JumpKick cannot rank a module (it refuses: a `jk.toml` changed, too many types or modules), rank 2
+is the classes whose source names a type whose source file the batch changed, and the gate log
+says so. The records are those of the gate's own checkout, so a class the Queue tier has never run
+there has none and ranks by its bytecode.
 
 Within a rank the cheaper class comes first. A class's cost is its recorded wall, the `time` of its
 newest `target/failsafe-reports/TEST-<class>.xml` in the gate's checkout; a class with none counts

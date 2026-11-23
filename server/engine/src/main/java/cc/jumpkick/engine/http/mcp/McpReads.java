@@ -184,7 +184,7 @@ public final class McpReads {
                 only = new LinkedHashSet<>();
                 for (Path p : msel.moduleDirs()) only.add(p.toAbsolutePath().normalize());
             }
-            AffectedTests acc = AffectedTestsCompute.fromDisk(root, sel, only);
+            AffectedTests acc = AffectedTestsCompute.fromDisk(root, sel, only).capped();
             JkTestsAffectedMarkdown.write(JkTestsAffectedMarkdown.latestPath(root), acc);
             Map<String, Object> out = acc.toStructured();
             if (acc.ranked().size() < acc.candidateCount()) out.put("truncated", true);

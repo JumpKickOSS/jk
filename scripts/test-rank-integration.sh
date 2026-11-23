@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Network-free fixtures for scripts/gate/rank-integration.sh: an edited or curated class always
-# runs; then a class naming a changed type, then a class that failed recently (jk's flaky history
-# or a gate log's FAILED and FLAKY lines and jk's quoted ones, once per log), then the rest
+# runs; then a class jk ranks high against the range (a stub jk here), or, where jk cannot rank, a
+# class naming a changed type; then a class jk ranks low or that failed recently (jk's flaky
+# history or a gate log's FAILED and FLAKY lines and jk's quoted ones, once per log), then the rest
 # cheapest first, while their recorded walls fit the budget; a class longer than the pole, or past
 # the budget, is deferred; a class with no recorded wall counts as the median; slow-tagged and
 # abstract classes are not the suite's; a replay with --before reads only older gate logs; bad
@@ -12,6 +13,17 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/jk-rank-test.XXXXXX")"
 trap 'rm -rf "$WORK"' EXIT
 RANK="$ROOT/scripts/gate/rank-integration.sh"
+
+# A stub jk: logs its arguments and prints $WORK/jk.out, or a refusal when there is none.
+cat >"$WORK/jk" <<STUB
+#!/usr/bin/env bash
+echo "\$*" >>"$WORK/jk.args"
+if [[ -f "$WORK/jk.out" ]]; then cat "$WORK/jk.out"; else
+  echo '{"schema":1,"type":"affected-tests","refused":true,"error":"the stub refuses","refuseCode":"stub","rows":[]}'
+fi
+STUB
+chmod +x "$WORK/jk"
+export JK="$WORK/jk"
 
 fail() {
   echo "test-rank-integration: $*" >&2
@@ -96,6 +108,44 @@ EOF
 $got
 want:
 $want"
+grep -q 'mod/a: jk could not rank (the stub refuses); ranking by source text' \
+  <(rank --budget 171 "$base" "$tip" mod/a 2>&1 >/dev/null) || fail "a refused jk ranking is not named"
+grep -qxF -- "test -e $base -m mod/a -s integration -O jsonl --no-ansi" "$WORK/jk.args" ||
+  fail "jk was asked: $(cat "$WORK/jk.args")"
+
+# ---- jk's ranking from its class records: DearTest ran Engine's code though its source names
+# nothing, CheapTest's cone only reaches it, and UsesTest names Engine but its record never met it;
+# 40+50 must run, then 60, 1, 5 and 20 fit 176
+cat >"$WORK/jk.out" <<'JSONL'
+{"schema":1,"type":"affected-tests","refused":false,"cap":20,"candidateCount":3,"rows":["110|a.EditedTest|test-src","100|a.DearTest|cone-ran:a.Engine","75|a.CheapTest|cone:a.Engine"]}
+JSONL
+got="$(rank --budget 176 --pole 90 "$base" "$tip" mod/a)"
+want="$(
+  cat <<'WANT'
+RUN mod/a a.EditedTest 40 edited
+RUN mod/a a.CuratedTest 50 curated
+RUN mod/a a.DearTest 60 cone-ran:a.Engine
+RUN mod/a a.QuotedTest 1 failed 1x
+RUN mod/a a.CheapTest 5 cone:a.Engine
+RUN mod/a a.FlakyTest 20 failed 1x
+DEFER mod/a a.LoggedTest 25 over budget
+DEFER mod/a a.UntimedTest ~30 over budget
+DEFER mod/a a.UsesTest 30 over budget
+DEFER mod/a a.PoleTest 200 longer than the pole
+WANT
+)"
+[[ "$got" == "$want" ]] || fail "the ranking from jk's records was:
+$got
+want:
+$want"
+
+# ---- a tip that is not the checked-out commit is not asked of jk -------------------------------
+: >"$WORK/jk.args"
+got="$(rank --budget 171 "$base" "$base" mod/a 2>&1 >/dev/null)"
+grep -qF "mod/a: jk could not rank ($base is not the checked-out commit)" <<<"$got" ||
+  fail "an old tip was not named: $got"
+[[ ! -s "$WORK/jk.args" ]] || fail "jk was asked of an old tip: $(cat "$WORK/jk.args")"
+rm "$WORK/jk.out"
 
 # ---- a budget that holds everything but the pole runs the rest -------------------------------------
 got="$(rank --budget 10000 --pole 90 "$base" "$tip" mod/a | awk '$1 == "DEFER" { print $3 }')"

@@ -51,10 +51,10 @@ class BuildAccumulatorAffectedTest {
     void a_refuse_slice_wins_within_the_run() {
         BuildAccumulator a = new BuildAccumulator("test", "/ws", "g:ws", "cli");
         a.addAffected(AffectedTests.refused(
-                new AffectedTests.Refuse("outside-selection", "dirty e2e test"), List.of(), List.of()));
+                new AffectedTests.Refuse("manifest", "jk.toml or jk-lock.toml changed"), List.of(), List.of()));
         a.addAffected(slice("api", "com.acme.FooTest"));
         AffectedTests affected = requireNonNull(a.affected());
         assertThat(affected.refused()).isTrue();
-        assertThat(requireNonNull(affected.refuse()).code()).isEqualTo("outside-selection");
+        assertThat(requireNonNull(affected.refuse()).code()).isEqualTo("manifest");
     }
 }

@@ -277,7 +277,10 @@ final class TestVerb implements BuildVerb {
             return 0;
         }
         CommandWedge.envelopeStart();
-        for (String line : renderAffectedTable(report.rows())) CliOutput.out(line);
+        List<AffectedTestsReport.Row> rows = report.rows();
+        int shown = Math.min(rows.size(), Math.max(report.cap(), 1));
+        for (String line : renderAffectedTable(rows.subList(0, shown))) CliOutput.out(line);
+        if (shown < rows.size()) CliOutput.out((rows.size() - shown) + " more ranked; -O jsonl lists them all");
         if (run.session() != null) run.session().wedge(report.rows().size() + " affected");
         return 0;
     }

@@ -63,7 +63,7 @@ public final class AbiIndex {
             Path p = src.toAbsolutePath().normalize();
             if (!p.startsWith(module)) continue;
             String rel = module.relativize(p).toString().replace('\\', '/');
-            SourceFqcs.Hit hit = fqcs.classify(rel, Set.of(TestSuites.DEFAULT));
+            SourceFqcs.Hit hit = fqcs.classify(rel);
             if (hit.kind() != SourceFqcs.Kind.MAIN || hit.fqc() == null) continue;
             Path classFile = classesDir.resolve(hit.fqc().replace('.', '/') + ".class");
             if (Files.isRegularFile(classFile)) {

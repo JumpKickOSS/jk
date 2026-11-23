@@ -31,6 +31,7 @@ import org.junit.jupiter.api.io.TempDir;
  * whose cone holds the edited class; an edit the forecast cannot read counts every test. A worker
  * jar the suite is handed by path that is rebuilding runs only the classes that read it, and a
  * class that read more code files than its record names runs only when one its suite lists moves.
+ * The affected-test ranking reads the same records: how each class's cone and reads meet a change.
  */
 class ConeForecastTest {
 
@@ -328,6 +329,54 @@ class ConeForecastTest {
         ClassCones.Index index = ClassCones.index(List.of(classes));
         assertThat(index.compiledFrom("src/main/java/demo/Dep.java")).isEqualTo(Set.of("demo.Dep", "demo.Dep$In"));
         assertThat(index.compiledFrom("src/main/java/demo/New.java")).isEmpty();
+    }
+
+    @Test
+    void a_class_meets_a_change_by_the_code_it_ran_the_cone_it_reaches_and_the_files_it_read(@TempDir Path ws)
+            throws Exception {
+        BuildLayout layout = module(ws);
+        Path moduleDir = layout.moduleRoot();
+        write(layout.classesDir(), "demo/Dep", dep());
+        write(layout.testClassesDir(), "demo/T", caller("demo.T"));
+        write(layout.testClassesDir(), "demo/U", plain("demo.U"));
+        write(layout.testClassesDir(), "demo/V", plain("demo.V"));
+        write(layout.testClassesDir(), "demo/W", caller("demo.W"));
+        ClassCones.Cone cone = ClassCones.index(List.of(layout.testClassesDir(), layout.classesDir()))
+                .cone("demo.T");
+        String reads = JsonFields.fields()
+                .array("reads", List.of("m/src/test/resources/orders.json"))
+                .body();
+        List<String> change = List.of("m/src/main/java/demo/Dep.java", "m/src/test/resources/orders.json");
+
+        writeRows(
+                moduleDir,
+                null,
+                row("T", 3, cone.used(c -> true)),
+                row("U", 2, null),
+                Jsonl.append(row("V", 1, null), reads),
+                row("test:integration", "W", 1, null));
+        assertThat(overlaps(layout, change))
+                .as("W was recorded only in a launch the selection does not start")
+                .containsExactlyInAnyOrderEntriesOf(Map.of(
+                        "demo.T", "cone-ran:demo.Dep",
+                        "demo.U", "",
+                        "demo.V", "reads:m/src/test/resources/orders.json"));
+
+        writeRows(moduleDir, null, row("T", 3, cone.used(c -> c.equals("demo.T"))));
+        assertThat(overlaps(layout, change))
+                .as("T reaches Dep but never ran it")
+                .containsEntry("demo.T", "cone:demo.Dep");
+    }
+
+    private static Map<String, String> overlaps(BuildLayout layout, List<String> changed) throws Exception {
+        return TestClassRecording.overlaps(
+                layout.moduleRoot(),
+                layout,
+                layout.testClassesDir(),
+                layout.classesDir(),
+                List.of(),
+                changed,
+                Set.of(""));
     }
 
     private static @Nullable Long replayed(BuildLayout layout, SourceApiIndex.Hint edit) throws Exception {
