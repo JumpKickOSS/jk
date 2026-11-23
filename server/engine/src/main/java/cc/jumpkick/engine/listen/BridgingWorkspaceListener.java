@@ -270,6 +270,7 @@ public final class BridgingWorkspaceListener implements WorkspaceBuildListener {
                 o.success(),
                 o.exitCode(),
                 o.millis(),
+                o.waitedMillis(),
                 o.didWork(),
                 o.cancelled(),
                 o.stopped(),

@@ -168,7 +168,7 @@ class TestCommandTailTest {
     private static WorkspaceResult counted(long[][] suites) {
         List<ModuleOutcome> out = new ArrayList<>();
         for (int i = 0; i < suites.length; i++) {
-            out.add(outcome(i).withTests(new ModuleOutcome.Tests(suites[i][0], suites[i][1])));
+            out.add(outcome(i).withTests(new ModuleOutcome.Tests(suites[i][0], suites[i][1], false)));
         }
         return new WorkspaceResult(true, 0, out, List.of());
     }

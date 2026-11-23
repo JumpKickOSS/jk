@@ -302,14 +302,16 @@ final class WorkspaceRunPhase {
                             millis,
                             didWork,
                             cancelled)
-                    .withStopped(stoppedByFailure(module.plan(), result, cancelled));
+                    .withStopped(stoppedByFailure(module.plan(), result, cancelled))
+                    .withWaited(siblings.waitedMillis(module.dir())
+                            + module.plan().waited().toMillis());
             ModuleOutcome.Image image = ImagePlans.outcomeOf(module.plan());
             if (image != null) outcome = outcome.withImage(image);
             ModuleOutcome.Installed installed = InstallPlans.installedOf(module.plan());
             if (installed != null) outcome = outcome.withInstalled(installed);
             ModuleOutcome.Published published = PublishTail.outcomeOf(module.plan());
             if (published != null) outcome = outcome.withPublished(published);
-            ModuleOutcome.Tests tests = NativePlans.testsOf(module.plan());
+            ModuleOutcome.Tests tests = NativePlans.testsOf(module.plan(), result);
             if (tests != null) outcome = outcome.withTests(tests);
             listener.onModuleFinish(outcome);
             return outcome;

@@ -651,7 +651,7 @@ public final class ProtoEvents {
             ModuleOutcome.@Nullable Image image,
             ModuleOutcome.@Nullable Installed installed) {
         return moduleFinish(
-                dir, coord, success, exitCode, millis, didWork, cancelled, false, image, installed, null, null);
+                dir, coord, success, exitCode, millis, 0, didWork, cancelled, false, image, installed, null, null);
     }
 
     public static String moduleFinish(
@@ -660,6 +660,7 @@ public final class ProtoEvents {
             boolean success,
             int exitCode,
             long millis,
+            long waitedMillis,
             boolean didWork,
             boolean cancelled,
             boolean stopped,
@@ -668,7 +669,18 @@ public final class ProtoEvents {
             ModuleOutcome.@Nullable Published published,
             ModuleOutcome.@Nullable Tests tests) {
         return new ModuleFinishEvent(
-                        dir, coord, success, exitCode, millis, didWork, cancelled, stopped, image, installed, published,
+                        dir,
+                        coord,
+                        success,
+                        exitCode,
+                        millis,
+                        waitedMillis,
+                        didWork,
+                        cancelled,
+                        stopped,
+                        image,
+                        installed,
+                        published,
                         tests)
                 .encode();
     }

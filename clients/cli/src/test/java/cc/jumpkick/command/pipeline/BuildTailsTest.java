@@ -104,6 +104,24 @@ class BuildTailsTest {
     }
 
     @Test
+    void a_module_whose_suite_replayed_says_no_test_ran_and_what_its_time_went_on() {
+        var replayed = new ModuleOutcome("g:e2e", Path.of("/e2e"), true, 0, 15_400, true)
+                .withWaited(14_900)
+                .withTests(new ModuleOutcome.Tests(412, 0, true));
+        String t = TestAnsi.strip(BuildTails.completionLine(replayed, 62, 65));
+        assertThat(t).contains("g:e2e no tests run (412 replayed)").contains("took 15.4s, 14.9s waiting");
+    }
+
+    @Test
+    void a_module_whose_suite_ran_names_no_replay_and_a_short_wait_is_left_off() {
+        var ran = new ModuleOutcome("g:a", Path.of("/a"), true, 0, 2_000, true)
+                .withWaited(400)
+                .withTests(new ModuleOutcome.Tests(12, 0, false));
+        String t = TestAnsi.strip(BuildTails.completionLine(ran, 1, 3));
+        assertThat(t).contains("g:a took 2.0s").doesNotContain("replayed").doesNotContain("waiting");
+    }
+
+    @Test
     void failed_completion_line_says_failed() {
         String t = TestAnsi.strip(BuildTails.completionLine(false, 2, 3, "g:a", 5));
         assertThat(t).contains("[2 of 3]");

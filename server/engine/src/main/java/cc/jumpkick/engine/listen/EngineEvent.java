@@ -185,6 +185,7 @@ public sealed interface EngineEvent {
             boolean success,
             int exitCode,
             long millis,
+            long waitedMillis,
             boolean didWork,
             boolean cancelled,
             boolean stopped,

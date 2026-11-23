@@ -43,18 +43,33 @@ final class BuildTails {
      * the duration is normalized like every other jk duration ({@link DurationText#took}). Colors:
      * green check, bright-black brackets around a plain {@code NN of MM} count, the
      * {@code group:artifact} in green with strikethrough (done, web success color), and the
-     * bright-black italic {@code took …} suffix. A failed unit keeps the red cross and
+     * bright-black italic {@code took …} suffix. The time is the module's wall since its plan
+     * started, so the line says what it went on: {@code no tests run (412 replayed)} before it when
+     * the suite replayed its last green run, and {@code , 14.9s waiting} after it when a second or
+     * more of it was spent blocked on siblings or worker leases. A failed unit keeps the red cross and
      * {@code — failed}; a unit another module's failure stopped reads {@code — stopped}, muted.
      */
     static String completionLine(ModuleOutcome o, int index, int total) {
-        return completionLine(o.success(), o.stopped(), index, total, o.coord(), o.millis());
+        return completionLine(
+                o.success(), o.stopped(), index, total, o.coord(), o.millis(), o.waitedMillis(), o.tests());
     }
 
     static String completionLine(boolean ok, int index, int total, String coord, long millis) {
-        return completionLine(ok, false, index, total, coord, millis);
+        return completionLine(ok, false, index, total, coord, millis, 0, null);
     }
 
-    private static String completionLine(boolean ok, boolean stopped, int index, int total, String coord, long millis) {
+    /** Waits shorter than this are left off a completion line: they explain none of its time. */
+    static final long SHOWN_WAIT_MS = 1_000;
+
+    private static String completionLine(
+            boolean ok,
+            boolean stopped,
+            int index,
+            int total,
+            String coord,
+            long millis,
+            long waitedMillis,
+            ModuleOutcome.@Nullable Tests tests) {
         var th = Theme.active();
         String mark = stopped
                 ? Theme.colorize(Glyphs.CANCELLED, th.midGray())
@@ -66,9 +81,13 @@ final class BuildTails {
                 .append(' ');
         if (ok) {
             // Green + strike matches web success modules (was plain white strike).
-            sb.append(Theme.colorize(coord, th.success().crossedOut()))
-                    .append(' ')
-                    .append(DurationText.took(Duration.ofMillis(millis)));
+            sb.append(Theme.colorize(coord, th.success().crossedOut())).append(' ');
+            if (tests != null && tests.replayed()) {
+                String none = tests.total() > 0 ? "no tests run (" + tests.total() + " replayed)" : "no tests run";
+                sb.append(Theme.colorize(none, th.midGray())).append(' ');
+            }
+            long shownWait = waitedMillis >= SHOWN_WAIT_MS ? waitedMillis : 0;
+            sb.append(DurationText.tookWaiting(Duration.ofMillis(millis), shownWait));
         } else if (stopped) {
             sb.append(JkManager.coloredModule(coord)).append(' ').append(Theme.colorize("— stopped", th.midGray()));
         } else {

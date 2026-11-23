@@ -95,12 +95,18 @@ public final class BuildPlan {
         return clock.nanos();
     }
 
+    /** What the finished steps reported blocked on a shared resource ({@link TaskContext#waited}), summed. */
+    public Duration waited() {
+        return Duration.ofNanos(waitedNanos.sum());
+    }
+
     private final boolean interactive;
     private final List<Task> steps;
     private final List<BuildPlanListener> listeners;
 
     private final LongAdder numerator = new LongAdder();
     private final LongAdder denominator = new LongAdder();
+    private final LongAdder waitedNanos = new LongAdder();
     private final AtomicInteger stepsComplete = new AtomicInteger();
     private final AtomicBoolean cancelled = new AtomicBoolean(false);
 
@@ -628,6 +634,7 @@ public final class BuildPlan {
             Duration dur = Duration.between(start, clock.instant());
             reports.add(new BuildPlanResult.StepReport(step.name(), terminal, dur, step.requires()));
             stepsComplete.incrementAndGet();
+            waitedNanos.add(ctx.waited().toNanos());
             emit(l -> l.stepFinish(step.name(), step.group().orElse(null), terminal, dur, ctx.waited()));
             return terminal;
         } catch (Throwable t) {
@@ -664,6 +671,7 @@ public final class BuildPlan {
             Duration dur = Duration.between(start, clock.instant());
             reports.add(new BuildPlanResult.StepReport(step.name(), terminal, dur, step.requires()));
             stepsComplete.incrementAndGet();
+            waitedNanos.add(ctx.waited().toNanos());
             emit(l -> l.stepFinish(step.name(), step.group().orElse(null), terminal, dur, ctx.waited()));
             return terminal;
         }

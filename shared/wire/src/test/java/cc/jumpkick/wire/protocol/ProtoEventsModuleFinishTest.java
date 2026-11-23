@@ -64,7 +64,7 @@ class ProtoEventsModuleFinishTest {
                 "https://repo.example/releases/", false, 16, 4, List.of(), List.of(), null, null, List.of());
 
         String line = ProtoEvents.moduleFinish(
-                "/w/app", "g:app", true, 0, 12, true, false, false, null, null, published, null);
+                "/w/app", "g:app", true, 0, 12, 0, true, false, false, null, null, published, null);
 
         assertThat(ModuleFinishEvent.decode(line).published()).isEqualTo(published);
     }
@@ -75,7 +75,8 @@ class ProtoEventsModuleFinishTest {
         assertThat(failed).doesNotContain("stopped");
         assertThat(ModuleFinishEvent.decode(failed).stopped()).isFalse();
 
-        String line = ProtoEvents.moduleFinish("/w/b", "g:b", false, 1, 12, true, false, true, null, null, null, null);
+        String line =
+                ProtoEvents.moduleFinish("/w/b", "g:b", false, 1, 12, 0, true, false, true, null, null, null, null);
         assertThat(Jsonl.bool(line, "stopped", false)).isTrue();
         assertThat(Jsonl.bool(line, "success", true)).isFalse();
         ModuleOutcome outcome = ModuleFinishEvent.decode(line).outcome(Path.of("/w/b"));
@@ -91,12 +92,35 @@ class ProtoEventsModuleFinishTest {
         assertThat(plain).doesNotContain("\"tests\"");
         assertThat(ModuleFinishEvent.decode(plain).tests()).isNull();
 
-        ModuleOutcome.Tests tests = new ModuleOutcome.Tests(12, 2);
+        ModuleOutcome.Tests tests = new ModuleOutcome.Tests(12, 2, false);
         String line = ModuleFinishEvent.of(
                         new ModuleOutcome("g:app", Path.of("/w/app"), true, 0, 12, false).withTests(tests))
                 .encode();
         assertThat(line).contains("\"tests\":{\"total\":12,\"skipped\":2}");
         assertThat(ModuleFinishEvent.decode(line).outcome(Path.of("/w/app")).tests())
                 .isEqualTo(tests);
+    }
+
+    @Test
+    void a_replayed_suite_and_the_time_spent_waiting_round_trip() {
+        String plain = ProtoEvents.moduleFinish("/w/app", "g:app", true, 0, 12, false, false);
+        assertThat(plain).doesNotContain("waitedMs");
+        assertThat(ModuleFinishEvent.decode(plain).waitedMillis()).isZero();
+
+        ModuleOutcome.Tests replayed = new ModuleOutcome.Tests(12, 2, true);
+        ModuleOutcome sent = new ModuleOutcome("g:app", Path.of("/w/app"), true, 0, 15_400, false)
+                .withWaited(14_900)
+                .withTests(replayed);
+        String line = ModuleFinishEvent.of(sent).encode();
+        assertThat(line).contains("\"waitedMs\":14900");
+        assertThat(line).contains("\"tests\":{\"total\":12,\"skipped\":2,\"replayed\":true}");
+        assertThat(ModuleFinishEvent.decode(line).outcome(Path.of("/w/app"))).isEqualTo(sent);
+    }
+
+    @Test
+    void the_time_spent_waiting_is_never_more_than_the_module_took() {
+        ModuleOutcome o = new ModuleOutcome("g:app", Path.of("/w/app"), true, 0, 900, true);
+        assertThat(o.withWaited(5_000).waitedMillis()).isEqualTo(900);
+        assertThat(o.withWaited(-3).waitedMillis()).isZero();
     }
 }
