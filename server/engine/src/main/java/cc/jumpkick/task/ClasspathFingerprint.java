@@ -133,6 +133,31 @@ public final class ClasspathFingerprint {
     @FunctionalInterface
     public interface EntryIdentity {
         String of(Path entry) throws IOException;
+
+        /**
+         * What a JVM that runs {@code entry} can observe of it ({@link ObservableClasses}): a
+         * workspace jar or classes tree without its classes' line tables; a library in jk's store
+         * or the Maven repository, and anything not on disk, as {@link #of}.
+         */
+        default String observable(Path entry) throws IOException {
+            String identity = of(entry);
+            if (isLibrary(entry)) return identity;
+            try {
+                return ObservableClasses.onDisk(entry, identity);
+            } catch (IOException unreadable) {
+                // Bytes that will not read whole key the entry by content: a retest, never a false hit.
+                return identity;
+            }
+        }
+    }
+
+    /**
+     * True for an entry under jk's store, cache, state or JDKs, the Maven local repository or the
+     * jk home: a resolved library, whose bytes are fixed by its coordinates, never a workspace output.
+     */
+    public static boolean isLibrary(Path entry) {
+        Path abs = entry.toAbsolutePath().normalize();
+        return !PortablePath.underJkRoot(abs).equals(PortablePath.slashed(abs));
     }
 
     /** The identity of what is on disk: {@link #entry(Path)}. */
@@ -229,6 +254,16 @@ public final class ClasspathFingerprint {
     public static String entryFromCompileAndResources(
             Map<String, String> compileOutputs, List<Path> resourceRoots, Map<String, String> copiedFiles)
             throws IOException {
+        return entryFromOutputDigests(digestsFromCompileAndResources(compileOutputs, resourceRoots, copiedFiles));
+    }
+
+    /**
+     * The per-file digests {@link #entryFromCompileAndResources} takes its token over: tree-relative
+     * path to content sha, compile outputs first, resource roots over them, {@code copiedFiles} last.
+     */
+    public static Map<String, String> digestsFromCompileAndResources(
+            Map<String, String> compileOutputs, List<Path> resourceRoots, Map<String, String> copiedFiles)
+            throws IOException {
         Map<String, String> digests = new TreeMap<>();
         if (compileOutputs != null) {
             for (Map.Entry<String, String> e : compileOutputs.entrySet()) {
@@ -245,7 +280,7 @@ public final class ClasspathFingerprint {
             }
         }
         digests.putAll(copiedFiles);
-        return entryFromOutputDigests(digests);
+        return digests;
     }
 
     /**

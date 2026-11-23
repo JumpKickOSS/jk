@@ -1596,8 +1596,8 @@ reason = "the runtime packages as the coupling guard first measured them"
 [[runtime-mutual-classes.entries]]
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.ForecastScope~cc.jumpkick.runtime.TaskForecaster"
-value  = 21
-reason = "frozen higher on 2026-11-12: the test compile's forecast reads its test-scope siblings' dirtiness and hint (DepDirtiness.testDeps, depHint)"
+value  = 22
+reason = "frozen higher on 2026-11-22: the run-tests forecast reads whether each dirty sibling's edit moved only comments (DepHint.codeKept)"
 [[runtime-mutual-classes.entries]]
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.ForecastSteps~cc.jumpkick.runtime.TaskForecaster"

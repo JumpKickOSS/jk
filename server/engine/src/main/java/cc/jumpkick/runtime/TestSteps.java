@@ -803,13 +803,18 @@ final class TestSteps {
         }
         // A sibling on the test classpath is rebuilding: the suite re-runs even when the main
         // compile stays cached.
-        // The runtime classpath is keyed on full bytes where the compile is keyed on ABI: a sibling
+        // The runtime classpath is keyed on code where the compile is keyed on ABI: a sibling
         // rebuilt with its API unchanged leaves this module's compile cached and still reruns its
         // suite (compileDepDirty).
-        if (s.compileDirty || s.compileDepDirty || s.testDirty || s.testDepDirty || s.kspRuns()) {
-            // A suite re-run for a sibling's jar bytes alone reads as that, not as this module's
-            // change, so why-rebuilt can tell the two apart.
-            boolean jarOnly = !s.testDirty && !s.compileDirty && (s.compileDepDirty || s.testDepDirty);
+        boolean kspRuns = s.kspRuns();
+        // A suite re-run for a sibling's jar bytes alone reads as that, not as this module's
+        // change, so why-rebuilt can tell the two apart.
+        boolean jarOnly = !s.testDirty && !s.compileDirty && (s.compileDepDirty || s.testDepDirty);
+        // Siblings whose edit moved only comments: the stamp keys their classes without line tables,
+        // which the classes on disk already show, so the marker under the stamp decides.
+        List<String> kept = jarOnly && !kspRuns ? s.codeKeptSiblings() : null;
+        String keptHint = kept == null ? "" : " · comment-only edit in " + String.join(", ", kept) + " (hint)";
+        if (kept == null && (s.compileDirty || s.compileDepDirty || s.testDirty || s.testDepDirty || kspRuns)) {
             String jk = StampTokens.jkMoved(
                     s.dir, SessionContext.current().testSelection(), KeyContract.SUITE.keyVersion());
             String why = jk != null
@@ -873,7 +878,9 @@ final class TestSteps {
                 && SuiteReads.load(s.dir, SessionContext.current().testSelection())
                         .network();
         Perf.note("forecast-test-stamp " + s.dir, "key", stampKey, "hit", hit, "red", red);
-        if (hit) return new TaskForecast.Task(TaskNames.RUN_TESTS, TaskForecast.Status.CACHED, "· " + tests, null);
+        if (hit)
+            return new TaskForecast.Task(
+                    TaskNames.RUN_TESTS, TaskForecast.Status.CACHED, "· " + tests + keptHint, null);
         // As the run decides it: the guard's green run over the same tree ran these tests too.
         TestStampInputs guard = stamp.underGuard();
         String guardKey = guard == null ? null : guard.forecastKey(compact, layout.classesDir(), finalMainFp);
@@ -881,7 +888,8 @@ final class TestSteps {
                 && ForecastSteps.presentRecord(s.actionCache, guardKey)
                         .filter(TestStamp::green)
                         .isPresent()) {
-            return new TaskForecast.Task(TaskNames.RUN_TESTS, TaskForecast.Status.CACHED, "· " + tests, null);
+            return new TaskForecast.Task(
+                    TaskNames.RUN_TESTS, TaskForecast.Status.CACHED, "· " + tests + keptHint, null);
         }
         // A miss for none of the reasons above says which input of the last green run's key moved.
         // As the run decides it: a suite whose last recording could not be read stored no marker.

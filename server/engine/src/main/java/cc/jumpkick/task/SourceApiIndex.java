@@ -32,10 +32,10 @@ public final class SourceApiIndex {
 
     /**
      * One source's baseline: its content hash, its {@link JavaSourceApi.View#PROCESSOR} digest
-     * (what a module that runs a processor exposes) and its {@link JavaSourceApi.View#EXPORTED}
-     * digest.
+     * (what a module that runs a processor exposes), its {@link JavaSourceApi.View#EXPORTED} digest
+     * and its {@link JavaSourceApi.View#CODE} digest.
      */
-    public record Row(String contentSha, String apiToken, String exportedToken) {}
+    public record Row(String contentSha, String apiToken, String exportedToken, String codeToken) {}
 
     /** What the hint concluded, and the sources that decided it. */
     public enum Kind {
@@ -47,10 +47,18 @@ public final class SourceApiIndex {
         UNKNOWN
     }
 
-    /** The hint for a module: {@code files} names the sources whose declarations moved, module-relative. */
-    public record Hint(Kind kind, List<String> files) {
+    /**
+     * The hint for a module: {@code files} names the sources whose declarations moved,
+     * module-relative. {@code codeKept} says the edit moved comments and layout alone, so the
+     * classes it compiles to differ from those on disk only in their line tables.
+     */
+    public record Hint(Kind kind, List<String> files, boolean codeKept) {
         public Hint {
             files = List.copyOf(files);
+        }
+
+        public Hint(Kind kind, List<String> files) {
+            this(kind, files, false);
         }
 
         public static final Hint UNKNOWN = new Hint(Kind.UNKNOWN, List.of());
@@ -67,7 +75,7 @@ public final class SourceApiIndex {
             lines.forEach(line -> {
                 if (line.isBlank()) return;
                 String[] p = line.split("\t", -1);
-                if (p.length == 4) out.put(p[0], new Row(p[1], p[2], p[3]));
+                if (p.length == 5) out.put(p[0], new Row(p[1], p[2], p[3], p[4]));
             });
         }
         return out;
@@ -84,6 +92,8 @@ public final class SourceApiIndex {
                     .append(e.getValue().apiToken())
                     .append('\t')
                     .append(e.getValue().exportedToken())
+                    .append('\t')
+                    .append(e.getValue().codeToken())
                     .append('\n');
         }
         AtomicWrites.replace(file, sb.toString());
@@ -130,6 +140,7 @@ public final class SourceApiIndex {
             List<Path> files = new ArrayList<>(toDigest);
             Map<Path, String> declarations = JavaSourceApi.digests(files, JavaSourceApi.View.PROCESSOR);
             Map<Path, String> exported = JavaSourceApi.digests(files, JavaSourceApi.View.EXPORTED);
+            Map<Path, String> code = JavaSourceApi.digests(files, JavaSourceApi.View.CODE);
             for (Path src : files) {
                 String rel = Objects.requireNonNull(relative(module, src), "under the module");
                 out.put(
@@ -137,7 +148,8 @@ public final class SourceApiIndex {
                         new Row(
                                 FileHashMemo.contentHash(src),
                                 Objects.requireNonNull(declarations.get(src), "digest"),
-                                Objects.requireNonNull(exported.get(src), "digest")));
+                                Objects.requireNonNull(exported.get(src), "digest"),
+                                Objects.requireNonNull(code.get(src), "digest")));
             }
         }
         return out;
@@ -179,6 +191,7 @@ public final class SourceApiIndex {
         for (String rel : baseline.keySet()) {
             if (!seen.containsKey(rel)) moved.add(rel);
         }
+        boolean codeKept = false;
         if (!changed.isEmpty()) {
             JavaSourceApi.View view = privateMembersMatter ? JavaSourceApi.View.PROCESSOR : JavaSourceApi.View.EXPORTED;
             Map<Path, String> digests = JavaSourceApi.digests(changed, view);
@@ -190,9 +203,24 @@ public final class SourceApiIndex {
                 String recorded = privateMembersMatter ? row.apiToken() : row.exportedToken();
                 if (!token.equals(recorded)) moved.add(rel);
             }
+            // A processor may read a Javadoc comment, so only a module that runs none can keep its
+            // classes through a comment edit.
+            codeKept = moved.isEmpty() && !privateMembersMatter && codeKept(changed, module, baseline);
         }
         if (!moved.isEmpty()) return new Hint(Kind.API_CHANGED, moved);
-        return new Hint(Kind.BODY_ONLY, List.of());
+        return new Hint(Kind.BODY_ONLY, List.of(), codeKept);
+    }
+
+    /** True when every one of {@code changed} parses to the code digest its baseline row holds. */
+    private static boolean codeKept(List<Path> changed, Path module, Map<String, Row> baseline) throws IOException {
+        Map<Path, String> code = JavaSourceApi.digests(changed, JavaSourceApi.View.CODE);
+        for (Path abs : changed) {
+            String token = Objects.requireNonNull(code.get(abs), "digest");
+            Row row = Objects.requireNonNull(
+                    baseline.get(Objects.requireNonNull(relative(module, abs), "under the module")), "baseline row");
+            if (!JavaSourceApi.parsed(token) || !token.equals(row.codeToken())) return false;
+        }
+        return true;
     }
 
     /** {@code src} relative to the module with forward slashes, or null when it is not a {@code .java} under it. */

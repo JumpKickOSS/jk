@@ -198,7 +198,7 @@ public final class PortablePath {
         return root.map(r -> slashed(r.relativize(abs)));
     }
 
-    private static String slashed(Path p) {
+    static String slashed(Path p) {
         return p.toString().replace('\\', '/');
     }
 

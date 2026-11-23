@@ -15,8 +15,8 @@ import org.jspecify.annotations.Nullable;
 /**
  * Content-hashed key for incremental test skipping. On green runs the build stores a CAS marker
  * under this key (survives {@code jk clean}); a later matching key skips the runner. Inputs: test
- * sources, main classes, suite resource dirs, runtime classpath by content
- * ({@link ClasspathFingerprint}), and toolchain/runner tokens. Not the lockfile: a workspace has one,
+ * sources, main classes, suite resource dirs, runtime classpath by what the tests observe of it
+ * ({@link ClasspathFingerprint.EntryIdentity#observable}), and toolchain/runner tokens. Not the lockfile: a workspace has one,
  * and a member's tests see of it only the jars they resolve, which the classpath keys. {@link #computeKey} returns
  * {@code null} on any I/O failure — callers treat that as uncached and retest.
  */
@@ -195,10 +195,11 @@ public final class TestStamp {
                 }
             }
 
-            // Runtime classpath by CONTENT in its order, one line per entry: a sibling module's
-            // change ripples in, a byte-identical rebuild (new mtime, same bytes) does not, and two
-            // entries that trade places change which of two copies of a class the tests load.
-            for (String line : ClasspathFingerprint.orderedLines("cp", runtimeCp, identity)) feed(md, line);
+            // Runtime classpath in its order, one line per entry, each by what the tests can observe
+            // of it: a sibling's code or resource change ripples in, a comment edit that moves only
+            // its line tables does not, and two entries that trade places change which of two
+            // copies of a class the tests load.
+            for (String line : ClasspathFingerprint.orderedLines("cp", runtimeCp, identity::observable)) feed(md, line);
 
             // Toolchain / runner / forked-worker identity, sorted for stability.
             if (extraInputs != null) {

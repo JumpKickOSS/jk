@@ -85,7 +85,12 @@ public final class JavaSourceApi {
          * method, so renaming one is a body edit even in a module that runs a processor. The
          * forecast's body-only hint reads it; compile keys keep {@link #DECLARATIONS}.
          */
-        PROCESSOR("java-proc.2:");
+        PROCESSOR("java-proc.2:"),
+        /**
+         * The whole file as code, bodies included, without its comments and layout: two files with
+         * one code digest compile to classes that differ in their line tables alone.
+         */
+        CODE("java-code.1:");
 
         /** The memo's key prefix; it moves with what {@link #renderUnit} writes, so no earlier shape is served. */
         private final String memoNamespace;
@@ -271,6 +276,11 @@ public final class JavaSourceApi {
     }
 
     private static void renderUnit(CompilationUnitTree unit, StringBuilder sb, View view) {
+        if (view == View.CODE) {
+            // javac's own printer: every token of the tree, no comment, one fixed layout.
+            sb.append(unit);
+            return;
+        }
         ExpressionTree pkg = unit.getPackageName();
         sb.append("package ").append(pkg == null ? "" : pkg);
         annotations(unit.getPackageAnnotations(), sb);

@@ -508,7 +508,8 @@ final class CompileSteps {
         // The key hit against the dependency's current output: nothing of this module's own moved,
         // and its package and tests are dirty only for the sibling's jar bytes.
         s.depOnlyDirty = s.compileDepDirty && pred.outcome() == JavaCompile.Outcome.CACHE_HIT && !s.force;
-        s.ownHint = ForecastSteps.ownApiHint(s.force, s.compileDepDirty, s.depHint, s.dir, prepared, pred);
+        s.ownHint =
+                ForecastSteps.ownApiHint(s.force, s.compileDepDirty, s.depHint, s.depCodeKept(), s.dir, prepared, pred);
         return step;
     }
 

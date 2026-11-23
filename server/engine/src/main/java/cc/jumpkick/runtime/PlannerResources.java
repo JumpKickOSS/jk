@@ -438,12 +438,16 @@ public final class PlannerResources {
     static TaskForecast.@Nullable Task forecastCopy(ForecastScope s) throws Exception {
         ForecastScope.Prepared p = s.prepared();
         Path classes = p.parsed().layout().classesDir();
-        if (s.compileDirty || !Files.isDirectory(classes)) return null;
+        if (!Files.isDirectory(classes)) return null;
         // A KSP round that runs mirrors output nothing knows yet into the tree.
         // The layout's overload: a copy the mirror would delete (a resource removed since) is drift too.
-        s.mainResourceDrift = s.kspRuns()
+        boolean drift = s.kspRuns()
                 || TaskForecaster.mainResourcesOutOfSync(
                         s.dir, s.project, p.parsed().compact(), p.parsed().layout());
+        // A compile that runs makes drift moot for the copy; the module's hint still reads it.
+        s.treeDrift = drift;
+        if (s.compileDirty) return null;
+        s.mainResourceDrift = drift;
         BuildBlock.BuildInfo buildInfo = s.project.build().buildInfo();
         if (buildInfo != null) {
             // A rewritten git.properties changes the classes tree package-jar keys on, so the

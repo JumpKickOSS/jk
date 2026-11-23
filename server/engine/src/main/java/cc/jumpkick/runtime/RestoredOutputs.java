@@ -10,6 +10,7 @@ import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.ClasspathAbi;
 import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.task.KotlinClasspathAbi;
+import cc.jumpkick.task.ObservableClasses;
 import cc.jumpkick.task.ProjectedFiles;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -50,6 +51,9 @@ final class RestoredOutputs {
 
     /** Wiped tree → the {@code dir:} content identity of the tree its record restores. */
     private final Map<Path, String> treeIdentity = new ConcurrentHashMap<>();
+
+    /** Wiped tree → its files, tree-relative path to content sha, as its records restore them. */
+    private final Map<Path, Map<String, String>> treeDigests = new ConcurrentHashMap<>();
 
     /** Wiped jar → the interface token its package record states, for a payload not in the CAS. */
     private final Map<Path, String> jarInterface = new ConcurrentHashMap<>();
@@ -100,13 +104,16 @@ final class RestoredOutputs {
             @Nullable String interfaceToken) {
         Path abs = key(tree);
         try {
-            treeIdentity.put(
-                    abs, ClasspathFingerprint.entryFromCompileAndResources(outputs, resourceRoots, copiedFiles));
+            Map<String, String> digests =
+                    ClasspathFingerprint.digestsFromCompileAndResources(outputs, resourceRoots, copiedFiles);
+            treeIdentity.put(abs, ClasspathFingerprint.entryFromOutputDigests(digests));
+            treeDigests.put(abs, digests);
             treeAbi.put(abs, abi(outputs, resourceRoots, copiedFiles, interfaceToken));
         } catch (IOException e) {
             // Without the projection a consumer keys on the tree's absence: the pessimistic
             // answer, never a false hit.
             treeIdentity.remove(abs);
+            treeDigests.remove(abs);
             treeAbi.remove(abs);
             Log.debug("projectTree: consumers key on the tree as it is", e);
         }
@@ -243,14 +250,41 @@ final class RestoredOutputs {
      * restored file ({@code file:<content sha>}), everything else by what is on disk.
      */
     ClasspathFingerprint.EntryIdentity identity() {
-        return entry -> {
-            Path abs = key(entry);
-            String projected = treeIdentity.get(abs);
-            if (projected != null) return projected;
-            if (Files.exists(abs)) return ClasspathFingerprint.entry(abs);
-            String sha = jarShas.get(abs);
-            if (sha != null && Files.isRegularFile(actionCache.cas().pathFor(sha))) return "file:" + sha;
-            return ClasspathFingerprint.entry(abs);
+        return new ClasspathFingerprint.EntryIdentity() {
+            @Override
+            public String of(Path entry) throws IOException {
+                Path abs = key(entry);
+                String projected = treeIdentity.get(abs);
+                if (projected != null) return projected;
+                if (Files.exists(abs)) return ClasspathFingerprint.entry(abs);
+                String sha = jarShas.get(abs);
+                if (sha != null && Files.isRegularFile(actionCache.cas().pathFor(sha))) return "file:" + sha;
+                return ClasspathFingerprint.entry(abs);
+            }
+
+            /**
+             * A wiped tree or jar by what its restored classes do, read from the blobs the build
+             * restores; one whose blobs are not here keys by content, as {@link #of} reads it.
+             */
+            @Override
+            public String observable(Path entry) throws IOException {
+                Path abs = key(entry);
+                Map<String, String> digests = treeDigests.get(abs);
+                Path blob = pinnedBlob(abs);
+                try {
+                    if (digests != null && !ClasspathFingerprint.isLibrary(abs)) {
+                        Cas cas = actionCache.cas();
+                        return ObservableClasses.tree(
+                                digests,
+                                (rel, sha) -> ObservableClasses.verified(cas.read(sha), sha, abs.resolve(rel)));
+                    }
+                    if (blob != null && !ClasspathFingerprint.isLibrary(abs))
+                        return ObservableClasses.jar("file:" + jarShas.get(abs), blob);
+                } catch (IOException blobsElsewhere) {
+                    return of(entry);
+                }
+                return ClasspathFingerprint.EntryIdentity.super.observable(entry);
+            }
         };
     }
 

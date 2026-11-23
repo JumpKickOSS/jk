@@ -50,6 +50,35 @@ class SourceApiIndexTest {
         assertThat(moved.files()).containsExactly("src/p/Lib.java");
     }
 
+    /**
+     * An edit that moves comments and layout alone keeps the code: the classes it compiles to differ
+     * only in their line tables. A body edit does not, and neither does any edit in a module that
+     * runs a processor, which may read a Javadoc comment.
+     */
+    @Test
+    void a_comment_edit_keeps_the_code_and_a_body_edit_does_not(@TempDir Path module) throws IOException {
+        Path src = Files.createDirectories(module.resolve("src/p"));
+        Path lib = Files.writeString(src.resolve("Lib.java"), LIB);
+        Map<String, SourceApiIndex.Row> baseline = SourceApiIndex.of(module, List.of(lib));
+        assertThat(SourceApiIndex.classify(module, baseline, List.of(lib), false)
+                        .codeKept())
+                .as("nothing changed: nothing to vouch for")
+                .isFalse();
+
+        Files.writeString(lib, LIB.replace("        return n * 2;", "        // doubles\n\n        return n  *  2;"));
+        SourceApiIndex.Hint comment = SourceApiIndex.classify(module, baseline, List.of(lib), false);
+        assertThat(comment.kind()).isEqualTo(SourceApiIndex.Kind.BODY_ONLY);
+        assertThat(comment.codeKept()).isTrue();
+        assertThat(SourceApiIndex.classify(module, baseline, List.of(lib), true).codeKept())
+                .as("a processor may read comments")
+                .isFalse();
+
+        Files.writeString(lib, LIB.replace("n * 2", "n + n"));
+        SourceApiIndex.Hint body = SourceApiIndex.classify(module, baseline, List.of(lib), false);
+        assertThat(body.kind()).isEqualTo(SourceApiIndex.Kind.BODY_ONLY);
+        assertThat(body.codeKept()).isFalse();
+    }
+
     /** A private member is invisible to consumers unless a processor may shape output from it. */
     @Test
     void a_private_member_edit_is_body_only_unless_private_members_matter(@TempDir Path module) throws IOException {

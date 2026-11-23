@@ -162,6 +162,12 @@ public final class ForecastScope implements StepForecast.Scope {
 
     boolean mainResourceDrift;
 
+    /**
+     * Main resources drifted from the classes tree, measured whether or not the compile runs: what
+     * the module's hint reads, where {@link #mainResourceDrift} prices the copy alone.
+     */
+    boolean treeDrift;
+
     /** {@code [build-info]} would rewrite its files: the checkout moved since the classes tree was written. */
     boolean buildInfoDrift;
 
@@ -690,10 +696,48 @@ public final class ForecastScope implements StepForecast.Scope {
         return new TaskForecast.Module(u.dir(), u.coord(), List.of(), 0, 0, false, false, reason);
     }
 
+    /** Whether every dirty compile-scope dependency's edit moved comments and layout alone. */
+    boolean depCodeKept() {
+        return depHint.codeKept() != null;
+    }
+
+    /**
+     * The names of the dirty siblings on this module's test classpath when every one's edit moved
+     * comments and layout alone, so what its suite observes of them is what is on disk; null when
+     * any may move code, or none is dirty.
+     */
+    @Nullable
+    List<String> codeKeptSiblings() {
+        List<String> compile = depHint.codeKept();
+        List<String> test = testDepHint.codeKept();
+        if ((compileDepDirty && compile == null) || (testDepDirty && test == null)) return null;
+        List<String> names = new ArrayList<>();
+        if (compile != null) names.addAll(compile);
+        if (test != null) names.addAll(test);
+        return names.isEmpty() ? null : names;
+    }
+
     private void publishHint() {
+        SourceApiIndex.Hint hint = ownHint.codeKept() && treeMayMoveBeyondCode()
+                ? new SourceApiIndex.Hint(ownHint.kind(), ownHint.files())
+                : ownHint;
         hints.put(
                 dir.toAbsolutePath().normalize(),
-                new TaskForecaster.ModuleHint(project.project().name(), ownHint));
+                new TaskForecaster.ModuleHint(project.project().name(), hint));
+    }
+
+    /**
+     * Whether something besides compiled code may change this module's classes tree this build: a
+     * resource, a KSP round, {@code [build-info]} or {@code [build] module-services} output. A
+     * resource reaches the tests as surely as code does. Unknown reads as yes.
+     */
+    private boolean treeMayMoveBeyondCode() {
+        if (treeDrift || project.build().buildInfo() != null || project.build().moduleServices()) return true;
+        try {
+            return kspRuns();
+        } catch (Exception unknown) {
+            return true;
+        }
     }
 
     private boolean allCached() {

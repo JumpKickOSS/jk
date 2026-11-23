@@ -276,19 +276,20 @@ final class ForecastSteps {
      * whose API moved moves this module's API too. Unknown whenever the answer needs a compile:
      * a forced rebuild, an option or release change, a source the baseline does not describe.
      * {@code force} and {@code compileDepDirty} are the module's forecast flags; {@code depHint} what
-     * its dirty dependencies look like.
+     * its dirty dependencies look like, {@code depCodeKept} whether each kept its code.
      */
     static SourceApiIndex.Hint ownApiHint(
             boolean force,
             boolean compileDepDirty,
             DepHint depHint,
+            boolean depCodeKept,
             Path dir,
             ForecastScope.Prepared prepared,
             JavaCompile.Prediction pred) {
         if (force) return SourceApiIndex.Hint.UNKNOWN;
         if (pred.outcome() == JavaCompile.Outcome.CACHE_HIT) {
             return compileDepDirty
-                    ? new SourceApiIndex.Hint(depHint.kind(), List.of())
+                    ? new SourceApiIndex.Hint(depHint.kind(), List.of(), depCodeKept)
                     : new SourceApiIndex.Hint(SourceApiIndex.Kind.BODY_ONLY, List.of());
         }
         String reason = pred.reason();
@@ -314,6 +315,7 @@ final class ForecastSteps {
         if (compileDepDirty && depHint.kind() == SourceApiIndex.Kind.API_CHANGED) {
             return new SourceApiIndex.Hint(SourceApiIndex.Kind.API_CHANGED, own.files());
         }
+        if (compileDepDirty && !depCodeKept) return new SourceApiIndex.Hint(own.kind(), own.files());
         return own;
     }
 }

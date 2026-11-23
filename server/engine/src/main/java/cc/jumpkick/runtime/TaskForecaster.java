@@ -381,8 +381,25 @@ public final class TaskForecaster {
      * text is labelled as a hint because it is one — the key decides at build time, and the step
      * stays scheduled either way.
      */
-    record DepHint(SourceApiIndex.Kind kind, String text) {
-        static final DepHint NONE = new DepHint(SourceApiIndex.Kind.UNKNOWN, "");
+    record DepHint(
+            SourceApiIndex.Kind kind, String text, @Nullable List<String> codeKept) {
+        static final DepHint NONE = new DepHint(SourceApiIndex.Kind.UNKNOWN, "", null);
+    }
+
+    /**
+     * The names of {@code deps} when every one's edit moved comments and layout alone ({@link
+     * SourceApiIndex.Hint#codeKept}): what a test JVM can observe of their classes stays as it is on
+     * disk. Null when any one's edit may move code, or there are none.
+     */
+    private static @Nullable List<String> codeKept(List<Path> deps, Map<Path, ModuleHint> hints) {
+        if (deps.isEmpty()) return null;
+        List<String> names = new ArrayList<>();
+        for (Path dep : deps) {
+            ModuleHint h = hints.get(dep.toAbsolutePath().normalize());
+            if (h == null || !h.hint().codeKept()) return null;
+            names.add(h.module());
+        }
+        return names;
     }
 
     static DepHint depHint(List<Path> compileDeps, Map<Path, ModuleHint> hints) {
@@ -409,12 +426,14 @@ public final class TaskForecaster {
         if (!apiChanged.isEmpty()) {
             return new DepHint(
                     SourceApiIndex.Kind.API_CHANGED,
-                    TaskForecast.LIKELY_RECOMPILE + " · API changed in " + String.join("; ", apiChanged) + " (hint)");
+                    TaskForecast.LIKELY_RECOMPILE + " · API changed in " + String.join("; ", apiChanged) + " (hint)",
+                    null);
         }
         if (unknown) return DepHint.NONE;
         return new DepHint(
                 SourceApiIndex.Kind.BODY_ONLY,
-                TaskForecast.LIKELY_UP_TO_DATE + " · body-only edit in " + String.join(", ", bodyOnly) + " (hint)");
+                TaskForecast.LIKELY_UP_TO_DATE + " · body-only edit in " + String.join(", ", bodyOnly) + " (hint)",
+                codeKept(compileDeps, hints));
     }
 
     static DepDirtiness depDirtiness(
