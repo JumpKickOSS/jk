@@ -12,6 +12,7 @@ import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.Processes;
 import cc.jumpkick.host.Settled;
 import cc.jumpkick.testing.FakePrograms;
+import cc.jumpkick.util.FileLocks;
 import cc.jumpkick.util.GitProxy;
 import cc.jumpkick.util.GitVersion;
 import cc.jumpkick.util.StoreWriteGate;
@@ -19,14 +20,17 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.DisabledOnOs;
@@ -454,6 +458,105 @@ class OfficialTemplatesFreshenTest {
         assertThrows(
                 IOException.class,
                 () -> OfficialTemplatesFreshen.freshenAt(ref, "main", cacheRoot, s -> {}, GitProxy.NONE));
+    }
+
+    /**
+     * Every {@code jk new} freshens the catalog before it scaffolds, so two at once refresh one
+     * clone together. Neither may take the clone away from the other: a fetch that loses to a
+     * concurrent one must not delete the clone and clone it again while a scaffold reads it.
+     */
+    @Test
+    void concurrent_refreshes_of_one_clone_never_take_a_template_file_away() throws Exception {
+        Path official = tmp.resolve("official");
+        Path main = Path.of("java/app.g8/src/main/g8/src/main/java/Main.java");
+        Files.createDirectories(official.resolve(main).getParent());
+        Files.writeString(official.resolve("java/app.g8/default.properties"), "name=app\n");
+        Files.writeString(official.resolve(main), "class Main {}\n");
+        git(official, "init", "-q");
+        git(official, "add", ".");
+        git(official, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "catalog");
+        String ref = official.toUri().toString();
+        Path cacheRoot = tmp.resolve("tpl");
+        Path watched = cacheRoot
+                .resolve(OfficialTemplatesFreshen.parse(ref).cacheKey())
+                .resolve(main);
+        OfficialTemplatesFreshen.refreshRef(ref, cacheRoot, s -> {}, GitProxy.NONE);
+        assertTrue(Files.isRegularFile(watched), "the first refresh clones the catalog");
+
+        int writers = 4;
+        ExecutorService pool = Executors.newFixedThreadPool(writers);
+        AtomicBoolean gone = new AtomicBoolean();
+        try {
+            List<Future<?>> refreshes = new ArrayList<>();
+            for (int w = 0; w < writers; w++) {
+                refreshes.add(pool.submit(() -> {
+                    for (int i = 0; i < 8; i++) {
+                        OfficialTemplatesFreshen.refreshRef(ref, cacheRoot, s -> {}, GitProxy.NONE);
+                    }
+                    return null;
+                }));
+            }
+            while (refreshes.stream().anyMatch(f -> !f.isDone())) {
+                if (!Files.isRegularFile(watched)) gone.set(true);
+            }
+            for (Future<?> f : refreshes) f.get(2, TimeUnit.MINUTES);
+        } finally {
+            pool.shutdownNow();
+        }
+        assertTrue(!gone.get(), "a reader of the clone saw the template file vanish");
+        assertTrue(Files.isRegularFile(watched), "the clone survives every refresh");
+    }
+
+    /**
+     * A scaffold renders from a copy of its template taken while no refresh holds the clone, so a
+     * refresh in flight is waited out rather than read half done; a template outside every clone is
+     * not copied.
+     */
+    @Test
+    void a_template_is_copied_out_of_its_clone_only_between_refreshes() throws Exception {
+        Path store = tmp.resolve("store");
+        String key = "github.com_acme_templates";
+        Path clone = store.resolve(JkDirs.TEMPLATES_DIR).resolve(key);
+        Path template = clone.resolve("java/app.g8");
+        Files.createDirectories(template.resolve(".git"));
+        Files.writeString(template.resolve("default.properties"), "name=app\n");
+        String before = System.getProperty("jk.env.JK_STORE_DIR");
+        System.setProperty("jk.env.JK_STORE_DIR", store.toString());
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        try {
+            Path lock = OfficialTemplatesFreshen.lockFile(store.resolve(JkDirs.TEMPLATES_DIR), key);
+            CountDownLatch held = new CountDownLatch(1);
+            CountDownLatch release = new CountDownLatch(1);
+            Future<?> refresh = pool.submit(() -> {
+                FileLocks.withLock(lock, () -> {
+                    held.countDown();
+                    try {
+                        release.await();
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    }
+                });
+                return null;
+            });
+            assertTrue(held.await(30, TimeUnit.SECONDS), "the refresh holds the clone");
+            Future<Path> copy = pool.submit(() -> OfficialTemplatesFreshen.copyFromClone(template));
+            assertThrows(
+                    TimeoutException.class,
+                    () -> copy.get(300, TimeUnit.MILLISECONDS),
+                    "the copy waits for the refresh");
+            release.countDown();
+            refresh.get(30, TimeUnit.SECONDS);
+            Path copied = Objects.requireNonNull(copy.get(30, TimeUnit.SECONDS));
+            assertEquals("name=app\n", Files.readString(copied.resolve("default.properties")));
+            assertTrue(!Files.exists(copied.resolve(".git")), "git's own directory stays behind");
+
+            Path elsewhere = Files.createDirectories(tmp.resolve("local/app.g8"));
+            assertEquals(null, OfficialTemplatesFreshen.copyFromClone(elsewhere), "a local template is read in place");
+        } finally {
+            pool.shutdownNow();
+            if (before == null) System.clearProperty("jk.env.JK_STORE_DIR");
+            else System.setProperty("jk.env.JK_STORE_DIR", before);
+        }
     }
 
     private static void git(Path dir, String... args) throws Exception {

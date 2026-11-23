@@ -306,9 +306,39 @@ public final class NewProjectOps {
         // language, so a kotlin-only template is reached without --lang.
         String langName = prep.lang();
         Located located = locate(prep.template(), langName, prep.cwd());
-        Path templateRoot = located.root();
         Path extracted = located.extracted();
-        Optional<TemplateSpec> spec = located.spec();
+        // A template in a catalog clone renders from a copy: the next jk new may refresh the clone.
+        if (extracted == null) extracted = OfficialTemplatesFreshen.copyFromClone(located.root());
+        Path templateRoot = extracted != null ? extracted : located.root();
+        try {
+            render(prep, target, params, templateRoot, located.spec(), langName, offline);
+        } finally {
+            if (extracted != null) {
+                try {
+                    PathUtil.deleteRecursivelyOrThrow(extracted);
+                } catch (IOException ignored) {
+                    // extract is under JkDirs.tmp(); don't mask the apply error
+                }
+            }
+        }
+        if (!Files.isRegularFile(target.resolve(ManifestPaths.MANIFEST))) {
+            throw new IOException("template did not produce jk.toml: " + prep.template());
+        }
+        if (req.standalone()) NewProjectSeed.finish(target);
+        else MemberScaffold.apply(target, req.templateParams() == null ? Map.of() : req.templateParams(), root);
+    }
+
+    /** Render {@code templateRoot} into {@code target} with {@code params} and the layout they settle. */
+    private static void render(
+            Prepared prep,
+            Path target,
+            Map<String, String> params,
+            Path templateRoot,
+            Optional<TemplateSpec> spec,
+            @Nullable String langName,
+            boolean offline)
+            throws IOException {
+        Request req = prep.req();
         Layout layout = templateLayout(req.layout(), params, templateRoot);
         params.put(TEMPLATE_LAYOUT_PARAM, layout.token());
         if (layout == Layout.SIMPLE) {
@@ -345,20 +375,7 @@ public final class NewProjectOps {
         } catch (IOException e) {
             throw new IOException(
                     "applying template " + prep.template() + " lang=" + langName + ": " + e.getMessage(), e);
-        } finally {
-            if (extracted != null) {
-                try {
-                    PathUtil.deleteRecursivelyOrThrow(extracted);
-                } catch (IOException ignored) {
-                    // extract is under JkDirs.tmp(); don't mask the apply error
-                }
-            }
         }
-        if (!Files.isRegularFile(target.resolve(ManifestPaths.MANIFEST))) {
-            throw new IOException("template did not produce jk.toml: " + prep.template());
-        }
-        if (req.standalone()) NewProjectSeed.finish(target);
-        else MemberScaffold.apply(target, req.templateParams() == null ? Map.of() : req.templateParams(), root);
     }
 
     private static Prepared prepare(Request req) throws IOException {

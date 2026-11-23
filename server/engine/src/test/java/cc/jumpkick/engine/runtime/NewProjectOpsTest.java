@@ -7,24 +7,35 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.giter8.Giter8TemplateIndex;
+import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.jdk.InstalledJdk;
 import cc.jumpkick.jdk.JdkInventory;
 import cc.jumpkick.model.ImageTable;
 import cc.jumpkick.plugin.manifest.PluginTableRegistry;
 import cc.jumpkick.runtime.workspace.ImageBaseJava;
+import cc.jumpkick.templates.OfficialTemplatesFreshen;
 import cc.jumpkick.testing.RepoRoot;
 import cc.jumpkick.testing.Symlinks;
+import cc.jumpkick.testing.SysProps;
+import cc.jumpkick.util.FileLocks;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
 
 class NewProjectOpsTest {
@@ -239,6 +250,62 @@ class NewProjectOpsTest {
 
         assertThat(result.path().resolve("src/Main.java")).exists();
         assertThat(result.path().resolve("src/main/java")).doesNotExist();
+    }
+
+    /**
+     * Every {@code jk new} refreshes the catalog clone before it scaffolds, so a template in the
+     * clone is read only between refreshes: a scaffold waits out one in flight instead of rendering
+     * a tree the refresh is rewriting.
+     */
+    @Test
+    @ExtendWith(SysProps.class)
+    void a_template_in_a_catalog_clone_is_read_only_between_refreshes(@TempDir Path temp) throws Exception {
+        System.setProperty("jk.env.JK_STORE_DIR", temp.resolve("store").toString());
+        String key = "example.com_acme_templates";
+        Path g8 = JkDirs.templates().resolve(key).resolve("java/app.g8");
+        String src = "src/main/g8/src/main/java";
+        Files.createDirectories(g8.resolve(src));
+        Files.writeString(g8.resolve("default.properties"), "name=demo\n");
+        Files.writeString(g8.resolve("src/main/g8/jk.toml"), "name = \"$name$\"\n");
+        Files.writeString(g8.resolve(src + "/Main.java"), "class Main {}\n");
+        Path parent = Files.createDirectories(temp.resolve("apps"));
+        var request = new NewProjectOps.Request(
+                "widget",
+                parent.toString(),
+                "com.acme",
+                "java",
+                null,
+                g8.toAbsolutePath().toString());
+        Path lock = OfficialTemplatesFreshen.lockFile(JkDirs.templates(), key);
+        CountDownLatch held = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        try {
+            Future<?> refresh = pool.submit(() -> {
+                FileLocks.withLock(lock, () -> {
+                    held.countDown();
+                    try {
+                        release.await();
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    }
+                });
+                return null;
+            });
+            assertThat(held.await(30, TimeUnit.SECONDS))
+                    .as("the refresh holds the clone")
+                    .isTrue();
+            Future<NewProjectOps.Result> created = pool.submit(() -> NewProjectOps.create(request));
+            assertThatThrownBy(() -> created.get(300, TimeUnit.MILLISECONDS))
+                    .as("the scaffold waits for the refresh")
+                    .isInstanceOf(TimeoutException.class);
+            release.countDown();
+            refresh.get(30, TimeUnit.SECONDS);
+            assertThat(created.get(30, TimeUnit.SECONDS).path().resolve("src/main/java/Main.java"))
+                    .isRegularFile();
+        } finally {
+            pool.shutdownNow();
+        }
     }
 
     @Test
