@@ -9,6 +9,8 @@ import cc.jumpkick.util.MarkdownReports;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -60,14 +62,19 @@ class SlowestTestsE2eTest {
         String cache = tmp.resolve("cache").toString();
         assertThat(run("lock", "-C", ws.toString(), "--cache-dir", cache)).isEqualTo(0);
 
-        long start = System.nanoTime();
-        String out = Capture.stdout(() -> assertThat(run("test", "-a", "-C", ws.toString(), "--cache-dir", cache))
-                .isNotEqualTo(0));
-        System.out.println(out);
-        assertThat(out).contains("NapTest#naps").contains("naps() timed out after 2000 milliseconds");
-        assertThat(System.nanoTime() - start)
+        String jsonl =
+                Capture.stdout(() -> assertThat(run("test", "-O", "jsonl", "-C", ws.toString(), "--cache-dir", cache))
+                        .isNotEqualTo(0));
+        System.out.println(jsonl);
+        assertThat(jsonl).contains("naps() timed out after 2000 milliseconds");
+        // The method's own clock in the test JVM: the run around it compiles, fetches JUnit and
+        // waits for memory, all of which a loaded host stretches past any wall worth asserting.
+        Matcher naps =
+                Pattern.compile("\\{\"method\":\"naps\",\"millis\":(\\d+)}").matcher(jsonl);
+        assertThat(naps.find()).as("the class-finish line times naps").isTrue();
+        assertThat(Long.parseLong(naps.group(1)))
                 .as("stopped at 2s, not after the 10 minute nap")
-                .isLessThan(120_000_000_000L);
+                .isLessThan(120_000L);
     }
 
     /** One member, {@code lib}, with a test that naps {@code napMillis} and a quick one; the root holds it to 500ms. */
