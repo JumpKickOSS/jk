@@ -102,7 +102,7 @@ final class EngineExplainDecoder {
             List<TaskForecast.Module> modules = new ArrayList<>();
             Map<String, List<TaskForecast.Task>> stepsByDir = new LinkedHashMap<>();
             Map<String, String> coordByDir = new LinkedHashMap<>();
-            Map<String, int[]> countsByDir = new LinkedHashMap<>(); // [sourceCount, testCount]
+            Map<String, int[]> countsByDir = new LinkedHashMap<>(); // [sourceCount, testCount, rerunTests]
             Map<String, boolean[]> flagsByDir = new LinkedHashMap<>(); // [producesJar, producesImage]
             Map<String, String> reasonByDir = new LinkedHashMap<>();
             List<String> order = new ArrayList<>();
@@ -116,7 +116,7 @@ final class EngineExplainDecoder {
                         String dir = e.dir();
                         order.add(dir);
                         coordByDir.put(dir, e.coord());
-                        countsByDir.put(dir, new int[] {e.sourceCount(), e.testCount()});
+                        countsByDir.put(dir, new int[] {e.sourceCount(), e.testCount(), e.rerunTests()});
                         flagsByDir.put(dir, new boolean[] {e.producesJar(), e.producesImage()});
                         if (e.reason() != null) reasonByDir.put(dir, e.reason());
                         stepsByDir.put(dir, new ArrayList<>());
@@ -161,7 +161,7 @@ final class EngineExplainDecoder {
                     }
                     case EngineProtocol.EXPLAIN_DONE -> {
                         for (String dir : order) {
-                            int[] counts = countsByDir.getOrDefault(dir, new int[2]);
+                            int[] counts = countsByDir.getOrDefault(dir, new int[3]);
                             boolean[] flags = flagsByDir.getOrDefault(dir, new boolean[2]);
                             modules.add(TaskForecast.Module.fromWire(
                                     Path.of(dir),
@@ -171,7 +171,8 @@ final class EngineExplainDecoder {
                                     counts[1],
                                     flags[0],
                                     flags[1],
-                                    reasonByDir.get(dir)));
+                                    reasonByDir.get(dir),
+                                    counts[2]));
                         }
                         // An absent width is one lane here, where the record reads 0.
                         ExplainDoneEvent done = ExplainDoneEvent.decode(line);

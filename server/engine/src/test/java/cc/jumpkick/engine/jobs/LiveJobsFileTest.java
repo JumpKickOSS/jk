@@ -39,7 +39,7 @@ class LiveJobsFileTest {
     void admission_writes_the_jobs_it_holds_and_the_next_engine_names_them(@TempDir Path dir) throws Exception {
         EnginePaths.Paths paths = paths(dir);
         Path file = LiveJobsFile.fileOf(paths, DEAD);
-        MemoryAdmissionTest.FakeHeap heap = new MemoryAdmissionTest.FakeHeap(256, 40);
+        MemoryAdmissionTest.FakeHeap heap = new MemoryAdmissionTest.FakeHeap(320, 40);
         MemoryAdmission gate = new MemoryAdmission(
                         heap, (kind, d) -> 60 * MIB, () -> 64L << 30, JobEnvelopeQueueTest.PATIENT, () -> 1_000L, 5L)
                 .withLiveJobs(new LiveJobsFile(file, DEAD));
@@ -66,7 +66,7 @@ class LiveJobsFileTest {
                 .startsWith("jk engine: the previous engine (pid " + DEAD
                         + ") exited on OutOfMemoryError with these jobs live: ")
                 .contains("test /work/app (jid 7, 60 MiB estimated)", "test /work/app (jid 9, 60 MiB estimated)")
-                .contains("heap 40 MiB of 256 MiB at the last admission");
+                .contains("heap 40 MiB of 320 MiB at the last admission");
         assertThat(LiveJobsFile.previous(paths, 1L)).as("told once").isEmpty();
     }
 

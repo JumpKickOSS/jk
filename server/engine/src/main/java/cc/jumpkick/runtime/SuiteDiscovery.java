@@ -54,6 +54,32 @@ final class SuiteDiscovery {
     }
 
     /**
+     * The classes a run of the suite at {@code moduleDir} under {@code selection} replays under {@code
+     * [test] cache = "cone"}, for the forecast: those whose key, taken now, has not moved since they
+     * passed ({@link TestClassRecording#unmoved}).
+     */
+    static Map<String, TestClassLedger.Entry> replayedByCone(
+            Path moduleDir,
+            BuildLayout layout,
+            TestSelection selection,
+            List<Path> runtimeCp,
+            List<String> stampExtras,
+            List<Path> resourceDirs,
+            @Nullable String stampKey)
+            throws IOException {
+        return TestClassRecording.unmoved(
+                moduleDir,
+                layout,
+                selection,
+                layout.testClassesDir(),
+                layout.classesDir(),
+                runtimeCp,
+                stampExtras,
+                resourceDirs,
+                stampKey);
+    }
+
+    /**
      * One run's recording: the flag every suite JVM starts with, when the run began, what the stamp
      * already keys for it, and whether it runs the whole suite (not only the classes an edit
      * affects), so that what it reads is all the suite reads.
@@ -146,7 +172,8 @@ final class SuiteDiscovery {
                 @Nullable TestClassLedger ledger)
                 throws Exception {
             TestClassRecording.Pending pending = classes.getAndSet(null);
-            String before = pending == null ? "" : pending.suiteReads(selection);
+            ClassKeys.SuiteReadSet before =
+                    pending == null ? ClassKeys.SuiteReadSet.NONE : pending.suiteReads(selection);
             String settled = SuiteDiscovery.settle(ctx, this, stampKey, rekey, env);
             if (pending != null) pending.record(before, pending.suiteReads(selection));
             if (settled != null

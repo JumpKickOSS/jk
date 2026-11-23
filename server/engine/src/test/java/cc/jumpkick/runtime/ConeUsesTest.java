@@ -116,7 +116,7 @@ class ConeUsesTest {
                         Map.of(),
                         ClassKeys.Observed.NONE,
                         "module",
-                        "reads",
+                        ClassKeys.SuiteReadSet.NONE,
                         ws,
                         null,
                         new HashMap<>())
@@ -139,8 +139,8 @@ class ConeUsesTest {
                 ClassKeys.Observed.NONE,
                 ClassKeys.Observed.NONE,
                 Map.of(),
-                "reads",
-                "reads",
+                ClassKeys.SuiteReadSet.NONE,
+                ClassKeys.SuiteReadSet.NONE,
                 Long.MAX_VALUE,
                 false,
                 "stamp");

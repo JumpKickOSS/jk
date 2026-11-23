@@ -430,4 +430,35 @@ class ClassReadsTest {
     private static Path write(Path dir, String name) throws Exception {
         return Files.writeString(dir.resolve(name), name);
     }
+
+    /**
+     * A class that reads past its bound keeps directories that cover every file it read: the
+     * workspace's own manifest and thirty plugin manifests are the root's files and everything under
+     * plugins, which holds no engine source.
+     */
+    @Test
+    void read_roots_cover_every_file_a_class_read_and_no_more(@TempDir Path ws) {
+        ClassReads.Observation o = ClassReads.Observation.empty();
+        o.addRead(ws.resolve("jk.toml"));
+        for (int i = 0; i < 30; i++) o.addRead(ws.resolve("plugins/p" + i + "/jk-plugin.toml"));
+        assertThat(o.readsMore()).isTrue();
+        assertThat(o.readRoots())
+                .containsExactlyInAnyOrder(
+                        new ClassReads.ReadRoot(ws, false), new ClassReads.ReadRoot(ws.resolve("plugins"), true));
+        assertThat(o.readRoots().stream().anyMatch(r -> r.covers(ws.resolve("server/engine/src/Self.java"))))
+                .as("an engine source lies under no root")
+                .isFalse();
+        assertThat(o.readRoots().stream().anyMatch(r -> r.covers(ws.resolve("plugins/p3/README.md"))))
+                .isTrue();
+    }
+
+    /** Reads with no directory in common past the bound leave no roots: the class keys on its whole suite. */
+    @Test
+    void reads_that_share_no_directory_leave_no_roots() {
+        ClassReads.Observation o = ClassReads.Observation.empty();
+        for (int i = 0; i < 12; i++) o.addRead(Path.of("d" + i, "f.txt"));
+        assertThat(o.readsMore()).isTrue();
+        assertThat(o.rootsMore()).isTrue();
+        assertThat(o.readRoots()).isEmpty();
+    }
 }

@@ -179,6 +179,9 @@ public final class ForecastScope implements StepForecast.Scope {
 
     int testCount;
 
+    /** How many of {@link #testCount} the suite runs when it does, the rest replayed; negative for all. */
+    int rerunTests = -1;
+
     private @Nullable Prepared prepared;
     private @Nullable TestSources testSources;
     private boolean ownOutputsProjected;
@@ -674,7 +677,15 @@ public final class ForecastScope implements StepForecast.Scope {
         boolean producesImage =
                 project.image().base() != null || project.image().registry() != null;
         return new TaskForecast.Module(
-                u.dir(), u.coord(), steps, sourceCount, testCount, !p.parsed().noSources(), producesImage);
+                u.dir(),
+                u.coord(),
+                steps,
+                sourceCount,
+                testCount,
+                !p.parsed().noSources(),
+                producesImage,
+                null,
+                rerunTests < 0 ? testCount : rerunTests);
     }
 
     /** The module when its lock must be written first: each priced or always-run step of {@code plan} runs. */

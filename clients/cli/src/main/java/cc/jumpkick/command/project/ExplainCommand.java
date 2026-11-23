@@ -677,14 +677,15 @@ public final class ExplainCommand implements CliCommand {
         int dirtyModules =
                 (int) modules.stream().filter(ExplainCommand::rebuilds).count();
         // A module's sources count as rebuilt when its main compile runs, its tests when its suite
-        // does: a module dirty only for its assembly rebuilds neither.
+        // does (those of its classes that are not replayed): a module dirty only for its assembly
+        // rebuilds neither.
         int dirtySources = modules.stream()
                 .filter(m -> runs(m, TaskNames.MAIN_COMPILES::contains))
                 .mapToInt(TaskForecast.Module::sourceCount)
                 .sum();
         int dirtyTests = modules.stream()
                 .filter(m -> runs(m, TaskNames::isRunTests))
-                .mapToInt(TaskForecast.Module::testCount)
+                .mapToInt(TaskForecast.Module::rerunTests)
                 .sum();
         int dirtyJars = (int)
                 modules.stream().filter(m -> rebuilds(m) && m.producesJar()).count();

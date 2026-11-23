@@ -224,11 +224,16 @@ for the project, newest run winning:
 
 **Every row is bounded, and nothing is held whole.** A class keeps at most 8 data files read, 4 code
 files, 2 of each kind of evidence, 8 variable and 8 property names, and the count of workspace classes
-it loaded, never their names. A class that read more data files says `readsMore` and is keyed on
-every file its suite was found to read: the suite's discovered inputs, which hold that set exactly
-and bounded, so per-class reads use the suite's own representation rather than a second one. A
-repository-scanning class that reads 50,000 files therefore costs a row like any other and re-runs
-whenever any input of its suite moves, which is what it reads anyway. A class that read more code
+it loaded, never their names. A class that read more data files says `readsMore` and keeps up to 8
+read roots (`readRoots`: `<dir>/*` for the files directly in a directory, `<dir>/**` for everything
+under it; past 8, the two with the deepest common directory become that directory), which cover
+every file it read. It is keyed on the files its suite was found to read under those roots: the
+suite's discovered inputs, which hold that set exactly and bounded, so per-class reads use the
+suite's own representation rather than a second one. A class whose reads share no directory keeps
+no roots and is keyed on every file its suite read. A repository-scanning class that reads 50,000
+files therefore costs a row like any other and re-runs whenever any input under its roots moves,
+which is what it reads anyway, while a class that read thirty plugin manifests no longer re-runs
+because a neighbour of its suite scanned the engine's sources. A class that read more code
 files says `codeMore` and stands on every code file its suite's JVMs read: the suite's line lists
 them (`suiteCode`, up to 128, each with its content and since when it has held it), and the class
 is replayed only when every one of them held since before the class finished. Whether a class's
@@ -238,10 +243,12 @@ content. The record file and the shadow log are written and read a row
 at a time; a row past 256 KiB (none this writes) is skipped as unreadable.
 
 **The memory bound.** One suite records at a time across the engine. What it holds outside the
-recording reader's permit is at most `ClassReads.PEAK_BYTES`, about 16 MiB: some 4.5 KiB per class for
-up to 2,048 classes (a class past that keeps nothing and is keyed by its module), 65,536 class loads
-across the suite, and one JVM's join (8,192 written files, 2,048 code files, 2,048 existence answers).
-That is `C × 4.5 KiB + 7.5 MiB` for `C` classes: under 12 MiB for jk-engine's thousand. Memory
+recording reader's permit is at most `ClassReads.PEAK_BYTES`, about 25 MiB: some 9.5 KiB per class
+(its kept paths, read roots, names and the bits of the classes whose code ran) for up to 2,048
+classes (a class past that keeps nothing and is keyed by its module), 65,536 class loads and 16,384
+used class names across the suite, and one JVM's join (8,192 written files, 2,048 code files, 2,048
+existence answers). That is `C × 9.5 KiB + 6.5 MiB` for `C` classes: under 16 MiB for jk-engine's
+thousand. Memory
 admission keeps it free beside the reader's own peak. The index of workspace classes the cones walk
 (at most 40,000 classes at 512 bytes, 20 MiB) stands only while the suite holds the reader's permit,
 so it never stands beside a recording being read; past 40,000 every class is keyed by the suite's
@@ -266,13 +273,13 @@ replays the whole suite without computing a class key. The summary counts replay
 passed and skipped as recorded, as the class ledger's left-out classes are counted today. The settle
 line says how many ran: `OK test jk-cli · 1,958 tests (1,901 replayed) · 41.2s`.
 
-`jk explain` forecasts `run tests · 3 of 466 classes · cc.jumpkick.engine.Planner changed (+2
-more)`: the classes whose key moved and, for the first, the first cone class or read that moved.
-When the module's compile is cached, the forecast reads the same bytes the run will and its count is
-exact. When a compile is pending, the new bytes do not exist yet; the forecast walks the last run's
-cones from the classes of the changed sources and states an upper bound, `up to 12 of 466 classes`.
-The run never runs a class the bound leaves out, since a class whose cone holds no changed source's
-class keeps its key.
+When nothing the suite reads is still to be built (its compile and every sibling it reads are
+current), `jk explain` takes each class's key as the run will (`TestClassRecording.unmoved`, through
+`SuiteDiscovery.replayedByCone`) and prices only the classes whose key moved: `run tests · <the stamp
+input that moved> · ~12 tests · 281 classes replayed`, and the module's `rerunTests` (the Tests
+row's Rebuild column) counts those tests alone. When a compile is pending the new bytes do not exist
+yet and the forecast prices the whole selection. Not built yet: walking the last run's cones from
+the classes of the changed sources to state an upper bound, `up to 12 of 466 classes`.
 
 ## Which classes run together
 

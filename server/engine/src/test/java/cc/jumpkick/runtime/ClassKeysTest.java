@@ -34,20 +34,20 @@ class ClassKeysTest {
         ClassCones.Cone cone = ClassCones.index(List.of(classes)).cone("demo.T");
         Path data = Files.writeString(ws.resolve("data.txt"), "one");
         ClassKeys.Observed seen = observed(List.of("data.txt"), false, List.of());
-        ClassKeys.Key key = key(cone, seen, "suite-reads", ws);
+        ClassKeys.Key key = key(cone, seen, ClassKeys.SuiteReadSet.NONE, ws);
         Files.writeString(data, "two");
-        assertThat(key(cone, seen, "suite-reads", ws).key())
+        assertThat(key(cone, seen, ClassKeys.SuiteReadSet.NONE, ws).key())
                 .as("a file it read changed")
                 .isNotEqualTo(key.key());
 
         ClassKeys.Observed many = observed(List.of("data.txt"), true, List.of());
-        String before = key(cone, many, "reads-1", ws).key();
-        assertThat(key(cone, many, "reads-2", ws).key())
+        String before = key(cone, many, suiteRead(ws, "1"), ws).key();
+        assertThat(key(cone, many, suiteRead(ws, "2"), ws).key())
                 .as("past its bound, any file its suite read")
                 .isNotEqualTo(before);
-        assertThat(key(cone, seen, "reads-2", ws).key())
+        assertThat(key(cone, seen, suiteRead(ws, "2"), ws).key())
                 .as("within its bound, only its own")
-                .isEqualTo(key(cone, seen, "reads-1", ws).key());
+                .isEqualTo(key(cone, seen, suiteRead(ws, "1"), ws).key());
 
         assertThat(ClassKeys.fallback(cone, observed(List.of(), false, List.of("/usr/bin/git")), false, false, false))
                 .startsWith("process");
@@ -82,17 +82,17 @@ class ClassKeysTest {
                 .containsExactly("demo.Ext");
 
         ClassKeys.Observed seen = observed(List.of(), false, List.of());
-        String before = key(index.cone("demo.T", List.of("demo.Ext")), seen, "reads", ws)
+        String before = key(index.cone("demo.T", List.of("demo.Ext")), seen, ClassKeys.SuiteReadSet.NONE, ws)
                 .key();
         copy(classes, "demo/Other", FIXTURE + "ConeNamed");
         ClassCones.Index otherEdited = ClassCones.index(List.of(classes));
-        assertThat(key(otherEdited.cone("demo.T", List.of("demo.Ext")), seen, "reads", ws)
+        assertThat(key(otherEdited.cone("demo.T", List.of("demo.Ext")), seen, ClassKeys.SuiteReadSet.NONE, ws)
                         .key())
                 .as("a class it never loaded changed")
                 .isEqualTo(before);
         copy(classes, "demo/Ext", FIXTURE + "ConeUnrelated");
         ClassCones.Index extEdited = ClassCones.index(List.of(classes));
-        assertThat(key(extEdited.cone("demo.T", List.of("demo.Ext")), seen, "reads", ws)
+        assertThat(key(extEdited.cone("demo.T", List.of("demo.Ext")), seen, ClassKeys.SuiteReadSet.NONE, ws)
                         .key())
                 .as("the class it loaded by name changed")
                 .isNotEqualTo(before);
@@ -116,7 +116,7 @@ class ClassKeysTest {
         ClassCones.Cone cone = ClassCones.index(List.of(Files.createDirectories(ws.resolve("classes"))))
                 .cone("demo.T");
         ClassKeys.Observed seen =
-                new ClassKeys.Observed(true, List.of(), false, List.of(), false, List.of(), List.of(GIT));
+                new ClassKeys.Observed(true, List.of(), false, List.of(), false, List.of(), List.of(GIT), List.of());
         assertThat(ClassKeys.fallback(cone, seen, false, false, false))
                 .as("no program started that reads what its key does not hold")
                 .isNull();
@@ -125,18 +125,25 @@ class ClassKeysTest {
         assertThat(v1).containsOnlyKeys("git", "sh");
         Map<String, String> v2 = ClassKeys.programs(List.of("proc:git=git version 2.52.0", "proc:sh=posix"));
         Map<String, String> otherTools = ClassKeys.programs(List.of("proc:git=git version 2.51.0", "proc:node=v24"));
-        String before = key(cone, ClassKeys.identified(seen, v1), "reads", ws).key();
-        assertThat(key(cone, ClassKeys.identified(seen, v2), "reads", ws).key())
+        String before = key(cone, ClassKeys.identified(seen, v1), ClassKeys.SuiteReadSet.NONE, ws)
+                .key();
+        assertThat(key(cone, ClassKeys.identified(seen, v2), ClassKeys.SuiteReadSet.NONE, ws)
+                        .key())
                 .as("git upgraded")
                 .isNotEqualTo(before);
-        assertThat(key(cone, ClassKeys.identified(seen, otherTools), "reads", ws)
+        assertThat(key(cone, ClassKeys.identified(seen, otherTools), ClassKeys.SuiteReadSet.NONE, ws)
                         .key())
                 .as("another program's identity is not this class's")
                 .isEqualTo(before);
-        assertThat(key(cone, ClassKeys.identified(seen, Map.of()), "reads", ws).key())
+        assertThat(key(cone, ClassKeys.identified(seen, Map.of()), ClassKeys.SuiteReadSet.NONE, ws)
+                        .key())
                 .as("a stamp that names no git yet")
                 .isNotEqualTo(before);
-        assertThat(key(cone, ClassKeys.identified(observed(List.of(), false, List.of()), v1), "reads", ws)
+        assertThat(key(
+                                cone,
+                                ClassKeys.identified(observed(List.of(), false, List.of()), v1),
+                                ClassKeys.SuiteReadSet.NONE,
+                                ws)
                         .key())
                 .as("a class that started nothing")
                 .isNotEqualTo(before);
@@ -163,7 +170,7 @@ class ClassKeysTest {
                         Map.of(),
                         ClassKeys.Observed.NONE,
                         "module",
-                        "reads",
+                        ClassKeys.SuiteReadSet.NONE,
                         ws,
                         null,
                         pass)
@@ -182,14 +189,14 @@ class ClassKeysTest {
                                 Map.of(),
                                 ClassKeys.Observed.NONE,
                                 "module",
-                                "reads",
+                                ClassKeys.SuiteReadSet.NONE,
                                 ws,
                                 null,
                                 pass)
                         .key())
                 .as("another class of the same pass reuses the listing")
                 .isEqualTo(first);
-        assertThat(key(cone, seen, "reads", ws).key())
+        assertThat(key(cone, seen, ClassKeys.SuiteReadSet.NONE, ws).key())
                 .as("a new pass lists the directory again and sees the file added beside")
                 .isNotEqualTo(first);
     }
@@ -255,6 +262,49 @@ class ClassKeysTest {
                 .isNotEqualTo(ClassKeys.suitePart(List.of("sel:fast", "env-names=aaa"), List.of(), List.of()));
     }
 
+    /**
+     * A class past its read bound stands on the files its suite read under its read roots: an edit
+     * elsewhere that its suite also read (a source a repository-scanning neighbour read) leaves its
+     * key, an edit under its roots moves it, and with no roots it stands on all of them.
+     */
+    @Test
+    void a_class_past_its_read_bound_keys_on_its_suites_reads_under_its_roots(@TempDir Path ws) throws Exception {
+        ClassCones.Cone cone = ClassCones.index(List.of(Files.createDirectories(ws.resolve("classes"))))
+                .cone("demo.T");
+        ClassKeys.Observed rooted = new ClassKeys.Observed(
+                true, List.of("jk.toml"), true, List.of(), false, List.of(), List.of(), List.of("*", "plugins/**"));
+        ClassKeys.Observed unrooted = observed(List.of("jk.toml"), true, List.of());
+        ClassKeys.SuiteReadSet before = reads(ws, "a", "p1", "s1");
+        ClassKeys.SuiteReadSet sourceEdited = reads(ws, "a", "p1", "s2");
+        ClassKeys.SuiteReadSet pluginEdited = reads(ws, "a", "p2", "s1");
+        assertThat(key(cone, rooted, sourceEdited, ws).key())
+                .as("a source outside its roots moved")
+                .isEqualTo(key(cone, rooted, before, ws).key());
+        assertThat(key(cone, rooted, pluginEdited, ws).key())
+                .as("a plugin manifest under its roots moved")
+                .isNotEqualTo(key(cone, rooted, before, ws).key());
+        assertThat(key(cone, unrooted, sourceEdited, ws).key())
+                .as("no roots: every file its suite read")
+                .isNotEqualTo(key(cone, unrooted, before, ws).key());
+    }
+
+    /** The discovered inputs of a suite that read one file, as it was at {@code version}. */
+    private static ClassKeys.SuiteReadSet suiteRead(Path ws, String version) {
+        return new ClassKeys.SuiteReadSet(List.of("read:other.txt=" + version), ws);
+    }
+
+    /** The discovered inputs of a suite that read the root manifest, a plugin manifest and an engine source. */
+    private static ClassKeys.SuiteReadSet reads(Path ws, String root, String plugin, String source) {
+        return new ClassKeys.SuiteReadSet(
+                List.of(
+                        "read:jk.toml=" + root,
+                        "read:plugins/a/jk-plugin.toml=" + plugin,
+                        "read:server/engine/src/Self.java=" + source,
+                        "list:plugins/a=l",
+                        "list:server/engine/src=l"),
+                ws);
+    }
+
     /** A class's key as the shadow takes it from a stamp of {@code extras}. */
     private static String stampKey(
             ClassCones.Cone cone, ClassKeys.Observed seen, List<String> extras, @Nullable String fallback, Path ws)
@@ -269,7 +319,7 @@ class ClassKeysTest {
                         programs,
                         ClassKeys.Observed.NONE,
                         "module",
-                        "reads",
+                        ClassKeys.SuiteReadSet.NONE,
                         ws,
                         fallback,
                         new HashMap<>())
@@ -292,7 +342,8 @@ class ClassKeysTest {
         return new ClassKeys.Observed(true, reads, more, List.of(), false, processes);
     }
 
-    private static ClassKeys.Key key(ClassCones.Cone cone, ClassKeys.Observed seen, String suiteReads, Path ws) {
+    private static ClassKeys.Key key(
+            ClassCones.Cone cone, ClassKeys.Observed seen, ClassKeys.SuiteReadSet suiteReads, Path ws) {
         return ClassKeys.key(
                 "",
                 cone,

@@ -55,8 +55,8 @@ final class ClassShadow {
     private final ClassKeys.Observed pooledBefore;
     private final ClassKeys.Observed pooledNow;
     private final Map<String, String> programs;
-    private final String readsBefore;
-    private final String readsAfter;
+    private final ClassKeys.SuiteReadSet readsBefore;
+    private final ClassKeys.SuiteReadSet readsAfter;
     private final long codeSince;
     private final boolean codePastBound;
 
@@ -77,7 +77,7 @@ final class ClassShadow {
     /**
      * The shadow of one run: cones from {@code index}, keys under {@code suitePart}; {@code
      * pooledBefore} and {@code readsBefore} are what the records were keyed over before this run (the
-     * pool of the record file's header and the suite's discovered inputs as one digest), {@code
+     * pool of the record file's header and the suite's discovered inputs), {@code
      * pooledNow} and {@code readsAfter} what this run leaves; {@code programs} the identity of each
      * program the suite's stamp keys, by name ({@link ClassKeys#programs}); {@code codeSince} is since when the code
      * files the record file's header lists have held still ({@link SuiteCodeFiles#since}) and {@code
@@ -91,8 +91,8 @@ final class ClassShadow {
             ClassKeys.Observed pooledBefore,
             ClassKeys.Observed pooledNow,
             Map<String, String> programs,
-            String readsBefore,
-            String readsAfter,
+            ClassKeys.SuiteReadSet readsBefore,
+            ClassKeys.SuiteReadSet readsAfter,
             long codeSince,
             boolean codePastBound,
             @Nullable String stampKey) {
@@ -217,7 +217,8 @@ final class ClassShadow {
                 Jsonl.strArray(row, "code"),
                 Jsonl.bool(row, "codeMore", false),
                 Jsonl.strArray(row, "processes"),
-                Jsonl.strArray(row, "tools"));
+                Jsonl.strArray(row, "tools"),
+                Jsonl.strArray(row, "readRoots"));
     }
 
     /** What the record file's header says no window held; nothing when there is none. */
@@ -242,7 +243,8 @@ final class ClassShadow {
                 TestClassRecords.spelled(o.code(), workspace),
                 o.codeMore(),
                 List.copyOf(o.processes()),
-                List.copyOf(o.tools()));
+                List.copyOf(o.tools()),
+                o.readsMore() ? TestClassRecords.roots(o.readRoots(), workspace) : List.of());
     }
 
     /** The classes it would have replayed whose outcome changed: an under-run, when any. */

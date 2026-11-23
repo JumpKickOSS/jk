@@ -75,14 +75,14 @@ final class TestClassRecording {
             List<Path> resourceDirs,
             @Nullable String stampKey) {
 
-        /** The suite's discovered inputs under {@code selection}, as one digest: what a class past its bound is keyed on. */
-        String suiteReads(TestSelection selection) {
-            if (!TestTelemetry.shadow()) return "";
-            return SuiteReads.digest(moduleDir, selection, layout.workspaceRoot());
+        /** The suite's discovered inputs under {@code selection}: what a class past its read bound is keyed on. */
+        ClassKeys.SuiteReadSet suiteReads(TestSelection selection) {
+            if (!TestTelemetry.shadow()) return ClassKeys.SuiteReadSet.NONE;
+            return readSet(moduleDir, selection, layout.workspaceRoot());
         }
 
         /** Record the classes, {@code readsBefore} and {@code readsAfter} the suite's discovered inputs before and after settling. */
-        void record(String readsBefore, String readsAfter) {
+        void record(ClassKeys.SuiteReadSet readsBefore, ClassKeys.SuiteReadSet readsAfter) {
             if (!TestTelemetry.on() || ledger.recorded().isEmpty()) return;
             try {
                 ONE.acquire();
@@ -97,7 +97,7 @@ final class TestClassRecording {
             }
         }
 
-        private void recordHeld(String readsBefore, String readsAfter) {
+        private void recordHeld(ClassKeys.SuiteReadSet readsBefore, ClassKeys.SuiteReadSet readsAfter) {
             long started = Clock.SYSTEM.nanos();
             try {
                 Path target = layout.moduleTargetDir();
@@ -253,7 +253,7 @@ final class TestClassRecording {
         Path workspace = layout.workspaceRoot().toAbsolutePath().normalize();
         Roots roots = Roots.of(workspace, testClasses, mainClasses, runtimeCp);
         String suitePart = ClassKeys.suitePart(stampExtras, roots.external(), resourceDirs);
-        String reads = SuiteReads.digest(moduleDir, selection, layout.workspaceRoot());
+        ClassKeys.SuiteReadSet reads = readSet(moduleDir, selection, layout.workspaceRoot());
         Map<String, TestClassLedger.Entry> out = new TreeMap<>();
         try {
             ONE.acquire();
@@ -294,6 +294,11 @@ final class TestClassRecording {
             ONE.release();
         }
         return out;
+    }
+
+    /** What the suite at {@code moduleDir} was found to read under {@code selection}, as {@link SuiteReads#digest} reads it. */
+    private static ClassKeys.SuiteReadSet readSet(Path moduleDir, TestSelection selection, Path workspace) {
+        return new ClassKeys.SuiteReadSet(SuiteReads.tokens(moduleDir, selection, workspace), workspace);
     }
 
     /** When the first of {@code ran} finished: the start of the run, as its records date it. */

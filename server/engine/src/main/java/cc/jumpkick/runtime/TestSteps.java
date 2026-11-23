@@ -938,13 +938,50 @@ final class TestSteps {
                                 s.dir,
                                 SessionContext.current().testSelection(),
                                 () -> stamp.forecastKey(compact, layout.classesDir(), finalMainFp));
+        String priced = red || network || unread != null || stampKey == null
+                ? tests
+                : pricedByCone(s, stamp, layout, compact, stampKey, estimated, tests);
         return new TaskForecast.Task(
                 TaskNames.RUN_TESTS,
                 TaskForecast.Status.RUN,
                 "run tests · " + (network ? TaskForecast.TESTS_USE_NETWORK + " · " : "")
                         + (unread != null ? SuiteReads.unreadMessage(unread) + " · " : "")
-                        + (moved != null ? moved + " · " : "") + tests
+                        + (moved != null ? moved + " · " : "") + priced
                         + (red ? " · " + TaskForecast.LAST_RUN_FAILED : ""),
                 null);
+    }
+
+    /**
+     * The tests a missed suite runs, as the run decides it under {@code [test] cache = "cone"}: a
+     * class whose key has not moved since it passed is replayed, so only the rest are priced, and
+     * {@code s} says how many ({@link ForecastScope#rerunTests}). Every input is current where this
+     * is asked, so the keys are the ones the run takes. {@code tests} when nothing is replayed.
+     */
+    private static String pricedByCone(
+            ForecastScope s,
+            TestStampInputs stamp,
+            BuildLayout layout,
+            boolean compact,
+            String stampKey,
+            int estimated,
+            String tests)
+            throws IOException {
+        if (!stamp.cachesByCone()) return tests;
+        List<Path> resources = stamp.forecastResources(compact);
+        if (resources == null) return tests;
+        Map<String, TestClassLedger.Entry> replayed = SuiteDiscovery.replayedByCone(
+                s.dir,
+                layout,
+                SessionContext.current().testSelection(),
+                stamp.runtimeClasspath(),
+                stamp.extras(),
+                resources,
+                stampKey);
+        if (replayed.isEmpty()) return tests;
+        long replayedTests = 0;
+        for (TestClassLedger.Entry e : replayed.values()) replayedTests += e.tests();
+        s.rerunTests = (int) Math.max(0, estimated - replayedTests);
+        return "~" + ForecastSteps.count(s.rerunTests, "test") + " · " + replayed.size()
+                + (replayed.size() == 1 ? " class" : " classes") + " replayed";
     }
 }

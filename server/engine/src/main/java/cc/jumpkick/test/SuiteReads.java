@@ -467,6 +467,13 @@ public final class SuiteReads {
         return kept.isEmpty() ? "none" : Hashing.sha256Hex(String.join("\n", kept));
     }
 
+    /** The file a {@code read:} token names or the directory a {@code list:} token does; null for any other token. */
+    public static @Nullable Path tokenFile(Path workspaceRoot, String token) {
+        int eq = token.lastIndexOf('=');
+        if (!(token.startsWith("read:") || token.startsWith("list:")) || eq <= 5) return null;
+        return tokenPath(workspaceRoot.toAbsolutePath().normalize(), token.substring(5, eq));
+    }
+
     /**
      * The file or directory a {@code read:} or {@code list:} token names, as {@link #spell} wrote it:
      * workspace-relative, under a jk root ({@code store:}, {@code cache:}, {@code jk-home:}), or

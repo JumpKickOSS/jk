@@ -332,9 +332,9 @@ final class TestClassRecords {
             if (!shadow.reflective().isEmpty()) f.array("reflective", shadow.reflective());
         }
         if (obs != null) {
-            f.array("reads", spelled(obs.reads(), root))
-                    .optionalTrue("readsMore", obs.readsMore())
-                    .array("code", spelled(obs.code(), root))
+            f.array("reads", spelled(obs.reads(), root)).optionalTrue("readsMore", obs.readsMore());
+            if (obs.readsMore() && !obs.readRoots().isEmpty()) f.array("readRoots", roots(obs.readRoots(), root));
+            f.array("code", spelled(obs.code(), root))
                     .optionalTrue("codeMore", obs.codeMore())
                     .array("processes", List.copyOf(obs.processes()))
                     .array("tools", List.copyOf(obs.tools()))
@@ -447,6 +447,20 @@ final class TestClassRecords {
     }
 
     /** Paths in the workspace relative to it, with forward slashes; others as they are. */
+    /**
+     * Read roots as a row spells them: a directory as {@link #spelled} spells it, then {@code /*} for
+     * the files directly in it or {@code /**} for everything under it ({@code *} and {@code **} for
+     * the workspace itself).
+     */
+    static List<String> roots(Collection<ClassReads.ReadRoot> roots, Path root) {
+        List<String> out = new ArrayList<>();
+        for (ClassReads.ReadRoot r : roots) {
+            String dir = spelled(List.of(r.dir()), root).getFirst();
+            out.add((dir.isEmpty() ? "" : dir + "/") + (r.deep() ? "**" : "*"));
+        }
+        return out;
+    }
+
     static List<String> spelled(Collection<Path> paths, Path root) {
         List<String> out = new ArrayList<>();
         for (Path p : paths) {

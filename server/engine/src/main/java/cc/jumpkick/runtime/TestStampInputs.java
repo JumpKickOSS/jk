@@ -302,18 +302,8 @@ public record TestStampInputs(
                 .all();
         List<Path> stampRt = runtimeClasspath;
         List<String> stampExtras = extras();
-        List<String> compiledSuites =
-                TestSuites.compiled(dir, compact, run, project.build().runSuites());
-        // As the live copy: the test KSP round's output roots, then the suites' resources.
-        List<Path> stampRes = new ArrayList<>(PlannerKsp.outputRoots(PlannerKsp.kspTestOutBase(layout)));
-        stampRes.addAll(ModuleLayout.suiteResourceDirs(dir, compact, compiledSuites));
-        if (compiledSuites.contains(TestSuites.DEFAULT)) {
-            // The live run keys the default suite's [resources] test-dirs and staged test-filtered
-            // roots too. A staged root that no longer holds what its source expands to is one the
-            // run restages: nothing on disk prices it, so the suite is forecast to run.
-            if (FilteredResources.testStageOutOfSync(dir, project, layout)) return null;
-            stampRes.addAll(FilteredResources.testRootsAsStaged(dir, project, layout));
-        }
+        List<Path> stampRes = forecastResources(compact);
+        if (stampRes == null) return null;
         String key = key(stampSrcs, mainClasses, mainClassesFingerprint, stampRes, stampExtras);
         if (Perf.enabled()) {
             // The key itself, not just its inputs: when this disagrees with `live-test-stamp` for
@@ -342,6 +332,30 @@ public record TestStampInputs(
                     mainClassesFingerprint != null ? mainClassesFingerprint : ClasspathFingerprint.entry(mainClasses));
         }
         return key;
+    }
+
+    /**
+     * The resource roots the live run keys and its classes read, for the forecast: the test KSP
+     * round's output roots, then the suites' resources. Null when a staged test-filtered root no
+     * longer holds what its source expands to: the run restages it, so nothing on disk prices it.
+     */
+    @Nullable
+    List<Path> forecastResources(boolean compact) throws IOException {
+        Path dir = facts.dir();
+        JkBuild project = facts.project();
+        BuildLayout layout = facts.layout();
+        List<String> run = suites.ok() ? suites.suites() : List.of(TestSuites.DEFAULT);
+        List<String> compiledSuites =
+                TestSuites.compiled(dir, compact, run, project.build().runSuites());
+        List<Path> res = new ArrayList<>(PlannerKsp.outputRoots(PlannerKsp.kspTestOutBase(layout)));
+        res.addAll(ModuleLayout.suiteResourceDirs(dir, compact, compiledSuites));
+        if (compiledSuites.contains(TestSuites.DEFAULT)) {
+            // The live run keys the default suite's [resources] test-dirs and staged test-filtered
+            // roots too.
+            if (FilteredResources.testStageOutOfSync(dir, project, layout)) return null;
+            res.addAll(FilteredResources.testRootsAsStaged(dir, project, layout));
+        }
+        return res;
     }
 
     /**

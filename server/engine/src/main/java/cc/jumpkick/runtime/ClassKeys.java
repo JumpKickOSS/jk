@@ -20,6 +20,7 @@ import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -60,10 +61,11 @@ final class ClassKeys {
 
     /**
      * What one class was seen to read, from its record or this run, bounded as a record holds it: a
-     * class that read more data files than its record names ({@code readsMore}) is keyed on every
-     * file its suite was found to read instead. {@code tools} are the programs it started that read
-     * nothing but their own identity: by name as a record holds them, by identity once {@link
-     * #identified}.
+     * class that read more data files than its record names ({@code readsMore}) is keyed on the
+     * files its suite was found to read under its read roots ({@code readRoots}, as {@link
+     * TestClassRecords#roots} spells them), or on every one when it has none. {@code tools} are the
+     * programs it started that read nothing but their own identity: by name as a record holds them,
+     * by identity once {@link #identified}.
      */
     record Observed(
             boolean attributed,
@@ -72,10 +74,11 @@ final class ClassKeys {
             List<String> code,
             boolean codeMore,
             List<String> processes,
-            List<String> tools) {
+            List<String> tools,
+            List<String> readRoots) {
         static final Observed NONE = new Observed(false, List.of(), false, List.of(), false, List.of());
 
-        /** A class that started no program keyed by its identity. */
+        /** A class that started no program keyed by its identity and has no read roots. */
         Observed(
                 boolean attributed,
                 List<String> reads,
@@ -83,7 +86,64 @@ final class ClassKeys {
                 List<String> code,
                 boolean codeMore,
                 List<String> processes) {
-            this(attributed, reads, readsMore, code, codeMore, processes, List.of());
+            this(attributed, reads, readsMore, code, codeMore, processes, List.of(), List.of());
+        }
+    }
+
+    /**
+     * What a suite was found to read, its discovered inputs' tokens ({@link SuiteReads#tokens}): what
+     * a class past its read bound is keyed on, all of it ({@link #all}) or what lies under the class's
+     * read roots ({@link #under}), each as one digest ({@link SuiteReads#memoDigest}).
+     */
+    static final class SuiteReadSet {
+        static final SuiteReadSet NONE = new SuiteReadSet(List.of(), Path.of(""));
+
+        private final List<String> tokens;
+        private final Path workspace;
+        private final String all;
+        private final Map<List<String>, String> under = new HashMap<>();
+
+        SuiteReadSet(List<String> tokens, Path workspace) {
+            this.tokens = List.copyOf(tokens);
+            this.workspace = workspace.toAbsolutePath().normalize();
+            this.all = SuiteReads.memoDigest(this.tokens, this.workspace);
+        }
+
+        String all() {
+            return all;
+        }
+
+        /**
+         * The files read and the directories listed under {@code roots} (each {@code <dir>/*} for the
+         * files directly in the directory, {@code <dir>/**} for everything under it), and what else
+         * the suite was found to use (its programs, the network, the caller's environment).
+         */
+        String under(List<String> roots) {
+            return under.computeIfAbsent(List.copyOf(roots), r -> {
+                List<ClassReads.ReadRoot> parsed = new ArrayList<>();
+                for (String spelled : r) parsed.add(root(spelled));
+                List<String> kept = new ArrayList<>();
+                for (String t : tokens) {
+                    Path p = SuiteReads.tokenFile(workspace, t);
+                    if (p == null || coveredBy(parsed, p, t.startsWith("list:"))) kept.add(t);
+                }
+                return SuiteReads.memoDigest(kept, workspace);
+            });
+        }
+
+        private ClassReads.ReadRoot root(String spelled) {
+            boolean deep = spelled.endsWith("**");
+            String dir = spelled.substring(0, spelled.length() - (deep ? 2 : 1));
+            if (dir.endsWith("/")) dir = dir.substring(0, dir.length() - 1);
+            return new ClassReads.ReadRoot(workspace.resolve(dir).normalize(), deep);
+        }
+
+        /** Whether a read file, or a listed directory ({@code listing}), lies under one of {@code roots}. */
+        private static boolean coveredBy(List<ClassReads.ReadRoot> roots, Path p, boolean listing) {
+            for (ClassReads.ReadRoot r : roots) {
+                if (listing ? (r.deep() ? p.startsWith(r.dir()) : p.equals(r.dir())) : r.covers(p)) return true;
+            }
+            return false;
         }
     }
 
@@ -128,7 +188,8 @@ final class ClassKeys {
                 seen.code(),
                 seen.codeMore(),
                 seen.processes(),
-                named);
+                named,
+                seen.readRoots());
     }
 
     /**
@@ -174,9 +235,10 @@ final class ClassKeys {
      * The key of a class in {@code launch}: the suite part, {@code cone}'s digest (over which of its
      * classes ran, {@code used}, when known: {@link ClassCones.Cone#digest(String)}), or with a {@code
      * fallback} every workspace class ({@code module}, the digest of them all), and what it and the
-     * pool ({@code pooled}) were seen to read. A read set past its record's bound is keyed as every
-     * file the suite was found to read ({@code suiteReads}, the suite's discovered inputs as one
-     * digest), which holds the class's own. A class keyed by its module stands on every program the
+     * pool ({@code pooled}) were seen to read. A read set past its record's bound is keyed as the
+     * files the suite was found to read ({@code suiteReads}, the suite's discovered inputs) under the
+     * class's read roots, which hold the class's own, or as every one of them when it has no roots or
+     * the pool is past its bound. A class keyed by its module stands on every program the
      * suite's stamp keys ({@code programs}, from {@link #programs}): no record says what a program it
      * started read, nor which. {@code listings} holds each directory's listing once it is taken, for
      * the caller to share across the classes of one pass.
@@ -190,7 +252,7 @@ final class ClassKeys {
             Map<String, String> programs,
             Observed pooled,
             String module,
-            String suiteReads,
+            SuiteReadSet suiteReads,
             Path workspace,
             @Nullable String fallback,
             Map<Path, String> listings) {
@@ -200,7 +262,10 @@ final class ClassKeys {
         if (fallback != null) feed(md, "module:" + module);
         else feed(md, used == null ? "cone:" + cone.digest() : "cone-used:" + cone.digest(used));
         if (fallback != null) for (String program : programs.values()) feed(md, "program:" + program);
-        if (seen.readsMore() || pooled.readsMore()) feed(md, "suite-reads:" + suiteReads);
+        if (pooled.readsMore() || (seen.readsMore() && seen.readRoots().isEmpty()))
+            feed(md, "suite-reads:" + suiteReads.all());
+        else if (seen.readsMore())
+            feed(md, "suite-reads-under:" + seen.readRoots() + "=" + suiteReads.under(seen.readRoots()));
         if (!seen.readsMore()) feedFiles(md, "read", seen.reads(), workspace, listings);
         feedFiles(md, "code", seen.code(), workspace, null);
         for (String tool : seen.tools()) feed(md, "tool:" + tool);

@@ -232,12 +232,12 @@ class WireProducersFrozenBytesTest {
 
     @Test
     void read_acks_keep_their_bytes() {
-        assertThat(ProtoReads.explainModule("d", "g:a", 3, 4, true, false, null))
+        assertThat(ProtoReads.explainModule("d", "g:a", 3, 4, true, false, null, 1))
                 .isEqualTo(
                         "{\"type\":\"explain-module\",\"dir\":\"d\",\"coord\":\"g:a\",\"sourceCount\":3,\"testCount\":4,"
-                                + "\"producesJar\":true,\"producesImage\":false,\"reason\":null}");
-        assertThat(ProtoReads.explainModule("d", "g:a", 0, 0, false, false, "rebuilt because x"))
-                .endsWith("\"producesImage\":false,\"reason\":\"rebuilt because x\"}");
+                                + "\"producesJar\":true,\"producesImage\":false,\"reason\":null,\"rerunTests\":1}");
+        assertThat(ProtoReads.explainModule("d", "g:a", 0, 0, false, false, "rebuilt because x", 0))
+                .endsWith("\"producesImage\":false,\"reason\":\"rebuilt because x\",\"rerunTests\":0}");
         assertThat(ProtoReads.explainStep("d", "compile-java", "stale", "3 sources", null))
                 .isEqualTo("{\"type\":\"explain-task\",\"dir\":\"d\",\"name\":\"compile-java\",\"status\":\"stale\","
                         + "\"text\":\"3 sources\",\"key\":null}");

@@ -220,8 +220,8 @@ class TestClassRecordingScaleTest {
                     ClassShadow.pooledOf(TestClassRecords.header(file)),
                     ClassShadow.observed(seen.pooled(), ws),
                     Map.of(),
-                    "reads",
-                    "reads",
+                    ClassKeys.SuiteReadSet.NONE,
+                    ClassKeys.SuiteReadSet.NONE,
                     Long.MIN_VALUE,
                     false,
                     "stamp");

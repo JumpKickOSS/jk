@@ -530,9 +530,13 @@ its suite loaded that way: it runs again when one of them changes. A class whose
 that `git` says to `--version`: an upgrade runs it again. So does a class whose programs are
 utilities (`sleep`, `setsid`, `sh -c …`, `ps`) or a program the test wrote in its temp directory,
 when no word of the command names a file outside that directory, a variable, another host or a
-program other than such a utility. The warning then reads
-`… passed earlier and nothing they reach or read has changed since; they are not run again`, and
-each replayed class's `class-finish` row carries `replayedFrom`. A class that reached the network,
+program other than such a utility. A class that read more files than its record names (a test
+that reads every plugin's manifest) stands on the files its suite read in the directories that
+cover its own reads, so a source another class of the suite scanned does not run it. The warning
+then reads `… passed earlier and nothing they reach or read has changed since; they are not run
+again`, and each replayed class's `class-finish` row carries `replayedFrom`. `jk explain` prices
+such a suite as the run will: its step reads `run tests · … · ~12 tests · 281 classes replayed`
+once the module's compile is current, and its Tests row counts only those tests. A class that reached the network,
 or a suite that did outside every class, is never replayed; `--redo` runs every class. Set at the
 workspace root, it holds for every member that does not say otherwise. It needs the class records, so `JK_TEST_TELEMETRY=off` or `JK_TEST_SHADOW=off` in the
 caller's shell runs it as `"class"`.

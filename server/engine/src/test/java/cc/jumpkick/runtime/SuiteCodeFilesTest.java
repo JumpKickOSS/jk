@@ -83,7 +83,7 @@ class SuiteCodeFilesTest {
                         Map.of(),
                         ClassKeys.Observed.NONE,
                         index.digest(),
-                        "reads",
+                        ClassKeys.SuiteReadSet.NONE,
                         ws,
                         null,
                         new HashMap<>())
@@ -114,8 +114,8 @@ class SuiteCodeFilesTest {
                 ClassKeys.Observed.NONE,
                 ClassKeys.Observed.NONE,
                 Map.of(),
-                "reads",
-                "reads",
+                ClassKeys.SuiteReadSet.NONE,
+                ClassKeys.SuiteReadSet.NONE,
                 codeSince,
                 false,
                 "stamp");

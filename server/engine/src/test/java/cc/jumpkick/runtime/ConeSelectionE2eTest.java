@@ -3,13 +3,19 @@ package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cache.JkStores;
+import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanListener;
+import cc.jumpkick.run.TaskForecast;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.run.TaskStatus;
+import cc.jumpkick.runtime.workspace.ForecastWalk;
 import cc.jumpkick.runtime.workspace.WorkspaceExecute;
+import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.testing.TestCaches;
 import cc.jumpkick.wire.runtime.ModulePlan;
 import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
@@ -25,8 +31,8 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * Per-class selection on, over a real suite of three classes: after a body edit of one main class
- * the run runs the class whose cone holds it and the class keyed by its whole module, and replays
- * the other; an edit that breaks the class still fails the run.
+ * the forecast prices the class whose cone holds it and the run runs that class alone, replaying
+ * the others; an edit that breaks the class still fails the run.
  */
 @Tag("integration")
 class ConeSelectionE2eTest {
@@ -75,10 +81,21 @@ class ConeSelectionE2eTest {
                 .isEqualTo(3);
 
         Files.writeString(calc, Files.readString(calc).replace("a + b", "b + a"));
+        assertThat(build(m, cache, true)).as("compiled, no test run").isNull();
+        TaskForecast.Module forecast = forecast(m, cache);
+        assertThat(forecast.testCount()).isEqualTo(3);
+        assertThat(forecast.rerunTests())
+                .as("the forecast prices the class the run runs, as the run keys it")
+                .isEqualTo(1);
+        assertThat(forecast.steps())
+                .filteredOn(t -> t.name().equals(TaskNames.RUN_TESTS))
+                .singleElement()
+                .satisfies(t -> assertThat(t.text()).endsWith("~1 test · 2 classes replayed"));
         assertThat(build(m, cache)).isEqualTo(TaskStatus.SUCCESS);
         assertThat(Jsonl.longValue(last(m), "ran", 0))
-                .as("CalcTest, whose cone holds Calc, and ReflectTest, keyed by its module; OtherTest replayed")
-                .isEqualTo(2);
+                .as("CalcTest, whose cone holds Calc; OtherTest and ReflectTest, whose cone holds the Hidden"
+                        + " it loads by name, replayed")
+                .isEqualTo(1);
         assertThat(Jsonl.strArray(last(m), "unsound")).isEmpty();
 
         Files.writeString(calc, Files.readString(calc).replace("b + a", "a - b"));
@@ -108,10 +125,24 @@ class ConeSelectionE2eTest {
         return Files.readAllLines(ClassShadow.log(module)).getLast();
     }
 
+    private static TaskForecast.Module forecast(Path dir, Path cache) throws Exception {
+        BuildGraph.Result graph = BuildGraph.resolve(dir, JkBuildParser.parse(dir.resolve("jk.toml")));
+        assertThat(graph.hasErrors()).isFalse();
+        ActionCache actionCache =
+                new ActionCache(JkStores.cacheCas(cache), CacheTree.ACTIONS.under(cache), JkStores.storeCas());
+        return ForecastWalk.of(graph, JkStores.cacheCas(cache), actionCache, cache)
+                .getFirst();
+    }
+
     private static @Nullable TaskStatus build(Path dir, Path cache) {
+        return build(dir, cache, false);
+    }
+
+    /** The build's run-tests status: null when it ran none ({@code skipTests}). */
+    private static @Nullable TaskStatus build(Path dir, Path cache, boolean skipTests) {
         TaskStatus[] status = new TaskStatus[1];
         WorkspaceExecute.buildWorkspace(
-                new WorkspaceRequest(dir, cache, null, 0, null, false, false, 2, null, false, false),
+                new WorkspaceRequest(dir, cache, null, 0, null, skipTests, false, 2, null, false, false),
                 new WorkspaceBuildListener() {
                     @Override
                     public BuildPlanListener onModuleStart(ModulePlan module) {

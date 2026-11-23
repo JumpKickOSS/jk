@@ -127,8 +127,29 @@ public final class ClassReads {
         }
     }
 
-    /** The most data files a class keeps; past it the class keys on every file its suite read. */
+    /**
+     * The most data files a class keeps; past it the class keys on the files its suite read under
+     * its read roots ({@link #ROOTS_KEPT}).
+     */
     public static final int READS_KEPT = 8;
+
+    /**
+     * The most directories a class's read roots hold: together they cover every data file it read,
+     * each a directory whose files it read or, once two are joined, everything under their deepest
+     * common directory ({@link ReadRoot}).
+     */
+    public static final int ROOTS_KEPT = 8;
+
+    /**
+     * A directory that covers a class's data reads: the files directly in it, or with {@code deep}
+     * everything under it.
+     */
+    public record ReadRoot(Path dir, boolean deep) {
+        /** Whether this root covers the file {@code p}. */
+        public boolean covers(Path p) {
+            return deep ? p.startsWith(dir) : dir.equals(p.getParent());
+        }
+    }
 
     /**
      * The most data files the pool keeps, what no class's window held: one list for the whole suite,
@@ -182,7 +203,8 @@ public final class ClassReads {
      * The most heap one class's observation holds: its kept paths and evidence at a couple of hundred
      * bytes each, its tools' names at 64 and its empty sets.
      */
-    public static final long CLASS_BYTES = (READS_KEPT + CODE_KEPT + 4L * EVIDENCE_KEPT) * 200 + TOOLS_KEPT * 64L + 512;
+    public static final long CLASS_BYTES =
+            (READS_KEPT + ROOTS_KEPT + CODE_KEPT + 4L * EVIDENCE_KEPT) * 200 + TOOLS_KEPT * 64L + 512;
 
     /** The most environment variables and system properties a class's record names, each. */
     public static final int NAMES_KEPT = 8;
@@ -229,6 +251,8 @@ public final class ClassReads {
         private final Set<Path> osPaths = new TreeSet<>();
         private final Set<String> hosts = new TreeSet<>();
         private boolean readsMore;
+        private final List<ReadRoot> roots = new ArrayList<>();
+        private boolean rootsMore;
         private boolean codeMore;
         private boolean loadedMore;
         private final BitSet used = new BitSet();
@@ -325,9 +349,66 @@ public final class ClassReads {
         }
 
         public void addRead(Path p) {
+            if (readsKept == READS_KEPT) cover(p);
             if (readsMore || reads.contains(p)) return;
             if (reads.size() < readsKept) reads.add(p);
             else readsMore = true;
+        }
+
+        /**
+         * The directories that cover every data file the class read, at most {@link #ROOTS_KEPT};
+         * empty past it ({@link #rootsMore}), when the class keys on every file its suite read.
+         */
+        public List<ReadRoot> readRoots() {
+            return rootsMore ? List.of() : Collections.unmodifiableList(roots);
+        }
+
+        /** Whether the class's reads lie further apart than its read roots can say. */
+        public boolean rootsMore() {
+            return rootsMore;
+        }
+
+        /**
+         * Cover {@code p} with the read roots: its directory joins them, and past {@link #ROOTS_KEPT}
+         * the two roots with the deepest common directory become that directory, deep.
+         */
+        private void cover(Path p) {
+            if (rootsMore || covered(p)) return;
+            Path dir = p.getParent();
+            if (dir == null) {
+                rootsMore = true;
+                return;
+            }
+            roots.add(new ReadRoot(dir, false));
+            if (roots.size() <= ROOTS_KEPT) return;
+            Path joined = null;
+            for (int i = 0; i < roots.size(); i++) {
+                for (int j = i + 1; j < roots.size(); j++) {
+                    Path common = common(roots.get(i).dir(), roots.get(j).dir());
+                    if (common != null && (joined == null || common.getNameCount() > joined.getNameCount())) {
+                        joined = common;
+                    }
+                }
+            }
+            if (joined == null) {
+                rootsMore = true;
+                return;
+            }
+            ReadRoot deep = new ReadRoot(joined, true);
+            roots.removeIf(r -> r.dir().startsWith(deep.dir()));
+            roots.add(deep);
+        }
+
+        private boolean covered(Path p) {
+            for (ReadRoot r : roots) if (r.covers(p)) return true;
+            return false;
+        }
+
+        /** The deepest directory holding both {@code a} and {@code b}; null when they share no root. */
+        private static @Nullable Path common(Path a, Path b) {
+            Path c = a;
+            while (c != null && !b.startsWith(c)) c = c.getParent();
+            return c;
         }
 
         public void addCode(Path p) {
@@ -411,7 +492,7 @@ public final class ClassReads {
 
         /** Whether reading {@code p} would add to what this keeps. */
         boolean wantsRead(Path p) {
-            return !readsMore && !reads.contains(p);
+            return (!readsMore && !reads.contains(p)) || (readsKept == READS_KEPT && !rootsMore && !covered(p));
         }
     }
 
