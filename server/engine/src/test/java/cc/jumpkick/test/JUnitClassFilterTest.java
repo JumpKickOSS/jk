@@ -29,10 +29,12 @@ class JUnitClassFilterTest {
 
     @Test
     void the_launcher_hands_every_test_running_jvm_the_method_arguments() {
-        JUnitLauncher launcher = new JUnitLauncher().withClassPatterns(List.of("com.acme.FooTest#adds"));
+        JUnitLauncher launcher = new JUnitLauncher().withFork(classes(List.of("com.acme.FooTest#adds"), List.of()));
         assertThat(launcher.pullWorkerArgs(1, Path.of("classes")))
                 .contains("--filter=^(\\Qcom.acme.FooTest\\E)$", "--method=^(\\Qcom.acme.FooTest\\E)$#adds");
-        assertThat(new JUnitLauncher().withClassPatterns(List.of("FooTest")).pullWorkerArgs(1, Path.of("classes")))
+        assertThat(new JUnitLauncher()
+                        .withFork(classes(List.of("FooTest"), List.of()))
+                        .pullWorkerArgs(1, Path.of("classes")))
                 .noneMatch(a -> a.startsWith("--method="));
     }
 
@@ -78,7 +80,7 @@ class JUnitClassFilterTest {
 
     @Test
     void the_launcher_hands_discovery_and_pull_workers_the_exclusion() {
-        JUnitLauncher launcher = new JUnitLauncher().withExcludedClasses(List.of("*PerformanceTest"));
+        JUnitLauncher launcher = new JUnitLauncher().withFork(classes(List.of(), List.of("*PerformanceTest")));
         assertThat(launcher.pullWorkerArgs(1, Path.of("classes")))
                 .anyMatch(a -> a.startsWith("--filter=^(?!(?:(.*\\.)?.*\\QPerformanceTest\\E(\\$.*)?)$).*$"));
     }
@@ -100,5 +102,10 @@ class JUnitClassFilterTest {
         assertThat(excluded.matcher("com.acme.SmokeTest").matches())
                 .as("a failed class of the same simple name in a package still runs")
                 .isFalse();
+    }
+
+    /** A launch of the classes {@code patterns} name, less those {@code excluded} names. */
+    private static ForkSpec classes(List<String> patterns, List<String> excluded) {
+        return new ForkSpec(true, false, 0, false, List.of(), List.of(), List.of(), patterns, excluded, false);
     }
 }

@@ -477,7 +477,11 @@ jvm-args = ["-Dprobe=1"]`) are appended to every forked test JVM after JumpKick'
 [`[test] jvm-args`](#the-test-jvms-flags-test-jvm-args-test-system-properties), and the step
 prints every flag the JVM started with as `test JVM flags: …`; its `javac` list reaches the compiler the same way
 ([Projects](projects.md#features-profiles-variants)). Suites, tags and the test JVM's flags are
-part of the test stamp: changing any of them re-runs tests even if sources are unchanged. A failed suite is never
+part of the test stamp: changing any of them re-runs tests even if sources are unchanged. So is what
+JumpKick itself starts each test JVM with: `-ea` or not (`[test] assertions`), the `--class`
+patterns, `[test] exclude-classes`, `serial-tags`, `idle-timeout` and `failure-snapshot`, and the
+fast tier's walls. The heap, temp directories, ports and the number of test JVMs are each host's and
+re-run nothing. A failed suite is never
 skipped: it leaves a red marker under the same stamp, so the next run executes it again and
 `jk explain` prices it as a suite rather than as a stale stamp. That holds after `--redo` too: a
 forced run that fails replaces the green marker it ran over, and the module stays on the next

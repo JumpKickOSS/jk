@@ -4,6 +4,7 @@ package cc.jumpkick.test;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.engine.plugin.JvmOptions;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -23,7 +24,9 @@ class JUnitLauncherAssertionsFlagTest {
 
     @Test
     void the_module_opt_out_removes_the_flag_from_every_role() {
-        JUnitLauncher launcher = new JUnitLauncher().withAssertions(false);
+        ForkSpec off =
+                new ForkSpec(false, false, 0, false, List.of(), List.of(), List.of(), List.of(), List.of(), false);
+        JUnitLauncher launcher = new JUnitLauncher().withFork(off);
         for (JvmRole role : JvmRole.values()) {
             assertThat(launcher.jvmFlags(role, 2, null)).as(role.name()).doesNotContain("-ea");
         }

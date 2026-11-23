@@ -33,10 +33,11 @@ public enum KeyContract {
      * its inputs and which failures a retry answers is not here: it lives in the package {@code cc.jumpkick.orchestrator}, which the stamp keys by its compiled classes ({@code
      * OrchestratorCode}). Nor is the code that writes the stamp and its discovered-read tokens
      * ({@link #STAMP}): what it changes reaches a suite only through the key it writes; nor the code
-     * that sizes a suite JVM's heap ({@link #HEAP}), which no key names. The {@code suite-code-keyed} guard
+     * that sizes a suite JVM's heap ({@link #HEAP}), which no key names; nor the code that forks a
+     * suite's JVMs ({@link #LAUNCH}), whose stamp keys what they start with by value. The {@code suite-code-keyed} guard
      * keeps the types that select and judge a suite inside the one or the other.
      */
-    SUITE("2f6b89f90044", List.of(Sources.SERVER, Sources.SHARED), KeyContract::suiteSource),
+    SUITE("acc83b1dd5eb", List.of(Sources.SERVER, Sources.SHARED), KeyContract::suiteSource),
 
     /**
      * The code that writes an artifact or a verdict the engine produces itself: the jar, assembly
@@ -109,6 +110,16 @@ public enum KeyContract {
      */
     private static final List<String> HEAP = List.of(PACKAGE + "SuiteRetry");
 
+    /**
+     * The classes that fork a suite's JVMs: what those JVMs start with on every host is a value, the
+     * fork spec, which the stamp keys and the launch runs from, so a change to it moves the key of
+     * exactly the suites it spells it for, and a change to the plumbing around it moves none. The
+     * heap, temp directories, ports and worker count it leaves out are each host's. Which failures a
+     * retry answers and when the retries stop is the orchestrator's.
+     */
+    private static final List<String> LAUNCH =
+            List.of(ROOT + "runtime/TestLaunch", PACKAGE + "JUnitLauncher", PACKAGE + "ForkSpec");
+
     /** The words a class's own name carries when it is suite code, wherever its package. */
     private static final List<String> WORDS = List.of("Test", "Suite", "JUnit");
 
@@ -171,14 +182,15 @@ public enum KeyContract {
      * Whether the archive entry {@code entry} is suite code: a jk class of the package {@code
      * cc.jumpkick.test}, or one whose top-level class name carries {@code Test}, {@code Suite} or
      * {@code JUnit}, outside the package {@code cc.jumpkick.orchestrator}, the classes that write
-     * the stamp ({@link #STAMP}) and those that size a suite JVM's heap ({@link #HEAP}).
+     * the stamp ({@link #STAMP}), those that size a suite JVM's heap ({@link #HEAP}) and those that
+     * fork it ({@link #LAUNCH}).
      */
     public static boolean suiteCode(String entry) {
         if (!entry.startsWith(ROOT) || !entry.endsWith(CLASS) || entry.startsWith(ORCHESTRATOR)) return false;
         String name = entry.substring(0, entry.length() - CLASS.length());
         int nested = name.indexOf('$');
         String owner = nested < 0 ? name : name.substring(0, nested);
-        if (STAMP.contains(owner) || HEAP.contains(owner)) return false;
+        if (STAMP.contains(owner) || HEAP.contains(owner) || LAUNCH.contains(owner)) return false;
         if (entry.startsWith(PACKAGE)) return true;
         String simple = entry.substring(entry.lastIndexOf('/') + 1, entry.length() - CLASS.length());
         nested = simple.indexOf('$');

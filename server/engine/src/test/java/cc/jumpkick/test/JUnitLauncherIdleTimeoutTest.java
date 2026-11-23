@@ -3,6 +3,7 @@ package cc.jumpkick.test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 /** {@code [test] idle-timeout}: how long a test JVM may print nothing before it is killed as hung. */
@@ -10,13 +11,15 @@ class JUnitLauncherIdleTimeoutTest {
 
     @Test
     void the_single_suite_jvm_is_killed_after_thirty_silent_minutes_by_default() {
-        assertThat(TestWorkerEnv.suiteIdleTimeoutMs(new JUnitLauncher().idleTimeoutMs))
+        assertThat(TestWorkerEnv.suiteIdleTimeoutMs(new JUnitLauncher().idleTimeoutMs()))
                 .isEqualTo(30 * 60_000L);
     }
 
     @Test
     void the_manifest_setting_holds_the_suite_jvm_and_every_pool_worker() {
-        long setting = new JUnitLauncher().withIdleTimeout(90_000).idleTimeoutMs;
+        ForkSpec fork =
+                new ForkSpec(true, false, 90_000, false, List.of(), List.of(), List.of(), List.of(), List.of(), false);
+        long setting = new JUnitLauncher().withFork(fork).idleTimeoutMs();
         assertThat(TestWorkerEnv.suiteIdleTimeoutMs(setting)).isEqualTo(90_000);
         assertThat(TestWorkerEnv.poolIdleTimeoutMs(setting)).isEqualTo(90_000);
     }

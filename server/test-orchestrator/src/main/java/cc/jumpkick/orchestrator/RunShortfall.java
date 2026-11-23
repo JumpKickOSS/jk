@@ -2,6 +2,7 @@
 package cc.jumpkick.orchestrator;
 
 import cc.jumpkick.run.TestFailureInfo;
+import cc.jumpkick.run.TestSummary;
 import java.util.List;
 import org.jspecify.annotations.Nullable;
 
@@ -58,6 +59,19 @@ public final class RunShortfall {
     public static boolean isRow(TestFailureInfo f) {
         return RUN.equals(f.method())
                 && (f.message().startsWith(CANCELLED) || f.message().startsWith(INCOMPLETE));
+    }
+
+    /**
+     * Whether a later pool of the same run still forks after {@code summary}: not once the run is
+     * cancelled, and not when a {@code (test run)} row says the fork itself is broken. A shortfall
+     * row for classes a pool left queued is a fact about that queue, not the fork.
+     */
+    public static boolean nextPoolRuns(TestSummary summary, boolean cancelled) {
+        if (cancelled) return false;
+        for (TestFailureInfo f : summary.failures()) {
+            if (RUN.equals(f.method()) && !isRow(f)) return false;
+        }
+        return true;
     }
 
     /** How many of {@code failures} are shortfall rows. */

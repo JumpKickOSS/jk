@@ -4,6 +4,7 @@ package cc.jumpkick.task;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.model.BuildIdentity;
+import java.util.List;
 import java.util.TreeMap;
 import org.junit.jupiter.api.Test;
 
@@ -11,11 +12,10 @@ class KeyContractTest {
 
     @Test
     void suite_code_is_the_test_package_and_the_classes_named_for_tests_suites_and_junit() {
-        assertThat(KeyContract.suiteCode("cc/jumpkick/test/JUnitLauncher.class"))
-                .isTrue();
+        assertThat(KeyContract.suiteCode("cc/jumpkick/test/Discovery.class")).isTrue();
         assertThat(KeyContract.suiteCode("cc/jumpkick/test/PullWorkerPool$Lease.class"))
                 .isTrue();
-        assertThat(KeyContract.suiteCode("cc/jumpkick/runtime/TestLaunch.class"))
+        assertThat(KeyContract.suiteCode("cc/jumpkick/runtime/SuiteEnvironment.class"))
                 .isTrue();
         assertThat(KeyContract.suiteCode("cc/jumpkick/runtime/TagExcludedSuite.class"))
                 .isTrue();
@@ -94,8 +94,33 @@ class KeyContractTest {
         assertThat(KeyContract.suiteCode("cc/jumpkick/orchestrator/RetryPolicy.class"))
                 .as("which failures a retry answers is keyed by the orchestrator's classes")
                 .isFalse();
-        assertThat(KeyContract.suiteCode("cc/jumpkick/test/JUnitLauncher.class"))
-                .as("the launcher that runs the retries stays keyed")
+        assertThat(KeyContract.suiteCode("cc/jumpkick/orchestrator/RetryLoop.class"))
+                .as("when the retries stop is keyed by the orchestrator's classes")
+                .isFalse();
+    }
+
+    /**
+     * What a suite's JVMs start with is keyed by value, the fork spec in the stamp, so the code that
+     * forks them is not suite code: an edit to it that leaves the spec as it was moves no key.
+     */
+    @Test
+    void the_code_that_forks_a_suites_jvms_is_not_suite_code() {
+        for (String source : List.of(
+                "server/engine/src/main/java/cc/jumpkick/test/JUnitLauncher.java",
+                "server/engine/src/main/java/cc/jumpkick/runtime/TestLaunch.java",
+                "server/engine/src/main/java/cc/jumpkick/test/ForkSpec.java")) {
+            assertThat(KeyContract.SUITE.keeps(source)).as(source).isFalse();
+            assertThat(KeyContract.suiteCode(KeyContract.entryOf(source)))
+                    .as(source)
+                    .isFalse();
+        }
+        assertThat(KeyContract.suiteCode("cc/jumpkick/test/JUnitLauncher$Held.class"))
+                .as("a nested class is its top-level class's")
+                .isFalse();
+        assertThat(KeyContract.suiteCode("cc/jumpkick/test/JUnitLauncher$1.class"))
+                .isFalse();
+        assertThat(KeyContract.suiteCode("cc/jumpkick/test/PullWorkerPool.class"))
+                .as("the rest of the suite package stays keyed")
                 .isTrue();
     }
 

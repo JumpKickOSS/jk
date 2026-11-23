@@ -599,7 +599,14 @@ and exclusions stay GA-scoped.
    or JUnit, which pick a suite's classes and build its JVM, but not `TestStampInputs`, which
    writes the stamp, nor `SuiteReads`, which keeps and reads back a suite's discovered reads as the
    stamp's tokens, so both move it by what they write, nor `SuiteRetry`, which sizes a suite JVM's
-   heap, which no key names) into run-tests stamps; `ARTIFACT` (the packagers and the zip they write through, the war, jlink, lib-dir and
+   heap, which no key names, nor `TestLaunch`, `JUnitLauncher` and `ForkSpec`, which fork a
+   suite's JVMs) into run-tests stamps. What those JVMs start with on every host is a value
+   instead, the fork spec: the flags JumpKick adds around the module's own, the runner's tag and class
+   filters, the excluded classes, the serial tags, the idle timeout, and the environment defaults
+   with the fast tier's walls, but no heap, temp directory, port, worker count or jar path.
+   `TestLaunch.forkSpec` derives it once per launch; the stamp keys each launch's spec as a
+   `fork:` token and the launch runs from the same value, so a change to what it spells moves the
+   key of exactly the suites it spells it for, and a change to the plumbing around it moves none; `ARTIFACT` (the packagers and the zip they write through, the war, jlink, lib-dir and
    image steps, plugin staging, build-logic, Node.js steps and the guard runtime) into every
    `ActionKey.forArtifact` key; `NATIVE` (`NativeImageDriver`, which spells native-image's command
    line) into a native image's. The digest reads the contract's sources with comments and
@@ -607,7 +614,8 @@ and exclusions stay GA-scoped.
    is theirs, printing the one to record; guard G164 (`suite-code-keyed`) keeps the selection and
    launch types inside `SUITE`. The code that judges a suite (counting the runner's events, a run
    that ended short, an empty discovery, a `--class` that matched nothing, the failure text, which
-   failures a retry answers and how its run replaces them, `RetryPolicy`), decides which of a
+   failures a retry answers and how its run replaces them, `RetryPolicy`, and when a retry climbs to
+   the next heap and when it stops, `RetryLoop`), decides which of a
    suite's recorded reads count as its inputs (`DiscoveryRules`: the events recorded, a file read
    before the run wrote it, one outside every keyed root, a program started, a socket that left the
    host) and decides which suites run (`SuiteChoice`: the suites a selection resolves to, whether the

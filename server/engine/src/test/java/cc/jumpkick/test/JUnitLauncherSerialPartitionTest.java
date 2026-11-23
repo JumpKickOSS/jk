@@ -42,12 +42,11 @@ class JUnitLauncherSerialPartitionTest {
         TestFailureInfo red = new TestFailureInfo("g:app", "", "acme.FooTest", "fails()", "", "boom", "", 0);
         TestFailureInfo broken = new TestFailureInfo(
                 "g:app", "", "", "(test run)", "", "test protocol handler threw IllegalStateException", "", 1);
-        assertThat(JUnitLauncher.serialPoolRuns(summary(shortfall, worker, red), false))
+        assertThat(RunShortfall.nextPoolRuns(summary(shortfall, worker, red), false))
                 .isTrue();
-        assertThat(JUnitLauncher.serialPoolRuns(summary(), false)).isTrue();
-        assertThat(JUnitLauncher.serialPoolRuns(summary(shortfall, broken), false))
-                .isFalse();
-        assertThat(JUnitLauncher.serialPoolRuns(summary(), true)).isFalse();
+        assertThat(RunShortfall.nextPoolRuns(summary(), false)).isTrue();
+        assertThat(RunShortfall.nextPoolRuns(summary(shortfall, broken), false)).isFalse();
+        assertThat(RunShortfall.nextPoolRuns(summary(), true)).isFalse();
     }
 
     private static TestSummary summary(TestFailureInfo... failures) {

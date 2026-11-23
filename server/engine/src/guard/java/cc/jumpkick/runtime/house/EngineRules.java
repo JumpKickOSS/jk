@@ -107,7 +107,7 @@ final class EngineRules {
 
     /** The types that pick a suite's classes, launch its JVM or read its outcome. */
     private static final Pattern SUITE_TYPES = Pattern.compile(
-            "\\b(?:TestSelection|SuiteSelection|SuiteFilter|JUnitClassFilter|ClassTags|TestClassMatch|TestLaunch|ResultAggregator)\\b");
+            "\\b(?:TestSelection|SuiteSelection|SuiteFilter|JUnitClassFilter|ClassTags|TestClassMatch|ResultAggregator)\\b");
 
     @Guard(
             id = "suite-code-keyed",
@@ -133,10 +133,6 @@ final class EngineRules {
     @Allow(
             in = "server/engine/src/main/java/cc/jumpkick/runtime/MemoInputs.java",
             reason = "keys the preflight memo, which folds the whole engine's code identity")
-    @Allow(
-            in = "server/engine/src/main/java/cc/jumpkick/runtime/NodeArm.java",
-            reason =
-                    "Node.js test steps, keyed as artifacts by the code KeyContract.ARTIFACT records, this file with it")
     @Allow(
             in = "server/engine/src/main/java/cc/jumpkick/runtime/PlannerResources.java",
             reason = "decides whether a suite step is planned at all; a step not planned stores no marker")
@@ -164,6 +160,17 @@ final class EngineRules {
     @Allow(
             in = "server/engine/src/main/java/cc/jumpkick/runtime/workspace/WorkspaceResourcePhase.java",
             reason = "names the step and tier a suite's history is kept under, to size the run")
+    @Allow(
+            in = "server/engine/src/main/java/cc/jumpkick/runtime/TestLaunch.java",
+            reason =
+                    "forks a suite's JVMs from the fork spec, which the stamp keys by value; the rest is each host's plumbing")
+    @Allow(
+            in = "server/engine/src/main/java/cc/jumpkick/test/ForkSpec.java",
+            reason = "the fork spec itself: the stamp keys it by value, so what it spells moves the key")
+    @Allow(
+            in = "server/engine/src/main/java/cc/jumpkick/test/JUnitLauncher.java",
+            reason =
+                    "forks a suite's JVMs from the fork spec, which the stamp keys by value; the retry rules are the orchestrator's")
     @Allow(
             in = "server/engine/src/main/java/cc/jumpkick/test/SuiteReads.java",
             reason =

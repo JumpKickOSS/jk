@@ -24,6 +24,7 @@ import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.orchestrator.NoTestsGuard;
 import cc.jumpkick.orchestrator.ResultAggregator;
+import cc.jumpkick.orchestrator.RetryLoop;
 import cc.jumpkick.orchestrator.RetryPolicy;
 import cc.jumpkick.orchestrator.RunShortfall;
 import cc.jumpkick.orchestrator.SuiteReport;
@@ -35,7 +36,6 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashSet;
-import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -56,14 +56,6 @@ public final class JUnitLauncher {
     static final String PROTOCOL_PREFIX = "##JKT:";
 
     /**
-     * The plugin the plugin host must run. The test-runner jar is launched with the module-under-test
-     * on its classpath (to discover its tests); when that module is itself a plugin, the host would
-     * otherwise see two {@code Plugin} services. Naming the runner explicitly via {@code
-     * -Djk.plugin.class} keeps the host on {@code TestRunner} regardless of what the module registers.
-     */
-    private static final String RUNNER_PLUGIN_CLASS = "cc.jumpkick.testrunner.TestRunner";
-
-    /**
      * {@code jk.<worker>.plugin.jar} (and {@code jk.engine.jar}) overrides handed to the test JVM so
      * tests that fork a first-party plugin or materialize the engine locate jars by path. The
      * {@code run-tests} step resolves the freshly-built sibling jars and passes them here. Empty
@@ -72,14 +64,11 @@ public final class JUnitLauncher {
      */
     private Map<String, String> workerJarProps = Map.of();
 
-    /** JUnit include tags; empty = no include filter. */
-    private List<String> includeTags = List.of();
+    /** What every JVM of the launch starts with that a run-tests stamp keys; see {@link #withFork}. */
+    private ForkSpec fork = ForkSpec.DEFAULT;
 
-    /** JUnit exclude tags. */
-    private List<String> excludeTags = List.of();
-
-    /** {@code [test] serial-tags} — see {@link #withSerialTags}. */
-    private List<String> serialTags = List.of();
+    /** Classes that passed earlier under the same stamp and are not run again. */
+    private List<String> settled = List.of();
 
     /** When non-empty, run only these class FQCNs ({@code --affected}). */
     private List<String> classNames = List.of();
@@ -92,45 +81,23 @@ public final class JUnitLauncher {
         return this;
     }
 
-    /** {@code --class} patterns as one class-name regex for the runner, or null for every class. */
-    private @Nullable String classFilter;
-
-    /** The runner's {@code --method=} arguments when a {@code --class} pattern names a method; else empty. */
-    private List<String> methodArgs = List.of();
-
     /**
-     * {@code --class}: run only classes matching these names (fully qualified, simple, or with
-     * {@code *} wildcards), or only the methods a {@code Class#method} pattern names within them.
-     * Discovery and the one-shot runner both apply the filter, so a sharded run dispatches exactly
-     * the classes a single JVM would have run, and every JVM that runs tests applies the method
-     * selection. Ignored when {@link #withClassNames} named exact classes. A filter that matches
-     * nothing comes back as an empty summary; whether that is a skip or a failure is the caller's
-     * call, not the launcher's.
+     * Launch from {@code fork}: its flags around the JVM arguments, its tag and class filters, and
+     * its environment defaults under every JVM's environment. The {@code --class} patterns run only
+     * the classes they name, or only the methods a {@code Class#method} pattern names within them,
+     * in discovery and every JVM that runs tests alike, so a sharded run dispatches exactly the
+     * classes a single JVM would have run; they are ignored when {@link #withClassNames} named exact
+     * classes. A filter that matches nothing comes back as an empty summary; whether that is a skip
+     * or a failure is the caller's call, not the launcher's.
      */
-    public JUnitLauncher withClassPatterns(List<String> patterns) {
-        boolean none = patterns == null || patterns.isEmpty();
-        this.classFilter = none ? null : JUnitClassFilter.patternRegex(patterns);
-        this.methodArgs = none ? List.of() : JUnitClassFilter.methodArgs(patterns);
+    public JUnitLauncher withFork(ForkSpec fork) {
+        this.fork = fork;
         return this;
     }
 
-    /** {@code [test] exclude-classes} as a regex alternation, or null when the module excludes none. */
-    private @Nullable String excludeFilter;
-
-    /**
-     * {@code [test] exclude-classes}: classes (and their nested classes) no JVM of the run
-     * discovers or executes, whatever the other filters select.
-     */
-    public JUnitLauncher withExcludedClasses(List<String> patterns) {
-        return withExcludedClasses(patterns, List.of());
-    }
-
-    /**
-     * As {@link #withExcludedClasses(List)}, and {@code classNames} by exact binary name: the
-     * classes that passed earlier under the same inputs and are not run again.
-     */
-    public JUnitLauncher withExcludedClasses(List<String> patterns, List<String> classNames) {
-        this.excludeFilter = JUnitClassFilter.excludeBody(patterns, classNames);
+    /** Leave out {@code classNames} by exact binary name: the classes that passed earlier under the same stamp. */
+    public JUnitLauncher withSettled(List<String> classNames) {
+        this.settled = List.copyOf(classNames);
         return this;
     }
 
@@ -237,29 +204,15 @@ public final class JUnitLauncher {
         return this;
     }
 
-    /** {@code [test] failure-snapshot}: whether a failed test's report carries its throwing frames' variables. */
-    private boolean failureSnapshot;
-
-    /**
-     * Start every JVM that runs tests with the JDWP agent on a loopback port and {@link
-     * FailureSnapshotFlags#PROPERTY}, so the test runner reads the variables at the frame that threw
-     * each failure. Not under {@code --debug-jvm}, whose agent is the user's debugger's, nor when the
-     * test JVM's own arguments load one.
-     */
-    public JUnitLauncher withFailureSnapshot(boolean enabled) {
-        this.failureSnapshot = enabled;
-        return this;
-    }
-
     /**
      * {@link #runnerFlags} for {@code role}, plus the JDWP agent when the suite JVM is under debug,
-     * the snapshot agent when failures carry one, the JaCoCo agent on every test-running JVM of a
-     * coverage run, and the recordings.
+     * the snapshot agent ({@link FailureSnapshotFlags}) when failures carry one and no debugger owns
+     * the JVM, the JaCoCo agent on every test-running JVM of a coverage run, and the recordings.
      */
     List<String> jvmFlags(JvmRole role, int concurrency, @Nullable Path tmpDir) {
         List<String> flags = new ArrayList<>(runnerFlags(concurrency, tmpDir, role));
         if (role == JvmRole.SUITE && debug != null) flags.add(debug.agentArg());
-        if (role != JvmRole.DISCOVERY && failureSnapshot && debug == null) {
+        if (role != JvmRole.DISCOVERY && fork.failureSnapshot() && debug == null) {
             flags.addAll(FailureSnapshotFlags.flags(launchJavaHome, jvmArgs));
         }
         if (role != JvmRole.DISCOVERY && coverage != null) flags.add(coverage.agentArg());
@@ -271,9 +224,6 @@ public final class JUnitLauncher {
      * The test JVM's environment: the module's {@link WorkerEnv} policy plus the sandbox the planner
      * hands over ({@code JK_HOME}, {@code JK_STATE_DIR} for nested-engine suites, the temp root).
      */
-    /** Whether each pooled test JVM gets a {@code JK_HOME} of its own; see {@link #withWorkerHomes}. */
-    private boolean workerHomes;
-
     private WorkerEnv testEnv = WorkerEnv.strict();
 
     /** Module coord for failure lines (e.g. {@code cc.jumpkick:jk-core}); empty when unknown. */
@@ -291,21 +241,8 @@ public final class JUnitLauncher {
     }
 
     /** {@code [test] idle-timeout} in milliseconds; 0 when the module sets none ({@link TestWorkerEnv}). */
-    long idleTimeoutMs;
-
-    /** {@code [test] idle-timeout}: the silence, in milliseconds, after which a test JVM is killed. */
-    public JUnitLauncher withIdleTimeout(long millis) {
-        this.idleTimeoutMs = Math.max(0, millis);
-        return this;
-    }
-
-    /** {@code [test] assertions}: whether every test JVM this launcher forks runs with {@code -ea}. */
-    private boolean assertions = true;
-
-    /** Run the forked test JVMs with ({@code true}, the default) or without {@code -ea}. */
-    public JUnitLauncher withAssertions(boolean enabled) {
-        this.assertions = enabled;
-        return this;
+    long idleTimeoutMs() {
+        return fork.idleTimeoutMs();
     }
 
     /** {@code [test] jvm-args}, its system properties and the active profile's {@code jvm-args}. */
@@ -365,9 +302,10 @@ public final class JUnitLauncher {
     }
 
     /**
-     * Worker JVM flags: the {@linkplain JvmOptions#suiteFlags suite tuning}, {@code -ea} unless the module opted out, the test
-     * table's and the active profile's {@code jvm-args}, the {@code jk.plugin.class} selector for the runner, and any
-     * {@code jk.<worker>.plugin.jar} / {@code jk.engine.jar} overrides.
+     * Worker JVM flags: the {@linkplain JvmOptions#suiteFlags suite tuning}, the fork's leading flags, the test
+     * table's and the active profile's {@code jvm-args}, the fork's trailing flags, and the host's own: the temp
+     * root, the sandbox flags, any {@code jk.<worker>.plugin.jar} / {@code jk.engine.jar} overrides and the
+     * working directory.
      */
     private List<String> runnerFlags(int concurrency, @Nullable Path tmpDir, JvmRole role) {
         List<String> planned = new ArrayList<>(JvmOptions.suiteFlags(concurrency, jvmArgs));
@@ -381,11 +319,9 @@ public final class JUnitLauncher {
             if (onOom != null) planned.add(onOom);
         }
         List<String> flags = new ArrayList<>(planned);
-        // Surefire and Gradle fork test JVMs with assertions on; a Java or Kotlin `assert` in a
-        // test is a check the author wrote to run.
-        if (assertions) flags.add("-ea");
+        flags.addAll(fork.leading());
         flags.addAll(jvmArgs);
-        flags.add("-Djk.plugin.class=" + RUNNER_PLUGIN_CLASS);
+        flags.addAll(fork.trailing());
         // The Java half of the TMPDIR TestEnv sandboxes: @TempDir reads the property, not the
         // environment. Passed in, not read off testEnv — with W>1 it is the worker's own subdir.
         if (tmpDir != null) {
@@ -395,8 +331,6 @@ public final class JUnitLauncher {
             // discovery with an EOFException. The temp root is already the worker's own.
             flags.add("-Djqwik.database=" + tmpDir.resolve(".jqwik-database"));
         }
-        // Suite JVMs: the nested engines and compiler workers under a suite must not record caches.
-        flags.add("-Djk.worker.aot=off");
         flags.addAll(SandboxJvmFlags.of(testEnv.extras(), shortTempDirFactory, cliTempDirSupport));
         workerJarProps.forEach((prop, jar) -> flags.add("-D" + prop + "=" + jar));
         // Quarkus BuildToolHelper / path resolution walk from user.dir; the same directory the
@@ -496,73 +430,33 @@ public final class JUnitLauncher {
         return f == null ? "" : f.toString();
     }
 
-    /** JUnit Platform tag filters forwarded to the runner. */
-    public JUnitLauncher withTagFilters(List<String> include, List<String> exclude) {
-        this.includeTags = include == null ? List.of() : List.copyOf(include);
-        this.excludeTags = exclude == null ? List.of() : List.copyOf(exclude);
-        return this;
-    }
-
     /**
-     * {@code [test] serial-tags}: class-level tags whose classes run on a single trailing worker
-     * instead of the sharded pool. Partitioning is per class — a method-level serial
-     * tag inside an otherwise-untagged class still shards with its class.
+     * Whether each test JVM of a pool of more than one gets its own {@code JK_HOME} under the suite's,
+     * for a suite whose tests start engines and write the product's home ({@link TestWorkerEnv}).
      */
-    public JUnitLauncher withSerialTags(List<String> tags) {
-        this.serialTags = tags == null ? List.of() : List.copyOf(tags);
-        return this;
-    }
-
-    /**
-     * Gives each test JVM of a pool of more than one its own {@code JK_HOME} under the suite's, for
-     * a suite whose tests start engines and write the product's home ({@link TestWorkerEnv}).
-     */
-    public JUnitLauncher withWorkerHomes(boolean workerHomes) {
-        this.workerHomes = workerHomes;
-        return this;
-    }
-
     boolean workerHomes() {
-        return workerHomes;
-    }
-
-    /** List-only discovery with {@code extraExcludes} folded in — the serial-tag partition view. */
-    private Discovery discoverWithExtraExcludes(
-            Path javaHome, String classpath, Path testClassesDir, List<String> extraExcludes)
-            throws IOException, InterruptedException {
-        List<String> saved = excludeTags;
-        var widened = new ArrayList<>(saved);
-        for (String t : extraExcludes) {
-            if (!widened.contains(t)) widened.add(t);
-        }
-        excludeTags = List.copyOf(widened);
-        try {
-            // noop listener: the full discovery already reported totals; this view must not
-            // grow the denominator a second time.
-            return discoverClasses(javaHome, classpath, testClassesDir, TestProgressListener.noop());
-        } finally {
-            excludeTags = saved;
-        }
+        return fork.workerHomes();
     }
 
     /** The runner arguments of pull-mode shard worker {@code workerId}: the pull protocol plus this run's filters. */
     List<String> pullWorkerArgs(int workerId, Path testClassesDir) {
-        return withTagArgs(List.of("--pull", "--worker=" + workerId, "--scan-classpath=" + testClassesDir), List.of());
+        return withTagArgs(
+                List.of("--pull", "--worker=" + workerId, "--scan-classpath=" + testClassesDir), List.of(), List.of());
     }
 
     /**
-     * {@code base} plus the class filter, the tag filters and the run's suites. The class filter is
-     * {@code names} exactly when given, else the {@code --class} patterns, within the run's suites
-     * and less the excluded classes either way.
+     * {@code base} plus the class filter, the tag filters ({@code extraExcludes} excluded too) and
+     * the run's suites. The class filter is {@code names} exactly when given, else the {@code
+     * --class} patterns, within the run's suites and less the excluded and settled classes either
+     * way.
      */
-    private List<String> withTagArgs(List<String> base, List<String> names) {
+    private List<String> withTagArgs(List<String> base, List<String> names, List<String> extraExcludes) {
         var out = new ArrayList<>(base);
-        String include = names.isEmpty() ? classFilter : JUnitClassFilter.exactRegex(names);
-        String filter = JUnitClassFilter.filter(include, excludeFilter, suites.body());
+        String include = names.isEmpty() ? fork.classFilter() : JUnitClassFilter.exactRegex(names);
+        String filter = JUnitClassFilter.filter(include, fork.excludeBody(settled), suites.body());
         if (filter != null) out.add("--filter=" + filter);
-        if (classNames.isEmpty()) out.addAll(methodArgs);
-        if (!includeTags.isEmpty()) out.add("--include-tags=" + String.join(",", includeTags));
-        if (!excludeTags.isEmpty()) out.add("--exclude-tags=" + String.join(",", excludeTags));
+        if (classNames.isEmpty()) out.addAll(fork.methodArgs());
+        out.addAll(fork.tagArgs(extraExcludes));
         for (String member : suites.members()) out.add("--member=" + member);
         return out;
     }
@@ -684,11 +578,7 @@ public final class JUnitLauncher {
         // One debugger, one JVM: a pool would have every shard contend for the same port.
         int wanted = debug != null ? 1 : workers;
         this.workerJarProps = workerJarProps == null ? Map.of() : Map.copyOf(workerJarProps);
-        Map<String, String> defaults = new LinkedHashMap<>();
-        // Suite JVMs must never prompt on the developer's controlling TTY (Confirm/Wizard via JLine
-        // system terminal) or hang waiting for a keystroke during `jk build` / `jk test`.
-        defaults.put("JK_NONINTERACTIVE", "1");
-        this.testEnv = Objects.requireNonNull(testEnv, "testEnv").withDefaults(defaults);
+        this.testEnv = Objects.requireNonNull(testEnv, "testEnv").withDefaults(fork.env());
         this.testClassesDir = testClassesDir.toAbsolutePath().normalize();
         this.inferredModuleDir = inferModuleDir(testClassesDir);
         this.testTmpDir = TestTmpDir.fresh(this.testEnv.extras().get("TMPDIR"));
@@ -715,7 +605,7 @@ public final class JUnitLauncher {
             if (!classNames.isEmpty()) {
                 preDiscovered = classNames;
             } else {
-                Discovery discovery = discoverClasses(javaHome, classpath, testClassesDir, listener);
+                Discovery discovery = discoverClasses(javaHome, classpath, testClassesDir, listener, List.of());
                 if (discovery.crashed()) return discovery.verdict(moduleLabel).withWorkers(1);
                 preDiscovered = discovery.classes();
             }
@@ -784,7 +674,7 @@ public final class JUnitLauncher {
         var crash = new CaptureBuffer();
         List<String> flags = jvmFlags(JvmRole.SUITE, 1, testTmpDir);
         List<String> names = onlyClasses != null ? onlyClasses : classNames;
-        List<String> args = withTagArgs(List.of("--scan-classpath=" + testClassesDir), names);
+        List<String> args = withTagArgs(List.of("--scan-classpath=" + testClassesDir), names, List.of());
         TestSummary result;
         try {
             result = forkSuite(javaHome, classpath, flags, args, aggregator, crash, listener);
@@ -846,14 +736,14 @@ public final class JUnitLauncher {
                 workDir(),
                 aggregator::accept,
                 line -> crash.add(aggregator.userOutput(line)),
-                TestWorkerEnv.suiteIdleTimeoutMs(idleTimeoutMs),
+                TestWorkerEnv.suiteIdleTimeoutMs(idleTimeoutMs()),
                 heaps);
     }
 
     /**
-     * Re-run a suite that died of its own heap or a memory kill ({@link #rerun}). {@code heap} is
-     * the {@code -Xmx} the first forks ran at; {@code undispatched} is what a pool left queued, run
-     * with the dying workers' classes. A pinned heap is reported with the pin named.
+     * Re-run a suite that died of its own heap or a memory kill, as {@link RetryLoop#afterRun}
+     * decides. {@code heap} is the {@code -Xmx} the first forks ran at; {@code undispatched} is what
+     * a pool left queued, run with the dying workers' classes.
      */
     private TestSummary retrySuite(
             Path javaHome,
@@ -866,23 +756,17 @@ public final class JUnitLauncher {
         boolean ranOut = heapRun.ranOut();
         // A run that passed at its planned heap lets a heap learned from an older, larger peak come down.
         if (heapRun.green(!first.failures().isEmpty())) heaps.relax(filledKey(javaHome));
-        // A suite JVM that dies after reporting tests leaves no class name. Run the selection again.
-        boolean whole = SuiteRetry.POLICY.wholeSuite(first, ranOut) && SuiteRetry.POLICY.onlyHeap(first, ranOut);
-        List<String> again = whole ? selection() : SuiteRetry.POLICY.classes(first, undispatched, ranOut);
-        if (!whole && again.isEmpty()) return first;
-        boolean killed = SuiteRetry.POLICY.onlyKilled(first, ranOut);
-        TestSummary second = rerun(javaHome, classpath, heap, again, listener, killed, whole ? null : first, ranOut);
-        return second == null ? first : second;
+        return retries(javaHome, classpath, listener).afterRun(first, selection(), undispatched, ranOut, heap);
     }
 
+    /** Re-run a launch that died of its heap or a memory kill before it reported a run; a pinned heap is reported with the pin named. */
     private TestSummary retryLaunch(
-            Path javaHome, String classpath, long heap, TestProgressListener listener, TestLauncherFailure e)
-            throws IOException, InterruptedException {
+            Path javaHome, String classpath, long heap, TestProgressListener listener, TestLauncherFailure e) {
         if (!SuiteRetry.planned(jvmArgs)) throw SuiteRetry.unplanned(e, moduleLabel, jvmArgs);
         WorkerFate.Cause cause = SuiteRetry.cause(e, heapRun.ranOut());
         if (cause != WorkerFate.Cause.HEAP_EXHAUSTED && cause != WorkerFate.Cause.KILLED_FOR_MEMORY) throw e;
         boolean killed = cause == WorkerFate.Cause.KILLED_FOR_MEMORY;
-        TestSummary second = rerun(javaHome, classpath, heap, selection(), listener, killed, null, true);
+        TestSummary second = retries(javaHome, classpath, listener).afterDeath(selection(), killed, heap);
         if (second == null) throw e;
         return second;
     }
@@ -898,102 +782,66 @@ public final class JUnitLauncher {
     }
 
     /**
-     * Suite JVMs for {@code classes} until they stop running out of heap; {@code heap} is the {@code
-     * -Xmx} the JVMs that ran out had. A memory kill runs once more at the same heap. Heap
-     * exhaustion climbs the {@link HeapLadder}, each rung re-running the classes that still ran out.
-     * {@code first} is folded in when a class-level retry replaces failures; a launcher retry passes
-     * {@code null} and gets only the retries' runs. Returns {@code first} when the heap cannot grow
-     * at all.
+     * The orchestrator's retry loop over this run's forks: each rung a suite JVM at the heap the
+     * {@link HeapLadder} climbs to, the learned heaps told what filled and what sufficed.
      */
-    private @Nullable TestSummary rerun(
-            Path javaHome,
-            String classpath,
-            long heap,
-            List<String> classes,
-            TestProgressListener listener,
-            boolean killed,
-            @Nullable TestSummary first,
-            boolean firstRanOut) {
-        heapRun.climbed();
-        try {
-            if (killed) {
-                HeapNotes.note(HeapNotes.line(heap, heap, true));
-                RetryPolicy.Share share = share(classes);
-                heapRun.forget();
-                TestSummary again = rung(javaHome, classpath, classes, listener, heap, new CaptureBuffer())
-                        .run();
-                return first == null ? again : SuiteRetry.POLICY.merge(first, classes, share, again, firstRanOut);
+    private RetryLoop retries(Path javaHome, String classpath, TestProgressListener listener) {
+        HeapScope.Key key = filledKey(javaHome);
+        return new RetryLoop(SuiteRetry.POLICY, new RetryLoop.Forks() {
+            @Override
+            public @Nullable Long nextHeap(List<Long> ranOut) {
+                return HeapLadder.next(ranOut, WorkerLeases.engine().capacityBytes(), LearnedHeaps.testRamCeiling());
             }
-            HeapScope.Key key = filledKey(javaHome);
-            List<Long> ranOut = new ArrayList<>(List.of(heap));
-            TestSummary settled = first;
-            boolean settledRanOut = firstRanOut;
-            @Nullable TestSummary partial = null;
-            List<String> selection = classes;
-            RetryPolicy.Share share = share(selection);
-            int diedExit = WorkerFate.EXIT_ON_OUT_OF_MEMORY;
-            String diedOutput = "";
-            List<String> diedCommand = List.of();
-            while (true) {
-                long failed = ranOut.getLast();
-                // It filled this heap. Remember that, so the next plan starts above the cap that failed.
-                heaps.note(key, failed);
-                long budget = WorkerLeases.engine().capacityBytes();
-                long ceiling = LearnedHeaps.testRamCeiling();
-                Long next = HeapLadder.next(ranOut, budget, ceiling);
-                if (next == null) {
-                    if (ranOut.size() == 1) return first;
-                    if (partial != null) return partial;
-                    throw TestLauncherFailure.heap(
-                            moduleLabel,
-                            diedExit,
-                            diedOutput,
-                            diedCommand,
-                            SuiteRetry.exhausted("test runner", ranOut, budget, ceiling));
-                }
-                HeapNotes.note(HeapNotes.line(next, failed, false));
-                ranOut.add(next);
+
+            @Override
+            public void filled(long heap) {
+                heaps.note(key, heap);
+            }
+
+            @Override
+            public void sufficed(long heap) {
+                heaps.good(key, heap);
+            }
+
+            @Override
+            public void climbing(long next, long failed, boolean killed) {
+                HeapNotes.note(HeapNotes.line(next, failed, killed));
+            }
+
+            @Override
+            public RetryPolicy.Share share(List<String> classes) {
+                return JUnitLauncher.this.share(classes);
+            }
+
+            @Override
+            public RetryLoop.Rung fork(List<String> classes, long heap) throws IOException, InterruptedException {
+                heapRun.climbed();
+                heapRun.forget();
                 var crash = new CaptureBuffer();
                 Rung attempt;
-                heapRun.forget();
                 try {
-                    attempt = rung(javaHome, classpath, selection, listener, next, crash);
+                    attempt = rung(javaHome, classpath, classes, listener, heap, crash);
                 } catch (TestLauncherFailure e) {
                     if (SuiteRetry.cause(e, heapRun.ranOut()) != WorkerFate.Cause.HEAP_EXHAUSTED) throw e;
-                    diedExit = e.exit();
-                    diedOutput = e.output();
-                    diedCommand = e.command();
-                    continue;
+                    return new RetryLoop.Rung.Died(e, e.exit(), e.output(), e.command());
                 }
-                TestSummary run = attempt.run();
-                boolean rungRanOut = heapRun.ranOut();
-                if (SuiteRetry.POLICY.onlyHeap(run, rungRanOut)) {
-                    // Nothing this rung reported outlives it; the record it displaced is the report's.
-                    attempt.held().restore();
-                    diedExit = WorkerFate.EXIT_ON_OUT_OF_MEMORY;
-                    diedOutput = crash.text();
-                    diedCommand = List.of();
-                    continue;
-                }
-                TestSummary merged =
-                        settled == null ? run : SuiteRetry.POLICY.merge(settled, selection, share, run, settledRanOut);
-                List<String> still = SuiteRetry.POLICY.heapClasses(run, rungRanOut);
-                if (still.isEmpty() && !SuiteRetry.POLICY.wholeSuite(run, rungRanOut)) {
-                    heaps.good(key, next);
-                    return merged;
-                }
-                partial = merged;
-                if (!SuiteRetry.POLICY.wholeSuite(run, rungRanOut)) {
-                    settledRanOut = rungRanOut;
-                    settled = merged;
-                    selection = still;
-                    share = share(still);
-                }
+                return new RetryLoop.Rung.Ran(attempt.run(), heapRun.ranOut(), attempt.held()::restore, crash.text());
             }
-        } catch (IOException | InterruptedException e) {
-            if (e instanceof InterruptedException) Thread.currentThread().interrupt();
-            return first;
-        }
+
+            @Override
+            public RuntimeException exhausted(List<Long> ranOut, RetryLoop.Rung.Died last) {
+                return TestLauncherFailure.heap(
+                        moduleLabel,
+                        last.exit(),
+                        last.output(),
+                        last.command(),
+                        SuiteRetry.exhausted(
+                                "test runner",
+                                ranOut,
+                                WorkerLeases.engine().capacityBytes(),
+                                LearnedHeaps.testRamCeiling()));
+            }
+        });
     }
 
     /** What the run so far recorded for {@code classes}; a rung for them must replace it, not add to it. */
@@ -1048,7 +896,7 @@ public final class JUnitLauncher {
             var aggregator = new ResultAggregator(listener, 0, SuiteReport.all(xml, md), moduleLabel, secrets());
             List<String> retryFlags = jvmFlags(JvmRole.SUITE, 1, testTmpDir);
             Path classesDir = Objects.requireNonNull(testClassesDir, "testClassesDir");
-            List<String> args = withTagArgs(List.of("--scan-classpath=" + classesDir), names);
+            List<String> args = withTagArgs(List.of("--scan-classpath=" + classesDir), names, List.of());
             try {
                 HeapScope.Fork<TestSummary> fork =
                         () -> forkSuite(javaHome, classpath, retryFlags, args, aggregator, crash, listener);
@@ -1080,7 +928,7 @@ public final class JUnitLauncher {
         if (preDiscovered != null) {
             classes = preDiscovered;
         } else {
-            Discovery discovery = discoverClasses(javaHome, classpath, testClassesDir, listener);
+            Discovery discovery = discoverClasses(javaHome, classpath, testClassesDir, listener, List.of());
             if (discovery.crashed()) return discovery.verdict(moduleLabel);
             classes = discovery.classes();
         }
@@ -1096,8 +944,11 @@ public final class JUnitLauncher {
         // a second list-only discovery with the serial tags excluded — so tag expressions
         // never enter the picture.
         List<String> serialClasses = List.of();
-        if (!serialTags.isEmpty()) {
-            Discovery view = discoverWithExtraExcludes(javaHome, classpath, testClassesDir, serialTags);
+        if (!fork.serialTags().isEmpty()) {
+            // noop listener: the full discovery already reported totals; this view must not grow
+            // the denominator a second time.
+            Discovery view = discoverClasses(
+                    javaHome, classpath, testClassesDir, TestProgressListener.noop(), fork.serialTags());
             if (view.crashed()) return view.verdict(moduleLabel);
             Set<String> parallelView = new HashSet<>(view.classes());
             List<String> par = new ArrayList<>();
@@ -1129,7 +980,7 @@ public final class JUnitLauncher {
         if (SuiteRetry.planned(jvmArgs) && heapOverride == null) {
             summary = retrySuite(javaHome, classpath, poolHeap(pool, workers), listener, summary, pool.undispatched());
         }
-        if (!serialClasses.isEmpty() && serialPoolRuns(summary, SessionCancel.cancelled())) {
+        if (!serialClasses.isEmpty() && RunShortfall.nextPoolRuns(summary, SessionCancel.cancelled())) {
             TestSummary serial = pool.run(1, serialClasses, xml, md, Math.max(workers, pooled), null);
             summary = summary.plus(serial);
         }
@@ -1145,19 +996,6 @@ public final class JUnitLauncher {
     private long poolHeap(PullWorkerPool pool, int workers) {
         long ran = pool.heap();
         return ran > 0 ? ran : HeapFlags.parseXmx(jvmFlags(JvmRole.PULL_WORKER, workers, testTmpDir));
-    }
-
-    /**
-     * Whether the serial-tag pool still forks after the sharded pool's {@code summary}: not once
-     * the run is cancelled, and not when a {@code (test run)} row says the fork itself is broken.
-     * The shortfall row for classes the pool left queued is a fact about that queue, not the fork.
-     */
-    static boolean serialPoolRuns(TestSummary summary, boolean cancelled) {
-        if (cancelled) return false;
-        for (var f : summary.failures()) {
-            if (RunShortfall.RUN.equals(f.method()) && !RunShortfall.isRow(f)) return false;
-        }
-        return true;
     }
 
     /** Fold this launch's JUnit events into the request's sink, which {@code jk-results.md} drains. */
@@ -1183,17 +1021,22 @@ public final class JUnitLauncher {
     }
 
     /**
-     * Step one of parallel mode: list every top-level test class without running anything. Uses
-     * {@code Launcher.discover} (not {@code execute}) so this completes in 100–300 ms even for big
-     * suites.
+     * Step one of parallel mode: list every top-level test class without running anything, the
+     * classes {@code extraExcludes} tag left out (the serial-tag partition's view). Uses {@code
+     * Launcher.discover} (not {@code execute}) so this completes in 100–300 ms even for big suites.
      */
     private Discovery discoverClasses(
-            Path javaHome, String classpath, Path testClassesDir, TestProgressListener listener)
+            Path javaHome,
+            String classpath,
+            Path testClassesDir,
+            TestProgressListener listener,
+            List<String> extraExcludes)
             throws IOException, InterruptedException {
         var listing = new Discovery.Listing();
         var crash = new CaptureBuffer();
         List<String> flags = jvmFlags(JvmRole.DISCOVERY, 1, testTmpDir);
-        List<String> args = withTagArgs(List.of("--list-only", "--scan-classpath=" + testClassesDir), List.of());
+        List<String> args =
+                withTagArgs(List.of("--list-only", "--scan-classpath=" + testClassesDir), List.of(), extraExcludes);
         WorkerExit exit;
         try {
             exit = SuiteRetry.listing(

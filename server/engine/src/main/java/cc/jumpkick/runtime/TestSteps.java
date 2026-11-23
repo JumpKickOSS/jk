@@ -144,7 +144,7 @@ final class TestSteps {
                 SiblingWaits.awaitWorkerSiblings(ctx, in, testStampWorkerJars(in.dir(), projectUnderTest));
         TestStampInputs stamp = stampInputs(ctx, in, projectUnderTest, pluginDecls, workerJars);
         List<Path> testRtCp = stamp.runtimeClasspath();
-        WorkerEnv testEnv = TestLaunch.suiteEnvironment(ctx, in, projectUnderTest);
+        WorkerEnv testEnv = suiteEnvironment(ctx, in, projectUnderTest);
         TestTier tier = stamp.tier();
         InputGuard suiteGuard = suiteGuard(ctx, testClasses, testRtCp);
         SuiteDiscovery.Rekey rekey = () -> namedStampKey(ctx, in, stamp, affected, testSrcs);
@@ -210,7 +210,7 @@ final class TestSteps {
             List<String> forkJvmArgs = new ArrayList<>(stamp.jvmArgs());
             forkJvmArgs.addAll(JvmModulePath.args(projectUnderTest, in.dir(), runtimeCp));
             SuiteResources.Launcher launcher = ledger.launching((settled, s) -> TestLaunch.launcher(
-                            in, projectUnderTest, effectiveSel, forkJvmArgs, s, affected, jacoco, coverageExec, settled)
+                            in, projectUnderTest, forkJvmArgs, s, affected, jacoco, coverageExec, settled)
                     .withRecording(env.probe())
                     .withIntegrationResults(ctx.require(MODULE).layout().integrationResultsDir())
                     .withAutoShare(auto)
@@ -628,6 +628,17 @@ final class TestSteps {
         if (ran != null) {
             TestLaunch.recordOutcome(ctx, in, actionCache, testTaskId, stampKey, ran, testSourcesExist, snippets, said);
         }
+    }
+
+    /** The environment this module's suite JVMs get ({@link SuiteEnvironment#of}), with the Node.js the plan locked. */
+    private static WorkerEnv suiteEnvironment(TaskContext ctx, BuildPlanner.Inputs in, JkBuild project)
+            throws Exception {
+        return SuiteEnvironment.of(
+                in.dir(),
+                project,
+                ctx.require(MODULE).layout(),
+                ctx.get(BuildPlanner.NODE_HOME).orElse(null),
+                in.profileName());
     }
 
     /** The run-tests stamp's inputs as this run reads them: what the classpath step published, the worker jars awaited. */

@@ -149,6 +149,15 @@ public final class SuiteFilter {
      * test two launches' suites claim runs in each.
      */
     public List<Launch> launches() {
+        return launches(selected, declared);
+    }
+
+    /**
+     * {@link #launches()} of a selection of {@code selected} suites in a module whose {@code
+     * [test.suites]} declare {@code declared}: what a run-tests stamp keys a launch by, before any
+     * class is compiled.
+     */
+    public static List<Launch> launches(List<String> selected, Map<String, DeclaredSuite> declared) {
         Set<String> shared = new LinkedHashSet<>();
         List<Launch> own = new ArrayList<>();
         for (String suite : selected) {

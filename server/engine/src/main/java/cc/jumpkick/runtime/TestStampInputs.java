@@ -36,11 +36,13 @@ import cc.jumpkick.task.TestStamp;
 import cc.jumpkick.task.ToolIdentity;
 import cc.jumpkick.task.ToolchainPolicy;
 import cc.jumpkick.test.SuiteEnvReads;
+import cc.jumpkick.test.SuiteFilter;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
@@ -262,14 +264,15 @@ public record TestStampInputs(
     }
 
     /**
-     * The stamp's identity tokens: environment values, tool identities, the JVM flags, worker jars
-     * and test compiles. Read again on every call, as a suite that recorded what it reads keys
-     * those reads on its next stamp.
+     * The stamp's identity tokens: environment values, tool identities, the JVM flags, what each
+     * launch starts its JVMs with, worker jars and test compiles. Read again on every call, as a
+     * suite that recorded what it reads keys those reads on its next stamp.
      */
     List<String> extras() throws IOException {
         List<String> extras = new ArrayList<>(
                 testStampExtras(facts.workerJars(), selection, facts.project(), jvmArgs, facts.dir(), identity));
         extras.add(suitesToken(suites));
+        extras.addAll(forkTokens(facts.project(), selection, suites));
         String node = NodeTestStamp.nodeTestToken(facts.project(), facts.dir());
         if (node != null) extras.add(node);
         extras.addAll(SuiteEnvKeys.profileEnv(facts.project(), facts.profileName()));
@@ -416,6 +419,23 @@ public record TestStampInputs(
     }
 
     /**
+     * The stamp token of each launch the run starts ({@link SuiteFilter#launches}): what it starts its
+     * test JVMs with on every host, as {@link TestLaunch#forkSpec} derives it for the launch itself.
+     * So a change to what a launch spells moves the key of exactly the suites it launches, and a
+     * change to how the JVMs are forked moves none.
+     */
+    static List<String> forkTokens(JkBuild project, TestSelection selection, TestSelection.Resolved suites) {
+        List<String> run = suites.ok() ? suites.suites() : List.of(TestSuites.DEFAULT);
+        List<String> out = new ArrayList<>();
+        for (SuiteFilter.Launch launch : SuiteFilter.launches(
+                List.copyOf(new LinkedHashSet<>(run)), project.build().runSuites())) {
+            out.add("fork:"
+                    + TestLaunch.forkSpec(project, selection, launch.suites()).token());
+        }
+        return out;
+    }
+
+    /**
      * Worker / engine jar props that feed both the forked test JVM and the {@link
      * TestStamp} extras. Includes declared {@code [build] test-plugin-jars} and,
      * for nested-engine CLI modules, every first-party {@link PluginJar} plus the engine assembly
@@ -502,12 +522,6 @@ public record TestStampInputs(
         extras.add("orchestrator:" + OrchestratorCode.digest());
         // Suite + tag filters are part of the outcome.
         if (selection != null) extras.add("sel:" + selection.identityToken());
-        // Whether the suite JVM ran with -ea decides what an `assert` did.
-        extras.add("assertions:" + build.testAssertions());
-        // Excluded classes are classes the suite does not run.
-        if (!build.testExcludeClasses().isEmpty()) {
-            extras.add("exclude-classes:" + String.join(",", build.testExcludeClasses()));
-        }
         // A declared suite decides which tests the default suite and every other suite runs.
         build.runSuites()
                 .forEach((suite, spec) -> extras.add("suite:" + suite + "=" + String.join(",", spec.classes())
