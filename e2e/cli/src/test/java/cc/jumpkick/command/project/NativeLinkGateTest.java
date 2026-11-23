@@ -13,6 +13,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -20,7 +21,11 @@ import org.junit.jupiter.api.io.TempDir;
  * The template catalog's native links take turns with its builds across JVMs, as the shards' test
  * JVMs do: builds share, a link waits for them, and a build that comes after a waiting link waits
  * for that link to finish.
+ *
+ * <p>Integration: each turn is a JVM of its own, and a class that starts a program keys every later
+ * class of its JVM by the engine's bytes.
  */
+@Tag("integration")
 class NativeLinkGateTest {
 
     /** How long a turn that should come is waited for. */

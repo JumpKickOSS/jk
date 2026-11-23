@@ -106,7 +106,8 @@ the engine's bytes, and so is every class after it in that JVM
 ([per-class tests](per-class-tests.md#nested-engines-and-worker-jars)): an edit anywhere in the
 engine would run them again. The engine extension materializes the engine only in a JVM that may
 start one, never in the fast tier. A class that starts a program (Node, `git` outside its temp
-roots, an engine) is `integration`, and one that needs neither the engine's classes nor a real
+roots, an engine, a JVM of its own) is `integration` (guard `cli-e2e-fast-starts-nothing` holds the
+classes that start one themselves), and one that needs neither the engine's classes nor a real
 engine lives in `clients/cli`.
 
 **A wire contract keeps both sides honest without an engine in the CLI's suite.** `shared/wire`'s
