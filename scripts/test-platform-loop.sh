@@ -171,7 +171,9 @@ grep -q '^comment|TK-PLAT1|.*is green on daybreak' "$KA_LOG" || fail "the ticket
 [[ -f "$QUEUE_REPO/platform-windows-blocking" ]] && fail "a platform green for minutes holds green"
 
 # Green for a week: it holds green from then on.
-sed -i -E "s/^($g1 windows GREEN) [0-9]+/\1 $(($(date +%s) - 8 * 86400))/" "$QUEUE_REPO/platform-verdicts"
+# awk, not `sed -i`: BSD sed on macOS reads `-i -E` as a backup suffix.
+awk -v s="$g1" -v t="$(($(date +%s) - 8 * 86400))" '$1 == s && $2 == "windows" && $3 == "GREEN" { $4 = t } { print }' \
+  "$QUEUE_REPO/platform-verdicts" >"$QUEUE_REPO/platform-verdicts.tmp" && mv "$QUEUE_REPO/platform-verdicts.tmp" "$QUEUE_REPO/platform-verdicts"
 take "$(land week.txt week)" GREEN
 loop
 [[ -f "$QUEUE_REPO/platform-windows-blocking" ]] || fail "a week green did not make the platform hold green: $(cat "$QUEUE_REPO/platform-runs.log")"
