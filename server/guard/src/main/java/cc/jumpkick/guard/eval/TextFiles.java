@@ -3,6 +3,7 @@ package cc.jumpkick.guard.eval;
 
 import cc.jumpkick.host.OutputDirs;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.StatIdentity;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.WalkSkip;
 import java.io.IOException;
@@ -88,7 +89,8 @@ final class TextFiles {
 
     private TextFiles() {}
 
-    record Entry(Path file, String rel, Language language) {}
+    /** One corpus file; {@code identity} is its stat when the walk saw it, before any read. */
+    record Entry(Path file, String rel, Language language, StatIdentity identity) {}
 
     /** One file of the corpus: its {@code /}-separated path relative to the root, the file, its attributes. */
     @FunctionalInterface
@@ -120,7 +122,7 @@ final class TextFiles {
         walk(
                 root,
                 (rel, p, attrs) ->
-                        out.add(new Entry(p, rel, languageOf(p.getFileName().toString()))));
+                        out.add(new Entry(p, rel, languageOf(p.getFileName().toString()), StatIdentity.of(p, attrs))));
         out.sort((a, b) -> a.rel.compareTo(b.rel));
         return out;
     }

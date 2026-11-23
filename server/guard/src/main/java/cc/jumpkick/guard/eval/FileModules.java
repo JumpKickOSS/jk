@@ -56,6 +56,11 @@ final class FileModules {
         return "";
     }
 
+    /** Everything {@link #moduleOf} answers from, as text: equal signatures map every path alike. */
+    String signature() {
+        return only != null ? "only " + only : String.join(",", deepestFirst);
+    }
+
     /** Whether {@code rule} judges {@code rel}: the file's module is in its scope. */
     boolean judges(Rule rule, String rel) {
         return rule.scope().isEmpty() || rule.applies(moduleOf(rel));

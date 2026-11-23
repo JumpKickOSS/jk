@@ -29,6 +29,9 @@ import org.tomlj.TomlTable;
  * mapped back to its original line. Each regex runs against a deadline; an expiry is that rule's
  * {@code scanner-failed}, not a stall.
  *
+ * <p>A file's findings are kept in {@link #MEMO} across runs, so an edit re-scans the files it
+ * touched and no others.
+ *
  * <p>Bite is checked first: {@code hit} must match through the rule's own view (a {@code hit} the
  * blanker erases is a pattern looking at the wrong layer) and {@code miss} must not.
  */
@@ -36,9 +39,15 @@ final class TextEvaluator implements BatchEvaluator {
 
     static final long DEADLINE_MILLIS = 2_000;
 
+    /** Each file's findings, filed under the rules and module map that produced them. */
+    static final ScanMemo<List<Finding>> MEMO = new ScanMemo<>();
+
     /** One rule, compiled. */
     private static final class Prepared {
         final Rule rule;
+        /** This rule's place among the run's live rules, which a {@link Finding} names it by. */
+        int index = -1;
+
         final List<Pattern> patterns = new ArrayList<>();
         final TextView view;
         final List<String> files;
@@ -73,7 +82,7 @@ final class TextEvaluator implements BatchEvaluator {
         }
     }
 
-    private record Hit(String rel, int line, String snippet, boolean inOwner) {}
+    record Hit(String rel, int line, String snippet, boolean inOwner) {}
 
     /** {@code count = { exactly | min | max, per = file | tree | match }}. */
     record Count(
@@ -107,6 +116,7 @@ final class TextEvaluator implements BatchEvaluator {
                 out.put(r.id(), Evaluation.failed(bite));
                 continue;
             }
+            p.index = live.size();
             live.add(p);
         }
         if (live.isEmpty()) return out;
@@ -116,7 +126,9 @@ final class TextEvaluator implements BatchEvaluator {
         // Files are scanned in parallel and merged in corpus order, so a rule sees its files in the
         // same order whatever the scheduling: a failure stops a rule at the same file every run.
         FileModules modules = FileModules.of(ctx);
-        List<List<Seen>> perFile = ParallelMap.map(TextFiles.corpus(ctx, root), f -> scanFile(f, live, modules));
+        String generation = generation(live, root, modules);
+        List<List<Seen>> perFile =
+                ParallelMap.map(TextFiles.corpus(ctx, root), f -> scanFile(f, live, modules, generation));
         for (List<Seen> seen : perFile) {
             for (Seen s : seen) {
                 Prepared p = s.rule();
@@ -246,7 +258,51 @@ final class TextEvaluator implements BatchEvaluator {
             List<Hit> hits,
             @Nullable String failure) {}
 
-    /** Every applicable rule's view of one file; touches no rule state, so files scan in parallel. */
+    /**
+     * What one file contributed to one rule, kept in {@link #MEMO}: the rule by its {@link
+     * Prepared#index}, which the generation pins.
+     */
+    record Finding(int rule, boolean inOwner, boolean unsupported, List<Hit> hits) {}
+
+    /**
+     * Everything a file's scan reads besides the file: the root its paths are spelled from, the
+     * module map that places them, and each live rule as written, in order.
+     */
+    private static String generation(List<Prepared> live, Path root, FileModules modules) {
+        StringBuilder sb = new StringBuilder(root.toAbsolutePath().normalize().toString())
+                .append('\n')
+                .append(modules.signature())
+                .append('\n');
+        for (Prepared p : live) {
+            sb.append(p.rule.id()).append('\n').append(p.rule.scope()).append('\n');
+            sb.append(p.rule.table().toToml()).append('\n');
+        }
+        return Hashing.sha256Hex(sb.toString());
+    }
+
+    /**
+     * Every applicable rule's view of one file, from {@link #MEMO} while the file is unchanged;
+     * touches no rule state, so files scan in parallel. A scan that failed is not recorded.
+     */
+    private static List<Seen> scanFile(TextFiles.Entry f, List<Prepared> live, FileModules modules, String generation)
+            throws IOException {
+        List<Finding> known = MEMO.get(generation, f);
+        if (known != null) {
+            List<Seen> out = new ArrayList<>(known.size());
+            for (Finding k : known)
+                out.add(new Seen(live.get(k.rule()), f.rel(), k.inOwner(), k.unsupported(), k.hits(), null));
+            return out;
+        }
+        List<Seen> out = scanFile(f, live, modules);
+        List<Finding> found = new ArrayList<>(out.size());
+        for (Seen s : out) {
+            if (s.failure() != null) return out;
+            found.add(new Finding(s.rule().index, s.inOwner(), s.unsupported(), List.copyOf(s.hits())));
+        }
+        MEMO.put(generation, f, List.copyOf(found));
+        return out;
+    }
+
     private static List<Seen> scanFile(TextFiles.Entry f, List<Prepared> live, FileModules modules) throws IOException {
         List<Prepared> applicable = new ArrayList<>();
         for (Prepared p : live) if (applies(p, f, modules)) applicable.add(p);
