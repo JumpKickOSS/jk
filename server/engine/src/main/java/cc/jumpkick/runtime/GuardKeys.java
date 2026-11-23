@@ -35,7 +35,6 @@ import cc.jumpkick.guard.rules.RuleSet;
 import cc.jumpkick.guard.schema.Kind;
 import cc.jumpkick.guard.schema.Lane;
 import cc.jumpkick.host.Hashing;
-import cc.jumpkick.host.Log;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.LocalInstallRows;
@@ -162,7 +161,8 @@ final class GuardKeys {
      * The forecast's {@code guard} step for one module, or empty when the workspace has no guards.
      * {@code testsIndexed} is whether the plan's lane indexes the test classes ({@link
      * PlannerGuards#indexesTestClasses}). CACHED only when the facts index is current and the lane's
-     * verdict is in the cache; RUN otherwise, which is what makes the module dirty.
+     * verdicts are in the cache, its declared rules' and, with a {@code src/guard} suite, the suite's;
+     * RUN otherwise, which is what makes the module dirty.
      */
     static Optional<TaskForecast.Task> forecastModuleLane(
             Path dir, BuildLayout layout, ActionCache actionCache, boolean upstreamDirty, boolean testsIndexed) {
@@ -179,41 +179,64 @@ final class GuardKeys {
             if (key == null) return Optional.of(run(probe.runReason()));
             String taskId = ActionKey.qualifiedTaskId(TaskNames.GUARD, dir);
             ToolchainPolicy.expectOnEngineMajor(key, dir);
-            Optional<ActionCache.ActionRecord> verdict = GuardVerdicts.lookup(actionCache, key, root);
-            if (verdict.isPresent()) {
-                // A verdict that carries the lane's evidence is cached only where that evidence is
-                // on disk: a fresh checkout runs the lane once so the hit restores it for the tree
-                // lane's no-bite judgement.
-                if (verdict.get().outputs().isEmpty() || Files.isRegularFile(RuleSummaries.file(root, taskId))) {
-                    return Optional.of(new TaskForecast.Task(
-                            TaskNames.GUARD, TaskForecast.Status.CACHED, "", key.substring(0, 8)));
-                }
-                return Optional.of(run("guards · lane evidence to restore"));
+            int rules = load.rules().rules().size();
+            Optional<String> unheld = unheld(actionCache, key, root, taskId, rules + " rules to evaluate");
+            String suiteKey = probe.suiteKey();
+            if (unheld.isEmpty() && suiteKey != null) {
+                // The declared rules' verdict holds: only what the suite reads can have moved.
+                String suiteTaskId = GuardVerdicts.suiteTaskId(taskId);
+                unheld = unheld(
+                        actionCache, suiteKey, root, suiteTaskId, "src/guard to run · " + rules + " rules cached");
             }
-            return Optional.of(run(
-                    missReason(actionCache, taskId, probe, load.rules().rules().size(), dir)));
+            if (unheld.isPresent()) return Optional.of(run(unheld.get()));
+            return Optional.of(
+                    new TaskForecast.Task(TaskNames.GUARD, TaskForecast.Status.CACHED, "", key.substring(0, 8)));
         } catch (IOException e) {
             return Optional.of(run("guards · " + e.getMessage()));
         }
+    }
+
+    /**
+     * Why the verdict of task {@code taskId} under {@code key} does not hold, or empty when it does:
+     * none found ({@code otherwise}, or that another jk judged the last one), or one found whose
+     * evidence is not on disk. A verdict that carries the lane's evidence holds only where that
+     * evidence is: a fresh checkout runs the lane once so the hit restores it for the tree lane's
+     * no-bite judgement.
+     */
+    private static Optional<String> unheld(
+            ActionCache actionCache, String key, Path root, String taskId, String otherwise) throws IOException {
+        Optional<ActionCache.ActionRecord> verdict = GuardVerdicts.lookup(actionCache, key, root);
+        if (verdict.isEmpty()) return Optional.of(missed(actionCache, taskId, otherwise));
+        if (verdict.get().outputs().isEmpty() || Files.isRegularFile(RuleSummaries.file(root, taskId)))
+            return Optional.empty();
+        return Optional.of("guards · lane evidence to restore");
     }
 
     /** The module-lane key token of a run that compiled no tests, and so ran no rule over them. */
     private static final String TESTS_NOT_COMPILED = "tests:not-compiled";
 
     /**
-     * A module lane's forecast key, with the tokens and baseline slice it was taken over, or why the
-     * lane runs with none (an index to extract first).
+     * A module lane's forecast key, of its declared rules, with the tokens and baseline slice it was
+     * taken over, and the key of its {@code src/guard} suite's verdict ({@link
+     * GuardVerdicts#suiteTaskId}) over {@code suiteTokens}, null without a suite that declares a
+     * guard; or why the lane runs with none (an index to extract first).
      */
-    record LaneProbe(@Nullable String key, String runReason, List<String> tokens, String slice) {
+    record LaneProbe(
+            @Nullable String key,
+            String runReason,
+            List<String> tokens,
+            String slice,
+            @Nullable String suiteKey,
+            List<String> suiteTokens) {
 
         LaneProbe(String runReason) {
-            this(null, runReason, List.of(), "");
+            this(null, runReason, List.of(), "", null, List.of());
         }
     }
 
     /**
-     * The key the module lane at {@code dir} would run under, read-only: its tokens come from
-     * {@link #moduleLaneTokens}, as the run's do.
+     * The keys the module lane at {@code dir} would run under, read-only: its tokens come from
+     * {@link #moduleLaneTokens}, as the run's do, the suite's with its {@link #suiteTokens} after.
      */
     static LaneProbe probeModuleLane(Path root, Path dir, BuildLayout layout, LoadResult load, boolean testsIndexed)
             throws IOException {
@@ -230,6 +253,7 @@ final class GuardKeys {
             testFacts = test.get();
         }
         List<String> suiteTokens = List.of();
+        boolean guards = false;
         Path guardClasses = layout.guardClassesDir();
         if (Files.isDirectory(guardClasses) && PlannerGuardSuite.declared(dir, PlannerGuards.compact(dir))) {
             Path suiteIndex = FactsIndexing.indexPath(layout.buildDir(), "guard");
@@ -237,13 +261,25 @@ final class GuardKeys {
             if (suite.isEmpty()) return new LaneProbe("guards · guard suite index stale");
             List<GuardSuites.Declared> declared = GuardSuites.declared(FactsFormat.read(suiteIndex));
             suiteTokens = suiteTokens(suite.get(), declared, root, PlannerGuards.workspaceModuleDirs(root, null));
+            guards = !declared.isEmpty();
         }
-        List<String> tokens =
-                moduleLaneTokens(WorkspaceModel.rel(root, dir), main.get(), dir, testsIndexed, testFacts, suiteTokens);
+        List<String> head =
+                moduleLaneTokens(WorkspaceModel.rel(root, dir), main.get(), dir, testsIndexed, testFacts, List.of());
+        List<String> tokens = new ArrayList<>(head);
         addRuleTokens(tokens, load);
         String slice = baselineSlice(root, Lane.MODULE, WorkspaceModel.rel(root, dir), load.rules());
+        String taskId = ActionKey.qualifiedTaskId(TaskNames.GUARD, dir);
+        if (!guards) return new LaneProbe(laneKey(taskId, tokens, slice), "", tokens, slice, null, List.of());
+        List<String> withSuite = new ArrayList<>(head);
+        withSuite.addAll(suiteTokens);
+        addRuleTokens(withSuite, load);
         return new LaneProbe(
-                laneKey(ActionKey.qualifiedTaskId(TaskNames.GUARD, dir), tokens, slice), "", tokens, slice);
+                laneKey(taskId, tokens, slice),
+                "",
+                tokens,
+                slice,
+                laneKey(GuardVerdicts.suiteTaskId(taskId), withSuite, slice),
+                withSuite);
     }
 
     /**
@@ -326,30 +362,8 @@ final class GuardKeys {
             }
             reads.add(fileToken("lock", root.resolve(ManifestPaths.LOCK)));
         }
-        if (!reads.isEmpty()) tokens.add(GuardVerdicts.SUITE_READS + ":" + Hashing.sha256Hex(String.join("\n", reads)));
+        if (!reads.isEmpty()) tokens.add("suite-reads:" + Hashing.sha256Hex(String.join("\n", reads)));
         return tokens;
-    }
-
-    /**
-     * Why a module lane whose key ({@code probe}'s) missed runs. When a verdict was reached over its
-     * {@link GuardVerdicts#heldTokens} and no record under the key itself waits on a tool, the
-     * module's own inputs held and its guard suite's workspace input moved, and the reason says so.
-     */
-    static String missReason(ActionCache actionCache, String taskId, LaneProbe probe, int rules, Path dir) {
-        List<String> held = GuardVerdicts.heldTokens(probe.tokens());
-        if (held != null && probe.key() != null) {
-            try {
-                if (actionCache.lookup(probe.key()).isEmpty()
-                        && actionCache
-                                .lookup(laneKey(Lane.MODULE, taskId, held, probe.slice(), dir))
-                                .isPresent()) {
-                    return "guards · " + rules + " rules · src/guard reads the workspace and it changed";
-                }
-            } catch (IOException e) {
-                Log.debug("guard forecast: the held verdict of " + taskId + " is unreadable", e);
-            }
-        }
-        return missed(actionCache, taskId, rules + " rules to evaluate");
     }
 
     /**

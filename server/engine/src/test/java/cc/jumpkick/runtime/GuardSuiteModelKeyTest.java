@@ -21,7 +21,7 @@ import javax.tools.ToolProvider;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-/** A module suite whose guard reads {@code Model} alone keys its lane on the manifests and the lock. */
+/** A module suite whose guard reads {@code Model} alone keys its verdict on the manifests and the lock; the module's declared rules do not. */
 class GuardSuiteModelKeyTest {
 
     private static final String SUITE = """
@@ -60,17 +60,22 @@ class GuardSuiteModelKeyTest {
 
         ActionCache cache = new ActionCache(new Cas(tmp.resolve("cache/cas")), tmp.resolve("cache/actions"));
         var load = PlannerGuards.rules(PlannerGuards.detectAt(root));
-        String key = Objects.requireNonNull(
-                GuardKeys.probeModuleLane(root, root, layout, load, true).key(), "the lane's key");
-        cache.storeVerdict(ActionKey.qualifiedTaskId(TaskNames.GUARD, root), key, Map.of());
+        GuardKeys.LaneProbe before = GuardKeys.probeModuleLane(root, root, layout, load, true);
+        String taskId = ActionKey.qualifiedTaskId(TaskNames.GUARD, root);
+        cache.storeVerdict(taskId, Objects.requireNonNull(before.key(), "the lane's key"), Map.of());
+        cache.storeVerdict(
+                GuardVerdicts.suiteTaskId(taskId),
+                Objects.requireNonNull(before.suiteKey(), "the suite's key"),
+                Map.of());
         assertThat(lane(root, layout, cache).status()).isEqualTo(TaskForecast.Status.CACHED);
 
         // A dependency added to the manifest leaves every class file as it was.
         Files.writeString(
                 manifest, Files.readString(manifest) + "\n[dependencies]\nbanned = \"org.example:banned:1.0\"\n");
 
-        assertThat(GuardKeys.probeModuleLane(root, root, layout, load, true).key())
-                .isNotEqualTo(key);
+        GuardKeys.LaneProbe after = GuardKeys.probeModuleLane(root, root, layout, load, true);
+        assertThat(after.key()).as("the declared rules' verdict").isEqualTo(before.key());
+        assertThat(after.suiteKey()).as("the suite's verdict").isNotEqualTo(before.suiteKey());
         assertThat(lane(root, layout, cache).status()).isEqualTo(TaskForecast.Status.RUN);
     }
 

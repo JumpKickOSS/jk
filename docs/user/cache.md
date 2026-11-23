@@ -80,7 +80,7 @@ images and native binaries keep the exact build in their keys, and a jlink image
 are for one platform: their keys and records also name it (`TARGET linux-x86_64-gnu`). A guard
 lane's verdict names what the lane read (facts, text, manifests, rules, baseline) and, for a module
 lane, the Java major of the JDK the engine runs on, so a verdict made on macOS with JDK 25.0.2 serves
-Linux on 25.0.5 under the default `jdk-match`; only a module lane that runs a `src/guard` suite, code
+Linux on 25.0.5 under the default `jdk-match`; only the verdict of a module's `src/guard` suite, code
 that may skip itself on one operating system, also names the OS. A remote
 cache keeps one record per key, JDK and target, written once. A test JVM runs in a fixed locale and time zone (`en-US` and `UTC`
 unless the module's `[test] locale` or `[test] timezone` says otherwise,

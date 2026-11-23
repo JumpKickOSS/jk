@@ -127,7 +127,11 @@ them: no javadoc or sources jar, fat jar, war or native image. `--guard`
 is one flag on every verb that builds through the test stage — `jk build`, `jk test`,
 `jk assemble`, `jk image`, `jk native`, `jk install`, `jk explain` — and it means the same
 thing on each: the guard lanes, the integration suite and the root's guard scripts. A lane is keyed to what it reads, so an unchanged input skips it and
-an edit re-runs only the lanes it can affect. The fixture proofs are keyed the same way: the
+an edit re-runs only the lanes it can affect. A module lane that runs a `src/guard` suite keeps two
+verdicts: one for the declared rules, keyed on the module, and one for the suite, keyed also on
+what the suite reads beyond the module (other modules, the tree's text, the manifests). An edit
+elsewhere in the tree re-runs the suite alone, and `jk explain` says `src/guard to run · N rules
+cached`. The fixture proofs are keyed the same way: the
 rules, the fixture files, the guard suites and the classes the fixtures compile against. A
 proof only reruns when one of those changes, and its cases run side by side.
 

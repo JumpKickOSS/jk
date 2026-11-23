@@ -146,9 +146,7 @@ final class GuardSteps {
                 ectx,
                 () -> GuardKeys.workspaceLaneTokens(g.root(), modules, GuardKeys.readsUnseenSources(rules(g).rules())),
                 ActionKey.qualifiedTaskId(TaskNames.GUARD_WORKSPACE, g.root()),
-                false,
-                List.of(),
-                null);
+                false);
         ctx.progress(1);
     }
 
@@ -198,7 +196,8 @@ final class GuardSteps {
                 () -> ctx.require(CLASSPATHS).main(),
                 () -> PlannerTest.tagClasspath(ctx),
                 RuleSet.EMPTY);
-        // ---- the module's src/guard suite, if compiled: its guards join the lane's rules
+        // ---- the module's src/guard suite, if compiled: its guards are judged beside the
+        // lane's declared rules, under a verdict of their own
         Path guardClasses = ctx.require(MODULE).layout().guardClassesDir();
         List<Rule> suiteRules = List.of();
         Evaluation withSuite = null;
@@ -276,20 +275,20 @@ final class GuardSteps {
         }
         String facts = main.bodyDigest();
         String testFacts = test == null ? null : test.bodyDigest();
-        List<String> tokens = GuardKeys.moduleLaneTokens(module, facts, moduleDir, indexTests, testFacts, suiteTokens);
+        List<String> tokens = GuardKeys.moduleLaneTokens(module, facts, moduleDir, indexTests, testFacts, List.of());
+        String taskId = ActionKey.qualifiedTaskId(TaskNames.GUARD, moduleDir);
         // A module that compiled nothing (a resources-only module) has no site for any
         // bytecode rule: that is not blindness, it is an empty population. Record the
         // clean verdict so the forecast stops entering the module for its lane.
-        executeLane(
-                ctx,
-                env,
-                Lane.MODULE,
-                ectx,
-                () -> tokens,
-                ActionKey.qualifiedTaskId(TaskNames.GUARD, moduleDir),
-                main.classes() == 0 && suiteRules.isEmpty(),
-                suiteRules,
-                withSuite);
+        boolean noClasses = main.classes() == 0;
+        if (withSuite == null || suiteRules.isEmpty()) {
+            executeLane(ctx, env, Lane.MODULE, ectx, () -> tokens, taskId, noClasses);
+        } else {
+            List<String> withSuiteTokens = new ArrayList<>(tokens);
+            withSuiteTokens.addAll(suiteTokens);
+            executeModuleLane(
+                    ctx, env, ectx, () -> tokens, () -> withSuiteTokens, taskId, noClasses, suiteRules, withSuite);
+        }
         ctx.progress(1);
     }
 
@@ -323,9 +322,7 @@ final class GuardSteps {
                 ectx,
                 () -> tokens,
                 ActionKey.qualifiedTaskId(TaskNames.GUARD_MODEL, g.root()),
-                false,
-                List.of(),
-                null);
+                false);
         ctx.progress(1);
     }
 
@@ -398,15 +395,7 @@ final class GuardSteps {
                 g.root(), ctx.get(MODULE).map(ModuleIdentity::project).orElse(null));
         EvalContext ectx = new EvalContext(Lane.TREE, g.root(), "", null, modules, noFacts(), () -> null, List::of);
         executeLane(
-                ctx,
-                env,
-                Lane.TREE,
-                ectx,
-                tokens,
-                ActionKey.qualifiedTaskId(TaskNames.GUARD_TREE, g.root()),
-                false,
-                List.of(),
-                null);
+                ctx, env, Lane.TREE, ectx, tokens, ActionKey.qualifiedTaskId(TaskNames.GUARD_TREE, g.root()), false);
         ctx.progress(1);
     }
 
