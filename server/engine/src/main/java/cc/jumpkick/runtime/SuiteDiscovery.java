@@ -118,7 +118,8 @@ final class SuiteDiscovery {
 
         /**
          * Keep each class's record of this run ({@link TestClassRecording}) once it settles: what the
-         * classes are keyed on folds in the inputs settling decides.
+         * classes are keyed on, the stamp's tokens ({@code stampExtras}) among it, folds in the inputs
+         * settling decides.
          */
         void recordClasses(
                 TestClassLedger ledger,
@@ -127,7 +128,7 @@ final class SuiteDiscovery {
                 Path mainClasses,
                 List<Path> runtimeCp,
                 @Nullable Path javaHome,
-                List<String> stampExtras,
+                TestClassRecording.StampExtras stampExtras,
                 List<Path> resourceDirs,
                 @Nullable String stampKey) {
             classes.set(new TestClassRecording.Pending(

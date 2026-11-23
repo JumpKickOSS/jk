@@ -62,8 +62,11 @@ final class TestClassRecording {
 
     /**
      * A suite's classes to record once its run has settled: everything but the run's discovered
-     * inputs, which settling decides. Of what the suite's stamp keys ({@code keyed}), the worker
-     * jars ({@code workerJars}) are no class's alone: a class that read one holds it as a code file.
+     * inputs, which settling decides. The stamp's tokens ({@code stampExtras}) are read then too, as
+     * the next run's stamp reads them: they name each program the suite was found to start, and a
+     * class keyed before settling would stand on no identity for a program first seen in this run.
+     * Of what the suite's stamp keys ({@code keyed}), the worker jars ({@code workerJars}) are no
+     * class's alone: a class that read one holds it as a code file.
      */
     record Pending(
             Path moduleDir,
@@ -76,7 +79,7 @@ final class TestClassRecording {
             Path mainClasses,
             List<Path> runtimeCp,
             @Nullable Path javaHome,
-            List<String> stampExtras,
+            StampExtras stampExtras,
             List<Path> resourceDirs,
             @Nullable String stampKey) {
 
@@ -149,7 +152,8 @@ final class TestClassRecording {
                     done(started, attributedMs, seen, null);
                     return;
                 }
-                String suitePart = ClassKeys.suitePart(stampExtras, external, resourceDirs);
+                List<String> extras = stampExtras.read();
+                String suitePart = ClassKeys.suitePart(extras, external, resourceDirs);
                 ClassKeys.Observed pooledBefore = ClassShadow.pooledOf(previous);
                 ClassKeys.Observed pooledNow = ClassShadow.observed(seen.pooled(), workspace);
                 ClassShadow shadow;
@@ -162,7 +166,7 @@ final class TestClassRecording {
                             workspace,
                             pooledBefore,
                             pooledNow,
-                            ClassKeys.programs(stampExtras),
+                            ClassKeys.programs(extras),
                             readsBefore,
                             readsAfter,
                             SuiteCodeFiles.since(previous, workspace),
@@ -191,6 +195,12 @@ final class TestClassRecording {
                     + (Clock.SYSTEM.nanos() - started) / 1_000_000 + " ms in all"
                     + (shadow == null ? "" : "; " + shadow.wouldRun() + " would run"));
         }
+    }
+
+    /** The stamp's tokens as they stand when read ({@link TestStampInputs#extras}). */
+    @FunctionalInterface
+    interface StampExtras {
+        List<String> read() throws IOException;
     }
 
     /**

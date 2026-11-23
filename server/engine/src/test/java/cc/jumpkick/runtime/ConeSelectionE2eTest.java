@@ -203,17 +203,14 @@ class ConeSelectionE2eTest {
                 .as("no class has a record yet")
                 .isEqualTo(2);
 
-        // The first records were keyed before the suite was known to start sh.
+        // The first records are keyed once the run found the sh the suite starts.
         Files.writeString(data, "two");
-        assertThat(build(m, cache)).isEqualTo(TaskStatus.SUCCESS);
-
-        Files.writeString(data, "three");
         assertThat(build(m, cache)).isEqualTo(TaskStatus.SUCCESS);
         assertThat(Jsonl.strArray(last(m), "wouldRunClasses"))
                 .as("the class that read the file runs; the one keyed by its module and sh replays")
                 .containsExactly("demo.ReadsTest");
 
-        Files.writeString(data, "four");
+        Files.writeString(data, "three");
         assertThat(build(m, cache)).isEqualTo(TaskStatus.SUCCESS);
         assertThat(Jsonl.strArray(last(m), "wouldRunClasses"))
                 .as("the run that left ShellTest out still keys the sh it starts")

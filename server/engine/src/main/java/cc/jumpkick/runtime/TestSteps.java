@@ -424,7 +424,7 @@ final class TestSteps {
                 mainClasses(ctx),
                 runtimeCp,
                 ctx.get(JAVA_HOME).orElse(null),
-                stamp.extras(),
+                stamp::extras,
                 ctx.get(COMPILED_TESTS).map(CompiledTests::resourceDirs).orElse(List.of()),
                 stampKey);
     }
