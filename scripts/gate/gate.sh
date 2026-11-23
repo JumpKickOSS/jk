@@ -4,7 +4,9 @@
 # tests is the tip's and run the shell fixtures. Both start with the reinstall without tests
 # (`jk install -S`), so every test they run runs under the tip's own engine: test verdicts are keyed
 # by the engine that ran them, so a change to the engine reruns every suite in the gate that lands
-# it, and the gate after it reuses them.
+# it, and the gate after it reuses them. The install that runs tests after it, under the engine it
+# installed, restores the native client the reinstall linked: the log's `NATIVE_LINKS
+# reinstall=<n> install=<n>` line counts the native images each of the two linked.
 #
 # The Full tier (GATE_TIER=full, the default): after the reinstall, `jk install -g -c` (the fast
 # tier with the gated tiers, run once) under a freshly started engine, the docs suite (`jk test -s
@@ -104,6 +106,19 @@
     bash scripts/gate/flaky.sh ran "$1" "$2" 2>/dev/null || return 0
     bash scripts/gate/flaky.sh passed "$1" 2>/dev/null | sed 's/$/ passed on the re-run/; s/^/FLAKY /' >>"$L"
   }
+  # native_links <since>: how many native images the `jk install` that began at or after <since>
+  # (epoch seconds) linked rather than restored, read from its transcript. An install that had
+  # nothing to do keeps no transcript, and `jk results` prints an earlier run's: it linked none.
+  native_links() {
+    local c
+    c="$(jk results -d 2>/dev/null </dev/null | jq -nR --argjson since "$(($1 * 1000))" '
+      [inputs | fromjson? // empty] as $e
+      | ($e | map(select(.type == "session-start")) | .[0]) as $s
+      | if $s == null or $s.command != "install" or ($s.ts // 0) < $since then 0
+        else $e | map(select(.type == "task-finish" and .task == "native-image" and .status == "SUCCESS")) | length
+        end' 2>/dev/null)"
+    echo "${c:-0}"
+  }
   # The FAIL/T/E lines of the pre-run log, then the gate stops red.
   pre_red() { noansi "$D/g$n-pre.log" | grep -aE "^(FAIL|T |E )" | tail -8 >>"$L"; red "RED (pre)"; }
 
@@ -181,7 +196,9 @@
   # The reinstall without tests, first: a change to the engine changes the stamp of every module's
   # test run, so tests run before it would run under the previous engine and leave verdicts that the
   # next gate, under this one, could not reuse. Then stop the engine the steps above ran on, so it
-  # cannot serve the tests; the next jk starts a fresh one from the jar just installed.
+  # cannot serve the tests; the next jk starts a fresh one from the jar just installed. The install
+  # after it restores the native client the reinstall linked: NATIVE_LINKS counts each one's links.
+  since="$(date +%s)"
   jk install -S >"$D/g$n-reinstall.log" 2>&1
   m=$?
   echo "REINSTALL_EXIT=$m $(date +%H:%M:%S)" >>"$L"
@@ -189,6 +206,7 @@
     noansi "$D/g$n-reinstall.log" | grep -vE '^\s*$' | tail -20 >>"$L"
     red "RED (reinstall)"
   fi
+  linked="$(native_links "$since")"
   jk engine stop >/dev/null 2>&1
   quarantine=1
   rm -f "$D/g$n-quarantine.toml"
@@ -227,9 +245,11 @@
     }
     # The one install that runs tests: every module's fast tier under the engine just installed,
     # then the reinstall, which installs that same engine again.
+    since="$(date +%s)"
     tested install install -c
     m=$e
     echo "INSTALL_EXIT=$m $(date +%H:%M:%S)" >>"$L"
+    echo "NATIVE_LINKS reinstall=$linked install=$(native_links "$since")" >>"$L"
     [ "$m" -eq 0 ] || red "RED (install)"
     # The integration runs below start a fresh engine from the jar just installed.
     jk engine stop >/dev/null 2>&1
@@ -270,9 +290,11 @@
     ts=$e
     echo "TREE_SUITE_EXIT=$ts $(date +%H:%M:%S)" >>"$L"
   else
+    since="$(date +%s)"
     jk install -g -c >"$D/g$n-snapshot.log" 2>&1
     s=$?
     echo "PUSHGATE_EXIT=$s $(date +%H:%M:%S)" >>"$L"
+    echo "NATIVE_LINKS reinstall=$linked install=$(native_links "$since")" >>"$L"
     [ "$s" -ne 0 ] && noansi "$D/g$n-snapshot.log" | grep -aE "FAILED |OutOfMemory" >>"$L"
     noansi "$D/g$n-snapshot.log" | grep -E "^(FAIL|T |OK|E )" | tail -8 >>"$L"
     # A red `jk install -g` runs once more under the same inputs, which runs only the classes that

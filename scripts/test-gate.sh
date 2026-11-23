@@ -3,7 +3,9 @@
 # stand-in `jk`: green on a clean tip, one install that runs tests (the fast tier once, under the
 # engine the reinstall before it installed), a push gate red in a class that passes when run once
 # more green and naming the class, twice in a row, red when the class fails again or the first run
-# was red outside a test class, red at the reinstall when it fails, and refused on a dirty checkout. A class the stand-in quarantines
+# was red outside a test class, red at the reinstall when it fails, and refused on a dirty checkout.
+# Each tier logs how many native images the reinstall and the install after it linked, and an
+# install that kept no transcript linked none. A class the stand-in quarantines
 # leaves the checkout clean, gets a ticket, and goes to a stand-in merge queue in the quarantine
 # file with the ticket's id; it is not filed twice, a closed ticket takes its class out, an entry
 # with no ticket gets one, and a class that cannot get a ticket is not submitted. Last the Queue
@@ -26,7 +28,7 @@ set -euo pipefail
 # each case here is written against. Neither the settings nor the stand-ins' switches carry in.
 unset "${!GATE_@}" "${!FLAKY_@}" "${!PRE_@}" POST_SCRIPTS FAIL_PUSHGATE FAIL_REINSTALL FAIL_INTEG \
   FAIL_SLOW FAIL_DOCS FAIL_INTEG_ONCE FAIL_INSTALL_ONCE RESULTS_FIRST RERUN_JSONL RESULTS_RUN JK_CALLS KA_STATE FAIL_SCOREBOARD \
-  JK_CACHE_DIR JK_QUEUE_REMOTE BRANCH_TIER_BASE QUARANTINE_ADD KA_FAIL
+  JK_CACHE_DIR JK_QUEUE_REMOTE BRANCH_TIER_BASE QUARANTINE_ADD KA_FAIL NATIVE_LINKED NATIVE_NO_TRANSCRIPT
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/jk-gate.XXXXXX")"
@@ -146,10 +148,23 @@ case "$1" in
   --version) echo "jk 0.0.0" ;;
   engine) [[ "${2:-}" == status ]] && echo "Version  0.0.0 (commit $(git rev-parse --short=12 HEAD))" ;;
   results)
+    # -d: the last install's transcript, which linked the native client when its arguments match
+    # NATIVE_LINKED and restored it otherwise. One matching NATIVE_NO_TRANSCRIPT kept none, so the
+    # transcript is an earlier run's, begun long before.
+    if [[ "${2:-}" == -d ]]; then
+      last="$(grep '^install' "$JK_CALLS" | tail -1)"
+      ts="$(($(date +%s) * 1000))"
+      [[ -n "${NATIVE_NO_TRANSCRIPT:-}" && "$last" =~ $NATIVE_NO_TRANSCRIPT ]] && ts=1
+      status=SKIPPED
+      [[ -n "${NATIVE_LINKED:-}" && "$last" =~ $NATIVE_LINKED ]] && status=SUCCESS
+      echo "{\"schema\":1,\"ts\":$ts,\"type\":\"session-start\",\"command\":\"install\"}"
+      echo "{\"schema\":1,\"type\":\"task-finish\",\"task\":\"native-image\",\"status\":\"$status\",\"module\":\"m:cli\"}"
+      exit 0
+    fi
     # The run just made, as its session-start names it; RESULTS_RUN names another, as a jk that
     # keeps no transcript of that run prints the one before it.
     t="$RERUN_JSONL"
-    [[ -n "${RESULTS_FIRST:-}" && "$(grep -c '^results' "$JK_CALLS")" -eq 1 ]] && t="$RESULTS_FIRST"
+    [[ -n "${RESULTS_FIRST:-}" && "$(grep -c '^results -O' "$JK_CALLS")" -eq 1 ]] && t="$RESULTS_FIRST"
     ran="${RESULTS_RUN:-$(grep -vE '^(results|engine|--version)' "$JK_CALLS" | tail -1 | cut -d' ' -f1)}"
     echo "{\"schema\":1,\"type\":\"session-start\",\"command\":\"$ran\"}"
     grep -v '"type":"session-start"' "$t" || true
@@ -224,6 +239,15 @@ $want"
 grep -q '^FLAKY the quarantine on .* is current' "$WORK/logs/integ-gate-1.log" || fail "the gate did not review the quarantine: $(cat "$WORK/logs/integ-gate-1.log")"
 if grep -q -- '-s slow' "$WORK/calls-1"; then fail "a Full tier with no base ran the slow tier: $(cat "$WORK/calls-1")"; fi
 grep -qx 'test -s docs -c --no-ansi' "$WORK/calls-1" || fail "the Full tier did not run the docs suite alone: $(cat "$WORK/calls-1")"
+# The native client: linked by the reinstall alone, and the log says so; linked by both installs,
+# and the log shows it twice; and an install that kept no transcript is not read as linking it.
+grep -qx 'NATIVE_LINKS reinstall=0 install=0' "$WORK/logs/integ-gate-1.log" || fail "a gate that linked nothing logged: $(grep NATIVE "$WORK/logs/integ-gate-1.log")"
+for c in '42 -S 1 0' '43 install 1 1' '44 install 1 0 -g'; do
+  read -r g linked r i none <<<"$c"
+  gate "$g" NATIVE_LINKED="$linked" NATIVE_NO_TRANSCRIPT="${none:-}"
+  grep -qx "NATIVE_LINKS reinstall=$r install=$i" "$WORK/logs/integ-gate-$g.log" ||
+    fail "gate $g logged $(grep NATIVE "$WORK/logs/integ-gate-$g.log"), want reinstall=$r install=$i"
+done
 
 # Red in a class that passes on the re-run: green, naming the class; and so again the next gate.
 for g in 2 36; do
@@ -395,6 +419,8 @@ $got
 want:
 $want"
 grep -q '^CHANGED_MODULES since .*: mod/a mod/a/packs/p' "$WORK/logs/integ-gate-5.log" || fail "the log does not name the changed members"
+gate 45 GATE_TIER=queue GATE_BASE="$qbase" NATIVE_LINKED=-S
+grep -qx 'NATIVE_LINKS reinstall=1 install=0' "$WORK/logs/integ-gate-45.log" || fail "the Queue tier logged: $(grep NATIVE "$WORK/logs/integ-gate-45.log")"
 if grep -q '^RELEASE_SUITE_EXIT' "$WORK/logs/integ-gate-5.log"; then fail "the Queue tier ran the release suite"; fi
 
 # The reinstall red: the gate stops there, and no test ran under the previous engine.
@@ -539,4 +565,4 @@ if [[ -z "${TEST_GATE_NESTED:-}" ]]; then
     fail "under a Queue-tier gate's environment: $(cat "$WORK/nested.log")"
 fi
 
-echo "test-gate: ok (33 gate runs, 5 of them quarantining; again under a gate's environment)"
+echo "test-gate: ok (37 gate runs, 5 of them quarantining; again under a gate's environment)"
