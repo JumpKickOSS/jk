@@ -71,8 +71,11 @@ import org.jspecify.annotations.Nullable;
  * different homes side by side, together stay inside them. They lease against one budget and one
  * JVM cap, the ones the engine that was there first recorded. An engine started inside another
  * engine's worker, as a test's engine is inside a test JVM, shares the {@linkplain LeaseScope#NESTED
- * inner engines'} file instead: that worker is charged at its whole tree's resident set. A ledger
- * that joins nothing, as in a test JVM, counts only its own leases against its own limits.
+ * inner engines'} file instead: that worker is charged at its whole tree's resident set, and its
+ * line may stand still only {@link LeaseScope#NESTED_WAIT_AT_MOST}: the test that drives it stops
+ * at a deadline of its own, and a lease that gives up first puts who held the memory in that test's
+ * failure instead of a silent hang. A ledger that joins nothing, as in a test JVM, counts only its
+ * own leases against its own limits.
  */
 public final class WorkerLeases {
 
@@ -142,7 +145,8 @@ public final class WorkerLeases {
      * calls this, before it forks a worker; a test JVM's ledger stays its own.
      */
     public static void shareHost(Path engineDir) {
-        PROCESS.shareHost(HostLeases.forThisProcess(LeaseScope.dir(engineDir)));
+        LeaseScope.Shared shared = LeaseScope.of(engineDir);
+        PROCESS.waitAtMost(shared.waitAtMost()).shareHost(HostLeases.forThisProcess(shared.dir()));
     }
 
     /** Test seam: {@link #engine()} answers {@code ledger}, or this process's own when {@code null}. */

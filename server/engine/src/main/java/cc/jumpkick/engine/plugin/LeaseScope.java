@@ -14,6 +14,7 @@ import java.nio.file.Path;
 import java.nio.file.attribute.PosixFileAttributeView;
 import java.nio.file.attribute.PosixFileAttributes;
 import java.nio.file.attribute.PosixFilePermission;
+import java.time.Duration;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
@@ -53,12 +54,32 @@ final class LeaseScope {
     /** The directory under a budget's where the engines inside its engines' workers share their leases. */
     static final String NESTED = "nested";
 
-    /** The directory this engine's leases are shared in; {@code engineDir} when they are its own. */
-    static Path dir(Path engineDir) {
+    /**
+     * How long the line of an engine inside another engine's worker may stand still before a waiting
+     * lease fails. Such an engine is a test's, and an integration method stops at 5m: the build
+     * before the fork has to fit under that too, and a lease that gives up first names who held the
+     * memory in the test's failure, where a longer wait shows only the test's own timeout.
+     */
+    static final Duration NESTED_WAIT_AT_MOST = Duration.ofMinutes(2);
+
+    /**
+     * Where this engine's leases are shared: {@code dir}, which is {@code engineDir} when they are its
+     * own, and whether it runs inside a worker of another engine ({@code nested}).
+     */
+    record Shared(Path dir, boolean nested) {
+
+        /** How long this engine's line may stand still before a waiting lease fails. */
+        Duration waitAtMost() {
+            return nested ? NESTED_WAIT_AT_MOST : WorkerLeases.WAIT_AT_MOST;
+        }
+    }
+
+    /** Where this engine's leases are shared; in {@code engineDir} when they are its own. */
+    static Shared of(Path engineDir) {
         Path leases = HostTemp.dir().resolve(userDir(System.getProperty("user.name")));
         Path inner = innerOf(leases, ancestry(ProcessHandle.current()));
         Path shared = inner != null ? inner : leases.resolve(budget(OwnCgroup.HOST, Os.isLinux()));
-        return usable(shared, engineDir);
+        return new Shared(usable(shared, engineDir), inner != null);
     }
 
     /**

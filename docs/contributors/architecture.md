@@ -65,7 +65,8 @@ How JumpKick is structured today. For day-to-day usage see [user documentation](
   every engine of that budget, whatever its home, except one started inside another recorded engine's
   worker (that engine charges the worker's whole tree; every such inner engine of the budget shares
   `nested/worker-leases` below it instead, so the inner engines of several workers lease from one
-  total), records its budget, JVM cap, charged bytes, running JVMs,
+  total, and its line may stand still two minutes rather than ten, so a starved test engine fails
+  naming who holds the memory before its test's 5m timeout), records its budget, JVM cap, charged bytes, running JVMs,
   queued leases and worker pids, each grant is decided against the sums (made under the ledger's
   lock on the last reading, it stands only once a fresh reading taken under the file lock still
   admits it, its line written before that lock is let go; any other change to the line is written

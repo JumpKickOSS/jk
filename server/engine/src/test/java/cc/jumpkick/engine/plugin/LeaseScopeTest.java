@@ -10,6 +10,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFileAttributeView;
 import java.nio.file.attribute.PosixFilePermissions;
+import java.time.Duration;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -180,6 +181,18 @@ class LeaseScopeTest {
 
         record(shared, new HostLeases.Owner(Integer.MAX_VALUE - 1L, 1), self.pid() + ":" + self.startedAtMillis());
         assertThat(LeaseScope.innerOf(leases, ancestors)).isNull();
+    }
+
+    /**
+     * A test's engine waits less than its test does: an integration method stops at 5m, so a lease
+     * that gives up first puts who held the memory in the failure, with room for the build before it.
+     * An engine of the host keeps the ten-minute line.
+     */
+    @Test
+    void an_engine_inside_a_worker_gives_up_its_lease_well_inside_an_integration_method_s_timeout() {
+        Duration nested = new LeaseScope.Shared(root, true).waitAtMost();
+        assertThat(nested).isLessThanOrEqualTo(Duration.ofMinutes(5).dividedBy(2));
+        assertThat(new LeaseScope.Shared(root, false).waitAtMost()).isEqualTo(WorkerLeases.WAIT_AT_MOST);
     }
 
     @Test
