@@ -27,9 +27,18 @@ if [[ ! -d "$DIR" ]]; then
   echo "refresh: not a directory: $DIR" >&2
   exit 2
 fi
-for tool in curl git python3 openssl; do
+for tool in curl git openssl; do
   command -v "$tool" >/dev/null 2>&1 || { echo "refresh: $tool is required" >&2; exit 2; }
 done
+# The first python3 on PATH may predate tomllib (macOS ships 3.9); take the first one that has it.
+PYTHON=
+for candidate in python3 python3.14 python3.13 python3.12 python3.11; do
+  if "$candidate" -c 'import tomllib' >/dev/null 2>&1; then
+    PYTHON="$candidate"
+    break
+  fi
+done
+[[ -n "$PYTHON" ]] || { echo "refresh: Python 3.11 or newer is required" >&2; exit 2; }
 
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/jk-updates-refresh.XXXXXX")"
 trap 'rm -rf "$WORK"' EXIT
@@ -64,14 +73,14 @@ verifies() {
 }
 
 if fetch "$LIBRARIES_URL" "$WORK/libraries.toml" \
-    && python3 -c 'import sys, tomllib; tomllib.load(open(sys.argv[1], "rb"))' "$WORK/libraries.toml" 2>/dev/null; then
+    && "$PYTHON" -c 'import sys, tomllib; tomllib.load(open(sys.argv[1], "rb"))' "$WORK/libraries.toml" 2>/dev/null; then
   keep libraries.toml "$WORK/libraries.toml"
 else
   miss "libraries.toml: $LIBRARIES_URL did not serve a TOML registry"
 fi
 
 if fetch "$JDKS_URL" "$WORK/jdks.json" \
-    && python3 -c 'import json, sys; sys.exit(0 if isinstance(json.load(open(sys.argv[1])).get("jdks"), list) else 1)' \
+    && "$PYTHON" -c 'import json, sys; sys.exit(0 if isinstance(json.load(open(sys.argv[1])).get("jdks"), list) else 1)' \
       "$WORK/jdks.json" 2>/dev/null; then
   keep jdks.json "$WORK/jdks.json"
 else
@@ -107,7 +116,7 @@ else
 fi
 
 # pins.json keeps the pin of each source that failed.
-python3 - "$DIR/pins.json" "$WORK/pins.json" "$templates" "$release" "$sums_sha" <<'PY'
+"$PYTHON" - "$DIR/pins.json" "$WORK/pins.json" "$templates" "$release" "$sums_sha" <<'PY'
 import json, os, sys
 
 held, out, templates, release, sums_sha = sys.argv[1:6]

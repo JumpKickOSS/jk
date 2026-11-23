@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Fixture test for the jk-updates repository's scripts (hosting/jk-updates/scripts), with a
 # throwaway key and local sources: refresh pins the templates revision and a release whose pointer
-# and SHA256SUMS verify, and keeps the pin when they do not; assemble signs a manifest the key
-# verifies, signs nothing when nothing changed, refuses a changed price table or savings rates file
+# and SHA256SUMS verify, keeps the pin when they do not, and takes the first Python with tomllib;
+# assemble signs a manifest the key verifies, signs nothing when nothing changed, refuses a changed price table or savings rates file
 # whose published date did not move forward, a rates file with no rates, a manifest older than the one held, a JDK file that is not the feed and a
 # key that is not the release key; verify-served passes the served copy and fails a stale or
 # tampered one. The trusted key there is the one the installers carry.
@@ -89,7 +89,31 @@ cat >"$REPO/rates.json" <<'EOF'
 }
 EOF
 
-passes "a refresh from sources that answer" bash "$UPDATES/scripts/refresh.sh" "$REPO"
+# Stand-ins for a Python that predates tomllib (macOS ships 3.9): one shadows python3 and passes
+# everything else to a real 3.11+, the others shadow every interpreter the scripts try.
+real_python=
+for candidate in python3 python3.14 python3.13 python3.12 python3.11; do
+  if "$candidate" -c 'import tomllib' >/dev/null 2>&1; then
+    real_python="$(command -v "$candidate")"
+    break
+  fi
+done
+[[ -n "$real_python" ]] || fail "this test needs Python 3.11 or newer"
+mkdir -p "$WORK/old-python3" "$WORK/old-pythons"
+old_python() { # path
+  printf '#!/bin/sh\ncase "$*" in *tomllib*) echo "No module named tomllib" >&2; exit 1 ;; esac\nexec %s "$@"\n' \
+    "$real_python" >"$1"
+  chmod +x "$1"
+}
+old_python "$WORK/old-python3/python3"
+for candidate in python3 python3.14 python3.13 python3.12 python3.11; do old_python "$WORK/old-pythons/$candidate"; done
+
+refuses_naming "a refresh with no Python that has tomllib" "Python 3.11 or newer is required" \
+  env PATH="$WORK/old-pythons:$PATH" bash "$UPDATES/scripts/refresh.sh" "$REPO"
+[[ ! -e "$REPO/pins.json" ]] || fail "a refresh with no usable Python wrote pins.json"
+
+passes "a refresh from sources that answer, past a first python3 with no tomllib" \
+  env PATH="$WORK/old-python3:$PATH" bash "$UPDATES/scripts/refresh.sh" "$REPO"
 cmp -s "$SRC/libraries.toml" "$REPO/libraries.toml" || fail "refresh did not copy the registry"
 cmp -s "$SRC/jdks.json" "$REPO/jdks.json" || fail "refresh did not copy the JDK feed"
 [[ "$(field "$REPO/pins.json" templates)" == "$templates_commit" ]] || fail "refresh did not pin the templates revision"
