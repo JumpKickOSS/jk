@@ -641,7 +641,9 @@ When the budget is an override, the wait line names it:
 `waited 12s for memory (JK_WORKER_BUDGET_MB)`. A wait ends only when the line stands still:
 once no lease has been granted to anyone for ten minutes, a lease still queued fails its step,
 naming what it needed and who held the memory. A long wait in a line that keeps moving, such
-as two builds sharing the JVM slots, does not fail:
+as two builds sharing the JVM slots, does not fail, and neither does a wait for room its own
+build's working forks hold, such as one module's test JVM behind a sibling module's long suite:
+those forks free it as they end. When a lease does give up:
 `job #7 waited 600s for memory and gave up: needs 3.4 GiB (2.9 GiB free of the 13.5 GiB worker budget); held by job #3 6.1 GiB in 9 forks`.
 The ten minutes count from the last grant, so a lease that saw others granted first waited longer
 and says for how long the line stood still:

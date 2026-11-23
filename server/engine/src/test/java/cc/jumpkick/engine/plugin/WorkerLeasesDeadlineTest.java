@@ -135,6 +135,44 @@ class WorkerLeasesDeadlineTest {
         }
     }
 
+    /**
+     * A lease whose own build's working fork holds the room it needs waits past the deadline: that
+     * fork frees it as it ends, and giving up would only fail the build that holds the memory.
+     */
+    @Test
+    void a_lease_behind_its_own_builds_fork_outlasts_the_deadline() throws Exception {
+        WorkerLeases.Ledger ledger = ledger(() -> 4 * GIB, LITTLE_FREE).waitAtMost(Duration.ofMillis(200));
+        WorkerLeases.Grant sibling = ledger.acquireBytes(3 * GIB, true, 7L);
+        long started = System.nanoTime();
+        CompletableFuture<WorkerLeases.Grant> waiting = acquireBytes(ledger, 2 * GIB, 7L);
+        awaitQueued(ledger, 1);
+        Thread.sleep(700);
+        assertThat(waiting).as("still queued past the deadline").isNotDone();
+        sibling.close();
+        try (WorkerLeases.Grant grant = waiting.get(5, TimeUnit.SECONDS)) {
+            assertThat(grant.bytes()).isEqualTo(2 * GIB);
+            assertThat(System.nanoTime() - started).isGreaterThan(TimeUnit.MILLISECONDS.toNanos(700));
+        }
+    }
+
+    /**
+     * Its own build's forks hold too little of what it waits for: another build's holding would
+     * still block it with them gone, so the deadline stands.
+     */
+    @Test
+    void a_lease_its_own_forks_cannot_make_room_for_still_fails_at_its_deadline() throws Exception {
+        WorkerLeases.Ledger ledger = ledger(() -> 4 * GIB, LITTLE_FREE).waitAtMost(Duration.ofMillis(300));
+        try (WorkerLeases.Grant other = ledger.acquireBytes(3 * GIB, true, 3L);
+                WorkerLeases.Grant own = ledger.acquireBytes(GIB / 2, true, 7L)) {
+            Throwable cause = failure(acquireBytes(ledger, 2 * GIB, 7L), 5);
+            assertThat(cause).isInstanceOf(WorkerLeases.LeaseRefused.class);
+            assertThat(cause.getMessage())
+                    .startsWith("job #7 waited 0.3s for memory and gave up")
+                    .contains("held by job #3 3.0 GiB");
+            assertThat(ledger.snapshot().leasedBytes()).isEqualTo(other.bytes() + own.bytes());
+        }
+    }
+
     @Test
     void a_lease_granted_before_its_deadline_is_not_failed() throws Exception {
         WorkerLeases.Ledger ledger = ledger(() -> 4 * GIB, LITTLE_FREE).waitAtMost(Duration.ofSeconds(30));

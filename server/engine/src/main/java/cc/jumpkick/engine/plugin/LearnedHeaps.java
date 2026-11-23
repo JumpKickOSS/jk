@@ -134,7 +134,7 @@ public final class LearnedHeaps {
     public static long testCeiling() {
         long ram = testRamCeiling();
         long budget = budget();
-        long byBudget = budget > 0 ? WorkerLeases.clampXmx(budget, budget) : 0;
+        long byBudget = budget > 0 ? LeaseDemand.clampXmx(budget, budget) : 0;
         if (ram <= 0) return byBudget;
         if (byBudget <= 0) return ram;
         return Math.min(ram, byBudget);
@@ -418,7 +418,7 @@ public final class LearnedHeaps {
     /** {@code bytes} lowered so its lease fits {@code budgetBytes}; unchanged when there is no budget. */
     private static long fit(long bytes, long budgetBytes) {
         if (budgetBytes <= 0) return bytes;
-        long clamped = WorkerLeases.clampXmx(bytes, budgetBytes);
+        long clamped = LeaseDemand.clampXmx(bytes, budgetBytes);
         return clamped > 0 ? clamped : bytes;
     }
 

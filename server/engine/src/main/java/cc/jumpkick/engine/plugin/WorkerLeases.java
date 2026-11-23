@@ -41,7 +41,8 @@ import org.jspecify.annotations.Nullable;
  * keeps its flags and leases the whole budget. A pin past {@link #OVERBOOK_CAP_FACTOR} times the
  * budget is refused at once with {@link LeaseRefused}. A lease that does not fit yet waits, first in
  * line first, until the line stands still for {@link #WAIT_AT_MOST}, then fails naming what it
- * needed and who held it.
+ * needed and who held it. While working forks of its own request hold the room it needs, the line
+ * is not standing still: they free it as they end.
  * It may instead be granted past the budget while {@link OverbookSignals} say the host has room,
  * never past {@link #OVERBOOK_CAP_FACTOR} times the budget (less under {@code CI}); {@code
  * JK_OVERBOOK=0} turns that off. A running fork is never killed to make the room.
@@ -80,7 +81,10 @@ import org.jspecify.annotations.Nullable;
  */
 public final class WorkerLeases {
 
-    /** How long the line may stand still, no lease granted to anyone, before a waiting lease fails. */
+    /**
+     * How long the line may stand still, no lease granted to anyone and the room not held by the
+     * waiter's own working forks, before a waiting lease fails.
+     */
     public static final Duration WAIT_AT_MOST = Duration.ofMinutes(10);
 
     /** One mebibyte. */
@@ -164,30 +168,6 @@ public final class WorkerLeases {
     /** Lease of a JVM whose heap ceiling is {@code xmxBytes}. */
     public static long jvmLease(long xmxBytes) {
         return Math.max(0, xmxBytes) + overheadBytes(xmxBytes);
-    }
-
-    /**
-     * Largest {@code -Xmx}, not above {@code requested}, whose {@linkplain #jvmLease lease} fits in
-     * {@code capacity}. When even the overhead floor does not fit, the result is whatever heap the
-     * capacity can still launch; the caller leases at most {@code capacity}.
-     */
-    public static long clampXmx(long requested, long capacity) {
-        long ask = Math.max(0, requested);
-        if (capacity <= 0) return Math.min(ask == 0 ? MIN_XMX : ask, MIN_XMX);
-        if (ask > 0 && jvmLease(ask) <= capacity) return ask;
-        long byFraction = (long) (capacity / (1.0 + OVERHEAD_FRACTION));
-        long byFloor = capacity - OVERHEAD_FLOOR_BYTES;
-        long fit;
-        if (byFloor > 0 && overheadBytes(byFloor) == OVERHEAD_FLOOR_BYTES) fit = byFloor;
-        else fit = byFraction;
-        fit = (Math.max(0, fit) / MIB) * MIB;
-        if (fit < MIN_XMX || jvmLease(fit) > capacity) {
-            long shaved = (Math.max(MIB, capacity) / MIB) * MIB;
-            while (shaved > MIB && jvmLease(shaved) > capacity) shaved -= MIB;
-            fit = shaved;
-        }
-        if (ask > 0) fit = Math.min(ask, fit);
-        return Math.max(MIB, fit);
     }
 
     /** {@code 512 MiB} or {@code 1.5 GiB}. */
@@ -647,6 +627,7 @@ public final class WorkerLeases {
             }
             if (head && confirm(waiter)) return finish(waiter, 0, 0, 0);
             ForkWait wait = new ForkWait(waiter, requestId, waiter.scope, waiter.resident != null, arrived);
+            long ownForksHeld = Long.MIN_VALUE;
             try {
                 while (true) {
                     boolean granted;
@@ -667,9 +648,11 @@ public final class WorkerLeases {
                         granted = waiter.granted;
                         if (!granted) {
                             long now = Clock.SYSTEM.nanos();
-                            long still = now - Math.max(arrived, lastGrant);
+                            if (heldByItsOwnForks(waiter)) ownForksHeld = now;
+                            long since = Math.max(Math.max(arrived, lastGrant), ownForksHeld);
+                            long still = now - since;
                             long left = deadlineNanos - still;
-                            if (left <= 0) giveUp(waiter, now - arrived, lastGrant > arrived ? still : -1);
+                            if (left <= 0) giveUp(waiter, now - arrived, since > arrived ? still : -1);
                             else {
                                 refuseIfItNeverFits(waiter);
                                 JkThreads.waitManaged(
@@ -754,6 +737,13 @@ public final class WorkerLeases {
                     : "needs " + format(waiter.demand.bytes()) + " behind " + first.owner() + ", first in line, which "
                             + waitLine(first, budget, true);
             throw new LeaseRefused(waiter.owner() + " " + phrase + " and gave up: " + line);
+        }
+
+        /** Under the lock: {@link OwnForks#holdRoomFor} {@code waiter} on this ledger's line. */
+        private boolean heldByItsOwnForks(LeaseWaiter waiter) {
+            long cap = capacityBytes();
+            return OwnForks.holdRoomFor(
+                    waiter, held, cap - hostCharged(), cpuCap() - hostJvms(), ceiling(cap) - heaps());
         }
 
         /** Under the lock: grant {@code candidate} when it is the only waiter and it fits. */

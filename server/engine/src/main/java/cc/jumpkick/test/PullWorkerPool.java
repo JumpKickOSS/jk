@@ -149,6 +149,9 @@ final class PullWorkerPool {
         undispatched = List.copyOf(queue);
         boolean handlerFailed = shards.stream().anyMatch(s -> s.handlerFailure.get() != null);
         if (total == 0 && anyIncomplete && !handlerFailed) {
+            // No worker ran because none got its lease: the lease's own refusal is the whole story.
+            String unstarted = neverStarted(shards);
+            if (unstarted != null) throw new IOException(unstarted);
             // No test events but a worker died — the launcher failed before any test ran; what
             // the crashed worker(s) printed (the dropped stderr) is the evidence, and how the
             // first of them was started is the evidence when they printed nothing.
@@ -180,6 +183,7 @@ final class PullWorkerPool {
                         shard.workerId,
                         shard.exit,
                         shard.lastClass.get(),
+                        shard.unstarted.get(),
                         shard.crash.text(),
                         shard.handlerFailure.get()));
             }
@@ -192,6 +196,17 @@ final class PullWorkerPool {
             allFailures.add(shortfall);
         }
         return new TestSummary(total, succeeded, failed, skipped, classCount, allFailures, walls, shards.size());
+    }
+
+    /** Why the pool's workers never started, when every one that ended early was refused its lease; else null. */
+    private static @Nullable String neverStarted(List<Shard> shards) {
+        String why = null;
+        for (Shard shard : shards) {
+            if (!shard.incomplete()) continue;
+            if (shard.unstarted.get().isEmpty()) return null;
+            if (why == null) why = shard.unstarted.get();
+        }
+        return why;
     }
 
     /**
@@ -391,7 +406,14 @@ final class PullWorkerPool {
             listener.onUserOutput(workerId, Objects.requireNonNull(e.getMessage()));
             return WorkerExit.noWorker(-1);
         } catch (IOException e) {
-            listener.onUserOutput(workerId, "reader error: " + e.getMessage());
+            String why = Objects.requireNonNullElse(e.getMessage(), e.getClass().getSimpleName());
+            if (leaseRefused(e)) {
+                shard.unstarted.set(why);
+                listener.onUserOutput(workerId, why);
+            } else {
+                crash.add("reader error: " + why);
+                listener.onUserOutput(workerId, "reader error: " + why);
+            }
             return WorkerExit.noWorker(-1);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -406,6 +428,11 @@ final class PullWorkerPool {
         }
     }
 
+    /** Whether {@code e} is the starter's word that the worker's lease gave up, so no process ever started. */
+    static boolean leaseRefused(IOException e) {
+        return e.getCause() instanceof WorkerLeases.LeaseRefused;
+    }
+
     /** One worker JVM of a pool and what its driver thread leaves behind. */
     private static final class Shard {
         final int workerId;
@@ -415,6 +442,9 @@ final class PullWorkerPool {
         final AtomicBoolean done = new AtomicBoolean();
 
         final AtomicReference<String> lastClass = new AtomicReference<>("");
+        /** Why its process never started: the lease it waited for gave up; empty once it started. */
+        final AtomicReference<String> unstarted = new AtomicReference<>("");
+
         final AtomicReference<@Nullable RuntimeException> handlerFailure = new AtomicReference<>();
         final AtomicReference<List<String>> command = new AtomicReference<>(List.of());
         /** A worker whose thread never stored an exit (its body threw) is a death, not a clean 0. */

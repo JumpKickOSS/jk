@@ -147,7 +147,7 @@ class LearnedHeapsTest {
         assertThat(heaps.good(key)).isEqualTo(1024L << 20);
         long budget = WorkerLeases.engine().capacityBytes();
         assertThat(heaps.choose(project, "g:app", HeapScope.TEST, 25, 128L << 20))
-                .isEqualTo(Math.max(LearnedHeaps.size(300L << 20, budget), WorkerLeases.clampXmx(1024L << 20, budget)));
+                .isEqualTo(Math.max(LearnedHeaps.size(300L << 20, budget), LeaseDemand.clampXmx(1024L << 20, budget)));
         assertThat(Files.readString(heaps.file(project)))
                 .contains("g:app\ttest\t25\t" + (300L << 20) + "," + (256L << 20) + "\t" + (1024L << 20));
     }

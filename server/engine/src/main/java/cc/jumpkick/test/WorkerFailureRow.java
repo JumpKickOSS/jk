@@ -17,7 +17,8 @@ import org.jspecify.annotations.Nullable;
  * stack, not the exit code of a kill that says nothing. Every fork the launcher drives — the pull
  * pool's workers, the single fork a one-worker module takes, the list-only discovery fork — ends a
  * handler throw with this one row shape, so the same decoder bug reads the same way in every
- * summary. Any other early end — a non-zero exit, or an exit 0 before the parent said {@code
+ * summary. A worker whose lease gave up before its process started says so, with the lease's
+ * refusal. Any other early end — a non-zero exit, or an exit 0 before the parent said {@code
  * DONE} — names the worker and the last class it was dispatched, so a shortfall has an owner.
  */
 final class WorkerFailureRow {
@@ -32,13 +33,16 @@ final class WorkerFailureRow {
             int workerId,
             WorkerExit exit,
             String lastClass,
+            String unstarted,
             String output,
             @Nullable RuntimeException handler) {
         String dispatched = lastClass.isBlank() ? "" : " (last class: " + lastClass + ")";
         if (handler != null) return handlerRow(moduleLabel, "test protocol handler", dispatched, workerId, handler);
-        String why = exit.code() == 0
-                ? "test worker exited 0 mid-run" + dispatched + "; something called System.exit or Runtime.halt"
-                : "test worker " + exit.failure("exited " + exit.code() + " mid-run") + dispatched;
+        String why = !unstarted.isEmpty()
+                ? "test worker never started: " + unstarted
+                : exit.code() == 0
+                        ? "test worker exited 0 mid-run" + dispatched + "; something called System.exit or Runtime.halt"
+                        : "test worker " + exit.failure("exited " + exit.code() + " mid-run") + dispatched;
         return new TestFailureInfo(moduleLabel, "", lastClass, "(worker " + workerId + ")", "", why, output, workerId);
     }
 
@@ -48,7 +52,7 @@ final class WorkerFailureRow {
      * what fails the run; the exit code of the kill the parent asked for is not consulted.
      */
     static TestSummary singleFork(ResultAggregator aggregator, String moduleLabel, RuntimeException handler) {
-        TestFailureInfo row = of(moduleLabel, SINGLE_WORKER, WorkerExit.noWorker(-1), "", "", handler);
+        TestFailureInfo row = of(moduleLabel, SINGLE_WORKER, WorkerExit.noWorker(-1), "", "", "", handler);
         return aggregator.snapshot().plus(new TestSummary(1, 0, 1, 0, List.of(row)));
     }
 

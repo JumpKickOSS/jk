@@ -435,7 +435,7 @@ public final class JvmOptions {
         int n = Math.max(1, plan.parallelism());
         long xmx = Math.max(0, plan.xmxBytes());
         if (xmx <= 0 || WorkerLeases.jvmLease(xmx) > budget) {
-            xmx = WorkerLeases.clampXmx(xmx, budget);
+            xmx = LeaseDemand.clampXmx(xmx, budget);
             n = 1;
         }
         while (n > 1 && (long) n * WorkerLeases.jvmLease(xmx) > budget) n--;

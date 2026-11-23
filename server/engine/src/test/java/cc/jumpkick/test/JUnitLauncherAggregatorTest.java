@@ -8,6 +8,7 @@ import static org.assertj.core.api.Assertions.catchThrowableOfType;
 import cc.jumpkick.config.Request;
 import cc.jumpkick.engine.plugin.PluginProcess;
 import cc.jumpkick.engine.plugin.WorkerExit;
+import cc.jumpkick.engine.plugin.WorkerLeases;
 import cc.jumpkick.orchestrator.DiscoveryListing;
 import cc.jumpkick.orchestrator.ResultAggregator;
 import cc.jumpkick.orchestrator.SuiteReport;
@@ -17,10 +18,13 @@ import cc.jumpkick.plugin.protocol.JUnitUniqueIds;
 import cc.jumpkick.run.SessionCancel;
 import cc.jumpkick.run.TestFailureInfo;
 import cc.jumpkick.run.TestSummary;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
@@ -33,6 +37,8 @@ import org.junit.jupiter.api.io.TempDir;
  * event stream the workers emit; we feed it raw lines here rather than spinning up a real fork.
  */
 class JUnitLauncherAggregatorTest {
+
+    private static final long GIB = 1L << 30;
 
     private static final String PLAN_FINISHED = "{\"event\":\"plan_finished\",\"duration_ms\":100,\"failed\":false}";
 
@@ -457,7 +463,8 @@ class JUnitLauncherAggregatorTest {
                 () -> handler.accept("{\"event\":\"warning\",\"code\":\"jupiter-parallel\"}", convo));
         PluginProcess.HandlerFailure end = new PluginProcess.HandlerFailure(thrown);
 
-        TestFailureInfo row = WorkerFailureRow.of("m", 2, WorkerExit.noWorker(-1), lastClass.get(), "", end.handler());
+        TestFailureInfo row =
+                WorkerFailureRow.of("m", 2, WorkerExit.noWorker(-1), lastClass.get(), "", "", end.handler());
         assertThat(row.method()).isEqualTo("(test run)");
         assertThat(row.exceptionClass()).isEqualTo("java.lang.IllegalStateException");
         assertThat(row.message())
@@ -467,10 +474,39 @@ class JUnitLauncherAggregatorTest {
         assertThat(row.stack()).contains("IllegalStateException").contains("decoder choked");
         assertThat(row.worker()).isEqualTo(2);
 
-        TestFailureInfo died = WorkerFailureRow.of("m", 2, WorkerExit.noWorker(137), "com.acme.BTest", "killed", null);
+        TestFailureInfo died =
+                WorkerFailureRow.of("m", 2, WorkerExit.noWorker(137), "com.acme.BTest", "", "killed", null);
         assertThat(died.method()).isEqualTo("(worker 2)");
         assertThat(died.message()).isEqualTo("test worker exited 137 mid-run (last class: com.acme.BTest)");
         assertThat(died.stack()).isEqualTo("killed");
+    }
+
+    /**
+     * A pool worker whose lease gave up never had a process: its row carries the lease's refusal,
+     * which names what it needed and who held the memory, not an exit code nobody returned.
+     */
+    @Test
+    void a_pool_worker_whose_lease_gave_up_says_it_never_started() throws Exception {
+        WorkerLeases.Ledger ledger =
+                new WorkerLeases.Ledger(() -> GIB, () -> 8, id -> false).waitAtMost(Duration.ofMillis(50));
+        String why;
+        try (WorkerLeases.Grant held = ledger.acquireBytes(GIB, true, 3L)) {
+            WorkerLeases.LeaseRefused refused =
+                    catchThrowableOfType(WorkerLeases.LeaseRefused.class, () -> ledger.acquireBytes(GIB, true, 71L));
+            why = Objects.requireNonNull(refused.getMessage());
+            assertThat(PullWorkerPool.leaseRefused(new IOException(why, refused)))
+                    .isTrue();
+        }
+        assertThat(PullWorkerPool.leaseRefused(new IOException("Stream closed")))
+                .isFalse();
+
+        TestFailureInfo row = WorkerFailureRow.of("m", 1, WorkerExit.noWorker(-1), "", why, "", null);
+        assertThat(row.method()).isEqualTo("(worker 1)");
+        assertThat(row.message())
+                .isEqualTo("test worker never started: " + why)
+                .contains("job #71 waited")
+                .contains("held by job #3 1.0 GiB")
+                .doesNotContain("exited");
     }
 
     /**
@@ -503,7 +539,7 @@ class JUnitLauncherAggregatorTest {
         assertThat(done).isTrue();
         assertThat(sent).containsExactly("RUN com.acme.ATest", "DONE", "<eof>");
 
-        TestFailureInfo quit = WorkerFailureRow.of("m", 2, WorkerExit.noWorker(0), "com.acme.ATest", "", null);
+        TestFailureInfo quit = WorkerFailureRow.of("m", 2, WorkerExit.noWorker(0), "com.acme.ATest", "", "", null);
         assertThat(quit.method()).isEqualTo("(worker 2)");
         assertThat(quit.className()).isEqualTo("com.acme.ATest");
         assertThat(quit.message())
