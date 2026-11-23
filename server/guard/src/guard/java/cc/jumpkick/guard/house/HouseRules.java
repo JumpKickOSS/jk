@@ -145,17 +145,22 @@ final class HouseRules {
             banned.add("\"" + n + suffix + "\":\"" + n + "\"");
             banned.add("\"" + n + "\":\"" + n + suffix + "\"");
         }
+        String salt = "tool paths " + shortDigest(banned);
         long files = 0;
         for (String rel : text.files(MAIN_JAVA)) {
             if (rel.equals(JDK_FINGERPRINT)) continue;
             files++;
-            String code = code(text, rel).replace(" ", "");
-            for (String b : banned) {
-                int at = code.indexOf(b);
-                while (at >= 0) {
-                    v.add(new TextSite(rel, lineOf(code, at), b), "hand-built JDK tool path " + b);
-                    at = code.indexOf(b, at + b.length());
+            for (String site : text.perFile(rel, salt, r -> {
+                String code = code(text, r).replace(" ", "");
+                List<String> out = new ArrayList<>();
+                for (String b : banned) {
+                    for (int at = code.indexOf(b); at >= 0; at = code.indexOf(b, at + b.length()))
+                        out.add(lineOf(code, at) + "\t" + b);
                 }
+                return out;
+            })) {
+                String[] at = site.split("\t", 2);
+                v.add(new TextSite(rel, Integer.parseInt(at[0]), at[1]), "hand-built JDK tool path " + at[1]);
             }
         }
         v.population(files);
@@ -177,14 +182,17 @@ final class HouseRules {
         long files = 0;
         for (String rel : text.files(MAIN_JAVA)) {
             files++;
-            String code = text.blanked(rel, Blank.COMMENTS_AND_STRINGS);
-            Matcher m = VIRTUAL_STARTER.matcher(code);
-            while (m.find()) {
-                if (PIPE_READ.matcher(callArguments(code, m.end() - 1)).find()) {
-                    v.add(
-                            new TextSite(rel, lineOf(code, m.start()), m.group()),
-                            "reads a Process pipe on a virtual thread");
-                }
+            for (String site : text.perFile(rel, "virtual pipe reads", r -> {
+                String code = text.blanked(r, Blank.COMMENTS_AND_STRINGS);
+                List<String> out = new ArrayList<>();
+                Matcher m = VIRTUAL_STARTER.matcher(code);
+                while (m.find())
+                    if (PIPE_READ.matcher(callArguments(code, m.end() - 1)).find())
+                        out.add(lineOf(code, m.start()) + "\t" + m.group());
+                return out;
+            })) {
+                String[] at = site.split("\t", 2);
+                v.add(new TextSite(rel, Integer.parseInt(at[0]), at[1]), "reads a Process pipe on a virtual thread");
             }
         }
         v.population(files);
@@ -228,23 +236,31 @@ final class HouseRules {
         for (String rel : sources) {
             if (rel.equals(PROCESSES)) continue;
             files++;
-            String code = text.blanked(rel, Blank.COMMENTS_AND_STRINGS);
-            if (!PROCESS_TYPE.matcher(code).find()) continue;
-            Set<String> streams = new LinkedHashSet<>();
-            Matcher var = PIPE_STREAM_VAR.matcher(code);
-            while (var.find()) streams.add(var.group(1));
-            List<Pattern> reads = new ArrayList<>(List.of(PIPE_READ_CHAINED));
-            for (String s : streams) reads.add(Pattern.compile("\\b" + Pattern.quote(s) + READ_TO_END));
-            for (Pattern read : reads) {
-                Matcher m = read.matcher(code);
-                while (m.find()) {
-                    v.add(
-                            new TextSite(rel, lineOf(code, m.start()), m.group().strip()),
-                            "reads a Process pipe to its end outside Processes");
-                }
+            for (String site : text.perFile(rel, "pipe reads to end", r -> pipeReadsToEnd(text, r))) {
+                String[] at = site.split("\t", 2);
+                v.add(
+                        new TextSite(rel, Integer.parseInt(at[0]), at[1]),
+                        "reads a Process pipe to its end outside Processes");
             }
         }
         v.population(files);
+    }
+
+    /** Each read of a Process pipe to its end in {@code rel}, as "line TAB call". */
+    private static List<String> pipeReadsToEnd(Text text, String rel) {
+        String code = text.blanked(rel, Blank.COMMENTS_AND_STRINGS);
+        if (!PROCESS_TYPE.matcher(code).find()) return List.of();
+        Set<String> streams = new LinkedHashSet<>();
+        Matcher var = PIPE_STREAM_VAR.matcher(code);
+        while (var.find()) streams.add(var.group(1));
+        List<Pattern> reads = new ArrayList<>(List.of(PIPE_READ_CHAINED));
+        for (String s : streams) reads.add(Pattern.compile("\\b" + Pattern.quote(s) + READ_TO_END));
+        List<String> out = new ArrayList<>();
+        for (Pattern read : reads) {
+            Matcher m = read.matcher(code);
+            while (m.find()) out.add(lineOf(code, m.start()) + "\t" + m.group().strip());
+        }
+        return out;
     }
 
     @Guard(
@@ -292,23 +308,31 @@ final class HouseRules {
                             + ownerEscapes);
         }
         Pattern unicode = Pattern.compile(Pattern.quote(unicodeEscape), Pattern.CASE_INSENSITIVE);
-        Set<String> decodesJson = new LinkedHashSet<>(ownerEscapes);
+        Set<String> decodesJson = new TreeSet<>(ownerEscapes);
         decodesJson.remove("/");
+        // Each file is judged against the alphabet read from the owner, so the alphabet is the salt.
+        String salt = "codec " + shortDigest(List.of(unicodeEscape, String.join("", decodesJson)));
         long files = 0;
         for (String rel : text.files(MAIN_JAVA)) {
             if (JSON_CODEC_OWNERS.contains(rel)) continue;
             files++;
-            String code = code(text, rel);
-            Set<String> labels = caseLabelChars(code);
-            if (unicode.matcher(code).find()
-                    && labels.contains("\"")
-                    && JSON_OBJECT_LITERAL.matcher(code).find()) {
-                v.add(new TextSite(rel, 0, "json writer"), "assembles a JSON object with an escaper of its own");
-            }
-            int decoded = 0;
-            for (String l : labels) if (decodesJson.contains(l)) decoded++;
-            if (labels.contains("/") && decoded >= 4) {
-                v.add(new TextSite(rel, 0, "json reader"), "decodes JSON's escape alphabet itself");
+            for (String found : text.perFile(rel, salt, r -> {
+                String code = code(text, r);
+                Set<String> labels = caseLabelChars(code);
+                List<String> out = new ArrayList<>();
+                if (unicode.matcher(code).find()
+                        && labels.contains("\"")
+                        && JSON_OBJECT_LITERAL.matcher(code).find()) out.add("json writer");
+                int decoded = 0;
+                for (String l : labels) if (decodesJson.contains(l)) decoded++;
+                if (labels.contains("/") && decoded >= 4) out.add("json reader");
+                return out;
+            })) {
+                v.add(
+                        new TextSite(rel, 0, found),
+                        found.equals("json writer")
+                                ? "assembles a JSON object with an escaper of its own"
+                                : "decodes JSON's escape alphabet itself");
             }
         }
         v.population(files);
@@ -323,6 +347,27 @@ final class HouseRules {
         }
     }
 
+    private static final Pattern WIRE_PREFIX = Pattern.compile("\"(##JK[A-Z]+:)\"");
+    private static final Pattern CONFIG_READ =
+            Pattern.compile("\\.(?:string|stringOpt|bool|stringList|group|intValue)\\(\\s*\"([^\"]+)\"");
+
+    /** The {@code ##JK*:} wire prefixes {@code rel} spells as string literals, in order. */
+    private static List<String> wirePrefixes(Text text, String rel) {
+        return text.perFile(rel, "wire prefixes", r -> groups(WIRE_PREFIX, text.blanked(r, Blank.COMMENTS)));
+    }
+
+    /** The config keys {@code rel} reads by literal through a config accessor, in order. */
+    private static List<String> configReads(Text text, String rel) {
+        return text.perFile(rel, "config reads", r -> groups(CONFIG_READ, text.blanked(r, Blank.COMMENTS)));
+    }
+
+    private static List<String> groups(Pattern p, String code) {
+        List<String> out = new ArrayList<>();
+        Matcher m = p.matcher(code);
+        while (m.find()) out.add(m.group(1));
+        return out;
+    }
+
     @Guard(
             id = "plugin-family",
             why =
@@ -334,7 +379,6 @@ final class HouseRules {
         if (engine.size() < 350)
             throw new IllegalStateException("scanned " + engine.size()
                     + " engine Java files; measured against 425 — the walk stopped seeing server/*/src/main/java");
-        Pattern quotedPrefix = Pattern.compile("\"(##JK[A-Z]+:)\"");
         String variants = owner(text, "shared/jk-api/src/main/java/cc/jumpkick/model/Variants.java");
         Matcher bt =
                 Pattern.compile("String\\s+BUILD_TYPE\\s*=\\s*\"([^\"]+)\"").matcher(variants);
@@ -349,13 +393,11 @@ final class HouseRules {
                     "VariantApply no longer builds a \"variant.\" + dimension config key: the second injected shape is gone");
         String variantPrefix = vp.group(1);
         Map<String, Set<String>> enginePrefixes = new LinkedHashMap<>();
-        for (String rel : engine) {
-            Matcher m = quotedPrefix.matcher(text.blanked(rel, Blank.COMMENTS));
-            while (m.find())
+        for (String rel : engine)
+            for (String prefix : wirePrefixes(text, rel))
                 enginePrefixes
-                        .computeIfAbsent(m.group(1), k -> new LinkedHashSet<>())
+                        .computeIfAbsent(prefix, k -> new LinkedHashSet<>())
                         .add(rel);
-        }
         long plugins = 0;
         for (String module : model.modules()) {
             if (!module.startsWith("plugins/")) continue;
@@ -364,7 +406,7 @@ final class HouseRules {
             String manifest = module + "/jk.toml";
             if (declarativeOnly(text, module + "/jk-plugin.toml")) {
                 for (String rel : files)
-                    if (quotedPrefix.matcher(text.blanked(rel, Blank.COMMENTS)).find())
+                    if (!wirePrefixes(text, rel).isEmpty())
                         v.add(new TextSite(rel, 0, "prefix"), module + " has no [code] layer, so no wire prefix");
                 continue;
             }
@@ -375,12 +417,9 @@ final class HouseRules {
                 continue;
             }
             Map<String, Set<String>> declared = new TreeMap<>();
-            for (String rel : files) {
-                Matcher m = quotedPrefix.matcher(text.blanked(rel, Blank.COMMENTS));
-                while (m.find())
-                    declared.computeIfAbsent(m.group(1), k -> new LinkedHashSet<>())
-                            .add(rel);
-            }
+            for (String rel : files)
+                for (String prefix : wirePrefixes(text, rel))
+                    declared.computeIfAbsent(prefix, k -> new LinkedHashSet<>()).add(rel);
             if (declared.size() != 1) {
                 v.add(
                         new TextSite(manifest, 0, "prefixes " + declared.keySet()),
@@ -442,14 +481,9 @@ final class HouseRules {
                     continue;
                 }
                 Map<String, Set<String>> reads = new TreeMap<>();
-                Pattern accessor =
-                        Pattern.compile("\\.(?:string|stringOpt|bool|stringList|group|intValue)\\(\\s*\"([^\"]+)\"");
-                for (String rel : files) {
-                    Matcher m = accessor.matcher(text.blanked(rel, Blank.COMMENTS));
-                    while (m.find())
-                        reads.computeIfAbsent(m.group(1), k -> new LinkedHashSet<>())
-                                .add(rel);
-                }
+                for (String rel : files)
+                    for (String key : configReads(text, rel))
+                        reads.computeIfAbsent(key, k -> new LinkedHashSet<>()).add(rel);
                 Matcher cond = Pattern.compile("config\\s*=\\s*\"([^\"]+)\"").matcher(desc);
                 while (cond.find())
                     reads.computeIfAbsent(cond.group(1), k -> new LinkedHashSet<>())
@@ -700,6 +734,11 @@ final class HouseRules {
                     .append(c.file())
                     .append('\n');
         return Hashing.sha256Hex(sb.toString()).substring(0, 16);
+    }
+
+    /** A digest of {@code parts}, which names what a per-file scan read from other files in its salt. */
+    private static String shortDigest(List<String> parts) {
+        return Hashing.sha256Hex(String.join("\n", parts)).substring(0, 16);
     }
 
     /**
