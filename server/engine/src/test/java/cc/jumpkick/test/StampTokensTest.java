@@ -31,7 +31,30 @@ class StampTokensTest {
     void a_new_jk_is_named_before_the_inputs_it_moved_with() {
         var was = tokens(SRC, CP, "x:jk:0.52.0-SNAPSHOT#8+aaaaaaaaaaaa", "x:compile-test:" + "01".repeat(32));
         var now = tokens(SRC, CP, "x:jk:0.52.0-SNAPSHOT#8+bbbbbbbbbbbb", "x:compile-test:" + "02".repeat(32));
-        assertThat(StampTokens.reason(was, now)).isEqualTo(StampTokens.JK_CHANGED);
+        assertThat(StampTokens.reason(was, now)).isEqualTo("jk changed (suite code)");
+    }
+
+    /**
+     * A version, a salt and the suite code each move the jk token alone, and in jk's own tree each
+     * once read as the module under test changing: the reason names the part that moved.
+     */
+    @Test
+    void a_new_jk_names_which_part_of_it_moved() {
+        assertThat(StampTokens.jkChanged("x:jk:0.52.0#8+aaaaaaaaaaaa", "x:jk:0.53.0#8+aaaaaaaaaaaa"))
+                .isEqualTo("jk changed (version)");
+        assertThat(StampTokens.jkChanged("x:jk:0.52.0#8+aaaaaaaaaaaa", "x:jk:0.52.0#9+aaaaaaaaaaaa"))
+                .isEqualTo("jk changed (key format)");
+        assertThat(StampTokens.jkChanged("x:jk:0.52.0#8+aaaaaaaaaaaa", "x:jk:0.52.0#8+bbbbbbbbbbbb"))
+                .isEqualTo("jk changed (suite code)");
+        assertThat(StampTokens.jkChanged("x:jk:0.52.0#8+aaaaaaaaaaaa", "x:jk:0.53.0#9+bbbbbbbbbbbb"))
+                .isEqualTo("jk changed (version, key format, suite code)");
+        assertThat(StampTokens.jkChanged("x:jk:pinned-by-a-test", "x:jk:0.52.0#8+aaaaaaaaaaaa"))
+                .isEqualTo(StampTokens.JK_CHANGED);
+        var was = tokens(SRC, "x:jk:0.52.0-SNAPSHOT#8+aaaaaaaaaaaa");
+        assertThat(StampTokens.reason(was, tokens(SRC, "x:jk:0.53.0-SNAPSHOT#8+aaaaaaaaaaaa")))
+                .isEqualTo("jk changed (version)");
+        assertThat(StampTokens.reason(was, tokens(SRC, "x:jk:0.52.0-SNAPSHOT#9+aaaaaaaaaaaa")))
+                .isEqualTo("jk changed (key format)");
     }
 
     @Test
@@ -96,7 +119,9 @@ class StampTokensTest {
         assertThat(StampTokens.jkMoved(dir, sel, "0.52.0-SNAPSHOT#8+aaaaaaaaaaaa"))
                 .isNull();
         assertThat(StampTokens.jkMoved(dir, sel, "0.52.0-SNAPSHOT#8+bbbbbbbbbbbb"))
-                .isEqualTo(StampTokens.JK_CHANGED);
+                .isEqualTo("jk changed (suite code)");
+        assertThat(StampTokens.jkMoved(dir, sel, "0.53.0-SNAPSHOT#8+aaaaaaaaaaaa"))
+                .isEqualTo("jk changed (version)");
     }
 
     /**

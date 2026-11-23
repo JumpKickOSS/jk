@@ -28,7 +28,11 @@ public final class StampTokens {
 
     private StampTokens() {}
 
-    /** The reason for a key whose jk moved: its version, or the engine code that runs a suite ({@link cc.jumpkick.task.KeyContract#SUITE}). */
+    /**
+     * The reason for a key whose jk moved, when which part did is not known: its version, its
+     * cache-key salt, or the engine code that runs a suite ({@link cc.jumpkick.task.KeyContract#SUITE}).
+     * A suite's stamp names the part ({@link #jkChanged}).
+     */
     public static final String JK_CHANGED = "jk changed";
 
     /** The extras token every stamp carries for the jk that took it ({@link cc.jumpkick.task.KeyContract#keyVersion}). */
@@ -93,7 +97,7 @@ public final class StampTokens {
 
     /**
      * Why the suite's key, as {@code source} derives it now, is not the key of its last green run:
-     * {@link #JK_CHANGED} when the jk that keys it moved, else the first input that moved and how
+     * {@link #jkChanged} when the jk that keys it moved, else the first input that moved and how
      * many more did; never nothing, so a forecast that runs a suite always says why: {@link
      * #NO_GREEN_RUN}, {@link #KEY_MOVED_UNNAMED} or {@link #KEY_UNREAD}.
      */
@@ -113,7 +117,7 @@ public final class StampTokens {
     }
 
     /**
-     * {@link #JK_CHANGED} when the module's last green run under {@code selection} was keyed by
+     * {@link #jkChanged} when the module's last green run under {@code selection} was keyed by
      * another jk than {@code keyVersion} names, else null: a forecast that cannot take the suite's key
      * yet (its compile is dirty) still says the jk moved, which is why every step of the tree reruns.
      */
@@ -121,9 +125,43 @@ public final class StampTokens {
         Map<String, String> was = load(moduleDir, selection);
         if (was == null) return null;
         for (String name : was.keySet()) {
-            if (name.startsWith(JK_TOKEN)) return name.equals(JK_TOKEN + keyVersion) ? null : JK_CHANGED;
+            if (name.startsWith(JK_TOKEN)) {
+                String now = JK_TOKEN + keyVersion;
+                return name.equals(now) ? null : jkChanged(name, now);
+            }
         }
         return null;
+    }
+
+    /**
+     * Which parts of the jk a suite is keyed by moved between the tokens {@code was} and {@code now},
+     * each {@code x:jk:<version>#<salt>+<suite code digest>} ({@link
+     * cc.jumpkick.task.KeyContract#keyVersion}): {@code jk changed (version)}, {@code (key format)}
+     * for the salt, {@code (suite code)}, or several of them; a bare {@link #JK_CHANGED} when either
+     * token is spelled otherwise.
+     */
+    static String jkChanged(String was, String now) {
+        String[] a = jkParts(was);
+        String[] b = jkParts(now);
+        if (a == null || b == null) return JK_CHANGED;
+        List<String> moved = new ArrayList<>();
+        for (int i = 0; i < JK_PARTS.size(); i++) {
+            if (!a[i].equals(b[i])) moved.add(JK_PARTS.get(i));
+        }
+        return moved.isEmpty() ? JK_CHANGED : JK_CHANGED + " (" + String.join(", ", moved) + ")";
+    }
+
+    /** The parts of a jk token as a reason names them, in the order {@link #jkParts} splits it. */
+    private static final List<String> JK_PARTS = List.of("version", "key format", "suite code");
+
+    /** A jk token's version, salt and suite code digest; null when it is not spelled so. */
+    private static String @Nullable [] jkParts(String token) {
+        if (!token.startsWith(JK_TOKEN)) return null;
+        String v = token.substring(JK_TOKEN.length());
+        int plus = v.lastIndexOf('+');
+        int hash = plus < 0 ? -1 : v.lastIndexOf('#', plus);
+        if (hash <= 0) return null;
+        return new String[] {v.substring(0, hash), v.substring(hash + 1, plus), v.substring(plus + 1)};
     }
 
     /** As {@link #reason(Path, TestSelection, KeyAudit.KeySource)} over the two token maps. */
@@ -131,7 +169,7 @@ public final class StampTokens {
         List<KeyAudit.Token> moved = KeyAudit.diff(was, now);
         if (moved.isEmpty()) return null;
         for (KeyAudit.Token t : moved) {
-            if (t.name().startsWith(JK_TOKEN)) return JK_CHANGED;
+            if (t.name().startsWith(JK_TOKEN)) return jkChanged(jkToken(was), jkToken(now));
         }
         // The caller's variables by name, never by value: which one changed, came or went.
         String env = variablesMoved(moved);
@@ -149,6 +187,14 @@ public final class StampTokens {
             if (suites != null) reason += " · keys suites " + suites;
         }
         return reason;
+    }
+
+    /** The jk token among {@code tokens}, or an empty name when there is none. */
+    private static String jkToken(Map<String, String> tokens) {
+        for (String name : tokens.keySet()) {
+            if (name.startsWith(JK_TOKEN)) return name;
+        }
+        return "";
     }
 
     /** How many variables a reason names before it counts the rest. */

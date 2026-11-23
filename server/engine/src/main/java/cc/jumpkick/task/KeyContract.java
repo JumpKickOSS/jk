@@ -32,7 +32,7 @@ public enum KeyContract {
      * stamp keys by it. The {@code suite-code-keyed} guard keeps the types that select and judge a
      * suite inside it.
      */
-    SUITE("04259e9cb61b", List.of(Sources.SERVER, Sources.SHARED), KeyContract::suiteSource),
+    SUITE("6785864eea35", List.of(Sources.SERVER, Sources.SHARED), KeyContract::suiteSource),
 
     /**
      * The code that writes an artifact or a verdict the engine produces itself: the jar, assembly

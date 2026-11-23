@@ -144,7 +144,10 @@ by name only), so a suite that runs again says which of those moved, like any ot
 
 `jk explain` says the same before the build: a jar, a fat jar or a guard lane whose last result
 on this machine another build of JumpKick made forecasts as `repackage · jk changed` or `guards · jk
-changed`, since their keys name the JumpKick code that made them.
+changed`, since their keys name the JumpKick code that made them. A suite whose last green run another
+build of JumpKick keyed says which part of it moved: `run tests · jk changed (version)`, `(key
+format)` when the release changed how keys are formed, or `(suite code)` when the code that runs
+and judges tests changed; a release can move several at once.
 
 The run's byte totals keep traffic with a remote build cache (`cacheUp`, `cacheDown`) apart from
 repository downloads and uploads (`remoteUp`, `remoteDown`).
