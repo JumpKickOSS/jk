@@ -96,7 +96,7 @@ it printed.
 does not push `main`; it submits its branch:
 
 ```bash
-scripts/queue/branch-tier.sh     # the Branch tier: jk guard, then jk build -e <merge-base with origin/main>
+scripts/queue/branch-tier.sh     # the Branch tier: jk guard, then jk test -X over what -e <merge-base> selects
 scripts/queue/submit.sh [branch] # refused unless the tip passed the Branch tier
 scripts/queue/status.sh [branch] # waiting, gating in batch <n>, landed as <sha>, or ejected and why
 scripts/queue/status.sh --stats  # the last 20 landings: ready to landed, lock wait, gate; medians, slowest three

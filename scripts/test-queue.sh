@@ -26,14 +26,20 @@ fail() {
   exit 1
 }
 
-# The stand-in jk passes every Branch-tier step. The stand-in gate is red for a tip carrying a
+# The stand-in jk passes every Branch-tier step and logs each call; asked which modules a branch
+# changed, it names jk-a by its jar under mod/a. The stand-in gate is red for a tip carrying a
 # red.txt, naming its failed class as in the module red.txt holds, and with the failure beside the
 # log; when MOVE_ORIGIN is set it pushes a commit of MOVE_FILE (default mod/a/moved.txt) to
 # origin/main itself before it says GREEN, and when DROP_REF is set it deletes that branch's
 # submission. It logs the tier it was asked for. The stand-in ka logs each comment.
 mkdir -p "$WORK/bin"
-printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$WORK/bin/jk"
+cat >"$WORK/bin/jk" <<'JK'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >>"$JK_LOG"
+[ "$1" != show ] || printf 'cc.example:jk-a\t%s/mod/a/target/jk-a.jar\n' "$(git rev-parse --show-toplevel)"
+JK
 chmod +x "$WORK/bin/jk"
+export JK_LOG="$WORK/jk.log"
 export PATH="$WORK/bin:$PATH"
 # macOS has no flock: there the loop's lock is a stand-in that runs the batch.
 fake_flock=""
@@ -127,6 +133,9 @@ grep -q 'has not passed the Branch tier' "$WORK/submit.err" || fail "the refusal
 branch stale origin/main y.txt y
 commit "$dev" y.txt y2
 if submit stale; then fail "a tip committed after its Branch tier was submitted"; fi
+
+# The Branch tier tests what -e selects, by module path, and not the modules those build on.
+grep -qx 'test --exclusive -m mod/a' "$JK_LOG" || fail "the Branch tier did not test mod/a alone: $(cat "$JK_LOG")"
 
 # --- a batch: two branches land once each, the conflicting one is ejected ---
 branch a origin/main base.txt from-a

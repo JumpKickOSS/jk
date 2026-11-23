@@ -233,7 +233,8 @@ work on something else and read answers with `ka inbox`. Stopping without finish
   the fix
   ([Full tier loop](docs/contributors/self-host.md#the-full-tier-loop)).
 - **Branch tier** — before a branch is submitted to the queue: `scripts/queue/branch-tier.sh`,
-  which runs `jk guard` and the fast tier of the modules the branch changed, and records the pass
+  which runs `jk guard` and the fast tier of the modules the branch changed and of their
+  dependents (no native client, no suites of the modules they build on), and records the pass
   that `scripts/queue/submit.sh` requires.
 - **Prove it cheaply first** — before any run that takes more than a few minutes, however it is
   spelled (a gate, a whole suite, an integration or slow tier, an uncached build of this tree),
@@ -251,7 +252,7 @@ work on something else and read answers with `ka inbox`. Stopping without finish
 | `jk guard docs` | The text rules that read Markdown, no build | A docs-only commit |
 | `jk test -s docs` | The tests that walk the doc tree (`@Tag("docs")`): `-O json` callers, plugin defaults a page quotes | A commit that changes a doc or a command's machine output; every gate tier |
 | `jk install` | Exactly what `jk build` runs (every module compiled and packaged, its fast tier, the model/module/workspace/output lanes), then the reinstall | Every local merge |
-| `scripts/queue/branch-tier.sh` | `jk guard`, then the fast tier of the modules the branch changed | Before submitting a branch to the merge queue |
+| `scripts/queue/branch-tier.sh` | `jk guard`, then the fast tier of the modules the branch changed and their dependents | Before submitting a branch to the merge queue |
 | `GATE_TIER=queue scripts/gate/run.sh <n> <sha>` | The Queue tier: guard, the reinstall without tests, one install, the changed modules' integration suites, the curated lane, the docs suite, the shell fixtures | Every batch the merge queue lands (the push gate) |
 | `jk install -g` | Engine/CLI e2e, workers, install, lock: every integration class | The Full tier, back to back behind the queue (`scripts/gate/full-loop.sh`) |
 | `jk test -s slow` | Framework and language e2e (Android, Grails, Scala, KSP, Protobuf) | Before submitting a plugin or toolchain change; the Full tier when a plugin changed since `green`; nightly |
@@ -278,7 +279,7 @@ The merge queue on bocabox (`scripts/queue/loop.sh`) is the only writer to `orig
 session, an orchestrator's integration branch included, submits a branch instead of pushing `main`:
 
 ```bash
-scripts/queue/branch-tier.sh     # jk guard + the fast tier of the changed modules; records the pass
+scripts/queue/branch-tier.sh     # jk guard + the fast tier of the changed modules and their dependents; records the pass
 scripts/queue/submit.sh          # the current branch (or name one) waits in the queue
 scripts/queue/status.sh          # waiting, gating in batch <n>, landed as <sha>, or ejected and why
 ```
