@@ -5,7 +5,9 @@ import static java.lang.constant.ConstantDescs.CD_int;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 
+import cc.jumpkick.config.IoLedger;
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.Request;
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.jsonl.JsonFields;
 import cc.jumpkick.jsonl.Jsonl;
@@ -35,7 +37,8 @@ import org.junit.jupiter.api.io.TempDir;
  * jar the suite is handed by path that is rebuilding runs only the classes that read it, and a
  * class that read more code files than its record names runs only when one its suite lists moves.
  * The affected-test ranking reads the same records: how each class's cone and reads meet a change.
- * None of these reads waits for another suite's recording of its classes.
+ * None of these reads waits for another suite's recording of its classes, and one build walks a
+ * suite's cones once for one stamp key and records file, however often it asks.
  */
 class ConeForecastTest {
 
@@ -405,6 +408,55 @@ class ConeForecastTest {
         } finally {
             TestClassRecording.ONE.release();
         }
+    }
+
+    @Test
+    void one_build_walks_a_suites_cones_once_for_one_stamp_key_and_records_file(@TempDir Path ws) throws Exception {
+        BuildLayout layout = module(ws);
+        write(layout.testClassesDir(), "demo/T", plain("demo.T"));
+        write(layout.testClassesDir(), "demo/U", plain("demo.U"));
+        writeRows(layout.moduleRoot(), null, row("T", 3, null), row("U", 2, null), row("test:test", "U", 4, null));
+        Path u = layout.testClassesDir().resolve("demo/U.class");
+
+        Request.of(1, new IoLedger()).run(() -> {
+            assertThat(ranNow(layout, "stamp-1", Set.of(""))).isEqualTo(5);
+            // Only a walk sees U gone: an answer taken from the first walk still counts it.
+            Files.delete(u);
+            assertThat(ranNow(layout, "stamp-1", Set.of("")))
+                    .as("the estimate re-priced as a module compiles, under the same stamp key")
+                    .isEqualTo(5);
+            assertThat(ranNow(layout, "stamp-1", Set.of("", "test:test")))
+                    .as("another selection of launches reads the same walk")
+                    .isEqualTo(9);
+            assertThat(ranNow(layout, "stamp-2", Set.of("")))
+                    .as("a stamp key that moved walks again")
+                    .isEqualTo(3);
+            write(layout.testClassesDir(), "demo/U", plain("demo.U"));
+            writeRows(layout.moduleRoot(), null, row("T", 3, null), row("U", 1, null));
+            assertThat(ranNow(layout, "stamp-2", Set.of("")))
+                    .as("a records file a run rewrote walks again")
+                    .isEqualTo(4);
+        });
+        Files.delete(u);
+        assertThat(ranNow(layout, "stamp-2", Set.of("")))
+                .as("off a request every ask walks")
+                .isEqualTo(3);
+    }
+
+    /** The tests of the recorded classes a run of {@code launches} under {@code stampKey} runs, as the forecast prices them. */
+    private static long ranNow(BuildLayout layout, String stampKey, Set<String> launches) throws Exception {
+        return TestClassRecording.replayedNow(
+                        layout.moduleRoot(),
+                        layout,
+                        TestSelection.DEFAULT,
+                        layout.testClassesDir(),
+                        layout.classesDir(),
+                        List.of(),
+                        List.of(),
+                        List.of(),
+                        stampKey,
+                        launches)
+                .ran();
     }
 
     private static Map<String, String> overlaps(BuildLayout layout, List<String> changed) throws Exception {

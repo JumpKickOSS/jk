@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import cc.jumpkick.config.RequestScope;
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.host.Log;
+import cc.jumpkick.host.StatIdentity;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.layout.BuildLayout;
@@ -16,12 +18,14 @@ import cc.jumpkick.test.SuiteReads;
 import cc.jumpkick.test.TestTelemetry;
 import cc.jumpkick.util.TestHomes;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -275,7 +279,8 @@ final class TestClassRecording {
                     if (Files.isDirectory(tree)) classTrees.add(tree);
                 }
             }
-            return new Roots(classTrees, cone, jars, external);
+            // A root named twice (the main classes ahead of the classpath that holds them) is read once.
+            return new Roots(classTrees, List.copyOf(new LinkedHashSet<>(cone)), jars, external);
         }
     }
 
@@ -352,7 +357,62 @@ final class TestClassRecording {
         static final Split NONE = new Split(Map.of(), Map.of(), Map.of());
     }
 
-    /** {@link #unmoved} over the rows of {@code launches}, every launch's when null. */
+    /**
+     * One recorded class as the cone check decides it: the launch it ran in, its tests, and the
+     * ledger entry it replays with, null when it runs.
+     */
+    private record Verdict(
+            String key, String launch, String cls, long tests, TestClassLedger.@Nullable Entry replays) {}
+
+    /** Every row's {@link Verdict}, every launch's: one walk answers any launches asked of it. */
+    private record Verdicts(List<Verdict> rows) {
+
+        /** What one verdict holds on the heap, its strings included, as the request scope weighs it. */
+        private static final long BYTES_PER_ROW = 512;
+
+        long bytes() {
+            return rows.size() * BYTES_PER_ROW;
+        }
+
+        Split split(@Nullable Set<String> launches) {
+            Map<String, TestClassLedger.Entry> out = new TreeMap<>();
+            Map<String, Long> replays = new HashMap<>();
+            Map<String, Long> runs = new HashMap<>();
+            for (Verdict v : rows) {
+                if (launches != null && !launches.contains(v.launch())) continue;
+                if (v.replays() == null) {
+                    runs.merge(v.cls(), v.tests(), Long::sum);
+                } else {
+                    replays.merge(v.cls(), v.tests(), Long::sum);
+                    out.put(v.key(), v.replays());
+                }
+            }
+            return new Split(out, replays, runs);
+        }
+    }
+
+    /**
+     * What a cone check's answer stands on: the records file as it was found, the stamp key, which
+     * hashes the classes the cones are walked over and the suite's discovered inputs, and the inputs
+     * the keys are taken over. Equal keys walk to equal verdicts.
+     */
+    private record WalkKey(
+            Path moduleDir,
+            StatIdentity records,
+            String stampKey,
+            Path workspace,
+            TestSelection selection,
+            List<Path> cone,
+            List<Path> external,
+            List<String> stampExtras,
+            List<Path> resourceDirs) {}
+
+    /**
+     * {@link #unmoved} over the rows of {@code launches}, every launch's when null. A build asks it
+     * of one suite many times: the run once, and the forecast each time the estimate is re-priced as
+     * a module compiles. So the walk is done once per request for one {@link WalkKey}, and each ask
+     * takes its launches' rows from it.
+     */
     private static Split split(
             Path moduleDir,
             BuildLayout layout,
@@ -367,16 +427,77 @@ final class TestClassRecording {
             throws IOException {
         if (!TestTelemetry.shadow()) return Split.NONE;
         Path file = TestClassRecords.file(moduleDir);
-        String header = TestClassRecords.header(file);
-        if (header == null) return Split.NONE;
-        Map<String, String> headers = TestClassRecords.headers(file);
+        // Taken before the file is read: a rewrite after it is a new key, never the old one's answer.
+        StatIdentity records = statOrNull(file);
+        if (records == null) return Split.NONE;
         Path workspace = layout.workspaceRoot().toAbsolutePath().normalize();
         Roots roots = Roots.of(workspace, testClasses, mainClasses, runtimeCp);
+        if (stampKey == null) {
+            return walk(moduleDir, layout, selection, file, roots, stampExtras, resourceDirs, null)
+                    .split(launches);
+        }
+        WalkKey key = new WalkKey(
+                moduleDir.toAbsolutePath().normalize(),
+                records,
+                stampKey,
+                workspace,
+                selection,
+                roots.cone(),
+                roots.external(),
+                List.copyOf(stampExtras),
+                List.copyOf(resourceDirs));
+        try {
+            return RequestScope.current()
+                    .getOnce(
+                            key,
+                            k -> {
+                                try {
+                                    return walk(
+                                            moduleDir,
+                                            layout,
+                                            selection,
+                                            file,
+                                            roots,
+                                            stampExtras,
+                                            resourceDirs,
+                                            stampKey);
+                                } catch (IOException e) {
+                                    throw new UncheckedIOException(e);
+                                }
+                            },
+                            Verdicts::bytes)
+                    .split(launches);
+        } catch (UncheckedIOException e) {
+            throw e.getCause();
+        }
+    }
+
+    private static @Nullable StatIdentity statOrNull(Path file) {
+        try {
+            return StatIdentity.of(file);
+        } catch (IOException absent) {
+            return null;
+        }
+    }
+
+    /** Walk the cones of every class the records at {@code file} name, deciding each row's {@link Verdict}. */
+    private static Verdicts walk(
+            Path moduleDir,
+            BuildLayout layout,
+            TestSelection selection,
+            Path file,
+            Roots roots,
+            List<String> stampExtras,
+            List<Path> resourceDirs,
+            @Nullable String stampKey)
+            throws IOException {
+        String header = TestClassRecords.header(file);
+        if (header == null) return new Verdicts(List.of());
+        Map<String, String> headers = TestClassRecords.headers(file);
+        Path workspace = layout.workspaceRoot().toAbsolutePath().normalize();
         String suitePart = ClassKeys.suitePart(stampExtras, roots.external(), resourceDirs);
         ClassKeys.SuiteReadSet reads = readSet(moduleDir, selection, layout.workspaceRoot());
-        Map<String, TestClassLedger.Entry> out = new TreeMap<>();
-        Map<String, Long> replays = new HashMap<>();
-        Map<String, Long> runs = new HashMap<>();
+        List<Verdict> rows = new ArrayList<>();
         // Whether a launch has no header, or its pool reached another host: none of its classes replays.
         Map<String, Boolean> poolReached = new HashMap<>();
         // Another suite's recording read or index holds the permit: the wait is timed apart from the walk.
@@ -400,7 +521,7 @@ final class TestClassRecording {
             TestClassRecords.forEachRow(file, (key, row) -> {
                 String launch = Jsonl.str(row, "launch");
                 String cls = TestClassRecords.className(Jsonl.strArray(row, "container"));
-                if (launch == null || (launches != null && !launches.contains(launch)) || !index.contains(cls)) return;
+                if (launch == null || !index.contains(cls)) return;
                 long tests = Jsonl.longValue(row, "tests", 0);
                 if (poolReached.computeIfAbsent(launch, l -> {
                             String own = headers.get(l);
@@ -408,19 +529,22 @@ final class TestClassRecording {
                         })
                         || reachedPastHost(row)
                         || keys.whyRun(row, launch, cls) != null) {
-                    runs.merge(cls, tests, Long::sum);
+                    rows.add(new Verdict(key, launch, cls, tests, null));
                     return;
                 }
-                replays.merge(cls, tests, Long::sum);
-                out.put(
+                rows.add(new Verdict(
                         key,
+                        launch,
+                        cls,
+                        tests,
                         new TestClassLedger.Entry(
                                 tests,
                                 0,
                                 Jsonl.longValue(row, "skipped", 0),
                                 Jsonl.longValue(row, "ranAt", 0),
-                                Jsonl.longValue(row, "millis", 0)));
+                                Jsonl.longValue(row, "millis", 0))));
             });
+            long replays = rows.stream().filter(v -> v.replays() != null).count();
             Log.debug(
                     "perf cone-check " + moduleDir,
                     "ms",
@@ -430,11 +554,11 @@ final class TestClassRecording {
                     "indexed",
                     index.size(),
                     "replays",
-                    out.size(),
+                    replays,
                     "runs",
-                    runs.size());
+                    rows.size() - replays);
         }
-        return new Split(out, replays, runs);
+        return new Verdicts(List.copyOf(rows));
     }
 
     /** What the suite at {@code moduleDir} was found to read under {@code selection}, as {@link SuiteReads#digest} reads it. */
