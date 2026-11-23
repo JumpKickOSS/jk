@@ -5,7 +5,7 @@
 # not say (exit 2).
 set -euo pipefail
 
-unset "${!GATE_@}"
+unset "${!GATE_@}" JK_HOME
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/jk-rerun-classes.XXXXXX")"
