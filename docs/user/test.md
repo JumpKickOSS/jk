@@ -1428,7 +1428,10 @@ names its version (`store:tools/node/24.22.0/bin/node`); a script of the workspa
 (`/opt/homebrew/bin/node`) keys by content, since only what an administrator installed is run to
 ask its version for a list from another host. The run that discovers an input
 keeps its outcome but stores no marker, and the build says what it found; the next run is keyed on
-it and is replayed from then on while it holds. A green marker is stored only when every input the
+it and is replayed from then on while it holds. A run of every class the selection names replaces
+the list, so a file the suite stopped reading keys it no more; a run of only some of them (what a
+red run left, or what `cache = "cone"` did not replay) adds to it, so a
+file only a replayed class reads still keys the suite. A green marker is stored only when every input the
 key names, discovered ones and their listings included, still matches once the suite is done. When
 one moved while it ran (a test that writes beside a fixture it reads, say), the run keeps its
 outcome, stores no marker and warns `an input of run-tests changed while it ran: <file>; the next

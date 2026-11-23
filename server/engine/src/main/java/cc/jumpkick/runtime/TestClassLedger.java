@@ -162,6 +162,11 @@ final class TestClassLedger {
         return settled;
     }
 
+    /** Whether a launch left out a class that passed before: the run ran only part of its selection. */
+    boolean leftClassesOut() {
+        return !leftOut.isEmpty();
+    }
+
     /**
      * {@code launcher}, handed for each launch as it starts the classes that launch leaves out
      * ({@link #enter}), so each launch records its classes as its own.

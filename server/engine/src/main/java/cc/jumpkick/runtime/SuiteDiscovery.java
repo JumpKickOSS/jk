@@ -97,6 +97,22 @@ final class SuiteDiscovery {
             EnvScopeHint envHint,
             AtomicReference<TestClassRecording.@Nullable Pending> classes) {
 
+        /** This run, as one that ran only some of the suite's classes. */
+        private Run partial() {
+            return new Run(
+                    flag,
+                    startedMillis,
+                    moduleDir,
+                    layout,
+                    selection,
+                    keyed,
+                    networkAllowed,
+                    false,
+                    envPolicy,
+                    envHint,
+                    classes);
+        }
+
         /**
          * Keep each class's record of this run ({@link TestClassRecording}) once it settles: what the
          * classes are keyed on folds in the inputs settling decides.
@@ -174,7 +190,10 @@ final class SuiteDiscovery {
             TestClassRecording.Pending pending = classes.getAndSet(null);
             ClassKeys.SuiteReadSet before =
                     pending == null ? ClassKeys.SuiteReadSet.NONE : pending.suiteReads(selection);
-            String settled = SuiteDiscovery.settle(ctx, this, stampKey, rekey, env);
+            // A run that left classes out read only what the classes it ran read: what the classes it
+            // replayed read must stay in the list, or the next stamp keys none of it.
+            Run run = ledger != null && ledger.leftClassesOut() ? partial() : this;
+            String settled = SuiteDiscovery.settle(ctx, run, stampKey, rekey, env);
             if (pending != null) pending.record(before, pending.suiteReads(selection));
             if (settled != null
                     && ledger != null
@@ -270,7 +289,8 @@ final class SuiteDiscovery {
         boolean reached = !hosts.isEmpty();
         SuiteReads.Discovered before = SuiteReads.load(moduleDir, run.selection());
         // A whole run's reads are all the suite reads now: what it no longer reads drops out. A run
-        // of only the affected classes adds to what the whole suite was found to read.
+        // of only some classes (the affected ones, or what a red or per-class run did not replay)
+        // adds to what the whole suite was found to read.
         // What a suite read of the environment only grows: a whole run under another shell reads
         // other names, and dropping the ones it did not read this time would move the key back and
         // forth as the user alternates terminals, so no result ever held.

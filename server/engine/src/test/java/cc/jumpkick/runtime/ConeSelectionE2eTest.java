@@ -32,7 +32,8 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * Per-class selection on, over a real suite of three classes: after a body edit of one main class
  * the forecast prices the class whose cone holds it and the run runs that class alone, replaying
- * the others; an edit that breaks the class still fails the run.
+ * the others; an edit that breaks the class still fails the run. A file a replayed class read keys
+ * the suite still.
  */
 @Tag("integration")
 class ConeSelectionE2eTest {
@@ -101,6 +102,66 @@ class ConeSelectionE2eTest {
         Files.writeString(calc, Files.readString(calc).replace("b + a", "a - b"));
         assertThat(build(m, cache))
                 .as("the class the edit reaches runs and fails")
+                .isEqualTo(TaskStatus.FAIL);
+    }
+
+    /**
+     * A file only a replayed class reads keeps keying the suite: the run that replayed it read only
+     * what the class it ran read, and had that replaced the suite's discovered inputs, an edit to the
+     * file would have replayed the whole suite from its marker.
+     */
+    @Test
+    void a_file_a_replayed_class_read_still_keys_the_suite(@TempDir Path tmp) throws Exception {
+        Path cache = TestCaches.dir("cone-selection-reads-cache");
+        Path ws = Files.createDirectories(tmp.resolve("ws"));
+        Path data = Files.createDirectories(ws.resolve("data"));
+        Path a = Files.writeString(data.resolve("a.txt"), "a");
+        Files.writeString(data.resolve("b.txt"), "b");
+        Path m = Files.createDirectories(ws.resolve("m"));
+        Files.writeString(m.resolve("jk.toml"), """
+                group   = "com.example"
+                name    = "m"
+                version = "1.0.0"
+                java    = 25
+
+                [test-dependencies]
+                junit-jupiter = "6.1.3"
+
+                [repositories]
+                central = "https://repo.maven.apache.org/maven2/"
+
+                [test]
+                cache = "cone"
+                """);
+        Path main = Files.createDirectories(m.resolve("src/main/java/demo"));
+        Path other = main.resolve("Other.java");
+        Files.writeString(
+                main.resolve("Calc.java"), "package demo; public class Calc { public int one() { return 1; } }\n");
+        Files.writeString(other, "package demo; public class Other { public int one() { return 1; } }\n");
+        Path tests = Files.createDirectories(m.resolve("src/test/java/demo"));
+        test(
+                tests,
+                "ATest",
+                "assertEquals(1, new Calc().one());"
+                        + " assertEquals(\"a\", java.nio.file.Files.readString(java.nio.file.Path.of(\"../data/a.txt\")));");
+        test(
+                tests,
+                "BTest",
+                "assertEquals(1, new Other().one());"
+                        + " assertEquals(\"b\", java.nio.file.Files.readString(java.nio.file.Path.of(\"../data/b.txt\")));");
+        BuildPlan lock = LockPlans.lockBuildPlan(m, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
+        assertThat(lock.run().success()).as("lock").isTrue();
+
+        assertThat(build(m, cache)).isEqualTo(TaskStatus.SUCCESS);
+        Files.writeString(other, Files.readString(other).replace("return 1;", "return Integer.parseInt(\"1\");"));
+        assertThat(build(m, cache)).isEqualTo(TaskStatus.SUCCESS);
+        assertThat(Jsonl.longValue(last(m), "ran", 0))
+                .as("BTest, whose cone holds Other; ATest replayed")
+                .isEqualTo(1);
+
+        Files.writeString(a, "edited");
+        assertThat(build(m, cache))
+                .as("ATest read the file in the run before, so the edit runs it, and it fails")
                 .isEqualTo(TaskStatus.FAIL);
     }
 

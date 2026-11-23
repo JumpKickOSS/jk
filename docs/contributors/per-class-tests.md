@@ -236,7 +236,11 @@ read roots (`readRoots`: `<dir>/*` for the files directly in a directory, `<dir>
 under it; past 8, the two with the deepest common directory become that directory), which cover
 every file it read. It is keyed on the files its suite was found to read under those roots: the
 suite's discovered inputs, which hold that set exactly and bounded, so per-class reads use the
-suite's own representation rather than a second one. A class whose reads share no directory keeps
+suite's own representation rather than a second one. Only a run of every selected class replaces
+that list; a run that replayed classes adds what it read to it (`SuiteDiscovery.Run.partial`), since
+the classes it replayed read nothing in it. Replaced by the classes that ran, the list dropped what
+the replayed ones read: the next suite stamp keyed none of it, and the key of a class past its bound
+moved with whichever neighbours happened to run. A class whose reads share no directory keeps
 no roots and is keyed on every file its suite read. A repository-scanning class that reads 50,000
 files therefore costs a row like any other and re-runs whenever any input under its roots moves,
 which is what it reads anyway, while a class that read thirty plugin manifests no longer re-runs
