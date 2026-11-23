@@ -9,6 +9,7 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 
@@ -16,6 +17,12 @@ import org.jspecify.annotations.Nullable;
 final class GuardVerdicts {
 
     private GuardVerdicts() {}
+
+    /**
+     * The token holding the digest of what a module's guard suite reads beyond the module. One
+     * token, so {@link #heldTokens} can stand for every value of it.
+     */
+    static final String SUITE_READS = "suite-reads";
 
     /** The record input listing the tools a lane's verdict stands on the absence of. */
     static final String TOOLS = "tools";
@@ -61,5 +68,35 @@ final class GuardVerdicts {
         List<String> lines = new ArrayList<>(List.of(key));
         for (String tool : tools) lines.add("tool:" + tool + "=" + ToolIdentity.of(tool, path, root));
         return Hashing.sha256Hex(String.join("\n", lines));
+    }
+
+    /**
+     * A lane's {@code tokens} with the {@link #SUITE_READS} value held apart, or {@code null} when
+     * its guard suite reads nothing beyond the module. Every verdict of a suite that reads the
+     * workspace is also recorded under the lane key of these tokens ({@link #storeHeld}), so a
+     * forecast whose lane key missed and that finds that record knows the module's own inputs are
+     * those of a verdict some checkout reached: only what the suite reads moved. It is found by
+     * content, as the verdict is, whichever checkout of the project moved the lane's pointer last.
+     */
+    static @Nullable List<String> heldTokens(List<String> tokens) {
+        String prefix = SUITE_READS + ":";
+        List<String> held = new ArrayList<>(tokens.size());
+        boolean reads = false;
+        for (String token : tokens) {
+            reads |= token.startsWith(prefix);
+            held.add(token.startsWith(prefix) ? prefix + "*" : token);
+        }
+        return reads ? held : null;
+    }
+
+    /**
+     * Records that lane {@code taskId} reached a verdict over the tokens {@code heldKey} keys ({@link
+     * #heldTokens}). Its pointer is its own, with the lane's tag: the lane's pointer, and the miss
+     * note its next run reads off it, stay on the verdict, and cleaning the project takes both.
+     */
+    static void storeHeld(ActionCache cache, String taskId, String heldKey) throws IOException {
+        int at = taskId.indexOf('@');
+        String task = "guard-held" + (at < 0 ? "" : taskId.substring(at));
+        cache.storeVerdict(task, heldKey, Map.of(SUITE_READS, "*"));
     }
 }

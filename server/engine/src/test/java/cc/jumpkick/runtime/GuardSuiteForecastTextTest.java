@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.guard.extract.FactsIndexing;
+import cc.jumpkick.guard.schema.Lane;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.JkBuild;
@@ -27,7 +28,8 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * A module whose {@code src/guard} suite reads the tree's text forecasts its lane on that text, as
  * the lane runs on it: an edit to root text alone re-runs the suite without {@code --redo}, says that
- * the suite's workspace input is why, and a verdict another jk judged forecasts as {@code jk changed}.
+ * the suite's workspace input is why, whichever checkout stored the lane's last verdict, and a verdict
+ * another jk judged forecasts as {@code jk changed}.
  */
 class GuardSuiteForecastTextTest {
 
@@ -75,17 +77,52 @@ class GuardSuiteForecastTextTest {
         BuildLayout layout = BuildLayout.of(root, JkBuildParser.parse(root.resolve("jk.toml")));
         ActionCache cache = new ActionCache(new Cas(tmp.resolve("cache/cas")), tmp.resolve("cache/actions"));
         var load = PlannerGuards.rules(PlannerGuards.detectAt(root));
-        GuardKeys.LaneProbe before = GuardKeys.probeModuleLane(root, root, layout, load, true);
-        cache.storeVerdict(
-                ActionKey.qualifiedTaskId(TaskNames.GUARD, root),
-                Objects.requireNonNull(before.key(), "the lane's key"),
-                PlannerGuards.inputsOf(before.tokens(), before.slice()));
+        store(cache, root, GuardKeys.probeModuleLane(root, root, layout, load, true));
 
         Files.writeString(root.resolve(".jk/notes.txt"), "two\n");
 
         TaskForecast.Task after = lane(root, layout, cache);
         assertThat(after.status()).isEqualTo(TaskForecast.Status.RUN);
         assertThat(after.text()).endsWith("rules · src/guard reads the workspace and it changed");
+    }
+
+    /**
+     * Every checkout of a project shares the lane's pointer: another checkout's verdict, here one
+     * over a build that compiled no tests, written last, leaves this one's reason as it was.
+     */
+    @Test
+    void the_reason_holds_when_another_checkout_stored_the_last_verdict(@TempDir Path tmp) throws Exception {
+        Path root = tree(tmp);
+        BuildLayout layout = BuildLayout.of(root, JkBuildParser.parse(root.resolve("jk.toml")));
+        ActionCache cache = new ActionCache(new Cas(tmp.resolve("cache/cas")), tmp.resolve("cache/actions"));
+        var load = PlannerGuards.rules(PlannerGuards.detectAt(root));
+        store(cache, root, GuardKeys.probeModuleLane(root, root, layout, load, true));
+        Files.writeString(root.resolve(".jk/notes.txt"), "another checkout's text\n");
+        store(cache, root, GuardKeys.probeModuleLane(root, root, layout, load, false));
+
+        Files.writeString(root.resolve(".jk/notes.txt"), "two\n");
+
+        TaskForecast.Task after = lane(root, layout, cache);
+        assertThat(after.status()).isEqualTo(TaskForecast.Status.RUN);
+        assertThat(after.text()).endsWith("rules · src/guard reads the workspace and it changed");
+    }
+
+    /** A verdict that waits on a tool is missed for the tool: the suite's input is not why. */
+    @Test
+    void a_lane_waiting_on_a_tool_names_no_workspace_cause(@TempDir Path tmp) throws Exception {
+        Path root = tree(tmp);
+        BuildLayout layout = BuildLayout.of(root, JkBuildParser.parse(root.resolve("jk.toml")));
+        ActionCache cache = new ActionCache(new Cas(tmp.resolve("cache/cas")), tmp.resolve("cache/actions"));
+        var load = PlannerGuards.rules(PlannerGuards.detectAt(root));
+        GuardKeys.LaneProbe probe = GuardKeys.probeModuleLane(root, root, layout, load, true);
+        String taskId = ActionKey.qualifiedTaskId(TaskNames.GUARD, root);
+        String key = Objects.requireNonNull(probe.key(), "the lane's key");
+        cache.storeVerdict(taskId, key, Map.of(GuardVerdicts.TOOLS, "a-tool-on-no-path"));
+        storeHeld(cache, taskId, probe.tokens(), probe.slice(), root);
+
+        TaskForecast.Task after = lane(root, layout, cache);
+        assertThat(after.status()).isEqualTo(TaskForecast.Status.RUN);
+        assertThat(after.text()).endsWith("rules to evaluate");
     }
 
     @Test
@@ -103,6 +140,7 @@ class GuardSuiteForecastTextTest {
                 taskId,
                 GuardKeys.laneKey(taskId, otherFacts, before.slice()),
                 PlannerGuards.inputsOf(otherFacts, before.slice()));
+        storeHeld(cache, taskId, otherFacts, before.slice(), root);
 
         Files.writeString(root.resolve(".jk/notes.txt"), "two\n");
 
@@ -153,6 +191,23 @@ class GuardSuiteForecastTextTest {
         compile(tmp.resolve("suite-src"), layout.guardClassesDir(), "fx", "ReadsText", SUITE);
         FactsIndexing.ensure(layout.guardClassesDir(), FactsIndexing.indexPath(layout.buildDir(), "guard"));
         return root;
+    }
+
+    /** A verdict of the lane at {@code root} over {@code probe}, stored as the lane stores one. */
+    private static void store(ActionCache cache, Path root, GuardKeys.LaneProbe probe) throws Exception {
+        String taskId = ActionKey.qualifiedTaskId(TaskNames.GUARD, root);
+        cache.storeVerdict(
+                taskId,
+                Objects.requireNonNull(probe.key(), "the lane's key"),
+                PlannerGuards.inputsOf(probe.tokens(), probe.slice()));
+        storeHeld(cache, taskId, probe.tokens(), probe.slice(), root);
+    }
+
+    /** The held record the lane stores beside a verdict over {@code tokens}. */
+    private static void storeHeld(ActionCache cache, String taskId, List<String> tokens, String slice, Path root)
+            throws Exception {
+        List<String> held = Objects.requireNonNull(GuardVerdicts.heldTokens(tokens), "the suite reads the workspace");
+        GuardVerdicts.storeHeld(cache, taskId, GuardKeys.laneKey(Lane.MODULE, taskId, held, slice, root));
     }
 
     private static TaskForecast.Task lane(Path root, BuildLayout layout, ActionCache cache) {

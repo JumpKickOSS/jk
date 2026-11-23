@@ -465,6 +465,9 @@ final class PlannerGuards {
             cache.storeArtifacts(
                     taskId, storeKey, inputsOf(tokens, storedSlice), RuleSummaries.dir(g.root()), evidence);
         }
+        // After the verdict, so the step's miss note is the verdict's.
+        List<String> held = GuardVerdicts.heldTokens(tokens);
+        if (held != null) GuardVerdicts.storeHeld(cache, taskId, laneKey(lane, taskId, held, storedSlice, env));
     }
 
     /**

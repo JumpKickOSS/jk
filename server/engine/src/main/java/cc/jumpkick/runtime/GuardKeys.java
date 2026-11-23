@@ -191,7 +191,7 @@ final class GuardKeys {
                 return Optional.of(run("guards · lane evidence to restore"));
             }
             return Optional.of(run(
-                    missReason(actionCache, taskId, probe, load.rules().rules().size())));
+                    missReason(actionCache, taskId, probe, load.rules().rules().size(), dir)));
         } catch (IOException e) {
             return Optional.of(run("guards · " + e.getMessage()));
         }
@@ -326,42 +326,30 @@ final class GuardKeys {
             }
             reads.add(fileToken("lock", root.resolve(ManifestPaths.LOCK)));
         }
-        if (!reads.isEmpty()) tokens.add(SUITE_READS + ":" + Hashing.sha256Hex(String.join("\n", reads)));
+        if (!reads.isEmpty()) tokens.add(GuardVerdicts.SUITE_READS + ":" + Hashing.sha256Hex(String.join("\n", reads)));
         return tokens;
     }
 
     /**
-     * The token holding the digest of what a guard suite reads beyond its own module. One token, so
-     * the verdict record keeps it whole and the forecast can tell a miss it alone caused.
+     * Why a module lane whose key ({@code probe}'s) missed runs. When a verdict was reached over its
+     * {@link GuardVerdicts#heldTokens} and no record under the key itself waits on a tool, the
+     * module's own inputs held and its guard suite's workspace input moved, and the reason says so.
      */
-    static final String SUITE_READS = "suite-reads";
-
-    /**
-     * Why a module lane whose key missed runs. When the last verdict differs from {@code probe} only
-     * in {@link #SUITE_READS}, the module's own inputs held and its guard suite's workspace input
-     * moved, and the reason says so.
-     */
-    static String missReason(ActionCache actionCache, String taskId, LaneProbe probe, int rules) {
-        String otherwise = rules + " rules to evaluate";
-        if (actionCache.madeByAnotherJk(taskId)) return missed(actionCache, taskId, otherwise);
-        String prefix = SUITE_READS + ":";
-        int at = -1;
-        for (int i = 0; i < probe.tokens().size(); i++)
-            if (probe.tokens().get(i).startsWith(prefix)) at = i;
-        if (at < 0) return "guards · " + otherwise;
-        try {
-            Optional<ActionCache.ActionRecord> last = actionCache.lastFor(taskId);
-            String before = last.map(r -> r.inputs().get(SUITE_READS)).orElse(null);
-            if (before == null || probe.tokens().get(at).equals(prefix + before)) return "guards · " + otherwise;
-            List<String> then = new ArrayList<>(probe.tokens());
-            then.set(at, prefix + before);
-            if (laneKey(taskId, then, probe.slice()).equals(last.get().actionKey())) {
-                return "guards · " + rules + " rules · src/guard reads the workspace and it changed";
+    static String missReason(ActionCache actionCache, String taskId, LaneProbe probe, int rules, Path dir) {
+        List<String> held = GuardVerdicts.heldTokens(probe.tokens());
+        if (held != null && probe.key() != null) {
+            try {
+                if (actionCache.lookup(probe.key()).isEmpty()
+                        && actionCache
+                                .lookup(laneKey(Lane.MODULE, taskId, held, probe.slice(), dir))
+                                .isPresent()) {
+                    return "guards · " + rules + " rules · src/guard reads the workspace and it changed";
+                }
+            } catch (IOException e) {
+                Log.debug("guard forecast: the held verdict of " + taskId + " is unreadable", e);
             }
-        } catch (IOException e) {
-            Log.debug("guard forecast: the last verdict of " + taskId + " is unreadable", e);
         }
-        return "guards · " + otherwise;
+        return missed(actionCache, taskId, rules + " rules to evaluate");
     }
 
     /**
