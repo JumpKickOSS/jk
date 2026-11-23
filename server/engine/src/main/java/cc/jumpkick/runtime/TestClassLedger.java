@@ -152,8 +152,8 @@ final class TestClassLedger {
     }
 
     /**
-     * {@code launch} starts: the classes it records from here on are its own, and the answer is the
-     * classes it leaves out, those that passed in it under this stamp ({@link #settledClasses}).
+     * {@code launch} is entered: the classes it records from here on are its own, and the answer is
+     * the classes it leaves out, those that passed in it under this stamp ({@link #settledClasses}).
      */
     List<String> enter(String launch) {
         this.launch = launch;
@@ -168,11 +168,21 @@ final class TestClassLedger {
     }
 
     /**
-     * {@code launcher}, handed for each launch as it starts the classes that launch leaves out
-     * ({@link #enter}), so each launch records its classes as its own.
+     * {@code launcher}, handed for each launch the classes that launch leaves out ({@link #enter}).
+     * A launch that starts is entered again as it starts, so it records its classes as its own.
      */
     SuiteResources.Launcher launching(BiFunction<List<String>, SuiteSettings, JUnitLauncher> launcher) {
-        return (launch, settings) -> launcher.apply(enter(launch), settings);
+        return new SuiteResources.Launcher() {
+            @Override
+            public JUnitLauncher of(String launch, SuiteSettings settings) {
+                return launcher.apply(enter(launch), settings);
+            }
+
+            @Override
+            public void starting(String launch) {
+                enter(launch);
+            }
+        };
     }
 
     /**

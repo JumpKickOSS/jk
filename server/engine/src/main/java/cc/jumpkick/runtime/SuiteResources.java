@@ -164,6 +164,9 @@ record SuiteResources(Map<String, List<Path>> bySuite) {
     @FunctionalInterface
     interface Launcher {
         JUnitLauncher of(String launch, SuiteSettings settings);
+
+        /** Launch {@code launch}, one {@link #of} answered, starts its JVMs now. */
+        default void starting(String launch) {}
     }
 
     /** The name of the only launch of a run that starts one. */
@@ -193,8 +196,8 @@ record SuiteResources(Map<String, List<Path>> bySuite) {
             SuiteFilter.Launch only = launches.getFirst();
             JUnitLauncher one = launcher.of(ONE_LAUNCH, only.settings()).withSuites(suites);
             if (runsAnything(one, suites, testClasses, classPatterns, excludeClasses, holdsTests))
-                out.add(new Start(one, runtimeCp, only));
-            return new Starts(out);
+                out.add(new Start(ONE_LAUNCH, one, runtimeCp, only));
+            return new Starts(launcher, out);
         }
         for (Map.Entry<String, List<Path>> group : groups().entrySet()) {
             SuiteFilter part = split() ? suites.part(group.getKey()) : suites;
@@ -220,17 +223,23 @@ record SuiteResources(Map<String, List<Path>> bySuite) {
                 if (names != null) one.withClassNames(names);
                 List<Path> classpath = new ArrayList<>(group.getValue());
                 classpath.addAll(runtimeCp);
-                out.add(new Start(one, classpath, shared));
+                out.add(new Start(name, one, classpath, shared));
             }
         }
-        return new Starts(out);
+        return new Starts(launcher, out);
     }
 
-    /** One launch that starts test JVMs: its launcher, its classpath after the test classes, its suites. */
-    record Start(JUnitLauncher launcher, List<Path> classpath, SuiteFilter.Launch launch) {}
+    /**
+     * One launch that starts test JVMs: its name, its launcher, its classpath after the test
+     * classes, its suites.
+     */
+    record Start(String name, JUnitLauncher launcher, List<Path> classpath, SuiteFilter.Launch launch) {}
 
-    /** The launches a run starts, in order; none when every launch was left out. */
-    record Starts(List<Start> list) {
+    /**
+     * The launches a run starts, in order, none when every launch was left out, and the {@link
+     * Launcher} told as each starts.
+     */
+    record Starts(Launcher launcher, List<Start> list) {
 
         Starts {
             list = List.copyOf(list);
@@ -245,6 +254,7 @@ record SuiteResources(Map<String, List<Path>> bySuite) {
         TestSummary run(Launch launch) throws Exception {
             TestSummary total = NOTHING_RAN;
             for (Start s : list) {
+                launcher.starting(s.name());
                 TestSummary ran = launch.run(s.launcher(), s.classpath(), s.launch());
                 total = total == NOTHING_RAN ? ran : total.plus(ran);
             }
