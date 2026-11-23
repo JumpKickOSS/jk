@@ -101,6 +101,14 @@ if bash "$ROOT/scripts/gate/flaky.sh" ran "$WORK/f15-guard.jsonl" install 2>/dev
   fail "flaky.sh ran said: $(bash "$ROOT/scripts/gate/flaky.sh" ran "$WORK/f15-guard.jsonl" install 2>&1)"
 [[ "$(bash "$ROOT/scripts/gate/flaky.sh" failed "$WORK/f15-red.jsonl")" == "cc.jumpkick:jk-cli-e2e cc.jumpkick.command.project.NewCommandTest" ]] ||
   fail "f15's failed classes were: $(bash "$ROOT/scripts/gate/flaky.sh" failed "$WORK/f15-red.jsonl")"
+# A test worker that died mid-class: its row is the failure of the class it held, so a re-run runs
+# that class. Before, the run carried only the step's `1 test failure` and named no class.
+cat >"$WORK/died.jsonl" <<'EOF'
+{"schema":1,"type":"class-finish","task":"run-tests","module":"cc.jumpkick:jk-engine","testClass":"cc.jumpkick.runtime.KspGeneratedSourcesTest","tests":1,"failed":0,"skipped":0,"millis":5733,"tier":"slow"}
+{"schema":1,"type":"error","task":"run-tests","code":"test-failure","message":"test worker exited 137 mid-run (last class: cc.jumpkick.runtime.KspOutputsTest)","module":"cc.jumpkick:jk-engine","suite":"slow","testClass":"cc.jumpkick.runtime.KspOutputsTest","method":"(worker 1)","worker":1}
+EOF
+[[ "$(bash "$ROOT/scripts/gate/flaky.sh" failed "$WORK/died.jsonl")" == "cc.jumpkick:jk-engine cc.jumpkick.runtime.KspOutputsTest" ]] ||
+  fail "a dead worker's failed classes were: $(bash "$ROOT/scripts/gate/flaky.sh" failed "$WORK/died.jsonl")"
 # A stand-in ka: `new` opens TK-F<n> (or fails under KA_FAIL) and logs its arguments, `show`
 # answers the status written in $KA_STATE/<id>. Each reads its stdin to the end, as a ka that
 # prompts would.

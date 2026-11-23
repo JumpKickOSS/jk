@@ -3,6 +3,7 @@ package cc.jumpkick.test;
 
 import cc.jumpkick.engine.plugin.WorkerExit;
 import cc.jumpkick.orchestrator.ResultAggregator;
+import cc.jumpkick.orchestrator.TestProgressListener;
 import cc.jumpkick.run.TestFailureInfo;
 import cc.jumpkick.run.TestSummary;
 import java.io.PrintWriter;
@@ -19,7 +20,9 @@ import org.jspecify.annotations.Nullable;
  * handler throw with this one row shape, so the same decoder bug reads the same way in every
  * summary. A worker whose lease gave up before its process started says so, with the lease's
  * refusal. Any other early end — a non-zero exit, or an exit 0 before the parent said {@code
- * DONE} — names the worker and the last class it was dispatched, so a shortfall has an owner.
+ * DONE} — names the worker, its exit code and the class it held as the row's class, so the class
+ * is the one that failed and a re-run of the failed classes runs it. A memory kill says so after
+ * the exit code.
  */
 final class WorkerFailureRow {
 
@@ -32,18 +35,42 @@ final class WorkerFailureRow {
             String moduleLabel,
             int workerId,
             WorkerExit exit,
-            String lastClass,
+            String held,
             String unstarted,
             String output,
             @Nullable RuntimeException handler) {
-        String dispatched = lastClass.isBlank() ? "" : " (last class: " + lastClass + ")";
+        String dispatched = held.isBlank() ? "" : " (last class: " + held + ")";
         if (handler != null) return handlerRow(moduleLabel, "test protocol handler", dispatched, workerId, handler);
+        String killed = exit.failure("");
         String why = !unstarted.isEmpty()
                 ? "test worker never started: " + unstarted
                 : exit.code() == 0
                         ? "test worker exited 0 mid-run" + dispatched + "; something called System.exit or Runtime.halt"
-                        : "test worker " + exit.failure("exited " + exit.code() + " mid-run") + dispatched;
-        return new TestFailureInfo(moduleLabel, "", lastClass, "(worker " + workerId + ")", "", why, output, workerId);
+                        : "test worker exited " + exit.code() + " mid-run" + dispatched
+                                + (killed.isEmpty() ? "" : ", " + killed);
+        return new TestFailureInfo(moduleLabel, "", held, "(worker " + workerId + ")", "", why, output, workerId);
+    }
+
+    /**
+     * Tell {@code listener} of each of {@code deaths} that {@code summary}, the run's final one,
+     * still holds, as the failure of the class it names. No test event carried these rows, so
+     * without this the run's transcript names no failed class and a gate cannot run the class
+     * again; a row a heap retry replaced is not reported, since the retry ran its class.
+     */
+    static void report(TestProgressListener listener, List<TestFailureInfo> deaths, TestSummary summary) {
+        for (TestFailureInfo row : summary.failures()) {
+            if (!deaths.contains(row)) continue;
+            listener.onFailure(
+                    row.className(),
+                    row.method(),
+                    row.exceptionClass(),
+                    row.message(),
+                    row.stack(),
+                    row.engine(),
+                    row.className(),
+                    row.method(),
+                    row.worker());
+        }
     }
 
     /**

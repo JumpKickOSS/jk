@@ -1034,6 +1034,7 @@ public final class JUnitLauncher {
             TestSummary serial = pool.run(1, serialClasses, xml, md, Math.max(workers, pooled), null);
             summary = summary.plus(serial);
         }
+        WorkerFailureRow.report(listener, pool.deaths(), summary);
         writeXml(xml, testResultsDir);
         publishTests(md, testClassesDir, testResultsDir);
         return summary;

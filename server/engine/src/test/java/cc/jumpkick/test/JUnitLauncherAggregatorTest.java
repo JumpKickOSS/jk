@@ -537,6 +537,9 @@ class JUnitLauncherAggregatorTest {
         assertThat(lastClass).hasValue("com.acme.ATest");
         handler.accept("{\"event\":\"ready\"}", convo);
         assertThat(done).isTrue();
+        assertThat(lastClass)
+                .as("asking again says the class it held was reported")
+                .hasValue("");
         assertThat(sent).containsExactly("RUN com.acme.ATest", "DONE", "<eof>");
 
         TestFailureInfo quit = WorkerFailureRow.of("m", 2, WorkerExit.noWorker(0), "com.acme.ATest", "", "", null);

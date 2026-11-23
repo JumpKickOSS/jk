@@ -43,8 +43,9 @@ import org.jspecify.annotations.Nullable;
  * (XML, Markdown) stays with the launcher; this class only forks, dispatches and merges.
  *
  * <p>A worker is complete only when it exited 0 after the parent told it {@code DONE}: a JVM that
- * ends earlier, on any exit, left its in-flight class unreported and is a failure row, and classes
- * still queued once every worker has ended are a shortfall row. Neither is ever scored green.
+ * ends earlier, on any exit, left its in-flight class unreported and is a failure row naming that
+ * class, and classes still queued once every worker has ended are a shortfall row. Neither is ever
+ * scored green.
  */
 final class PullWorkerPool {
 
@@ -63,6 +64,9 @@ final class PullWorkerPool {
 
     /** Workers the last {@link #run} started. */
     private int started;
+
+    /** The rows of every worker that ended before {@code DONE}, across this pool's runs. */
+    private final List<TestFailureInfo> deaths = new ArrayList<>();
 
     /** The largest {@code -Xmx} a worker of the last {@link #run} was started with; {@code -1} when none was. */
     private final AtomicLong heap = new AtomicLong(-1);
@@ -169,8 +173,8 @@ final class PullWorkerPool {
         }
         // A worker that dies mid-suite while its siblings keep going must not vanish silently:
         // its in-flight class is neither run nor reported, and the suite would go green with a
-        // shortfall. Surface every worker that ended before DONE as a failure naming its last
-        // class (idle-watchdog kills and a clean exit 0 land here too), and a conversation the
+        // shortfall. Surface every worker that ended before DONE as a failure naming the class it
+        // held (idle-watchdog kills and a clean exit 0 land here too), and a conversation the
         // parent's own handler ended as the parent-side bug it is. Skipped on user cancel: those
         // exits are the kill we asked for, and the shortfall row below says so.
         if (anyIncomplete && !SessionCancel.cancelled()) {
@@ -178,14 +182,16 @@ final class PullWorkerPool {
                 if (!shard.incomplete()) continue;
                 total += 1;
                 failed += 1;
-                allFailures.add(WorkerFailureRow.of(
+                TestFailureInfo row = WorkerFailureRow.of(
                         moduleLabel,
                         shard.workerId,
                         shard.exit,
-                        shard.lastClass.get(),
+                        shard.held.get(),
                         shard.unstarted.get(),
                         shard.crash.text(),
-                        shard.handlerFailure.get()));
+                        shard.handlerFailure.get());
+                allFailures.add(row);
+                deaths.add(row);
             }
         }
         TestFailureInfo shortfall =
@@ -301,6 +307,14 @@ final class PullWorkerPool {
         return heap.get();
     }
 
+    /**
+     * The row of each worker that ended before {@code DONE}, in every run of this pool. No test
+     * event carried them, so the launcher reports those still in its final summary as failures.
+     */
+    List<TestFailureInfo> deaths() {
+        return List.copyOf(deaths);
+    }
+
     /** The classes the last {@link #run} never dispatched; a heap retry runs them with the worker's own class. */
     List<String> undispatched() {
         return undispatched;
@@ -310,19 +324,21 @@ final class PullWorkerPool {
      * The pull protocol's parent side: each {@code ready} pulls the next class from the shared
      * queue onto the worker's command channel ({@code DONE} once the queue is empty, which also sets {@code
      * done}: the worker owes nothing more); every other event is the aggregator's. A throw from
-     * here ends the conversation as a {@link PluginProcess.HandlerFailure}.
+     * here ends the conversation as a {@link PluginProcess.HandlerFailure}. {@code held} is the
+     * class the worker is running: a worker asks for another only once it has reported the one it
+     * held, so each {@code ready} replaces it, with nothing after {@code DONE}.
      */
     static BiConsumer<String, PluginProcess.Conversation> pullHandler(
             ConcurrentLinkedDeque<String> queue,
             ResultAggregator aggregator,
             AtomicBoolean done,
-            AtomicReference<String> lastClass) {
+            AtomicReference<String> held) {
         return (json, convo) -> {
             String event = Jsonl.str(json, "event");
             if ("ready".equals(event)) {
                 String next = queue.pollFirst();
+                held.set(next == null ? "" : next);
                 if (next != null) {
-                    lastClass.set(next);
                     convo.send("RUN " + next);
                 } else {
                     done.set(true);
@@ -348,8 +364,7 @@ final class PullWorkerPool {
         int workerId = shard.workerId;
         CaptureBuffer crash = shard.crash;
         ResultAggregator aggregator = shard.aggregator;
-        BiConsumer<String, PluginProcess.Conversation> handler =
-                pullHandler(queue, aggregator, shard.done, shard.lastClass);
+        BiConsumer<String, PluginProcess.Conversation> handler = pullHandler(queue, aggregator, shard.done, shard.held);
         Consumer<String> passthrough = line -> {
             crash.add(aggregator.userOutput(line));
         };
@@ -441,7 +456,8 @@ final class PullWorkerPool {
         /** Set once the parent told the worker {@code DONE}: it owes nothing more. */
         final AtomicBoolean done = new AtomicBoolean();
 
-        final AtomicReference<String> lastClass = new AtomicReference<>("");
+        /** The class it was sent and has not finished: what a death mid-class leaves unrun. */
+        final AtomicReference<String> held = new AtomicReference<>("");
         /** Why its process never started: the lease it waited for gave up; empty once it started. */
         final AtomicReference<String> unstarted = new AtomicReference<>("");
 
