@@ -438,6 +438,16 @@ The marks add a sixth to jk-engine's recording and double jk-cli's events, and l
 pass's time where it was. That pass is 2.6% of jk-engine's run-tests step with or without them, and
 the records and the shadow after it bring the work after the suite to 6.3 s, 7% of the step.
 
+The attribution pass then judged each recorded path anew on every read (resolving it and walking
+the layout's roots), though one test JVM reads a few thousand distinct paths a hundred thousand
+times; it now keeps a verdict per path for the suite (`PathVerdicts`), and the recording reader
+fills each field's slot by index and skips the attributes of metadata it does not keep. Replayed
+in-process over one jk-engine fast-tier run's 24 recordings (981k events, 968 classes) on
+bocabox-host2 (24 CPUs, shared, load average 3 to 5), old and new alternating, three runs each,
+six timed passes a run after one warm-up: **1.53 s before, 0.59 s after** (median of 18; ranges
+1.52 to 1.59 s and 0.58 to 0.69 s), the same observations for every class. The records and the
+shadow were not re-measured; they need an engine built from the tree.
+
 ## Staging
 
 1. **Records** (selection unchanged). The class event and the attribution pass, the

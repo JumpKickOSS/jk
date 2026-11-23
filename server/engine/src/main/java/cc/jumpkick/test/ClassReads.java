@@ -24,7 +24,6 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.function.Function;
@@ -239,7 +238,8 @@ public final class ClassReads {
             + (CLASSES_KEPT + 1) * (USED_NAMES_KEPT / 8L)
             + POOLED_READS_KEPT * 200L
             + SUITE_CODE_KEPT * 200L
-            + (ClassReads.WRITTEN_KEPT + ClassReads.CODE_FILES_KEPT + ClassReads.EXISTS_KEPT) * 200L;
+            + (ClassReads.WRITTEN_KEPT + ClassReads.CODE_FILES_KEPT + ClassReads.EXISTS_KEPT) * 200L
+            + ClassReads.VERDICTS_KEPT * 600L;
 
     /**
      * The most files one JVM is noted writing among those that could be inputs; past it a read of
@@ -252,6 +252,12 @@ public final class ClassReads {
 
     /** How many answers to "is this file there" one JVM's join remembers. */
     static final int EXISTS_KEPT = 2_048;
+
+    /**
+     * How many recorded paths a suite remembers the meaning of ({@link PathVerdicts}): its spelling,
+     * its path and its class name, a couple of hundred bytes each.
+     */
+    static final int VERDICTS_KEPT = 2_048;
 
     /**
      * One class's share of a suite's run, or the pool's, bounded: each kind keeps at most so many
@@ -775,6 +781,7 @@ public final class ClassReads {
         Map<String, Observation> launches = new HashMap<>();
         boolean launchesTold = true;
         UseNames useNames = new UseNames();
+        PathVerdicts verdicts = new PathVerdicts(cwd, layout);
         SuiteCode code = SuiteCode.empty();
         boolean complete = true;
         long events = 0;
@@ -788,9 +795,8 @@ public final class ClassReads {
                         if (v[0] != null && !v[0].isBlank()) windows.add(new Window(v[0], start, end));
                     } else if (v[0] != null && !v[0].isBlank() && written.size() < WRITTEN_KEPT) {
                         // Only a file that could be a class's input needs telling from the run's own.
-                        resolved(cwd, v[0])
-                                .filter(p -> classify(p, layout) == Where.DATA)
-                                .ifPresent(written::add);
+                        PathVerdicts.Verdict w = verdicts.of(v[0]);
+                        if (w != null && w.where() == Where.DATA) written.add(w.path());
                     }
                 };
                 Pass pass;
@@ -817,7 +823,8 @@ public final class ClassReads {
                 pools.add(pooled);
                 if (launch == null) launchesTold = false;
                 else pools.add(launches.computeIfAbsent(launch, l -> Observation.pool()));
-                Join join = new Join(windows, written, cwd, layout, classes, pools, code, loadedLeft, useNames);
+                Join join =
+                        new Join(windows, written, cwd, layout, verdicts, classes, pools, code, loadedLeft, useNames);
                 try (RecordingReader.Permit permit = RecordingReader.Permit.acquire()) {
                     pass.run(EVENTS, (name, start, end, v) -> read(name, start, v, join));
                 }
@@ -888,6 +895,7 @@ public final class ClassReads {
         private final @Nullable String path = BuildEnv.machine().get("PATH");
 
         private final Layout layout;
+        private final PathVerdicts verdicts;
         private final Map<String, Observation> classes;
         /** What no window holds goes to each: the suite's pool, and its launch's where told. */
         private final List<Observation> pools;
@@ -922,11 +930,13 @@ public final class ClassReads {
                 Set<Path> written,
                 Path cwd,
                 Layout layout,
+                PathVerdicts verdicts,
                 Map<String, Observation> classes,
                 List<Observation> pools,
                 SuiteCode suiteCode,
                 int[] loadedLeft,
                 UseNames useNames) {
+            this.verdicts = verdicts;
             this.loadedLeft = loadedLeft;
             this.useNames = useNames;
             this.suiteCode = suiteCode;
@@ -982,11 +992,13 @@ public final class ClassReads {
                     if (!underJdk(value, layout)) into.forEach(o -> o.addNative(value));
                 }
                 case READ -> {
-                    Path p = resolved(cwd, value).orElse(null);
-                    if (p == null || written.contains(p)) return;
-                    switch (where(p)) {
+                    PathVerdicts.Verdict read = verdicts.of(value);
+                    if (read == null) return;
+                    Path p = read.path();
+                    if (written.contains(p)) return;
+                    switch (where(read)) {
                         case LOADED -> {
-                            String cls = className(p, layout);
+                            String cls = read.className();
                             if (cls != null) {
                                 String one = names.computeIfAbsent(cls, c -> c);
                                 into.forEach(o -> o.addLoaded(one, loadedLeft));
@@ -1028,11 +1040,10 @@ public final class ClassReads {
             }
         };
 
-        /** Where {@code p} lies; a code file is judged again under its real path, once. */
-        private Where where(Path p) {
-            Where w = classify(p, layout);
-            if (w != Where.CODE) return w;
-            return code.computeIfAbsent(p, f -> {
+        /** Where {@code read} lies; a code file is judged again under its real path, once. */
+        private Where where(PathVerdicts.Verdict read) {
+            if (read.where() != Where.CODE) return read.where();
+            return code.computeIfAbsent(read.path(), f -> {
                 Path r = real(f);
                 return r.equals(f) ? Where.CODE : classify(r, layout);
             });
@@ -1173,16 +1184,6 @@ public final class ClassReads {
     private static final List<String> OS_PREFIXES =
             List.of("/proc/", "/sys/", "/dev/", "/etc/", "/System/", "/Library/", "/private/etc/");
 
-    /** The binary name of the class file {@code p} under one of the class trees. */
-    private static @Nullable String className(Path p, Layout layout) {
-        for (Path tree : layout.classTrees()) {
-            if (!p.startsWith(tree)) continue;
-            String rel = tree.relativize(p).toString().replace('\\', '/');
-            return rel.substring(0, rel.length() - ".class".length()).replace('/', '.');
-        }
-        return null;
-    }
-
     private static boolean underJdk(String library, Layout layout) {
         if (layout.javaHome() == null) return false;
         try {
@@ -1206,14 +1207,6 @@ public final class ClassReads {
             if (p.startsWith(r)) return true;
         }
         return false;
-    }
-
-    private static Optional<Path> resolved(Path cwd, String raw) {
-        try {
-            return Optional.of(cwd.resolve(raw).toAbsolutePath().normalize());
-        } catch (InvalidPathException odd) {
-            return Optional.empty();
-        }
     }
 
     private static boolean local(@Nullable String address) {

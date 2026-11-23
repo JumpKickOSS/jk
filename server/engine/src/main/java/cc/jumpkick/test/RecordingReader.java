@@ -183,16 +183,16 @@ public final class RecordingReader {
                 List<Field> fields = want.type.fields;
                 for (int i = 0; i < fields.size(); i++) {
                     Field f = fields.get(i);
-                    Integer slot = want.slotOf.get(f.name);
+                    int slot = want.slotOf[i];
                     if (i == 0) {
                         // startTime: every event's first field, in ticks
                         ticks = in.varLong();
-                        if (slot != null) values[slot] = Long.toString(ticks);
+                        if (slot >= 0) values[slot] = Long.toString(ticks);
                     } else if (i == 1 && f.name.equals("duration")) {
                         // the duration of an event that has one, in ticks
                         duration = in.varLong();
-                        if (slot != null) values[slot] = Long.toString(duration);
-                    } else if (slot != null) {
+                        if (slot >= 0) values[slot] = Long.toString(duration);
+                    } else if (slot >= 0) {
                         values[slot] = value(in, f, meta, strings);
                     } else {
                         skip(in, f, meta);
@@ -339,8 +339,11 @@ public final class RecordingReader {
         }
     }
 
-    /** What to take from one event type: a slot per asked-for field. */
-    private record Want(Type type, Map<String, Integer> slotOf, int slots) {}
+    /**
+     * What to take from one event type: for each of its fields in order, the slot it fills, or -1
+     * when it was not asked for.
+     */
+    private record Want(Type type, int[] slotOf, int slots) {}
 
     /** A chunk's metadata: its types by id. */
     static final class Metadata {
@@ -357,8 +360,8 @@ public final class RecordingReader {
             types.forEach((id, t) -> {
                 List<String> fields = t.event ? wanted.get(t.name) : null;
                 if (fields == null) return;
-                Map<String, Integer> slots = new HashMap<>();
-                for (int i = 0; i < fields.size(); i++) slots.put(fields.get(i), i);
+                int[] slots = new int[t.fields.size()];
+                for (int i = 0; i < slots.length; i++) slots[i] = fields.indexOf(t.fields.get(i).name);
                 out.put(id, new Want(t, slots, fields.size()));
             });
             return out;
@@ -395,8 +398,16 @@ public final class RecordingReader {
             if (depth > 32) throw new IOException("metadata nesting past 32");
             String name = at(table, in.varLong());
             int attributes = (int) in.varLong();
-            Map<String, String> attrs = new HashMap<>();
-            for (int i = 0; i < attributes; i++) attrs.put(at(table, in.varLong()), at(table, in.varLong()));
+            boolean declares = ("class".equals(name) && "metadata".equals(parent))
+                    || ("field".equals(name) && "class".equals(parent) && owner != null);
+            // Only a type or a field is kept; every other element's attributes (annotations,
+            // settings) are passed over, which is most of the metadata.
+            Map<String, String> attrs = declares ? new HashMap<>() : Map.of();
+            for (int i = 0; i < attributes; i++) {
+                String key = at(table, in.varLong());
+                String value = at(table, in.varLong());
+                if (declares) attrs.put(key, value);
+            }
             Type type = null;
             if ("class".equals(name) && "metadata".equals(parent)) {
                 long id = Long.parseLong(attrs.getOrDefault("id", "-1"));
@@ -426,6 +437,7 @@ public final class RecordingReader {
         private final ByteBuffer buf = ByteBuffer.allocate(64 << 10);
         private long bufStart;
         private byte[] bytes = new byte[256];
+        private char[] chars = new char[256];
 
         In(FileChannel ch) {
             this.ch = ch;
@@ -514,9 +526,9 @@ public final class RecordingReader {
                 }
                 case 4 -> {
                     int n = length();
-                    StringBuilder sb = new StringBuilder(n);
-                    for (int i = 0; i < n; i++) sb.append((char) varLong());
-                    return sb.toString();
+                    if (chars.length < n) chars = new char[Math.max(n, chars.length * 2)];
+                    for (int i = 0; i < n; i++) chars[i] = (char) varLong();
+                    return new String(chars, 0, n);
                 }
                 default -> throw new IOException("string encoding " + encoding + " at " + (position() - 1));
             }
