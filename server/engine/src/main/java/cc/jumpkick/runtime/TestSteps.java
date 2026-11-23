@@ -8,6 +8,7 @@ import static cc.jumpkick.runtime.PlannerTest.suiteFilter;
 import static cc.jumpkick.runtime.TestStampInputs.testStampWorkerJars;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.StampedMemo;
 import cc.jumpkick.config.TestSelection;
@@ -760,7 +761,8 @@ final class TestSteps {
     /**
      * The verdict a {@code --class} selection leaves ({@link TestClassMatch#judge}), or null when
      * this workspace module skips: then it leaves the runner's tag-excluded warning and the suite
-     * hint, when there are, for the run-wide verdict.
+     * hint, when there are, for the run-wide verdict. A module a qualified pattern names never
+     * skips: matching nothing fails it, and the failure names it.
      */
     private static TestClassMatch.@Nullable Verdict judgeClassSelection(
             TaskContext ctx,
@@ -775,8 +777,14 @@ final class TestSteps {
                 ? null
                 : suites.classHint(
                         ctx.require(PARSED_BUILD).testClassesDir(), PlannerTest.tagClasspath(ctx), sel.classes());
+        Session run = SessionContext.current();
+        boolean named = run.testSelection().namesModule(in.dir(), run.workingDir());
         TestClassMatch.Verdict verdict = TestClassMatch.judge(
-                sel, exactClassList, tagExcluded, suiteHint, in.projectModules().size() > 1, result);
+                sel, exactClassList, tagExcluded, suiteHint, in.projectModules().size() > 1 && !named, result);
+        if (named && verdict.noMatch() != null && verdict.result() == null) {
+            String module = moduleLabel(run.workingDir(), in.dir());
+            verdict = new TestClassMatch.Verdict(null, TestClassMatch.inModule(module, verdict.noMatch()), false, null);
+        }
         if (verdict.skipped()) {
             if (tagExcluded != null || suiteHint != null) {
                 ctx.put(TEST_RUN, new TestRun(null, tagExcluded, suiteHint));
@@ -791,6 +799,21 @@ final class TestSteps {
                     "--class " + String.join(", ", sel.classes()) + ": " + verdict.otherSuite());
         }
         return verdict;
+    }
+
+    /** {@code dir} as the user names the module: relative to the directory jk ran in when under it. */
+    private static String moduleLabel(Path workingDir, Path dir) {
+        Path base = workingDir.toAbsolutePath().normalize();
+        Path module = dir.toAbsolutePath().normalize();
+        try {
+            base = base.toRealPath();
+            module = module.toRealPath();
+        } catch (IOException e) {
+            // the lexical paths are the next best label
+        }
+        return module.startsWith(base) && !module.equals(base)
+                ? base.relativize(module).toString().replace('\\', '/')
+                : module.toString();
     }
 
     /** The affected-test selection when the session asked for one; null otherwise. */
@@ -871,7 +894,7 @@ final class TestSteps {
         ForecastScope s = ForecastScope.of(scope);
         if (s.skipTests || !s.haveTests()) return null;
         // As the run decides it first: a module --exclusive left out runs no suite.
-        if (!SuiteRunRules.selectedForTests(SessionContext.current().testSelection(), s.dir)) {
+        if (!SuiteRunRules.selectedForTests(SessionContext.selectionFor(s.dir), s.dir)) {
             return new TaskForecast.Task(
                     TaskNames.RUN_TESTS, TaskForecast.Status.CACHED, TaskNames.TESTS_NOT_SELECTED, null);
         }
@@ -881,8 +904,7 @@ final class TestSteps {
         BuildLayout layout = prepared.parsed().layout();
         // The tests this run selects: an integration run is priced by its integration tests, not
         // every unit test beside them.
-        int estimated = TestSupport.estimateSelectedSuiteTestCount(
-                s.dir, compact, SessionContext.current().testSelection());
+        int estimated = TestSupport.estimateSelectedSuiteTestCount(s.dir, compact, SessionContext.selectionFor(s.dir));
         s.testCount = estimated;
         String tests = estimated > 0 ? "~" + ForecastSteps.count(estimated, "test") : "tests";
         // The run's own rule (SuiteRunRules.forcedRunReason): a rebuild, debug or coverage run never
@@ -908,7 +930,7 @@ final class TestSteps {
         if (kept == null && (s.compileDirty || s.compileDepDirty || s.testDirty || s.testDepDirty || kspRuns)) {
             String jk = StampTokens.jkMoved(
                     s.dir,
-                    SessionContext.current().testSelection(),
+                    SessionContext.selectionFor(s.dir),
                     KeyContract.SUITE.keyVersion(),
                     OrchestratorCode.digest());
             if (jk == null) tests = coneTests(s, replayedByCones(s, prepared, kspRuns), estimated, tests);
@@ -972,8 +994,7 @@ final class TestSteps {
         boolean network = !hit
                 && !red
                 && !s.project.build().testNetworkAllowed()
-                && SuiteReads.load(s.dir, SessionContext.current().testSelection())
-                        .network();
+                && SuiteReads.load(s.dir, SessionContext.selectionFor(s.dir)).network();
         Perf.note("forecast-test-stamp " + s.dir, "key", stampKey, "hit", hit, "red", red);
         if (hit)
             return new TaskForecast.Task(
@@ -1001,7 +1022,7 @@ final class TestSteps {
                         ? null
                         : StampTokens.reason(
                                 s.dir,
-                                SessionContext.current().testSelection(),
+                                SessionContext.selectionFor(s.dir),
                                 () -> stamp.forecastKey(compact, layout.classesDir(), finalMainFp));
         String priced = red || network || unread != null || stampKey == null
                 ? tests
@@ -1037,7 +1058,7 @@ final class TestSteps {
         Map<String, TestClassLedger.Entry> replayed = SuiteDiscovery.replayedByCone(
                 s.dir,
                 layout,
-                SessionContext.current().testSelection(),
+                SessionContext.selectionFor(s.dir),
                 stamp.runtimeClasspath(),
                 stamp.extras(),
                 resources,

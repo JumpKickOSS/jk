@@ -22,7 +22,7 @@
 # reinstall, one install that runs every module's fast tier (`jk install -c`), then, under a
 # freshly started engine, the integration suite of each module changed since GATE_BASE
 # (scripts/gate/changed-modules.sh; every module when a root build file changed) and the curated
-# lane's classes (curated-integration.txt) in the other modules, then the docs suite (`jk test -s
+# lane's classes (curated-integration.txt) in the other modules, as one `jk test`, then the docs suite (`jk test -s
 # docs`) and the tree suite (`jk test -s tree`, the tests that scan every module's sources). The
 # Full tier runs the tree suite inside `jk install -g`, as one of the guard suites. jk passes a run red only in the classes .jk/test/quarantine.toml holds; a run red in other
 # classes runs them once more under the same inputs, and passes when they pass there. Each class
@@ -298,16 +298,14 @@
     if [ "$mods" = "*" ]; then
       integ changed -s integration -c --no-ansi
     else
-      margs=()
-      for mo in $mods; do margs+=(-m "$mo"); done
-      [ "${#margs[@]}" -eq 0 ] || integ changed -s integration -c -X --no-ansi "${margs[@]}"
-      # The curated lane, one `jk test` over every module the run above did not cover.
-      except=()
-      for mo in $mods; do except+=(--except "$mo"); done
-      lane="$(JK=jk bash scripts/curated-integration.sh --print ${except[@]+"${except[@]}"} 2>>"$L")" ||
+      # One `jk test`: the whole integration suite of each changed module, and the curated lane's
+      # classes, each qualified with its module, in every other module the lane names.
+      with=()
+      for mo in $mods; do with+=(--with "$mo"); done
+      lane="$(JK=jk bash scripts/curated-integration.sh --print ${with[@]+"${with[@]}"} 2>>"$L")" ||
         red "RED (curated lane: scripts/curated-integration.sh could not read its registry)"
       read -r -a cmd <<<"$lane"
-      [ "${#cmd[@]}" -eq 0 ] || integ curated "${cmd[@]:2}"
+      integ integration "${cmd[@]:2}"
     fi
     # The docs suite checks the docs against the code, so a code change can break it too.
     tested docs test -s docs -c --no-ansi

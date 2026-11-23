@@ -113,6 +113,22 @@ class TestClassMatchTest {
     }
 
     @Test
+    void a_module_qualified_pattern_is_judged_in_its_module_not_by_the_run() {
+        Session qualified = Session.defaults()
+                .withTestSelection(TestSelection.DEFAULT.withClasses(List.of("server/engine:EngineIT")));
+        assertThat(TestClassMatch.runWideVerdict(qualified, false, List.of()))
+                .as("its module failed on its own when nothing matched there")
+                .isNull();
+        Session mixed = Session.defaults()
+                .withTestSelection(TestSelection.DEFAULT.withClasses(List.of("server/engine:EngineIT", "OrdersTest")));
+        assertThat(TestClassMatch.runWideVerdict(mixed, false, List.of()))
+                .as("the run-wide line names the unqualified patterns alone")
+                .isEqualTo("no test classes matched --class OrdersTest");
+        assertThat(TestClassMatch.inModule("server/engine", "no test classes matched --class EngineIT"))
+                .isEqualTo("server/engine: no test classes matched --class EngineIT");
+    }
+
+    @Test
     void a_replayed_green_stamp_counts_as_a_match() {
         Session session = Session.defaults().withTestSelection(ORDERS);
         // The stamp carries the class filter, so a green marker for these patterns once matched.

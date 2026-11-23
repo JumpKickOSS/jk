@@ -148,9 +148,11 @@ changed since `origin/main` onto the workspace member that holds it (the deepest
 pack is not its parent). A file under `docs/`, `scripts/`, `.github/` or `bench/`, or a Markdown
 file at the root, selects no module: guard, the fast tier and the shell fixtures read those. Any
 other file outside every member (the root `jk.toml`, `jk-lock.toml`, `.jk/`, `templates/`)
-selects them all, and the Queue tier runs the whole `integration` suite. The changed modules'
-suites run with `--exclusive`: a module's dependents are not run, which is what the curated lane is
-for. In the other modules a curated class runs alone, so no class runs twice.
+selects them all, and the Queue tier runs the whole `integration` suite. Otherwise its integration
+step is one `jk test -s integration -c --exclusive`: each changed module as a plain `-m`, so its
+whole suite runs, and each other module the curated lane names with its classes qualified
+(`-m server/engine -S server/engine:<class>`), so they run alone there. A module's dependents are
+not run, which is what the curated lane is for, and no class runs twice.
 
 **The slowest end-to-ends wait for the Full tier.** The Queue tier's integration step runs the
 integration suites of up to three heavy modules side by side, and its wall is set by their total
@@ -197,11 +199,12 @@ spawn, worker, workspace, install or lock regression could merge with a determin
 test — sitting in the nightly suite run — that would have caught it.
 
 `scripts/curated-integration.sh` closes that gap. It reads `curated-integration.txt` at the
-checkout root and runs one `jk test -s integration -c -m <module> -S … -m <module> -S …` over
-every module the registry names, as a step of the self-host job on every run of `ci.yml`. The
-Queue tier runs the same command (`--print`), with `--except` leaving out each module the batch
-changed, since that module's whole integration suite runs anyway. Guard G63 fails on an entry whose
-class is renamed or deleted, so the lane does not quietly shrink.
+checkout root and runs one `jk test -s integration -c -X -m <module> -S <module>:<class> …` over
+every module the registry names, as a step of the self-host job on every run of `ci.yml`; a module
+none of whose classes matched fails the run. The Queue tier runs the same command (`--print`), with
+`--with <module>` adding each module the batch changed as a plain `-m`, so that module's whole
+integration suite runs in the same call and its curated classes are not named. Guard G63 fails on
+an entry whose class is renamed or deleted, so the lane does not quietly shrink.
 
 **Curated membership is a duplicate execution policy, not a tag.** Every listed class is
 `@Tag("integration")` and still runs in the nightly suite run; nothing is reclassified to make the

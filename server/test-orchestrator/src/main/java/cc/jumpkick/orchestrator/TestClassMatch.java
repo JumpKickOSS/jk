@@ -15,8 +15,9 @@ import org.jspecify.annotations.Nullable;
  * <p>The patterns are judged against the whole run, not each module: in a workspace most modules
  * do not contain the class the user named, and each of them skips. Only when no module matched
  * anything is the pattern a typo, and a typo must never pass green. A standalone project is its own
- * run, so there the empty match fails on the spot. Either way it is a {@link #NO_TESTS_MATCHED}
- * usage error, not a failed test.
+ * run, so there the empty match fails on the spot, and so does a module a qualified pattern names
+ * ({@code server/engine:EngineIT}): the pattern was meant for it alone. Either way it is a {@link
+ * #NO_TESTS_MATCHED} usage error, not a failed test.
  */
 public final class TestClassMatch {
 
@@ -82,6 +83,11 @@ public final class TestClassMatch {
         return tagged == null ? head : tagged;
     }
 
+    /** The failure line of a module a qualified pattern named, opening with that module. */
+    public static String inModule(String module, String noMatch) {
+        return module + ": " + noMatch;
+    }
+
     /**
      * What one module's run leaves under {@code selection}.
      *
@@ -105,7 +111,8 @@ public final class TestClassMatch {
      * the module, whatever else ran. A {@code --class} naming a class another suite owns says which
      * suite ({@code suiteHint}), matched or not.
      *
-     * @param workspace whether the module is one of several the run covers
+     * @param workspace whether the module is one of several the run covers and no qualified
+     *     pattern names it
      */
     public static Verdict judge(
             TestSelection selection,
@@ -127,8 +134,8 @@ public final class TestClassMatch {
 
     /**
      * The workspace's verdict once every module has finished: the no-match message when the session
-     * asked for classes, the run executed suites, and no module's suite ran a test — otherwise
-     * {@code null}. {@code runs} holds what each module's test step left. A module that matched
+     * asked for classes no module qualifies, the run executed suites, and no module's suite ran a
+     * test — otherwise {@code null}. A qualified pattern was judged in its own module. {@code runs} holds what each module's test step left. A module that matched
      * carries a {@link TestRun#result} with tests in it, whether it ran them or replayed a green
      * stamp for the same patterns. A module whose tag filter dropped a named class left {@link
      * TestRun#tagExcluded}, and a module whose unselected suite owns a named class left {@link
@@ -136,7 +143,8 @@ public final class TestClassMatch {
      */
     public static @Nullable String runWideVerdict(Session session, boolean skipTests, Collection<TestRun> runs) {
         TestSelection selection = session.testSelection();
-        if (selection.classes().isEmpty() || session.affected()) return null;
+        List<String> patterns = selection.unqualifiedClasses();
+        if (patterns.isEmpty() || session.affected()) return null;
         if (skipTests || selection.scriptsOnly()) return null;
         for (TestRun run : runs) {
             TestSummary result = run.result();
@@ -151,7 +159,7 @@ public final class TestClassMatch {
             if (suiteHint != null) hints.add(suiteHint);
         }
         return noMatchMessage(
-                selection,
+                selection.withClasses(patterns),
                 excluded.isEmpty() ? null : String.join("; ", excluded),
                 hints.isEmpty() ? null : String.join("; ", hints));
     }

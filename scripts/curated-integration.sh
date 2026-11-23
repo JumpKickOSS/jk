@@ -4,18 +4,20 @@
 # full suite stays nightly.
 #
 # Usage:
-#   scripts/curated-integration.sh [--except <module>]...            # run the lane
-#   scripts/curated-integration.sh --print [--except <module>]...    # print its `jk test` command and exit
+#   scripts/curated-integration.sh [--with <module>]...            # run the lane
+#   scripts/curated-integration.sh --print [--with <module>]...    # print its `jk test` command and exit
 #
 # Environment:
 #   JK                 the jk client to run (default: jk on PATH)
 #   CURATED_REGISTRY   the registry to read (default: curated-integration.txt at the checkout root)
 #
-# One `jk test` for every module, so the modules' classes run side by side, and `-c` attempts every
-# module: a red class is a verdict about its module, not a reason to skip the next one. Each class is
-# named exactly with `--class`. `--except <module>` leaves out a module whose whole integration suite
-# runs anyway (the Queue tier's changed modules); with every module left out it prints and runs
-# nothing. A renamed or deleted entry is guard G63's to catch (`curated-integration`), which also
+# One `jk test --exclusive` over every module, so the modules' classes run side by side, and `-c`
+# attempts every module: a red class is a verdict about its module, not a reason to skip the next
+# one. Each class is named exactly and qualified with its module (`--class <module>:<class>`), so it
+# holds there alone and a module none of whose classes matched fails the run. `--with <module>`
+# adds a module whose whole integration suite runs in the same call (the Queue tier's changed
+# modules): it joins as a plain `-m`, and its own curated classes are not named, since its suite
+# runs them. A renamed or deleted entry is guard G63's to catch (`curated-integration`), which also
 # holds the registry's shape, the classes it names and this script's place in the branch gate.
 set -euo pipefail
 
@@ -23,20 +25,20 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 JK="${JK:-jk}"
 REGISTRY="${CURATED_REGISTRY:-$ROOT/curated-integration.txt}"
 MODE=run
-EXCEPT=" "
+WITH=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --print) MODE=--print ;;
-    --except)
+    --with)
       [[ $# -ge 2 ]] || {
-        echo "curated-integration: --except needs a module" >&2
+        echo "curated-integration: --with needs a module" >&2
         exit 2
       }
-      EXCEPT+="$2 "
+      WITH+=("$2")
       shift
       ;;
     *)
-      echo "curated-integration: unknown argument $1; usage: curated-integration.sh [--print] [--except <module>]..." >&2
+      echo "curated-integration: unknown argument $1; usage: curated-integration.sh [--print] [--with <module>]..." >&2
       exit 2
       ;;
   esac
@@ -81,7 +83,7 @@ while IFS= read -r raw || [[ -n "$raw" ]]; do
     MODULES+=("$module")
     CLASSES+=("")
   fi
-  CLASSES[i]+=" --class $fqcn"
+  CLASSES[i]+=" --class $module:$fqcn"
 done <"$REGISTRY"
 
 if [[ ${#MODULES[@]} -eq 0 ]]; then
@@ -89,21 +91,23 @@ if [[ ${#MODULES[@]} -eq 0 ]]; then
   exit 2
 fi
 
-cmd=("$JK" test -s integration -c --no-ansi)
+cmd=("$JK" test -s integration -c -X --no-ansi)
 ran=()
+with=" "
+for mo in ${WITH[@]+"${WITH[@]}"}; do
+  ran+=("$mo")
+  with+="$mo "
+  cmd+=(-m "$mo")
+done
 for i in "${!MODULES[@]}"; do
-  [[ "$EXCEPT" == *" ${MODULES[$i]} "* ]] && continue
+  [[ "$with" == *" ${MODULES[$i]} "* ]] && continue
   ran+=("${MODULES[$i]}")
-  # shellcheck disable=SC2206 # the value is the space-separated `--class <fqcn>` flags built above
+  # shellcheck disable=SC2206 # the value is the space-separated `--class <module>:<fqcn>` flags built above
   cmd+=(-m "${MODULES[$i]}" ${CLASSES[$i]})
 done
 
 if [[ "$MODE" == "--print" ]]; then
-  [[ ${#ran[@]} -eq 0 ]] || printf '%s\n' "${cmd[*]}"
-  exit 0
-fi
-if [[ ${#ran[@]} -eq 0 ]]; then
-  echo "curated-integration: every module is left out, so the lane runs nothing"
+  printf '%s\n' "${cmd[*]}"
   exit 0
 fi
 echo "== curated integration lane: ${ran[*]}"

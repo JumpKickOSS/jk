@@ -2,6 +2,7 @@
 package cc.jumpkick.config;
 
 import cc.jumpkick.run.ContextPropagator;
+import java.nio.file.Path;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -132,6 +133,15 @@ public final class SessionContext {
             if (s != null) return s;
         }
         return INVOCATION.isBound() ? INVOCATION.get().session().get() : current;
+    }
+
+    /**
+     * The current session's test selection as the module at {@code moduleDir} runs it ({@link
+     * TestSelection#forModule}): a module-qualified {@code --class} holds there alone.
+     */
+    public static TestSelection selectionFor(Path moduleDir) {
+        Session session = current();
+        return session.testSelection().forModule(moduleDir, session.workingDir());
     }
 
     /** The request bound on this thread, or {@code null}; read through {@link Request#current()}. */

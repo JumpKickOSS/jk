@@ -16,7 +16,7 @@
 # quarantine, every one for a root build file), the reinstall without tests and then, under the
 # engine it installed, one install that runs the fast tier (red at the reinstall when it fails,
 # before any test), the integration suite of the changed members and the curated lane in the
-# others, then the docs suite, a red run in test classes run once more, and none of the Full
+# others as one run, then the docs suite, a red run in test classes run once more, and none of the Full
 # tier's steps. In the same workspace, the Full tier runs the docs suite on its own and the slow
 # tier only when a plugin changed since its base, and is red when a suite other than the docs
 # suite run alone was seen reading a doc that scripts/gate/test-reads.txt does not list. The docs
@@ -468,8 +468,8 @@ gate 5 GATE_TIER=queue GATE_BASE="$qbase"
 [[ "$(verdict 5)" == "GREEN $tip" ]] || fail "a green Queue tier was not green: $(cat "$WORK/logs/integ-gate-5.log")"
 got="$(sed -n '/^install /,$p' "$WORK/calls-5" | grep -E '^(install|engine stop|test)')"
 want="$(printf '%s\n' 'install -S' 'engine stop' 'install -c' 'engine stop' \
-  'test -s integration -c -X --no-ansi -m mod/a -m mod/a/packs/p' \
-  'test -s integration -c --no-ansi -m mod/b --class b.CuratedBTest' 'test -s docs -c --no-ansi' \
+  'test -s integration -c -X --no-ansi -m mod/a -m mod/a/packs/p -m mod/b --class mod/b:b.CuratedBTest' \
+  'test -s docs -c --no-ansi' \
   'test -s tree -c --no-ansi')"
 [[ "$got" == "$want" ]] || fail "the Queue tier ran:
 $got
@@ -482,9 +482,9 @@ git -C "$q" checkout -q --detach "$qdocs"
 gate 46 GATE_TIER=queue GATE_BASE="$qbase"
 [[ "$(verdict 46)" == "GREEN $tip" ]] || fail "a Queue tier with no member changed was not green: $(cat "$WORK/logs/integ-gate-46.log")"
 got="$(grep -E '^test -s integration' "$WORK/calls-46")"
-[[ "$got" == 'test -s integration -c --no-ansi -m mod/a --class a.CuratedATest -m mod/b --class b.CuratedBTest' ]] ||
+[[ "$got" == 'test -s integration -c -X --no-ansi -m mod/a --class mod/a:a.CuratedATest -m mod/b --class mod/b:b.CuratedBTest' ]] ||
   fail "with no member changed the Queue tier ran: $got"
-grep -q '^INTEG curated EXIT=0' "$WORK/logs/integ-gate-46.log" || fail "the log does not name the curated run: $(cat "$WORK/logs/integ-gate-46.log")"
+grep -q '^INTEG integration EXIT=0' "$WORK/logs/integ-gate-46.log" || fail "the log does not name the curated run: $(cat "$WORK/logs/integ-gate-46.log")"
 tip="$qtip"
 git -C "$q" checkout -q --detach "$qtip"
 gate 45 GATE_TIER=queue GATE_BASE="$qbase" NATIVE_LINKED=-S
@@ -499,7 +499,7 @@ if grep -qE '^(install -c|test )' "$WORK/calls-22"; then fail "the Queue tier ra
 # Red with a compile error beside a failed class: red, naming the run, and not run again.
 gate 7 GATE_TIER=queue GATE_BASE="$qbase" FAIL_INTEG=1 RERUN_JSONL="$WORK/red-other.jsonl"
 [[ "$(verdict 7)" == "RED" ]] || fail "a run red outside the quarantine was not red: $(cat "$WORK/logs/integ-gate-7.log")"
-grep -q '^INTEG changed EXIT=4' "$WORK/logs/integ-gate-7.log" || fail "the log does not name the red run"
+grep -q '^INTEG integration EXIT=4' "$WORK/logs/integ-gate-7.log" || fail "the log does not name the red run"
 [[ "$(grep -c -- ' -X ' "$WORK/calls-7")" -eq 1 ]] || fail "a run red with a compile error ran again: $(cat "$WORK/calls-7")"
 gate 24 GATE_TIER=queue GATE_BASE="$qbase" FAIL_DOCS=1 RERUN_JSONL="$WORK/red-other.jsonl"
 [[ "$(verdict 24)" == "RED" ]] || fail "a red docs suite did not make the Queue tier red: $(cat "$WORK/logs/integ-gate-24.log")"
@@ -513,7 +513,7 @@ gate 10 GATE_TIER=queue GATE_BASE="$qbase" FAIL_INTEG_ONCE=1 RESULTS_FIRST="$WOR
   RERUN_JSONL="$WORK/rerun-new.jsonl"
 [[ "$(verdict 10)" == "GREEN $tip" ]] || fail "a run green on its re-run was not green: $(cat "$WORK/logs/integ-gate-10.log")"
 [[ "$(grep -c -- ' -X ' "$WORK/calls-10")" -eq 2 ]] || fail "the red run did not run once more: $(cat "$WORK/calls-10")"
-grep -q '^RERUN changed: .*EXIT=0' "$WORK/logs/integ-gate-10.log" || fail "the log does not say the run ran again"
+grep -q '^RERUN integration: .*EXIT=0' "$WORK/logs/integ-gate-10.log" || fail "the log does not say the run ran again"
 grep -qx 'FLAKY cc.jumpkick:jk-engine b.NewTest passed on the re-run' "$WORK/logs/integ-gate-10.log" ||
   fail "the Queue tier does not name the class that passed on the re-run: $(cat "$WORK/logs/integ-gate-10.log")"
 

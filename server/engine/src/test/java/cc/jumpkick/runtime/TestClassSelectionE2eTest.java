@@ -41,7 +41,8 @@ import org.junit.jupiter.api.io.TempDir;
  * {@code --class} across a workspace: the patterns are judged once for the run. A module without
  * the class skips; the run fails only when no module matched; a standalone project fails on the
  * spot; a {@code [test] serial-tags} partition is judged with the rest of its suite. {@code
- * --exclusive} keeps a prerequisite's suite from running at all.
+ * --exclusive} keeps a prerequisite's suite from running at all. A module-qualified pattern holds
+ * in its module alone and is judged there.
  */
 // Out of the unit tier: network resolve + real forked test JVMs.
 @Tag("integration")
@@ -302,6 +303,52 @@ class TestClassSelectionE2eTest {
                 .isEqualTo(1L);
     }
 
+    @Test
+    void a_module_qualified_pattern_runs_only_its_class_there_and_the_whole_suite_elsewhere(@TempDir Path tmp)
+            throws Exception {
+        Path ws = workspace(tmp);
+        Steps steps = new Steps();
+        TestSelection selection = TestSelection.DEFAULT.withClasses(
+                List.of(TestSelection.qualify(ws.resolve("app").toString(), "AppTest")));
+
+        WorkspaceResult result = test(ws, tmp, selection, 0, steps);
+
+        assertThat(result.errors()).isEmpty();
+        assertThat(result.success()).isTrue();
+        assertThat(steps.tests(ws.resolve("lib")))
+                .as("lib, which no qualified pattern names, ran its whole suite")
+                .extracting(TestSummary::total)
+                .isEqualTo(1L);
+        assertThat(steps.tests(ws.resolve("app")))
+                .as("app ran only the class its pattern names, of its four")
+                .extracting(TestSummary::total)
+                .isEqualTo(1L);
+    }
+
+    @Test
+    void a_module_qualified_pattern_matching_nothing_fails_the_run_naming_its_module(@TempDir Path tmp)
+            throws Exception {
+        Path ws = workspace(tmp);
+        Steps steps = new Steps();
+        // LibTest is a class of lib, not app: the pattern qualified with app matches nothing there.
+        TestSelection selection = TestSelection.DEFAULT.withClasses(List.of(
+                TestSelection.qualify(ws.resolve("lib").toString(), "LibTest"),
+                TestSelection.qualify(ws.resolve("app").toString(), "LibTest")));
+
+        WorkspaceResult result = test(ws, tmp, selection, 0, steps);
+
+        assertThat(result.success()).isFalse();
+        assertThat(result.exitCode()).isEqualTo(Exit.USAGE);
+        assertThat(steps.status.get(ws.resolve("app"))).isEqualTo(TaskStatus.FAIL);
+        assertThat(steps.tests(ws.resolve("app"))).as("no red test").isNull();
+        assertThat(steps.errors.get(ws.resolve("app")))
+                .isEqualTo(TestClassMatch.NO_TESTS_MATCHED + ": app: no test classes matched --class LibTest");
+        assertThat(steps.tests(ws.resolve("lib")))
+                .as("the module whose pattern matched ran it")
+                .extracting(TestSummary::total)
+                .isEqualTo(1L);
+    }
+
     private static WorkspaceResult test(Path ws, Path tmp, List<String> classes, int workers, Steps steps)
             throws Exception {
         return test(ws, tmp, TestSelection.DEFAULT.withClasses(classes), workers, steps);
@@ -310,7 +357,10 @@ class TestClassSelectionE2eTest {
     private static WorkspaceResult test(Path ws, Path tmp, TestSelection selection, int workers, Steps steps)
             throws Exception {
         Path cache = tmp.resolve("cache");
-        Session session = Session.defaults().withTestSelection(selection).withRequestedTestWorkers(workers);
+        Session session = Session.defaults()
+                .withWorkingDir(ws)
+                .withTestSelection(selection)
+                .withRequestedTestWorkers(workers);
         WorkspaceRequest request = new WorkspaceRequest(
                         ws, cache, null, workers, null, false, false, 2, null, false, false)
                 .withTestOnly(true);

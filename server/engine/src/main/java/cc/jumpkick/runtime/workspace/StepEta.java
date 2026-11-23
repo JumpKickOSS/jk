@@ -481,15 +481,16 @@ public final class StepEta {
     /**
      * A {@code --class} run's suite in {@code dir}: its test JVM and the recorded walls of the
      * classes the patterns select, or a touch when they select none of its classes (the module skips
-     * without a JVM). Empty when the module has no class walls to judge by. The suite's own wall is
-     * no price here: it is every class, and the run is a handful.
+     * without a JVM). Empty when the module has no class walls to judge by, or when no pattern holds
+     * in it (a module-qualified selection that names other modules), so it runs its whole suite.
+     * The suite's own wall is no price here: it is every class, and the run is a handful.
      */
     private static OptionalLong filteredSuiteMs(Path dir) {
+        List<String> patterns = SessionContext.selectionFor(dir).classes();
+        if (patterns.isEmpty()) return OptionalLong.empty();
         Map<String, Long> walls = EffortWeights.loadClassWalls(dir.toString(), SuiteSelection.current());
         if (walls.isEmpty()) return OptionalLong.empty();
-        long ms = TestEffort.selectedClassesMillis(
-                walls,
-                SuiteFilter.selects(SessionContext.current().testSelection().classes()));
+        long ms = TestEffort.selectedClassesMillis(walls, SuiteFilter.selects(patterns));
         return OptionalLong.of(ms > 0 ? ms : EffortWeights.TOKEN * (long) EffortWeights.MS_PER_WEIGHT);
     }
 }

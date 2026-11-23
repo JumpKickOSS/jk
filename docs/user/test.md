@@ -16,6 +16,7 @@ jk test -E slow,bench
 jk test -I smoke
 jk test -S OrdersTest           # one class (simple or qualified name, * wildcards; repeatable)
 jk test -S OrdersTest#refunds   # one method of it (* wildcards in the method too)
+jk test -X -m app -m orders -S orders:OrdersIT   # app's whole suite, only OrdersIT in orders
 jk test -U                  # suspended test JVM listening on localhost:5005 — attach and go
 jk test -T                   # JaCoCo agent on every suite JVM; Coverage block in jk-results.md, HTML per module
 jk test -t report       # failing tests are reported, the run still exits 0
@@ -243,6 +244,19 @@ there the empty match fails on the spot. A selection that ran nothing is a **usa
 64, not a failed test: no `Tests:` count, and the error carries code `no-tests-matched` in
 `details.jsonl` and the results. Red tests beside a dropped class still exit 4. `[test] serial-tags` partitions inside one module are
 judged together: a pattern that only matches serial-tagged classes is a match.
+
+A pattern qualified with its module, `--class <module>:<class>`, holds in that module alone:
+`jk test -s integration -X -m e2e/cli -m server/engine -S server/engine:EngineIT` runs the whole
+integration suite of `e2e/cli` and only `EngineIT` in `server/engine`, in one run. The module
+half is read as `-m` reads it, and the class half follows the rules above (`'orders:*IT'`,
+`orders:OrdersIT#refunds`). A module no qualified pattern names runs what the unqualified
+patterns select, its whole suites when there are none; that includes prerequisites, so pair
+qualified patterns with `--exclusive` to keep them out. A module a qualified pattern names is
+judged on its own: when nothing matches there, the run fails naming it
+(`server/engine: no test classes matched --class EngineIT`), whatever the other modules ran. A
+qualifier that names no module, or a module outside the `-m` selection, is refused before
+anything builds. A module's suite keys only the patterns that hold in it, so its green run is the
+one `jk test -m server/engine -S EngineIT` would have stored.
 
 `-m` narrows the run to the selected modules **and their prerequisites**, and a prerequisite
 runs its own suite too (a green suite replays from its stamp; a dirty one runs). `-m` is the

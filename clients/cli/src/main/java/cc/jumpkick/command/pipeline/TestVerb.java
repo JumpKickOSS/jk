@@ -3,6 +3,7 @@ package cc.jumpkick.command.pipeline;
 
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.engine.EngineClient;
+import cc.jumpkick.cli.engine.ProjectInfos;
 import cc.jumpkick.cli.engine.RunSuspensions;
 import cc.jumpkick.cli.run.DebugAttach;
 import cc.jumpkick.cli.run.JsonlShape;
@@ -13,12 +14,14 @@ import cc.jumpkick.cli.tui.RenderContext;
 import cc.jumpkick.cli.tui.Table;
 import cc.jumpkick.config.DebugJvm;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.protocol.AffectedTestsReport;
+import cc.jumpkick.wire.protocol.ProjectInfo;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
 import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
 import cc.jumpkick.wire.runtime.WorkspaceRequest;
@@ -27,7 +30,9 @@ import cc.jumpkick.wire.runtime.WorkspaceTarget;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -87,7 +92,7 @@ final class TestVerb implements BuildVerb {
     public List<Opt> ownOptions() {
         return List.of(
                 Opt.flag(EXCLUSIVE_HELP, "-X", "--exclusive"),
-                Opt.value("<name>", "Classes or Class#method (repeatable)", "-S", "--class")
+                Opt.value("<name>", "Classes, Class#method or module:Class (repeatable)", "-S", "--class")
                         .repeat(),
                 Opt.flag("Only the quarantined test classes", "--quarantined"),
                 Opt.value("<port>", "Debug test JVM (JDWP; 5005, 0=free)", "-U", "--debug-jvm")
@@ -128,6 +133,67 @@ final class TestVerb implements BuildVerb {
         SessionContext.install(
                 SessionContext.current().withTestSelection(run.flags().testSelection()));
         return -1;
+    }
+
+    /** Each module-qualified {@code --class} names its module's directory, as the engine matches it. */
+    @Override
+    public int prepareWorkspace(BuildRun run, Path entryDir, BuildRun.Selection selection) {
+        TestSelection tests = run.flags().testSelection();
+        if (tests.unqualifiedClasses().size() == tests.classes().size()) return -1;
+        List<String> resolved;
+        try {
+            resolved = qualifiedByDir(
+                    tests.classes(),
+                    module -> ProjectInfos.orError(entryDir, module, null),
+                    selection.confines() ? selection.dirs() : null);
+        } catch (IllegalArgumentException e) {
+            run.fail(e.getMessage());
+            return Exit.USAGE;
+        }
+        run.flags(run.flags().withTestSelection(tests.withClasses(resolved)));
+        SessionContext.install(
+                SessionContext.current().withTestSelection(run.flags().testSelection()));
+        return -1;
+    }
+
+    /**
+     * {@code patterns} with the module of each qualified one ({@code server/engine:EngineIT}) read as
+     * {@code -m} reads it and replaced by the directory of each module it names. A qualifier that
+     * names no module, or a module outside {@code runDirs} (the run's {@code -m} selection; null
+     * when the run covers the workspace), is refused: the pattern could never hold.
+     */
+    static List<String> qualifiedByDir(
+            List<String> patterns, Function<String, ProjectInfo> modules, @Nullable List<String> runDirs) {
+        List<String> out = new ArrayList<>();
+        for (String pattern : patterns) {
+            String module = TestSelection.moduleOf(pattern);
+            if (module == null) {
+                out.add(pattern);
+                continue;
+            }
+            ProjectInfo info = modules.apply(module);
+            if (info.error() != null && !info.error().isBlank()) {
+                throw new IllegalArgumentException("--class " + pattern + ": " + info.error());
+            }
+            if (info.moduleDirs().isEmpty()) {
+                throw new IllegalArgumentException("--class " + pattern + ": no module matches " + module);
+            }
+            for (String dir : info.moduleDirs()) {
+                if (runDirs != null && runDirs.stream().noneMatch(d -> sameDir(d, dir))) {
+                    throw new IllegalArgumentException(
+                            "--class " + pattern + ": " + module + " is not in this run; add -m " + module);
+                }
+                out.add(TestSelection.qualify(dir, pattern));
+            }
+        }
+        return out;
+    }
+
+    private static boolean sameDir(String a, String b) {
+        return Path.of(a)
+                .toAbsolutePath()
+                .normalize()
+                .equals(Path.of(b).toAbsolutePath().normalize());
     }
 
     @Override

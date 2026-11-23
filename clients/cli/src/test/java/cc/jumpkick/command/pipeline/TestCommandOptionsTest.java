@@ -14,6 +14,7 @@ import cc.jumpkick.command.toolchain.ToolInstallCommand;
 import cc.jumpkick.config.TestQuarantine;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
+import cc.jumpkick.wire.protocol.ProjectInfo;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -59,6 +60,53 @@ class TestCommandOptionsTest {
         assertThatThrownBy(() -> BuildFlags.testSelection(parse("--class", "OrdersTest#")))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("names no method after '#'");
+    }
+
+    @Test
+    void a_module_qualified_class_needs_both_halves() throws Exception {
+        assertThat(BuildFlags.testSelection(parse("-S", "server/engine:EngineIT", "-S", "OrdersTest"))
+                        .classes())
+                .containsExactly("server/engine:EngineIT", "OrdersTest");
+        for (String bad : List.of(":EngineIT", "server/engine:")) {
+            assertThatThrownBy(() -> BuildFlags.testSelection(parse("-S", bad)))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("needs a module and a class around ':'");
+        }
+    }
+
+    private static ProjectInfo modules(String... dirs) {
+        StringBuilder map = new StringBuilder();
+        for (String dir : dirs)
+            map.append(map.isEmpty() ? "" : ",").append("\"").append(dir).append("\":\"m\"");
+        return ProjectInfo.decode("{\"type\":\"project-info-ack\",\"modules\":{" + map + "}}");
+    }
+
+    @Test
+    void a_module_qualifier_becomes_the_directory_of_each_module_it_names() {
+        List<String> resolved = TestVerb.qualifiedByDir(
+                List.of("orders:OrdersIT#refund*", "*SmokeIT"),
+                module -> module.equals("orders") ? modules("/ws/orders") : modules(),
+                List.of("/ws/orders", "/ws/app"));
+
+        assertThat(resolved).containsExactly("/ws/orders:OrdersIT#refund*", "*SmokeIT");
+    }
+
+    @Test
+    void a_qualifier_naming_no_module_or_one_outside_the_run_is_refused() {
+        assertThatThrownBy(() -> TestVerb.qualifiedByDir(List.of("ordrs:OrdersIT"), module -> modules(), null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("--class ordrs:OrdersIT: no module matches ordrs");
+        assertThatThrownBy(() -> TestVerb.qualifiedByDir(
+                        List.of("ordrs:OrdersIT"), module -> ProjectInfo.error("no module 'ordrs'"), null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("--class ordrs:OrdersIT: no module 'ordrs'");
+        assertThatThrownBy(() -> TestVerb.qualifiedByDir(
+                        List.of("orders:OrdersIT"), module -> modules("/ws/orders"), List.of("/ws/app")))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("--class orders:OrdersIT: orders is not in this run; add -m orders");
+        assertThat(TestVerb.qualifiedByDir(List.of("orders:OrdersIT"), module -> modules("/ws/orders"), null))
+                .as("a run over the whole workspace holds every module")
+                .containsExactly("/ws/orders:OrdersIT");
     }
 
     @Test
