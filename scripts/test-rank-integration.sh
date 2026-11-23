@@ -5,7 +5,8 @@
 # history or a gate log's FAILED and FLAKY lines and jk's quoted ones, once per log), then the rest
 # cheapest first, while their recorded walls fit the budget; a class longer than the pole, or past
 # the budget, is deferred; a class with no recorded wall counts as the median; slow-tagged and
-# abstract classes are not the suite's; a replay with --before reads only older gate logs; bad
+# abstract classes are not the suite's; a replay with --before reads only older gate logs; the Full
+# tier's class records are added with RANK_RECORDS and each module's recorded share is said; bad
 # arguments are refused by name.
 set -euo pipefail
 
@@ -138,6 +139,22 @@ WANT
 $got
 want:
 $want"
+
+# ---- the Full tier's records: added before jk ranks, and counted -------------------------------
+# CheapTest ran here; DearTest only in the Full tier, whose row is added without its key.
+export JK_CACHE_DIR="$WORK/cache"
+own="$(cd "$r" && bash "$ROOT/scripts/gate/class-records.sh" path mod/a)"
+mkdir -p "$(dirname "$own")" "$WORK/ship/mod/a"
+echo '{"launch":"test:integration","container":["a","CheapTest"],"ranAt":5,"classKey":"k"}' >"$own"
+echo '{"launch":"test:integration","container":["a","DearTest"],"ranAt":9,"classKey":"full"}' >"$WORK/ship/mod/a/test-classes.ndjson"
+got="$(rank --budget 176 "$base" "$tip" mod/a 2>&1 >/dev/null)"
+grep -qF 'mod/a: 1 of 10 classes have a record, 0 of them from the Full tier' <<<"$got" ||
+  fail "without RANK_RECORDS: $got"
+got="$(RANK_RECORDS="$WORK/ship" rank --budget 176 "$base" "$tip" mod/a 2>&1 >/dev/null)"
+grep -qF 'mod/a: 2 of 10 classes have a record, 1 of them from the Full tier' <<<"$got" ||
+  fail "with RANK_RECORDS: $got"
+[[ "$(grep DearTest "$own" | jq -r '.classKey // "none"')" == none ]] || fail "the shipped row: $(cat "$own")"
+unset JK_CACHE_DIR
 
 # ---- a tip that is not the checked-out commit is not asked of jk -------------------------------
 : >"$WORK/jk.args"

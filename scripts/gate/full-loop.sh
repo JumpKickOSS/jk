@@ -8,6 +8,10 @@
 #
 # Each tip it takes is appended to full-taken before it is gated, so the Windows and macOS loops
 # (scripts/gate/platform-loop.sh) run it beside the Linux gate.
+# After each gate it ships the class records its checkout holds (scripts/gate/class-records.sh
+# export) to <QUEUE_REPO>/full-records, replacing what it shipped before, so the Queue tier ranks a
+# class it deferred by what that class did here. A failed shipment is said on stderr and changes
+# nothing else.
 # GREEN moves origin's `green` branch to the tip as a fast-forward (scripts/gate/green.sh): releases
 # are cut from it. While a platform holds green, green waits there for that platform's verdict on the
 # tip, and its loop moves green once it passes. A gate green only because its failed classes passed
@@ -54,7 +58,8 @@
 #                    $JK_QUEUE_REMOTE, else bocabox:src/jk-queue.git): its queue-batches.log and pause
 #                    are read, and this loop's state is written beside it: full-runs.log (one line per
 #                    cycle), full-taken (each tip it took), full-verdicts (`<sha> GREEN|RED <gate>`),
-#                    full-n, full-reds, full-red-set (the last red cycle's), full-filed, full-hold. A
+#                    full-n, full-reds, full-red-set (the last red cycle's), full-filed, full-hold,
+#                    full-records/ (the class records, one directory per member). A
 #                    revert is submitted to it and green is moved from FULL_CHECKOUT's origin, with
 #                    this host's credentials.
 #                    The re-runs and the revert's Branch tier log to full-<batch>.log beside the gate logs
@@ -97,7 +102,7 @@
     mkdir -p "$D/full-loop/gate" "$D/full-loop/queue" || exit 2
     # Run a copy, so a commit that changes these scripts changes the loop only when it is restarted.
     cp "$0" "$D/full-loop/gate/full-loop.sh" || exit 2
-    cp "$H/rerun-classes.sh" "$H/flaky.sh" "$H/green.sh" "$D/full-loop/gate/" || exit 2
+    cp "$H/rerun-classes.sh" "$H/flaky.sh" "$H/green.sh" "$H/class-records.sh" "$D/full-loop/gate/" || exit 2
     cp "$H/../queue/branch-tier.sh" "$H/../queue/submit.sh" "$H/../queue/common.sh" "$D/full-loop/queue/" || exit 2
     paused=""
     while :; do
@@ -140,6 +145,15 @@
     log "full $(date -u +%Y-%m-%dT%H:%M:%SZ) $(short "$1") INFRA jk cannot start: $(grep -m1 . <<<"$out" | sed 's/^jk: //'); no verdict ($(hostname):${JK_HOME:-$HOME/.jk})"
     return 1
   }
+  # ship_records: the class records the checkout's gates wrote, to <QUEUE_REPO>/full-records, swapped
+  # in whole so the queue never reads half of them.
+  ship_records() {
+    local out="$D/full-loop/records"
+    rm -rf "$out" && mkdir -p "$out" && bash "$H/class-records.sh" export "$out" &&
+      tar -C "$out" -czf - . | queue_sh 'rm -rf full-records.new full-records.old && mkdir full-records.new &&
+        tar -xzf - -C full-records.new && { [ ! -d full-records ] || mv full-records full-records.old; } &&
+        mv full-records.new full-records && rm -rf full-records.old'
+  }
   # judge <sha>: print GREEN or RED for the commit, gating it with the Full tier unless it was
   # judged before; fail with 5 when jk cannot start or failed inside a guard that failed no check
   # (exit 70, JumpKick's internal error, as when its engine dies mid-guard), with 2 when the gate
@@ -157,6 +171,7 @@
     echo "${n#f}" | st_put full-n || return 2
     GATE_CHECKOUT="$co" GATE_LOG_DIR="$D" GATE_TIER=full GATE_BASE="${green:-$empty}" JK_QUEUE_REMOTE="$repo" \
       bash "${FULL_GATE:-$co/scripts/gate/gate.sh}" "$n" "$sha" </dev/null >/dev/null 2>&1
+    ship_records </dev/null >/dev/null 2>&1 || echo "full-loop: the class records of gate $n were not shipped to $repo" >&2
     L="$D/integ-gate-$n.log"
     verdict="$(grep -aE '^(GREEN |RED|CHECKOUT |NO CHECKOUT)' "$L" 2>/dev/null | tail -1)"
     case "$verdict" in

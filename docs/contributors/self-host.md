@@ -241,6 +241,11 @@ that passed; before there is a `green`, it always does. Then:
   or a guard check), when the classes pass when run again, they fail before the batch too, or the
   revert conflicts with later work. It comments once on each ticket the batch's commits name (a subject `<ticket>: …`), saying why;
   revert the batch's commits or fix forward, through the queue.
+- **After every gate** it ships the class records its checkout holds to `full-records/` in the
+  queue's repository, one directory per member, replacing what it shipped before
+  (`scripts/gate/class-records.sh export`), so the Queue tier ranks the classes it defers by their
+  last run here ([ranking](test-suite-tiers.md#the-queue-tier-runs-the-classes-a-batch-ranks-highest)).
+  A shipment that fails is said on stderr and changes nothing else.
 - **Two red cycles in a row with the same red set** (`FULL_HOLD_AFTER`) write `full-hold` in the
   queue's repository: the culprit batch's tickets (`ticket <id>`) and commits (`commit <sha>`). While
   it exists the queue lands only a fix, a branch with a commit for one of those tickets or one that

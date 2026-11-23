@@ -13,6 +13,10 @@
 #      per-class history on this machine) and in the newest gate logs (matched by simple name);
 #   4. the rest, cheapest first, so that as many classes as fit run.
 # A class jk has a record of and does not rank is not near the change, whatever its source names.
+# A class the Queue tier deferred has its record from the Full tier, which runs every class: with
+# RANK_RECORDS, the records the Full tier shipped are added to this checkout's first
+# (scripts/gate/class-records.sh import), and for each module stderr says how many of its classes
+# have a record, and how many of those came from the Full tier.
 # Where jk cannot rank a module (it refuses, or <tip> is not the checked-out commit), rank 2 is the
 # classes whose source names a type whose source the range changed (`uses <Type>`), and the reason
 # goes to stderr.
@@ -43,6 +47,8 @@
 #   RANK_TIMINGS      the checkout whose target/failsafe-reports hold the walls (default: this one)
 #   RANK_HISTORY_DIR  the gate logs read for failures (default $GATE_LOG_DIR, else /var/tmp/jk-gate)
 #   RANK_HISTORY_LOGS how many of the newest gate logs to read (default 100)
+#   RANK_RECORDS      the Full tier's class records, as class-records.sh export writes them (default:
+#                     none; a directory that does not exist adds none)
 #   RANK_FLAKY        a file holding `jk flaky list -O jsonl` (default: run it; `-` reads none)
 #   JK                the jk that ranks and lists flaky classes (default: jk on PATH)
 #   CURATED_REGISTRY  the curated lane's registry (default curated-integration.txt at the root)
@@ -80,6 +86,7 @@ base="$1"
 tip="$2"
 shift 2
 root="$(git rev-parse --show-toplevel)"
+here="$(cd "$(dirname "$0")" && pwd)"
 timings="${RANK_TIMINGS:-$root}"
 history="${RANK_HISTORY_DIR:-${GATE_LOG_DIR:-/var/tmp/jk-gate}}"
 registry="${CURATED_REGISTRY:-$root/curated-integration.txt}"
@@ -133,6 +140,12 @@ if [[ -d "$history" ]]; then
   done >>"$W/failures" || true
 fi
 sort "$W/failures" | uniq -c | awk '{ print $2, $1 }' >"$W/failcount"
+
+# The Full tier's records of the classes this checkout has none of, or an older shipped one.
+if [[ -n "${RANK_RECORDS:-}" && -d "$RANK_RECORDS" ]]; then
+  (cd "$root" && bash "$here/class-records.sh" import "$RANK_RECORDS" "$@") ||
+    echo "rank-integration: the Full tier's class records could not be added; ranking without them" >&2
+fi
 
 # jk's ranking of each module's integration classes against the range, from its class records:
 # `<class>\t<score>\t<reason>` per class it ranks, in $W/jk-<n>, or $W/jk-<n>.refused naming why
@@ -198,6 +211,15 @@ for mod in "$@"; do
     printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$mod" "$cls" "$edited" "$curated" "$near" "${fails:-0}" "$secs" >>"$W/mod-rows"
   done <"$W/files"
   [[ -s "$W/mod-rows" ]] || echo "rank-integration: $mod has no integration classes at $tip" >&2
+  # How many of the module's classes jk has a record of: written here, or shipped by the Full tier.
+  if [[ -s "$W/mod-rows" ]]; then
+    (cd "$root" && bash "$here/class-records.sh" classes "$mod" 2>/dev/null) >"$W/recorded" || : >"$W/recorded"
+    awk -v m="$mod" '
+      FILENAME == ARGV[1] { by[$1] = $2; next }
+      { n++; if ($2 in by) { r++; if (by[$2] == "shipped") s++ } }
+      END { printf "rank-integration: %s: %d of %d classes have a record, %d of them from the Full tier\n", m, r, n, s }
+    ' "$W/recorded" "$W/mod-rows" >&2
+  fi
   cat "$W/mod-rows" >>"$W/rows"
 done
 
@@ -217,7 +239,7 @@ awk -F'\t' -v budget="$budget" -v pole="$pole" '
       else if (f[5] != "-") { r = 2; why = substr(f[5], index(f[5], " ") + 1) }
       else if (f[6] > 0) { r = 2; why = "failed " f[6] "x" }
       else { r = 3; why = "cost" }
-      printf "%d\t%012.3f\t%s\t%s\t%s\t%s\t%s\n", r, secs, f[1], f[2], secs, f[7] == "" ? "~" : "", why
+      printf "%d\t%012.3f\t%s\t%s\t%s\t%s\t%s\n", r, secs, f[1], f[2], secs, (f[7] == "" ? "~" : ""), why
     }
   }
 ' "$W/rows" | sort -t$'\t' -k1,1n -k2,2 -k4,4 | awk -F'\t' -v budget="$budget" -v pole="$pole" '

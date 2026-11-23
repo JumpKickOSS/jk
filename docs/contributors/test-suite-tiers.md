@@ -190,8 +190,15 @@ the Queue tier runs them from the top while they fit the budget:
 
 Where JumpKick cannot rank a module (it refuses: a `jk.toml` changed, too many types or modules), rank 2
 is the classes whose source names a type whose source file the batch changed, and the gate log
-says so. The records are those of the gate's own checkout, so a class the Queue tier has never run
-there has none and ranks by its bytecode.
+says so. JumpKick keeps the records of each checkout apart, so the Queue tier also reads those of
+the [Full tier](self-host.md#the-full-tier-loop), which runs every class: after each gate the Full
+loop ships its checkout's records to `full-records/` in the queue's repository, and before ranking
+`scripts/gate/class-records.sh import` adds to the queue checkout's records the rows of each class
+it has none of. A shipped row loses its key, so JumpKick ranks by it but never replays the class on
+it, and a row JumpKick wrote in the queue checkout always wins. The gate log says, for each changed
+module, how many of its classes have a record and how many of those came from the Full tier
+(`rank-integration: <module>: <n> of <m> classes have a record, <k> of them from the Full tier`). A
+class neither checkout has run has no record and ranks by its bytecode.
 
 Within a rank the cheaper class comes first. A class's cost is its recorded wall, the `time` of its
 newest `target/failsafe-reports/TEST-<class>.xml` in the gate's checkout; a class with none counts

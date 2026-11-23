@@ -26,7 +26,9 @@
 # docs`) and the tree suite (`jk test -s tree`, the tests that scan every module's sources). The
 # Full tier runs the tree suite inside `jk install -g`, as one of the guard suites. Each changed
 # suite runs only the classes scripts/gate/rank-integration.sh ranks highest for the batch, within
-# GATE_INTEG_BUDGET; the log names each class left for the Full tier on a `DEFERRED <module>
+# GATE_INTEG_BUDGET, with the class records the Full tier shipped to <JK_QUEUE_REMOTE>/full-records
+# when that queue is a local directory (scripts/gate/class-records.sh); the log says how many of each
+# module's classes have a record, names each class left for the Full tier on a `DEFERRED <module>
 # <class> (<why>)` line, and each changed module's count on an `INTEG_RANKED` line. jk passes a run red only in the classes .jk/test/quarantine.toml holds; a run red in other
 # classes runs them once more under the same inputs, and passes when they pass there. Each class
 # still red is a `FAILED <module> <class>` line of the log, its failure in g<n>-failures.txt.
@@ -315,8 +317,11 @@
       # Within the budget, each changed suite runs only its classes ranked highest for the batch
       # (scripts/gate/rank-integration.sh); the Full tier runs the classes it leaves.
       if [ -n "$mods" ] && [ "${GATE_INTEG_BUDGET:-900}" -gt 0 ]; then
+        # The class records the Full tier shipped (scripts/gate/full-loop.sh), when the queue is here.
+        records=""
+        [[ -z "${JK_QUEUE_REMOTE:-}" || "$JK_QUEUE_REMOTE" =~ ^[^/:]+: ]] || records="$JK_QUEUE_REMOTE/full-records"
         # shellcheck disable=SC2086 # one changed module per word
-        bash scripts/gate/rank-integration.sh --budget "${GATE_INTEG_BUDGET:-900}" \
+        RANK_RECORDS="$records" bash scripts/gate/rank-integration.sh --budget "${GATE_INTEG_BUDGET:-900}" \
           --pole "${GATE_INTEG_POLE:-90}" "$base" HEAD $mods >"$D/g$n-ranking.txt" 2>>"$L" ||
           red "RED (ranking: scripts/gate/rank-integration.sh failed)"
         for mo in $mods; do

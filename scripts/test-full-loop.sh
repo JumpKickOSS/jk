@@ -23,7 +23,7 @@
 # The loop runs as on a host of its own: it reaches the queue's state only over ssh (a stand-in that
 # runs the command here for the host queuehost), takes a gate lock that is not the queue's, and
 # neither waits for the queue's lock nor holds it; when the queue's host cannot be reached it gates
-# nothing.
+# nothing. After each gate it ships its checkout's class records beside the queue.
 set -euo pipefail
 
 unset "${!GATE_@}" "${!FULL_@}" "${!QUEUE_@}" JK_HOME
@@ -136,10 +136,14 @@ commit() { # <repo> <file> <subject>: one commit that writes the file
 
 git init -q --bare -b main "$WORK/origin.git"
 git clone -q "$WORK/origin.git" "$WORK/seed" 2>/dev/null
+mkdir -p "$WORK/seed/core" && echo keep >"$WORK/seed/core/keep.txt"
+printf '[workspace]\nmodules = ["core"]\n' >"$WORK/seed/jk.toml"
+git -C "$WORK/seed" add jk.toml core
 commit "$WORK/seed" base.txt "base"
 git -C "$WORK/seed" push -q origin HEAD:main
 for c in dev qco fco; do git clone -q "$WORK/origin.git" "$WORK/$c"; done
 export JK_QUEUE_REMOTE="$WORK/queue.git" QUEUE_REPO="$WORK/queue.git" GATE_LOCK="$WORK/gate.lock"
+export JK_CACHE_DIR="$WORK/jk-cache"
 git init -q --bare "$QUEUE_REPO"
 dev="$WORK/dev"
 logs="$WORK/logs"
@@ -194,10 +198,16 @@ bounded() { # <command...>: run it, but fail it when it has not ended within a m
 }
 
 # --- green: the tip passes and green names it; the same tip is not gated twice; a release tag
-# cut after the checkout was cloned is in the checkout the gate runs in ---
+# cut after the checkout was cloned is in the checkout the gate runs in; the class records of the
+# Full checkout are shipped beside the queue ---
 land a a.txt "TK-AAAA1: a"
 git -C "$WORK/origin.git" tag v9.9.8 main
+rec="$(cd "$WORK/fco" && bash "$ROOT/scripts/gate/class-records.sh" path core)"
+mkdir -p "$(dirname "$rec")"
+echo '{"launch":"test:integration","container":["cc.example","DeferredTest"],"ranAt":1,"classKey":"k"}' >"$rec"
 full || fail "the first cycle failed: $(runs)"
+cmp -s "$rec" "$QUEUE_REPO/full-records/core/test-classes.ndjson" ||
+  fail "the Full checkout's class records were not shipped: $(ls -R "$QUEUE_REPO/full-records" 2>&1)"
 grep -qx v9.9.8 "$logs/full-tags" || fail "the gate's checkout has no tag cut after its clone: $(cat "$logs/full-tags")"
 grep -qx queuehost "$SSH_LOG" || fail "the loop did not reach the queue's repository over ssh"
 [[ "$(origin green)" == "$(origin main)" ]] || fail "green does not name the tip that passed: $(runs)"
