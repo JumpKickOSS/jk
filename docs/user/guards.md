@@ -129,10 +129,13 @@ is one flag on every verb that builds through the test stage — `jk build`, `jk
 thing on each: the guard lanes, the integration suite and the root's guard scripts. A lane is keyed to what it reads, so an unchanged input skips it and
 an edit re-runs only the lanes it can affect. A module lane that runs a `src/guard` suite keeps two
 verdicts: one for the declared rules, keyed on the module, and one for the suite, keyed also on
-what the suite reads beyond the module (other modules, the tree's text, the manifests). An edit
-elsewhere in the tree re-runs the suite alone, and `jk explain` says `src/guard to run · N rules
-cached`. Inside that run, a guard whose reads all hold is not invoked: its last line is reported
-again. What it read is what it listed and read through `Text`, plus the model snapshot when it takes
+what the suite reads beyond the module. Once the suite has run, that is what its guards read
+last time, as below, plus the code the suite runs on (the module's and its siblings' sources and
+manifests, the lock): an edit to a file no guard read keeps the suite's verdict, and the suite
+does not start. Before the first run, or while a guard last threw, skipped or took `Facts` or
+`Output`, it is every module's facts and the tree's text. An edit the suite reads re-runs the
+suite alone, and `jk explain` says `src/guard to run · N rules cached`. Inside that run, a guard
+whose reads all hold is not invoked: its last line is reported again. What it read is what it listed and read through `Text`, plus the model snapshot when it takes
 `Model`. A change to the suite, its class path or the JDK runs every guard again, and so does a
 guard that takes `Facts` or `Output`, or that threw or skipped last time. A guard that runs a tool
 over the tree reads that tool's input files through `Text` too, so an edit to one of them runs it.

@@ -48,7 +48,7 @@ class GuardKeyPortabilityTest {
 
     @Test
     void a_lane_that_runs_a_guard_suite_names_the_os(@TempDir Path root) throws Exception {
-        List<String> tokens = GuardKeys.suiteTokens("suite", List.of(), root, List.of());
+        List<String> tokens = GuardKeys.suiteTokens("suite", List.of(), root, List.of(), root, null);
         assertThat(tokens).contains("os:" + Os.name());
     }
 }

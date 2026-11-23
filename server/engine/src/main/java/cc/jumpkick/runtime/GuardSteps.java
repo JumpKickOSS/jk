@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import static cc.jumpkick.guard.api.runtime.LedgerReads.Mode.RECORDED;
 import static cc.jumpkick.runtime.BuildPlanner.CLASSPATHS;
 import static cc.jumpkick.runtime.BuildPlanner.JAVA_HOME;
 import static cc.jumpkick.runtime.BuildPlanner.MODULE;
@@ -9,6 +10,7 @@ import static cc.jumpkick.runtime.BuildPlanner.mainClasses;
 import static cc.jumpkick.runtime.PlannerGuards.*;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.guard.api.runtime.LedgerReads;
 import cc.jumpkick.guard.eval.EvalContext;
 import cc.jumpkick.guard.eval.GuardSuites;
 import cc.jumpkick.guard.eval.WorkspaceModel;
@@ -201,7 +203,7 @@ final class GuardSteps {
         Path guardClasses = ctx.require(MODULE).layout().guardClassesDir();
         List<Rule> suiteRules = List.of();
         Evaluation withSuite = null;
-        List<String> suiteTokens = List.of();
+        SuiteKey suiteKey = new SuiteKey();
         if (Files.isDirectory(guardClasses) && PlannerGuardSuite.declared(moduleDir, compact(moduleDir))) {
             FactsIndexing.Ensured suite =
                     FactsIndexing.ensure(guardClasses, FactsIndexing.indexPath(buildDir, "guard"));
@@ -212,7 +214,10 @@ final class GuardSteps {
             // A workspace guard judges every module's index: each must describe what this
             // build compiled before the key is taken or the suite reads it.
             if (workspace) awaitIndexed(ctx, g.root(), workspaceModules);
-            suiteTokens = GuardKeys.suiteTokens(suite.bodyDigest(), declared, g.root(), workspaceModules);
+            // Looked up over what the guards read last run; stored over what this run read, taken
+            // inside its turn, before another run can rewrite the ledger.
+            suiteKey.lookup = GuardKeys.suiteTokenSource(
+                    suite.bodyDigest(), declared, g.root(), workspaceModules, moduleDir, LedgerReads.Mode.NOW);
             List<String> loadErrors = GuardSuites.loadErrors(declared, rules(g).rules());
             if (!loadErrors.isEmpty()) {
                 for (String e : loadErrors) ctx.error("guards", "GUARD suite  did not load\n  Observed: " + e);
@@ -265,6 +270,9 @@ final class GuardSteps {
                     return GuardSuiteRunner.takingTurn(GuardSuiteRunner.report(inputs), ctx::waiting, () -> {
                         for (String p : GuardSuiteRunner.run(inputs, workspaceModules))
                             ctx.error("guards", "GUARD suite  scanner-failed\n  Observed: " + p);
+                        suiteKey.read = GuardKeys.suiteTokenSource(
+                                        suite.bodyDigest(), declared, g.root(), workspaceModules, moduleDir, RECORDED)
+                                .get();
                         return evaluate.get();
                     });
                 } catch (InterruptedException e) {
@@ -284,12 +292,37 @@ final class GuardSteps {
         if (withSuite == null || suiteRules.isEmpty()) {
             executeLane(ctx, env, Lane.MODULE, ectx, () -> tokens, taskId, noClasses);
         } else {
-            List<String> withSuiteTokens = new ArrayList<>(tokens);
-            withSuiteTokens.addAll(suiteTokens);
             executeModuleLane(
-                    ctx, env, ectx, () -> tokens, () -> withSuiteTokens, taskId, noClasses, suiteRules, withSuite);
+                    ctx,
+                    env,
+                    ectx,
+                    () -> tokens,
+                    () -> concat(tokens, suiteKey.lookup.get()),
+                    () -> concat(tokens, suiteKey.stored()),
+                    taskId,
+                    noClasses,
+                    suiteRules,
+                    withSuite);
         }
         ctx.progress(1);
+    }
+
+    /** A suite's key tokens: looked up over its last ledger, stored over what its run read. */
+    private static final class SuiteKey {
+        volatile EvalContext.IoSupplier<List<String>> lookup = List::of;
+        volatile @Nullable List<String> read;
+
+        /** What the suite's run read, or, when it has not run, the lookup's tokens. */
+        List<String> stored() throws IOException {
+            List<String> r = read;
+            return r == null ? lookup.get() : r;
+        }
+    }
+
+    private static List<String> concat(List<String> head, List<String> tail) {
+        List<String> all = new ArrayList<>(head);
+        all.addAll(tail);
+        return all;
     }
 
     /** {@code guard-model}: model rules at the invocation root, before any compile. */

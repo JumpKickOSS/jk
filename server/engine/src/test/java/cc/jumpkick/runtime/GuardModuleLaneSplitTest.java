@@ -104,6 +104,34 @@ class GuardModuleLaneSplitTest {
         assertThat(replayed.ctx().label).contains("· 1 skipped");
     }
 
+    /**
+     * A suite's verdict is stored under what its run read, the key the next build looks up: the
+     * first run, looked up before any ledger, is found by the second.
+     */
+    @Test
+    void a_suite_verdict_is_stored_under_what_its_run_read(@TempDir Path tmp) throws Exception {
+        Path root = tree(tmp);
+        ModuleLane lane = new ModuleLane(root, tmp);
+
+        Run first = lane.run(List.of("facts:one"), "suite-reads:whole-tree", "ledger-reads:one", OK_LINE);
+        assertThat(first.suiteRuns()).isEqualTo(1);
+
+        Run second = lane.run(List.of("facts:one"), "ledger-reads:one", "ledger-reads:one", OK_LINE);
+        assertThat(second.suiteRuns())
+                .as("looked up under what the first run read")
+                .isZero();
+        assertThat(second.ctx().cached).isTrue();
+
+        Run third = lane.run(List.of("facts:one"), "suite-reads:whole-tree", "ledger-reads:one", OK_LINE);
+        assertThat(third.suiteRuns())
+                .as("nothing was stored under the key the first run looked up")
+                .isEqualTo(1);
+    }
+
+    /** The report line of a suite whose one guard ran clean. */
+    private static final String OK_LINE =
+            "{\"id\":\"reads-text\",\"outcome\":\"ok\",\"population\":1,\"violations\":[]}\n";
+
     /** One run of a lane: its context and how often the suite ran. */
     private record Run(Recording ctx, int suiteRuns) {}
 
@@ -135,14 +163,16 @@ class GuardModuleLaneSplitTest {
         }
 
         Run run(List<String> moduleTokens, String suiteToken) throws Exception {
-            return run(
-                    moduleTokens,
-                    suiteToken,
-                    "{\"id\":\"reads-text\",\"outcome\":\"ok\",\"population\":1,\"violations\":[]}\n");
+            return run(moduleTokens, suiteToken, OK_LINE);
         }
 
         /** As {@link #run(List, String)}, with the line the suite writes to its report. */
         Run run(List<String> moduleTokens, String suiteToken, String reportLine) throws Exception {
+            return run(moduleTokens, suiteToken, suiteToken, reportLine);
+        }
+
+        /** A run whose suite is looked up under {@code suiteToken} and stored under {@code readToken}. */
+        Run run(List<String> moduleTokens, String suiteToken, String readToken, String reportLine) throws Exception {
             BuildLayout layout = BuildLayout.of(root, JkBuildParser.parse(root.resolve("jk.toml")));
             FactsIndexing.Ensured main =
                     FactsIndexing.ensure(layout.classesDir(), FactsIndexing.indexPath(layout.buildDir(), "main"));
@@ -157,6 +187,8 @@ class GuardModuleLaneSplitTest {
                     List::of);
             List<String> withSuite = new ArrayList<>(moduleTokens);
             withSuite.add(suiteToken);
+            List<String> withRead = new ArrayList<>(moduleTokens);
+            withRead.add(readToken);
             AtomicInteger runs = new AtomicInteger();
             Path report = GuardSuites.report(BuildLayout.moduleTargetDir(root));
             PlannerGuards.Evaluation suite = evaluate -> {
@@ -172,6 +204,7 @@ class GuardModuleLaneSplitTest {
                     ectx,
                     () -> moduleTokens,
                     () -> withSuite,
+                    () -> withRead,
                     ActionKey.qualifiedTaskId(TaskNames.GUARD, root),
                     false,
                     suiteRules,

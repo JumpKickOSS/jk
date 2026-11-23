@@ -30,10 +30,10 @@ import org.jspecify.annotations.Nullable;
  * reads all hold replays its report line instead of running again.
  *
  * <p>One JSON line per guard in {@code ledger.jsonl} beside the report: the guard's id, the run's
- * stamp, each glob it listed with a digest of the match list, each file it read with a digest of
- * its text, and its report line. The stamp covers what is not tree text: every class-path entry's
- * bytes (the suite, its libraries and this runtime), the JDK, the operating system and the run's
- * scope; a guard that takes the {@link cc.jumpkick.guard.api.Model} adds the model snapshot's bytes.
+ * stamp, whether it may replay at all, each glob it listed with a digest of the match list, each
+ * file it read with a digest of its text, and its report line. The stamp covers what is not tree
+ * text: every class-path entry's bytes (the suite, its libraries and this runtime), the JDK, the
+ * operating system and the run's scope; a guard that takes the {@link cc.jumpkick.guard.api.Model} adds the model snapshot's bytes.
  * A guard replays only when its stamp is the same, every glob lists the same files, every file reads
  * the same, and its last outcome was a verdict ({@code ok}); a guard that takes {@code Facts} or
  * {@code Output}, or threw, skipped or found its owner missing, always runs.
@@ -226,7 +226,7 @@ final class ReadLedger implements TextView.Recorder {
     String replay(String id, List<String> params, Consumer<String> why) {
         Map<?, ?> last = previous.get(id);
         if (last == null) return null;
-        if (!REPLAYABLE_PARAMS.containsAll(params)) return null;
+        if (!replayable(params)) return null;
         if (!"ok".equals(MiniJson.str(last, "outcome"))) {
             why.accept("its last run was not a verdict");
             return null;
@@ -266,6 +266,7 @@ final class ReadLedger implements TextView.Recorder {
         entry.put("id", id);
         entry.put("stamp", stampFor(params));
         entry.put("outcome", outcome);
+        entry.put("replayable", replayable(params));
         Map<?, ?> last = previous.remove(id);
         if (replayed == null) last = null;
         if (last != null) {
@@ -293,6 +294,11 @@ final class ReadLedger implements TextView.Recorder {
         }
     }
 
+    /** Whether a guard taking {@code params} may replay: the ledger sees everything it reads of them. */
+    static boolean replayable(List<String> params) {
+        return REPLAYABLE_PARAMS.containsAll(params);
+    }
+
     private String stampFor(List<String> params) {
         if (!params.contains("Model")) return stamp;
         return Hashing.sha256Hex(stamp + "\0model\0" + modelDigest());
@@ -309,18 +315,21 @@ final class ReadLedger implements TextView.Recorder {
         return modelDigest;
     }
 
-    private static String listingDigest(List<String> files) {
+    static String listingDigest(List<String> files) {
         return Hashing.sha256Hex(String.join("\n", files)).substring(0, 16);
     }
 
     /** The digest a file that does not read is noted with. */
-    private static final String UNREADABLE = "null";
+    static final String UNREADABLE = "null";
 
     /** The digest of a file's text as the view reads it; {@link #UNREADABLE} when it does not read. */
     private String digest(String path) {
-        return digests.computeIfAbsent(path, p -> {
-            String body = text.unrecordedText(p);
-            return body == null ? UNREADABLE : Hashing.sha256Hex(body).substring(0, 16);
-        });
+        return digests.computeIfAbsent(path, p -> textDigest(text, p));
+    }
+
+    /** The digest of {@code path}'s text as {@code view} reads it, as a ledger line notes it. */
+    static String textDigest(TextView view, String path) {
+        String body = view.unrecordedText(path);
+        return body == null ? UNREADABLE : Hashing.sha256Hex(body).substring(0, 16);
     }
 }

@@ -302,8 +302,9 @@ final class PlannerGuards {
             String taskId,
             boolean noClasses)
             throws IOException {
-        Judged judged =
-                logged(lane, () -> evaluateLane(ctx, env, lane, ectx, tokenSupplier, taskId, noClasses, null, null));
+        Judged judged = logged(
+                lane,
+                () -> evaluateLane(ctx, env, lane, ectx, tokenSupplier, tokenSupplier, taskId, noClasses, null, null));
         ctx.label(judged.label());
         if (judged.cached()) ctx.cached();
     }
@@ -313,8 +314,10 @@ final class PlannerGuards {
      * verdict. The suite's ({@link GuardVerdicts#suiteTaskId}) is keyed on {@code suiteTokens}, what
      * the module's declared rules read and what the suite reads beyond them; the declared rules' on
      * {@code tokens} alone. An edit only the suite reads (another module, the tree's text, a
-     * manifest) re-runs the suite and leaves the declared rules cached. Both run when either is red,
-     * so the step reports every red rule at once.
+     * manifest) re-runs the suite and leaves the declared rules cached. A run of the suite stores its
+     * verdict under {@code suiteStoreTokens}, taken once it has run: what it read, which the next
+     * build's {@code suiteTokens} name. Both run when either is red, so the step reports every red
+     * rule at once.
      */
     static void executeModuleLane(
             TaskContext ctx,
@@ -322,6 +325,7 @@ final class PlannerGuards {
             EvalContext ectx,
             EvalContext.IoSupplier<List<String>> tokens,
             EvalContext.IoSupplier<List<String>> suiteTokens,
+            EvalContext.IoSupplier<List<String>> suiteStoreTokens,
             String taskId,
             boolean noClasses,
             List<Rule> suiteRules,
@@ -339,6 +343,7 @@ final class PlannerGuards {
                             Lane.MODULE,
                             ectx,
                             suiteTokens,
+                            suiteStoreTokens,
                             GuardVerdicts.suiteTaskId(taskId),
                             false,
                             suiteRules,
@@ -349,7 +354,7 @@ final class PlannerGuards {
         try {
             declared = logged(
                     Lane.MODULE,
-                    () -> evaluateLane(ctx, env, Lane.MODULE, ectx, tokens, taskId, noClasses, null, null));
+                    () -> evaluateLane(ctx, env, Lane.MODULE, ectx, tokens, tokens, taskId, noClasses, null, null));
         } catch (GuardsRed r) {
             red = red == null ? r : new GuardsRed(red.getMessage() + "; " + r.getMessage());
         }
@@ -379,7 +384,9 @@ final class PlannerGuards {
 
     /**
      * One judgement of a lane: the lane's declared rules, or, given {@code suiteRules}, those alone,
-     * run inside {@code withSuite}. Red labels the step and throws {@link GuardsRed}.
+     * run inside {@code withSuite}. The verdict is looked up under {@code tokenSupplier}'s tokens and
+     * a verdict the lane judges is stored under {@code storeSupplier}'s, taken once it has run. Red
+     * labels the step and throws {@link GuardsRed}.
      */
     private static Judged evaluateLane(
             TaskContext ctx,
@@ -387,6 +394,7 @@ final class PlannerGuards {
             Lane lane,
             EvalContext ectx,
             EvalContext.IoSupplier<List<String>> tokenSupplier,
+            EvalContext.IoSupplier<List<String>> storeSupplier,
             String taskId,
             boolean noClasses,
             @Nullable List<Rule> suiteRules,
@@ -508,6 +516,10 @@ final class PlannerGuards {
         // then every run over the partial view says it left the baseline alone.
         Judged judged = new Judged(label, false);
         if (tools.isEmpty() || !result.unseen().isEmpty()) return judged;
+        if (storeSupplier != tokenSupplier) {
+            tokens = new ArrayList<>(storeSupplier.get());
+            GuardKeys.addRuleTokens(tokens, load);
+        }
         String storeKey = laneKey(lane, taskId, tokens, storedSlice, env);
         // Stored under the baseline the lane tightened: the key the next build takes.
         KeyAudit.used(env.in().dir(), KeyAudit.stepOf(taskId), storeKey, laneKey);

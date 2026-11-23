@@ -24,6 +24,7 @@ import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
@@ -150,20 +151,7 @@ class ReadLedgerTest {
     /** One run as the engine forks it: a fresh runtime, the report emptied first. */
     private Map<String, Object> run(boolean fixture) throws Exception {
         Files.deleteIfExists(report);
-        GuardRuntime.install(new GuardConfig(
-                report,
-                root,
-                "",
-                List.of(),
-                List.of(),
-                root.resolve("model.json"),
-                List.of(root.resolve("src")),
-                List.of(),
-                List.of(),
-                List.of(),
-                null,
-                fixture,
-                null));
+        GuardRuntime.install(config(fixture));
         Launcher launcher = LauncherFactory.create();
         LauncherDiscoveryRequest req = LauncherDiscoveryRequestBuilder.request()
                 .selectors(selectClass(Suite.class))
@@ -181,6 +169,93 @@ class ReadLedgerTest {
 
     private Map<String, Object> run() throws Exception {
         return run(false);
+    }
+
+    private GuardConfig config(boolean fixture) {
+        return new GuardConfig(
+                report,
+                root,
+                "",
+                List.of(),
+                List.of(),
+                root.resolve("model.json"),
+                List.of(root.resolve("src")),
+                List.of(),
+                List.of(),
+                List.of(),
+                null,
+                fixture,
+                null);
+    }
+
+    /** The guards whose last run was a verdict over views the ledger sees. */
+    private static final List<String> REPLAYABLE =
+            List.of("reads-a", "lists-docs", "reads-model", "per-file", "closure");
+
+    private @Nullable String reads(List<String> ids, LedgerReads.Mode mode) throws Exception {
+        return LedgerReads.digest(config(false), ids, mode);
+    }
+
+    @Test
+    void the_ledger_s_reads_hold_until_a_file_a_guard_read_changes() throws Exception {
+        run();
+        String recorded = reads(REPLAYABLE, LedgerReads.Mode.RECORDED);
+        assertThat(recorded).isNotNull();
+        assertThat(reads(REPLAYABLE, LedgerReads.Mode.NOW))
+                .as("an untouched tree")
+                .isEqualTo(recorded);
+
+        Files.createDirectories(root.resolve("src/other"));
+        Files.writeString(root.resolve("src/other/unread.txt"), "no guard lists or reads this\n");
+        Files.writeString(root.resolve("src/k/one.txt"), "use key\nbad\n");
+        assertThat(reads(REPLAYABLE, LedgerReads.Mode.NOW))
+                .as("a file no guard read, and a read file written with the same text")
+                .isEqualTo(recorded);
+
+        Files.writeString(root.resolve("src/a.txt"), "fine\nbad\nbad again\n");
+        assertThat(reads(REPLAYABLE, LedgerReads.Mode.NOW))
+                .as("a file a guard read")
+                .isNotEqualTo(recorded);
+        assertThat(reads(List.of("lists-docs"), LedgerReads.Mode.NOW))
+                .as("only the guard that read it moves")
+                .isEqualTo(reads(List.of("lists-docs"), LedgerReads.Mode.RECORDED));
+
+        run();
+        String again = reads(REPLAYABLE, LedgerReads.Mode.RECORDED);
+        assertThat(again).isNotEqualTo(recorded);
+        Files.writeString(root.resolve("src/docs/two.md"), "# two\n");
+        assertThat(reads(REPLAYABLE, LedgerReads.Mode.NOW))
+                .as("a file added under a glob a guard listed")
+                .isNotEqualTo(again);
+        Files.writeString(root.resolve("src/k/three.txt"), "fine\n");
+        Files.delete(root.resolve("src/docs/two.md"));
+        assertThat(reads(List.of("per-file"), LedgerReads.Mode.NOW))
+                .as("a file added to a per-file scan")
+                .isNotEqualTo(reads(List.of("per-file"), LedgerReads.Mode.RECORDED));
+    }
+
+    @Test
+    void a_ledger_with_a_guard_it_cannot_replay_stands_for_no_suite() throws Exception {
+        assertThat(reads(REPLAYABLE, LedgerReads.Mode.NOW)).as("no run yet").isNull();
+        run();
+        List<String> withFacts = new ArrayList<>(REPLAYABLE);
+        withFacts.add("reads-facts");
+        assertThat(reads(withFacts, LedgerReads.Mode.NOW))
+                .as("a guard taking Facts")
+                .isNull();
+        List<String> withThrow = new ArrayList<>(REPLAYABLE);
+        withThrow.add("throws");
+        assertThat(reads(withThrow, LedgerReads.Mode.NOW))
+                .as("a guard that threw")
+                .isNull();
+        List<String> withNew = new ArrayList<>(REPLAYABLE);
+        withNew.add("added-since");
+        assertThat(reads(withNew, LedgerReads.Mode.NOW))
+                .as("a guard the last run did not run")
+                .isNull();
+        assertThat(LedgerReads.digest(config(true), REPLAYABLE, LedgerReads.Mode.NOW))
+                .as("a fixture run")
+                .isNull();
     }
 
     private static int runs(String id) {
