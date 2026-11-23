@@ -384,9 +384,10 @@
     [ "$pe" -ne 0 ] && ff=1
   done
   if [ "$tier" = full ]; then
-    bash scripts/release-notes.sh 0.51.0 >/dev/null 2>>"$L"
+    # The entry of the release this tree becomes: the one the writing rules hold whole.
+    rv=$(bash scripts/release-version.sh 2>>"$L") && bash scripts/release-notes.sh "$rv" >/dev/null 2>>"$L"
     rn=$?
-    echo "RELEASE_NOTES_EXIT=$rn" >>"$L"
+    echo "RELEASE_NOTES_EXIT=$rn (${rv:-no version})" >>"$L"
     w=$(env -u CLAUDECODE -u AI_AGENT jk web -O jsonl 2>/dev/null | head -c 8)
     echo "jk web -O jsonl starts with: $w" >>"$L"
   fi

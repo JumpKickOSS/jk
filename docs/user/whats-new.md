@@ -43,40 +43,6 @@ JumpKick shows you this page's new entries after it updates itself.
   it polled every 2 s, so a pass starts once the 150 ms debounce window is quiet. A project on a
   network volume is still polled.
 
-## 0.53.1
-
-- **A scratch or test home's engine no longer takes port 8910 from yours.** An engine started
-  with `JK_HOME` naming another home serves on a port between 8911 and 8999 instead, so MCP and
-  the dashboard keep answering at 8910 in your own sessions. When something still holds 8910,
-  `jk engine status` names the home whose engine holds it.
-
-- **A first build no longer gives up waiting for memory it has.** Compiler and plugin workers
-  left idle by earlier modules no longer count toward the bound on what heaps may grow to, and
-  exit when a job needs their memory, instead of that job failing after ten minutes.
-- **Tests start at once on a small CI runner.** On 2 vCPUs and 7 GiB an unseen worker's heap was
-  the plan's 3.1 GiB share and its class listing leased all of it; first heaps now stop at a
-  quarter of the budget and the listing is leased at what a listing holds.
-- **No "learned a test heap" line per module on a fresh machine.** Nothing was learned: the
-  figure was the build's own plan. Past a quarter of RAM a test JVM runs at that, silently.
-- **A memory wait that gives up says how long nothing moved.** Ten minutes with no lease granted
-  to anyone; `JK_ENGINE_QUEUE_WAIT_MS` bounds a job's wait for the engine's own heap, not this one.
-
-- **Micronaut tests pass where your shell exports `HOSTNAME`, as under Maven and Gradle.** On Fedora
-  and RHEL that name can reach the host over IPv6 alone, and 0.53.0's test JVMs, which preferred
-  IPv4, failed calling it. Test JVMs keep both IP stacks now: no `micronaut.server.host` line is
-  needed.
-
-- **An agent's passing build names what its edit left under an old name.** When a hand edit
-  renames one side of an anchor (a SQL column, a config key, a route) and other files still use
-  the old name, an MCP `run` that builds and passes ends with those places, in five files at
-  most; it says nothing otherwise, and the CLI never prints it. `[graph] anchor-tail = "off"` turns
-  it off ([After a hand edit](graph.md#after-a-hand-edit)).
-- **A pin written lower relocks the whole artifact to it.** Putting OpenJFX back from 27.0.1.1 to
-  27.0.1 over an existing lock left javafx-controls at both versions (its platform jar kept
-  27.0.1.1) and javafx-graphics and javafx-base at 27.0.1.1, and the converge-versions guard failed
-  the build. The relock now gives what a fresh lock gives: 27.0.1 everywhere. A package something
-  else still pulls in keeps its locked version, and `jk update` marks a row it lowered as lowered.
-
 ## 0.53.0
 
 - **Breaking: tests see your shell.** `FOO=bar jk test` reaches the test, and a cached result

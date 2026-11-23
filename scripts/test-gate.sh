@@ -198,7 +198,9 @@ repo="$WORK/repo"
 mkdir -p "$repo/scripts/gate" "$repo/scripts/queue"
 cp "$ROOT"/scripts/gate/*.sh "$repo/scripts/gate/"
 cp "$ROOT"/scripts/queue/*.sh "$repo/scripts/queue/"
-printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$repo/scripts/release-notes.sh"
+printf '%s\n' '#!/usr/bin/env bash' 'echo "release-notes $*" >>"$JK_CALLS"' >"$repo/scripts/release-notes.sh"
+cp "$ROOT/scripts/release-version.sh" "$repo/scripts/"
+echo 'version = "9.8.7"' >"$repo/jk.toml"
 printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$repo/scripts/test-ok.sh"
 git -C "$repo" init -q
 git -C "$repo" config user.name gate
@@ -227,6 +229,7 @@ verdict() { grep -E '^(GREEN |RED|CHECKOUT |NO CHECKOUT)' "$WORK/logs/integ-gate
 gate 1
 [[ "$(verdict 1)" == "GREEN $tip" ]] || fail "a clean tip was not green: $(cat "$WORK/logs/integ-gate-1.log")"
 if grep -q '^test -m' "$WORK/calls-1"; then fail "the gate ran a pre-run: $(cat "$WORK/calls-1")"; fi
+grep -qx 'release-notes 9.8.7' "$WORK/calls-1" || fail "the gate did not check the jk.toml version's notes: $(cat "$WORK/calls-1")"
 # The reinstall runs no tests, the engine it ran on stops, and the push gate is the one install that
 # runs the fast tier.
 got="$(sed -n '/^install /,$p' "$WORK/calls-1" | grep -E '^(install |engine stop)')"
@@ -360,8 +363,10 @@ mkdir -p "$q/scripts/gate" "$q/scripts/queue" "$q/mod/a/packs/p" "$q/mod/b" "$q/
 cp "$ROOT"/scripts/gate/*.sh "$q/scripts/gate/"
 cp "$ROOT"/scripts/queue/*.sh "$q/scripts/queue/"
 cp "$ROOT/scripts/curated-integration.sh" "$q/scripts/"
-cp "$repo/scripts/release-notes.sh" "$repo/scripts/test-ok.sh" "$q/scripts/"
+cp "$repo/scripts/release-notes.sh" "$repo/scripts/test-ok.sh" "$repo/scripts/release-version.sh" "$q/scripts/"
 cat >"$q/jk.toml" <<'EOF'
+version = "9.8.7"
+
 [workspace]
 modules = [
   "mod/a",
