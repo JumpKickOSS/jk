@@ -17,10 +17,19 @@ public final class DiscoveryListing {
 
     private final List<String> classes = new ArrayList<>();
     private boolean complete;
+    private int tests;
 
     /** The classes named so far, in the order the fork named them. */
     public List<String> classes() {
         return List.copyOf(classes);
+    }
+
+    /**
+     * The tests {@code discovery_total} counted in the plan, those under no class included (a
+     * feature file, a script); 0 until it arrives.
+     */
+    public int tests() {
+        return tests;
     }
 
     /** Whether {@code discovery_total} closed the list. */
@@ -40,7 +49,8 @@ public final class DiscoveryListing {
                 classes.add(Jsonl.str(json, "class"));
             } else if ("discovery_total".equals(event)) {
                 complete = true;
-                listener.onDiscoveryTotal(Jsonl.intValue(json, "classes", 0), Jsonl.intValue(json, "tests", 0));
+                tests = Jsonl.intValue(json, "tests", 0);
+                listener.onDiscoveryTotal(Jsonl.intValue(json, "classes", 0), tests);
             } else if ("warning".equals(event)) {
                 // What the runner learned while listing (a named class its tag filter dropped, an
                 // empty plan) reaches the run the same way it does from a suite JVM.

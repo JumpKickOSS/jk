@@ -592,5 +592,9 @@ class ledger (`TestClassLedger.begin`), so the launcher leaves it out, its `clas
 `replayedFrom`, its counts join the summary, and it is stored under the new stamp. The cone index
 stands under the recording reader's permit, as the shadow's does. A class that reached the network,
 a suite whose pool did, a class gone from the workspace and a red record never replay; nor does
-anything under `--redo`, `--affected`, `"module"`, or with the shadow off.
+anything under `--redo`, `--affected`, `"module"`, or with the shadow off. A launch whose every class is settled or, by
+`TestClassIndex`, holds no test starts no JVM (`SuiteResources.runsAnything`). One that still starts
+lists its selection first, the settled classes left out; when that discovery finds no class and no
+test besides, the launcher starts no suite JVM after it (`JUnitLauncher.settledEverything`): the index
+cannot see a test that a method's tag or a framework's own discovery leaves out, the Platform can.
 

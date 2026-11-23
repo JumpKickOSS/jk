@@ -631,7 +631,8 @@ class JUnitLauncherAggregatorTest {
             assertThat(row.stack()).contains("decoder choked on totals");
         });
         // A clean listing with a shutdown blemish keeps its verdict: the list survives a non-zero exit.
-        assertThat(new Discovery(List.of("com.acme.ATest"), true, WorkerExit.noWorker(1), "", List.of()).crashed())
+        assertThat(new Discovery(List.of("com.acme.ATest"), 1, true, WorkerExit.noWorker(1), "", List.of(), null)
+                        .crashed())
                 .isFalse();
     }
 

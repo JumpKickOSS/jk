@@ -656,6 +656,7 @@ public final class JUnitLauncher {
             } else {
                 Discovery discovery = discoverClasses(javaHome, classpath, testClassesDir, listener, List.of());
                 if (discovery.crashed()) return discovery.verdict(moduleLabel).withWorkers(1);
+                if (settledEverything(discovery)) return nothingLeft(listener);
                 preDiscovered = discovery.classes();
             }
             int share = poolShare(wanted > 0 ? wanted : TestWorkers.effectiveJobs());
@@ -701,6 +702,23 @@ public final class JUnitLauncher {
         TestSummary summary = runParallel(
                 javaHome, classpath, testClassesDir, resolvedWorkers, widen, listener, testResultsDir, preDiscovered);
         return summary.withWorkers(Math.max(resolvedWorkers, pooled));
+    }
+
+    /**
+     * Whether the classes that passed earlier under this stamp are all the selection held: the
+     * discovery, which left them out, found no class and no test besides. A suite JVM would start
+     * only to run an empty plan. The engine skips a launch before any JVM when its compiled classes
+     * show nothing is left; a launch that still starts has a class only the Platform can judge (a
+     * test a method's tag or a framework's own discovery leaves out), so discovery runs.
+     */
+    private boolean settledEverything(Discovery discovery) {
+        return !settled.isEmpty() && discovery.holdsNoTest();
+    }
+
+    /** The run of a selection whose classes had all passed earlier: one runner, nothing run. */
+    private static TestSummary nothingLeft(TestProgressListener listener) {
+        listener.onWorkers(1);
+        return new TestSummary(0, 0, 0, 0, List.of()).withWorkers(1);
     }
 
     // -------- single-worker ---------------------------------------------
@@ -980,6 +998,7 @@ public final class JUnitLauncher {
         } else {
             Discovery discovery = discoverClasses(javaHome, classpath, testClassesDir, listener, List.of());
             if (discovery.crashed()) return discovery.verdict(moduleLabel);
+            if (settledEverything(discovery)) return nothingLeft(listener);
             classes = discovery.classes();
         }
         if (classes.isEmpty()) {

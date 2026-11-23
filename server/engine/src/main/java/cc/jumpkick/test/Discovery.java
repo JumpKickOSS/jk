@@ -8,8 +8,8 @@ import java.util.List;
 import org.jspecify.annotations.Nullable;
 
 /**
- * What one list-only test-discovery fork produced: the classes it named, whether {@code
- * discovery_total} closed the list, its exit code, what it printed outside the protocol (the crash
+ * What one list-only test-discovery fork produced: the classes it named, the tests its plan holds
+ * (those under no class included), whether {@code discovery_total} closed the list, its exit code, what it printed outside the protocol (the crash
  * text when it died), the command it was started with, and the parent-side exception when the
  * parent's own decoder ended the conversation. Which classes the list holds and whether a suite may
  * run off it are the orchestrator's to decide ({@link DiscoveryListing}); what is left here only
@@ -17,19 +17,16 @@ import org.jspecify.annotations.Nullable;
  */
 record Discovery(
         List<String> classes,
+        int tests,
         boolean complete,
         WorkerExit exit,
         String output,
         List<String> command,
         @Nullable RuntimeException handler) {
 
-    Discovery(List<String> classes, boolean complete, WorkerExit exit, String output, List<String> command) {
-        this(classes, complete, exit, output, command, null);
-    }
-
     /** The fork's verdict once it exited {@code exit} with {@code output} printed outside the protocol. */
     static Discovery ended(DiscoveryListing listing, WorkerExit exit, String output, List<String> command) {
-        return new Discovery(listing.classes(), listing.complete(), exit, output, command);
+        return new Discovery(listing.classes(), listing.tests(), listing.complete(), exit, output, command, null);
     }
 
     /**
@@ -38,12 +35,21 @@ record Discovery(
      * decoder could not finish reading, so none of it is trusted.
      */
     static Discovery handlerFailed(DiscoveryListing listing, String output, RuntimeException handler) {
-        return new Discovery(listing.classes(), false, WorkerExit.noWorker(-1), output, List.of(), handler);
+        return new Discovery(
+                listing.classes(), listing.tests(), false, WorkerExit.noWorker(-1), output, List.of(), handler);
     }
 
     /** The fork said nothing usable about the suite: its list is not one a suite may run off ({@link DiscoveryListing#runnable}). */
     boolean crashed() {
         return !DiscoveryListing.runnable(complete, handler != null);
+    }
+
+    /**
+     * Whether a runnable list holds nothing a suite JVM would run: no class and no test outside one.
+     * A plan of features or scripts names no class but still counts its tests.
+     */
+    boolean holdsNoTest() {
+        return !crashed() && classes.isEmpty() && tests == 0;
     }
 
     /**
