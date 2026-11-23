@@ -197,8 +197,9 @@ public final class GuardCommand implements CliCommand {
 
     /**
      * The guards' verdict as the engine wrote it under {@code ## Guards} in {@code
-     * target/jk-results.md}, as one terminal line: {@code Guards: clean · 4 lanes (1 cached)}, or
-     * {@code Guards: 2 rules broken (5 sites)} — the count of rules and sites the section details.
+     * target/jk-results.md}, as one terminal line: {@code Guards: clean · 4 checks (1 cached)}, or
+     * {@code Guards: 2 rules broken (5 sites)} — the count of rules and sites the section details —
+     * ending {@code · 1 skipped: shellcheck} when a guard could not run here.
      * Empty when the record has no guard section, which is a run in which no guard lane ran.
      */
     static Optional<String> verdict(List<String> results) {

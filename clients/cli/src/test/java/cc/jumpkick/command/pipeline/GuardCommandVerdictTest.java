@@ -31,6 +31,20 @@ class GuardCommandVerdictTest {
     }
 
     @Test
+    void a_clean_run_with_a_skipped_guard_names_it_on_the_line() {
+        List<String> results = List.of(
+                "## Guards",
+                "",
+                "Guards: clean · 4 checks · 1 skipped: shellcheck",
+                "",
+                "- `shellcheck` skipped: shellcheck: not installed",
+                "",
+                "## Steps");
+        assertThat(GuardCommand.verdict(results).map(TestAnsi::strip))
+                .hasValue("Guards: clean · 4 checks · 1 skipped: shellcheck");
+    }
+
+    @Test
     void a_red_run_names_the_rules_and_sites_broken() {
         List<String> results = List.of(
                 "## Guards",

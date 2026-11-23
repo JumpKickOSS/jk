@@ -7,7 +7,7 @@
 # packaged past the jars the tests read: no native client. Then the tree suite (`jk test -s tree`),
 # the tests that scan every module's sources, which no module's fast tier holds, and a warning when
 # those runs read a doc scripts/gate/test-reads.txt lacks, and one when this machine has no runnable
-# shellcheck, since jk guard counts the shellcheck guard it then skips as clean. A pass is recorded
+# ShellCheck, since jk guard stays green when it skips the shellcheck guard. A pass is recorded
 # as a note on HEAD under refs/notes/branch-tier naming HEAD's tree, which scripts/queue/submit.sh
 # requires. The working tree must be clean, so what passed is what HEAD holds.
 #
@@ -30,8 +30,9 @@ jk guard || fail "jk guard is red"
 [[ -z "$(git status --porcelain)" ]] || fail "jk guard formatted files; commit them and run again"
 guard_s=$((SECONDS - started))
 
-# jk guard reports a guard that could not run as clean, so a shell script it never linted would
-# pass here and be ejected by the queue's gate. Say so where the submitter reads it.
+# jk guard stays green when a guard could not run (its verdict only names the skip), so a shell
+# script it never linted would pass here and be ejected by the queue's gate. Say so where the
+# submitter reads it.
 skipped=""
 if [[ -f "$root/scripts/shellcheck.sh" ]] && ! bash "$root/scripts/shellcheck.sh" --runner >/dev/null 2>&1; then
   skipped=" (shellcheck skipped: no runnable binary or container daemon)"

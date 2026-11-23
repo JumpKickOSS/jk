@@ -120,14 +120,14 @@ public final class GuardMessages {
 
     /** An outcome that is not a site — blind, owner-missing, scanner-failed, skipped, … — as one diagnostic. */
     public static String outcome(RuleReport r) {
-        Rule rule = r.rule();
+        return outcome(r.rule(), r.outcome().id(), r.note());
+    }
+
+    /** As {@link #outcome(RuleReport)}, from the rule, the outcome's {@link Outcome#id() id} and its note. */
+    public static String outcome(Rule rule, String outcome, String note) {
         StringBuilder sb = new StringBuilder();
-        sb.append("GUARD ")
-                .append(rule.id())
-                .append("  ")
-                .append(r.outcome().id())
-                .append('\n');
-        if (!r.note().isEmpty()) sb.append("  Observed: ").append(r.note()).append('\n');
+        sb.append("GUARD ").append(rule.id()).append("  ").append(outcome).append('\n');
+        if (!note.isEmpty()) sb.append("  Observed: ").append(note).append('\n');
         if (rule.instead() != null)
             sb.append("  Instead:  ").append(rule.instead()).append('\n');
         sb.append("  Why:      ").append(rule.why()).append('\n');

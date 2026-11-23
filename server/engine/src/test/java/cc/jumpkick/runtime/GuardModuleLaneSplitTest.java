@@ -78,6 +78,32 @@ class GuardModuleLaneSplitTest {
                         "guard-suite_" + ActionKey.taskTag(root) + ".rules.jsonl");
     }
 
+    /**
+     * A suite guard skipped for want of a tool leaves a verdict that holds while the tool stays
+     * missing; the run that replays it still names the skipped guard and its note.
+     */
+    @Test
+    void a_replayed_verdict_names_the_guard_it_skipped(@TempDir Path tmp) throws Exception {
+        Path root = tree(tmp);
+        ModuleLane lane = new ModuleLane(root, tmp);
+        String skipped = "{\"id\":\"reads-text\",\"outcome\":\"skipped\","
+                + "\"error\":\"jk-no-such-linter: not installed\",\"tools\":[\"jk-no-such-linter\"]}\n";
+
+        Run first = lane.run(List.of("facts:one"), "suite-reads:one", skipped);
+        assertThat(first.suiteRuns()).isEqualTo(1);
+        assertThat(first.ctx().warnings).singleElement().satisfies(w -> assertThat(w)
+                .startsWith("reads-text=GUARD reads-text  skipped\n")
+                .contains("Observed: jk-no-such-linter: not installed"));
+
+        Run replayed = lane.run(List.of("facts:one"), "suite-reads:one", skipped);
+        assertThat(replayed.suiteRuns())
+                .as("the verdict holds while the tool is missing")
+                .isZero();
+        assertThat(replayed.ctx().cached).isTrue();
+        assertThat(replayed.ctx().warnings).as("the hit says the skip again").isEqualTo(first.ctx().warnings);
+        assertThat(replayed.ctx().label).contains("· 1 skipped");
+    }
+
     /** One run of a lane: its context and how often the suite ran. */
     private record Run(Recording ctx, int suiteRuns) {}
 
@@ -109,6 +135,14 @@ class GuardModuleLaneSplitTest {
         }
 
         Run run(List<String> moduleTokens, String suiteToken) throws Exception {
+            return run(
+                    moduleTokens,
+                    suiteToken,
+                    "{\"id\":\"reads-text\",\"outcome\":\"ok\",\"population\":1,\"violations\":[]}\n");
+        }
+
+        /** As {@link #run(List, String)}, with the line the suite writes to its report. */
+        Run run(List<String> moduleTokens, String suiteToken, String reportLine) throws Exception {
             BuildLayout layout = BuildLayout.of(root, JkBuildParser.parse(root.resolve("jk.toml")));
             FactsIndexing.Ensured main =
                     FactsIndexing.ensure(layout.classesDir(), FactsIndexing.indexPath(layout.buildDir(), "main"));
@@ -128,8 +162,7 @@ class GuardModuleLaneSplitTest {
             PlannerGuards.Evaluation suite = evaluate -> {
                 runs.incrementAndGet();
                 Files.createDirectories(report.getParent());
-                Files.writeString(
-                        report, "{\"id\":\"reads-text\",\"outcome\":\"ok\",\"population\":1,\"violations\":[]}\n");
+                Files.writeString(report, reportLine);
                 return evaluate.get();
             };
             Recording ctx = new Recording();
@@ -171,13 +204,14 @@ class GuardModuleLaneSplitTest {
         return root;
     }
 
-    /** The label, the cached mark and the errors a lane leaves on its step. */
+    /** The label, the cached mark, the errors and the notices a lane leaves on its step. */
     private static final class Recording implements TaskContext {
         @Nullable
         String label;
 
         boolean cached;
         final List<String> errors = new ArrayList<>();
+        final List<String> warnings = new ArrayList<>();
 
         @Override
         public void progress(int delta) {}
@@ -194,7 +228,9 @@ class GuardModuleLaneSplitTest {
         public void output(@Nullable String line) {}
 
         @Override
-        public void warn(String code, String message) {}
+        public void warn(String code, String message) {
+            warnings.add(code + "=" + message);
+        }
 
         @Override
         public void error(String code, String message) {

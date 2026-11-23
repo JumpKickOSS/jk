@@ -323,7 +323,10 @@ classes alone needs no `@NullMarked` package-info, and a package with one Java c
 
 `jk guard` ends with the guards' own verdict on the terminal, beside the build's wedge:
 `Guards: clean · 4 checks (1 cached)` names the checks that ran and how many replayed a cached
-verdict; `Guards: 2 rules broken (5 sites)` counts what `target/jk-results.md` then details.
+verdict; `Guards: 2 rules broken (5 sites)` counts what `target/jk-results.md` then details. A
+guard that could not run on this machine, such as `shellcheck` with no ShellCheck installed, ends
+the line by name (`Guards: clean · 4 checks · 1 skipped: shellcheck`), and `target/jk-results.md`
+lists each skipped guard with its reason. A replayed verdict names the skip again.
 `target/jk-results.md` lists every broken rule with its sites:
 
 ```

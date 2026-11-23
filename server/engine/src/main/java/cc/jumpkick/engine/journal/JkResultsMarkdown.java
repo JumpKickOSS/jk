@@ -440,6 +440,7 @@ public final class JkResultsMarkdown {
         List<BuildRecord.Diag> red = new ArrayList<>();
         for (BuildRecord.Diag d : r.diagnostics()) if (isError(d) && isGuard(d)) red.add(d);
         if (lanes.isEmpty() && red.isEmpty()) return;
+        Map<String, String> skipped = JkResultsGuardSkips.of(r);
         sb.append("## Guards\n\n");
         if (red.isEmpty()) {
             long cached = lanes.stream()
@@ -447,7 +448,7 @@ public final class JkResultsMarkdown {
                     .count();
             sb.append("Guards: clean · ").append(lanes.size()).append(lanes.size() == 1 ? " check" : " checks");
             if (cached > 0) sb.append(" (").append(cached).append(" cached)");
-            sb.append("\n\n");
+            JkResultsGuardSkips.append(sb, skipped);
             return;
         }
         Map<String, List<BuildRecord.Diag>> byRule = new LinkedHashMap<>();
@@ -457,7 +458,8 @@ public final class JkResultsMarkdown {
         sb.append(" (")
                 .append(red.size())
                 .append(red.size() == 1 ? " site" : " sites")
-                .append(")\n\n");
+                .append(")");
+        JkResultsGuardSkips.append(sb, skipped);
         int shown = 0;
         outer:
         for (var e : byRule.entrySet()) {

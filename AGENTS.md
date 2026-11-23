@@ -236,8 +236,8 @@ work on something else and read answers with `ka inbox`. Stopping without finish
 - **Branch tier** — before a branch is submitted to the queue: `scripts/queue/branch-tier.sh`,
   which runs `jk guard` and the fast tier of the modules the branch changed and of their
   dependents (no native client, no suites of the modules they build on), and records the pass
-  that `scripts/queue/submit.sh` requires. `jk guard` counts a guard it had to skip as clean, so
-  the Branch tier warns when this machine has no runnable shellcheck: the shell scripts are then
+  that `scripts/queue/submit.sh` requires. `jk guard` stays green when it has to skip a guard (its
+  verdict line names the skip), so the Branch tier warns when this machine has no runnable shellcheck: the shell scripts are then
   linted first by the queue's gate.
 - **Prove it cheaply first** — before any run that takes more than a few minutes, however it is
   spelled (a gate, a whole suite, an integration or slow tier, an uncached build of this tree),

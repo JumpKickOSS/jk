@@ -447,8 +447,7 @@ final class PlannerGuards {
             // that fails is a miss: the key would otherwise stay a permanent green with no evidence.
             boolean restored = verdict.get().outputs().isEmpty()
                     || cache.restoreArtifacts(verdict.get(), RuleSummaries.dir(g.root()));
-            if (restored)
-                return new Judged(rules.size() + (rules.size() == 1 ? " rule" : " rules") + " · clean (cached)", true);
+            if (restored) return replayed(ctx, rules, verdict.get().said());
             Log.debug("guard lane: " + taskId + " verdict found, its evidence did not restore");
         }
         if (noClasses) {
@@ -520,13 +519,48 @@ final class PlannerGuards {
         for (Path f : List.of(RuleSummaries.file(g.root(), taskId), observationsFile(g.root(), taskId))) {
             if (Files.isRegularFile(f)) evidence.add(f);
         }
+        List<String> skips = skipNotices(result);
         if (evidence.isEmpty()) {
-            cache.storeVerdict(taskId, storeKey, inputsOf(tokens, storedSlice));
+            cache.storeVerdict(taskId, storeKey, inputsOf(tokens, storedSlice), skips);
         } else {
             cache.storeArtifacts(
-                    taskId, storeKey, inputsOf(tokens, storedSlice), RuleSummaries.dir(g.root()), evidence);
+                    taskId, storeKey, inputsOf(tokens, storedSlice), RuleSummaries.dir(g.root()), evidence, skips);
         }
         return judged;
+    }
+
+    /**
+     * The skipped guards of a judged lane as the verdict keeps them, one {@code <outcome> <rule id>
+     * <note>} line each, so a hit names what its run could not check.
+     */
+    static List<String> skipNotices(LaneRun.Result result) {
+        List<String> out = new ArrayList<>();
+        for (RuleReport r : result.skippedReports())
+            out.add(r.outcome().id() + " " + r.id() + " " + r.note().replace('\n', ' '));
+        return out;
+    }
+
+    /** A lane whose verdict replayed: the skips its run kept are said again and counted on its label. */
+    private static Judged replayed(TaskContext ctx, List<Rule> rules, List<String> said) {
+        int skipped = replaySkips(ctx, rules, said);
+        String label = rules.size() + (rules.size() == 1 ? " rule" : " rules") + " · clean (cached)";
+        return new Judged(skipped > 0 ? label + " · " + skipped + " skipped" : label, true);
+    }
+
+    /** Says again, as notices, the {@link #skipNotices} a cached verdict kept; returns how many. */
+    static int replaySkips(TaskContext ctx, List<Rule> rules, List<String> said) {
+        int n = 0;
+        for (String line : said) {
+            String[] parts = line.split(" ", 3);
+            if (parts.length < 2) continue;
+            for (Rule rule : rules) {
+                if (!rule.id().equals(parts[1])) continue;
+                ctx.warn(rule.id(), GuardMessages.outcome(rule, parts[0], parts.length > 2 ? parts[2] : ""));
+                n++;
+                break;
+            }
+        }
+        return n;
     }
 
     /**
