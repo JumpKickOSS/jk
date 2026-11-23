@@ -9,6 +9,7 @@ import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.task.FileHashMemo;
 import cc.jumpkick.task.TestStamp;
 import cc.jumpkick.test.ClassCones;
+import cc.jumpkick.test.ClassReads;
 import cc.jumpkick.test.SuiteEnvReads;
 import cc.jumpkick.test.SuiteReads;
 import java.io.IOException;
@@ -24,7 +25,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
-import java.util.function.Predicate;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -38,16 +38,19 @@ import org.jspecify.annotations.Nullable;
  *   <li>the class part, its static cone ({@link ClassCones});
  *   <li>the observed part, what its last run read: data files by content (with the listing of a
  *       workspace directory it read in), code files loaded by path by content, the identity of each
- *       program it started that read nothing else (git in a repository a test made), and what no
+ *       program it started that read nothing else ({@link ClassReads.Observation#tools}), and what no
  *       class's window held.
  * </ul>
  *
- * <p>A class whose cone cannot be trusted is keyed by its whole module, every workspace class on
- * its classpath in place of its cone, and by every program the suite's stamp keys: one that started
- * a program, loaded a workspace class its cone does not name, names a classpath-scanning entry
- * point, or has no attributed record. A class that read more code files than its record names
- * stands on every code file its suite read instead (the suite code files of its record file's
- * header), and on its module only when the suite read more than that list holds.
+ * <p>A workspace class the class loaded that its static cone does not name (one loaded by name, a
+ * JUnit extension a properties file names) joins its cone with what it reaches, up to {@link
+ * #REFLECTIVE_KEPT} of them. A class whose cone cannot be trusted is keyed by its whole module,
+ * every workspace class on its classpath in place of its cone, and by every program the suite's
+ * stamp keys: one that started a program that could read what no recording sees, loaded more
+ * workspace classes outside its cone than are kept, names a classpath-scanning entry point, or has
+ * no attributed record. A class that read more code files than its record names stands on every
+ * code file its suite read instead (the suite code files of its record file's header), and on its
+ * module only when the suite read more than that list holds.
  */
 final class ClassKeys {
 
@@ -110,7 +113,11 @@ final class ClassKeys {
     static Observed identified(Observed seen, Map<String, String> programs) {
         if (seen.tools().isEmpty()) return seen;
         List<String> named = new ArrayList<>();
-        for (String tool : seen.tools()) named.add(programs.getOrDefault(tool, PROGRAM + tool + "=" + UNSTAMPED));
+        for (String tool : seen.tools()) {
+            // A program the test wrote is its own output: the class's cone holds what it is.
+            if (tool.equals(ClassReads.WRITTEN_PROGRAM)) named.add(PROGRAM + tool);
+            else named.add(programs.getOrDefault(tool, PROGRAM + tool + "=" + UNSTAMPED));
+        }
         named.sort(null);
         return new Observed(
                 seen.attributed(),
@@ -197,33 +204,43 @@ final class ClassKeys {
         return new Key((fallback == null ? "" : "module:") + Hashing.hex(md.digest()), fallback);
     }
 
+    /** The most workspace classes outside its static cone a class may load and keep its cone. */
+    static final int REFLECTIVE_KEPT = 8;
+
+    /**
+     * The workspace classes {@code testClass} loaded ({@code loaded}) that its static cone does not
+     * reach, fewest first: each one the cone grown so far does not hold joins it with what it reaches
+     * ({@link ClassCones.Index#cone(String, Collection)}). Null past {@link #REFLECTIVE_KEPT}.
+     */
+    static @Nullable List<String> reflective(ClassCones.Index index, String testClass, Collection<String> loaded) {
+        List<String> roots = new ArrayList<>();
+        ClassCones.Cone cone = index.cone(testClass);
+        for (String l : new TreeSet<>(loaded)) {
+            if (cone.contains(l)
+                    || !index.contains(l)
+                    || TestClassLedger.topLevel(l).equals(testClass)) continue;
+            if (roots.size() == REFLECTIVE_KEPT) return null;
+            roots.add(l);
+            cone = index.cone(testClass, roots);
+        }
+        return roots;
+    }
+
     /**
      * Why a class's cone cannot be trusted, or null when it can: no attributed record, a program
      * started, more code files than its suite's list holds ({@code suiteCodeMore}), more loaded
-     * classes than are kept, a scanning entry point in the cone, or a workspace class it loaded
-     * ({@code loaded}) that the cone does not name. Decided when the class ran, from what it loaded
-     * then; its record keeps the answer.
+     * classes than are kept, more workspace classes loaded outside its static cone than {@link
+     * #reflective} keeps ({@code reflectiveMore}), or a scanning entry point in the cone. Decided
+     * when the class ran, from what it loaded then; its record keeps the answer.
      */
     static @Nullable String fallback(
-            ClassCones.Cone cone,
-            Observed seen,
-            Collection<String> loaded,
-            boolean loadedMore,
-            boolean suiteCodeMore,
-            String testClass,
-            Predicate<String> indexed) {
+            ClassCones.Cone cone, Observed seen, boolean loadedMore, boolean reflectiveMore, boolean suiteCodeMore) {
         if (!seen.attributed()) return "unattributed";
         if (!seen.processes().isEmpty()) return "process " + seen.processes().getFirst();
         if (seen.codeMore() && suiteCodeMore) return "code past the suite's bound";
         if (loadedMore) return "loads past the record's bound";
+        if (reflectiveMore) return "reflective loads past the record's bound";
         if (cone.scanner() != null) return "scanner " + cone.scanner();
-        for (String l : loaded) {
-            if (!cone.contains(l)
-                    && indexed.test(l)
-                    && !TestClassLedger.topLevel(l).equals(testClass)) {
-                return "reflective " + l;
-            }
-        }
         return null;
     }
 

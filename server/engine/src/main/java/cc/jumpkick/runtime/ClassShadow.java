@@ -114,16 +114,12 @@ final class ClassShadow {
     /** What the shadow says of the class {@code o} names, given its row before this run: a new key and why it would have run. */
     TestClassRecords.Shadowed of(
             TestClassRecords.Outcome o, ClassReads.@Nullable Observation obs, @Nullable String previous) {
-        ClassCones.Cone cone = index.cone(o.testClass());
         ClassKeys.Observed now = obs == null ? ClassKeys.Observed.NONE : observed(obs, workspace);
-        String fallback = ClassKeys.fallback(
-                cone,
-                now,
-                obs == null ? List.of() : obs.loaded(),
-                obs != null && obs.loadedMore(),
-                codePastBound,
-                o.testClass(),
-                index::contains);
+        boolean loadedMore = obs != null && obs.loadedMore();
+        List<String> reflective =
+                obs == null || loadedMore ? List.of() : ClassKeys.reflective(index, o.testClass(), obs.loaded());
+        ClassCones.Cone cone = index.cone(o.testClass(), reflective == null ? List.of() : reflective);
+        String fallback = ClassKeys.fallback(cone, now, loadedMore, reflective == null, codePastBound);
         if (index.full()) fallback = "index past its bound";
         ClassKeys.Key key = ClassKeys.key(
                 o.launch(),
@@ -137,7 +133,7 @@ final class ClassShadow {
                 workspace,
                 fallback,
                 listings);
-        String why = whyRun(previous, o.launch(), cone);
+        String why = whyRun(previous, o.launch(), o.testClass());
         ran++;
         if (why != null) {
             wouldRun++;
@@ -149,21 +145,28 @@ final class ClassShadow {
             if (changed.size() < NAMES_LOGGED) changed.add(o.testClass());
             if (why == null && unsound.size() < NAMES_LOGGED) unsound.add(o.testClass());
         }
-        return new TestClassRecords.Shadowed(key.key(), fallback, cone.digest() + " " + cone.size(), why);
+        return new TestClassRecords.Shadowed(
+                key.key(),
+                fallback,
+                cone.digest() + " " + cone.size(),
+                why,
+                reflective == null ? List.of() : reflective);
     }
 
     /**
      * Why per-class selection runs the class whose record was {@code prev}, or null to replay it: the
      * one answer both this shadow and the selection ({@link TestClassRecording#unmoved}) give. A class
      * that read more code files than its record names, or ran beside a pool that did, runs when one
-     * of its suite's code files changed after it finished.
+     * of its suite's code files changed after it finished. Its cone is {@code testClass}'s as it is
+     * now, with the classes its record says it loaded outside it ({@code reflective}).
      */
     @Nullable
-    String whyRun(@Nullable String prev, String launch, ClassCones.Cone cone) {
+    String whyRun(@Nullable String prev, String launch, String testClass) {
         if (prev == null) return "no-record";
         String prevKey = Jsonl.str(prev, "classKey");
         if (prevKey == null) return "no-key";
         if (!"passed".equals(Jsonl.str(prev, "outcome"))) return "red";
+        ClassCones.Cone cone = index.cone(testClass, Jsonl.strArray(prev, "reflective"));
         String fallback = Jsonl.str(prev, "fallback");
         ClassKeys.Key now = ClassKeys.key(
                 launch,

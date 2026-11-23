@@ -49,6 +49,32 @@ class ClassConesTest {
     }
 
     @Test
+    void a_class_loaded_outside_the_cone_joins_it_with_what_it_reaches(@TempDir Path tmp) throws Exception {
+        Path root = tree(
+                tmp.resolve("classes"),
+                ConeDep.class,
+                ConeRoot.class,
+                ConeRoot.Inner.class,
+                ConeFar.class,
+                ConeNamed.class);
+        ClassCones.Index index = ClassCones.index(List.of(root));
+        ClassCones.Cone alone = index.cone(ConeFar.class.getName());
+        ClassCones.Cone joined = index.cone(ConeFar.class.getName(), List.of(ConeDep.class.getName(), "demo.Gone"));
+        assertThat(alone.classes()).containsExactly(ConeFar.class.getName());
+        assertThat(joined.classes())
+                .as("the loaded class and what it reaches")
+                .contains(ConeDep.class.getName(), ConeRoot.Inner.class.getName(), ConeFar.class.getName());
+        assertThat(joined.digest()).isNotEqualTo(alone.digest());
+
+        Files.delete(root.resolve(path(ConeDep.class)));
+        assertThat(ClassCones.index(List.of(root))
+                        .cone(ConeFar.class.getName(), List.of(ConeDep.class.getName()))
+                        .digest())
+                .as("the loaded class gone from the workspace")
+                .isNotEqualTo(joined.digest());
+    }
+
+    @Test
     void a_cone_naming_the_service_loader_takes_in_the_providers(@TempDir Path tmp) throws Exception {
         Path root = tree(tmp.resolve("classes"), ConeLoads.class, ConeProvider.class);
         Path services = Files.createDirectories(root.resolve("META-INF/services"));

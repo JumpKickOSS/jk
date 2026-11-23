@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.test;
 
+import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.host.GitCommand;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.PathUtil;
@@ -136,6 +137,15 @@ public final class ClassReads {
      */
     public static final int SUITE_CODE_KEPT = 128;
 
+    /** The most programs keyed by their identity alone a class keeps; past it, a program started. */
+    public static final int TOOLS_KEPT = 8;
+
+    /**
+     * The name a class's tools keep for a program the test wrote in its temp root: its bytes are the
+     * test's output, which the class's cone decides.
+     */
+    public static final String WRITTEN_PROGRAM = "(written)";
+
     /** The most of each kind of platform evidence a class keeps: presence decides, a few say what. */
     public static final int EVIDENCE_KEPT = 2;
 
@@ -155,9 +165,9 @@ public final class ClassReads {
 
     /**
      * The most heap one class's observation holds: its kept paths and evidence at a couple of hundred
-     * bytes each and its empty sets.
+     * bytes each, its tools' names at 64 and its empty sets.
      */
-    public static final long CLASS_BYTES = (READS_KEPT + CODE_KEPT + 4L * EVIDENCE_KEPT) * 200 + 512;
+    public static final long CLASS_BYTES = (READS_KEPT + CODE_KEPT + 4L * EVIDENCE_KEPT) * 200 + TOOLS_KEPT * 64L + 512;
 
     /** The most environment variables and system properties a class's record names, each. */
     public static final int NAMES_KEPT = 8;
@@ -255,7 +265,8 @@ public final class ClassReads {
 
         /**
          * Programs started that read nothing the suite's key does not hold but their own identity,
-         * by name: git run in a repository a test made ({@link GitRuns}).
+         * by name: git run in a repository a test made ({@link GitRuns}), a utility or a program the
+         * test wrote whose command names nothing outside its temp roots ({@link OwnPrograms}).
          */
         public Set<String> tools() {
             return Collections.unmodifiableSet(tools);
@@ -309,10 +320,10 @@ public final class ClassReads {
             if (processes.size() < EVIDENCE_KEPT) processes.add(program);
         }
 
-        /** Note a program keyed by its identity alone; past {@link #EVIDENCE_KEPT} names, a program started. */
+        /** Note a program keyed by its identity alone; past {@link #TOOLS_KEPT} names, a program started. */
         public void addTool(String program) {
             if (tools.contains(program)) return;
-            if (tools.size() < EVIDENCE_KEPT) tools.add(program);
+            if (tools.size() < TOOLS_KEPT) tools.add(program);
             else addProcess(program);
         }
 
@@ -539,8 +550,12 @@ public final class ClassReads {
                 // A test harness's own command around every class (CheckoutUntouched's git status)
                 // is no program the class started.
                 if (v[0] == null || v[0].contains(GitCommand.HARNESS)) return;
-                if (GitRuns.ownRepository(v[0], v[1], join.cwd, join.gitTemp)) join.accept(at, Kind.TOOL, GitRuns.GIT);
-                else join.accept(at, Kind.PROCESS, program(v[0]));
+                if (GitRuns.ownRepository(v[0], v[1], join.cwd, join.gitTemp)) {
+                    join.accept(at, Kind.TOOL, GitRuns.GIT);
+                    return;
+                }
+                String tool = OwnPrograms.tool(v[0], v[1], join.cwd, join.gitTemp, join.path);
+                join.accept(at, tool != null ? Kind.TOOL : Kind.PROCESS, tool != null ? tool : program(v[0]));
             }
             case "jdk.NativeLibraryLoad" -> {
                 // A failed load (JDK 22 and later say so) loaded nothing.
@@ -566,6 +581,8 @@ public final class ClassReads {
         private final Path cwd;
         /** The temp roots a git command may run in and still read only what a test made. */
         private final List<Path> gitTemp;
+        /** The {@code PATH} a program's bare name is looked up on. */
+        private final @Nullable String path = BuildEnv.machine().get("PATH");
 
         private final Layout layout;
         private final Map<String, Observation> classes;

@@ -103,9 +103,12 @@ jars loaded by path), and it checks the static cone.
 The check: a workspace class loaded from a class directory shows in JFR as a `jdk.FileRead` of its
 `.class` file, at the moment it loads. A workspace class loaded in a test class's window that is
 not in that class's static cone proves the cone incomplete (reflection, a framework scan, a service
-file). The class is marked **unattributable** and falls back to the module key: its key is the
-suite stamp, so it runs whenever anything in the module changes, as every class does today. The
-fallback is per class: the rest of the suite keeps its finer keys.
+file). The loaded class joins the cone with everything it reaches (`ClassKeys.reflective`,
+`ClassCones.Index.cone(name, also)`), and the record keeps its name (`reflective`), so the next run
+grows the cone the same way: an edit to the loaded class, or to what it reaches, runs the class.
+Past `ClassKeys.REFLECTIVE_KEPT` (8) such classes the class is marked **unattributable** and falls
+back to the module key: its key is the suite stamp, so it runs whenever anything in the module
+changes. The fallback is per class: the rest of the suite keeps its finer keys.
 
 The check sees a class only the first time it loads in a JVM, and only from a directory (a sibling's
 classes come from its jar, which reads as the jar). So it catches many incomplete cones, not all;
@@ -118,7 +121,7 @@ result would differ, must run. Each known hole:
 
 | Hole | What closes it |
 |---|---|
-| **Reflection** (`Class.forName`, method handles by name, a class name built at run time) | A literal binary name is a reference (above). A computed name loads a class the static cone lacks: the observed check marks the class unattributable when the loaded class came from a class directory. A computed name into a sibling jar is not seen by the check: closed by the soundness guard (below) |
+| **Reflection** (`Class.forName`, method handles by name, a class name built at run time) | A literal binary name is a reference (above). A computed name loads a class the static cone lacks: the observed check joins the loaded class's cone to the class's when it came from a class directory. A computed name into a sibling jar is not seen by the check: closed by the soundness guard (below) |
 | **`ServiceLoader`, Spring component scanning, CDI, Quarkus, Micronaut, classpath scanning** (ArchUnit, ClassGraph, Reflections) | A class whose cone names a scanning entry point falls back to the module key: `java/util/ServiceLoader`, a `META-INF/services` provider named by a workspace service file, `@SpringBootTest`, `@ContextConfiguration`, `@ComponentScan`, `@QuarkusTest`, `@MicronautTest`, ArchUnit's `ClassFileImporter`, ClassGraph, Reflections. The list is data, extended as frameworks are met; the observed check backs it |
 | **Annotation processors and generated code** | Generated classes are classes in the main or test tree; the cone sees them as it sees any class. A processor's own change reaches the class bytes through the compile |
 | **Inlined constants** (a `static final` primitive or string copied into the caller's bytes) | The caller's bytes hold the value, so a change of value is a change of the caller's bytes, provided the compile recompiles every class that inlined it, which JumpKick's incremental compile does. The constant's class may be absent from the caller's constant pool; it is not needed, since the value is in the caller |
@@ -128,7 +131,7 @@ result would differ, must run. Each known hole:
 | **Parameterized and dynamic tests** (`@ParameterizedTest`, `@TestFactory`, data from files) | The unit is the class: every invocation runs or none does. Data files read while generating cases are read in the class's window and keyed |
 | **Test fixtures** (`src/fixtures`, a sibling's fixtures) | They are workspace classes on the runtime classpath; the cone walks them |
 | **Tests that scan the repository** | Their reads land in their own window and key only them. A new file in a directory one of them read changes that directory's listing, keyed. A directory listed where nothing was read is unseen, as today |
-| **Programs started** (a test that execs a built jar, `git`, a nested `jk`) | What a child process reads is not recorded. A class that started a program is unattributable and falls back to the module key. A checkout file a JumpKick test names through `RepoRoot.file`, a script it hands to `bash` say, is read once in the test JVM, so the suite's reads key it |
+| **Programs started** (a test that execs a built jar, `git`, a nested `jk`) | What a child process reads is not recorded. A class that started a program is unattributable and falls back to the module key, unless the command can read nothing its key does not hold (`git` in a repository the test made, a utility or a program the test wrote naming no file outside its temp roots, below). A checkout file a JumpKick test names through `RepoRoot.file`, a script it hands to `bash` say, is read once in the test JVM, so the suite's reads key it |
 | **Nested engines and worker jars** (jk-cli and jk-engine tests drive a real engine that loads plugin jars by path) | The worker jars the suite stamp keys stay in the suite part, so every class keys them. Observing which class loaded a worker was tried and dropped: a class loader cached across classes hides the load from every class but the first, and the classes of jk-cli and jk-engine that drive an engine are most of their suites' time anyway |
 | **Line numbers and source file names** (a test asserting a stack trace) | Bytes are hashed whole, debug attributes included |
 | **The network** | A suite that reached past the host stores no marker, as today, and none of its classes replay |
@@ -347,7 +350,24 @@ What the shadow showed on real runs of jk-engine (940 classes) and what closed e
   next run's stamp moves the key and the class runs once more. 97 classes fell back for `git` on
   bocabox-1; after, 1 (a template-store refresh run from the workspace with `--git-dir`).
 
-Still keyed by the module after these, on bocaminipc-2 after a body-only edit of `SelfHostEngine`
+- A utility that reads only what its command names, or a program the test wrote in its temp root,
+  stands on its identity too (`OwnPrograms`). The program is one of `OwnPrograms.UTILITIES` or the
+  POSIX ones `ToolIdentity` keys by OS family (`sleep`, `setsid`, `timeout`, `sh`, `bash`, `ps`,
+  `env`, text filters), bare or in a system program directory, or a file under a temp root, which
+  keys as `(written)`: the class's cone holds the code that wrote it. Every word of the command, cut
+  at the shell's quotes and operators, is held: a path lies under a temp root, `/dev`, `/proc` or a
+  system program directory (a program there a utility too); outside a temp root a bare word names
+  no entry of the directory and holds no wildcard; a bare word that names a program on `PATH` names
+  a utility (a shell runs its words, and a build tool reads its user's settings); no word expands a
+  variable or a command (`"$@"` aside), starts with `~`, changes directory, names another host or
+  runs git. A class keeps up to `ClassReads.TOOLS_KEPT` (8) such programs; past them it started a
+  program.
+
+- A workspace class loaded outside a class's static cone (a JUnit extension a properties file
+  names, `ShortTempDirs`; a watcher loaded by name) joins its cone, up to 8 of them, rather than
+  keying it by its module ([above](#static-cone-and-observed-cone)).
+
+Still keyed by the module before the last two, on bocaminipc-2 after a body-only edit of `SelfHostEngine`
 (134 of jk-engine's 941 classes, 522 before the suite's code files): a class that starts a program,
 whose reads no recording holds (`git` 98, a program the test wrote in its own temp directory 9,
 `setsid` 8, `sleep` 4, a shell or `env` 8, `node` 2, a second JDK's `java` 1), and a class that

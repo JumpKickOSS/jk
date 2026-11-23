@@ -34,7 +34,7 @@ public enum KeyContract {
      * OrchestratorCode}). The {@code suite-code-keyed} guard keeps the types that select and judge
      * a suite inside the one or the other.
      */
-    SUITE("c18ac684474e", List.of(Sources.SERVER, Sources.SHARED), KeyContract::suiteSource),
+    SUITE("a0009f48c6e3", List.of(Sources.SERVER, Sources.SHARED), KeyContract::suiteSource),
 
     /**
      * The code that writes an artifact or a verdict the engine produces itself: the jar, assembly

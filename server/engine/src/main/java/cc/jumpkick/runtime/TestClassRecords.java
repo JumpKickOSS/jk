@@ -328,6 +328,7 @@ final class TestClassRecords {
             f.string("classKey", shadow.key())
                     .optionalString("fallback", shadow.fallback())
                     .optionalString("wouldRun", shadow.why());
+            if (!shadow.reflective().isEmpty()) f.array("reflective", shadow.reflective());
         }
         if (obs != null) {
             f.array("reads", spelled(obs.reads(), root))
@@ -354,13 +355,15 @@ final class TestClassRecords {
 
     /**
      * What the shadow says of one class: its key over this run, why it is keyed by its module, its
-     * cone ({@code <digest> <size>}), and why per-class selection would have run it (null: replayed).
+     * cone ({@code <digest> <size>}), why per-class selection would have run it (null: replayed), and
+     * the workspace classes it loaded outside its static cone, which its cone holds too.
      */
     record Shadowed(
             String key,
             @Nullable String fallback,
             @Nullable String cone,
-            @Nullable String why) {}
+            @Nullable String why,
+            List<String> reflective) {}
 
     /** Record the classes of {@code recorded} with what {@code seen} and {@code lookups} say, no shadow. */
     static void write(

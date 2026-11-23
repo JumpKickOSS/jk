@@ -516,13 +516,17 @@ With `cache = "cone"` a changed stamp no longer re-runs every class. A class tha
 when its key still matches its class record ([what a suite read](#what-a-suite-read-discovered-inputs)): its bytes and
 those of every workspace class it reaches (its cone), the files it read, the suite's settings,
 external classpath and selection. An edit to one main class runs the classes whose cone holds it,
-and any class keyed by its whole module (one that started a program, loaded a workspace class its
-cone does not name, or names a classpath scanner), and replays the rest. A class that ran after a
+and any class keyed by its whole module (one that started a program that could read what no
+recording sees, or names a classpath scanner), and replays the rest. A workspace class a test loaded
+by name joins its cone, so an edit to that class runs it too. A class that ran after a
 test loaded more jars by path than its record names (an in-process compiler's) stands on every jar
 its suite loaded that way: it runs again when one of them changes. A class whose only program is
 `git`, run in a repository the test made in its temp directory (the module's test temp root or
 `~/.jk-test-tmp`) and naming no path outside it and no other host, keeps its cone and stands on what
-that `git` says to `--version`: an upgrade runs it again. The warning then reads
+that `git` says to `--version`: an upgrade runs it again. So does a class whose programs are
+utilities (`sleep`, `setsid`, `sh -c …`, `ps`) or a program the test wrote in its temp directory,
+when no word of the command names a file outside that directory, a variable, another host or a
+program other than such a utility. The warning then reads
 `… passed earlier and nothing they reach or read has changed since; they are not run again`, and
 each replayed class's `class-finish` row carries `replayedFrom`. A class that reached the network,
 or a suite that did outside every class, is never replayed; `--redo` runs every class. Set at the

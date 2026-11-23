@@ -280,7 +280,7 @@ final class TestClassRecording {
                 String launch = Jsonl.str(row, "launch");
                 String cls = TestClassRecords.className(Jsonl.strArray(row, "container"));
                 if (launch == null || reachedPastHost(row) || !index.contains(cls)) return;
-                if (keys.whyRun(row, launch, index.cone(cls)) != null) return;
+                if (keys.whyRun(row, launch, cls) != null) return;
                 out.put(
                         key,
                         new TestClassLedger.Entry(

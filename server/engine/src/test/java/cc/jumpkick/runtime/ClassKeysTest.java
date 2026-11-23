@@ -5,20 +5,23 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.task.TestStamp;
 import cc.jumpkick.test.ClassCones;
+import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
+import java.util.Objects;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
  * A class's key moves with what it read; past its record's bound it moves with everything its suite
- * read; it falls back to its module when it loaded a workspace class its cone does not name, started
- * a program, loaded past its bound, read more code files than its suite's list holds or has no record.
+ * read; a workspace class it loaded outside its cone joins the cone; it falls back to its module when
+ * it started a program, loaded past its bound, read more code files than its suite's list holds or
+ * has no record.
  */
 class ClassKeysTest {
 
@@ -46,33 +49,62 @@ class ClassKeysTest {
                 .as("within its bound, only its own")
                 .isEqualTo(key(cone, seen, "reads-1", ws).key());
 
-        assertThat(ClassKeys.fallback(
-                        cone, seen, List.of("demo.B"), false, false, "demo.T", Set.of("demo.B")::contains))
-                .as("a workspace class loaded outside its cone")
-                .isEqualTo("reflective demo.B");
-        assertThat(ClassKeys.fallback(cone, seen, List.of("demo.Gone"), false, false, "demo.T", Set.of()::contains))
-                .as("a class gone from the workspace moved the cone itself")
-                .isNull();
-        assertThat(ClassKeys.fallback(
-                        cone,
-                        observed(List.of(), false, List.of("/usr/bin/git")),
-                        List.of(),
-                        false,
-                        false,
-                        "demo.T",
-                        c -> true))
+        assertThat(ClassKeys.fallback(cone, observed(List.of(), false, List.of("/usr/bin/git")), false, false, false))
                 .startsWith("process");
         ClassKeys.Observed pastOwnCode = new ClassKeys.Observed(true, List.of(), false, List.of(), true, List.of());
-        assertThat(ClassKeys.fallback(cone, pastOwnCode, List.of(), false, false, "demo.T", c -> true))
+        assertThat(ClassKeys.fallback(cone, pastOwnCode, false, false, false))
                 .as("past its own code bound it stands on its suite's code files, not its module")
                 .isNull();
-        assertThat(ClassKeys.fallback(cone, pastOwnCode, List.of(), false, true, "demo.T", c -> true))
+        assertThat(ClassKeys.fallback(cone, pastOwnCode, false, false, true))
                 .as("past its suite's too")
                 .isEqualTo("code past the suite's bound");
-        assertThat(ClassKeys.fallback(cone, seen, List.of(), true, false, "demo.T", c -> true))
-                .startsWith("loads past");
-        assertThat(ClassKeys.fallback(cone, ClassKeys.Observed.NONE, List.of(), false, false, "demo.T", c -> true))
+        assertThat(ClassKeys.fallback(cone, seen, true, false, false)).startsWith("loads past");
+        assertThat(ClassKeys.fallback(cone, seen, false, true, false)).startsWith("reflective loads past");
+        assertThat(ClassKeys.fallback(cone, ClassKeys.Observed.NONE, false, false, false))
                 .isEqualTo("unattributed");
+    }
+
+    /**
+     * A workspace class loaded by name that the test class's static cone does not reach joins its
+     * cone, so an edit to it moves the key and an edit elsewhere does not; past the bound the class
+     * is keyed by its module.
+     */
+    @Test
+    void a_class_loaded_outside_the_cone_keys_the_class_by_its_own_cone(@TempDir Path ws) throws Exception {
+        Path classes = Files.createDirectories(ws.resolve("classes"));
+        copy(classes, "demo/T", FIXTURE + "ConeFar");
+        copy(classes, "demo/Ext", FIXTURE + "ConeNamed");
+        copy(classes, "demo/Other", FIXTURE + "ConeUnrelated");
+        copy(classes, "demo/T$Nested", FIXTURE + "ConeUnrelated");
+        ClassCones.Index index = ClassCones.index(List.of(classes));
+        assertThat(ClassKeys.reflective(index, "demo.T", List.of("demo.T", "demo.T$Nested", "demo.Ext", "lib.Outside")))
+                .as("only the workspace class outside its cone")
+                .containsExactly("demo.Ext");
+
+        ClassKeys.Observed seen = observed(List.of(), false, List.of());
+        String before = key(index.cone("demo.T", List.of("demo.Ext")), seen, "reads", ws)
+                .key();
+        copy(classes, "demo/Other", FIXTURE + "ConeNamed");
+        ClassCones.Index otherEdited = ClassCones.index(List.of(classes));
+        assertThat(key(otherEdited.cone("demo.T", List.of("demo.Ext")), seen, "reads", ws)
+                        .key())
+                .as("a class it never loaded changed")
+                .isEqualTo(before);
+        copy(classes, "demo/Ext", FIXTURE + "ConeUnrelated");
+        ClassCones.Index extEdited = ClassCones.index(List.of(classes));
+        assertThat(key(extEdited.cone("demo.T", List.of("demo.Ext")), seen, "reads", ws)
+                        .key())
+                .as("the class it loaded by name changed")
+                .isNotEqualTo(before);
+
+        List<String> many = new ArrayList<>();
+        for (int i = 0; i <= ClassKeys.REFLECTIVE_KEPT; i++) {
+            copy(classes, "demo/L" + i, FIXTURE + "ConeUnrelated");
+            many.add("demo.L" + i);
+        }
+        assertThat(ClassKeys.reflective(ClassCones.index(List.of(classes)), "demo.T", many))
+                .as("past the bound")
+                .isNull();
     }
 
     /**
@@ -85,7 +117,7 @@ class ClassKeysTest {
                 .cone("demo.T");
         ClassKeys.Observed seen =
                 new ClassKeys.Observed(true, List.of(), false, List.of(), false, List.of(), List.of(GIT));
-        assertThat(ClassKeys.fallback(cone, seen, List.of(), false, false, "demo.T", c -> true))
+        assertThat(ClassKeys.fallback(cone, seen, false, false, false))
                 .as("no program started that reads what its key does not hold")
                 .isNull();
 
@@ -176,7 +208,7 @@ class ClassKeysTest {
         List<String> v24 = List.of("sel:fast", "proc:node=v24.1.0", "proc:sh=posix");
         List<String> v25 = List.of("sel:fast", "proc:node=v25.0.0", "proc:sh=posix");
         ClassKeys.Observed node = observed(List.of(), false, List.of("/usr/bin/node"));
-        String fallback = ClassKeys.fallback(cone, node, List.of(), false, false, "demo.T", c -> true);
+        String fallback = ClassKeys.fallback(cone, node, false, false, false);
         assertThat(fallback).isEqualTo("process /usr/bin/node");
 
         assertThat(stampKey(cone, node, v25, fallback, ws))
@@ -229,6 +261,18 @@ class ClassKeysTest {
                         fallback,
                         new HashMap<>())
                 .key();
+    }
+
+    private static final String FIXTURE = "cc/jumpkick/test/";
+
+    /** The bytes of the test fixture class {@code fixture} as the workspace class {@code internalName}. */
+    private static void copy(Path classes, String internalName, String fixture) throws Exception {
+        Path f = classes.resolve(internalName + ".class");
+        Files.createDirectories(f.getParent());
+        try (InputStream in =
+                Objects.requireNonNull(ClassKeysTest.class.getClassLoader().getResourceAsStream(fixture + ".class"))) {
+            Files.write(f, in.readAllBytes());
+        }
     }
 
     private static ClassKeys.Observed observed(List<String> reads, boolean more, List<String> processes) {

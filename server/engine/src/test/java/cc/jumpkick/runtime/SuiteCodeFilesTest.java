@@ -96,13 +96,13 @@ class SuiteCodeFilesTest {
                 .optionalTrue("codeMore", true)
                 .finish();
 
-        assertThat(shadow(index, ws, 1_999).whyRun(row, "", cone))
+        assertThat(shadow(index, ws, 1_999).whyRun(row, "", "demo.T"))
                 .as("every code file held since before it finished")
                 .isNull();
-        assertThat(shadow(index, ws, 2_000).whyRun(row, "", cone))
+        assertThat(shadow(index, ws, 2_000).whyRun(row, "", "demo.T"))
                 .as("one began to hold what it holds now after it finished")
                 .isEqualTo("code moved");
-        assertThat(shadow(index, ws, Long.MAX_VALUE).whyRun(row, "", cone)).isEqualTo("code moved");
+        assertThat(shadow(index, ws, Long.MAX_VALUE).whyRun(row, "", "demo.T")).isEqualTo("code moved");
     }
 
     private static ClassShadow shadow(ClassCones.Index index, Path ws, long codeSince) {

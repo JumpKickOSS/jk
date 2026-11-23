@@ -17,6 +17,7 @@ import cc.jumpkick.wire.runtime.WorkspaceRequest;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
@@ -29,7 +30,7 @@ import org.junit.jupiter.api.io.TempDir;
  * Per-class selection in shadow over a real suite of four classes. After an edit the suite runs whole,
  * as its stamp says; the shadow says which classes per-class selection would have run, and every
  * class whose outcome the edit changed (here: went red) is among them, while classes the edit cannot
- * reach are not. A class that loads a class by a computed name is keyed by its whole module.
+ * reach are not. A class that loads a class by a computed name stands on that class's cone too.
  */
 @Tag("integration")
 class ClassShadowE2eTest {
@@ -86,8 +87,10 @@ class ClassShadowE2eTest {
         Map<String, String> why = why(m);
         assertThat(Jsonl.strArray(body, "changed")).containsExactly("demo.CalcTest");
         assertThat(why).as("the class whose cone holds Calc").containsKey("demo.CalcTest");
-        assertThat(why).as("no cone holds Calc").doesNotContainKeys("demo.OtherTest", "demo.DataTest");
-        assertThat(why.get("demo.ReflectTest")).as("a computed class name").startsWith("module reflective");
+        assertThat(why)
+                .as("no cone holds Calc, nor the class loaded by a computed name")
+                .doesNotContainKeys("demo.OtherTest", "demo.DataTest", "demo.ReflectTest");
+        assertThat(Jsonl.strArray(row(m, "demo.ReflectTest"), "reflective")).containsExactly("demo.Hidden");
         assertThat(Jsonl.strArray(body, "unsound")).isEmpty();
 
         Files.writeString(calc, Files.readString(calc).replace("a - b", "a + b"));
@@ -103,7 +106,10 @@ class ClassShadowE2eTest {
         assertThat(build(m, cache)).isEqualTo(TaskStatus.FAIL);
         String reflect = last(m);
         assertThat(Jsonl.strArray(reflect, "changed")).contains("demo.ReflectTest");
-        assertThat(why(m)).containsKey("demo.ReflectTest").doesNotContainKey("demo.OtherTest");
+        assertThat(why(m))
+                .as("the class it loaded by name changed")
+                .containsEntry("demo.ReflectTest", "key")
+                .doesNotContainKey("demo.OtherTest");
         assertThat(Jsonl.strArray(reflect, "unsound")).isEmpty();
     }
 
@@ -132,6 +138,15 @@ class ClassShadowE2eTest {
             if (why != null) out.put(key.substring(key.indexOf('|') + 1), why);
         });
         return out;
+    }
+
+    private static String row(Path module, String testClass) {
+        List<String> out = new ArrayList<>();
+        TestClassRecords.rows(TestClassRecords.file(module)).forEach((key, row) -> {
+            if (key.endsWith("|" + testClass)) out.add(row);
+        });
+        assertThat(out).hasSize(1);
+        return out.getFirst();
     }
 
     private static String last(Path module) throws Exception {

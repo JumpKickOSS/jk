@@ -179,9 +179,17 @@ public final class ClassCones {
 
         /** The static cone of the top-level class {@code binaryName}. */
         public Cone cone(String binaryName) {
+            return cone(binaryName, List.of());
+        }
+
+        /**
+         * The static cone of the top-level class {@code binaryName} together with each class of
+         * {@code also} (a class it was seen to load that no reference shows) and what those reach.
+         */
+        public Cone cone(String binaryName, Collection<String> also) {
             String top = internal(binaryName);
             BitSet seen = new BitSet(names.size());
-            int[] todo = new int[64];
+            int[] todo = new int[64 + also.size()];
             int head = 0;
             int tail = 0;
             Integer topId = ids.get(top);
@@ -189,6 +197,12 @@ public final class ClassCones {
             for (int i : nestedOf(top)) {
                 if (tail == todo.length) todo = Arrays.copyOf(todo, todo.length * 2);
                 todo[tail++] = i;
+            }
+            for (String a : also) {
+                Integer id = ids.get(internal(a));
+                if (id == null) continue;
+                if (tail == todo.length) todo = Arrays.copyOf(todo, todo.length * 2);
+                todo[tail++] = id;
             }
             int scanner = -1;
             boolean serviceLoader = false;

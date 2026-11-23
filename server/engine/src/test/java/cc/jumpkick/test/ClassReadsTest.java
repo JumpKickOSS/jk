@@ -2,8 +2,10 @@
 package cc.jumpkick.test;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assumptions.assumeFalse;
 
 import cc.jumpkick.host.GitCommand;
+import cc.jumpkick.host.Os;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -287,6 +289,44 @@ class ClassReadsTest {
                 .redirectOutput(ProcessBuilder.Redirect.DISCARD)
                 .start()
                 .waitFor();
+    }
+
+    /**
+     * A utility whose command names no file of the workspace stands on its identity; one that reads a
+     * workspace file is a program started.
+     */
+    @Test
+    void a_utility_naming_no_workspace_file_is_keyed_by_its_identity(@TempDir Path tmp) throws Exception {
+        assumeFalse(Os.isWindows());
+        Path ws = Files.createDirectories(tmp.resolve("ws"));
+        Files.writeString(ws.resolve("README"), "x");
+        Path temp = Files.createDirectories(tmp.resolve("temp"));
+        Path recordings = Files.createDirectories(tmp.resolve("rec"));
+
+        try (Recording r = new Recording()) {
+            r.enable("jdk.ProcessStart");
+            r.enable(ClassReads.WINDOW_EVENT).withThreshold(Duration.ZERO);
+            r.start();
+            Window sleeps = window("demo.SleepTest");
+            runIn(ws, List.of("sleep", "0"));
+            sleeps.commit();
+            Window reads = window("demo.CatTest");
+            runIn(ws, List.of("cat", "README"));
+            reads.commit();
+            r.stop();
+            r.dump(recordings.resolve("one.jfr"));
+        }
+
+        ClassReads.Attributed seen = ClassReads.attribute(
+                recordings,
+                ws,
+                new ClassReads.Layout(List.of(), List.of(), Set.of(), ws, null, List.of(), List.of(temp)));
+        ClassReads.Observation sleep = Objects.requireNonNull(seen.classes().get("demo.SleepTest"));
+        ClassReads.Observation cat = Objects.requireNonNull(seen.classes().get("demo.CatTest"));
+        assertThat(sleep.processes()).isEmpty();
+        assertThat(sleep.tools()).containsExactly("sleep");
+        assertThat(cat.processes()).as("a file of the workspace").containsExactly("cat");
+        assertThat(cat.tools()).isEmpty();
     }
 
     private static void runIn(Path dir, List<String> command) throws Exception {
