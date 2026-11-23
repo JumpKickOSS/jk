@@ -7,6 +7,7 @@ import cc.jumpkick.testing.RepoRoot;
 import cc.jumpkick.util.KeychainSandbox;
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
@@ -20,6 +21,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.StringJoiner;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import jdk.jfr.EventSettings;
@@ -105,8 +107,22 @@ public final class HermeticReads implements BeforeAllCallback, AfterAllCallback 
          * sandbox slot or its temp roots, where a test's nested engines live.
          */
         boolean denies(Path path) {
-            if (under(path, denied) && !under(path, allowed)) return true;
+            if ((under(path, denied) || inCommonGitDir(path)) && !under(path, allowed)) return true;
             return isEngineState(path) && !under(path, own);
+        }
+
+        /**
+         * Whether {@code path} lies in the common git directory of a linked worktree at the
+         * checkout, its own git directory ({@code worktrees/<name>}) among it: a repository directory
+         * ({@code .git}, or {@code <name>.git}) above it whose {@code worktrees} names the checkout.
+         */
+        boolean inCommonGitDir(Path path) {
+            if (checkout == null) return false;
+            for (Path at = path; at != null; at = at.getParent()) {
+                Path name = at.getFileName();
+                if (name != null && name.toString().endsWith(".git") && namesCheckout(at, checkout)) return true;
+            }
+            return false;
         }
 
         /** Whether reading {@code path} is denied: {@link #denies}, less the trees still read on purpose. */
@@ -286,7 +302,7 @@ public final class HermeticReads implements BeforeAllCallback, AfterAllCallback 
 
     /**
      * This JVM's watcher, made at its first class from that class's fence: before the stream starts,
-     * so the fence's own look at the checkout's {@code .git} is not an event it judges.
+     * so the fence's own look around the checkout is not an event it judges.
      */
     private static synchronized @Nullable Watcher watcher(Class<?> anchor, String jkHome) {
         Watcher w = watcher;
@@ -527,9 +543,7 @@ public final class HermeticReads implements BeforeAllCallback, AfterAllCallback 
         }
         addBoth(denied, Path.of("/etc/gitconfig"));
         Path checkout = checkout(anchor);
-        if (checkout != null) {
-            for (Path gitDir : gitDirs(checkout)) addBoth(denied, gitDir);
-        }
+        if (checkout != null) addBoth(denied, checkout.resolve(".git"));
         // The JDK and the suite's own classpath (jars in ~/.m2 among them) are keyed by the build:
         // reading them is the run.
         addBoth(allowed, Path.of(System.getProperty("java.home")));
@@ -585,29 +599,41 @@ public final class HermeticReads implements BeforeAllCallback, AfterAllCallback 
     }
 
     /**
-     * The git directories of the work tree at {@code checkout}: {@code .git} itself, or for a linked
-     * worktree the directory its {@code .git} file names and that directory's common one.
+     * Whether the repository directory {@code gitDir} is the common one of the linked worktree at
+     * {@code checkout}: one of its {@code worktrees/<name>/gitdir} files names the checkout's {@code
+     * .git}. Asked of a repository directory only when a test touched it, and the answer kept.
+     *
+     * <p>The fence never reads the checkout's own {@code .git} file to find these. A file read in the
+     * test JVM is a discovered input of the suite, and that file names the worktree, so each checkout
+     * and box would key jk's suites apart and never reuse one another's results.
      */
-    static List<Path> gitDirs(Path checkout) {
-        Path dotGit = checkout.resolve(".git");
-        if (Files.isDirectory(dotGit)) return List.of(dotGit);
-        if (!Files.isRegularFile(dotGit)) return List.of();
-        List<Path> out = new ArrayList<>();
-        try {
-            String line = Files.readString(dotGit).strip();
-            if (!line.startsWith("gitdir:")) return List.of();
-            Path gitDir =
-                    checkout.resolve(line.substring("gitdir:".length()).strip()).normalize();
-            out.add(gitDir);
-            Path common = gitDir.resolve("commondir");
-            if (Files.isRegularFile(common)) {
-                out.add(gitDir.resolve(Files.readString(common).strip()).normalize());
-            }
-        } catch (IOException | InvalidPathException unreadable) {
-            return out;
-        }
-        return out;
+    static boolean namesCheckout(Path gitDir, Path checkout) {
+        return COMMON_DIRS.computeIfAbsent(new CommonDir(gitDir, checkout), CommonDir::names);
     }
+
+    /** A repository directory asked about, and the checkout it was asked for. */
+    private record CommonDir(Path gitDir, Path checkout) {
+
+        boolean names() {
+            Path worktrees = gitDir.resolve("worktrees");
+            if (!Files.isDirectory(worktrees)) return false;
+            Path dotGit = checkout.resolve(".git");
+            try (DirectoryStream<Path> entries = Files.newDirectoryStream(worktrees)) {
+                for (Path entry : entries) {
+                    Path file = entry.resolve("gitdir");
+                    if (!Files.isRegularFile(file)) continue;
+                    Path named = entry.resolve(Files.readString(file).strip()).normalize();
+                    if (Files.exists(named) && Files.isSameFile(named, dotGit)) return true;
+                }
+            } catch (IOException | InvalidPathException unreadable) {
+                return false;
+            }
+            return false;
+        }
+    }
+
+    /** What {@link #namesCheckout} has answered in this JVM. */
+    private static final Map<CommonDir, Boolean> COMMON_DIRS = new ConcurrentHashMap<>();
 
     /**
      * Whether {@code command} asks the user's keychain: libsecret's {@code secret-tool}, macOS's

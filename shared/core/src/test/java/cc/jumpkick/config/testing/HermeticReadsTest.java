@@ -74,13 +74,40 @@ class HermeticReadsTest {
     void a_linked_worktree_fences_its_own_git_dir_and_the_common_one(@TempDir Path tmp) throws Exception {
         Path common = Files.createDirectories(tmp.resolve("main/.git"));
         Path own = Files.createDirectories(common.resolve("worktrees/wt"));
-        Files.writeString(own.resolve("commondir"), "../..\n");
+        Path other = Files.createDirectories(common.resolve("worktrees/other"));
         Path tree = Files.createDirectories(tmp.resolve("wt"));
-        Files.writeString(tree.resolve(".git"), "gitdir: " + own + "\n");
+        // What the checkout's own .git file says is never read: it names the worktree, and a read of
+        // it would key every suite on which checkout ran it.
+        Files.writeString(tree.resolve(".git"), "not read\n");
+        Files.writeString(own.resolve("gitdir"), tree.resolve(".git") + "\n");
+        Files.writeString(other.resolve("gitdir"), tmp.resolve("elsewhere/.git") + "\n");
+        Path fixture = Files.createDirectories(tmp.resolve("fixture/.git"));
+        HermeticReads.Fence fence = new HermeticReads.Fence(List.of(), List.of(), List.of(), List.of(), tree);
 
-        assertThat(HermeticReads.gitDirs(tree)).containsExactly(own, common);
-        assertThat(HermeticReads.gitDirs(tmp.resolve("main"))).containsExactly(common);
-        assertThat(HermeticReads.gitDirs(tmp)).isEmpty();
+        assertThat(fence.denies(own.resolve("HEAD"))).isTrue();
+        assertThat(fence.denies(common.resolve("objects/pack/p.pack"))).isTrue();
+        assertThat(fence.denies(fixture.resolve("HEAD")))
+                .as("a fixture's repository")
+                .isFalse();
+        assertThat(fence.denies(tree.resolve("jk.toml"))).isFalse();
+
+        HermeticReads.Fence another =
+                new HermeticReads.Fence(List.of(), List.of(), List.of(), List.of(), tmp.resolve("unrelated"));
+        assertThat(another.denies(common.resolve("HEAD")))
+                .as("no worktree of that repository is this checkout")
+                .isFalse();
+    }
+
+    @Test
+    void a_worktree_named_by_a_relative_gitdir_is_still_this_checkout(@TempDir Path tmp) throws Exception {
+        Path common = Files.createDirectories(tmp.resolve("bare.git"));
+        Path own = Files.createDirectories(common.resolve("worktrees/wt"));
+        Path tree = Files.createDirectories(tmp.resolve("wt"));
+        Files.writeString(tree.resolve(".git"), "not read\n");
+        Files.writeString(own.resolve("gitdir"), "../../../wt/.git\n");
+        HermeticReads.Fence fence = new HermeticReads.Fence(List.of(), List.of(), List.of(), List.of(), tree);
+
+        assertThat(fence.denies(common.resolve("refs/heads/main"))).isTrue();
     }
 
     @Test

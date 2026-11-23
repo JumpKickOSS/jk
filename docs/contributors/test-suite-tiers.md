@@ -60,6 +60,13 @@ Tag that method `@Tag("tree")` (the method, not the class, when the rest of the 
 its own module) and the edit re-runs only the tree suite. A test that reads a few named files
 outside its module stays where it is.
 
+**The fast tier reads nothing that names the checkout or the host.** The same key is why: a read of
+the checkout's `.git` (in a linked worktree, a file naming that worktree) or of `/etc/passwd`
+keys the suite on which checkout or host ran it, so no other worktree, box or queue runner reuses
+its result. `HermeticReads` tells the checkout's git directories from a stat and the common
+directory's `worktrees` list, never by reading `.git`; a test that must compare against the host's
+own files is tagged `integration`.
+
 **No blocking tier waits on a clock.** A test in the fast or integration tier never sleeps,
 polls or waits out a timeout for a second or more: it moves a `FakeClock`, waits on a latch, or
 shortens the wait through the code's test seam (`…ForTests`). A test that can only prove its point

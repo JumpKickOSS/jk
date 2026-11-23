@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledOnOs;
 import org.junit.jupiter.api.condition.OS;
@@ -45,7 +46,9 @@ class PosixPasswdTest {
         assertThat(PosixPasswd.fromGetpwuid()).isPresent().get().asString().startsWith("/");
     }
 
+    // Reads this host's /etc/passwd, which would key the module's fast tier on the host's accounts.
     @Test
+    @Tag("integration")
     @EnabledOnOs(OS.LINUX)
     void getpwuid_matches_etc_passwd_when_the_user_is_local() {
         var nativeShell = PosixPasswd.fromGetpwuid();
