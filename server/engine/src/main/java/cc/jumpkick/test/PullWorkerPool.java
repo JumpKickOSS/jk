@@ -11,6 +11,8 @@ import cc.jumpkick.engine.plugin.PluginProcess;
 import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.engine.plugin.WorkerExit;
 import cc.jumpkick.engine.plugin.WorkerLeases;
+import cc.jumpkick.host.HostLoad;
+import cc.jumpkick.host.HostProcessors;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.orchestrator.ResultAggregator;
 import cc.jumpkick.orchestrator.RunShortfall;
@@ -245,6 +247,7 @@ final class PullWorkerPool {
             int want = Math.min(Math.min(widen.getAsInt(), classCount), shards.size() + queue.size());
             if (want <= shards.size()) continue;
             List<String> command = shards.getFirst().command.get();
+            if (!launcher.coresForAnother(HostLoad.loadAverage(), HostProcessors.count())) continue;
             if (command.isEmpty() || !roomFor(command)) continue;
             start(shards, queue, workerIdBase, want, true, xml, md);
             if (announce) listener.onWorkers(shards.size());

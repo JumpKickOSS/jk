@@ -672,6 +672,11 @@ still queued, auto reads the share again every two seconds and starts another ru
 the formula gives at that share, whenever the engine has a free JVM slot and the memory for one
 more with nothing else waiting. It never stops a runner it started.
 
+A suite whose tests start engines of their own runs at half the share, since each runner's engine
+compiles and tests on cores of its own. It starts with no more runners than the idle cores (the
+processors less the one-minute load average) give two each, at least one, and widens toward that
+half share only while two cores sit idle, so a busy host gets fewer runners rather than slower ones.
+
 An explicit `-w N` is never rescaled; it means N.
 
 When a suite may run on more than one runner, each runner gets its own `java.io.tmpdir`, its own `JK_STATE_DIR` under the

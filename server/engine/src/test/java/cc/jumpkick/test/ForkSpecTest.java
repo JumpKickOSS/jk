@@ -105,6 +105,33 @@ class ForkSpecTest {
                 .isEqualTo(7);
     }
 
+    /**
+     * An engine-driving pool starts at two idle cores a runner, not at the share: the cores another
+     * build is using are not free for its engines. Every other pool starts at the share.
+     */
+    @Test
+    void a_pool_that_drives_engines_starts_at_the_idle_cores() {
+        JUnitLauncher driving = new JUnitLauncher().withFork(homes(true, false));
+        assertThat(driving.startShare(3, 0.3, 7)).as("an idle host").isEqualTo(3);
+        assertThat(driving.startShare(3, 3.2, 7)).as("three cores free").isEqualTo(1);
+        assertThat(driving.startShare(12, 8.0, 24)).isEqualTo(8);
+        assertThat(driving.startShare(3, 11.0, 7)).as("an oversubscribed host").isEqualTo(1);
+        assertThat(driving.startShare(3, -1, 7)).as("no load average").isEqualTo(3);
+        assertThat(new JUnitLauncher().withFork(homes(false, false)).startShare(7, 11.0, 7))
+                .isEqualTo(7);
+    }
+
+    /** An engine-driving pool widens only while two cores sit idle; every other pool is bounded by its leases. */
+    @Test
+    void a_pool_that_drives_engines_widens_only_into_idle_cores() {
+        JUnitLauncher driving = new JUnitLauncher().withFork(homes(true, false));
+        assertThat(driving.coresForAnother(4.5, 7)).isTrue();
+        assertThat(driving.coresForAnother(5.5, 7)).isFalse();
+        assertThat(driving.coresForAnother(-1, 7)).as("no load average").isTrue();
+        assertThat(new JUnitLauncher().withFork(homes(false, false)).coresForAnother(20, 7))
+                .isTrue();
+    }
+
     private static JobWorkers.Lease lease(ForkSpec fork, boolean runsEngines) {
         return new JUnitLauncher().withFork(fork).withRunsEngines(runsEngines).poolLease();
     }

@@ -25,4 +25,14 @@ class HostLoadTest {
                 .isEqualTo(2);
         assertThat(HostLoad.factor(1_000, 24)).isEqualTo(HostLoad.MAX_FACTOR);
     }
+
+    @Test
+    void idle_processors_are_the_count_less_the_load_rounded_up() {
+        assertThat(HostLoad.idleProcessors(0.3, 7)).isEqualTo(6);
+        assertThat(HostLoad.idleProcessors(3.0, 7)).isEqualTo(4);
+        assertThat(HostLoad.idleProcessors(11.0, 7)).isZero();
+        assertThat(HostLoad.idleProcessors(-1, 7))
+                .as("a platform that reports no load average")
+                .isEqualTo(7);
+    }
 }

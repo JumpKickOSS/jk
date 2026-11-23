@@ -21,6 +21,8 @@ import cc.jumpkick.engine.plugin.WorkerFate;
 import cc.jumpkick.engine.plugin.WorkerLaunchClasspath;
 import cc.jumpkick.engine.plugin.WorkerLeases;
 import cc.jumpkick.host.Classpaths;
+import cc.jumpkick.host.HostLoad;
+import cc.jumpkick.host.HostProcessors;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.orchestrator.DiscoveryListing;
@@ -485,7 +487,32 @@ public final class JUnitLauncher {
      * builds waited for room, one gave up after ten minutes and the memory limit killed two.
      */
     int poolShare(int share) {
-        return fork.drivesEngines() ? Math.max(1, share / 2) : share;
+        return fork.drivesEngines() ? Math.max(1, share / CORES_PER_DRIVING_RUNNER) : share;
+    }
+
+    /** The cores a test JVM that drives an engine keeps busy: its own and its engine's work. */
+    static final int CORES_PER_DRIVING_RUNNER = 2;
+
+    /**
+     * The share an auto pool of engine-driving test JVMs starts at out of {@code share}: no more
+     * runners than the host's idle cores give two each, at least one. Cores another build or session
+     * is using are not free for this suite's engines, and a pool past the cores runs slower, not
+     * faster: on a seven-core host eight runners took 519 s where four took 445 s. Every other pool
+     * keeps the share.
+     */
+    int startShare(int share, double loadAverage, int processors) {
+        if (!fork.drivesEngines()) return share;
+        int idle = HostLoad.idleProcessors(loadAverage, processors);
+        return Math.clamp(idle / CORES_PER_DRIVING_RUNNER, 1, Math.max(1, share));
+    }
+
+    /**
+     * Whether the host has the cores for one more pooled test JVM: an engine-driving one needs
+     * {@link #CORES_PER_DRIVING_RUNNER} idle, since its lease holds no JVM slot; every other one is
+     * bounded by the lease ledger alone.
+     */
+    boolean coresForAnother(double loadAverage, int processors) {
+        return !fork.drivesEngines() || HostLoad.idleProcessors(loadAverage, processors) >= CORES_PER_DRIVING_RUNNER;
     }
 
     /** How {@link #poolStarter} leases a pooled test JVM. */
@@ -668,11 +695,16 @@ public final class JUnitLauncher {
                 preDiscovered = discovery.classes();
             }
             int share = poolShare(wanted > 0 ? wanted : TestWorkers.effectiveJobs());
+            int start = startShare(share, HostLoad.loadAverage(), HostProcessors.count());
             Map<String, Long> recorded = RecentClassWalls.forModule(inferredModuleDir);
             List<String> selection = preDiscovered;
             resolvedWorkers =
-                    selection.isEmpty() ? 1 : TestWorkers.autoCount(share, recorded, selection, selection.size());
-            IntSupplier live = widening;
+                    selection.isEmpty() ? 1 : TestWorkers.autoCount(start, recorded, selection, selection.size());
+            // A pool started below its share for want of idle cores widens back to it as they free up.
+            int asked = wanted;
+            IntSupplier live = widening != null || start == share
+                    ? widening
+                    : () -> asked > 0 ? asked : TestWorkers.effectiveJobs();
             // Worth a pool only when the whole jobs budget would make more of the suite than now.
             if (live != null
                     && selection.size() > 1

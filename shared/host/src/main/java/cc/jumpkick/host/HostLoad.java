@@ -21,6 +21,16 @@ public final class HostLoad {
         return ManagementFactory.getOperatingSystemMXBean().getSystemLoadAverage();
     }
 
+    /**
+     * Processors the load average leaves idle: the count less the load, rounded up, never below
+     * zero. A platform that reports no load average leaves every processor idle.
+     */
+    public static int idleProcessors(double loadAverage, int processors) {
+        int count = Math.max(0, processors);
+        if (loadAverage < 0) return count;
+        return (int) Math.max(0, count - (long) Math.ceil(loadAverage));
+    }
+
     /** The stretch for a load average over a processor count: load per processor, rounded up, within [1, {@link #MAX_FACTOR}]. */
     public static int factor(double loadAverage, int processors) {
         if (loadAverage <= 0 || processors <= 0) return 1;
