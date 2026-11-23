@@ -82,29 +82,47 @@ public final class RecordingReader {
         }
     }
 
-    /** One read in the engine's heap at a time, engine-wide: memory admission holds back the peak of one. */
-    private static final Semaphore READS = new Semaphore(1, true);
+    /** The reader's turns in kibibytes of {@link #PEAK_BYTES}, the peak memory admission holds back. */
+    private static final int UNITS = (int) (PEAK_BYTES >> 10);
+
+    /** What stands in the engine's heap under the reader's turns, engine-wide, never past {@link #UNITS}. */
+    private static final Semaphore READS = new Semaphore(UNITS, true);
 
     /**
-     * A turn to read recordings in the engine's heap, released on close. Every reader of suite
-     * recordings takes one, so their peaks never add up past the one memory admission holds back.
+     * A share of the reader's turn, released on close. Every reader of suite recordings takes the
+     * whole of it ({@link #acquire()}); a smaller structure that must not stand beside a recording
+     * read, a suite's class index, takes what it costs ({@link #acquire(long)}), so several small
+     * ones stand together while their peaks never add up past the one memory admission holds back.
+     * Turns are handed out in arrival order: a whole turn waits for the shares before it, never for
+     * the ones after.
      */
     public static final class Permit implements AutoCloseable {
-        private Permit() {}
+        private final int units;
 
+        private Permit(int units) {
+            this.units = units;
+        }
+
+        /** The whole turn: one recording read's peak. */
         public static Permit acquire() throws IOException {
+            return acquire(PEAK_BYTES);
+        }
+
+        /** A share of {@code bytes}, at least one kibibyte and at most the whole turn. */
+        public static Permit acquire(long bytes) throws IOException {
+            int units = Math.clamp((bytes + 1023) >> 10, 1, UNITS);
             try {
-                READS.acquire();
+                READS.acquire(units);
             } catch (InterruptedException stopped) {
                 Thread.currentThread().interrupt();
                 throw new IOException("interrupted waiting to read a recording");
             }
-            return new Permit();
+            return new Permit(units);
         }
 
         @Override
         public void close() {
-            READS.release();
+            READS.release(units);
         }
     }
 

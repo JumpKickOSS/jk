@@ -208,11 +208,13 @@ code (the CLI owns the terminal and is out of scope).
   `perf run-tests.before <module> ms=… siblings=… stamp=… after-stamp=…`: the sibling and worker
   jar waits, the stamp key, then the replay check, discovery and cone check together. The cone
   check also writes `perf cone-check <module> ms=… waited=…`, where `waited` is the time it queued
-  for the recording reader's permit, which another suite holds while it reads its recordings or
-  walks its own cones (never for the whole of another suite's recording). One build walks a
-  suite's cones once for one stamp key and records file: the run and every re-pricing of the
-  estimate read that walk's verdicts, so the line appears once per suite unless the key or the
-  records moved in between.
+  for the recording reader's permit: a suite reading its recordings holds all of it, and a walk
+  over a suite's cones takes only what its class index costs (512 bytes a class, counted from the
+  class names before the walk), so cone checks whose indexes fit the reader's peak together
+  never wait for each other, and none waits for the whole of another suite's recording. One build
+  walks a suite's cones once for one stamp key and records file: the run and every re-pricing of
+  the estimate read that walk's verdicts, so the line appears once per suite unless the key or
+  the records moved in between.
 - **Swallowed exceptions.** A catch of `Exception`, `Throwable` or `RuntimeException` whose body
   would otherwise be a comment logs `Log.debug("<method>: <why it is tolerated>", e)`; the
   `swallowed-broad-catch-ratchet` guard holds the count of comment-only ones at zero. What the

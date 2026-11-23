@@ -37,8 +37,9 @@ import org.junit.jupiter.api.io.TempDir;
  * jar the suite is handed by path that is rebuilding runs only the classes that read it, and a
  * class that read more code files than its record names runs only when one its suite lists moves.
  * The affected-test ranking reads the same records: how each class's cone and reads meet a change.
- * None of these reads waits for another suite's recording of its classes, and one build walks a
- * suite's cones once for one stamp key and records file, however often it asks.
+ * None of these reads waits for another suite's recording of its classes, nor for another suite's
+ * walk over cones whose index fits beside its own, and one build walks a suite's cones once for one
+ * stamp key and records file, however often it asks.
  */
 class ConeForecastTest {
 
@@ -407,6 +408,39 @@ class ConeForecastTest {
             });
         } finally {
             TestClassRecording.ONE.release();
+        }
+    }
+
+    @Test
+    void a_walk_over_the_cones_never_waits_for_another_suites_walk_that_fits_beside_it(@TempDir Path ws)
+            throws Exception {
+        BuildLayout layout = module(ws);
+        write(layout.testClassesDir(), "demo/T", plain("demo.T"));
+        write(layout.testClassesDir(), "demo/U", plain("demo.U"));
+        writeRows(layout.moduleRoot(), null, row("T", 3, null), row("U", 2, null));
+
+        // Another suite's cone check holds the reader for an index of its own few classes.
+        try (var sibling = TestClassRecording.indexPermit(List.of(layout.testClassesDir()))) {
+            assertTimeoutPreemptively(Duration.ofSeconds(10), () -> {
+                assertThat(replayedWith(layout))
+                        .as("the forecast after an edit")
+                        .isEqualTo(5);
+                assertThat(overlaps(layout, List.of("src/main/java/demo/Dep.java")))
+                        .as("the ranking")
+                        .containsOnlyKeys("demo.T", "demo.U");
+                assertThat(TestClassRecording.unmoved(
+                                layout.moduleRoot(),
+                                layout,
+                                TestSelection.DEFAULT,
+                                layout.testClassesDir(),
+                                layout.classesDir(),
+                                List.of(),
+                                List.of(),
+                                List.of(),
+                                null))
+                        .as("the cone check before a run")
+                        .isEmpty();
+            });
         }
     }
 

@@ -46,8 +46,9 @@ import org.jspecify.annotations.Nullable;
  * at most {@link ClassReads#PEAK_BYTES}. Every walk over the cones, a recording's or a read of the
  * records before a run, builds its index of the workspace classes (at most {@link #INDEX_CLASSES}
  * classes, {@link ClassCones#BYTES_PER_CLASS} each, within {@link RecordingReader#PEAK_BYTES}) only
- * while it holds the recording reader's permit, so no index stands beside another or beside a
- * recording being read. A read of the records holds no observations, so it never waits for {@link
+ * while it holds as much of the recording reader's permit as its classes cost ({@link #indexPermit}),
+ * so indexes stand together only while their sum fits the reader's peak, and none beside a recording
+ * being read. A read of the records holds no observations, so it never waits for {@link
  * #ONE}: a suite whose classes all replay is not held up by another suite's recording. Records are
  * rewritten a row at a time.
  */
@@ -68,6 +69,15 @@ final class TestClassRecording {
         if (INDEX_CLASSES * ClassCones.BYTES_PER_CLASS > RecordingReader.PEAK_BYTES) {
             throw new IllegalStateException("the class index must fit within the recording reader's peak");
         }
+    }
+
+    /**
+     * The recording reader's permit for an index of {@code cone}: what the classes it will hold cost,
+     * counted from their names first, so indexes small enough to fit together stand together and
+     * only a recording read, or an index too wide to share, has the reader to itself.
+     */
+    static RecordingReader.Permit indexPermit(List<Path> cone) throws IOException {
+        return RecordingReader.Permit.acquire(ClassCones.count(cone, INDEX_CLASSES) * ClassCones.BYTES_PER_CLASS);
     }
 
     /**
@@ -178,7 +188,7 @@ final class TestClassRecording {
                         : pooledBefore.apply(launch);
                 ClassShadow shadow;
                 // The index stands only while no recording is read anywhere in the engine.
-                try (RecordingReader.Permit permit = RecordingReader.Permit.acquire()) {
+                try (RecordingReader.Permit permit = indexPermit(coneRoots)) {
                     ClassCones.Index index = ClassCones.index(coneRoots, INDEX_CLASSES);
                     shadow = new ClassShadow(
                             index,
@@ -499,10 +509,12 @@ final class TestClassRecording {
         List<Verdict> rows = new ArrayList<>();
         // Whether a launch has no header, or its pool reached another host: none of its classes replays.
         Map<String, Boolean> poolReached = new HashMap<>();
-        // Another suite's recording read or index holds the permit: the wait is timed apart from the walk.
+        // Another suite's recording read or indexes hold the permit: the wait is timed apart from the walk.
         long started = Clock.SYSTEM.nanos();
+        int classes = ClassCones.count(roots.cone(), INDEX_CLASSES);
+        long counted = Clock.SYSTEM.nanos();
         // The index stands only while no recording is read anywhere in the engine.
-        try (RecordingReader.Permit permit = RecordingReader.Permit.acquire()) {
+        try (RecordingReader.Permit permit = RecordingReader.Permit.acquire(classes * ClassCones.BYTES_PER_CLASS)) {
             long held = Clock.SYSTEM.nanos();
             ClassCones.Index index = ClassCones.index(roots.cone(), INDEX_CLASSES);
             ClassShadow keys = new ClassShadow(
@@ -549,7 +561,7 @@ final class TestClassRecording {
                     "ms",
                     (Clock.SYSTEM.nanos() - started) / 1_000_000,
                     "waited",
-                    (held - started) / 1_000_000,
+                    (held - counted) / 1_000_000,
                     "indexed",
                     index.size(),
                     "replays",
@@ -609,7 +621,7 @@ final class TestClassRecording {
         Roots roots = Roots.of(workspace, testClasses, mainClasses, runtimeCp);
         Map<String, Long> replays = new HashMap<>();
         Map<String, Long> runs = new HashMap<>();
-        try (RecordingReader.Permit permit = RecordingReader.Permit.acquire()) {
+        try (RecordingReader.Permit permit = indexPermit(roots.cone())) {
             ClassCones.Index index = ClassCones.index(roots.cone(), INDEX_CLASSES);
             if (index.full()) return Replayed.NONE;
             Set<String> moved = new HashSet<>();
@@ -813,7 +825,7 @@ final class TestClassRecording {
         for (String c : changed) paths.add(c.replace('\\', '/'));
         Roots roots = Roots.of(workspace, testClasses, mainClasses, runtimeCp);
         Map<String, String> out = new TreeMap<>();
-        try (RecordingReader.Permit permit = RecordingReader.Permit.acquire()) {
+        try (RecordingReader.Permit permit = indexPermit(roots.cone())) {
             ClassCones.Index index = ClassCones.index(roots.cone(), INDEX_CLASSES);
             if (index.full()) return Map.of();
             Map<String, String> moved = new TreeMap<>();

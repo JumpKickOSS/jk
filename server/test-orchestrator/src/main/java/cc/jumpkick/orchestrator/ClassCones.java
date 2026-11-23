@@ -427,6 +427,41 @@ public final class ClassCones {
         return index;
     }
 
+    /**
+     * How many classes an index of {@code roots} would hold, at most {@code most}, read from names
+     * alone (a directory's file names, a jar's central directory) and never from a class's bytes. A
+     * class two roots define counts twice, so the count never falls short of the index.
+     */
+    public static int count(List<Path> roots, int most) {
+        int[] n = {0};
+        for (Path root : roots) {
+            if (n[0] >= most) break;
+            try {
+                if (Files.isDirectory(root)) {
+                    PathUtil.forEachRegularFile(root, (f, attrs) -> {
+                        String name = String.valueOf(f.getFileName());
+                        if (name.endsWith(".class") && !name.equals("module-info.class")) n[0]++;
+                    });
+                } else if (Files.isRegularFile(root)) {
+                    try (ZipFile zip = new ZipFile(root.toFile())) {
+                        Enumeration<? extends ZipEntry> entries = zip.entries();
+                        while (entries.hasMoreElements() && n[0] < most) {
+                            ZipEntry e = entries.nextElement();
+                            String name = e.getName();
+                            if (!e.isDirectory()
+                                    && name.endsWith(".class")
+                                    && !name.startsWith("META-INF/")
+                                    && !name.endsWith("module-info.class")) n[0]++;
+                        }
+                    }
+                }
+            } catch (IOException | RuntimeException unreadable) {
+                Log.debug("class cones: " + root + " uncounted", unreadable);
+            }
+        }
+        return Math.min(n[0], most);
+    }
+
     private static void readTree(Path root, Index index) throws IOException {
         List<Path> files = new ArrayList<>();
         PathUtil.forEachRegularFile(root, (f, attrs) -> files.add(f));
