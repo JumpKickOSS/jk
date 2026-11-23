@@ -21,6 +21,7 @@ public record ClassFinishEvent(String dir, String task, TestClassResult result) 
                 .number("millis", result.durationMs())
                 .optionalNonBlankString("tier", result.tier())
                 .optionalTrue(PASSED_ON_RERUN, result.passedOnRerun());
+        if (result.replayed()) line.number(REPLAYED_FROM, result.replayedFrom());
         if (!result.slow().isEmpty()) line.token(SLOW, slowArray(result.slow()));
         return line.finish();
     }
@@ -38,7 +39,8 @@ public record ClassFinishEvent(String dir, String task, TestClassResult result) 
                         Jsonl.longValue(json, "millis", 0),
                         tier(json),
                         slow(json),
-                        Jsonl.bool(json, PASSED_ON_RERUN, false)));
+                        Jsonl.bool(json, PASSED_ON_RERUN, false),
+                        Jsonl.longValue(json, REPLAYED_FROM, 0)));
     }
 
     /**
@@ -46,6 +48,12 @@ public record ClassFinishEvent(String dir, String task, TestClassResult result) 
      * recorded it red; absent otherwise.
      */
     public static final String PASSED_ON_RERUN = "passedOnRerun";
+
+    /**
+     * The field of a class whose outcome was replayed rather than run: when that outcome was
+     * recorded, in epoch millis, or -1 when the record does not say. Absent for a class that ran.
+     */
+    public static final String REPLAYED_FROM = "replayedFrom";
 
     /**
      * The field holding a class's slow methods, {@code [{"method":…,"millis":…}]}, written only

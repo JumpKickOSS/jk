@@ -728,6 +728,7 @@ final class LauncherPath {
         private final ConcurrentHashMap<String, Long> snapshotMarks = new ConcurrentHashMap<>();
 
         private final AtomicBoolean failed = new AtomicBoolean(false);
+        private final ClassWindows windows = new ClassWindows();
 
         Adapter(EventWriter out, int workerId) {
             this.out = out;
@@ -788,10 +789,13 @@ final class LauncherPath {
             startNanos.put(id.getUniqueId(), Clock.SYSTEM.nanos());
             FailureSnapshots snapshots = FailureSnapshots.current();
             if (snapshots != null) snapshotMarks.put(id.getUniqueId(), snapshots.mark());
-            // The environment probe attributes each lookup to the class whose tests are running.
-            id.getSource()
-                    .filter(ClassSource.class::isInstance)
-                    .ifPresent(src -> System.setProperty(EnvLookups.CURRENT_TEST, ((ClassSource) src).getClassName()));
+            // The environment probe attributes each lookup to the class whose tests are running, and
+            // the recording each read to the window of the top-level class it fell in.
+            id.getSource().filter(ClassSource.class::isInstance).ifPresent(src -> {
+                String className = ((ClassSource) src).getClassName();
+                System.setProperty(EnvLookups.CURRENT_TEST, className);
+                if (id.isContainer() && ClassWindows.topLevel(className)) windows.started(id.getUniqueId(), className);
+            });
             Map<String, Object> p = identity(id);
             p.put("parent", id.getParentId().orElse(null));
             p.put("type", typeName(id));
@@ -801,6 +805,7 @@ final class LauncherPath {
 
         @Override
         public void executionFinished(TestIdentifier id, TestExecutionResult result) {
+            windows.finished(id.getUniqueId());
             long started = startNanos.getOrDefault(id.getUniqueId(), Clock.SYSTEM.nanos());
             long durationMs = Math.max(0, (Clock.SYSTEM.nanos() - started) / 1_000_000);
             if (result.getStatus() == TestExecutionResult.Status.FAILED) {

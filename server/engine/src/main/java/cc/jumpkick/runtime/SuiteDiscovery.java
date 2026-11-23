@@ -29,6 +29,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 
@@ -65,7 +66,37 @@ final class SuiteDiscovery {
             boolean networkAllowed,
             boolean whole,
             SuiteEnvReads.Policy envPolicy,
-            EnvScopeHint envHint) {
+            EnvScopeHint envHint,
+            AtomicReference<TestClassRecording.@Nullable Pending> classes) {
+
+        /**
+         * Keep each class's record of this run ({@link TestClassRecording}) once it settles: what the
+         * classes are keyed on folds in the inputs settling decides.
+         */
+        void recordClasses(
+                TestClassLedger ledger,
+                String moduleLabel,
+                Path testClasses,
+                Path mainClasses,
+                List<Path> runtimeCp,
+                @Nullable Path javaHome,
+                List<String> stampExtras,
+                List<Path> resourceDirs,
+                @Nullable String stampKey) {
+            classes.set(new TestClassRecording.Pending(
+                    moduleDir,
+                    layout,
+                    keyed,
+                    ledger,
+                    moduleLabel,
+                    testClasses,
+                    mainClasses,
+                    runtimeCp,
+                    javaHome,
+                    stampExtras,
+                    resourceDirs,
+                    stampKey));
+        }
 
         /**
          * As {@link SuiteDiscovery#settle}, for this run; a writing remote tier is told the read list
@@ -88,7 +119,10 @@ final class SuiteDiscovery {
                 SuiteEnvDelivery.Seen env,
                 @Nullable TestClassLedger ledger)
                 throws Exception {
+            TestClassRecording.Pending pending = classes.getAndSet(null);
+            String before = pending == null ? "" : pending.suiteReads(selection);
             String settled = SuiteDiscovery.settle(ctx, this, stampKey, rekey, env);
+            if (pending != null) pending.record(before, pending.suiteReads(selection));
             if (settled != null
                     && ledger != null
                     && SuiteEnvReads.localOnly(
@@ -136,7 +170,8 @@ final class SuiteDiscovery {
                 networkAllowed,
                 whole,
                 SuiteEnvReads.Policy.of(project),
-                EnvScopeHint.of(project));
+                EnvScopeHint.of(project),
+                new AtomicReference<>());
     }
 
     /**

@@ -383,7 +383,10 @@ MCP `build`) puts it in the verdict: under a failed test whose class printed, `p
 suite prints nothing; `-r` runs it again.
 While the run goes, each class that finishes adds a `class-finish` line to the run's
 `details.jsonl` (its tests, failures, skips and wall), so a run cancelled or timed out part way
-still names every class that completed ([Machine output](machine-output.md#event-vocabulary)). To
+still names every class that completed ([Machine output](machine-output.md#event-vocabulary)). A
+class whose last outcome stands, because its suite was served from its green marker or it passed
+under the same inputs before a re-run, has a line too, marked `replayedFrom` with when it last ran,
+so history says which tests ran and which were replayed. To
 read one benchmark's table:
 
 ```bash
@@ -1457,6 +1460,28 @@ listing, `env-list:all` for a whole environment), only the names the scope keys;
 that reads a file elsewhere (`/etc/hostname`) or starts a program in your home directory runs once
 on each host before it replays. When the result on offer was made with another version of a
 program, the suite runs and its miss names it: `ran: inputs changed (x:proc:git)`, not `no-record`.
+
+**Each class's record.** The same recording says which test class did what. The test runner marks
+the window each top-level class runs in, and every read, program started and native library loaded
+is given to the class whose window held it, in its JVM, whatever thread made it; what no window held
+(discovery, a static initialiser before the first class) counts for every class. Every test JVM also
+notes the system properties its classes read (`System.getProperty`, `Integer.getInteger`,
+`Long.getLong`, `Boolean.getBoolean`), by name, never the value, as it notes environment variables.
+After each run JumpKick keeps one record per class in its cache for the project
+(`test-classes.ndjson`, beside the discovered inputs): its outcome, counts and wall, the files it
+read, the jars it loaded by path, the workspace classes it loaded, the programs it started (the
+test JDK's own launcher aside), the native libraries it loaded from outside the JDK (under a suite
+JDK of 22 or later), the operating system's own files it read (`/proc`,
+`/sys`, `/dev`, `/etc`, macOS's `/System` and `/Library`, the Windows directory), the hosts it
+reached and the variables and properties it looked up. Each record is bounded whatever the class did: a few files of each kind, a few
+names, and the number of workspace classes it loaded; a class that read more files than its record
+names says so and stands for every file its suite was found to read. The records are written and
+read a line at a time. A test is named as a container path and a
+case (`["com.example", "OrdersTest"]`), not by Java alone. The native libraries, programs and
+system files are evidence that a result is bound to the platform it ran on; none of it keys
+anything yet, and a class that did not run keeps the record of the run it last ran in. Set
+`JK_TEST_TELEMETRY=off` in the shell running `jk` to run without the class windows, the property
+notes and the records (the suite's own recording stays).
 
 ## JUnit in-process parallel vs `-w`
 

@@ -17,6 +17,9 @@ import java.util.List;
  *     {@link SlowestTests#TOP}
  * @param passedOnRerun the class passed after a run under the same inputs recorded it red: flaky, or
  *     dependent on what ran before it
+ * @param replayedFrom 0 for a class that ran in this run; for one whose last outcome was replayed
+ *     instead, when that outcome was recorded, in epoch millis ({@link #REPLAYED_UNDATED} when the
+ *     record does not say)
  */
 public record TestClassResult(
         String module,
@@ -27,13 +30,17 @@ public record TestClassResult(
         long durationMs,
         String tier,
         List<SlowMethod> slow,
-        boolean passedOnRerun) {
+        boolean passedOnRerun,
+        long replayedFrom) {
+
+    /** {@link #replayedFrom} of a replayed class whose record does not say when it ran. */
+    public static final long REPLAYED_UNDATED = -1;
 
     public TestClassResult {
         slow = List.copyOf(slow);
     }
 
-    /** A class as it finished, with no earlier red run of it to compare. */
+    /** A class that ran in this run, with no earlier red run of it to compare. */
     public TestClassResult(
             String module,
             String className,
@@ -43,12 +50,18 @@ public record TestClassResult(
             long durationMs,
             String tier,
             List<SlowMethod> slow) {
-        this(module, className, tests, failed, skipped, durationMs, tier, slow, false);
+        this(module, className, tests, failed, skipped, durationMs, tier, slow, false, 0);
     }
 
     /** This result marked as having passed on a re-run under the same inputs. */
     public TestClassResult asPassedOnRerun() {
-        return new TestClassResult(module, className, tests, failed, skipped, durationMs, tier, slow, true);
+        return new TestClassResult(
+                module, className, tests, failed, skipped, durationMs, tier, slow, true, replayedFrom);
+    }
+
+    /** Whether this class's outcome was replayed rather than run. */
+    public boolean replayed() {
+        return replayedFrom != 0;
     }
 
     /** One test method and its wall in milliseconds. */

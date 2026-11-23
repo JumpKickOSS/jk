@@ -34,6 +34,9 @@ public final class EnvProbeJar {
     private static final String PACKAGE = "cc/jumpkick/testrunner/env/";
     private static final String AGENT = "cc.jumpkick.testrunner.env.EnvProbe";
 
+    /** The agent argument's prefix that leaves system-property reads unprobed; no absolute path starts so. */
+    static final String NO_PROPS = "!props ";
+
     private EnvProbeJar() {}
 
     /**
@@ -61,7 +64,9 @@ public final class EnvProbeJar {
     public static String flag(Path runnerJar, Path cacheDir, Path recordDir) throws IOException {
         // Absolute: the test JVM resolves the agent against its own working directory, the module,
         // so a cache directory given relative (as a build root can be) would name no jar there.
-        return "-javaagent:" + jar(runnerJar, cacheDir).toAbsolutePath() + "=" + recordDir.toAbsolutePath();
+        // With the class telemetry off the agent repoints environment lookups alone.
+        return "-javaagent:" + jar(runnerJar, cacheDir).toAbsolutePath() + "=" + (TestTelemetry.on() ? "" : NO_PROPS)
+                + recordDir.toAbsolutePath();
     }
 
     /**
