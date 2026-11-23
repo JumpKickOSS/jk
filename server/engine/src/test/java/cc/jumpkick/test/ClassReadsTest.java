@@ -461,4 +461,22 @@ class ClassReadsTest {
         assertThat(o.rootsMore()).isTrue();
         assertThat(o.readRoots()).isEmpty();
     }
+
+    /** A class past its read bound keeps the names of the files it read, up to their own bound. */
+    @Test
+    void a_class_keeps_the_file_names_it_read_up_to_their_bound(@TempDir Path ws) {
+        ClassReads.Observation o = ClassReads.Observation.empty();
+        o.addRead(ws.resolve("jk.toml"));
+        for (int i = 0; i < 30; i++) o.addRead(ws.resolve("m" + i + "/jk.toml"));
+        assertThat(o.readsMore()).isTrue();
+        assertThat(o.readNames()).containsExactly("jk.toml");
+        assertThat(o.wantsRead(ws.resolve("m3/jk.toml")))
+                .as("a name and a root it holds")
+                .isFalse();
+        assertThat(o.wantsRead(ws.resolve("m3/jk-lock.toml")))
+                .as("a name it has not seen")
+                .isTrue();
+        for (int i = 0; i < ClassReads.READ_NAMES_KEPT; i++) o.addRead(ws.resolve("m1/f" + i + ".txt"));
+        assertThat(o.readNames()).as("past the bound the names say nothing").isEmpty();
+    }
 }

@@ -165,6 +165,61 @@ class ConeSelectionE2eTest {
                 .isEqualTo(TaskStatus.FAIL);
     }
 
+    @Test
+    void a_class_keyed_by_the_program_it_starts_replays_while_runs_leave_it_out(@TempDir Path tmp) throws Exception {
+        Path cache = TestCaches.dir("cone-selection-cache");
+        Path ws = Files.createDirectories(tmp.resolve("ws"));
+        Path data = Files.createDirectories(ws.resolve("data")).resolve("fixture.txt");
+        Files.writeString(data, "one");
+        Path m = Files.createDirectories(ws.resolve("m"));
+        Files.writeString(m.resolve("jk.toml"), """
+                group   = "com.example"
+                name    = "m"
+                version = "1.0.0"
+                java    = 25
+
+                [test-dependencies]
+                junit-jupiter = "6.1.3"
+
+                [repositories]
+                central = "https://repo.maven.apache.org/maven2/"
+
+                [test]
+                cache = "cone"
+                """);
+        Files.createDirectories(m.resolve("src/main/java/demo"));
+        Files.writeString(m.resolve("src/main/java/demo/M.java"), "package demo; public class M {}\n");
+        Path tests = Files.createDirectories(m.resolve("src/test/java/demo"));
+        test(
+                tests,
+                "ReadsTest",
+                "assertEquals(true, !java.nio.file.Files.readString(java.nio.file.Path.of(\"../data/fixture.txt\")).isEmpty());");
+        test(tests, "ShellTest", "assertEquals(0, new ProcessBuilder(\"sh\", \"-c\", \"true\").start().waitFor());");
+        BuildPlan lock = LockPlans.lockBuildPlan(m, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
+        assertThat(lock.run().success()).as("lock").isTrue();
+
+        assertThat(build(m, cache)).isEqualTo(TaskStatus.SUCCESS);
+        assertThat(Jsonl.longValue(last(m), "ran", 0))
+                .as("no class has a record yet")
+                .isEqualTo(2);
+
+        // The first records were keyed before the suite was known to start sh.
+        Files.writeString(data, "two");
+        assertThat(build(m, cache)).isEqualTo(TaskStatus.SUCCESS);
+
+        Files.writeString(data, "three");
+        assertThat(build(m, cache)).isEqualTo(TaskStatus.SUCCESS);
+        assertThat(Jsonl.strArray(last(m), "wouldRunClasses"))
+                .as("the class that read the file runs; the one keyed by its module and sh replays")
+                .containsExactly("demo.ReadsTest");
+
+        Files.writeString(data, "four");
+        assertThat(build(m, cache)).isEqualTo(TaskStatus.SUCCESS);
+        assertThat(Jsonl.strArray(last(m), "wouldRunClasses"))
+                .as("the run that left ShellTest out still keys the sh it starts")
+                .containsExactly("demo.ReadsTest");
+    }
+
     private static void test(Path dir, String name, String body) throws Exception {
         Files.writeString(dir.resolve(name + ".java"), """
                 package demo;

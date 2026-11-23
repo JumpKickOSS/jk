@@ -115,8 +115,8 @@ class ClassKeysTest {
     void a_tool_keys_a_class_by_its_identity_in_the_suites_stamp(@TempDir Path ws) throws Exception {
         ClassCones.Cone cone = ClassCones.index(List.of(Files.createDirectories(ws.resolve("classes"))))
                 .cone("demo.T");
-        ClassKeys.Observed seen =
-                new ClassKeys.Observed(true, List.of(), false, List.of(), false, List.of(), List.of(GIT), List.of());
+        ClassKeys.Observed seen = new ClassKeys.Observed(
+                true, List.of(), false, List.of(), false, List.of(), List.of(GIT), List.of(), List.of());
         assertThat(ClassKeys.fallback(cone, seen, false, false, false))
                 .as("no program started that reads what its key does not hold")
                 .isNull();
@@ -272,7 +272,15 @@ class ClassKeysTest {
         ClassCones.Cone cone = ClassCones.index(List.of(Files.createDirectories(ws.resolve("classes"))))
                 .cone("demo.T");
         ClassKeys.Observed rooted = new ClassKeys.Observed(
-                true, List.of("jk.toml"), true, List.of(), false, List.of(), List.of(), List.of("*", "plugins/**"));
+                true,
+                List.of("jk.toml"),
+                true,
+                List.of(),
+                false,
+                List.of(),
+                List.of(),
+                List.of("*", "plugins/**"),
+                List.of());
         ClassKeys.Observed unrooted = observed(List.of("jk.toml"), true, List.of());
         ClassKeys.SuiteReadSet before = reads(ws, "a", "p1", "s1");
         ClassKeys.SuiteReadSet sourceEdited = reads(ws, "a", "p1", "s2");
@@ -285,6 +293,41 @@ class ClassKeysTest {
                 .isNotEqualTo(key(cone, rooted, before, ws).key());
         assertThat(key(cone, unrooted, sourceEdited, ws).key())
                 .as("no roots: every file its suite read")
+                .isNotEqualTo(key(cone, unrooted, before, ws).key());
+    }
+
+    /**
+     * A class past its read bound whose roots span the tree stands on the files its suite read with
+     * the names it read: a manifest-reading class does not stand on a source a neighbour scanned.
+     */
+    @Test
+    void a_class_past_its_read_bound_keys_only_on_the_file_names_it_read(@TempDir Path ws) throws Exception {
+        ClassCones.Cone cone = ClassCones.index(List.of(Files.createDirectories(ws.resolve("classes"))))
+                .cone("demo.T");
+        ClassKeys.Observed named = new ClassKeys.Observed(
+                true,
+                List.of("jk.toml"),
+                true,
+                List.of(),
+                false,
+                List.of(),
+                List.of(),
+                List.of("*", "plugins/**", "server/**"),
+                List.of("jk-plugin.toml", "jk.toml"));
+        ClassKeys.Observed unrooted = new ClassKeys.Observed(
+                true, List.of("jk.toml"), true, List.of(), false, List.of(), List.of(), List.of(), List.of("jk.toml"));
+        ClassKeys.SuiteReadSet before = reads(ws, "a", "p1", "s1");
+        assertThat(key(cone, named, reads(ws, "a", "p1", "s2"), ws).key())
+                .as("a source under its roots moved, of a name it never read")
+                .isEqualTo(key(cone, named, before, ws).key());
+        assertThat(key(cone, named, reads(ws, "a", "p2", "s1"), ws).key())
+                .as("a plugin manifest moved")
+                .isNotEqualTo(key(cone, named, before, ws).key());
+        assertThat(key(cone, unrooted, reads(ws, "a", "p2", "s2"), ws).key())
+                .as("no roots: the files of its names anywhere")
+                .isEqualTo(key(cone, unrooted, before, ws).key());
+        assertThat(key(cone, unrooted, reads(ws, "b", "p1", "s1"), ws).key())
+                .as("the root manifest moved")
                 .isNotEqualTo(key(cone, unrooted, before, ws).key());
     }
 

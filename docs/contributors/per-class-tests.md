@@ -234,16 +234,16 @@ files, 2 of each kind of evidence, 8 variable and 8 property names, and the coun
 it loaded, never their names. A class that read more data files says `readsMore` and keeps up to 8
 read roots (`readRoots`: `<dir>/*` for the files directly in a directory, `<dir>/**` for everything
 under it; past 8, the two with the deepest common directory become that directory), which cover
-every file it read. It is keyed on the files its suite was found to read under those roots: the
+every file it read, and up to 8 file names (`readNames`), the names of every file it read. It is
+keyed on the files its suite was found to read under those roots that carry one of those names: the
 suite's discovered inputs, which hold that set exactly and bounded, so per-class reads use the
 suite's own representation rather than a second one. Only a run of every selected class replaces
 that list; a run that replayed classes adds what it read to it (`SuiteDiscovery.Run.partial`), since
-the classes it replayed read nothing in it. Replaced by the classes that ran, the list dropped what
-the replayed ones read: the next suite stamp keyed none of it, and the key of a class past its bound
-moved with whichever neighbours happened to run. A class whose reads share no directory keeps
-no roots and is keyed on every file its suite read. A repository-scanning class that reads 50,000
+the classes it replayed read nothing in it, and the programs they started stay keyed. A class whose
+reads share no directory keeps no roots, and one that read more than 8 names keeps none; with
+neither it is keyed on every file its suite read. A repository-scanning class that reads 50,000
 files therefore costs a row like any other and re-runs whenever any input under its roots moves,
-which is what it reads anyway, while a class that read thirty plugin manifests no longer re-runs
+which is what it reads anyway, while a class that read every module's `jk.toml` does not re-run
 because a neighbour of its suite scanned the engine's sources. A class that read more code
 files says `codeMore` and stands on every code file its suite's JVMs read: the suite's line lists
 them (`suiteCode`, up to 128, each with its content and since when it has held it), and the class

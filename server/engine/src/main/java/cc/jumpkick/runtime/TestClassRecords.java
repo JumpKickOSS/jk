@@ -39,8 +39,9 @@ import org.jspecify.annotations.Nullable;
  * the row of the run it last ran in.
  *
  * <p>Every row is bounded, whatever the class did: at most {@link ClassReads#READS_KEPT} files read,
- * with {@code readsMore} when it read more (it is then keyed on every file its suite was found to
- * read, which the suite's discovered inputs hold exactly), a few of each kind of evidence, and the
+ * with {@code readsMore} when it read more (it is then keyed on the files its suite was found to
+ * read under its {@code readRoots} with its {@code readNames}, which the suite's discovered inputs
+ * hold exactly), a few of each kind of evidence, and the
  * count of workspace classes it loaded, never their names. The file is never held whole: it is
  * written and read a row at a time, and a row past {@link #MAX_ROW_CHARS} (none this writes) is
  * skipped as unreadable.
@@ -334,6 +335,7 @@ final class TestClassRecords {
         if (obs != null) {
             f.array("reads", spelled(obs.reads(), root)).optionalTrue("readsMore", obs.readsMore());
             if (obs.readsMore() && !obs.readRoots().isEmpty()) f.array("readRoots", roots(obs.readRoots(), root));
+            if (obs.readsMore() && !obs.readNames().isEmpty()) f.array("readNames", List.copyOf(obs.readNames()));
             f.array("code", spelled(obs.code(), root))
                     .optionalTrue("codeMore", obs.codeMore())
                     .array("processes", List.copyOf(obs.processes()))

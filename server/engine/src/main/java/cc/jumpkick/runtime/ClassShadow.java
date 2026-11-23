@@ -218,7 +218,8 @@ final class ClassShadow {
                 Jsonl.bool(row, "codeMore", false),
                 Jsonl.strArray(row, "processes"),
                 Jsonl.strArray(row, "tools"),
-                Jsonl.strArray(row, "readRoots"));
+                Jsonl.strArray(row, "readRoots"),
+                Jsonl.strArray(row, "readNames"));
     }
 
     /** What the record file's header says no window held; nothing when there is none. */
@@ -244,7 +245,8 @@ final class ClassShadow {
                 o.codeMore(),
                 List.copyOf(o.processes()),
                 List.copyOf(o.tools()),
-                o.readsMore() ? TestClassRecords.roots(o.readRoots(), workspace) : List.of());
+                o.readsMore() ? TestClassRecords.roots(o.readRoots(), workspace) : List.of(),
+                o.readsMore() ? List.copyOf(o.readNames()) : List.of());
     }
 
     /** The classes it would have replayed whose outcome changed: an under-run, when any. */

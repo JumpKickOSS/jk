@@ -141,6 +141,13 @@ public final class ClassReads {
     public static final int ROOTS_KEPT = 8;
 
     /**
+     * The most file names a class's data reads keep: past its read bound it keys only on the files
+     * of its suite's reads under its roots that carry one of them, so a class that read every
+     * module's {@code jk.toml} does not stand on the sources a neighbour scanned.
+     */
+    public static final int READ_NAMES_KEPT = 8;
+
+    /**
      * A directory that covers a class's data reads: the files directly in it, or with {@code deep}
      * everything under it.
      */
@@ -203,8 +210,9 @@ public final class ClassReads {
      * The most heap one class's observation holds: its kept paths and evidence at a couple of hundred
      * bytes each, its tools' names at 64 and its empty sets.
      */
-    public static final long CLASS_BYTES =
-            (READS_KEPT + ROOTS_KEPT + CODE_KEPT + 4L * EVIDENCE_KEPT) * 200 + TOOLS_KEPT * 64L + 512;
+    public static final long CLASS_BYTES = (READS_KEPT + ROOTS_KEPT + CODE_KEPT + 4L * EVIDENCE_KEPT) * 200
+            + (TOOLS_KEPT + READ_NAMES_KEPT) * 64L
+            + 512;
 
     /** The most environment variables and system properties a class's record names, each. */
     public static final int NAMES_KEPT = 8;
@@ -253,6 +261,8 @@ public final class ClassReads {
         private boolean readsMore;
         private final List<ReadRoot> roots = new ArrayList<>();
         private boolean rootsMore;
+        private final Set<String> names = new TreeSet<>();
+        private boolean namesMore;
         private boolean codeMore;
         private boolean loadedMore;
         private final BitSet used = new BitSet();
@@ -349,7 +359,10 @@ public final class ClassReads {
         }
 
         public void addRead(Path p) {
-            if (readsKept == READS_KEPT) cover(p);
+            if (readsKept == READS_KEPT) {
+                cover(p);
+                name(p);
+            }
             if (readsMore || reads.contains(p)) return;
             if (reads.size() < readsKept) reads.add(p);
             else readsMore = true;
@@ -361,6 +374,14 @@ public final class ClassReads {
          */
         public List<ReadRoot> readRoots() {
             return rootsMore ? List.of() : Collections.unmodifiableList(roots);
+        }
+
+        /**
+         * The file names of every data file the class read, at most {@link #READ_NAMES_KEPT}; empty
+         * past it, when its read roots alone bound what it stands on.
+         */
+        public Set<String> readNames() {
+            return namesMore ? Set.of() : Collections.unmodifiableSet(names);
         }
 
         /** Whether the class's reads lie further apart than its read roots can say. */
@@ -397,6 +418,18 @@ public final class ClassReads {
             ReadRoot deep = new ReadRoot(joined, true);
             roots.removeIf(r -> r.dir().startsWith(deep.dir()));
             roots.add(deep);
+        }
+
+        private void name(Path p) {
+            Path file = p.getFileName();
+            if (namesMore || file == null || names.contains(file.toString())) return;
+            if (names.size() < READ_NAMES_KEPT) names.add(file.toString());
+            else namesMore = true;
+        }
+
+        private boolean named(Path p) {
+            Path file = p.getFileName();
+            return file == null || names.contains(file.toString());
         }
 
         private boolean covered(Path p) {
@@ -492,7 +525,8 @@ public final class ClassReads {
 
         /** Whether reading {@code p} would add to what this keeps. */
         boolean wantsRead(Path p) {
-            return (!readsMore && !reads.contains(p)) || (readsKept == READS_KEPT && !rootsMore && !covered(p));
+            return (!readsMore && !reads.contains(p))
+                    || (readsKept == READS_KEPT && ((!rootsMore && !covered(p)) || (!namesMore && !named(p))));
         }
     }
 

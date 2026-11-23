@@ -63,7 +63,8 @@ final class ClassKeys {
      * What one class was seen to read, from its record or this run, bounded as a record holds it: a
      * class that read more data files than its record names ({@code readsMore}) is keyed on the
      * files its suite was found to read under its read roots ({@code readRoots}, as {@link
-     * TestClassRecords#roots} spells them), or on every one when it has none. {@code tools} are the
+     * TestClassRecords#roots} spells them) that carry one of the file names it read ({@code
+     * readNames}), the roots or the names left out when it has none. {@code tools} are the
      * programs it started that read nothing but their own identity: by name as a record holds them,
      * by identity once {@link #identified}.
      */
@@ -75,7 +76,8 @@ final class ClassKeys {
             boolean codeMore,
             List<String> processes,
             List<String> tools,
-            List<String> readRoots) {
+            List<String> readRoots,
+            List<String> readNames) {
         static final Observed NONE = new Observed(false, List.of(), false, List.of(), false, List.of());
 
         /** A class that started no program keyed by its identity and has no read roots. */
@@ -86,7 +88,7 @@ final class ClassKeys {
                 List<String> code,
                 boolean codeMore,
                 List<String> processes) {
-            this(attributed, reads, readsMore, code, codeMore, processes, List.of(), List.of());
+            this(attributed, reads, readsMore, code, codeMore, processes, List.of(), List.of(), List.of());
         }
     }
 
@@ -101,7 +103,7 @@ final class ClassKeys {
         private final List<String> tokens;
         private final Path workspace;
         private final String all;
-        private final Map<List<String>, String> under = new HashMap<>();
+        private final Map<List<List<String>>, String> under = new HashMap<>();
 
         SuiteReadSet(List<String> tokens, Path workspace) {
             this.tokens = List.copyOf(tokens);
@@ -114,21 +116,32 @@ final class ClassKeys {
         }
 
         /**
-         * The files read and the directories listed under {@code roots} (each {@code <dir>/*} for the
-         * files directly in the directory, {@code <dir>/**} for everything under it), and what else
-         * the suite was found to use (its programs, the network, the caller's environment).
+         * The files read under {@code roots} (each {@code <dir>/*} for the files directly in the
+         * directory, {@code <dir>/**} for everything under it, none for the whole tree) whose file
+         * name is one of {@code names} (none for any), the directories listed under {@code roots},
+         * and what else the suite was found to use (its programs, the network, the caller's
+         * environment).
          */
-        String under(List<String> roots) {
-            return under.computeIfAbsent(List.copyOf(roots), r -> {
+        String under(List<String> roots, List<String> names) {
+            return under.computeIfAbsent(List.of(List.copyOf(roots), List.copyOf(names)), key -> {
                 List<ClassReads.ReadRoot> parsed = new ArrayList<>();
-                for (String spelled : r) parsed.add(root(spelled));
+                for (String spelled : roots) parsed.add(root(spelled));
+                Set<String> named = new TreeSet<>(names);
                 List<String> kept = new ArrayList<>();
                 for (String t : tokens) {
                     Path p = SuiteReads.tokenFile(workspace, t);
-                    if (p == null || coveredBy(parsed, p, t.startsWith("list:"))) kept.add(t);
+                    boolean listing = t.startsWith("list:");
+                    if (p == null
+                            || ((parsed.isEmpty() || coveredBy(parsed, p, listing))
+                                    && (listing || named.isEmpty() || hasName(named, p)))) kept.add(t);
                 }
                 return SuiteReads.memoDigest(kept, workspace);
             });
+        }
+
+        private static boolean hasName(Set<String> names, Path p) {
+            Path file = p.getFileName();
+            return file != null && names.contains(file.toString());
         }
 
         private ClassReads.ReadRoot root(String spelled) {
@@ -189,7 +202,8 @@ final class ClassKeys {
                 seen.codeMore(),
                 seen.processes(),
                 named,
-                seen.readRoots());
+                seen.readRoots(),
+                seen.readNames());
     }
 
     /**
@@ -237,8 +251,8 @@ final class ClassKeys {
      * fallback} every workspace class ({@code module}, the digest of them all), and what it and the
      * pool ({@code pooled}) were seen to read. A read set past its record's bound is keyed as the
      * files the suite was found to read ({@code suiteReads}, the suite's discovered inputs) under the
-     * class's read roots, which hold the class's own, or as every one of them when it has no roots or
-     * the pool is past its bound. A class keyed by its module stands on every program the
+     * class's read roots with the file names it read, which hold the class's own, or as every one of
+     * them when it has neither or the pool is past its bound. A class keyed by its module stands on every program the
      * suite's stamp keys ({@code programs}, from {@link #programs}): no record says what a program it
      * started read, nor which. {@code listings} holds each directory's listing once it is taken, for
      * the caller to share across the classes of one pass.
@@ -262,10 +276,13 @@ final class ClassKeys {
         if (fallback != null) feed(md, "module:" + module);
         else feed(md, used == null ? "cone:" + cone.digest() : "cone-used:" + cone.digest(used));
         if (fallback != null) for (String program : programs.values()) feed(md, "program:" + program);
-        if (pooled.readsMore() || (seen.readsMore() && seen.readRoots().isEmpty()))
-            feed(md, "suite-reads:" + suiteReads.all());
+        boolean bounded = !seen.readRoots().isEmpty() || !seen.readNames().isEmpty();
+        if (pooled.readsMore() || (seen.readsMore() && !bounded)) feed(md, "suite-reads:" + suiteReads.all());
         else if (seen.readsMore())
-            feed(md, "suite-reads-under:" + seen.readRoots() + "=" + suiteReads.under(seen.readRoots()));
+            feed(
+                    md,
+                    "suite-reads-under:" + seen.readRoots() + " named " + seen.readNames() + "="
+                            + suiteReads.under(seen.readRoots(), seen.readNames()));
         if (!seen.readsMore()) feedFiles(md, "read", seen.reads(), workspace, listings);
         feedFiles(md, "code", seen.code(), workspace, null);
         for (String tool : seen.tools()) feed(md, "tool:" + tool);
