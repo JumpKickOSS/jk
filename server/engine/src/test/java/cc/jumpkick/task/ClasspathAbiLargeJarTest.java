@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
+import java.io.BufferedOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -67,7 +68,10 @@ class ClasspathAbiLargeJarTest {
         });
     }
 
-    /** {@link #CLASSES} copies of one small class under long package names, stored so the write is quick. */
+    /**
+     * {@link #CLASSES} copies of one small class under long package names, stored and buffered so the
+     * write is quick: unbuffered, each entry's header and bytes are separate writes to the file.
+     */
     private static void writeBundle(Path jar) throws IOException {
         ClassWriter cw = new ClassWriter(0);
         cw.visit(Opcodes.V25, Opcodes.ACC_PUBLIC, "com/example/bundle/C", null, "java/lang/Object", null);
@@ -75,7 +79,7 @@ class ClasspathAbiLargeJarTest {
         byte[] cls = cw.toByteArray();
         CRC32 crc = new CRC32();
         crc.update(cls);
-        try (ZipOutputStream out = new ZipOutputStream(Files.newOutputStream(jar))) {
+        try (ZipOutputStream out = new ZipOutputStream(new BufferedOutputStream(Files.newOutputStream(jar), 1 << 16))) {
             for (int i = 0; i < CLASSES; i++) {
                 ZipEntry e = new ZipEntry("com/example/bundle/generated/services/region" + (i % 97)
                         + "/model/transform/Class" + i + ".class");

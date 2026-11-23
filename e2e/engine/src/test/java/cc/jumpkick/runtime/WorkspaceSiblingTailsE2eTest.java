@@ -13,8 +13,6 @@ import static cc.jumpkick.runtime.WorkspaceSiblingClassesE2eTest.step;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkBuildParser;
-import cc.jumpkick.config.Session;
-import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.BuildBlock;
@@ -29,15 +27,11 @@ import cc.jumpkick.wire.runtime.WorkspaceResult;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
-import java.util.concurrent.Callable;
 import org.jspecify.annotations.Nullable;
-import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Tag;
-import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -46,13 +40,11 @@ import org.junit.jupiter.params.provider.ValueSource;
  * A source-less distribution's packaging tails over its sibling lib, on the workspace {@link
  * WorkspaceSiblingClassesE2eTest} builds: every tail whose inputs are lib's jar (the fat jar, the
  * minified jar, the lib-dir layout, the war, the runtime image, the native executable) is stale
- * once that jar moves, and a deleted tail output is a missing one. The native cases need a GraalVM
- * with native-image and are skipped where there is none.
+ * once that jar moves, and a deleted tail output is a missing one. The native executable's cases
+ * link an image, so they are {@link WorkspaceSiblingNativeE2eTest}'s, in the slow tier.
  */
 @Tag("integration")
 class WorkspaceSiblingTailsE2eTest {
-
-    private static final String NATIVE = "\n[native]\nenabled = \"always\"";
 
     /**
      * A build of the sibling alone moves its jar while the distribution over it stays out of the
@@ -69,58 +61,14 @@ class WorkspaceSiblingTailsE2eTest {
         buildSiblingAloneThenWhole(tail, tmp);
     }
 
-    /**
-     * The native executable links lib's jar as the other tails copy it: a build of lib alone left
-     * dist's binary printing lib's previous answer while every later build said OK, and {@code jk
-     * explain} priced no native-image for a source-less member at all.
-     */
-    @Test
-    void a_build_of_the_sibling_alone_does_not_leave_the_distributions_native_image_stale(@TempDir Path tmp)
-            throws Exception {
-        withGraal(() -> {
-            buildSiblingAloneThenWhole("native", tmp);
-            return null;
-        });
-    }
-
-    /**
-     * The net under the schedule: a jar that holds other bytes than the image was linked from
-     * schedules the distribution even where the preflight vouches for it.
-     */
-    @Test
-    void a_sibling_jar_that_moved_since_the_native_image_was_linked_schedules_it(@TempDir Path tmp) throws Exception {
-        withGraal(() -> {
-            Path cache = TestCaches.dir("sibling-classes-cache");
-            Path ws = distributionWorkspace(tmp, NATIVE);
-            SecondBuild.nonce(ws);
-            lock(ws, cache, "lib", "dist");
-            BuildLayout lib = BuildLayout.of(ws, ws.resolve("lib"), JkBuildParser.parse(ws.resolve("lib/jk.toml")));
-            Probe first = new Probe(false);
-            WorkspaceResult built = build(ws, cache, first);
-            assertThat(built.success())
-                    .as("initial build; failed steps " + first.failed() + "; errors " + built.errors())
-                    .isTrue();
-            Path distDir = ws.resolve("dist").toRealPath();
-            assertThat(dirty(ws, cache)).as("settled after the build").doesNotContain(distDir);
-
-            byte[] jar = Files.readAllBytes(lib.mainJar());
-            Files.write(lib.mainJar(), Arrays.copyOf(jar, jar.length + 1));
-
-            assertThat(dirty(ws, cache))
-                    .as("dist's native image was linked from the jar lib held before")
-                    .contains(distDir);
-            return null;
-        });
-    }
-
-    private static void buildSiblingAloneThenWhole(String tail, Path tmp) throws Exception {
+    static void buildSiblingAloneThenWhole(String tail, Path tmp) throws Exception {
         Path cache = TestCaches.dir("sibling-classes-cache");
         Path ws = distributionWorkspace(
                 tmp,
                 switch (tail) {
                     case "war" -> "\n[war]";
                     case "jlink" -> "\n[jlink]\naot-cache = false\ntest-start = false";
-                    case "native" -> NATIVE;
+                    case "native" -> WorkspaceSiblingNativeE2eTest.NATIVE;
                     case "minified" -> "minified = true\n\n[minified]";
                     default -> tail + " = true";
                 });
@@ -241,13 +189,5 @@ class WorkspaceSiblingTailsE2eTest {
                     .orElseThrow(() -> new AssertionError("no copy of lib's jar in " + libs));
             return nestedLibClass(jar);
         }
-    }
-
-    /** {@code body} under a session naming this host's GraalVM; skipped where there is none. */
-    private static void withGraal(Callable<Void> body) throws Exception {
-        Path graal = NativeTestGraal.home();
-        Assumptions.assumeTrue(graal != null, "no GraalVM with native-image on this host");
-        Session session = SessionContext.current().withToolchainSpecs(null, null, graal, null);
-        SessionContext.where(session, body);
     }
 }

@@ -24,11 +24,13 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReference;
 import org.jspecify.annotations.Nullable;
-import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -45,21 +47,29 @@ import org.junit.jupiter.params.provider.ValueSource;
 @Tag("integration")
 class FailedSuiteStaysRedE2eTest {
 
-    private @Nullable Path toggle;
+    /** The file the suite reads its mode from: in the test sandbox root, which nothing keys. */
+    private static @Nullable Path toggle;
 
-    @AfterEach
-    void removeToggle() throws Exception {
-        if (toggle != null) Files.deleteIfExists(toggle);
-    }
+    /** The workspace every case drives. */
+    private static @Nullable Path ws;
 
-    @ParameterizedTest
-    @ValueSource(strings = {"fail", "afterall", "exit", "exit-early", "corrupt"})
-    void a_suite_that_failed_under_redo_runs_again_and_fails_until_it_passes(String mode, @TempDir Path tmp)
-            throws Exception {
+    @TempDir
+    static @Nullable Path tmp;
+
+    /**
+     * Each case starts from the state the one before it ends in, a green suite the next build
+     * replays, so the workspace is written, locked and built green once for all of them. The
+     * cases share its flaky history too, so it quarantines nothing.
+     */
+    @BeforeAll
+    static void greenWorkspace() throws Exception {
         Path cache = TestCaches.dir("failed-suite-red-cache");
-        toggle = Files.createDirectories(TestHomes.root()).resolve("failed-suite-" + UUID.randomUUID());
+        Path toggle = Files.createDirectories(TestHomes.root()).resolve("failed-suite-" + UUID.randomUUID());
+        FailedSuiteStaysRedE2eTest.toggle = toggle;
         Files.writeString(toggle, "pass");
-        Path ws = Files.createDirectories(tmp.resolve("ws")).toRealPath();
+        Path ws = Files.createDirectories(Objects.requireNonNull(tmp).resolve("ws"))
+                .toRealPath();
+        FailedSuiteStaysRedE2eTest.ws = ws;
         Files.writeString(ws.resolve("jk.toml"), """
                 group   = "com.example"
                 name    = "ws"
@@ -68,6 +78,11 @@ class FailedSuiteStaysRedE2eTest {
 
                 [workspace]
                 modules = ["a", "b"]
+
+                # Every case fails the suite and then passes it with nothing changed: that is the
+                # point here, not a flake for the next case to find quarantined.
+                [test]
+                quarantine = false
                 """);
         module(ws, "a", """
                 package demo;
@@ -131,10 +146,22 @@ class FailedSuiteStaysRedE2eTest {
                 """);
         BuildPlan lock = LockPlans.lockBuildPlan(ws, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
         assertThat(lock.run().success()).as("lock").isTrue();
+        assertThat(build(ws, cache, false).success).as("green first").isTrue();
+    }
 
-        Run green = build(ws, cache, false);
-        assertThat(green.success).as("green first").isTrue();
+    @AfterAll
+    static void removeToggle() throws Exception {
+        if (toggle != null) Files.deleteIfExists(toggle);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"fail", "afterall", "exit", "exit-early", "corrupt"})
+    void a_suite_that_failed_under_redo_runs_again_and_fails_until_it_passes(String mode) throws Exception {
+        Path cache = TestCaches.dir("failed-suite-red-cache");
+        Path ws = Objects.requireNonNull(FailedSuiteStaysRedE2eTest.ws);
+        Path toggle = Objects.requireNonNull(FailedSuiteStaysRedE2eTest.toggle);
         Run replayed = build(ws, cache, false);
+        assertThat(replayed.success).as("green before " + mode).isTrue();
         assertThat(replayed.runTests("a")).isIn(null, TaskStatus.SKIPPED);
 
         Files.writeString(toggle, mode);
