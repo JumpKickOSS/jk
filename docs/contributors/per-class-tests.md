@@ -355,14 +355,15 @@ loaded a workspace class its cone does not name (4). On bocabox-1, replaying one
 recordings through the attribution and the fallback: 143 module-keyed before `GitRuns` (`git` 97),
 53 after (`git` 1, a workspace class loaded outside the cone 17, other programs 35).
 
-The integration tier replays nothing after an engine edit. On bocabox-2 (10 CPUs, 10 GiB), with
-`cache = "cone"` set at the root, the same body-only edit of `SelfHostEngine` ran every integration
-class of the three suites an engine change gates, each after a run that left its records: jk-engine
-199 of 199 (the shadow, of the 198 it keyed: 170 by the module, 28 by a key that moved), jk-cli-e2e
-135 of 135 (45 by the module, 89 by a key that moved, 1 red before), jk-engine-e2e 9 of 9 (all by
-the module). Most are keyed by their module (a class that starts the CLI, an engine, `git` or a
-build, or loads code past its bound), and the others' keys moved with the engine. Selection does not
-shorten that step; cheaper classes, or fewer of them in the Queue tier, do.
+The integration tier replayed nothing after an engine edit. On bocabox-2 (10 CPUs, 10 GiB), under an
+engine from before `GitRuns` and the `StoreCasGc` fix above, with `cache = "cone"` set at the root,
+the same body-only edit of `SelfHostEngine` ran every integration class of the three suites an
+engine change gates, each after a run that left its records: jk-engine 199 of 199 (the shadow, of
+the 198 it keyed: 170 by the module, 28 by a key that moved), jk-cli-e2e 135 of 135 (45 by the
+module, 89 by a key that moved, 1 red before), jk-engine-e2e 9 of 9 (all by the module). The
+module-keyed classes start the CLI, an engine, `git` or a build, or load code past their bound;
+neither later change replays a class that starts the CLI or an engine. How many of the 117 whose key
+moved those changes would replay is not measured.
 
 **Selection.** `[test] cache = "cone"` (`TestCache.CONE`; a member takes the workspace root's when
 it says nothing). JumpKick's own root sets it. A release before it refuses `"cone"`, the pinned
