@@ -19,6 +19,7 @@ import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.run.TaskStatus;
 import cc.jumpkick.runtime.workspace.ForecastWalk;
 import cc.jumpkick.task.ActionCache;
+import cc.jumpkick.testing.MemoryKills;
 import cc.jumpkick.testing.TestCaches;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -307,12 +308,18 @@ class MinifiedPluginTest {
         return project;
     }
 
-    /** Lock, then the full `jk build` shape — the tails carry -all.jar and -min.jar. */
+    /**
+     * Lock, then the full `jk build` shape — the tails carry -all.jar and -min.jar. A lock or build
+     * that fails while the kernel kills a process for memory aborts the test: R8 runs in a forked
+     * worker, and a box smaller than the slow tier's peak loses it to the kernel.
+     */
     private static BuildPlanResult build(Path project, Path cache) throws Exception {
+        MemoryKills kills = MemoryKills.mark();
         JkBuild build = JkBuildParser.parse(project.resolve("jk.toml"));
         BuildPlan lock =
                 LockPlans.lockBuildPlan(project, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
         BuildPlanResult lockResult = lock.run();
+        if (!lockResult.errors().isEmpty()) kills.abortIfAny("the lock of " + project);
         assertThat(lockResult.errors()).isEmpty();
 
         BuildPlanner.Inputs in = TestInputs.of(project, cache).withSkipTests(true);
@@ -320,6 +327,8 @@ class MinifiedPluginTest {
         // thin jar, so a plan without them is not what `jk build` runs.
         var builder = BuildPlanner.coreBuilder(in);
         PlannerTails.appendDeclaredTails(builder, in);
-        return builder.build().run();
+        BuildPlanResult result = builder.build().run();
+        if (!result.errors().isEmpty() || !result.success()) kills.abortIfAny("the build of " + project);
+        return result;
     }
 }

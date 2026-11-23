@@ -15,6 +15,7 @@ import cc.jumpkick.form.Values;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.scaffold.testing.AnswerVectors;
+import cc.jumpkick.testing.MemoryKills;
 import cc.jumpkick.testing.RepoRoot;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -492,12 +493,18 @@ abstract class TemplateCatalogE2eTest {
         }
     }
 
-    /** Runs one in-process jk command; a non-zero exit fails naming the template, vector and command. */
+    /**
+     * Runs one in-process jk command; a non-zero exit fails naming the template, vector and command,
+     * or aborts when the kernel killed a process for memory while it ran: a link beside the other
+     * shards' builds can take a small box past its limit, and that failure is the host's.
+     */
     private static void jk(String name, String... args) {
         String[] all = Stream.concat(Stream.of("--no-ansi", "--no-progress"), Stream.of(args))
                 .toArray(String[]::new);
         int[] exit = {0};
+        MemoryKills kills = MemoryKills.mark();
         Capture.Streams console = Capture.both(() -> exit[0] = Jk.execute(all));
+        if (exit[0] != 0) kills.abortIfAny("template " + name + ": jk " + String.join(" ", args));
         assertThat(exit[0])
                 .as(
                         "template %s: jk %s exited %d%n%s%s",

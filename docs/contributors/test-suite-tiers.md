@@ -76,6 +76,15 @@ shortens the wait through the code's test seam (`…ForTests`). A test that can 
 by letting a real second pass carries `@Tag("slow")` on that method, so it runs with the slow
 suite (`jk test -s slow`) and not in the gates a landing waits on.
 
+**A slow-tier failure the host caused says so.** On a box whose memory cgroup is smaller than the
+slow tier's peak (a 10 GiB fleet box running a native link beside other suites' engines), the
+kernel kills a forked worker and the build fails with an error that names neither memory nor the
+kernel. A test that builds through workers takes `MemoryKills.mark()` before the work and, once
+the work has failed, calls `abortIfAny(what)`: when the cgroup's `oom_kill` counter moved in
+between, the test is skipped with a reason naming the count and the cgroup, instead of failing.
+It never turns a passing test into a skip. `MinifiedPluginTest` and `TemplateCatalogE2eTest` do
+this.
+
 **The fast tier cannot hang, and cannot reach an engine.** The root's `fast-method-budget` is 5s:
 a fast method over it is a warning, and one still running at four budgets (20s) is stopped and
 fails. Every fast-tier JVM also carries `JK_ENGINE_NO_SPAWN=1`: a client that finds no engine
