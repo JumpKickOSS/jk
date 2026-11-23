@@ -70,10 +70,27 @@ public final class SuiteReads {
     public static String prepare(Path dir) throws IOException {
         PathUtil.deleteRecursively(dir);
         Files.createDirectories(dir);
-        Path settings = dir.resolve("reads.jfc");
+        Path settings = dir.resolve(SETTINGS);
         Files.writeString(settings, DiscoveryRules.recordingSettings(TestTelemetry.on()), StandardCharsets.UTF_8);
-        return "-XX:StartFlightRecording=settings=" + jfrPath(settings) + ",filename=" + jfrPath(dir)
+        return recordingFlag(dir);
+    }
+
+    /** The recording's settings file, beside its recordings. */
+    private static final String SETTINGS = "reads.jfc";
+
+    /** The flag that records into {@code dir} under the settings file written there. */
+    static String recordingFlag(Path dir) {
+        return "-XX:StartFlightRecording=settings=" + jfrPath(dir.resolve(SETTINGS)) + ",filename=" + jfrPath(dir)
                 + ",dumponexit=true";
+    }
+
+    /**
+     * The run-tests stamp's spelling of the recording flag, the directory a stand-in. What the
+     * settings record is the orchestrator's ({@code DiscoveryRules}), which the stamp keys by its
+     * classes.
+     */
+    public static String recordingToken() {
+        return recordingFlag(Path.of("@recording")).replace('\\', '/');
     }
 
     /**

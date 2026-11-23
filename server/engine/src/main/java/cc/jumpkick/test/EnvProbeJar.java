@@ -14,7 +14,11 @@ import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
+import java.util.ArrayList;
 import java.util.Enumeration;
+import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 import java.util.jar.Attributes;
 import java.util.jar.JarEntry;
 import java.util.jar.JarOutputStream;
@@ -79,16 +83,55 @@ public final class EnvProbeJar {
     public static String flag(Path runnerJar, Path cacheDir, Path recordDir, @Nullable Path uses) throws IOException {
         // Absolute: the test JVM resolves the agent against its own working directory, the module,
         // so a cache directory given relative (as a build root can be) would name no jar there.
-        // With the class telemetry off the agent repoints environment lookups alone.
-        return "-javaagent:" + jar(runnerJar, cacheDir).toAbsolutePath() + "=" + uses(uses)
-                + (TestTelemetry.on() ? "" : NO_PROPS) + recordDir.toAbsolutePath();
+        return spell(
+                jar(runnerJar, cacheDir).toAbsolutePath().toString(),
+                uses == null ? null : uses.toAbsolutePath().normalize().toString(),
+                TestTelemetry.on(),
+                recordDir.toAbsolutePath().toString());
     }
 
-    /** The argument's part that has the probe mark the classes of {@code workspace}; empty for none. */
-    static String uses(@Nullable Path workspace) {
-        if (workspace == null) return "";
-        String root = workspace.toAbsolutePath().normalize().toString();
-        return USES + root.length() + ":" + root + " ";
+    /**
+     * The flag naming the probe's {@code jar}, marking the classes of the workspace {@code uses} when
+     * given and recording into {@code recordDir}. With the class telemetry off ({@code props} false)
+     * the agent repoints environment lookups alone.
+     */
+    static String spell(String jar, @Nullable String uses, boolean props, String recordDir) {
+        return "-javaagent:" + jar + "=" + (uses == null ? "" : USES + uses.length() + ":" + uses + " ")
+                + (props ? "" : NO_PROPS) + recordDir;
+    }
+
+    /**
+     * The run-tests stamp's spelling of the probe: its flag under each telemetry setting, with and
+     * without the workspace's classes marked, the jar, workspace and record directory as stand-ins,
+     * then the manifest the jar is cut under and the entries cut. The classes come from jk's test
+     * runner, which the stamp keys by content.
+     */
+    public static String token() {
+        List<String> parts = new ArrayList<>();
+        for (boolean props : new boolean[] {true, false}) {
+            parts.add(spell("@probe", null, props, "@record"));
+            parts.add(spell("@probe", "@workspace", props, "@record"));
+        }
+        Map<String, String> manifest = new TreeMap<>();
+        manifest("@probe")
+                .getMainAttributes()
+                .forEach((name, value) -> manifest.put(name.toString(), value.toString()));
+        manifest.forEach((name, value) -> parts.add(name + ": " + value));
+        parts.add("cut=" + PACKAGE + "*.class");
+        return String.join(" | ", parts);
+    }
+
+    /** The manifest of the probe's jar, the jar named {@code name} on its own boot class path. */
+    static Manifest manifest(String name) {
+        Manifest manifest = new Manifest();
+        Attributes main = manifest.getMainAttributes();
+        main.put(Attributes.Name.MANIFEST_VERSION, "1.0");
+        main.putValue("Premain-Class", AGENT);
+        main.putValue("Boot-Class-Path", name);
+        // ProcessBuilder is loaded before a test runs; the agent retransforms it when it hands the
+        // caller's environment on to the programs a test starts.
+        main.putValue("Can-Retransform-Classes", "true");
+        return manifest;
     }
 
     static Path jar(Path runnerJar, Path cacheDir) throws IOException {
@@ -99,14 +142,7 @@ public final class EnvProbeJar {
             Files.setLastModifiedTime(jar, FileTime.fromMillis(Clock.SYSTEM.millis()));
             return jar;
         }
-        Manifest manifest = new Manifest();
-        Attributes main = manifest.getMainAttributes();
-        main.put(Attributes.Name.MANIFEST_VERSION, "1.0");
-        main.putValue("Premain-Class", AGENT);
-        main.putValue("Boot-Class-Path", name);
-        // ProcessBuilder is loaded before a test runs; the agent retransforms it when it hands the
-        // caller's environment on to the programs a test starts.
-        main.putValue("Can-Retransform-Classes", "true");
+        Manifest manifest = manifest(name);
         ByteArrayOutputStream bytes = new ByteArrayOutputStream();
         int classes = 0;
         try (ZipFile runner = new ZipFile(runnerJar.toFile());

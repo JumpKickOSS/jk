@@ -625,7 +625,12 @@ and exclusions stay GA-scoped.
    the sandbox (`TestEnv.constants`, the function the launch builds it with), the nested-engine
    isolation, what a pooled worker's environment changes (`TestWorkerEnv.overrides`) and which
    trees warm the sandbox store (`TestEnv.seeds`), with each host's directories spelled as
-   stand-ins (`@home`, `@tmp`), so the token holds no path; `ARTIFACT` (the packagers and the zip they write through, the war, jlink, lib-dir and
+   stand-ins (`@home`, `@tmp`), so the token holds no path. The agents and the recording a JVM that
+   runs tests may start with are keyed by value too, as one `jvm-agents:` token
+   (`TestStampInputs.agentsToken`): the environment probe's flag under each telemetry setting and
+   the manifest its jar is cut under (`EnvProbeJar.token`; its classes are the test runner's, keyed
+   by content), the read recording's flag (`SuiteReads.recordingToken`) and the coverage agent's
+   (`CoverageAgent.token`), each spelled by the function the launch spells it with over stand-ins; `ARTIFACT` (the packagers and the zip they write through, the war, jlink, lib-dir and
    image steps, plugin staging, build-logic, Node.js steps and the guard runtime) into every
    `ActionKey.forArtifact` key; `NATIVE` (`NativeImageDriver`, which spells native-image's command
    line) into a native image's. The digest reads the contract's sources with comments and

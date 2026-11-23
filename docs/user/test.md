@@ -510,7 +510,8 @@ JumpKick itself starts each test JVM with: `-ea` or not (`[test] assertions`), t
 patterns, `[test] exclude-classes`, `serial-tags`, `idle-timeout` and `failure-snapshot`, and the
 fast tier's walls, and the variables JumpKick sets in every test JVM's environment (the sandbox
 `JK_HOME` and its roots, `TERM`, the locale and time zone, git's configuration) by name and
-fixed value. The heap, temp directories, ports and the number of test JVMs are each host's and
+fixed value, and the agents JumpKick starts test JVMs with (the environment probe, the read
+recording, the coverage agent) by the flags they take. The heap, temp directories, ports and the number of test JVMs are each host's and
 re-run nothing. A failed suite is never
 skipped: it leaves a red marker under the same stamp, so the next run executes it again and
 `jk explain` prices it as a suite rather than as a stale stamp. That holds after `--redo` too: a

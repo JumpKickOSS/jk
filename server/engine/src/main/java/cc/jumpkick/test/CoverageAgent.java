@@ -18,6 +18,19 @@ public record CoverageAgent(Path agentJar, Path execFile) {
 
     /** The {@code -javaagent:} flag for a test JVM. */
     public String agentArg() {
+        return spell(agentJar.toString(), execFile.toString());
+    }
+
+    /**
+     * The run-tests stamp's spelling of the flag, the jar and the execution data as stand-ins. A
+     * coverage run stores its marker under the key a plain run looks up, so the flag is keyed
+     * whether or not the run asks for coverage.
+     */
+    public static String token() {
+        return spell("@jacoco-agent", "@exec");
+    }
+
+    private static String spell(String agentJar, String execFile) {
         return "-javaagent:" + agentJar + "=destfile=" + execFile + ",append=true,output=file";
     }
 }

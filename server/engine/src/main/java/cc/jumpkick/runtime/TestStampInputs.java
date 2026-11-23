@@ -35,8 +35,11 @@ import cc.jumpkick.task.PortablePath;
 import cc.jumpkick.task.TestStamp;
 import cc.jumpkick.task.ToolIdentity;
 import cc.jumpkick.task.ToolchainPolicy;
+import cc.jumpkick.test.CoverageAgent;
+import cc.jumpkick.test.EnvProbeJar;
 import cc.jumpkick.test.SuiteEnvReads;
 import cc.jumpkick.test.SuiteFilter;
+import cc.jumpkick.test.SuiteReads;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -265,8 +268,8 @@ public record TestStampInputs(
 
     /**
      * The stamp's identity tokens: environment values, tool identities, the JVM flags, what each
-     * launch starts its JVMs with, what every suite JVM gets from jk on any host, worker jars and
-     * test compiles. Read again on every call, as a
+     * launch starts its JVMs with, what every suite JVM gets from jk on any host, the agents they
+     * start with, worker jars and test compiles. Read again on every call, as a
      * suite that recorded what it reads keys those reads on its next stamp.
      */
     List<String> extras() throws IOException {
@@ -275,6 +278,7 @@ public record TestStampInputs(
         extras.add(suitesToken(suites));
         extras.addAll(forkTokens(facts.project(), selection, suites));
         extras.add(SuiteEnvKeys.environment(facts.project()));
+        extras.add(agentsToken());
         String node = NodeTestStamp.nodeTestToken(facts.project(), facts.dir());
         if (node != null) extras.add(node);
         extras.addAll(SuiteEnvKeys.profileEnv(facts.project(), facts.profileName()));
@@ -283,6 +287,17 @@ public record TestStampInputs(
         // its record's HOST (architecture.md, the key table).
         extras.add("java:" + level());
         return TestStamp.withCompileTest(extras, facts.compileTestKeys());
+    }
+
+    /**
+     * The stamp token of the agents and the recording every JVM that runs tests may start with, as
+     * the functions the launch spells their flags with write them over stand-ins: the environment
+     * probe with the manifest its jar is cut under, the read recording and the coverage agent. So an
+     * edit to what one spells moves every suite's key, and a path moves none.
+     */
+    static String agentsToken() {
+        return "jvm-agents:probe=" + EnvProbeJar.token() + " ; recording=" + SuiteReads.recordingToken()
+                + " ; coverage=" + CoverageAgent.token();
     }
 
     /**
