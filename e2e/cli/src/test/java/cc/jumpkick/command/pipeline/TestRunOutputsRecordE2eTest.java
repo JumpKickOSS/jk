@@ -26,8 +26,8 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * What a module's outputs record names, and when it is written, decide whether {@code jk explain}
- * after a green run calls the module's outputs "built from other inputs"
- * (hotel-reservations, every module, with every step cached). Two causes, one test each, on the
+ * after a run calls the module's outputs "built from other inputs"
+ * (hotel-reservations, every module, with every step cached). Three causes, one test each, on the
  * smallest workspace that shows them: {@code lib}, whose jar {@code app} reads, and {@code app}.
  * ({@code jk explain -m} does not check a module's outputs record, so these forecast the whole
  * workspace.)
@@ -58,6 +58,33 @@ class TestRunOutputsRecordE2eTest {
             Files.writeString(greeting, Files.readString(greeting).replace("\"hello\"", "\"hel\" + \"lo\""));
             ok(jk(home, ws, "test", "-g"));
             nothingForecast(home, ws, "explain", "-g");
+        } finally {
+            jk(home, ws, "engine", "stop", "--now");
+        }
+    }
+
+    /**
+     * A red {@code jk test} records the outputs of the modules it finished green: lib's edit breaks
+     * app's compile, and the red run left no record at all, so the forecast called lib's outputs
+     * another build's beside app's broken compile.
+     */
+    @Test
+    void a_red_test_run_records_the_outputs_of_its_green_modules(@TempDir Path tmp) throws Exception {
+        Path home = home(tmp);
+        Path ws = workspace(tmp.resolve("ws"), "");
+        try {
+            ok(jk(home, ws, "lock"));
+            ok(jk(home, ws, "build"));
+            Path greeting = ws.resolve("lib/src/main/java/com/example/Greeting.java");
+            Files.writeString(greeting, Files.readString(greeting).replace("text()", "words()"));
+            Run red = jk(home, ws, "test", "-g");
+            assertThat(red.exit()).as(red.output()).isNotZero();
+            Run forecast = jk(home, ws, "explain", "-g", "-O", "jsonl");
+            assertThat(forecast.exit()).as(forecast.output()).isZero();
+            assertThat(forecast.output())
+                    .as("only app, whose compile is broken, rebuilds")
+                    .contains("\"dirty\":1,")
+                    .doesNotContain("testrunrecord:lib\",\"step\":\"package-jar\",\"status\":\"run\"");
         } finally {
             jk(home, ws, "engine", "stop", "--now");
         }
