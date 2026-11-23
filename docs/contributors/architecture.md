@@ -73,7 +73,8 @@ How JumpKick is structured today. For day-to-day usage see [user documentation](
   its successor share one set of limits and a crashed one blocks nobody; a test JVM's ledger
   joins nothing, and a pooled test JVM of a suite that starts engines of its own
   (`ForkSpec.drivesEngines`) leases its memory but no JVM slot, so it never holds a slot that the
-  forks of the engine it waits on need — and which asks a resident helper such
+  forks of the engine it waits on need, and is priced at its process tree's resident peak, past
+  its own `-Xmx` lease when that is larger, since those forks lease from its own ledger alone — and which asks a resident helper such
   as the build-script host to exit when the head of the queue would fit without its lease, so
   the head waits only on forks doing work; a planned worker is leased at its expected resident
   set (`LearnedHeaps#price`, from the resident peaks `WorkerGc` records per module and per kind

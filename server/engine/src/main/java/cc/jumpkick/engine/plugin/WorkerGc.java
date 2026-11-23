@@ -26,7 +26,9 @@ import org.jspecify.annotations.Nullable;
  * between collections, so the process high-water RSS minus {@link #NON_HEAP_RSS} is kept too, and
  * the larger one is the peak. The high-water resident set is recorded as well: it is what {@link
  * LearnedHeaps#price} leases the next run of the worker at. Where the worker ran in its own group,
- * that group's {@link WorkerContainment#residentPeak} counts the memory its children held too.
+ * that group's {@link WorkerContainment#residentPeak} counts the memory its children held too. A JVM
+ * that drives engines of its own is read as its whole process tree, since those engines' forks are
+ * leased by no engine of the host; its heap is still learned from its own process alone.
  */
 public final class WorkerGc {
 
@@ -129,6 +131,14 @@ public final class WorkerGc {
      * a thread with no scope.
      */
     static Watch watch(List<String> command, JvmOptions.HeapChoice choice, LearnedHeaps heaps) {
+        return watch(command, choice, heaps, false);
+    }
+
+    /**
+     * As {@link #watch(List, JvmOptions.HeapChoice, LearnedHeaps)}; {@code drivesEngines} when the
+     * JVM starts engines of its own, whose forks its resident peak then counts.
+     */
+    static Watch watch(List<String> command, JvmOptions.HeapChoice choice, LearnedHeaps heaps, boolean drivesEngines) {
         int javaAt = javaIndex(command);
         if (command == null
                 || command.isEmpty()
@@ -148,7 +158,7 @@ public final class WorkerGc {
             // native-image hands -J flags to its builder JVM, whose heap is the one learned.
             next.add((HeapFlags.nativeImageCommand(command) ? "-J" : "") + flag(log));
             next.addAll(command.subList(javaAt + 1, command.size()));
-            return new Watch(List.copyOf(next), log, key, heaps);
+            return new Watch(List.copyOf(next), log, key, heaps, drivesEngines);
         } catch (IOException e) {
             Log.debug("worker gc log: " + e.getMessage());
             return Watch.none(command);
@@ -189,20 +199,27 @@ public final class WorkerGc {
         private final HeapScope.@Nullable Key key;
         private final @Nullable LearnedHeaps heaps;
         private final AtomicBoolean done = new AtomicBoolean();
+        private final boolean drivesEngines;
         private final AtomicLong rssPeak = new AtomicLong();
+        private final AtomicLong treePeak = new AtomicLong();
         private volatile long pid = -1L;
         private @Nullable Thread sampler;
 
         private Watch(
-                List<String> command, @Nullable Path log, HeapScope.@Nullable Key key, @Nullable LearnedHeaps heaps) {
+                List<String> command,
+                @Nullable Path log,
+                HeapScope.@Nullable Key key,
+                @Nullable LearnedHeaps heaps,
+                boolean drivesEngines) {
             this.command = command;
+            this.drivesEngines = drivesEngines;
             this.log = log;
             this.key = key;
             this.heaps = heaps;
         }
 
         static Watch none(List<String> command) {
-            return new Watch(command, null, null, null);
+            return new Watch(command, null, null, null, false);
         }
 
         List<String> command() {
@@ -219,15 +236,21 @@ public final class WorkerGc {
 
         private void sample(Process process, long pid) {
             ProcessMemory.Trees tree = HeapFlags.nativeImageCommand(command) ? new ProcessMemory.Trees() : null;
+            ProcessMemory.Trees engines = drivesEngines ? new ProcessMemory.Trees() : null;
             while (process.isAlive() && !Thread.currentThread().isInterrupted()) {
-                rssPeak.accumulateAndGet(peakOf(pid, tree), Math::max);
+                read(pid, tree, engines);
                 try {
                     Thread.sleep(100);
                 } catch (InterruptedException e) {
                     break;
                 }
             }
+            read(pid, tree, engines);
+        }
+
+        private void read(long pid, ProcessMemory.@Nullable Trees tree, ProcessMemory.@Nullable Trees engines) {
             rssPeak.accumulateAndGet(peakOf(pid, tree), Math::max);
+            if (engines != null) treePeak.accumulateAndGet(peakOf(pid, engines), Math::max);
         }
 
         /** {@code pid}'s peak resident bytes, its descendants' included when {@code tree} is set. */
@@ -254,7 +277,9 @@ public final class WorkerGc {
                 long seen = Math.max(peak(log), fromRss);
                 if (seen > 0 && heaps != null) heaps.note(key, seen);
                 long group = pid > 0 ? WorkerContainment.residentPeak(pid) : 0L;
-                if (heaps != null) heaps.noteResident(key, Math.max(rss, group));
+                long resident = Math.max(Math.max(rss, group), treePeak.get());
+                if (heaps != null && drivesEngines) heaps.noteModuleResident(key, resident);
+                else if (heaps != null) heaps.noteResident(key, resident);
             } finally {
                 try {
                     Files.deleteIfExists(log);

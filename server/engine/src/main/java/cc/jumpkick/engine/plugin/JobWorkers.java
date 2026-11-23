@@ -248,7 +248,7 @@ public final class JobWorkers {
             Log.info("jk engine: leaving pinned " + pin + " unchanged; leasing the whole "
                     + WorkerLeases.format(leases.capacityBytes()) + " budget");
         }
-        WorkerGc.Watch gc = WorkerGc.watch(sized, choice, heaps);
+        WorkerGc.Watch gc = WorkerGc.watch(sized, choice, heaps, !slot && resident == null);
         List<String> command = gc.command();
         if (command != pb.command()) pb.command(command);
         // Listed before it starts, so no startup-cache sweep sees the cache mapped and unlisted.

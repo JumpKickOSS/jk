@@ -98,4 +98,66 @@ class WorkerGcTest {
                 .as("768 MiB of anonymous peak, leased at 1.25x")
                 .isEqualTo(960 * mib);
     }
+
+    /**
+     * A JVM that drives engines holds those engines' forks, which no engine of the host leases: the
+     * resident peak it teaches counts its process tree, filed under its own module and not its
+     * kind's host-wide row, while its heap is learned from its own process alone. A worker that
+     * drives none teaches only its own resident set.
+     */
+    @Test
+    @EnabledOnOs(OS.LINUX)
+    @ResourceLock("jk-worker-containment")
+    void a_jvm_that_drives_engines_teaches_the_peak_of_its_process_tree(@TempDir Path dir) throws Exception {
+        long mib = 1024L * 1024L;
+        Path sleeper = Files.writeString(dir.resolve("Sleep.java"), """
+                class Sleep {
+                    public static void main(String[] args) throws Exception {
+                        Thread.sleep(60_000);
+                    }
+                }
+                """);
+        String java = Path.of(System.getProperty("java.home"), "bin", "java").toString();
+        String child = java + " -Xms256m -Xmx256m -XX:+AlwaysPreTouch " + sleeper + " & wait";
+        LearnedHeaps driving = new LearnedHeaps(dir.resolve("driving"));
+        LearnedHeaps plain = new LearnedHeaps(dir.resolve("plain"));
+        HeapScope.Key key = new HeapScope.Key(dir.resolve("ws"), "g:app", HeapScope.TEST, 25);
+        HeapScope.Key other = new HeapScope.Key(dir.resolve("ws"), "g:other", HeapScope.TEST, 25);
+        List<String> command = List.of("/opt/jdk/bin/java", "-cp", "app.jar", "app.Main");
+        JvmOptions.HeapChoice choice = JvmOptions.HeapChoice.inspect(command);
+        WorkerGc.Watch drives = HeapScope.call(key, () -> WorkerGc.watch(command, choice, driving, true));
+        WorkerGc.Watch alone = HeapScope.call(key, () -> WorkerGc.watch(command, choice, plain, false));
+        Process root = new ProcessBuilder("sh", "-c", child).start();
+        try {
+            awaitResidentChild(root, 256 * mib);
+            drives.observe(root);
+            alone.observe(root);
+            Thread.sleep(500);
+        } finally {
+            root.descendants().forEach(ProcessHandle::destroyForcibly);
+            root.destroyForcibly();
+            root.waitFor(5, TimeUnit.SECONDS);
+        }
+        drives.finish();
+        alone.finish();
+
+        assertThat(driving.price(key)).as("its tree, leased at 1.25x").isGreaterThanOrEqualTo(320 * mib);
+        assertThat(driving.peak(key)).as("no heap learned from its children").isZero();
+        assertThat(driving.price(other))
+                .as("its kind's host-wide row left as it was: the prior")
+                .isEqualTo(640 * mib);
+        assertThat(plain.price(key)).as("the shell alone, at the floor").isEqualTo(160 * mib);
+    }
+
+    /** Wait until a descendant of {@code root} holds at least {@code bytes}. */
+    private static void awaitResidentChild(Process root, long bytes) throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
+        while (System.nanoTime() < deadline) {
+            boolean filled =
+                    root.descendants().anyMatch(h -> ProcessMemory.of(h.pid()).residentBytes() >= bytes);
+            if (filled) return;
+            Thread.sleep(50);
+        }
+        throw new AssertionError("no child of the shell filled " + bytes + " bytes");
+    }
 }

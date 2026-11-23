@@ -79,6 +79,27 @@ class WorkerLeasesPriceTest {
     }
 
     /**
+     * A test JVM that drives engines holds their forks too, which lease from its own ledger alone: it
+     * leases the price its whole tree was learned at, past its own heap's lease, never past the
+     * budget, and with no JVM slot.
+     */
+    @Test
+    void a_jvm_that_drives_engines_leases_its_price_past_its_heaps_lease() throws Exception {
+        WorkerLeases.Ledger ledger = new WorkerLeases.Ledger(() -> 8 * GIB, () -> 8, id -> false);
+        try (WorkerLeases.Grant grant = ledger.acquireWithoutSlot(COMMAND, null, priced(3 * GIB))) {
+            assertThat(grant.bytes()).isEqualTo(3 * GIB).isGreaterThan(WorkerLeases.jvmLease(2 * GIB));
+            assertThat(grant.xmxBytes()).as("its heap is its own").isEqualTo(2 * GIB);
+            assertThat(ledger.snapshot().runningJvms()).as("no slot").isZero();
+        }
+        try (WorkerLeases.Grant grant = ledger.acquireWithoutSlot(COMMAND, null, priced(320 * MIB))) {
+            assertThat(grant.bytes()).as("below its heap's lease").isEqualTo(320 * MIB);
+        }
+        try (WorkerLeases.Grant grant = ledger.acquireWithoutSlot(COMMAND, null, priced(16 * GIB))) {
+            assertThat(grant.bytes()).as("at most the budget").isEqualTo(8 * GIB);
+        }
+    }
+
+    /**
      * Idle warm compilers whose -Xmx leases fill the heap ceiling, while their prices leave most of
      * the budget free, exit for a fork that fits the budget: the head of the line is not left to give
      * up after ten minutes with memory free.

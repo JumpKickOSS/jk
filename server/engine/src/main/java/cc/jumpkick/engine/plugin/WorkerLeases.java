@@ -545,11 +545,15 @@ public final class WorkerLeases {
          * As {@link #acquire(List, Long, JvmOptions.HeapChoice)} for a JVM that takes no CPU slot: one
          * whose work runs in processes that lease their own slots, such as a test JVM that drives
          * engines of its own. It holding a slot for its whole life would keep that slot from the very
-         * forks it waits on.
+         * forks it waits on. Those engines lease from the JVM's own ledger, which no engine of the host
+         * reads, so {@code choice}'s price, learned from the JVM's whole process tree, is leased even
+         * past its own {@code -Xmx} lease.
          */
         public Grant acquireWithoutSlot(List<String> command, @Nullable Long requestId, JvmOptions.HeapChoice choice)
                 throws InterruptedException {
-            return acquire(LeaseDemand.of(command, choice, capacityBytes()).withoutSlot(), requestId);
+            long capacity = capacityBytes();
+            return acquire(
+                    LeaseDemand.of(command, choice, capacity).drivingEngines(choice.priceBytes(), capacity), requestId);
         }
 
         /**

@@ -808,7 +808,10 @@ peak and go back to the first heap. Each row also keeps the worker's last ten re
 peaks (a native-image build's include its builder JVM; on Linux, where a worker runs in its own
 cgroup, the memory its child processes held, page cache left out), which price its lease; each kind's
 peaks across every project are kept in `<state>/worker-heaps/host`, which prices a module's
-first run.
+first run. A test JVM whose tests start engines of their own holds those engines' compilers and
+test JVMs too, which no other engine leases: its resident peak is its whole process tree, kept in
+its module's row only, and it is leased at that price even past its own heap's lease, at most the
+worker budget.
 
 A compile, test or format worker JumpKick has not seen before starts at a quarter of the worker budget, at
 most 2 GiB, and never below the compiler estimate. The memory plan's share (the free memory over

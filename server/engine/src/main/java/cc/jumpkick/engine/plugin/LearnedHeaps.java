@@ -275,10 +275,23 @@ public final class LearnedHeaps {
      * kind's host-wide row.
      */
     public void noteResident(HeapScope.@Nullable Key key, long residentBytes) {
+        noteResident(key, residentBytes, true);
+    }
+
+    /**
+     * Record {@code residentBytes} as the newest resident-set peak for {@code key} alone. A JVM that
+     * drives engines of its own holds their forks too, which says nothing of what another worker of
+     * its kind holds, so its kind's host-wide row is left as it was.
+     */
+    public void noteModuleResident(HeapScope.@Nullable Key key, long residentBytes) {
+        noteResident(key, residentBytes, false);
+    }
+
+    private void noteResident(HeapScope.@Nullable Key key, long residentBytes, boolean kindWide) {
         if (key == null || residentBytes <= 0 || key.module().isBlank()) return;
         UnaryOperator<Row> add = stored -> stored.withResident(prepend(stored.resident(), residentBytes));
         update(key.project(), row(key.module(), key.kind(), key.jdk()), add);
-        updateFile(stateDir.get().resolve(HOST_FILE), row(ANY_MODULE, key.kind(), 0), add);
+        if (kindWide) updateFile(stateDir.get().resolve(HOST_FILE), row(ANY_MODULE, key.kind(), 0), add);
     }
 
     /**

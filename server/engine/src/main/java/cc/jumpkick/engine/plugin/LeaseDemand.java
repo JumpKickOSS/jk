@@ -65,6 +65,19 @@ record LeaseDemand(
         return new LeaseDemand(bytes, xmxBytes, jvm, clamped, userPinned, overBudget, false, worstBytes, pin);
     }
 
+    /**
+     * The same demand for a JVM that drives engines of its own: it takes no JVM slot, and it leases
+     * {@code priceBytes} when that is more than its own {@code -Xmx} lease, at most {@code
+     * capacityBytes}. Those engines' forks run under it and lease from its own ledger, which no engine
+     * of the host reads, so what it holds is its whole process tree, not its heap. A user pin keeps
+     * its lease.
+     */
+    LeaseDemand drivingEngines(long priceBytes, long capacityBytes) {
+        if (userPinned || priceBytes <= bytes) return withoutSlot();
+        long next = Math.min(Math.max(1, capacityBytes), priceBytes);
+        return new LeaseDemand(next, xmxBytes, jvm, clamped, false, overBudget, false, Math.max(worstBytes, next), pin);
+    }
+
     /** The same demand leasing {@code next} bytes. */
     LeaseDemand withBytes(long next) {
         return new LeaseDemand(next, xmxBytes, jvm, clamped, userPinned, overBudget, cpuSlot, next, pin);
