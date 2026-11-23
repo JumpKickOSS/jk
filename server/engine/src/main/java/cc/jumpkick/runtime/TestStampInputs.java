@@ -457,17 +457,30 @@ public record TestStampInputs(
      * suite runs once the jar is rebuilt.
      */
     static @Nullable String rebuildingWorker(Path dir, JkBuild project, List<Path> rebuilding) throws IOException {
-        if (rebuilding.isEmpty()) return null;
+        Map<String, Path> workers = rebuildingWorkers(dir, project, rebuilding);
+        return workers.isEmpty() ? null : workers.keySet().iterator().next();
+    }
+
+    /**
+     * Each worker jar of {@code dir}'s run-tests stamp ({@link #testStampWorkerJars}) that one of
+     * {@code rebuilding} makes, by its property, in the stamp's order; empty when none does.
+     */
+    static Map<String, Path> rebuildingWorkers(Path dir, JkBuild project, List<Path> rebuilding) throws IOException {
+        if (rebuilding.isEmpty()) return Map.of();
         List<Path> roots = new ArrayList<>();
         for (Path sibling : rebuilding) roots.add(sibling.toAbsolutePath().normalize());
+        Map<String, Path> out = new LinkedHashMap<>();
         for (Map.Entry<String, String> worker :
                 testStampWorkerJars(dir, project).entrySet()) {
             Path jar = Path.of(worker.getValue()).toAbsolutePath().normalize();
             for (Path root : roots) {
-                if (jar.startsWith(root)) return worker.getKey();
+                if (jar.startsWith(root)) {
+                    out.put(worker.getKey(), jar);
+                    break;
+                }
             }
         }
-        return null;
+        return out;
     }
 
     /**
@@ -565,7 +578,7 @@ public record TestStampInputs(
             } catch (IOException ex) {
                 fp = "err";
             }
-            extras.add("worker:" + e.getKey() + "=" + fp);
+            extras.add(TestStamp.WORKER_JAR + e.getKey() + "=" + fp);
         }
         extras.addAll(SuiteEnvKeys.tokens(
                 build,

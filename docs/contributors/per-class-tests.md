@@ -43,7 +43,7 @@ class ledger already keys it), is a hash of three parts.
 **The suite part**, what every class of the launch sees, taken from the suite stamp's tokens:
 - JumpKick's cache-key version, the test JDK (`test-jdk:`), the test runner, JVM flags (the module's and
   the request's), `-ea`, the suite settings of this launch, the suite definitions, the excluded
-  classes, network allowed or not, `[test] tools` identities, the plugin worker jars the stamp keys;
+  classes, network allowed or not, `[test] tools` identities;
 - the declared environment values (`[env]`, `[test] env`, profile env) and the shell's locale;
 - what the suite read of the caller's environment (`env-read:`, `env-names=`, `env-all=`): a row
   names at most 8 variables, and a program a class starts takes the whole environment unseen, so
@@ -58,7 +58,8 @@ class ledger already keys it), is a hash of three parts.
 Left out of the suite part, because a finer part replaces them: the test sources and the module's
 main classes (the class part), sibling jars (the class part),
 the discovered reads (the observed part), the test compiles' action keys (their output is the
-class bytes), and the lock file (the external classpath is what it decides).
+class bytes), the lock file (the external classpath is what it decides), and the worker jars the
+stamp keys (`worker:`, the observed part, [below](#nested-engines-and-worker-jars)).
 
 **The class part**, its static cone: the class's own bytes and those of every class nested in it,
 then every **workspace** class reachable from them, transitively, each by its name and the digest
@@ -109,24 +110,48 @@ class's key; nor is a workspace class whose code ran from a copy outside the wor
 deleted (a sibling's jar a test copied into its temp directory and loaded), which is no code file
 the key holds and was never marked.
 
-Sibling jars are marked because a module's cones cross into them: a body-only edit of
-`SelfHostEngine` ran all 11 fast-tier classes of jk-cli-e2e (9 by a moved key, 2 by the module) and
-all 3 of jk-engine-e2e (by a moved key), each reaching the edited class through jk-engine's jar,
-which keyed every class by its bytes.
+Sibling jars are marked because a module's cones cross into them: the classes of jk-cli-e2e and
+jk-engine-e2e reach jk-engine through its jar, and an unmarked jar keyed every class of it by its
+bytes, whether or not it ran.
 
 **The observed part**, from the class's last run (its record):
 - each file it read in its window (see attribution) that no other part keys, by content, with the
   listing of the directory it sits in when that directory is in the workspace tree, as the suite's
   discovered inputs are keyed today;
 - each code file it loaded by path outside everything the suite's key holds (a jar a test opens
-  through its own class loader), by content;
+  through its own class loader, a worker jar the suite was handed), by content;
 - the programs it started, by identity: a tool by the identity the suite's stamp gives it, and a
   class keyed by its module by every program the stamp keys (`proc:`), so an upgrade of `node` re-runs
-  a class that started it.
+  a class that started it;
+- every worker jar the stamp keys, by content, for a class in whose JVM a program was started and
+  a class keyed by its module ([below](#nested-engines-and-worker-jars)).
 
 A class's first run has no record: it runs. The run records what it read, and the record is stored
 under the key that folds those reads in, once they are proved to have held still while it ran
 (the rule the suite marker follows today).
+
+### Nested engines and worker jars
+
+A suite that drives a nested engine (jk-cli-e2e, jk-engine-e2e) is handed the engine's fat jar, the
+native client and every first-party plugin jar by path (`-Djk.engine.jar=…`); a declared `[build]
+test-plugin-jars` entry is handed the same way. The suite's stamp keys each by content (`worker:`),
+so any engine edit misses the suite marker, but the class key leaves them to the observed part: a
+body-only edit of an engine class moves the fat jar's bytes, and in the suite part it moved the key
+of every class of those suites, whatever its cone held. On bocabox-1, after a green default suite,
+a body-only edit of `SelfHostEngine` ran all 11 fast-tier classes of jk-cli-e2e (9 by a moved key, 2
+by the module) and all 3 of jk-engine-e2e (by a moved key), most of which start nothing and never
+open the jar.
+
+A worker jar keys a class when:
+
+- the class read it in its JVM: a code file, keyed by content from the first read on, so every
+  later class of the JVM holds it too and a class loader cached across classes hides nothing;
+- a program was started in the class's JVM before its window closed, by it or by a class before it
+  (`ClassReads.STARTED_PROGRAM`, `(started)` among its tools): the test JDK's own launcher, a
+  program the test wrote, a utility. What such a program runs is read in a process no recording
+  holds, and a long-lived one (a shared engine) serves the classes after the one that started it.
+  `git` in a repository a test made is no such program;
+- the class is keyed by its module, as it stands on every program the stamp keys.
 
 ## Static cone and observed cone
 
@@ -167,7 +192,7 @@ result would differ, must run. Each known hole:
 | **Test fixtures** (`src/fixtures`, a sibling's fixtures) | They are workspace classes on the runtime classpath; the cone walks them |
 | **Tests that scan the repository** | Their reads land in their own window and key only them. A new file in a directory one of them read changes that directory's listing, keyed. A directory listed where nothing was read is unseen, as today |
 | **Programs started** (a test that execs a built jar, `git`, a nested `jk`) | What a child process reads is not recorded. A class that started a program is unattributable and falls back to the module key, unless the command can read nothing its key does not hold (`git` in a repository the test made, a utility or a program the test wrote naming no file outside its temp roots, below). A checkout file a JumpKick test names through `RepoRoot.file`, a script it hands to `bash` say, is read once in the test JVM, so the suite's reads key it |
-| **Nested engines and worker jars** (jk-cli and jk-engine tests drive a real engine that loads plugin jars by path) | The worker jars the suite stamp keys stay in the suite part, so every class keys them. Observing which class loaded a worker was tried and dropped: a class loader cached across classes hides the load from every class but the first, and the classes of jk-cli and jk-engine that drive an engine are most of their suites' time anyway |
+| **Nested engines and worker jars** (jk-cli and jk-engine tests drive a real engine that loads plugin jars by path) | A worker jar keys a class that read it, as a code file, from then on in its JVM, so a class loader cached across classes keys every class after the first; a class in whose JVM a program was started (below); and a class keyed by its module. A class that did none of these never touched the jar's bytes ([below](#nested-engines-and-worker-jars)) |
 | **Line numbers and source file names** (a test asserting a stack trace) | Bytes are hashed whole, debug attributes included |
 | **The network** | A suite that reached past the host stores no marker, as today, and none of its classes replay |
 | **A recording that did not finish** (a JVM killed, out of memory) | Every class of that JVM is unattributable for that run; no class record is stored for them |
@@ -293,11 +318,14 @@ yet, so the forecast reads the edit instead (`TestClassRecording.replayedAfter`)
 API hint names the sources whose content moved (`SourceApiIndex.Hint.changed`), the classes on disk
 compiled from them are the classes that move, and a class that passed replays unless one of them lies
 in its cone and either moved a declaration or ran in its window (`coneUsed`); a module-keyed class
-runs. The step says the same `~12 tests · 281 classes replayed`. It is an estimate where the run's
-answer is exact: the cones are walked over the classes on disk, and a hint reads a private signature
-edit as body-only, where the class's bodyless digest moves. An edit the forecast cannot read (a
-sibling with no hint, a source that is not Java, a moved test source, a KSP round, a rebuilding worker
-jar) prices the whole selection.
+runs. A worker jar the stamp keys whose sibling is rebuilding runs the classes it would key
+([above](#nested-engines-and-worker-jars)): those whose record names it as a code file or says more
+code files than it names, those whose record says `(started)`, and the module-keyed ones; nothing
+replays when the record file's pool read it. The step says the same `~12 tests · 281 classes
+replayed`. It is an estimate where the run's answer is exact: the cones are walked over the classes
+on disk, and a hint reads a private signature edit as body-only, where the class's bodyless digest
+moves. An edit the forecast cannot read (a sibling with no hint, a source that is not Java, a moved
+test source, a KSP round) prices the whole selection.
 
 ## Which classes run together
 

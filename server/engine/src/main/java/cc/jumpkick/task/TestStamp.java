@@ -47,6 +47,12 @@ public final class TestStamp {
     public static final String COMPILE_TEST_GROOVY = "compile-test-groovy:";
 
     /**
+     * Prefix of the run-tests input that names a worker jar the suite's JVMs are handed by path (a
+     * declared {@code test-plugin-jars} entry, the nested engine's jars), by content.
+     */
+    public static final String WORKER_JAR = "worker:";
+
+    /**
      * The test compiles' action keys, one per language the module compiles tests in. Each key
      * covers that compiler's options, plugins, target and classpath, so an edit that recompiles
      * the tests also re-runs them; nothing else in the stamp reads those. A language the module

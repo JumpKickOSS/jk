@@ -189,6 +189,14 @@ public final class ClassReads {
      */
     public static final String WRITTEN_PROGRAM = "(written)";
 
+    /**
+     * The name a class's tools keep when a program other than git in a repository a test made was
+     * started in its JVM before its window closed, by it or by a class before it: what such a program
+     * runs (a jar the suite was handed by path, a long-lived engine a later class talks to) is read
+     * in a process no recording of the suite holds. The test JDK's own launcher counts.
+     */
+    public static final String STARTED_PROGRAM = "(started)";
+
     /** The most of each kind of platform evidence a class keeps: presence decides, a few say what. */
     public static final int EVIDENCE_KEPT = 2;
 
@@ -809,6 +817,8 @@ public final class ClassReads {
         private final Map<String, String> names = new HashMap<>();
         /** Each code file read, by the first and the last time it was read. */
         private final Map<Path, long[]> codeReads = new LinkedHashMap<>();
+        /** When the JVM first started a program git in a test's own repository is not ({@link #STARTED_PROGRAM}). */
+        private long firstStart = Long.MAX_VALUE;
 
         long events;
 
@@ -864,9 +874,13 @@ public final class ClassReads {
                 case PROCESS -> {
                     // The test JDK's own launcher (an agent attaching from a second JVM, as Mockito's
                     // does) is the JDK the key already holds, not a program the class depends on.
+                    firstStart = Math.min(firstStart, at);
                     if (!underJdk(value, layout)) into.forEach(o -> o.addProcess(value));
                 }
-                case TOOL -> into.forEach(o -> o.addTool(value));
+                case TOOL -> {
+                    if (!value.equals(GitRuns.GIT)) firstStart = Math.min(firstStart, at);
+                    into.forEach(o -> o.addTool(value));
+                }
                 case HOST -> into.forEach(o -> o.addHost(value));
                 case USE -> into.forEach(o -> o.addUsed(value, useNames));
                 case NATIVE -> {
@@ -945,6 +959,12 @@ public final class ClassReads {
             }
             long lastEnd = Long.MIN_VALUE;
             for (Window w : windows) lastEnd = Math.max(lastEnd, w.end());
+            // A program outlives the window that started it, as a loaded jar does: every later class
+            // of the JVM may talk to what it runs.
+            for (Window w : windows) {
+                Observation o = classes.get(w.testClass());
+                if (firstStart <= w.end() && o != null) o.addTool(STARTED_PROGRAM);
+            }
             for (Map.Entry<Path, long[]> c : codeReads.entrySet()) {
                 // A code file gone once the run ended was made and removed by it (a jar a test wrote
                 // in its temp directory): no input, and no load a later class may be served from.

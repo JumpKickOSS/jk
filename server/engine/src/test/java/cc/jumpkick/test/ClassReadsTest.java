@@ -327,7 +327,7 @@ class ClassReadsTest {
         ClassReads.Observation inCheckout =
                 Objects.requireNonNull(seen.classes().get("demo.CheckoutTest"));
         assertThat(inCheckout.processes()).as("git in the workspace").containsExactly("git");
-        assertThat(inCheckout.tools()).isEmpty();
+        assertThat(inCheckout.tools()).containsExactly(ClassReads.STARTED_PROGRAM);
         // A host whose home is a repository encloses the temp root: git there is a program started.
         if (GitRuns.unenclosed(List.of(temp)).isEmpty()) return;
         assertThat(ownRepo.processes()).as("git in a repository the test made").isEmpty();
@@ -375,9 +375,55 @@ class ClassReadsTest {
         ClassReads.Observation sleep = Objects.requireNonNull(seen.classes().get("demo.SleepTest"));
         ClassReads.Observation cat = Objects.requireNonNull(seen.classes().get("demo.CatTest"));
         assertThat(sleep.processes()).isEmpty();
-        assertThat(sleep.tools()).containsExactly("sleep");
+        assertThat(sleep.tools()).containsExactlyInAnyOrder("sleep", ClassReads.STARTED_PROGRAM);
         assertThat(cat.processes()).as("a file of the workspace").containsExactly("cat");
-        assertThat(cat.tools()).isEmpty();
+        assertThat(cat.tools()).containsExactly(ClassReads.STARTED_PROGRAM);
+    }
+
+    /**
+     * The test JDK's own launcher is no program the class depends on, but what it was told to run is
+     * read in a process no recording holds: the class that started it, and every class after it in the
+     * JVM, which may talk to what it left running, say a program was started. A class before it does
+     * not, and git in a repository a test made says nothing.
+     */
+    @Test
+    void a_program_started_marks_its_class_and_every_later_class_of_the_jvm(@TempDir Path tmp) throws Exception {
+        Path ws = Files.createDirectories(tmp.resolve("ws"));
+        Path temp = Files.createDirectories(tmp.resolve("temp"));
+        Path repo = Files.createDirectories(temp.resolve("repo"));
+        Path recordings = Files.createDirectories(tmp.resolve("rec"));
+        Path javaHome = Path.of(System.getProperty("java.home"));
+        String java = javaHome.resolve("bin")
+                .resolve(Os.isWindows() ? "java.exe" : "java")
+                .toString();
+
+        try (Recording r = new Recording()) {
+            r.enable("jdk.ProcessStart");
+            r.enable(ClassReads.WINDOW_EVENT).withThreshold(Duration.ZERO);
+            r.start();
+            Window before = window("demo.BeforeTest");
+            runIn(repo, GitCommand.of("rev-parse", "--show-toplevel"));
+            before.commit();
+            Window starts = window("demo.StartsTest");
+            runIn(ws, List.of(java, "-version"));
+            starts.commit();
+            Window after = window("demo.AfterTest");
+            after.commit();
+            r.stop();
+            r.dump(recordings.resolve("one.jfr"));
+        }
+
+        ClassReads.Attributed seen = ClassReads.attribute(
+                recordings,
+                ws,
+                new ClassReads.Layout(List.of(), List.of(), Set.of(), ws, javaHome, List.of(), List.of(temp)));
+        ClassReads.Observation first = Objects.requireNonNull(seen.classes().get("demo.BeforeTest"));
+        ClassReads.Observation starter = Objects.requireNonNull(seen.classes().get("demo.StartsTest"));
+        ClassReads.Observation later = Objects.requireNonNull(seen.classes().get("demo.AfterTest"));
+        assertThat(starter.processes()).as("the JDK the key holds").isEmpty();
+        assertThat(starter.tools()).containsExactly(ClassReads.STARTED_PROGRAM);
+        assertThat(later.tools()).as("a class after it in the JVM").containsExactly(ClassReads.STARTED_PROGRAM);
+        assertThat(first.tools()).doesNotContain(ClassReads.STARTED_PROGRAM);
     }
 
     private static void runIn(Path dir, List<String> command) throws Exception {

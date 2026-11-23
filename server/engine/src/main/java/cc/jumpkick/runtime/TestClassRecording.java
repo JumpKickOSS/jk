@@ -62,12 +62,14 @@ final class TestClassRecording {
 
     /**
      * A suite's classes to record once its run has settled: everything but the run's discovered
-     * inputs, which settling decides.
+     * inputs, which settling decides. Of what the suite's stamp keys ({@code keyed}), the worker
+     * jars ({@code workerJars}) are no class's alone: a class that read one holds it as a code file.
      */
     record Pending(
             Path moduleDir,
             BuildLayout layout,
             Collection<Path> keyed,
+            Collection<Path> workerJars,
             TestClassLedger ledger,
             String moduleLabel,
             Path testClasses,
@@ -118,7 +120,7 @@ final class TestClassRecording {
                         moduleDir,
                         new ClassReads.Layout(
                                 roots.classTrees(),
-                                List.copyOf(keyed),
+                                classKeyed(keyed, workerJars),
                                 roots.jars(),
                                 workspace,
                                 javaHome,
@@ -189,6 +191,20 @@ final class TestClassRecording {
                     + (Clock.SYSTEM.nanos() - started) / 1_000_000 + " ms in all"
                     + (shadow == null ? "" : "; " + shadow.wouldRun() + " would run"));
         }
+    }
+
+    /**
+     * What the suite's key holds whole for every class: {@code keyed} less the worker jars, which a
+     * class's key holds by content where it read them ({@link ClassKeys#replacedToken}).
+     */
+    static List<Path> classKeyed(Collection<Path> keyed, Collection<Path> workerJars) {
+        Set<Path> workers = new HashSet<>();
+        for (Path w : workerJars) workers.add(w.toAbsolutePath().normalize());
+        List<Path> out = new ArrayList<>();
+        for (Path k : keyed) {
+            if (!workers.contains(k.toAbsolutePath().normalize())) out.add(k);
+        }
+        return List.copyOf(out);
     }
 
     /**
@@ -311,9 +327,12 @@ final class TestClassRecording {
      * module (this one or a sibling on the suite's classpath) and whether their declarations kept.
      * A class replays when its last record passed, kept its key, reached no other host, fell back
      * to no module key, and no class compiled from a moved source lies in its cone, or, where the
-     * module's edit kept every declaration, none it ran ({@code coneUsed}). The cones are walked over
-     * the classes on disk, the edit's own not yet compiled. Null when the records cannot tell: none,
-     * an edit of unknown shape, the shadow off.
+     * module's edit kept every declaration, none it ran ({@code coneUsed}). A worker jar the stamp
+     * keys that is rebuilding ({@code rebuildingJars}) runs the classes that read it, those that read
+     * more code files than their record names, those in whose JVM a program was started ({@link
+     * ClassKeys#startedProgram}), and those keyed by their module; nothing replays when the pool read
+     * it. The cones are walked over the classes on disk, the edit's own not yet
+     * compiled. Null when the records cannot tell: none, an edit of unknown shape, the shadow off.
      */
     static @Nullable Replayed replayedAfter(
             Path moduleDir,
@@ -321,7 +340,8 @@ final class TestClassRecording {
             Path testClasses,
             Path mainClasses,
             List<Path> runtimeCp,
-            List<SourceApiIndex.Hint> edits)
+            List<SourceApiIndex.Hint> edits,
+            Collection<Path> rebuildingJars)
             throws IOException {
         if (!TestTelemetry.shadow()) return null;
         for (SourceApiIndex.Hint e : edits) {
@@ -332,6 +352,9 @@ final class TestClassRecording {
         if (header == null) return null;
         if (reachedPastHost(Jsonl.nested(header, "pooled"))) return Replayed.NONE;
         Path workspace = layout.workspaceRoot().toAbsolutePath().normalize();
+        Set<Path> jars = new HashSet<>();
+        for (Path j : rebuildingJars) jars.add(j.toAbsolutePath().normalize());
+        if (readsAny(Jsonl.nested(header, "pooled"), jars, workspace)) return Replayed.NONE;
         Roots roots = Roots.of(workspace, testClasses, mainClasses, runtimeCp);
         long[] replayed = {0, 0};
         try {
@@ -358,7 +381,8 @@ final class TestClassRecording {
                         || !"passed".equals(Jsonl.str(row, "outcome"))
                         || reachedPastHost(row)
                         || !index.contains(cls)
-                        || (Jsonl.str(row, "fallback") != null && !moved.isEmpty())) return;
+                        || (Jsonl.str(row, "fallback") != null && !(moved.isEmpty() && jars.isEmpty()))
+                        || readsAny(row, jars, workspace)) return;
                 ClassCones.Cone cone = index.cone(cls, Jsonl.strArray(row, "reflective"));
                 String used = Jsonl.str(row, "coneUsed");
                 Predicate<String> ran = used == null ? c -> true : cone.ranBy(used);
@@ -372,6 +396,20 @@ final class TestClassRecording {
             ONE.release();
         }
         return new Replayed((int) replayed[0], replayed[1]);
+    }
+
+    /**
+     * Whether a record row, or the pool of a header, may have read one of {@code jars}: it names one
+     * as a code file, read more code files than it names, or saw a program started that may run one.
+     */
+    private static boolean readsAny(@Nullable String row, Set<Path> jars, Path workspace) {
+        if (row == null || jars.isEmpty()) return false;
+        if (Jsonl.bool(row, "codeMore", false)) return true;
+        if (ClassKeys.startedProgram(ClassShadow.fromRow(row))) return true;
+        for (String code : Jsonl.strArray(row, "code")) {
+            if (jars.contains(workspace.resolve(code).toAbsolutePath().normalize())) return true;
+        }
+        return false;
     }
 
     /** How many classes a suite replays, and the tests they hold. */

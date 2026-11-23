@@ -39,6 +39,7 @@ import cc.jumpkick.task.CompiledTests;
 import cc.jumpkick.task.InputGuard;
 import cc.jumpkick.task.KeyAudit;
 import cc.jumpkick.task.KeyContract;
+import cc.jumpkick.task.SourceApiIndex;
 import cc.jumpkick.task.TestStamp;
 import cc.jumpkick.task.ToolchainPolicy;
 import cc.jumpkick.task.WorkerClosure;
@@ -505,18 +506,22 @@ final class TestSteps {
             List<Path> runtimeCp,
             AffectedTestRun.@Nullable Outcome affected)
             throws IOException {
+        Map<String, String> workerJars = testStampWorkerJars(in.dir(), project);
         List<Path> keyed = keyedRoots(
                 ctx,
                 in,
                 testEnv,
                 ctx.get(COMPILED_TESTS).map(CompiledTests::sources).orElse(List.of()),
                 runtimeCp,
-                testStampWorkerJars(in.dir(), project));
+                workerJars);
+        List<Path> workers = new ArrayList<>();
+        for (String jar : workerJars.values()) workers.add(Path.of(jar));
         return SuiteDiscovery.start(
                 ctx.require(MODULE).layout(),
                 in.dir(),
                 selection,
                 keyed,
+                workers,
                 project.build().testNetworkAllowed(),
                 affected == null,
                 project);
@@ -815,14 +820,12 @@ final class TestSteps {
 
     /**
      * The tests a dirty suite runs, as the forecast says them: {@code all} of the {@code estimated},
-     * or, where the classes' cones replay some once the pending compiles are built ({@link
-     * #replayedByCones}), the rest of them, which {@code s} then counts ({@link
+     * or, where the classes' cones replay some once the pending builds are done ({@code replayed},
+     * from {@link #replayedByCones}), the rest of them, which {@code s} then counts ({@link
      * ForecastScope#rerunTests}).
      */
     private static String coneTests(
-            ForecastScope s, ForecastScope.Prepared prepared, boolean kspRuns, int estimated, String all)
-            throws Exception {
-        TestClassRecording.Replayed replayed = replayedByCones(s, prepared, kspRuns);
+            ForecastScope s, TestClassRecording.@Nullable Replayed replayed, int estimated, String all) {
         if (replayed == null || replayed.classes() == 0) return all;
         s.rerunTests = (int) Math.max(0, estimated - replayed.tests());
         return "~" + ForecastSteps.count(s.rerunTests, "test") + " · " + replayed.classes()
@@ -830,17 +833,24 @@ final class TestSteps {
     }
 
     /**
-     * Which of the suite's classes replay once the pending compiles are built, by their cones ({@link TestClassRecording#replayedAfter}), or null when the forecast counts them all:
-     * a module not under {@code [test] cache = "cone"}, a test source or KSP round that moves, a
-     * worker jar its stamp hashes rebuilding, or a dirty sibling whose edit the forecast cannot read.
+     * Which of the suite's classes replay once the pending compiles are built, by their cones ({@link
+     * TestClassRecording#replayedAfter}), with each worker jar its stamp hashes that is rebuilding run
+     * by the classes that read it, or null when the forecast counts them all: a module not under
+     * {@code [test] cache = "cone"}, a test source or KSP round that moves, or a dirty sibling whose
+     * edit the forecast cannot read.
      */
     private static TestClassRecording.@Nullable Replayed replayedByCones(
             ForecastScope s, ForecastScope.Prepared prepared, boolean kspRuns) throws Exception {
         if (s.testDirty || kspRuns) return null;
-        if (TestStampInputs.testCache(s.project, s.dir) != TestCache.CONE) return null;
-        if (TestStampInputs.rebuildingWorker(s.dir, s.project, s.orderDeps) != null) return null;
         var edits = s.pendingEdits();
         if (edits == null) return null;
+        return replayedByCones(s, prepared, edits);
+    }
+
+    /** {@link #replayedByCones} over {@code edits}, with the worker jars rebuilding; null off {@code "cone"}. */
+    private static TestClassRecording.@Nullable Replayed replayedByCones(
+            ForecastScope s, ForecastScope.Prepared prepared, List<SourceApiIndex.Hint> edits) throws Exception {
+        if (TestStampInputs.testCache(s.project, s.dir) != TestCache.CONE) return null;
         BuildLayout layout = prepared.parsed().layout();
         return TestClassRecording.replayedAfter(
                 s.dir,
@@ -848,7 +858,8 @@ final class TestSteps {
                 layout.testClassesDir(),
                 layout.classesDir(),
                 prepared.classpaths().testRuntime(),
-                edits);
+                edits,
+                TestStampInputs.rebuildingWorkers(s.dir, s.project, s.orderDeps).values());
     }
 
     /**
@@ -900,7 +911,7 @@ final class TestSteps {
                     SessionContext.current().testSelection(),
                     KeyContract.SUITE.keyVersion(),
                     OrchestratorCode.digest());
-            if (jk == null) tests = coneTests(s, prepared, kspRuns, estimated, tests);
+            if (jk == null) tests = coneTests(s, replayedByCones(s, prepared, kspRuns), estimated, tests);
             String why = jk != null
                     ? "run tests · " + jk + " · " + tests
                     : jarOnly
@@ -912,6 +923,8 @@ final class TestSteps {
         // sibling is rebuilding: the run hashes the rebuilt jar, the jar on disk is the old one.
         String worker = TestStampInputs.rebuildingWorker(s.dir, s.project, s.orderDeps);
         if (worker != null) {
+            // Nothing on the suite's classpath moves: under cones only the classes that read the jar run.
+            tests = coneTests(s, replayedByCones(s, prepared, List.of()), estimated, tests);
             return new TaskForecast.Task(
                     TaskNames.RUN_TESTS,
                     TaskForecast.Status.RUN,

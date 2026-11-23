@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.task.TestStamp;
 import cc.jumpkick.test.ClassCones;
+import cc.jumpkick.test.ClassReads;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -237,6 +238,62 @@ class ClassKeysTest {
         assertThat(stampKey(cone, nothing, v25, null, ws))
                 .as("a class keyed by its cone started no program")
                 .isEqualTo(stampKey(cone, nothing, v24, null, ws));
+    }
+
+    /**
+     * A worker jar the suite's JVMs are handed by path (a nested engine's) keys a class only where
+     * the class read it, as a code file by content, or where the class is keyed by its module: a
+     * rebuilt engine jar moves neither the key of a class that never opened it nor its suite part.
+     */
+    @Test
+    void a_worker_jar_keys_only_the_classes_that_read_it(@TempDir Path ws) throws Exception {
+        ClassCones.Cone cone = ClassCones.index(List.of(Files.createDirectories(ws.resolve("classes"))))
+                .cone("demo.T");
+        Path jar = Files.createDirectories(ws.resolve("engine/target")).resolve("engine-all.jar");
+        Files.writeString(jar, "v1");
+        List<String> v1 = List.of("sel:fast", "worker:jk.engine.jar=v1");
+        List<String> v2 = List.of("sel:fast", "worker:jk.engine.jar=v2");
+        assertThat(ClassKeys.replacedToken("worker:jk.engine.jar=v1")).isTrue();
+        assertThat(ClassKeys.suitePart(v1, List.of(), List.of()))
+                .isEqualTo(ClassKeys.suitePart(v2, List.of(), List.of()));
+
+        ClassKeys.Observed nothing = observed(List.of(), false, List.of());
+        assertThat(stampKey(cone, nothing, v2, null, ws))
+                .as("a class that never read the jar")
+                .isEqualTo(stampKey(cone, nothing, v1, null, ws));
+
+        ClassKeys.Observed started = new ClassKeys.Observed(
+                true,
+                List.of(),
+                false,
+                List.of(),
+                false,
+                List.of(),
+                List.of(ClassReads.STARTED_PROGRAM),
+                List.of(),
+                List.of());
+        assertThat(stampKey(cone, started, v2, null, ws))
+                .as("a class in whose JVM a program was started, which may run the jar")
+                .isNotEqualTo(stampKey(cone, started, v1, null, ws));
+
+        ClassKeys.Observed java = observed(List.of(), false, List.of("/usr/bin/java"));
+        String fallback = ClassKeys.fallback(cone, java, false, false, false);
+        assertThat(stampKey(cone, java, v2, fallback, ws))
+                .as("a class keyed by its module")
+                .isNotEqualTo(stampKey(cone, java, v1, fallback, ws));
+
+        assertThat(TestClassRecording.classKeyed(
+                        List.of(ws.resolve("lib"), ws.resolve("engine/target/../target/engine-all.jar")), List.of(jar)))
+                .as("what the recording reads as keyed for every class leaves the jar to the class that read it")
+                .containsExactly(ws.resolve("lib"));
+
+        ClassKeys.Observed opened = new ClassKeys.Observed(
+                true, List.of(), false, List.of("engine/target/engine-all.jar"), false, List.of());
+        String before = stampKey(cone, opened, v1, null, ws);
+        Files.writeString(jar, "version 2");
+        assertThat(stampKey(cone, opened, v2, null, ws))
+                .as("a class that read the jar, rebuilt")
+                .isNotEqualTo(before);
     }
 
     /**

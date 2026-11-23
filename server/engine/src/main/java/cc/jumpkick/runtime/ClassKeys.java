@@ -166,11 +166,17 @@ final class ClassKeys {
     /**
      * Each program the suite's stamp keys, by name: its {@code proc:<name>=<identity>} token. The
      * stamp asks each program the suite was seen to start what it is ({@code SuitePrograms}); a
-     * class's tools stand on that answer.
+     * class's tools stand on that answer. Each worker jar the stamp keys rides along under its whole
+     * token ({@code worker:<property>=<content>}), a name no tool has: a class keyed by its module
+     * stands on it as on every program, since no record says what such a class handed the jar to.
      */
     static Map<String, String> programs(List<String> stampExtras) {
         Map<String, String> out = new TreeMap<>();
         for (String t : stampExtras) {
+            if (t.startsWith(TestStamp.WORKER_JAR)) {
+                out.put(t, t);
+                continue;
+            }
             if (!t.startsWith(PROGRAM)) continue;
             int eq = t.indexOf('=');
             if (eq > PROGRAM.length()) out.put(t.substring(PROGRAM.length(), eq), t);
@@ -189,8 +195,10 @@ final class ClassKeys {
         if (seen.tools().isEmpty()) return seen;
         List<String> named = new ArrayList<>();
         for (String tool : seen.tools()) {
-            // A program the test wrote is its own output: the class's cone holds what it is.
-            if (tool.equals(ClassReads.WRITTEN_PROGRAM)) named.add(PROGRAM + tool);
+            // A program the test wrote is its own output: the class's cone holds what it is. A
+            // program started in its JVM stands on the worker jars (key), not on an identity.
+            if (tool.equals(ClassReads.WRITTEN_PROGRAM) || tool.equals(ClassReads.STARTED_PROGRAM))
+                named.add(PROGRAM + tool);
             else named.add(programs.getOrDefault(tool, PROGRAM + tool + "=" + UNSTAMPED));
         }
         named.sort(null);
@@ -217,7 +225,10 @@ final class ClassKeys {
     /**
      * The stamp tokens a finer part replaces: the test compiles (the cone), the files and listings the
      * suite read and its use of the network (the observed part), each program's identity (which {@link
-     * #key} keys a class by as a tool, or when it is its module's). The selection stays: which suites
+     * #key} keys a class by as a tool, or when it is its module's), each worker jar the suite's JVMs
+     * are handed by path (which a class that read it keys by content as a code file, and a class keyed
+     * by its module through {@link #programs}): a nested engine's jars move with every engine edit,
+     * and a class that never opened them stands on none of their bytes. The selection stays: which suites
      * and tags run decides which of a class's methods run, so a class that passed in a run of the fast
      * tier says nothing of its methods a wider run selects. What the suite read of the caller's
      * environment stays too: no record says which class read it.
@@ -226,6 +237,7 @@ final class ClassKeys {
         return token.startsWith(TestStamp.COMPILE_TEST)
                 || token.startsWith(TestStamp.COMPILE_TEST_KOTLIN)
                 || token.startsWith(TestStamp.COMPILE_TEST_GROOVY)
+                || token.startsWith(TestStamp.WORKER_JAR)
                 || (SuiteReads.isReadsToken(token) && !SuiteEnvReads.isToken(token));
     }
 
@@ -276,6 +288,9 @@ final class ClassKeys {
         if (fallback != null) feed(md, "module:" + module);
         else feed(md, used == null ? "cone:" + cone.digest() : "cone-used:" + cone.digest(used));
         if (fallback != null) for (String program : programs.values()) feed(md, "program:" + program);
+        else if (startedProgram(seen))
+            for (String program : programs.values())
+                if (program.startsWith(TestStamp.WORKER_JAR)) feed(md, "program:" + program);
         boolean bounded = !seen.readRoots().isEmpty() || !seen.readNames().isEmpty();
         if (pooled.readsMore() || (seen.readsMore() && !bounded)) feed(md, "suite-reads:" + suiteReads.all());
         else if (seen.readsMore())
@@ -289,6 +304,17 @@ final class ClassKeys {
         if (!pooled.readsMore()) feedFiles(md, "pooled-read", pooled.reads(), workspace, listings);
         feedFiles(md, "pooled-code", pooled.code(), workspace, null);
         return new Key((fallback == null ? "" : "module:") + Hashing.hex(md.digest()), fallback);
+    }
+
+    /**
+     * Whether a program was started in the class's JVM before its window closed ({@link
+     * ClassReads#STARTED_PROGRAM}): it may run a worker jar the suite was handed by path without the
+     * class's JVM reading it, so the class stands on every worker jar ({@link #key}). {@code seen}'s
+     * tools as a record names them or as {@link #identified} names them.
+     */
+    static boolean startedProgram(Observed seen) {
+        return seen.tools().contains(ClassReads.STARTED_PROGRAM)
+                || seen.tools().contains(PROGRAM + ClassReads.STARTED_PROGRAM);
     }
 
     /** The most workspace classes outside its static cone a class may load and keep its cone. */

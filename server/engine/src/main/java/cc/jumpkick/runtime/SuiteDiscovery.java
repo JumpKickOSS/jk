@@ -81,8 +81,9 @@ final class SuiteDiscovery {
 
     /**
      * One run's recording: the flag every suite JVM starts with, when the run began, what the stamp
-     * already keys for it, and whether it runs the whole suite (not only the classes an edit
-     * affects), so that what it reads is all the suite reads.
+     * already keys for it (with the worker jars it keys by content, {@code workerJars}, which a
+     * class's key holds only where the class read them), and whether it runs the whole suite (not
+     * only the classes an edit affects), so that what it reads is all the suite reads.
      */
     record Run(
             String flag,
@@ -91,6 +92,7 @@ final class SuiteDiscovery {
             BuildLayout layout,
             TestSelection selection,
             Collection<Path> keyed,
+            Collection<Path> workerJars,
             boolean networkAllowed,
             boolean whole,
             SuiteEnvReads.Policy envPolicy,
@@ -106,6 +108,7 @@ final class SuiteDiscovery {
                     layout,
                     selection,
                     keyed,
+                    workerJars,
                     networkAllowed,
                     false,
                     envPolicy,
@@ -131,6 +134,7 @@ final class SuiteDiscovery {
                     moduleDir,
                     layout,
                     keyed,
+                    workerJars,
                     ledger,
                     moduleLabel,
                     testClasses,
@@ -226,6 +230,7 @@ final class SuiteDiscovery {
             Path moduleDir,
             TestSelection selection,
             Collection<Path> keyed,
+            Collection<Path> workerJars,
             boolean networkAllowed,
             boolean whole,
             JkBuild project)
@@ -239,6 +244,7 @@ final class SuiteDiscovery {
                 layout,
                 selection,
                 List.copyOf(keyed),
+                List.copyOf(workerJars),
                 networkAllowed,
                 whole,
                 SuiteEnvReads.Policy.of(project),
