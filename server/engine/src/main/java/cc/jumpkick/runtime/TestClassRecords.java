@@ -453,9 +453,7 @@ final class TestClassRecords {
             f.string("classKey", shadow.key())
                     .optionalString("coneUsed", shadow.used())
                     .optionalString("fallback", shadow.fallback())
-                    .optionalString("wouldRun", shadow.why())
-                    .optionalString("classKeyCarried", shadow.carriedKey())
-                    .optionalString("coneUsedCarried", shadow.carriedUsed());
+                    .optionalString("wouldRun", shadow.why());
             if (!shadow.reflective().isEmpty()) f.array("reflective", shadow.reflective());
         }
         if (obs != null) {
@@ -487,9 +485,6 @@ final class TestClassRecords {
      * its window ({@link ClassCones.Cone#used}, null when that is not known), why it is keyed by its
      * module, its cone ({@code <digest> <size>}), why per-class selection would have run it (null:
      * replayed), and the workspace classes it loaded outside its static cone, which its cone holds too.
-     * Where earlier classes' uses were carried into its own and that changed which ran, its key and
-     * used classes so carried ({@code carriedKey} null otherwise; {@code carriedUsed} null with it,
-     * or when a carried use went unnamed).
      */
     record Shadowed(
             String key,
@@ -497,9 +492,7 @@ final class TestClassRecords {
             @Nullable String fallback,
             @Nullable String cone,
             @Nullable String why,
-            List<String> reflective,
-            @Nullable String carriedKey,
-            @Nullable String carriedUsed) {}
+            List<String> reflective) {}
 
     /** Record the classes of {@code recorded} with what {@code seen} and {@code lookups} say, no shadow. */
     static void write(

@@ -139,7 +139,6 @@ class ClassReadsTest {
                 recordings,
                 ws,
                 layout,
-                false,
                 classes -> classes.contains("demo.IntegrationTest") ? "test:integration" : "test:test");
 
         assertThat(seen.pooled("test:test").reads())
@@ -153,11 +152,7 @@ class ClassReadsTest {
                 .containsExactlyInAnyOrder(unit, integration);
 
         ClassReads.Attributed untold = ClassReads.attribute(
-                recordings,
-                ws,
-                layout,
-                false,
-                classes -> classes.contains("demo.IntegrationTest") ? null : "test:test");
+                recordings, ws, layout, classes -> classes.contains("demo.IntegrationTest") ? null : "test:test");
         assertThat(untold.launches()).as("one recording's launch unknown").isEmpty();
         assertThat(untold.pooled("test:test").reads())
                 .as("so every launch stands on every JVM's pool")
@@ -189,7 +184,6 @@ class ClassReadsTest {
                 recordings,
                 ws,
                 layout,
-                false,
                 classes -> classes.contains("demo.IntegrationTest") ? "test:integration" : "test:test");
 
         assertThat(Objects.requireNonNull(seen.of("test:test", "demo.MixedTest"))
@@ -202,11 +196,7 @@ class ClassReadsTest {
                 .containsExactly(engineRead);
 
         ClassReads.Attributed untold = ClassReads.attribute(
-                recordings,
-                ws,
-                layout,
-                false,
-                classes -> classes.contains("demo.IntegrationTest") ? null : "test:test");
+                recordings, ws, layout, classes -> classes.contains("demo.IntegrationTest") ? null : "test:test");
         assertThat(Objects.requireNonNull(untold.of("test:test", "demo.MixedTest"))
                         .reads())
                 .as("one recording's launch unknown: every window of the class is its row's")
@@ -287,59 +277,6 @@ class ClassReadsTest {
                 .as("what ran before any window left state every class may read")
                 .isTrue();
         assertThat(first.usedMore()).isFalse();
-    }
-
-    /**
-     * Code a class runs once for its JVM (a cache it fills) shows in the window of whichever class
-     * ran first. Carried, each later class of the JVM holds it too; a class of another JVM does not.
-     */
-    @Test
-    void carried_uses_reach_every_later_class_of_the_jvm_and_no_other(@TempDir Path tmp) throws Exception {
-        Path ws = Files.createDirectories(tmp.resolve("ws"));
-        Path recordings = Files.createDirectories(tmp.resolve("rec"));
-        for (String jvm : List.of("one", "two")) {
-            try (Recording r = new Recording()) {
-                r.enable(ClassReads.WINDOW_EVENT).withThreshold(Duration.ZERO);
-                r.enable(ClassReads.USE_EVENT);
-                r.start();
-                if (jvm.equals("one")) {
-                    Window first = window("demo.ATest");
-                    use("demo.ATest");
-                    use("demo.Manifests");
-                    first.commit();
-                    Window second = window("demo.BTest");
-                    use("demo.BTest");
-                    second.commit();
-                } else {
-                    Window other = window("demo.CTest");
-                    use("demo.CTest");
-                    other.commit();
-                }
-                r.stop();
-                r.dump(recordings.resolve(jvm + ".jfr"));
-            }
-        }
-        ClassReads.Layout layout = new ClassReads.Layout(List.of(), List.of(), Set.of(), ws, null);
-
-        ClassReads.Attributed plain = ClassReads.attribute(recordings, ws, layout);
-        ClassReads.Observation later = Objects.requireNonNull(plain.classes().get("demo.BTest"));
-        assertThat(later.carried()).isFalse();
-        assertThat(later.usedSoFar("demo.Manifests")).isFalse();
-
-        ClassReads.Attributed carried = ClassReads.attribute(recordings, ws, layout, true);
-        ClassReads.Observation first = Objects.requireNonNull(carried.classes().get("demo.ATest"));
-        ClassReads.Observation second = Objects.requireNonNull(carried.classes().get("demo.BTest"));
-        ClassReads.Observation other = Objects.requireNonNull(carried.classes().get("demo.CTest"));
-        assertThat(second.carried()).isTrue();
-        assertThat(second.used("demo.Manifests"))
-                .as("not run in its own window")
-                .isFalse();
-        assertThat(second.usedSoFar("demo.Manifests"))
-                .as("run in an earlier window of its JVM")
-                .isTrue();
-        assertThat(first.usedSoFar("demo.BTest")).as("a later class's code").isFalse();
-        assertThat(other.usedSoFar("demo.Manifests")).as("another JVM").isFalse();
-        assertThat(second.usedSoFarMore()).isFalse();
     }
 
     private static void use(String className) {

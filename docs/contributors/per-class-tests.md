@@ -116,10 +116,24 @@ and reads in the window of whichever class first needs it: that class's `coneUse
 `readRoots` hold it, and a later class that reads what it filled holds none of it. Classes reach
 their JVMs in no fixed order, so a class's record can differ from run to run with no code changed,
 and a body-only edit of code that only fills such a cache runs the class that filled it and replays
-a later class that read the cache (the shared-state hole below). With `JK_TEST_SHADOW_CARRY=on` in
-the caller's shell, the shadow also keys each class over the uses of every window that started
-before its own in its JVM (`classKeyCarried` and `coneUsedCarried` in its row, where they differ)
-and logs how many classes that would run (`wouldRunCarried`). Selection does not use it.
+a later class that read the cache (the shared-state hole below). A later class that calls into the
+class that filled the cache marks it in its own window, so the hole is a cache that some other class
+derived from it.
+
+Keying each class over the uses of every window that started before its own in its JVM would close
+the hole, and was priced in shadow and turned down. On bocabox (24 CPUs, 30 GiB, shared, load
+average near 50), the shadow keyed jk-engine's 958 fast-tier classes both ways in forced runs
+(`jk test -m jk-engine -X -r`), each after the one before had left its records:
+
+| Change since the run before | Classes that would run | Carried |
+|-----------------------------|------------------------|---------|
+| None | 0 | 0 |
+| Body of `PluginTableRegistry.loadBuiltIns`, the plugin manifests a JVM parses once | 793 | 872 |
+| Body of `SelfHostEngine.selfHosted` | 60 | 390 |
+
+Carrying adds 79 classes to the edit of the cache-filler, none of which ran its code in its own
+window, and 330 to the ordinary edit, six and a half times as many, since an early window's uses
+spread to every later class of its JVM. Selection keys each class over its own window's uses.
 
 Sibling jars are marked because a module's cones cross into them: the classes of jk-cli-e2e and
 jk-engine-e2e reach jk-engine through its jar, and an unmarked jar keyed every class of it by its

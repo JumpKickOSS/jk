@@ -12,7 +12,7 @@
 #   import <dir> <member>...   add the rows of <dir>/<member>/test-classes.ndjson to the member's own
 #                              records: a class it has no row of gets the shipped one, and a row an
 #                              earlier import added is replaced by a newer one. The rows are added
-#                              without their keys (classKey, classKeyCarried), so jk never replays a
+#                              without their key (classKey), so jk never replays a
 #                              class on another checkout's run: it ranks by them and runs the class.
 #                              A row jk wrote here is never touched.
 #   classes <member>           print `<class> here|shipped` for each top-level class the member has a
@@ -104,7 +104,7 @@ case "$1" in
           def row: if type == "object" and (has("kind") | not) and (.launch | type == "string")
             and (.container | type == "array") then .container | length > 0 else false end;
           def key: "\(.launch)|\(.container | tojson)";
-          (reduce ($shipped | split("\n")[] | fromjson? // empty | select(row) | del(.classKey, .classKeyCarried)) as $r
+          (reduce ($shipped | split("\n")[] | fromjson? // empty | select(row) | del(.classKey)) as $r
             ({}; ($r | key) as $k | if (.[$k].ranAt // -1) < ($r.ranAt // 0) then .[$k] = $r else . end)) as $by
           | ($own | split("\n") | map(select(length > 0))) as $lines
           | (reduce ($lines[] | fromjson? // null | select(row) | key) as $k ({}; .[$k] = true)) as $seen

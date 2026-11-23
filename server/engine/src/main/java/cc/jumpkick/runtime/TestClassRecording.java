@@ -140,7 +140,6 @@ final class TestClassRecording {
                                 javaHome,
                                 scratch,
                                 temp),
-                        TestTelemetry.carry(),
                         launchOf(ran));
                 long attributedMs = (Clock.SYSTEM.nanos() - started) / 1_000_000;
                 TestClassRecords.Lookups lookups = TestClassRecords.Lookups.read(EnvReadReport.recordDir(moduleDir));
