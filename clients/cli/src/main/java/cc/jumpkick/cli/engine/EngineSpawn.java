@@ -181,7 +181,8 @@ public final class EngineSpawn {
         }
     }
 
-    private static boolean spawnForbidden() {
+    /** Whether this process may not start an engine ({@link EnginePaths#NO_SPAWN_ENV}): every fast-tier test JVM. */
+    static boolean spawnForbidden() {
         return EnvValues.parseBool(System.getenv(EnginePaths.NO_SPAWN_ENV)).orElse(false);
     }
 

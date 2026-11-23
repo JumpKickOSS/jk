@@ -635,7 +635,7 @@ in     = "clients/cli/src/test/java/cc/jumpkick/cli/engine/EngineFleetCommandLin
 reason = "fixture for a retired LOCALAPPDATA layout"
 
 [[guards.single-home-root.allow]]
-in     = "e2e/cli/src/test/java/cc/jumpkick/command/WrapperTemplateTest.java"
+in     = "clients/cli/src/test/java/cc/jumpkick/command/WrapperTemplateTest.java"
 reason = "asserts the wrapper template does not contain the retired variables"
 
 [[guards.single-home-root.allow]]

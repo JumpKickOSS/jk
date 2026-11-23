@@ -15,6 +15,11 @@ import org.junit.jupiter.api.extension.ExtensionContext;
  * teardown is clean
  * </ul>
  *
+ * <p>Neither runs in a JVM that may not start an engine ({@link EngineSpawn#spawnForbidden}, every
+ * fast-tier JVM): no engine can serve its classes, and materializing reads the engine assembly the
+ * suite is handed, so that read would key every class after it in the JVM by the engine's bytes and
+ * an edit anywhere in the engine would run them all again.
+ *
  * <p>Keeps one warm engine across methods and classes. TempDir cleanup uses
  * {@link JkTempDirDeletionStrategy}: stop engine only when a delete fails. A test that needs
  * a fresh engine stops it itself ({@code IsolatedStore} classes already do).
@@ -25,6 +30,7 @@ public final class EngineTestExtension implements BeforeAllCallback {
 
     @Override
     public void beforeAll(ExtensionContext context) {
+        if (EngineSpawn.spawnForbidden()) return;
         EngineTestSupport.ensureEngineMaterialized();
         // Root-store AutoCloseable: JUnit closes it when the whole suite (this JVM) ends.
         context.getRoot().getStore(NS).computeIfAbsent("engine-teardown", _ ->

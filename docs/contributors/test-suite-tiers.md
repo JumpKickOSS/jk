@@ -100,6 +100,15 @@ engine classes; its `jk-engine` test edge is what hands its JVMs the engine and 
 build made and isolates their `JK_HOME` and `JK_STATE_DIR`. The harness both share (output capture,
 the isolated roots, the engine extension e2e/cli registers) is `clients/cli`'s `src/fixtures`.
 
+**A fast class in `e2e/cli` reads no engine and starts no program.** Its JVMs are handed the
+engine assembly, so a class that read it, or ran in a JVM where a program was started, is keyed by
+the engine's bytes, and so is every class after it in that JVM
+([per-class tests](per-class-tests.md#nested-engines-and-worker-jars)): an edit anywhere in the
+engine would run them again. The engine extension materializes the engine only in a JVM that may
+start one, never in the fast tier. A class that starts a program (Node, `git` outside its temp
+roots, an engine) is `integration`, and one that needs neither the engine's classes nor a real
+engine lives in `clients/cli`.
+
 **A wire contract keeps both sides honest without an engine in the CLI's suite.** `shared/wire`'s
 `src/fixtures` holds `WireContract`: exchanges written as literal JSON, each a request and the lines
 the engine answers it with, naming the fields whose value is the sender's own. `server/engine`'s

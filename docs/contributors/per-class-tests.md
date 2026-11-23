@@ -164,6 +164,13 @@ A worker jar keys a class when:
   `git` in a repository a test made is no such program;
 - the class is keyed by its module, as it stands on every program the stamp keys.
 
+So a fast-tier class of such a suite replays after an engine edit outside its cone only when its
+JVM read no worker jar and started no program. jk-cli-e2e's engine extension materializes the
+engine only where an engine may be started, never in a fast-tier JVM, and its fast classes start
+nothing: the ones that start Node, `git` outside their temp roots or an engine are `integration`,
+and the ones that need no engine at all are clients/cli's
+([tiers](test-suite-tiers.md)).
+
 ## Static cone and observed cone
 
 The static cone is primary. It needs no run, it is the same in every JVM, and it does not depend on

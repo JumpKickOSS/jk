@@ -51,7 +51,11 @@ import org.junit.jupiter.api.io.TempDir;
  * These tests genuinely nuke the store and stub a nested engine under {@code lib/jk-engine/};
  * against the shared home that wiped the CAS/worker libs and poisoned every later class's nested
  * engine spawn with a stub jar (mass exit-70s across the integration phase).
+ *
+ * <p>Integration tier: every test gives its home a copy of the engine under test, and the hosted
+ * nukes start it.
  */
+@Tag("integration")
 class SelfNukeCommandTest {
 
     @org.junit.jupiter.api.io.TempDir
@@ -377,7 +381,6 @@ class SelfNukeCommandTest {
     }
 
     @Test
-    @Tag("integration")
     void store_nuke_wipes_the_store_and_keeps_engine_credentials_and_bin() throws Exception {
         JkDirs dirs = JkDirs.current();
         // The isolated home carries a REAL materialized engine (isolateHome copy) — the hosted
@@ -435,7 +438,6 @@ class SelfNukeCommandTest {
      * saying "delete" and meaning "empty". {@code wipeRoots} is the row set the table prints.
      */
     @Test
-    @Tag("integration")
     void store_nuke_removes_every_path_the_confirm_table_listed() throws Exception {
         JkDirs dirs = JkDirs.current();
         Files.createDirectories(dirs.productLibDir().resolve("jk-engine"));
@@ -482,7 +484,6 @@ class SelfNukeCommandTest {
      * went, and it wrote the state dir straight back under a command that had reported it deleted.
      */
     @Test
-    @Tag("integration")
     void store_and_state_nuke_leaves_no_engine_to_write_the_state_dir_back() throws Exception {
         JkDirs dirs = JkDirs.current();
         Path cas = dirs.storeDir().resolve("sha256");

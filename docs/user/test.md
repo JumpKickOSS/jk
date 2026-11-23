@@ -261,7 +261,7 @@ one `jk test -m server/engine -S EngineIT` would have stored.
 `-m` narrows the run to the selected modules **and their prerequisites**, and a prerequisite
 runs its own suite too (a green suite replays from its stamp; a dirty one runs). `-m` is the
 same cone for `jk build` and `jk test`. To reach one module's class from the workspace root,
-name the class: `jk test -m e2e/cli -S SelfNukeCommandTest` runs it in `e2e/cli`
+name the class: `jk test -m e2e/cli -S AgentReportParityTest` runs it in `e2e/cli`
 and skips the prerequisites, whose suites match nothing. A prerequisite compiles its tests and
 is judged from their class files, so it skips without a test JVM, warm engine or cold.
 The run's count is the whole cone's: `jk test -m e2e/cli` reports that module's tests

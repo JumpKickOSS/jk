@@ -5,9 +5,16 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+/**
+ * The Giter8 catalog's short names and where a short name resolves. Integration tier: resolving a
+ * name no catalog holds runs {@code git} outside the test's temp roots, which keys the class by its
+ * whole module, so in the fast tier any edit of the engine would run it again.
+ */
+@Tag("integration")
 class Giter8CatalogTest {
 
     @Test

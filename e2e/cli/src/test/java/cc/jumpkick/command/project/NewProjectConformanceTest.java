@@ -56,6 +56,7 @@ import java.util.stream.Stream;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
@@ -78,9 +79,13 @@ import org.junit.jupiter.api.io.TempDir;
  * inputs and reports what it posted and where the project went; the assertions compare every
  * surface in {@link #surfaces} with the first.
  *
- * <p>Fast tier: the engine's form, MCP handler and scaffolder run in this JVM, from a template on
- * disk, with no network and no engine; the view model runs under the Node.js this module pins.
+ * <p>The engine's form, MCP handler and scaffolder run in this JVM, from a template on disk, with no
+ * network and no engine; the view model runs under the Node.js this module pins. Integration tier:
+ * Node is a program this JVM starts, and what a started program reads no recording holds, so in the
+ * fast tier this class, and every class after it in its JVM, would stand on the engine assembly the
+ * suite is handed and run again on any edit of the engine.
  */
+@Tag("integration")
 @Timeout(value = 60, unit = TimeUnit.SECONDS)
 class NewProjectConformanceTest {
 
