@@ -139,8 +139,11 @@ the default template.
   through `jk new -t`, each format-checked; the ones in which every layout and every option appears
   at least once (`AnswerVectors.eachValue`) are built, tested and guarded clean too. The cases are
   dealt to the shard classes `TemplateCatalogShard<n>E2eTest`, which the suite's pool runs in
-  parallel JVMs (`--class 'TemplateCatalog*E2eTest'` selects them all). A template that asks
-  `native` is linked once with `jk native` when `GRAALVM_HOME` names a GraalVM, and skipped otherwise. An Android
+  parallel JVMs (`--class 'TemplateCatalog*E2eTest'` selects them all), balanced by estimated cost
+  (`BUILD_COSTS` names the templates that build far slower than the rest). A template that asks
+  `native` is linked once with `jk native --skip-tests` in quick-build mode (`-Ob`) when
+  `GRAALVM_HOME` names a GraalVM, and skipped otherwise; every link runs on the same shard, one at
+  a time with its heap capped at 3 GiB, since `native-image` takes gigabytes and every core. An Android
   template builds only where an Android SDK has its licenses accepted, and is skipped otherwise; a
   template with a known defect (`KNOWN_DEFECTS`, each with its reason) is scaffolded but not built.
 - **Conformance** (`NewProjectConformanceTest`, CLI, fast tier). One scripted answer set through

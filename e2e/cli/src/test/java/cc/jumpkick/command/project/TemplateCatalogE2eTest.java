@@ -20,6 +20,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -27,7 +28,6 @@ import java.util.jar.JarFile;
 import java.util.jar.Manifest;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.util.stream.IntStream;
 import java.util.stream.Stream;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.DynamicTest;
@@ -51,7 +51,7 @@ import org.junit.jupiter.api.io.TempDir;
  * published release at or below it, which predates whatever the checkout changed in the SDK, so the
  * scaffold's pin is moved to the checkout's SDK before it builds, as {@code
  * ThirdPartyPluginExampleTest} does with the sample. A
- * template that asks for a native binary is also linked with {@code jk native},
+ * template that asks for a native binary is also linked with {@code jk native} (quick-build mode),
  * once, where a GraalVM is available ({@code GRAALVM_HOME} with {@code native-image}); elsewhere
  * that test is skipped by assumption. An Android template is scaffolded and format-checked
  * everywhere, built only where an Android SDK with accepted licenses is installed: the test never
@@ -65,9 +65,11 @@ import org.junit.jupiter.api.io.TempDir;
  * framework e2e suites, and too long for the integration push gate. The snapshot comparison of the
  * same vectors is the fast tier's.
  *
- * <p>The cases are dealt round-robin to {@link #SHARDS} subclasses, {@code
- * TemplateCatalogShard<n>E2eTest}, so the suite's pool runs them in parallel JVMs, each with its own
- * engine and scratch and all on one warm store. Nothing here writes the shared home: a plugin
+ * <p>The cases are dealt to {@link #SHARDS} subclasses, {@code TemplateCatalogShard<n>E2eTest}, so
+ * the suite's pool runs them in parallel JVMs, each with its own engine and scratch and all on one
+ * warm store. The class takes as long as its slowest shard, so the dealing balances estimated cost
+ * ({@link #dealt}). Six because the cases are CPU-bound: on a ten-core host eight shards made every
+ * case slower and the class longer. Nothing here writes the shared home: a plugin
  * scaffold names the checkout's SDK repository in its own {@code jk.toml}. All shards: {@code jk
  * test -s slow -m e2e/cli --class 'TemplateCatalog*E2eTest'}.
  */
@@ -98,6 +100,23 @@ abstract class TemplateCatalogE2eTest {
      * silently. Delete an entry when its defect is fixed, and the template's vectors build again.
      */
     private static final Map<String, String> KNOWN_DEFECTS = Map.of();
+
+    /** About what a vector that is only scaffolded and format-checked costs, in seconds. */
+    private static final int FORMAT_COST = 2;
+
+    /** About what scaffolding, building, testing and guarding a typical template costs, in seconds. */
+    private static final int BUILD_COST = 15;
+
+    /** About what linking a scaffold with {@code jk native} costs, in seconds. */
+    private static final int LINK_COST = 30;
+
+    /**
+     * Templates whose build costs well above {@link #BUILD_COST}, by id, with about what one costs in
+     * seconds on a loaded host. Only the dealing reads it: a missing or stale entry unbalances the
+     * shards, it never drops or fails a case.
+     */
+    private static final Map<String, Integer> BUILD_COSTS =
+            Map.of("java/quarkus/hello", 80, "kotlin/quarkus/hello", 80, "java/plugin", 40);
 
     /**
      * Rows a template's lock holds though its manifest declares none of them, by id, each with the
@@ -155,8 +174,7 @@ abstract class TemplateCatalogE2eTest {
             assertThat(Class.forName(shardClass)).as(shardClass).isAssignableTo(TemplateCatalogE2eTest.class);
         }
 
-        List<DynamicTest> built = new ArrayList<>();
-        List<DynamicTest> formatted = new ArrayList<>();
+        List<Case> cases = new ArrayList<>();
         for (var e : all.entrySet()) {
             String id = e.getKey();
             Path template = e.getValue().tree();
@@ -173,24 +191,67 @@ abstract class TemplateCatalogE2eTest {
                 List<String> flags = flags(v.answers());
                 String name = id + " (" + v.label() + ")";
                 if (!toBuild.contains(v)) {
-                    formatted.add(DynamicTest.dynamicTest(
-                            name + " formats clean", () -> scaffoldAndFormatCheck(ref, name, dir, flags)));
+                    cases.add(new Case(
+                            FORMAT_COST,
+                            false,
+                            DynamicTest.dynamicTest(
+                                    name + " formats clean", () -> scaffoldAndFormatCheck(ref, name, dir, flags))));
                     continue;
                 }
-                built.add(DynamicTest.dynamicTest(name, () -> scaffoldAndCheck(id, ref, name, dir, flags)));
+                cases.add(new Case(
+                        BUILD_COSTS.getOrDefault(id, BUILD_COST),
+                        false,
+                        DynamicTest.dynamicTest(name, () -> scaffoldAndCheck(id, ref, name, dir, flags))));
                 if (!linked && Boolean.TRUE.equals(v.answers().get(NATIVE))) {
                     linked = true;
-                    built.add(DynamicTest.dynamicTest(
-                            name + " links with jk native", () -> scaffoldAndLink(ref, name, dir, flags)));
+                    cases.add(new Case(
+                            LINK_COST,
+                            true,
+                            DynamicTest.dynamicTest(
+                                    name + " links with jk native", () -> scaffoldAndLink(ref, name, dir, flags))));
                 }
             }
         }
-        return Stream.concat(dealt(built), dealt(formatted));
+        return dealt(cases, SHARDS).get(shard).stream();
     }
 
-    /** This shard's share of {@code tests}: every {@link #SHARDS}th, from its own index. */
-    private Stream<DynamicTest> dealt(List<DynamicTest> tests) {
-        return IntStream.range(0, tests.size()).filter(i -> i % SHARDS == shard).mapToObj(tests::get);
+    /**
+     * One case, about what it costs in seconds (what the dealing balances), and whether it links a
+     * native image.
+     */
+    private record Case(int cost, boolean links, DynamicTest test) {}
+
+    /**
+     * {@code cases} dealt to {@code shards} lists. Every native link goes to the first, one after
+     * another: {@code native-image} takes gigabytes of heap and every core, and three at once ran
+     * the host out of memory. Then the rest, the costliest first, each to the list whose cost
+     * is lowest so far, ties to the earlier case and the lower shard, so every shard deals the same
+     * way. Each list keeps the order it was dealt in, so a shard's long cases start while the others
+     * are still busy.
+     */
+    private static List<List<DynamicTest>> dealt(List<Case> cases, int shards) {
+        List<List<DynamicTest>> dealt = new ArrayList<>();
+        int[] load = new int[shards];
+        for (int n = 0; n < shards; n++) dealt.add(new ArrayList<>());
+        List<Case> costliestFirst = new ArrayList<>();
+        for (Case c : cases) {
+            if (c.links()) {
+                dealt.getFirst().add(c.test());
+                load[0] += c.cost();
+            } else {
+                costliestFirst.add(c);
+            }
+        }
+        costliestFirst.sort(Comparator.comparingInt(Case::cost).reversed());
+        for (Case c : costliestFirst) {
+            int least = 0;
+            for (int n = 1; n < shards; n++) {
+                if (load[n] < load[least]) least = n;
+            }
+            dealt.get(least).add(c.test());
+            load[least] += c.cost();
+        }
+        return dealt;
     }
 
     /** A template's tree in this checkout, and the ref {@code jk new -t} names it by. */
@@ -257,13 +318,22 @@ abstract class TemplateCatalogE2eTest {
      * A native vector's project linked by {@code jk native} with the GraalVM {@code GRAALVM_HOME}
      * names, into an executable at {@code target/demo}.
      */
-    private void scaffoldAndLink(String ref, String name, String dir, List<String> flags) {
+    private void scaffoldAndLink(String ref, String name, String dir, List<String> flags) throws IOException {
         String graal = System.getenv("GRAALVM_HOME");
         assumeTrue(
                 graal != null && Files.isExecutable(Path.of(graal, "bin", "native-image")),
                 "jk native needs GRAALVM_HOME naming a GraalVM with native-image");
         Path project = scaffold(ref, name, dir + "-native", flags);
-        jk(name, "-C", project.toString(), "native");
+        // The same vector's own case builds and tests it; this one asks only whether it links, so
+        // its tests are skipped and native-image runs in quick-build mode (-Ob): the same analysis
+        // and link at a lower optimization level, in about half the time. Its heap is capped below
+        // the half of the machine jk native gives it, which beside the other shards' engines ran a
+        // 10 GiB host out of memory; these small apps peak under 1 GiB.
+        Path jkToml = project.resolve("jk.toml");
+        String manifest = Files.readString(jkToml);
+        assertThat(manifest).as("%s declares [native]", name).contains("\n[native]\n");
+        Files.writeString(jkToml, manifest.replace("\n[native]\n", "\n[native]\nargs = [\"-Ob\", \"-J-Xmx3g\"]\n"));
+        jk(name, "-C", project.toString(), "native", "--skip-tests");
         Path exe = project.resolve("target/demo");
         assertThat(Files.isExecutable(exe))
                 .as("%s: jk native writes an executable at target/demo", name)
