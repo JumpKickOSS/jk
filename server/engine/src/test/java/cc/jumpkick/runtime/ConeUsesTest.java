@@ -107,6 +107,41 @@ class ConeUsesTest {
                 .isNotEqualTo(cone.digest(unused));
     }
 
+    /**
+     * A class whose cone member ran only in an earlier window of its JVM replays on an edit of that
+     * member's body; with uses carried, the shadow says it would run.
+     */
+    @Test
+    void the_shadow_prices_carrying_an_earlier_classs_uses(@TempDir Path ws) throws Exception {
+        Path classes = ws.resolve("classes");
+        write(classes, "demo/T", testClass());
+        write(classes, "demo/Dep", dep(1, CD_int, 0));
+        ClassReads.Observation obs = observation("demo.T");
+        obs.addEarlierUse("demo.Dep");
+        TestClassRecords.Outcome outcome = new TestClassRecords.Outcome("", "demo.T", 1, 0, 0, 1_000, 1);
+        TestClassRecords.Shadowed first = shadow(classes, ws).of(outcome, obs, null);
+        assertThat(first.used()).isEqualTo("40");
+        assertThat(first.carriedUsed()).as("demo.Dep ran before its window").isEqualTo("c0");
+        assertThat(first.carriedKey()).isNotNull().isNotEqualTo(first.key());
+        String row = TestClassRecords.row(outcome, obs, TestClassRecords.Lookups.none(), ws, first);
+
+        write(classes, "demo/Dep", dep(2, CD_int, 0));
+        ClassShadow after = shadow(classes, ws);
+        assertThat(after.whyRun(row, "", "demo.T"))
+                .as("its own window never ran demo.Dep")
+                .isNull();
+        assertThat(after.whyRun(row, "", "demo.T", true)).isEqualTo("key");
+        after.of(outcome, obs, row);
+        assertThat(after.wouldRun()).isZero();
+        assertThat(after.wouldRunCarried()).isEqualTo(1);
+
+        ClassReads.Observation same = observation("demo.T", "demo.Dep");
+        same.addEarlierUse("demo.Dep");
+        TestClassRecords.Shadowed unchanged = shadow(classes, ws).of(outcome, same, null);
+        assertThat(unchanged.carriedKey()).as("carrying changed nothing it ran").isNull();
+        assertThat(unchanged.carriedUsed()).isNull();
+    }
+
     private static ClassReads.Observation observation(String... used) {
         ClassReads.Observation o = ClassReads.Observation.empty();
         for (String u : used) o.addUsed(u);
@@ -141,8 +176,12 @@ class ConeUsesTest {
     }
 
     private static @Nullable String whyRun(Path classes, Path ws, String row) {
+        return shadow(classes, ws).whyRun(row, "", "demo.T");
+    }
+
+    private static ClassShadow shadow(Path classes, Path ws) {
         ClassCones.Index index = ClassCones.index(List.of(classes));
-        ClassShadow shadow = new ClassShadow(
+        return new ClassShadow(
                 index,
                 "suite",
                 ws,
@@ -154,7 +193,6 @@ class ConeUsesTest {
                 Long.MAX_VALUE,
                 false,
                 "stamp");
-        return shadow.whyRun(row, "", "demo.T");
     }
 
     private static byte[] testClass() {

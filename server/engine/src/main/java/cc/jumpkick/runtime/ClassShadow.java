@@ -66,6 +66,10 @@ final class ClassShadow {
     private final List<String> changed = new ArrayList<>();
     private final List<String> unsound = new ArrayList<>();
     private int changedCount;
+    /** Whether a class of this run or its record carried earlier classes' uses ({@link ClassReads.Observation#carried}). */
+    private boolean carrying;
+
+    private int wouldRunCarried;
     private final Map<String, Integer> reasons = new TreeMap<>();
 
     /**
@@ -136,7 +140,35 @@ final class ClassShadow {
                 workspace,
                 fallback,
                 listings);
+        String usedCarried = null;
+        String keyCarried = null;
+        if (used != null && obs != null && obs.carried()) {
+            carrying = true;
+            usedCarried = obs.usedSoFarMore() ? null : cone.used(obs::usedSoFar);
+            if (!used.equals(usedCarried)) {
+                keyCarried = ClassKeys.key(
+                                o.launch(),
+                                cone,
+                                usedCarried,
+                                suitePart,
+                                ClassKeys.identified(now, programs),
+                                programs,
+                                pooledNow,
+                                module,
+                                readsAfter,
+                                workspace,
+                                null,
+                                listings)
+                        .key();
+            } else {
+                usedCarried = null;
+            }
+        }
         String why = whyRun(previous, o.launch(), o.testClass());
+        boolean carriedBefore = previous != null && Jsonl.str(previous, "classKeyCarried") != null;
+        carrying |= carriedBefore;
+        String whyCarried = carriedBefore ? whyRun(previous, o.launch(), o.testClass(), true) : why;
+        if (whyCarried != null) wouldRunCarried++;
         ran++;
         if (why != null) {
             wouldRun++;
@@ -154,7 +186,9 @@ final class ClassShadow {
                 fallback,
                 cone.digest() + " " + cone.size(),
                 why,
-                reflective == null ? List.of() : reflective);
+                reflective == null ? List.of() : reflective,
+                keyCarried,
+                usedCarried);
     }
 
     /**
@@ -178,8 +212,19 @@ final class ClassShadow {
      */
     @Nullable
     String whyRun(@Nullable String prev, String launch, String testClass) {
+        return whyRun(prev, launch, testClass, false);
+    }
+
+    /**
+     * As {@link #whyRun(String, String, String)}; {@code carried} takes the record's key over the uses
+     * of the classes before it in its JVM too ({@code classKeyCarried}, {@code coneUsedCarried}) where
+     * the record kept one. Shadow only: what carrying uses forward would run.
+     */
+    @Nullable
+    String whyRun(@Nullable String prev, String launch, String testClass, boolean carried) {
         if (prev == null) return "no-record";
-        String prevKey = Jsonl.str(prev, "classKey");
+        String carriedKey = carried ? Jsonl.str(prev, "classKeyCarried") : null;
+        String prevKey = carriedKey != null ? carriedKey : Jsonl.str(prev, "classKey");
         if (prevKey == null) return "no-key";
         if (!"passed".equals(Jsonl.str(prev, "outcome"))) return "red";
         ClassCones.Cone cone = index.cone(testClass, Jsonl.strArray(prev, "reflective"));
@@ -188,7 +233,7 @@ final class ClassShadow {
         ClassKeys.Key now = ClassKeys.key(
                 launch,
                 cone,
-                Jsonl.str(prev, "coneUsed"),
+                Jsonl.str(prev, carriedKey != null ? "coneUsedCarried" : "coneUsed"),
                 suitePart,
                 ClassKeys.identified(fromRow(prev), programs),
                 programs,
@@ -262,6 +307,11 @@ final class ClassShadow {
         return wouldRun;
     }
 
+    /** How many classes would have run were earlier classes' uses carried into later ones' keys. */
+    int wouldRunCarried() {
+        return wouldRunCarried;
+    }
+
     /** Append this run's line to the shadow log of {@code moduleDir}: counts and a few names, bounded. */
     void log(Path moduleDir, @Nullable String stampKey, long ms) {
         Map<String, String> counts = new TreeMap<>();
@@ -271,6 +321,7 @@ final class ClassShadow {
                 .optionalString("suiteKey", stampKey)
                 .number("ran", ran)
                 .number("wouldRun", wouldRun)
+                .optionalNumber("wouldRunCarried", carrying ? wouldRunCarried : -1, -1)
                 .array("wouldRunClasses", wouldRunNames)
                 .number("changedCount", changedCount)
                 .array("changed", changed)

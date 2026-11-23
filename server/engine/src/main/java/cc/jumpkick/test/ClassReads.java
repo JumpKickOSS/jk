@@ -276,6 +276,10 @@ public final class ClassReads {
         private final BitSet used = new BitSet();
         private @Nullable UseNames useNames;
         private boolean usedMore;
+        /** Uses of the windows that started before this one in its JVM, where the attribution carries them. */
+        private @Nullable BitSet earlier;
+
+        private boolean earlierMore;
         private boolean bound;
         private final int readsKept;
 
@@ -335,6 +339,38 @@ public final class ClassReads {
         /** Whether a use went unnamed: the suite's uses named more classes than are kept. */
         public boolean usedMore() {
             return usedMore;
+        }
+
+        /** Whether the attribution carried the uses of earlier windows of its JVM into this class's. */
+        public boolean carried() {
+            return earlier != null;
+        }
+
+        /**
+         * Whether the marked class {@code binaryName}'s code ran by the end of the window: in it,
+         * outside every window, or, where uses are carried, in a window of the same JVM that started
+         * before it.
+         */
+        public boolean usedSoFar(String binaryName) {
+            if (used(binaryName)) return true;
+            UseNames names = useNames;
+            BitSet before = earlier;
+            if (names == null || before == null) return false;
+            Integer id = names.ids.get(binaryName);
+            return id != null && before.get(id);
+        }
+
+        /** Whether a use went unnamed by the end of the window, carried uses included. */
+        public boolean usedSoFarMore() {
+            return usedMore || earlierMore;
+        }
+
+        /** Take in the uses of the windows that started before this one in its JVM. */
+        void carry(BitSet uses, boolean more, UseNames names) {
+            if (earlier == null) earlier = new BitSet();
+            earlier.or(uses);
+            earlierMore |= more;
+            if (useNames == null) useNames = names;
         }
 
         /** Programs started. */
@@ -486,6 +522,16 @@ public final class ClassReads {
         public void addUsed(String binaryName) {
             UseNames names = useNames;
             addUsed(binaryName, names == null ? new UseNames() : names);
+        }
+
+        /** Note a use of an earlier window of the JVM, for a caller that keeps no names of its own. */
+        public void addEarlierUse(String binaryName) {
+            UseNames names = useNames;
+            if (names == null) useNames = names = new UseNames();
+            if (earlier == null) earlier = new BitSet();
+            int id = names.id(binaryName);
+            if (id < 0) earlierMore = true;
+            else earlier.set(id);
         }
 
         /** Take in every use of {@code pool}, what no window held. */
@@ -677,6 +723,15 @@ public final class ClassReads {
      * child JVM ({@link RecordingDump}), whose lines both passes then stream.
      */
     public static Attributed attribute(Path dir, Path cwd, Layout layout) {
+        return attribute(dir, cwd, layout, false);
+    }
+
+    /**
+     * As {@link #attribute(Path, Path, Layout)}; with {@code carryUses} each class also holds the uses
+     * of every window that started before its own in its JVM ({@link Observation#usedSoFar}), what a
+     * class sees of state an earlier class's code filled once for the JVM.
+     */
+    public static Attributed attribute(Path dir, Path cwd, Layout layout, boolean carryUses) {
         List<Path> recordings = new ArrayList<>();
         try {
             PathUtil.forEachChild(dir, (child, attrs) -> {
@@ -731,6 +786,7 @@ public final class ClassReads {
                     pass.run(EVENTS, (name, start, end, v) -> read(name, start, v, join));
                 }
                 join.finish();
+                if (carryUses) join.carryUses();
                 events += join.events;
             } catch (IOException | RuntimeException unreadable) {
                 Log.debug("class reads: recording unreadable at " + jfr, unreadable);
@@ -978,6 +1034,22 @@ public final class ClassReads {
                 if (c.getValue()[1] > lastEnd) pooled.addCode(c.getKey());
             }
             codeReads.clear();
+        }
+
+        /**
+         * Give each class the uses of the windows that started before its own. A window that started
+         * earlier and overlaps it gives all its uses, some made after it began: more than it saw.
+         */
+        void carryUses() {
+            BitSet before = new BitSet();
+            boolean more = false;
+            for (Window w : windows) {
+                Observation o = classes.get(w.testClass());
+                if (o == null) continue;
+                o.carry(before, more, useNames);
+                before.or(o.used);
+                more |= o.usedMore;
+            }
         }
     }
 

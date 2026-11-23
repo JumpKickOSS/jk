@@ -110,6 +110,17 @@ class's key; nor is a workspace class whose code ran from a copy outside the wor
 deleted (a sibling's jar a test copied into its temp directory and loaded), which is no code file
 the key holds and was never marked.
 
+**A class's uses, reads and read roots depend on the classes before it in its JVM.** Code that runs
+once per JVM (plugin manifests parsed into a static cache, the root `jk.toml` read on first ask) runs
+and reads in the window of whichever class first needs it: that class's `coneUsed`, `reads` and
+`readRoots` hold it, and a later class that reads what it filled holds none of it. Classes reach
+their JVMs in no fixed order, so a class's record can differ from run to run with no code changed,
+and a body-only edit of code that only fills such a cache runs the class that filled it and replays
+a later class that read the cache (the shared-state hole below). With `JK_TEST_SHADOW_CARRY=on` in
+the caller's shell, the shadow also keys each class over the uses of every window that started
+before its own in its JVM (`classKeyCarried` and `coneUsedCarried` in its row, where they differ)
+and logs how many classes that would run (`wouldRunCarried`). Selection does not use it.
+
 Sibling jars are marked because a module's cones cross into them: the classes of jk-cli-e2e and
 jk-engine-e2e reach jk-engine through its jar, and an unmarked jar keyed every class of it by its
 bytes, whether or not it ran.

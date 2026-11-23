@@ -128,7 +128,8 @@ final class TestClassRecording {
                                 workspace,
                                 javaHome,
                                 scratch,
-                                temp));
+                                temp),
+                        TestTelemetry.carry());
                 long attributedMs = (Clock.SYSTEM.nanos() - started) / 1_000_000;
                 TestClassRecords.Lookups lookups = TestClassRecords.Lookups.read(EnvReadReport.recordDir(moduleDir));
                 Map<String, TestClassRecords.Outcome> ran = TestClassRecords.outcomes(ledger.recorded());
