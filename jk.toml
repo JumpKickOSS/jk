@@ -162,7 +162,8 @@ guard-suites = ["test", "integration", "e2e", "tree"]
 # methods take under 2.5s alone; a method that needs more belongs in a slower tier.
 fast-method-budget = "5s"
 
-# The push gate's tier, run before pushing main. Walled off from the release site: a test that
+# The Queue tier runs it in the modules a batch changed, before the merge queue moves origin/main;
+# the Full tier runs all of it. Walled off from the release site: a test that
 # needs a published jk release is a `network` test, since the version under test is not published
 # until it ships.
 #
