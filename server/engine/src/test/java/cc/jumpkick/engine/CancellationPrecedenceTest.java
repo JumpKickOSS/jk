@@ -1,112 +1,25 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine;
 
-import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkEngineConfig;
-import cc.jumpkick.config.JobLimits;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.protocol.EngineProtocol;
-import cc.jumpkick.wire.protocol.LockRequest;
 import cc.jumpkick.wire.protocol.ProtoLifecycle;
-import com.sun.net.httpserver.HttpServer;
-import java.io.IOException;
-import java.net.InetSocketAddress;
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.time.Duration;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
 import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.Stream;
-import org.jspecify.annotations.Nullable;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 /**
- * The cancel chain against a live engine on a real socket, one precedence rule per test. A job is
- * held open by a lock request whose mock repository parks one download on a latch — that gives a
- * live jid from {@code job-start} and forks no compiler or plugin worker. The cancel reason is read
- * off the {@code request-finish} SSE frame, the same line the dashboard reads.
+ * The cancels a client asks for, by jid, by dir and by disconnecting, against a live engine on a
+ * real socket ({@link CancellationHarness}), and a finished job the end of its request does not
+ * relabel cancelled.
  */
 @Tag("integration")
-class CancellationPrecedenceTest extends EngineServerHarness {
-
-    private static final String BY_USER = "cancelled by the user (Ctrl-C, jk cancel, or the dashboard)";
-    private static final String BY_DISCONNECT = "the client disconnected before the job finished";
-    private static final String HELD_PATH = "/com/foo/leaf/maven-metadata.xml";
-
-    private HttpServer repo;
-    private final CountDownLatch held = new CountDownLatch(1);
-    private final CountDownLatch release = new CountDownLatch(1);
-    private volatile boolean holdLeaf = true;
-    private @Nullable EngineServer server;
-    private Path project;
-    private EnginePaths.@Nullable Paths paths;
-    private final List<String> engineLog = Collections.synchronizedList(new ArrayList<>());
-
-    @BeforeEach
-    void mockRepo() throws IOException {
-        System.setProperty("jk.m2.local", shortTempDir().toString()); // never touch the real ~/.m2
-        Map<String, byte[]> served = new HashMap<>();
-        seedArtifact(served, "org.junit.jupiter", "junit-jupiter", "6.1.0");
-        seedArtifact(served, "org.junit.platform", "junit-platform-launcher", "6.1.0");
-        seedArtifact(served, "com.foo", "leaf", "1.0");
-        repo = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-        repo.setExecutor(Executors.newCachedThreadPool());
-        repo.createContext("/", exchange -> {
-            String path = exchange.getRequestURI().getPath();
-            if (holdLeaf && path.equals(HELD_PATH)) {
-                held.countDown();
-                try {
-                    release.await(30, TimeUnit.SECONDS);
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                }
-            }
-            byte[] body = served.get(path);
-            if (body == null) {
-                exchange.sendResponseHeaders(404, -1);
-            } else {
-                exchange.sendResponseHeaders(200, body.length);
-                exchange.getResponseBody().write(body);
-            }
-            exchange.close();
-        });
-        repo.start();
-        project = shortTempDir();
-        Files.writeString(project.resolve("jk.toml"), """
-                group   = "com.example"
-                name    = "app"
-                version = "1.0.0"
-                jdk     = { version = "25" }
-                java    = 25
-
-                [dependencies]
-                leaf = { group = "com.foo", name = "leaf", version = "^1.0" }
-                """);
-    }
-
-    @AfterEach
-    void stopEverything() {
-        release.countDown();
-        if (server != null) server.close();
-        if (repo != null) repo.stop(0);
-    }
+class CancellationPrecedenceTest extends CancellationHarness {
 
     @Test
     void cancel_by_jid_over_a_second_connection_acks_at_once_and_the_job_finishes_cancelled_by_the_user()
@@ -201,61 +114,6 @@ class CancellationPrecedenceTest extends EngineServerHarness {
     }
 
     @Test
-    void a_wall_deadline_is_a_third_reason_and_names_itself_on_the_wire() throws Exception {
-        // The deadline is measured from job start, and the point of the test is a job cut off while
-        // parked on the held download. Fifteen seconds is past the time a cold lock takes to reach
-        // that download on a loaded machine, and short of the latch's own 30 s release, so the kill
-        // lands where the test says it does rather than in an earlier metadata fetch.
-        Iterator<String> sse = startEngine(JkEngineConfig.DEFAULTS.withJobLimits(new JobLimits(
-                0L,
-                15_000L,
-                JobLimits.DEFAULT_DETACHED_DEADLINE_MS,
-                200L,
-                500L,
-                0L,
-                JobLimits.DEFAULT_DRAIN_DEADLINE_MS)));
-        try (Client building = new Client(EnginePaths.activeSocket(paths()))) {
-            startLock(building);
-            assertThat(held.await(30, TimeUnit.SECONDS)).isTrue();
-            // The deadline's error line and the cancelled terminal race each other onto the wire:
-            // the watchdog writes the error after interrupting the runner, whose unwinding may
-            // already have settled the plan. Both must be there, and job-finish must be last.
-            List<String> rest = new ArrayList<>();
-            String line;
-            while ((line = readOne(building, rest)) != null) {
-                rest.add(line);
-                String type = EngineProtocol.typeOf(line);
-                if (EngineProtocol.ERROR.equals(type) || EngineProtocol.BUILDPLAN_FINISH.equals(type)) break;
-            }
-            unpark();
-            rest.addAll(readToEof(building));
-            List<String> types = rest.stream().map(EngineProtocol::typeOf).toList();
-            assertThat(types)
-                    .as(String.join("\n", rest))
-                    .contains(EngineProtocol.ERROR, EngineProtocol.BUILDPLAN_FINISH);
-            assertThat(types.getLast()).isEqualTo(EngineProtocol.JOB_FINISH);
-            String error = rest.stream()
-                    .filter(l -> EngineProtocol.ERROR.equals(EngineProtocol.typeOf(l)))
-                    .findFirst()
-                    .orElseThrow();
-            assertThat(Jsonl.str(error, "code")).isEqualTo(EngineProtocol.ERR_DEADLINE);
-            String terminal = rest.stream()
-                    .filter(l -> EngineProtocol.BUILDPLAN_FINISH.equals(EngineProtocol.typeOf(l)))
-                    .reduce((a, b) -> b)
-                    .orElseThrow();
-            assertThat(Jsonl.bool(terminal, "cancelled", false))
-                    .as("wire:\n" + String.join("\n", rest) + "\nengine log:\n" + String.join("\n", engineLog))
-                    .isTrue();
-        }
-        String finish = awaitSseData(sse, "request-finish");
-        assertThat(Jsonl.bool(finish, "cancelled", false)).isTrue();
-        assertThat(Jsonl.str(finish, "cancelReason"))
-                .isEqualTo("exceeded the 15000ms wall deadline (JK_ENGINE_JOB_DEADLINE_MS); cancelled")
-                .isNotEqualTo(BY_USER)
-                .isNotEqualTo(BY_DISCONNECT);
-    }
-
-    @Test
     void a_job_that_finished_is_not_relabelled_cancelled_by_the_end_of_request_eof() throws Exception {
         holdLeaf = false;
         Iterator<String> sse = startEngine(JkEngineConfig.DEFAULTS);
@@ -269,96 +127,5 @@ class CancellationPrecedenceTest extends EngineServerHarness {
         assertThat(Jsonl.bool(finish, "success", false)).isTrue();
         assertThat(Jsonl.bool(finish, "cancelled", true)).isFalse();
         assertThat(Jsonl.has(finish, "cancelReason")).isFalse();
-    }
-
-    /**
-     * Let the parked download answer once the cancel has landed, so the cancelled job unwinds now
-     * rather than at the plan's backstop for a step that ignores its cancel.
-     */
-    private void unpark() {
-        release.countDown();
-    }
-
-    private EnginePaths.Paths paths() {
-        return requireNonNull(paths, "startEngine first");
-    }
-
-    /** Start an engine with HTTP on and return the dashboard SSE stream, subscribed before any job. */
-    private Iterator<String> startEngine(JkEngineConfig config) throws Exception {
-        Path stateDir = shortTempDir();
-        EnginePaths.Paths paths = paths(stateDir);
-        this.paths = paths;
-        EngineServer server =
-                new EngineServer(paths, config, httpOnEphemeralPort(stateDir.resolve("web")), "1.0", engineLog::add);
-        this.server = server;
-        runInBackground(server);
-        waitUntil(
-                Duration.ofSeconds(10),
-                () -> Files.exists(EnginePaths.endpoint(paths))
-                        && hasContent(paths.http())
-                        && hasContent(paths.httpToken()));
-        String url = Files.readString(paths.http());
-        String token = Files.readString(paths.httpToken()).trim();
-        HttpResponse<Stream<String>> sse = HttpClient.newHttpClient()
-                .send(
-                        HttpRequest.newBuilder(URI.create(url + "api/events?access_token=" + token))
-                                .build(),
-                        HttpResponse.BodyHandlers.ofLines());
-        assertThat(sse.statusCode()).isEqualTo(200);
-        return sse.body().iterator();
-    }
-
-    /** Send the lock request and return its jid from {@code job-start}. */
-    private long startLock(Client c) throws IOException {
-        String repoUrl = "http://127.0.0.1:" + repo.getAddress().getPort();
-        c.sendLine(new LockRequest(
-                        project.toString(),
-                        shortTempDir().toString(),
-                        List.of(),
-                        false,
-                        false,
-                        repoUrl,
-                        false,
-                        false,
-                        false,
-                        false)
-                .encode());
-        String start = readUntil(c, EngineProtocol.JOB_START);
-        long jid = Jsonl.longValue(start, "jid", -1);
-        assertThat(jid).isPositive();
-        return jid;
-    }
-
-    /** How long one frame may take to arrive before the test fails naming what it saw. */
-    private static final Duration FRAME_BOUND = Duration.ofSeconds(30);
-
-    private List<String> readToEof(Client c) throws IOException {
-        List<String> lines = new ArrayList<>();
-        String line;
-        while ((line = readOne(c, lines)) != null) lines.add(line);
-        return lines;
-    }
-
-    private String readUntil(Client c, String type) throws IOException {
-        List<String> seen = new ArrayList<>();
-        String line;
-        while ((line = readOne(c, seen)) != null) {
-            seen.add(line);
-            if (type.equals(EngineProtocol.typeOf(line))) return line;
-        }
-        throw new AssertionError("stream ended before a " + type + " line; saw:\n  " + String.join("\n  ", seen)
-                + "\nengine log:\n  " + String.join("\n  ", List.copyOf(engineLog)));
-    }
-
-    /** One bounded read; a frame that does not arrive fails with the frames seen and the engine log. */
-    private @Nullable String readOne(Client c, List<String> seen) throws IOException {
-        try {
-            return c.readLine(FRAME_BOUND);
-        } catch (AssertionError timeout) {
-            throw new AssertionError(
-                    timeout.getMessage() + "; saw:\n  " + String.join("\n  ", seen) + "\nengine log:\n  "
-                            + String.join("\n  ", List.copyOf(engineLog)),
-                    timeout);
-        }
     }
 }
