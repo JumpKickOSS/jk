@@ -39,6 +39,12 @@ import org.jspecify.annotations.Nullable;
  * repointed the same way at {@link EnvLookups#start}, so a program a test starts sees the caller's
  * environment too. For that the agent lets {@code java.base} read the recorder and opens {@code
  * java.lang} to it ({@link Instrumentation#redefineModule}).
+ *
+ * <p>With {@link #USES} first in the argument, as the engine asks for a suite it replays by its
+ * classes' cones, every class loaded from a directory also gets a call to {@link ClassUses#used} at
+ * the start of each method body ({@link EntryMarks}), so the recording names the classes whose code
+ * ran in each test class's window. That one rewrite moves instructions; it needs the flight
+ * recorder's API and is not asked for under coverage.
  */
 public final class EnvProbe {
 
@@ -97,6 +103,13 @@ public final class EnvProbe {
      */
     static final String NO_PROPS = "!props ";
 
+    /**
+     * The agent argument's prefix, before any other, that has every class loaded from a directory
+     * marked so its use is recorded ({@link ClassUses}), as the engine writes it for a suite whose
+     * classes it replays by their cones; no absolute path starts so.
+     */
+    static final String USES = "+uses ";
+
     /** The agent entry point. */
     public static void premain(@Nullable String args, Instrumentation inst) {
         if (args == null || args.isBlank()) return;
@@ -104,13 +117,16 @@ public final class EnvProbe {
             check(Path.of(args.substring(CHECK.length())), inst);
             return;
         }
-        boolean props = !args.startsWith(NO_PROPS);
-        Path dir = Path.of(props ? args : args.substring(NO_PROPS.length()));
+        boolean asked = args.startsWith(USES);
+        boolean uses = asked && recordable();
+        String rest = asked ? args.substring(USES.length()) : args;
+        boolean props = !rest.startsWith(NO_PROPS);
+        Path dir = Path.of(props ? rest : rest.substring(NO_PROPS.length()));
         long pid = ProcessHandle.current().pid();
         BrokerLink link = BrokerLink.in(dir);
         EnvLookups.deliverThrough(link);
         boolean programs = link != null && openToRecorder(inst) && EnvLookups.prepareStart();
-        inst.addTransformer(new Transformer(programs, props), programs);
+        inst.addTransformer(new Transformer(programs, props, uses), programs);
         // Unhooked, the programs this JVM starts see its own environment: the engine checked this
         // JDK first ({@link #check}) and launches it with the caller's whole environment when it refuses.
         if (programs) hookProcessBuilder(inst);
@@ -133,7 +149,7 @@ public final class EnvProbe {
         else if (!EnvLookups.prepareStart())
             verdict = "unhooked: java.lang.ProcessImpl.start is not the method the probe calls";
         else {
-            inst.addTransformer(new Transformer(true, false), true);
+            inst.addTransformer(new Transformer(true, false, false), true);
             verdict = hookProcessBuilder(inst)
                     ? HOOKED
                     : "unhooked: java.lang.ProcessBuilder does not start programs through ProcessImpl.start "
@@ -179,13 +195,25 @@ public final class EnvProbe {
         }
     }
 
+    /** Whether this JVM has the flight recorder's API, which a marked class's use is recorded through. */
+    private static boolean recordable() {
+        try {
+            Class.forName("jdk.jfr.Event", false, ClassLoader.getSystemClassLoader());
+            return true;
+        } catch (ClassNotFoundException | LinkageError absent) {
+            return false;
+        }
+    }
+
     private static final class Transformer implements ClassFileTransformer {
         private final boolean programs;
         private final boolean props;
+        private final boolean uses;
 
-        Transformer(boolean programs, boolean props) {
+        Transformer(boolean programs, boolean props, boolean uses) {
             this.programs = programs;
             this.props = props;
+            this.uses = uses;
         }
 
         @Override
@@ -207,12 +235,32 @@ public final class EnvProbe {
             if (loader == null || loader == ClassLoader.getPlatformClassLoader()) return null;
             if (className != null && className.startsWith(OWN_PACKAGE)) return null;
             if (fromJdk(domain)) return null;
+            byte[] repointed;
             try {
-                return repoint(bytes, props);
+                repointed = repoint(bytes, props);
             } catch (RuntimeException malformed) {
-                return null; // the class loads as compiled
+                repointed = null; // the class loads as compiled
             }
+            if (!uses || className == null || !fromDirectory(domain)) return repointed;
+            byte[] in = repointed == null ? bytes : repointed;
+            String binaryName = className.replace('/', '.');
+            byte[] marked = EntryMarks.mark(in, ClassUses.id(binaryName));
+            if (marked == null) ClassUses.unmarked(binaryName);
+            return marked == null ? repointed : marked;
         }
+    }
+
+    /**
+     * Whether the class comes from a directory of class files, as a workspace's class trees are:
+     * a jar is a library the suite's key holds whole, or a sibling module's, whose classes key by
+     * their bytes.
+     */
+    private static boolean fromDirectory(@Nullable ProtectionDomain domain) {
+        if (domain == null || domain.getCodeSource() == null) return false;
+        var location = domain.getCodeSource().getLocation();
+        return location != null
+                && "file".equals(location.getProtocol())
+                && location.getPath().endsWith("/");
     }
 
     /** A JDK module the application loader defines ({@code jdk.compiler}, …): its code source is a {@code jrt:} URL. */

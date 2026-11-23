@@ -155,7 +155,18 @@ class ClassKeysTest {
         ClassKeys.Observed seen = observed(List.of("data/a.txt"), false, List.of());
         Map<Path, String> pass = new HashMap<>();
         String first = ClassKeys.key(
-                        "", cone, "suite", seen, Map.of(), ClassKeys.Observed.NONE, "module", "reads", ws, null, pass)
+                        "",
+                        cone,
+                        null,
+                        "suite",
+                        seen,
+                        Map.of(),
+                        ClassKeys.Observed.NONE,
+                        "module",
+                        "reads",
+                        ws,
+                        null,
+                        pass)
                 .key();
         assertThat(pass)
                 .as("the listing the pass took")
@@ -165,6 +176,7 @@ class ClassKeysTest {
         assertThat(ClassKeys.key(
                                 "",
                                 cone,
+                                null,
                                 "suite",
                                 seen,
                                 Map.of(),
@@ -251,6 +263,7 @@ class ClassKeysTest {
         return ClassKeys.key(
                         "",
                         cone,
+                        null,
                         ClassKeys.suitePart(extras, List.of(), List.of()),
                         ClassKeys.identified(seen, programs),
                         programs,
@@ -283,6 +296,7 @@ class ClassKeysTest {
         return ClassKeys.key(
                 "",
                 cone,
+                null,
                 "suite",
                 seen,
                 Map.of(),

@@ -44,15 +44,21 @@ public final class SuiteEnvDelivery implements AutoCloseable {
     /**
      * The delivery for {@code project}'s run on the JDK at {@code javaHome}, whose probe records into
      * {@code recordDir}: the probe cut under {@code cacheRoot} unless {@code classesDir} defines it
-     * ({@link EnvProbeJar#prepare}). On a JDK whose process launch the probe cannot reach ({@link
+     * ({@link EnvProbeJar#prepare}), marking the classes from directories when {@code uses}. On a JDK whose process launch the probe cannot reach ({@link
      * EnvProbeHook}), a program a test started would see the test JVM's own environment alone: the
      * run's JVMs start without the probe instead, with the caller's whole environment, and the
      * suite is keyed on all of it ({@link #unhooked}).
      */
     public static SuiteEnvDelivery prepare(
-            Path cacheRoot, Path recordDir, Path classesDir, Path javaHome, JkBuild project, WorkerEnv testEnv) {
+            Path cacheRoot,
+            Path recordDir,
+            Path classesDir,
+            Path javaHome,
+            JkBuild project,
+            WorkerEnv testEnv,
+            boolean uses) {
         SuiteEnvReads.Policy policy = SuiteEnvReads.Policy.of(project);
-        String probe = EnvProbeJar.prepare(cacheRoot, recordDir, classesDir);
+        String probe = EnvProbeJar.prepare(cacheRoot, recordDir, classesDir, uses);
         CallerEnv caller = CallerEnv.current();
         String unhooked =
                 probe == null || policy.strict() || !caller.attached() ? null : EnvProbeHook.unhooked(javaHome, probe);

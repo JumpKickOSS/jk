@@ -17,6 +17,7 @@ import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.TestCache;
 import cc.jumpkick.orchestrator.OrchestratorCode;
 import cc.jumpkick.orchestrator.TestClassMatch;
 import cc.jumpkick.orchestrator.TestRun;
@@ -46,6 +47,7 @@ import cc.jumpkick.test.SuiteEnvDelivery;
 import cc.jumpkick.test.SuiteFilter;
 import cc.jumpkick.test.SuiteReads;
 import cc.jumpkick.test.TestLauncherFailure;
+import cc.jumpkick.test.TestTelemetry;
 import cc.jumpkick.util.TestHomes;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -314,17 +316,24 @@ final class TestSteps {
 
     /**
      * How the run's test JVMs reach the caller's environment ({@link SuiteEnvDelivery}), said once
-     * per JDK when that JDK keeps the probe from the programs a test starts.
+     * per JDK when that JDK keeps the probe from the programs a test starts. A suite replayed by its
+     * classes' cones has the probe mark its classes, so its records say which classes each one ran;
+     * a coverage run does not, since the coverage agent must see the classes as compiled.
      */
-    private SuiteEnvDelivery envDelivery(TaskContext ctx, JkBuild project, WorkerEnv testEnv) {
+    private SuiteEnvDelivery envDelivery(TaskContext ctx, JkBuild project, WorkerEnv testEnv) throws IOException {
         Path javaHome = ctx.require(JAVA_HOME);
+        boolean uses = TestTelemetry.shadow()
+                && !in.session().coverage()
+                && !project.build().testCoverage()
+                && TestStampInputs.testCache(project, in.dir()) == TestCache.CONE;
         SuiteEnvDelivery env = SuiteEnvDelivery.prepare(
                 in.cache(),
                 EnvReadReport.recordDir(in.dir()),
                 ctx.require(MODULE).layout().classesDir(),
                 javaHome,
                 project,
-                testEnv);
+                testEnv,
+                uses);
         String unhooked = env.unhooked();
         if (unhooked == null) return env;
         boolean[] first = {false};

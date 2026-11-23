@@ -12,6 +12,7 @@ import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.BitSet;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
@@ -44,7 +45,10 @@ import org.jspecify.annotations.Nullable;
  * </ul>
  *
  * <p>A class file read under one of the suite's class trees is a class loading: noted by name, as
- * the observed half of the class's cone. Reads of the operating system's own trees and native
+ * the observed half of the class's cone. A class loads once per JVM, so a class's loads are not all
+ * the classes it ran: where the probe marks the class trees' classes, a {@code jk.ClassUse} event
+ * names each one whose code ran in the window ({@link Observation#used}), and a use outside every
+ * window is every class's. Reads of the operating system's own trees and native
  * libraries outside the JDK are platform evidence: kept, never keyed.
  */
 public final class ClassReads {
@@ -53,6 +57,16 @@ public final class ClassReads {
 
     /** The event the test runner marks a class's window with. */
     public static final String WINDOW_EVENT = "jk.TestClass";
+
+    /** The event the probe names a marked class with, the first time its code runs in a window. */
+    public static final String USE_EVENT = "jk.ClassUse";
+
+    /**
+     * The most distinct classes a suite's uses name, every JVM's together; past it a class that uses
+     * one more says so ({@link Observation#usedMore}) and its cone keys every class by its bytes.
+     * jk-engine's class trees hold some thousands.
+     */
+    public static final int USED_NAMES_KEPT = 16_384;
 
     /**
      * What a read means, by where it lies.
@@ -181,6 +195,8 @@ public final class ClassReads {
     public static final long PEAK_BYTES = (CLASSES_KEPT + 1) * CLASS_BYTES
             + CLASSES_KEPT * 2L * NAMES_KEPT * 64
             + LOADED_KEPT * 48L
+            + USED_NAMES_KEPT * 64L
+            + (CLASSES_KEPT + 1) * (USED_NAMES_KEPT / 8L)
             + POOLED_READS_KEPT * 200L
             + SUITE_CODE_KEPT * 200L
             + (ClassReads.WRITTEN_KEPT + ClassReads.CODE_FILES_KEPT + ClassReads.EXISTS_KEPT) * 200L;
@@ -214,6 +230,9 @@ public final class ClassReads {
         private boolean readsMore;
         private boolean codeMore;
         private boolean loadedMore;
+        private final BitSet used = new BitSet();
+        private @Nullable UseNames useNames;
+        private boolean usedMore;
         private boolean bound;
         private final int readsKept;
 
@@ -256,6 +275,23 @@ public final class ClassReads {
 
         public boolean loadedMore() {
             return loadedMore;
+        }
+
+        /**
+         * Whether the marked class {@code binaryName}'s code ran in the window, or outside every
+         * window. False for a class no mark was put in: what was used is known only where the probe
+         * marked, so a class's own name among its uses says whether its JVM was marked at all.
+         */
+        public boolean used(String binaryName) {
+            UseNames names = useNames;
+            if (names == null) return false;
+            Integer id = names.ids.get(binaryName);
+            return id != null && used.get(id);
+        }
+
+        /** Whether a use went unnamed: the suite's uses named more classes than are kept. */
+        public boolean usedMore() {
+            return usedMore;
         }
 
         /** Programs started. */
@@ -315,6 +351,28 @@ public final class ClassReads {
             addLoaded(binaryName, new int[] {1});
         }
 
+        /** Note a use, numbered in {@code names}, the suite's. */
+        void addUsed(String binaryName, UseNames names) {
+            useNames = names;
+            int id = names.id(binaryName);
+            if (id < 0) usedMore = true;
+            else used.set(id);
+        }
+
+        /** Note a use, for a caller that keeps no names of its own. */
+        public void addUsed(String binaryName) {
+            UseNames names = useNames;
+            addUsed(binaryName, names == null ? new UseNames() : names);
+        }
+
+        /** Take in every use of {@code pool}, what no window held. */
+        void addUses(Observation pool) {
+            if (pool.useNames == null) return;
+            useNames = pool.useNames;
+            used.or(pool.used);
+            usedMore |= pool.usedMore;
+        }
+
         public void addProcess(String program) {
             bound = true;
             if (processes.size() < EVIDENCE_KEPT) processes.add(program);
@@ -353,6 +411,21 @@ public final class ClassReads {
         /** Whether reading {@code p} would add to what this keeps. */
         boolean wantsRead(Path p) {
             return !readsMore && !reads.contains(p);
+        }
+    }
+
+    /** The classes a suite's uses name, numbered once for every class, at most {@link #USED_NAMES_KEPT}. */
+    static final class UseNames {
+        private final Map<String, Integer> ids = new HashMap<>();
+
+        /** The number of {@code binaryName}, or -1 when the suite already names as many as are kept. */
+        int id(String binaryName) {
+            Integer known = ids.get(binaryName);
+            if (known != null) return known;
+            if (ids.size() >= USED_NAMES_KEPT) return -1;
+            int id = ids.size();
+            ids.put(binaryName, id);
+            return id;
         }
     }
 
@@ -425,7 +498,8 @@ public final class ClassReads {
         PROCESS,
         TOOL,
         NATIVE,
-        HOST
+        HOST,
+        USE
     }
 
     /** The first pass's events and fields: the class windows and the files the JVM wrote. */
@@ -437,12 +511,20 @@ public final class ClassReads {
      * {@link #FRAME}, so one dump of the JDK's parser serves both passes.
      */
     private static final Map<String, List<String>> EVENTS = Map.of(
-            "jdk.FileRead", List.of("path"),
-            "jdk.FileWrite", List.of("path"),
-            "jdk.ProcessStart", List.of("command", "directory"),
-            "jdk.NativeLibraryLoad", List.of("name", "success"),
-            "jdk.SocketRead", List.of("host", "address"),
-            "jdk.SocketWrite", List.of("host", "address"));
+            "jdk.FileRead",
+            List.of("path"),
+            "jdk.FileWrite",
+            List.of("path"),
+            "jdk.ProcessStart",
+            List.of("command", "directory"),
+            "jdk.NativeLibraryLoad",
+            List.of("name", "success"),
+            "jdk.SocketRead",
+            List.of("host", "address"),
+            "jdk.SocketWrite",
+            List.of("host", "address"),
+            USE_EVENT,
+            List.of("className"));
 
     private static final Map<String, List<String>> ALL;
 
@@ -483,6 +565,7 @@ public final class ClassReads {
         Map<String, Observation> classes = new LinkedHashMap<>();
         int[] loadedLeft = {LOADED_KEPT};
         Observation pooled = Observation.pool();
+        UseNames useNames = new UseNames();
         SuiteCode code = SuiteCode.empty();
         boolean complete = true;
         long events = 0;
@@ -519,7 +602,7 @@ public final class ClassReads {
                         pass.run(FRAME, frame);
                     }
                 }
-                Join join = new Join(windows, written, cwd, layout, classes, pooled, code, loadedLeft);
+                Join join = new Join(windows, written, cwd, layout, classes, pooled, code, loadedLeft, useNames);
                 try (RecordingReader.Permit permit = RecordingReader.Permit.acquire()) {
                     pass.run(EVENTS, (name, start, end, v) -> read(name, start, v, join));
                 }
@@ -538,6 +621,8 @@ public final class ClassReads {
                 }
             }
         }
+        // A use outside every window (discovery, a static initialiser) leaves state any class may read.
+        for (Observation o : classes.values()) o.addUses(pooled);
         return new Attributed(classes, pooled, code, complete, recordings.size(), events);
     }
 
@@ -546,6 +631,7 @@ public final class ClassReads {
         switch (name) {
             case "jdk.FileRead" -> join.accept(at, Kind.READ, v[0]);
             case "jdk.FileWrite" -> join.accept(at, Kind.WRITE, v[0]);
+            case USE_EVENT -> join.accept(at, Kind.USE, v[0]);
             case "jdk.ProcessStart" -> {
                 // A test harness's own command around every class (CheckoutUntouched's git status)
                 // is no program the class started.
@@ -600,6 +686,9 @@ public final class ClassReads {
         /** The suite's loads left to keep, shared by its JVMs' joins. */
         private final int[] loadedLeft;
 
+        /** The classes the suite's uses name, shared by its JVMs' joins. */
+        private final UseNames useNames;
+
         /** One instance of each class name loaded, shared by every class that loaded it. */
         private final Map<String, String> names = new HashMap<>();
         /** Each code file read, by the first and the last time it was read. */
@@ -615,8 +704,10 @@ public final class ClassReads {
                 Map<String, Observation> classes,
                 Observation pooled,
                 SuiteCode suiteCode,
-                int[] loadedLeft) {
+                int[] loadedLeft,
+                UseNames useNames) {
             this.loadedLeft = loadedLeft;
+            this.useNames = useNames;
             this.suiteCode = suiteCode;
             this.windows = new ArrayList<>(windows);
             this.windows.sort(Comparator.comparingLong(Window::start));
@@ -661,6 +752,7 @@ public final class ClassReads {
                 }
                 case TOOL -> into.forEach(o -> o.addTool(value));
                 case HOST -> into.forEach(o -> o.addHost(value));
+                case USE -> into.forEach(o -> o.addUsed(value, useNames));
                 case NATIVE -> {
                     if (!underJdk(value, layout)) into.forEach(o -> o.addNative(value));
                 }

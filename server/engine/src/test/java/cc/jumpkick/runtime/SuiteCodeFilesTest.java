@@ -77,6 +77,7 @@ class SuiteCodeFilesTest {
         String key = ClassKeys.key(
                         "",
                         cone,
+                        null,
                         "suite",
                         seen,
                         Map.of(),

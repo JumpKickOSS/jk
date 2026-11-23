@@ -326,6 +326,7 @@ final class TestClassRecords {
                 .bool("attributed", obs != null);
         if (shadow != null) {
             f.string("classKey", shadow.key())
+                    .optionalString("coneUsed", shadow.used())
                     .optionalString("fallback", shadow.fallback())
                     .optionalString("wouldRun", shadow.why());
             if (!shadow.reflective().isEmpty()) f.array("reflective", shadow.reflective());
@@ -354,12 +355,14 @@ final class TestClassRecords {
     }
 
     /**
-     * What the shadow says of one class: its key over this run, why it is keyed by its module, its
-     * cone ({@code <digest> <size>}), why per-class selection would have run it (null: replayed), and
-     * the workspace classes it loaded outside its static cone, which its cone holds too.
+     * What the shadow says of one class: its key over this run, which of its cone's classes ran in
+     * its window ({@link ClassCones.Cone#used}, null when that is not known), why it is keyed by its
+     * module, its cone ({@code <digest> <size>}), why per-class selection would have run it (null:
+     * replayed), and the workspace classes it loaded outside its static cone, which its cone holds too.
      */
     record Shadowed(
             String key,
+            @Nullable String used,
             @Nullable String fallback,
             @Nullable String cone,
             @Nullable String why,

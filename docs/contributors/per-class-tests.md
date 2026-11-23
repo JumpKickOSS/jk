@@ -83,6 +83,30 @@ Bytes are hashed whole, debug attributes included. A comment line moves line num
 the classes whose cone holds the class; stripping `LineNumberTable` would replay a test that
 asserts a stack trace. Whether to strip is measured in shadow mode before it is decided.
 
+**Under `cache = "cone"`, a class keys by its bytes only where its code ran.** jk-engine's cones are
+dense: a median cone holds 4,702 of its classes, and a body-only edit of one engine class moved 718
+of 941 cones. A class whose code did not run in a test class's window cannot have decided its
+outcome through a method body, so it keys by its bytes less every method body but its static
+initialiser's (`ClassCones.bodyless`, over a constant pool built anew, so a constant only a body
+used leaves no trace): its supertypes, fields, signatures, annotations and the state its static
+initialiser leaves, which a caller sees without running the class. Which classes ran comes from
+the probe, not the loads: a class loads once per JVM, in whichever window first needs it, and in
+jk-engine `SelfHostEngine` loads within the first twelve classes of each of its four test JVMs, so a
+sound rule over loads (charge each load to every later class of the JVM) would have spared some 15
+classes. The env probe marks every class loaded from a directory (`EntryMarks`: a call to
+`ClassUses.used` at the start of every method body), and the first call since a window opened
+records a `jk.ClassUse` event, which `ClassReads` joins to the windows that hold it like a file read;
+a use outside every window counts for every class. The record row keeps which of the cone's
+directory classes ran as a bitmask over the cone in name order (`coneUsed`), so the next run takes
+the key over the same classes. A class from a jar, which the probe does not mark, keys by its bytes;
+so does every class of a test class whose own use is missing (a JVM the probe did not mark, a JDK
+without the flight recorder), whose suite named more than `USED_NAMES_KEPT` classes, or whose class
+the probe could not mark (that class is named in every window instead). A coverage run is not
+marked: JaCoCo must see the classes as compiled. The holes: a body that ran in an earlier window and
+left state a later class reads without running that class's code (a static field it changed after
+initialisation, an object it cached that the later class reads by reflection) is not in the later
+class's key.
+
 **The observed part**, from the class's last run (its record):
 - each file it read in its window (see attribution) that no other part keys, by content, with the
   listing of the directory it sits in when that directory is in the workspace tree, as the suite's
@@ -388,6 +412,12 @@ module, 89 by a key that moved, 1 red before), jk-engine-e2e 9 of 9 (all by the 
 module-keyed classes start the CLI, an engine, `git` or a build, or load code past their bound;
 neither later change replays a class that starts the CLI or an engine. How many of the 117 whose key
 moved those changes would replay is not measured.
+
+With uses marked, on bocaminipc-2 after the same body-only edit of `SelfHostEngine`: 158 of
+jk-engine's 942 fast-tier classes run (849 before), 23 because a class whose code they ran moved and 135 keyed
+by the module; the probe run took 1m 07s against 1m 59s. With selection off after a body-only edit
+that fails `ClassKeysTest` (a condition dropped from `ClassKeys.replacedToken`), all 942 ran,
+selection would have run 153, and the one class whose outcome changed was among them.
 
 **Selection.** `[test] cache = "cone"` (`TestCache.CONE`; a member takes the workspace root's when
 it says nothing). JumpKick's own root sets it. A release before it refuses `"cone"`, the pinned

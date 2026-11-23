@@ -35,7 +35,9 @@ import org.jspecify.annotations.Nullable;
  *   <li>the suite part, what every class of the suite sees: the stamp's tokens less those a finer
  *       part replaces (what the suite read of the caller's environment among those kept), every
  *       classpath entry outside the workspace by content, the resource roots;
- *   <li>the class part, its static cone ({@link ClassCones});
+ *   <li>the class part, its static cone ({@link ClassCones}): each class by its bytes, or, where
+ *       the probe told which of the cone's classes ran in the class's window, a class that did not
+ *       run by its bytes less its method bodies;
  *   <li>the observed part, what its last run read: data files by content (with the listing of a
  *       workspace directory it read in), code files loaded by path by content, the identity of each
  *       program it started that read nothing else ({@link ClassReads.Observation#tools}), and what no
@@ -169,7 +171,8 @@ final class ClassKeys {
     }
 
     /**
-     * The key of a class in {@code launch}: the suite part, {@code cone}'s digest, or with a {@code
+     * The key of a class in {@code launch}: the suite part, {@code cone}'s digest (over which of its
+     * classes ran, {@code used}, when known: {@link ClassCones.Cone#digest(String)}), or with a {@code
      * fallback} every workspace class ({@code module}, the digest of them all), and what it and the
      * pool ({@code pooled}) were seen to read. A read set past its record's bound is keyed as every
      * file the suite was found to read ({@code suiteReads}, the suite's discovered inputs as one
@@ -181,6 +184,7 @@ final class ClassKeys {
     static Key key(
             String launch,
             ClassCones.Cone cone,
+            @Nullable String used,
             String suitePart,
             Observed seen,
             Map<String, String> programs,
@@ -193,7 +197,8 @@ final class ClassKeys {
         MessageDigest md = Hashing.newSha256();
         feed(md, "suite:" + suitePart);
         feed(md, "launch:" + launch);
-        feed(md, fallback == null ? "cone:" + cone.digest() : "module:" + module);
+        if (fallback != null) feed(md, "module:" + module);
+        else feed(md, used == null ? "cone:" + cone.digest() : "cone-used:" + cone.digest(used));
         if (fallback != null) for (String program : programs.values()) feed(md, "program:" + program);
         if (seen.readsMore() || pooled.readsMore()) feed(md, "suite-reads:" + suiteReads);
         if (!seen.readsMore()) feedFiles(md, "read", seen.reads(), workspace, listings);

@@ -121,9 +121,11 @@ final class ClassShadow {
         ClassCones.Cone cone = index.cone(o.testClass(), reflective == null ? List.of() : reflective);
         String fallback = ClassKeys.fallback(cone, now, loadedMore, reflective == null, codePastBound);
         if (index.full()) fallback = "index past its bound";
+        String used = fallback == null ? used(cone, obs, o.testClass()) : null;
         ClassKeys.Key key = ClassKeys.key(
                 o.launch(),
                 cone,
+                used,
                 suitePart,
                 ClassKeys.identified(now, programs),
                 programs,
@@ -147,10 +149,21 @@ final class ClassShadow {
         }
         return new TestClassRecords.Shadowed(
                 key.key(),
+                used,
                 fallback,
                 cone.digest() + " " + cone.size(),
                 why,
                 reflective == null ? List.of() : reflective);
+    }
+
+    /**
+     * Which of the cone's classes ran in the window of {@code testClass}, or null when that is not
+     * known: no observation, a use left unnamed, or the class's own code not among its uses, which
+     * says its JVM ran unmarked.
+     */
+    static @Nullable String used(ClassCones.Cone cone, ClassReads.@Nullable Observation obs, String testClass) {
+        if (obs == null || obs.usedMore() || !obs.used(testClass)) return null;
+        return cone.used(obs::used);
     }
 
     /**
@@ -171,6 +184,7 @@ final class ClassShadow {
         ClassKeys.Key now = ClassKeys.key(
                 launch,
                 cone,
+                Jsonl.str(prev, "coneUsed"),
                 suitePart,
                 ClassKeys.identified(fromRow(prev), programs),
                 programs,

@@ -109,12 +109,17 @@ public final class SuiteReads {
                 <setting name="stackTrace">false</setting>
                 <setting name="threshold">0 ms</setting>
               </event>
+              <event name="jk.ClassUse">
+                <setting name="enabled">true</setting>
+                <setting name="stackTrace">false</setting>
+              </event>
             """;
 
     /**
      * Empty {@code dir} and write the recording settings into it; returns the flag every suite JVM
      * takes. Besides what keys the suite, the recording carries each test class's window ({@code
-     * jk.TestClass}, from the test runner) and the native libraries loaded, which {@link ClassReads}
+     * jk.TestClass}, from the test runner), the classes whose code ran in it when the probe marks them
+     * ({@code jk.ClassUse}) and the native libraries loaded, which {@link ClassReads}
      * attributes to the classes.
      */
     public static String prepare(Path dir) throws IOException {

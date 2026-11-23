@@ -273,9 +273,9 @@ class MemoryAdmissionTest {
 
     @Test
     void the_queue_is_first_come_first_served_even_when_a_later_small_job_would_fit() throws Exception {
-        // 400 MiB jobs: two fit (100 + 800 = 900 of 968). A third queues; a 10 MiB job behind it would
-        // fit the 68 MiB left, and still waits its turn.
-        FakeHeap heap = new FakeHeap(1000, 100);
+        // 1,000 MiB to hand out past the reserve, 400 MiB jobs: two fit (100 + 800 = 900). A third
+        // queues; a 10 MiB job behind it would fit the 100 MiB left, and still waits its turn.
+        FakeHeap heap = new FakeHeap(1000 + (MemoryAdmission.RESERVE_BYTES + MIB - 1) / MIB, 100);
         MemoryAdmission gate = gate(heap, (kind, dir) -> dir.equals("/small") ? 10 * MIB : 400 * MIB);
         assertThat(gate.admit(1, "build", "/a", NEVER_QUEUED, () -> false)).isEqualTo(Verdict.ADMITTED);
         assertThat(gate.admit(2, "build", "/b", NEVER_QUEUED, () -> false)).isEqualTo(Verdict.ADMITTED);

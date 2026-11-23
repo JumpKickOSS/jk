@@ -117,6 +117,57 @@ class ClassReadsTest {
         assertThat(first.reads()).as("never a read after its window closed").doesNotContain(late, b);
     }
 
+    /** The probe's use event, as the recording names it. */
+    @Name(ClassReads.USE_EVENT)
+    @StackTrace(false)
+    static final class Use extends Event {
+        @Nullable
+        String className;
+    }
+
+    @Test
+    void a_use_is_the_classes_whose_window_held_it_and_one_outside_every_window_is_every_classs(@TempDir Path tmp)
+            throws Exception {
+        Path ws = Files.createDirectories(tmp.resolve("ws"));
+        Path recordings = Files.createDirectories(tmp.resolve("rec"));
+
+        try (Recording r = new Recording()) {
+            r.enable(ClassReads.WINDOW_EVENT).withThreshold(Duration.ZERO);
+            r.enable(ClassReads.USE_EVENT);
+            r.start();
+            use("demo.Registry");
+            Window first = window("demo.ATest");
+            use("demo.ATest");
+            use("demo.Engine");
+            first.commit();
+            Window second = window("demo.BTest");
+            use("demo.BTest");
+            second.commit();
+            r.stop();
+            r.dump(recordings.resolve("one.jfr"));
+        }
+
+        ClassReads.Attributed seen =
+                ClassReads.attribute(recordings, ws, new ClassReads.Layout(List.of(), List.of(), Set.of(), ws, null));
+        ClassReads.Observation first = Objects.requireNonNull(seen.classes().get("demo.ATest"));
+        ClassReads.Observation second = Objects.requireNonNull(seen.classes().get("demo.BTest"));
+        assertThat(first.used("demo.Engine")).as("its code ran in the window").isTrue();
+        assertThat(second.used("demo.Engine"))
+                .as("loaded already, but not run in this window")
+                .isFalse();
+        assertThat(second.used("demo.BTest")).isTrue();
+        assertThat(second.used("demo.Registry"))
+                .as("what ran before any window left state every class may read")
+                .isTrue();
+        assertThat(first.usedMore()).isFalse();
+    }
+
+    private static void use(String className) {
+        Use u = new Use();
+        u.className = className;
+        u.commit();
+    }
+
     @Test
     void the_pool_names_more_files_than_a_class_keeps(@TempDir Path tmp) throws Exception {
         Path ws = Files.createDirectories(tmp.resolve("ws"));

@@ -35,7 +35,7 @@ public enum KeyContract {
      * changes reaches a suite only through the key it writes. The {@code suite-code-keyed} guard
      * keeps the types that select and judge a suite inside the one or the other.
      */
-    SUITE("933b729dc857", List.of(Sources.SERVER, Sources.SHARED), KeyContract::suiteSource),
+    SUITE("0a9de3867794", List.of(Sources.SERVER, Sources.SHARED), KeyContract::suiteSource),
 
     /**
      * The code that writes an artifact or a verdict the engine produces itself: the jar, assembly
