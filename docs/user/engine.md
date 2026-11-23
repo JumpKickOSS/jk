@@ -492,7 +492,12 @@ or there is no cgroup.
 
 If that setup cannot be done (the cgroup is shared with other processes, it is not
 writable, or the memory controller is not delegated), the engine keeps the score adjustment
-only and remembers why. On any other operating system it does neither, and does not error.
+only and remembers why. Workers then share the engine's cgroup, and one that exits by
+SIGKILL while the `oom_kill` count of that cgroup's `memory.events` rose (the host's
+`/proc/vmstat` where the cgroup has none) is reported as killed for memory: its raised score
+makes it the kernel's victim. Where that count is the host's, a worker killed by other means
+at the moment the host killed some other process for memory is reported the same way.
+On any other operating system it does neither, and does not error.
 `jk engine status` reports the mode: `cgroup (max … GiB)` (with the per-worker cap when
 there is one), `score-only (<reason>)`, or `none`. On Linux the client starts the engine in its own delegated systemd user scope
 when `systemd-run` can reach a user manager, so that cgroup is private; `JK_ENGINE_SCOPE=0`
