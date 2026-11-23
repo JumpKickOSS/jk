@@ -331,8 +331,9 @@ whose reads no recording holds (`git` 98, a program the test wrote in its own te
 loaded a workspace class its cone does not name (4).
 
 **Selection.** `[test] cache = "cone"` (`TestCache.CONE`; a member takes the workspace root's when
-it says nothing). JumpKick's own root sets it once the bootstrap pin reads the value: a release
-before it refuses `"cone"`, so the value ships reader first
+it says nothing). JumpKick's own root sets it. A release before it refuses `"cone"`, the pinned
+bootstrap release among them, so CI builds the tree with the bridge `.jk/ci/ci-bootstrap-reader`
+names, a commit that pin builds and whose JumpKick reads the value
 ([bootstrap chain](self-host.md#the-bootstrap-chain)). Before a suite runs, `TestClassRecording.unmoved`
 walks the record file a row at a time and asks `ClassShadow.whyRun`, the shadow's own question, of
 each class over the cones as they are now; a class it would replay becomes a settled entry of the

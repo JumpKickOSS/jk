@@ -161,6 +161,10 @@ guard-suites = ["test", "integration", "e2e", "tree"]
 # Every member's fast tier: a method slower than this is a warning naming it. The slowest fast
 # methods take under 2.5s alone; a method that needs more belongs in a slower tier.
 fast-method-budget = "5s"
+# A suite reruns only the classes whose cone or reads moved since they last passed; the rest replay
+# their verdict (docs/contributors/per-class-tests.md). The pinned bootstrap release refuses the
+# value, so CI builds the tree with the bridge .jk/ci/ci-bootstrap-reader names.
+cache = "cone"
 
 # The Queue tier runs it in the modules a batch changed, before the merge queue moves origin/main;
 # the Full tier runs all of it. Walled off from the release site: a test that

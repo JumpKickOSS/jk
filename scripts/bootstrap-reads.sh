@@ -13,8 +13,9 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 ref="${1:?usage: scripts/bootstrap-reads.sh <commit>}"
 sha="$(git -C "$ROOT" rev-parse --verify "$ref^{commit}")"
 source_file="shared/core/src/main/java/cc/jumpkick/lock/LockfileReader.java"
+# awk reads to the end: stopping early would kill git show with SIGPIPE, which pipefail makes fatal.
 keys="$(git -C "$ROOT" show "$sha:$source_file" \
-  | awk '/TOP_LEVEL_KEYS = Set\.of\(/ { inside = 1; next } inside { print } inside && /\);/ { exit }' \
+  | awk '!done && /TOP_LEVEL_KEYS = Set\.of\(/ { inside = 1; next } inside { print } inside && /\);/ { inside = 0; done = 1 }' \
   | grep -oE '"[a-z0-9-]+"' | tr -d '"' | sort)"
 if [[ -z "$keys" ]]; then
   echo "bootstrap-reads: no TOP_LEVEL_KEYS in $source_file at $sha" >&2

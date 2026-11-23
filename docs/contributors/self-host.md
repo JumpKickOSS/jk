@@ -365,8 +365,8 @@ two releases, in this order:
 2. **Writer second.** Only once that pin is in place does the tree start writing the new format.
    The pinned release reads it, so the self-host job keeps its bootstrap.
 
-When the tree already carries a format the pinned release cannot read — it happened once, when
-`clients/web` started writing a `[node]` lock table — CI bridges it until a release that reads the
+When the tree already carries a format the pinned release cannot read — when `clients/web` started
+writing a `[node]` lock table, and when the root set `[test] cache = "cone"` — CI bridges it until a release that reads the
 tree is hosted. `.jk/ci/ci-bootstrap-reader` names a bridge commit (one full sha) that the pinned
 release can build and whose JumpKick reads the tree; `scripts/ci-bootstrap.sh` checks it out beside the
 job, has the pinned release relock it in its own format (`jk lock -F`: the bridge checkout is
