@@ -24,6 +24,7 @@ import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.terminal.Style;
 import cc.jumpkick.wire.EnginePaths;
 import java.io.IOException;
+import java.nio.file.Path;
 import java.util.List;
 import org.jspecify.annotations.Nullable;
 
@@ -75,8 +76,7 @@ public final class WebCommand implements CliCommand {
             return fail(json, e.getMessage(), Exit.SOFTWARE);
         }
 
-        EngineProbe.Status status =
-                EngineProbe.status(EnginePaths.activeSocket(paths)).orElse(null);
+        EngineProbe.Status status = answer(EnginePaths.activeSocket(paths), EngineProbe.Patience.DEFAULT);
         if (status == null) {
             return fail(json, "Engine did not answer after start", Exit.SOFTWARE);
         }
@@ -123,6 +123,17 @@ public final class WebCommand implements CliCommand {
             }
         }
         return Exit.SUCCESS;
+    }
+
+    /**
+     * The status of the engine just ensured, giving a silent one {@code patience}. On a loaded host
+     * an engine that has only now started, or is in a collection pause, can take longer than one
+     * probe's reply timeout to answer; the ensure has already seen it, so the silence is a wait,
+     * not an absence. Null when nothing listens or the engine stays silent throughout.
+     * Package-visible for tests.
+     */
+    static EngineProbe.@Nullable Status answer(Path socket, EngineProbe.Patience patience) {
+        return EngineProbe.statusPatiently(socket, patience).orElse(null);
     }
 
     private static int fail(boolean json, @Nullable String why, int exit) {

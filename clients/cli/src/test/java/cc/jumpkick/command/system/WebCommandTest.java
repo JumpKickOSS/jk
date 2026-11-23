@@ -4,14 +4,47 @@ package cc.jumpkick.command.system;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.CommandDispatch;
+import cc.jumpkick.cli.engine.EngineProbe;
+import cc.jumpkick.cli.engine.ScriptedEngine;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.testing.ShortTempDirs;
 import cc.jumpkick.wire.EnginePaths;
+import cc.jumpkick.wire.protocol.EngineProtocol;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.io.TempDir;
 
 class WebCommandTest {
+
+    private static final EngineProbe.Patience QUICK = new EngineProbe.Patience(200, 2, Duration.ofMillis(20));
+
+    @RegisterExtension
+    final ShortTempDirs tempDirs = new ShortTempDirs("jkw-");
+
+    @Test
+    void an_engine_that_answers_after_one_silent_probe_still_gives_its_dashboard() throws Exception {
+        Path socket = tempDirs.create().resolve("gen1.sock");
+        try (ScriptedEngine ignored = new ScriptedEngine(socket, (type, connection) -> {
+            if (connection == 1) return null;
+            return EngineProtocol.HELLO.equals(type)
+                    ? ScriptedEngine.helloAck("9.9.9", 4242)
+                    : ScriptedEngine.statusAck("9.9.9", 4242, 0, false);
+        })) {
+            assertThat(WebCommand.answer(socket, QUICK))
+                    .as("a loaded engine's late answer is waited for")
+                    .extracting(EngineProbe.Status::pid)
+                    .isEqualTo(4242L);
+        }
+    }
+
+    @Test
+    void nothing_listening_has_no_answer() throws Exception {
+        assertThat(WebCommand.answer(tempDirs.create().resolve("gen1.sock"), QUICK))
+                .isNull();
+    }
 
     @Test
     void the_printed_url_is_signed_only_when_it_may_be(@TempDir Path tmp) throws Exception {
