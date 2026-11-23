@@ -6,6 +6,7 @@ import cc.jumpkick.host.Log;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.runtime.base.TestEnv;
 import cc.jumpkick.task.JdkToolchain;
 import cc.jumpkick.test.ClassCones;
 import cc.jumpkick.test.ClassReads;
@@ -105,11 +106,21 @@ final class TestClassRecording {
                 List<Path> coneRoots = roots.cone();
                 List<Path> external = roots.external();
                 List<Path> scratch = List.of(target, TestHomes.root());
+                List<Path> temp = new ArrayList<>();
+                for (Path t : TestEnv.tempRoots(moduleDir)) {
+                    if (!t.toAbsolutePath().normalize().startsWith(workspace)) temp.add(t);
+                }
                 ClassReads.Attributed seen = ClassReads.attribute(
                         SuiteReads.recordingDir(target),
                         moduleDir,
                         new ClassReads.Layout(
-                                roots.classTrees(), List.copyOf(keyed), roots.jars(), workspace, javaHome, scratch));
+                                roots.classTrees(),
+                                List.copyOf(keyed),
+                                roots.jars(),
+                                workspace,
+                                javaHome,
+                                scratch,
+                                temp));
                 long attributedMs = (Clock.SYSTEM.nanos() - started) / 1_000_000;
                 TestClassRecords.Lookups lookups = TestClassRecords.Lookups.read(EnvReadReport.recordDir(moduleDir));
                 Map<String, TestClassRecords.Outcome> ran = TestClassRecords.outcomes(ledger.recorded());
@@ -146,6 +157,7 @@ final class TestClassRecording {
                             workspace,
                             pooledBefore,
                             pooledNow,
+                            ClassKeys.programs(stampExtras),
                             readsBefore,
                             readsAfter,
                             SuiteCodeFiles.since(previous, workspace),
@@ -258,6 +270,7 @@ final class TestClassRecording {
                     workspace,
                     ClassShadow.pooledOf(header),
                     ClassKeys.Observed.NONE,
+                    ClassKeys.programs(stampExtras),
                     reads,
                     reads,
                     SuiteCodeFiles.since(header, workspace),

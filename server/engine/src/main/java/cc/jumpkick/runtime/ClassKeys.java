@@ -21,6 +21,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.function.Predicate;
 import org.jspecify.annotations.Nullable;
@@ -34,8 +35,9 @@ import org.jspecify.annotations.Nullable;
  *       part replaces, every classpath entry outside the workspace by content, the resource roots;
  *   <li>the class part, its static cone ({@link ClassCones});
  *   <li>the observed part, what its last run read: data files by content (with the listing of a
- *       workspace directory it read in), code files loaded by path by content, and what no class's
- *       window held.
+ *       workspace directory it read in), code files loaded by path by content, the identity of each
+ *       program it started that read nothing else (git in a repository a test made), and what no
+ *       class's window held.
  * </ul>
  *
  * <p>A class whose cone cannot be trusted is keyed by its whole module, every workspace class on
@@ -51,7 +53,9 @@ final class ClassKeys {
     /**
      * What one class was seen to read, from its record or this run, bounded as a record holds it: a
      * class that read more data files than its record names ({@code readsMore}) is keyed on every
-     * file its suite was found to read instead.
+     * file its suite was found to read instead. {@code tools} are the programs it started that read
+     * nothing but their own identity: by name as a record holds them, by identity once {@link
+     * #identified}.
      */
     record Observed(
             boolean attributed,
@@ -59,8 +63,60 @@ final class ClassKeys {
             boolean readsMore,
             List<String> code,
             boolean codeMore,
-            List<String> processes) {
+            List<String> processes,
+            List<String> tools) {
         static final Observed NONE = new Observed(false, List.of(), false, List.of(), false, List.of());
+
+        /** A class that started no program keyed by its identity. */
+        Observed(
+                boolean attributed,
+                List<String> reads,
+                boolean readsMore,
+                List<String> code,
+                boolean codeMore,
+                List<String> processes) {
+            this(attributed, reads, readsMore, code, codeMore, processes, List.of());
+        }
+    }
+
+    /** What a tool's identity reads when the suite's stamp names no program of its name. */
+    static final String UNSTAMPED = "unstamped";
+
+    /**
+     * Each program the suite's stamp keys, by name: its {@code proc:<name>=<identity>} token. The
+     * stamp asks each program the suite was seen to start what it is ({@code SuitePrograms}); a
+     * class's tools stand on that answer.
+     */
+    static Map<String, String> programs(List<String> stampExtras) {
+        Map<String, String> out = new TreeMap<>();
+        for (String t : stampExtras) {
+            if (!t.startsWith(PROGRAM)) continue;
+            int eq = t.indexOf('=');
+            if (eq > PROGRAM.length()) out.put(t.substring(PROGRAM.length(), eq), t);
+        }
+        return out;
+    }
+
+    private static final String PROGRAM = "proc:";
+
+    /**
+     * {@code seen} with each tool named by its identity in {@code programs}: a tool the stamp names
+     * no program for reads as {@link #UNSTAMPED}, which a stamp that names it later moves, so the
+     * class runs once more rather than replay over an identity nobody asked.
+     */
+    static Observed identified(Observed seen, Map<String, String> programs) {
+        if (seen.tools().isEmpty()) return seen;
+        List<String> named = new ArrayList<>();
+        for (String tool : seen.tools()) named.add(programs.getOrDefault(tool, PROGRAM + tool + "=" + UNSTAMPED));
+        named.sort(null);
+        return new Observed(
+                seen.attributed(),
+                seen.reads(),
+                seen.readsMore(),
+                seen.code(),
+                seen.codeMore(),
+                seen.processes(),
+                named);
     }
 
     /**
@@ -125,6 +181,7 @@ final class ClassKeys {
         if (seen.readsMore() || pooled.readsMore()) feed(md, "suite-reads:" + suiteReads);
         if (!seen.readsMore()) feedFiles(md, "read", seen.reads(), workspace, listings);
         feedFiles(md, "code", seen.code(), workspace, null);
+        for (String tool : seen.tools()) feed(md, "tool:" + tool);
         if (!pooled.readsMore()) feedFiles(md, "pooled-read", pooled.reads(), workspace, listings);
         feedFiles(md, "pooled-code", pooled.code(), workspace, null);
         return new Key((fallback == null ? "" : "module:") + Hashing.hex(md.digest()), fallback);

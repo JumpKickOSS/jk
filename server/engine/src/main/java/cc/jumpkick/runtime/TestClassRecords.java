@@ -335,6 +335,7 @@ final class TestClassRecords {
                     .array("code", spelled(obs.code(), root))
                     .optionalTrue("codeMore", obs.codeMore())
                     .array("processes", List.copyOf(obs.processes()))
+                    .array("tools", List.copyOf(obs.tools()))
                     .array("nativeCode", List.copyOf(obs.nativeCode()))
                     .array("osPaths", spelled(obs.osPaths(), root))
                     .array("network", List.copyOf(obs.hosts()))

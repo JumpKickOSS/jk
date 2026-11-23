@@ -240,8 +240,58 @@ class ClassReadsTest {
                 .containsExactly(java);
     }
 
+    /**
+     * git started in a temp root reads a repository the test made: its class stands on git's
+     * identity, not its module. The same command in the workspace reads the workspace's repository.
+     */
+    @Test
+    void git_in_a_temp_root_is_keyed_by_its_identity_not_as_a_program_started(@TempDir Path tmp) throws Exception {
+        Path ws = Files.createDirectories(tmp.resolve("ws"));
+        Path temp = Files.createDirectories(tmp.resolve("temp"));
+        Path repo = Files.createDirectories(temp.resolve("repo"));
+        Path recordings = Files.createDirectories(tmp.resolve("rec"));
+
+        try (Recording r = new Recording()) {
+            r.enable("jdk.ProcessStart");
+            r.enable(ClassReads.WINDOW_EVENT).withThreshold(Duration.ZERO);
+            r.start();
+            Window own = window("demo.OwnRepoTest");
+            runIn(repo, GitCommand.of("rev-parse", "--show-toplevel"));
+            own.commit();
+            Window checkout = window("demo.CheckoutTest");
+            runIn(ws, GitCommand.of("rev-parse", "--show-toplevel"));
+            checkout.commit();
+            r.stop();
+            r.dump(recordings.resolve("one.jfr"));
+        }
+
+        ClassReads.Attributed seen = ClassReads.attribute(
+                recordings,
+                ws,
+                new ClassReads.Layout(List.of(), List.of(), Set.of(), ws, null, List.of(), List.of(temp)));
+
+        ClassReads.Observation ownRepo = Objects.requireNonNull(seen.classes().get("demo.OwnRepoTest"));
+        ClassReads.Observation inCheckout =
+                Objects.requireNonNull(seen.classes().get("demo.CheckoutTest"));
+        assertThat(inCheckout.processes()).as("git in the workspace").containsExactly("git");
+        assertThat(inCheckout.tools()).isEmpty();
+        // A host whose home is a repository encloses the temp root: git there is a program started.
+        if (GitRuns.unenclosed(List.of(temp)).isEmpty()) return;
+        assertThat(ownRepo.processes()).as("git in a repository the test made").isEmpty();
+        assertThat(ownRepo.tools()).containsExactly(GitRuns.GIT);
+    }
+
     private static void run(String... command) throws Exception {
         new ProcessBuilder(command)
+                .redirectErrorStream(true)
+                .redirectOutput(ProcessBuilder.Redirect.DISCARD)
+                .start()
+                .waitFor();
+    }
+
+    private static void runIn(Path dir, List<String> command) throws Exception {
+        new ProcessBuilder(command)
+                .directory(dir.toFile())
                 .redirectErrorStream(true)
                 .redirectOutput(ProcessBuilder.Redirect.DISCARD)
                 .start()

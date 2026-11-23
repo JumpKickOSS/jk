@@ -329,11 +329,26 @@ What the shadow showed on real runs of jk-engine (940 classes) and what closed e
   bound is keyed by its module again. The pool's code files past its bound of 4, which keyed no
   class, now hold every class to the same list.
 
+- `git` run in a repository a test made stands on git's identity, not on its module (`GitRuns`).
+  A test JVM's git reads no configuration of whoever runs it (`GIT_CONFIG_NOSYSTEM`, a
+  `GIT_CONFIG_GLOBAL` in the sandbox home, an allow-listed environment), so what is left is its
+  binary and the repository it runs in. The recording's `jdk.ProcessStart` names the command and its
+  directory; a command is a tool, kept in the class's `tools`, not its `processes`, when git is the
+  one `PATH` finds or an administered one, its directory and every `-C` lie in the test JVMs' temp
+  roots (`TestEnv.tempRoots`: the module's test temp root and `~/.jk-test-tmp`) with no repository
+  above them, and no argument names a path outside them or another host. `git --version` runs
+  anywhere. The key feeds the identity the suite's stamp gives each tool by name (`proc:git=<what it
+  says to --version>`, `ClassKeys.programs`); a stamp that names no git yet reads `unstamped`, so the
+  next run's stamp moves the key and the class runs once more. 97 classes fell back for `git` on
+  bocabox-1; after, 1 (a template-store refresh run from the workspace with `--git-dir`).
+
 Still keyed by the module after these, on bocaminipc-2 after a body-only edit of `SelfHostEngine`
 (134 of jk-engine's 941 classes, 522 before the suite's code files): a class that starts a program,
 whose reads no recording holds (`git` 98, a program the test wrote in its own temp directory 9,
 `setsid` 8, `sleep` 4, a shell or `env` 8, `node` 2, a second JDK's `java` 1), and a class that
-loaded a workspace class its cone does not name (4).
+loaded a workspace class its cone does not name (4). On bocabox-1, replaying one full jk-engine run's
+recordings through the attribution and the fallback: 143 module-keyed before `GitRuns` (`git` 97),
+53 after (`git` 1, a workspace class loaded outside the cone 17, other programs 35).
 
 **Selection.** `[test] cache = "cone"` (`TestCache.CONE`; a member takes the workspace root's when
 it says nothing). JumpKick's own root sets it. A release before it refuses `"cone"`, the pinned

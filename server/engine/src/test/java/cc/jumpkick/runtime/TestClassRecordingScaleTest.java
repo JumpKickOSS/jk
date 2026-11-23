@@ -219,6 +219,7 @@ class TestClassRecordingScaleTest {
                     ws,
                     ClassShadow.pooledOf(TestClassRecords.header(file)),
                     ClassShadow.observed(seen.pooled(), ws),
+                    Map.of(),
                     "reads",
                     "reads",
                     Long.MIN_VALUE,

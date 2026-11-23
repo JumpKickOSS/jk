@@ -292,6 +292,15 @@ public final class TestEnv {
     }
 
     /**
+     * The temp roots {@code moduleDir}'s test JVMs make their files in, outside the project: the
+     * module's own ({@link TestHomes#tmpFor}) and the short {@code @TempDir} root jk's own suites use
+     * ({@code ~/.jk-test-tmp}). What lies there a test made.
+     */
+    public static List<Path> tempRoots(Path moduleDir) {
+        return List.of(TestHomes.tmpFor(moduleDir), Path.of(System.getProperty("user.home"), SHORT_TEMP_DIR));
+    }
+
+    /**
      * The search ceilings a test JVM gets unless the module names its own: the temp root it ended up
      * with, and the short {@code @TempDir} root jk's own suites use ({@code ~/.jk-test-tmp}, see
      * {@code cc.jumpkick.testing.ShortTempDirs}). A fixture project a test builds in a temp directory

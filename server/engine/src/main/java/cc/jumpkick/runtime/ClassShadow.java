@@ -54,6 +54,7 @@ final class ClassShadow {
     private final Path workspace;
     private final ClassKeys.Observed pooledBefore;
     private final ClassKeys.Observed pooledNow;
+    private final Map<String, String> programs;
     private final String readsBefore;
     private final String readsAfter;
     private final long codeSince;
@@ -77,7 +78,8 @@ final class ClassShadow {
      * The shadow of one run: cones from {@code index}, keys under {@code suitePart}; {@code
      * pooledBefore} and {@code readsBefore} are what the records were keyed over before this run (the
      * pool of the record file's header and the suite's discovered inputs as one digest), {@code
-     * pooledNow} and {@code readsAfter} what this run leaves; {@code codeSince} is since when the code
+     * pooledNow} and {@code readsAfter} what this run leaves; {@code programs} the identity of each
+     * program the suite's stamp keys, by name ({@link ClassKeys#programs}); {@code codeSince} is since when the code
      * files the record file's header lists have held still ({@link SuiteCodeFiles#since}) and {@code
      * codePastBound} whether this run read more than such a list holds; {@code stampKey}, the
      * suite's, keys every class when the index could not hold the workspace.
@@ -88,6 +90,7 @@ final class ClassShadow {
             Path workspace,
             ClassKeys.Observed pooledBefore,
             ClassKeys.Observed pooledNow,
+            Map<String, String> programs,
             String readsBefore,
             String readsAfter,
             long codeSince,
@@ -101,6 +104,7 @@ final class ClassShadow {
         this.workspace = workspace;
         this.pooledBefore = pooledBefore;
         this.pooledNow = pooledNow;
+        this.programs = programs;
         this.readsBefore = readsBefore;
         this.readsAfter = readsAfter;
         this.codeSince = codeSince;
@@ -122,7 +126,16 @@ final class ClassShadow {
                 index::contains);
         if (index.full()) fallback = "index past its bound";
         ClassKeys.Key key = ClassKeys.key(
-                o.launch(), cone, suitePart, now, pooledNow, module, readsAfter, workspace, fallback, listings);
+                o.launch(),
+                cone,
+                suitePart,
+                ClassKeys.identified(now, programs),
+                pooledNow,
+                module,
+                readsAfter,
+                workspace,
+                fallback,
+                listings);
         String why = whyRun(previous, o.launch(), cone);
         ran++;
         if (why != null) {
@@ -155,7 +168,7 @@ final class ClassShadow {
                 launch,
                 cone,
                 suitePart,
-                fromRow(prev),
+                ClassKeys.identified(fromRow(prev), programs),
                 pooledBefore,
                 module,
                 readsBefore,
@@ -184,7 +197,8 @@ final class ClassShadow {
                 Jsonl.bool(row, "readsMore", false),
                 Jsonl.strArray(row, "code"),
                 Jsonl.bool(row, "codeMore", false),
-                Jsonl.strArray(row, "processes"));
+                Jsonl.strArray(row, "processes"),
+                Jsonl.strArray(row, "tools"));
     }
 
     /** What the record file's header says no window held; nothing when there is none. */
@@ -208,7 +222,8 @@ final class ClassShadow {
                 o.readsMore(),
                 TestClassRecords.spelled(o.code(), workspace),
                 o.codeMore(),
-                List.copyOf(o.processes()));
+                List.copyOf(o.processes()),
+                List.copyOf(o.tools()));
     }
 
     /** The classes it would have replayed whose outcome changed: an under-run, when any. */

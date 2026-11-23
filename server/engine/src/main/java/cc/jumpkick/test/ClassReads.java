@@ -67,6 +67,8 @@ public final class ClassReads {
      * @param javaHome the test JDK, whose own native libraries are no evidence of anything
      * @param scratch the run's own trees (the module's build output, the test sandbox): whatever is
      *     read there, code included, the run made, so it is no input of any class
+     * @param temp the test JVMs' own temp roots, outside the workspace: a repository there is one a
+     *     test made, so git run in it reads no input of the class ({@link GitRuns})
      */
     public record Layout(
             List<Path> classTrees,
@@ -74,7 +76,8 @@ public final class ClassReads {
             Set<Path> externalJars,
             Path workspace,
             @Nullable Path javaHome,
-            List<Path> scratch) {
+            List<Path> scratch,
+            List<Path> temp) {
         public Layout {
             classTrees = List.copyOf(normalized(classTrees));
             // Each root under both spellings (a store reached through a link, macOS's /private/var).
@@ -83,6 +86,18 @@ public final class ClassReads {
             workspace = workspace.toAbsolutePath().normalize();
             javaHome = javaHome == null ? null : javaHome.toAbsolutePath().normalize();
             scratch = List.copyOf(normalized(scratch));
+            temp = List.copyOf(normalized(temp));
+        }
+
+        /** A layout with no temp roots: every program a class started keys it by its module. */
+        public Layout(
+                List<Path> classTrees,
+                List<Path> keyed,
+                Set<Path> externalJars,
+                Path workspace,
+                @Nullable Path javaHome,
+                List<Path> scratch) {
+            this(classTrees, keyed, externalJars, workspace, javaHome, scratch, List.of());
         }
 
         /** A layout with no scratch trees of its own. */
@@ -92,7 +107,7 @@ public final class ClassReads {
                 Set<Path> externalJars,
                 Path workspace,
                 @Nullable Path javaHome) {
-            this(classTrees, keyed, externalJars, workspace, javaHome, List.of());
+            this(classTrees, keyed, externalJars, workspace, javaHome, List.of(), List.of());
         }
     }
 
@@ -182,6 +197,7 @@ public final class ClassReads {
         private final Set<Path> code = new TreeSet<>();
         private final Set<String> loaded = new HashSet<>();
         private final Set<String> processes = new TreeSet<>();
+        private final Set<String> tools = new TreeSet<>();
         private final Set<String> nativeCode = new TreeSet<>();
         private final Set<Path> osPaths = new TreeSet<>();
         private final Set<String> hosts = new TreeSet<>();
@@ -237,6 +253,14 @@ public final class ClassReads {
             return Collections.unmodifiableSet(processes);
         }
 
+        /**
+         * Programs started that read nothing the suite's key does not hold but their own identity,
+         * by name: git run in a repository a test made ({@link GitRuns}).
+         */
+        public Set<String> tools() {
+            return Collections.unmodifiableSet(tools);
+        }
+
         /** Native libraries loaded from outside the JDK. */
         public Set<String> nativeCode() {
             return Collections.unmodifiableSet(nativeCode);
@@ -283,6 +307,13 @@ public final class ClassReads {
         public void addProcess(String program) {
             bound = true;
             if (processes.size() < EVIDENCE_KEPT) processes.add(program);
+        }
+
+        /** Note a program keyed by its identity alone; past {@link #EVIDENCE_KEPT} names, a program started. */
+        public void addTool(String program) {
+            if (tools.contains(program)) return;
+            if (tools.size() < EVIDENCE_KEPT) tools.add(program);
+            else addProcess(program);
         }
 
         public void addNative(String library) {
@@ -381,6 +412,7 @@ public final class ClassReads {
         READ,
         WRITE,
         PROCESS,
+        TOOL,
         NATIVE,
         HOST
     }
@@ -396,7 +428,7 @@ public final class ClassReads {
     private static final Map<String, List<String>> EVENTS = Map.of(
             "jdk.FileRead", List.of("path"),
             "jdk.FileWrite", List.of("path"),
-            "jdk.ProcessStart", List.of("command"),
+            "jdk.ProcessStart", List.of("command", "directory"),
             "jdk.NativeLibraryLoad", List.of("name", "success"),
             "jdk.SocketRead", List.of("host", "address"),
             "jdk.SocketWrite", List.of("host", "address"));
@@ -506,7 +538,9 @@ public final class ClassReads {
             case "jdk.ProcessStart" -> {
                 // A test harness's own command around every class (CheckoutUntouched's git status)
                 // is no program the class started.
-                if (v[0] != null && !v[0].contains(GitCommand.HARNESS)) join.accept(at, Kind.PROCESS, program(v[0]));
+                if (v[0] == null || v[0].contains(GitCommand.HARNESS)) return;
+                if (GitRuns.ownRepository(v[0], v[1], join.cwd, join.gitTemp)) join.accept(at, Kind.TOOL, GitRuns.GIT);
+                else join.accept(at, Kind.PROCESS, program(v[0]));
             }
             case "jdk.NativeLibraryLoad" -> {
                 // A failed load (JDK 22 and later say so) loaded nothing.
@@ -530,6 +564,9 @@ public final class ClassReads {
         private final long[] reach; // the latest end of any window up to i
         private final Set<Path> written;
         private final Path cwd;
+        /** The temp roots a git command may run in and still read only what a test made. */
+        private final List<Path> gitTemp;
+
         private final Layout layout;
         private final Map<String, Observation> classes;
         private final Observation pooled;
@@ -568,6 +605,7 @@ public final class ClassReads {
             this.windows.sort(Comparator.comparingLong(Window::start));
             this.written = written;
             this.cwd = cwd;
+            this.gitTemp = GitRuns.unenclosed(layout.temp());
             this.layout = layout;
             this.classes = classes;
             this.pooled = pooled;
@@ -604,6 +642,7 @@ public final class ClassReads {
                     // does) is the JDK the key already holds, not a program the class depends on.
                     if (!underJdk(value, layout)) into.forEach(o -> o.addProcess(value));
                 }
+                case TOOL -> into.forEach(o -> o.addTool(value));
                 case HOST -> into.forEach(o -> o.addHost(value));
                 case NATIVE -> {
                     if (!underJdk(value, layout)) into.forEach(o -> o.addNative(value));

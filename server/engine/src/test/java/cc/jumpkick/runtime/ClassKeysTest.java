@@ -21,6 +21,9 @@ import org.junit.jupiter.api.io.TempDir;
  */
 class ClassKeysTest {
 
+    /** The name a class's record keeps for git run in a repository a test made. */
+    private static final String GIT = "git";
+
     @Test
     void a_class_is_keyed_by_its_cone_and_reads_until_it_cannot_be_trusted(@TempDir Path ws) throws Exception {
         Path classes = Files.createDirectories(ws.resolve("classes"));
@@ -69,6 +72,41 @@ class ClassKeysTest {
                 .startsWith("loads past");
         assertThat(ClassKeys.fallback(cone, ClassKeys.Observed.NONE, List.of(), false, false, "demo.T", c -> true))
                 .isEqualTo("unattributed");
+    }
+
+    /**
+     * A class whose only program is git in a repository a test made keeps its cone and stands on
+     * git's identity as the suite's stamp names it: an upgrade moves its key, nothing else does.
+     */
+    @Test
+    void a_tool_keys_a_class_by_its_identity_in_the_suites_stamp(@TempDir Path ws) throws Exception {
+        ClassCones.Cone cone = ClassCones.index(List.of(Files.createDirectories(ws.resolve("classes"))))
+                .cone("demo.T");
+        ClassKeys.Observed seen =
+                new ClassKeys.Observed(true, List.of(), false, List.of(), false, List.of(), List.of(GIT));
+        assertThat(ClassKeys.fallback(cone, seen, List.of(), false, false, "demo.T", c -> true))
+                .as("no program started that reads what its key does not hold")
+                .isNull();
+
+        Map<String, String> v1 = ClassKeys.programs(List.of("proc:git=git version 2.51.0", "proc:sh=posix", "sel:x"));
+        assertThat(v1).containsOnlyKeys("git", "sh");
+        Map<String, String> v2 = ClassKeys.programs(List.of("proc:git=git version 2.52.0", "proc:sh=posix"));
+        Map<String, String> otherTools = ClassKeys.programs(List.of("proc:git=git version 2.51.0", "proc:node=v24"));
+        String before = key(cone, ClassKeys.identified(seen, v1), "reads", ws).key();
+        assertThat(key(cone, ClassKeys.identified(seen, v2), "reads", ws).key())
+                .as("git upgraded")
+                .isNotEqualTo(before);
+        assertThat(key(cone, ClassKeys.identified(seen, otherTools), "reads", ws)
+                        .key())
+                .as("another program's identity is not this class's")
+                .isEqualTo(before);
+        assertThat(key(cone, ClassKeys.identified(seen, Map.of()), "reads", ws).key())
+                .as("a stamp that names no git yet")
+                .isNotEqualTo(before);
+        assertThat(key(cone, ClassKeys.identified(observed(List.of(), false, List.of()), v1), "reads", ws)
+                        .key())
+                .as("a class that started nothing")
+                .isNotEqualTo(before);
     }
 
     /**

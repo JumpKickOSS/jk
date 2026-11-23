@@ -519,7 +519,10 @@ external classpath and selection. An edit to one main class runs the classes who
 and any class keyed by its whole module (one that started a program, loaded a workspace class its
 cone does not name, or names a classpath scanner), and replays the rest. A class that ran after a
 test loaded more jars by path than its record names (an in-process compiler's) stands on every jar
-its suite loaded that way: it runs again when one of them changes. The warning then reads
+its suite loaded that way: it runs again when one of them changes. A class whose only program is
+`git`, run in a repository the test made in its temp directory (the module's test temp root or
+`~/.jk-test-tmp`) and naming no path outside it and no other host, keeps its cone and stands on what
+that `git` says to `--version`: an upgrade runs it again. The warning then reads
 `… passed earlier and nothing they reach or read has changed since; they are not run again`, and
 each replayed class's `class-finish` row carries `replayedFrom`. A class that reached the network,
 or a suite that did outside every class, is never replayed; `--redo` runs every class. Set at the
