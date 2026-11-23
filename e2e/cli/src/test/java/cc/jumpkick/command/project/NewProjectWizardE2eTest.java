@@ -3,7 +3,9 @@ package cc.jumpkick.command.project;
 
 import static com.microsoft.playwright.assertions.PlaywrightAssertions.assertThat;
 import static java.util.Objects.requireNonNull;
+import static java.util.Objects.requireNonNullElse;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import cc.jumpkick.cli.Jk;
 import cc.jumpkick.config.JkHttpConfig;
@@ -19,6 +21,7 @@ import com.microsoft.playwright.Browser;
 import com.microsoft.playwright.BrowserContext;
 import com.microsoft.playwright.Page;
 import com.microsoft.playwright.Playwright;
+import com.microsoft.playwright.PlaywrightException;
 import java.io.IOException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
@@ -49,7 +52,8 @@ import org.junit.jupiter.api.io.TempDir;
  * <p>{@code release}: a real browser is worth running once per release, not on every push, and
  * Playwright fetches it while the dashboard loads Vue from a CDN ({@code jk test -s release -m
  * clients/cli --class …}). Each step's screenshot lands under {@code
- * clients/cli/target/new-project-wizard/}.
+ * clients/cli/target/new-project-wizard/}. A host where Chromium cannot be fetched or launched skips
+ * each test with the reason.
  */
 @Tag("release")
 class NewProjectWizardE2eTest {
@@ -65,6 +69,9 @@ class NewProjectWizardE2eTest {
     private static String token;
     private static Playwright playwright;
     private static Browser browser;
+    /** Why this host cannot run a browser, or null when it can. */
+    private static String noBrowser;
+
     private static final List<String> builds = new CopyOnWriteArrayList<>();
 
     private BrowserContext context;
@@ -116,8 +123,22 @@ class NewProjectWizardE2eTest {
         server.start();
         baseUrl = requireNonNull(server.url());
         token = Files.readString(tokenFile).strip();
-        playwright = Playwright.create();
-        browser = playwright.chromium().launch();
+        try {
+            playwright = Playwright.create();
+            browser = playwright.chromium().launch();
+        } catch (PlaywrightException e) {
+            noBrowser = "Playwright's Chromium cannot start on this host: " + whatFailed(e);
+        }
+    }
+
+    /** The line of Playwright's {@code Error { message='…' …}} that says what went wrong. */
+    private static String whatFailed(PlaywrightException e) {
+        List<String> lines = requireNonNullElse(e.getMessage(), e.toString())
+                .lines()
+                .map(String::strip)
+                .filter(l -> !l.isEmpty() && !l.equals("Error {"))
+                .toList();
+        return lines.isEmpty() ? e.toString() : lines.getFirst().replaceFirst("^message='", "");
     }
 
     @AfterAll
@@ -129,6 +150,7 @@ class NewProjectWizardE2eTest {
 
     @BeforeEach
     void page() {
+        assumeTrue(noBrowser == null, noBrowser);
         // Narrow enough that the page column starts under the header's hanging logo, so the
         // screenshots show the heading clearing it.
         context = browser.newContext(new Browser.NewContextOptions().setViewportSize(1280, 900));
@@ -137,7 +159,7 @@ class NewProjectWizardE2eTest {
 
     @AfterEach
     void closePage() {
-        context.close();
+        if (context != null) context.close();
     }
 
     @Test

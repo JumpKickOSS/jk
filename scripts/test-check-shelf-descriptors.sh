@@ -6,6 +6,10 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+if ! command -v zip >/dev/null 2>&1; then
+  echo "test-check-shelf-descriptors: skipped — zip is not installed here (install it to run the check)" >&2
+  exit 0
+fi
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/jk-shelf-test.XXXXXX")"
 trap 'rm -rf "$WORK"' EXIT
 tree="$WORK/tree"
