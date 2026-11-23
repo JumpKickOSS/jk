@@ -131,7 +131,13 @@ an edit re-runs only the lanes it can affect. A module lane that runs a `src/gua
 verdicts: one for the declared rules, keyed on the module, and one for the suite, keyed also on
 what the suite reads beyond the module (other modules, the tree's text, the manifests). An edit
 elsewhere in the tree re-runs the suite alone, and `jk explain` says `src/guard to run · N rules
-cached`. The fixture proofs are keyed the same way: the
+cached`. Inside that run, a guard whose reads all hold is not invoked: its last line is reported
+again. What it read is what it listed and read through `Text`, plus the model snapshot when it takes
+`Model`. A change to the suite, its class path or the JDK runs every guard again, and so does a
+guard that takes `Facts` or `Output`, or that threw or skipped last time. A guard that runs a tool
+over the tree reads that tool's input files through `Text` too, so an edit to one of them runs it.
+The run's `target/<module>/guard/junit.log` names each guard that ran again and the file that made
+it run. The fixture proofs are keyed the same way: the
 rules, the fixture files, the guard suites and the signatures of the classes the fixtures
 compile against. A proof only reruns when one of those changes, so a method body edited in the
 module that owns the fixtures leaves it cached, and its cases run side by side.

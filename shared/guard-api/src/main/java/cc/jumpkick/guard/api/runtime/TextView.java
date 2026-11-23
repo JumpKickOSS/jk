@@ -30,6 +30,14 @@ public final class TextView implements Text {
     private final ConcurrentHashMap<String, String> views = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, List<String>> matches = new ConcurrentHashMap<>();
     private volatile @Nullable List<String> walked;
+    private volatile @Nullable Recorder recorder;
+
+    /** Hears every glob a guard lists and every file whose text it takes, before any cache answers. */
+    interface Recorder {
+        void glob(String glob);
+
+        void file(String path);
+    }
 
     public TextView(Path root, List<Path> sources) {
         this(root, sources, false, null);
@@ -47,8 +55,20 @@ public final class TextView implements Text {
         this.outputDir = outputDir;
     }
 
+    /** Report every read to {@code r} from now on. */
+    void recordTo(Recorder r) {
+        recorder = r;
+    }
+
     @Override
     public List<String> files(String glob) {
+        Recorder r = recorder;
+        if (r != null) r.glob(glob);
+        return unrecordedFiles(glob);
+    }
+
+    /** {@link #files} without telling the recorder: the ledger's own checks. */
+    List<String> unrecordedFiles(String glob) {
         return matches.computeIfAbsent(glob, g -> {
             Pattern p = globPattern(fixture ? g.substring(g.lastIndexOf('/') + 1) : g);
             List<String> out = new ArrayList<>();
@@ -110,6 +130,22 @@ public final class TextView implements Text {
     }
 
     private String read(String path) {
+        Recorder r = recorder;
+        if (r != null) r.file(path);
+        return text(path);
+    }
+
+    /** The file's text without telling the recorder, or {@code null} when it does not read. */
+    @Nullable
+    String unrecordedText(String path) {
+        try {
+            return text(path);
+        } catch (UncheckedIOException unreadable) {
+            return null;
+        }
+    }
+
+    private String text(String path) {
         String cached = texts.get(path);
         if (cached != null) return cached;
         Path p = root.resolve(path);

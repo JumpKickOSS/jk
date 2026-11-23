@@ -6,7 +6,9 @@ import java.util.List;
 /**
  * The source tree as text, for what bytecode cannot say. Available to a {@link Scope#WORKSPACE}
  * suite, and to a {@link Scope#MODULE} suite for its own module's files only. Paths are
- * workspace-relative.
+ * workspace-relative. jk notes which globs a guard lists and which files it reads here: when none of
+ * them changed, nor the suite or its class path, the next run reports the guard's last verdict
+ * without running it. A file a guard reads by any other way is not noted.
  */
 public interface Text {
 

@@ -1637,6 +1637,9 @@ final class ParityRules {
         if (Os.isWindows()) throw Skipped.onThisPlatform("shellcheck: skipped on Windows");
         GuardRuntime runtime = GuardRuntime.current();
         if (runtime == null) throw new IllegalStateException("no guard runtime: jk did not configure this JVM");
+        // The lint reads the scripts beside the text view, so they are read through it too: the
+        // verdict is replayed only while every shell script in the tree reads the same.
+        for (String script : text.files("**/*.sh")) text.lines(script);
         // The script owns the target list and the runner choice; this guard runs it where the text
         // view is rooted — the checkout, or a tree fixture's case — and reads what it says.
         Process process = new ProcessBuilder("bash", SHELLCHECK, "--format=gcc")

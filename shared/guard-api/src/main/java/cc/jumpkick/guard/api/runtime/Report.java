@@ -9,20 +9,25 @@ import cc.jumpkick.guard.api.TextSite;
 import cc.jumpkick.guard.api.ToolSite;
 import cc.jumpkick.guard.api.Violations;
 import cc.jumpkick.jsonl.JsonFields;
+import cc.jumpkick.jsonl.MiniJson;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.StringJoiner;
 import org.jspecify.annotations.Nullable;
 
 /**
  * One JSON line per guard: what it declared and what it found, for the engine to reconcile with the
- * baseline. The file is appended, never rewritten: the engine truncates it before a run.
+ * baseline. The file is appended, never rewritten: the engine truncates it before a run. A guard the
+ * run did not invoke, because nothing it read changed, reports its last line with {@code
+ * "replayed":true}.
  */
 public final class Report {
 
@@ -168,13 +173,23 @@ public final class Report {
         }
     }
 
-    public static synchronized void append(Path file, Line line) throws IOException {
+    /** {@code line}, a report line of an earlier run, marked as replayed. */
+    @SuppressWarnings("unchecked")
+    static String markReplayed(String line) {
+        if (!(MiniJson.parse(line) instanceof Map<?, ?> parsed)) return line.strip();
+        Map<String, Object> marked = new LinkedHashMap<>((Map<String, Object>) parsed);
+        marked.put("replayed", true);
+        return MiniJson.write(marked);
+    }
+
+    public static void append(Path file, Line line) throws IOException {
+        appendJson(file, line.toJson());
+    }
+
+    /** Append one line already written as JSON. */
+    static synchronized void appendJson(Path file, String json) throws IOException {
         Files.createDirectories(file.toAbsolutePath().getParent());
         Files.writeString(
-                file,
-                line.toJson() + "\n",
-                StandardCharsets.UTF_8,
-                StandardOpenOption.CREATE,
-                StandardOpenOption.APPEND);
+                file, json + "\n", StandardCharsets.UTF_8, StandardOpenOption.CREATE, StandardOpenOption.APPEND);
     }
 }

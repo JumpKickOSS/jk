@@ -69,6 +69,11 @@ public final class Classpaths {
         return List.copyOf(out);
     }
 
+    /** The class path this JVM started with ({@code java.class.path}), split. */
+    public static List<Path> ofThisJvm() {
+        return split(System.getProperty("java.class.path"));
+    }
+
     /**
      * Fail when a jar the {@code what} classpath names is not on disk. A compiler given such a path
      * skips it and fails later on the first class it cannot find, which names neither the jar nor
