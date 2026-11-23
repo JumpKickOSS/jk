@@ -28,5 +28,7 @@ fi
 
 git push -q "$QUEUE_REMOTE" "+$tip:refs/queue/$branch" || fail "the push to $QUEUE_REMOTE failed"
 # What the queue said about an earlier submission (an ejection of this same tip) no longer holds.
-queue_sh "rm -f queue-state/$(printf %q "$branch")"
+# The tip is ready now, by the queue host's clock: queue-ready/<branch> holds `<sha> <epoch seconds>`.
+b="$(printf %q "$branch")"
+queue_sh "rm -f queue-state/$b && mkdir -p \"\$(dirname queue-ready/$b)\" && echo $tip \$(date +%s) >queue-ready/$b.tmp && mv queue-ready/$b.tmp queue-ready/$b"
 echo "submit: $branch ($(git rev-parse --short "$tip")) is waiting; scripts/queue/status.sh $branch"

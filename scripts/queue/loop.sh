@@ -25,7 +25,15 @@
 #
 # Where each branch stands is <QUEUE_REPO>/queue-state/<branch> (scripts/queue/status.sh reads it);
 # every batch is one line of <QUEUE_REPO>/queue-batches.log: its number, base, tip, result and
-# branches. A batch that could not gate at all (a dirty checkout, a failed fetch, no verdict) puts
+# branches, then `wait <s>s` (from its oldest branch's submission to its taking the gate lock) and
+# `gate <s>s` (`-` when it gated nothing). Every branch that lands or is ejected is one line of
+# <QUEUE_REPO>/queue-timings.log, in epoch seconds by the queue host's clock:
+#
+#   <done> landed|ejected <branch> <sha> batch <n> ready <t> lock <t> gate <start> <end>
+#
+# ready is when submit.sh pushed that tip (<QUEUE_REPO>/queue-ready/<branch>), lock when its last
+# batch took the gate lock; a time the queue does not know is `-`. scripts/queue/status.sh --stats
+# reads it. A batch that could not gate at all (a dirty checkout, a failed fetch, no verdict) puts
 # its branches back to waiting and stops the loop for a person to look.
 #
 # While <QUEUE_REPO>/pause exists the loop starts no batch: a batch in flight finishes, the loop logs
@@ -88,6 +96,19 @@
   }
   unqueue() { git --git-dir="$repo" update-ref -d "refs/queue/$1" "$2" 2>/dev/null; } # only the gated tip
   short() { git rev-parse --short=12 "$1"; }
+  locked="$(date +%s)" gate_start="-" gate_end="-"
+  # ready <branch> <sha>: when submit.sh pushed that tip, or - when the queue has no record of it.
+  ready() {
+    local s="" t=""
+    { read -r s t <"$repo/queue-ready/$1"; } 2>/dev/null
+    if [ "$s" = "$2" ] && [ -n "$t" ]; then echo "$t"; else echo -; fi
+  }
+  # timed <landed|ejected> <branch> <sha>: its line in queue-timings.log; it is ready no longer.
+  timed() {
+    echo "$(date +%s) $1 $2 $(short "$3") batch $n ready $(ready "$2" "$3") lock $locked gate $gate_start $gate_end" \
+      >>"$repo/queue-timings.log"
+    [ "$(ready "$2" "$3")" = - ] || rm -f "$repo/queue-ready/$2"
+  }
   n=$(($(cat "$repo/queue-batch-n" 2>/dev/null || echo 0) + 1))
 
   # The tickets branch $1 at $2 carries: the one it is named for, else those its commits name.
@@ -115,6 +136,7 @@
     done
     record "$b" "ejected $sha batch $n: $3" "$4" \
       "tickets told:${told:- none}${untold:+; telling failed:$untold}"
+    timed ejected "$b" "$sha"
     unqueue "$b" "$sha"
     ejected+=("$b@$(short "$sha")")
   }
@@ -177,12 +199,14 @@
   echo "$n" >"$repo/queue-batch-n"
 
   git checkout -q --detach "$base" || exit 2
-  members=() msha=() ejected=()
+  members=() msha=() ejected=() oldest=""
   for i in "${!names[@]}"; do
     b="${names[$i]}" sha="${shas[$i]}" before="$(git rev-parse HEAD)"
     if [ -n "$grp" ] && [ "$(head -1 "$S/$b" 2>/dev/null | cut -d' ' -f1-4)" != "waiting $sha group $grp:" ]; then
       continue
     fi
+    r="$(ready "$b" "$sha")"
+    if [ "$r" != - ] && { [ -z "$oldest" ] || [ "$r" -lt "$oldest" ]; }; then oldest="$r"; fi
     if [ "$(git rev-list --merges --count "$base..$sha")" -gt 0 ]; then
       eject "$b" "$sha" "it carries a merge commit" "rebase it onto origin/main and submit again"
       continue
@@ -205,8 +229,15 @@
   members_text=""
   for i in "${!members[@]}"; do members_text+=" ${members[$i]}@$(short "${msha[$i]}")"; done
   [ "${#ejected[@]}" -eq 0 ] || members_text+=" ejected:${ejected[*]}"
+  # wait and gate seconds, the last words of the batch's line.
+  timing() {
+    local w=- g=-
+    [ -z "$oldest" ] || w="$((locked > oldest ? locked - oldest : 0))s"
+    [ "$gate_end" = - ] || g="$((gate_end - gate_start))s"
+    echo " wait $w gate $g"
+  }
   if [ "${#members[@]}" -eq 0 ]; then
-    echo "$line EJECTED-ALL$members_text" >>"$repo/queue-batches.log"
+    echo "$line EJECTED-ALL$members_text$(timing)" >>"$repo/queue-batches.log"
     accounted
     exit 0
   fi
@@ -221,8 +252,10 @@
     line+=" docs-only"
   fi
   gate="${QUEUE_GATE:-$co/scripts/gate/gate.sh}"
+  gate_start="$(date +%s)"
   GATE_CHECKOUT="$co" GATE_LOG_DIR="$D" GATE_TIER="$tier" GATE_BASE="$base" JK_QUEUE_REMOTE="$repo" \
     bash "$gate" "$n" "$tip" </dev/null >/dev/null 2>&1
+  gate_end="$(date +%s)"
   L="$D/integ-gate-$n.log"
   verdict="$(grep -aE '^(GREEN |RED|CHECKOUT |NO CHECKOUT)' "$L" 2>/dev/null | tail -1)"
 
@@ -252,15 +285,16 @@
       if [ -n "$pushed" ]; then
         for i in "${!members[@]}"; do
           record "${members[$i]}" "landed ${msha[$i]} on origin/main as $(short "$pushed") in batch $n$how"
+          timed landed "${members[$i]}" "${msha[$i]}"
           unqueue "${members[$i]}" "${msha[$i]}"
         done
-        echo "$line LANDED${how:+ as $(short "$pushed")$how}$members_text" >>"$repo/queue-batches.log"
+        echo "$line LANDED${how:+ as $(short "$pushed")$how}$members_text$(timing)" >>"$repo/queue-batches.log"
       else
         # Someone else wrote origin/main: the verdict is for a tree nobody will push.
         for i in "${!members[@]}"; do
           waiting "${members[$i]}" "${msha[$i]}" "origin/main moved while batch $n gated; it is applied again"
         done
-        echo "$line MOVED$members_text" >>"$repo/queue-batches.log"
+        echo "$line MOVED$members_text$(timing)" >>"$repo/queue-batches.log"
       fi
       ;;
     RED*)
@@ -268,7 +302,7 @@
       if [ "${#members[@]}" -eq 1 ]; then
         eject "${members[0]}" "${msha[0]}" "the gate is red; log $(hostname):$L" "$fails" \
           "$(head -60 "$D/g$n-failures.txt" 2>/dev/null)"
-        echo "$line RED-EJECTED$members_text" >>"$repo/queue-batches.log"
+        echo "$line RED-EJECTED$members_text$(timing)" >>"$repo/queue-batches.log"
       else
         # The suspects: the branches that changed a module a failed class is in (its artifact name
         # is the member's `name`), or a root build file.
@@ -302,14 +336,14 @@
             split+=" ${members[$i]}"
           done
         done
-        echo "$line RED-SPLIT $how;$split;$members_text" >>"$repo/queue-batches.log"
+        echo "$line RED-SPLIT $how;$split;$members_text$(timing)" >>"$repo/queue-batches.log"
       fi
       ;;
     *)
       for i in "${!members[@]}"; do
         waiting "${members[$i]}" "${msha[$i]}" "batch $n did not gate (${verdict:-no verdict}); the queue stopped"
       done
-      echo "$line NOT-GATED (${verdict:-no verdict}; $L)$members_text" >>"$repo/queue-batches.log"
+      echo "$line NOT-GATED (${verdict:-no verdict}; $L)$members_text$(timing)" >>"$repo/queue-batches.log"
       accounted
       exit 2
       ;;

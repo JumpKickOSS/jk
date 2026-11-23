@@ -99,6 +99,7 @@ does not push `main`; it submits its branch:
 scripts/queue/branch-tier.sh     # the Branch tier: jk guard, then jk build -e <merge-base with origin/main>
 scripts/queue/submit.sh [branch] # refused unless the tip passed the Branch tier
 scripts/queue/status.sh [branch] # waiting, gating in batch <n>, landed as <sha>, or ejected and why
+scripts/queue/status.sh --stats  # the last 20 landings: ready to landed, lock wait, gate; medians, slowest three
 ```
 
 The Branch tier records a pass as a note on the tip under `refs/notes/branch-tier`, naming the
@@ -134,7 +135,12 @@ it is recorded as `dropped` and the batch log gets a `DROPPED` line.
 
 Where each branch stands is `queue-state/<branch>` in the queue's repository, and every batch is a
 line of `queue-batches.log` beside it: number, base, tip, the group it gated, `LANDED`, `MOVED`, `RED-SPLIT` and how,
-`RED-EJECTED` or `NOT-GATED`, and its branches. A batch that could not gate at all (a dirty
+`RED-EJECTED` or `NOT-GATED`, its branches, and its `wait` (from its oldest branch's submission to
+its taking the gate lock) and `gate` seconds. Each branch that lands or is ejected is a line of
+`queue-timings.log`: when it was submitted (`submit.sh` records it in `queue-ready/<branch>`), when
+its batch took the lock, when the gate started and ended, and when it landed or was ejected.
+`status.sh --stats` reads it; the target is ten minutes or less from submission to landing at the
+median. A batch that could not gate at all (a dirty
 checkout, a failed fetch, no verdict) puts its branches back to waiting and stops the loop. On
 bocabox it runs as
 

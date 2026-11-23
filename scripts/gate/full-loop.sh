@@ -254,7 +254,7 @@
   else
     read -r cn cbase ctip <<<"$culprit"
     cbase="$(git rev-parse "$cbase^{commit}")" || exit 2
-    members="$(awk -v b="$cn" '$1 == "batch" && $2 == b { for (i = 8; i <= 10; i++) if ($i == "LANDED") { for (j = i + 1; j <= NF; j++) printf " %s", $j; exit } }' "$repo/queue-batches.log")"
+    members="$(awk -v b="$cn" '$1 == "batch" && $2 == b { for (i = 8; i <= 10; i++) if ($i == "LANDED") { for (j = i + 1; j <= NF && $j != "wait"; j++) printf " %s", $j; exit } }' "$repo/queue-batches.log")"
     commits="$(git rev-list --reverse "$cbase..$ctip")"
     tickets="$(git log --format=%s "$cbase..$ctip" | sed -nE 's/^([A-Z][A-Z0-9]*-[A-Z0-9]+): .*/\1/p' | sort -u)"
     cl="$D/integ-gate-$(gate_of "$ctip").log"

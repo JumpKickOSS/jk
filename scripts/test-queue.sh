@@ -11,7 +11,9 @@
 # at once when what moved it is docs-only. A batch that touches only docs no test reads is gated
 # with the docs tier; one that touches a doc a test reads, or code, with the Queue tier. While the
 # pause file exists the loop starts no batch, even one it was waiting on the gate lock for, logs once
-# that it is paused and why, and status says so; removing the file resumes it.
+# that it is paused and why, and status says so; removing the file resumes it. Every landing and
+# ejection is timed (ready, lock, gate, done), every batch line carries its wait and gate seconds,
+# and status --stats prints the last 20 landings with their medians and the slowest three.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -143,6 +145,18 @@ git -C "$WORK/origin.git" merge-base --is-ancestor "$first_main" main || fail "o
 status c | grep -q '^c: ejected .*conflicts' || fail "c does not show as ejected: $(status c)"
 status c | grep -q 'conflicts: base.txt' || fail "c's ejection does not name the file: $(status c)"
 status c | grep -q 'tickets told: none' || fail "c's ejection does not say no ticket was told: $(status c)"
+# Every landing and ejection records when it was ready, when its batch took the lock and gated,
+# and when it ended; the batch's line ends with its wait and gate seconds.
+T="$WORK/queue.git/queue-timings.log"
+grep -qE '^batch 1 .* wait [0-9]+s gate [0-9]+s$' "$WORK/queue.git/queue-batches.log" ||
+  fail "the batch log does not carry the wait and gate seconds: $(cat "$WORK/queue.git/queue-batches.log")"
+read -r done_a _ <<<"$(grep ' landed a ' "$T")"
+awk '$2 == "landed" && $3 == "a" && $8 <= $10 && $10 <= $12 && $12 <= $13 && $13 <= $1 && $1 > 1700000000 { f = 1 } END { exit !f }' "$T" ||
+  fail "a's timings are not ready <= lock <= gate start <= gate end <= landed: $(cat "$T")"
+grep -qE "^[0-9]+ landed b $(git -C "$dev" rev-parse --short=12 b) batch 1 " "$T" || fail "b's landing is not timed: $(cat "$T")"
+grep -qE '^[0-9]+ ejected c [0-9a-f]{12} batch 1 ready [0-9]+ lock [0-9]+ gate - -$' "$T" ||
+  fail "c's ejection before the gate is not timed so: $(cat "$T")"
+[[ -n "$done_a" && ! -e "$WORK/queue.git/queue-ready/a" ]] || fail "a is still recorded as ready after landing"
 
 # --- a red batch whose failed class names no branch's module is split in halves ---
 git -C "$dev" fetch -q
@@ -280,5 +294,30 @@ wait "$looping" || fail "the resumed loop failed: $(cat "$WORK/paused.out")"
 grep -q '^queue: resumed' "$WORK/paused.out" || fail "the loop does not say it resumed: $(cat "$WORK/paused.out")"
 holds docs/p.md || fail "p did not land after the pause: $(status p)"
 status p | grep -q 'paused' && fail "status still says paused: $(status p)"
+
+# --- --stats: the last 20 landings, ready to landed, lock wait and gate, their medians and the
+# slowest three; an ejection is not a landing, and a time the queue does not know is left out ---
+mkdir "$WORK/stats.git"
+cat >"$WORK/stats.git/queue-timings.log" <<'LOG'
+1000 landed x1 aaaaaaaaaaaa batch 1 ready 400 lock 500 gate 520 940
+2000 landed x2 bbbbbbbbbbbb batch 2 ready 1000 lock 1300 gate 1310 1900
+3000 ejected x3 cccccccccccc batch 3 ready 100 lock 2600 gate 2610 2900
+3500 landed x4 dddddddddddd batch 4 ready 3000 lock 3100 gate 3110 3400
+4000 landed x5 eeeeeeeeeeee batch 5 ready - lock 3700 gate 3710 3990
+LOG
+stats="$(cd "$dev" && JK_QUEUE_REMOTE="$WORK/stats.git" bash "$Q/status.sh" --stats)" || fail "--stats failed: $stats"
+grep -qE '^x2 +2 +16m40s +5m00s +9m50s$' <<<"$stats" || fail "--stats does not show x2's times: $stats"
+grep -qE '^x5 +5 +- +- +4m40s$' <<<"$stats" || fail "--stats does not show a landing with no ready time: $stats"
+if grep -q '^x3 ' <<<"$stats"; then fail "--stats counts an ejection as a landing: $stats"; fi
+grep -qE '^median of 4 +10m00s +1m40s +5m55s$' <<<"$stats" || fail "--stats medians are wrong: $stats"
+[[ "$(sed -n '/^slowest:/,$p' <<<"$stats")" == $'slowest:\n  x2 (batch 2) 16m40s\n  x1 (batch 1) 10m00s\n  x4 (batch 4) 8m20s' ]] ||
+  fail "--stats does not name the slowest three: $stats"
+for i in $(seq 25); do echo "$((5000 + i)) landed old$i ffffffffffff batch $((5 + i)) ready 5000 lock 5000 gate 5000 5000"; done \
+  >>"$WORK/stats.git/queue-timings.log"
+stats="$(cd "$dev" && JK_QUEUE_REMOTE="$WORK/stats.git" bash "$Q/status.sh" --stats)" || fail "--stats failed: $stats"
+grep -q '^median of 20 ' <<<"$stats" || fail "--stats does not take the last 20 landings: $stats"
+if ! grep -q '^old6 ' <<<"$stats" || grep -q '^old5 ' <<<"$stats"; then fail "--stats does not take the latest 20: $stats"; fi
+stats="$(cd "$dev" && JK_QUEUE_REMOTE="$WORK/queue.git" bash "$Q/status.sh" --stats)" || fail "--stats failed on the queue: $stats"
+grep -qE '^a +1 +[0-9]+m[0-9]{2}s ' <<<"$stats" || fail "--stats does not show the queue's own landings: $stats"
 
 echo "test-queue: ok ($(wc -l <"$WORK/queue.git/queue-batches.log") batches)"
