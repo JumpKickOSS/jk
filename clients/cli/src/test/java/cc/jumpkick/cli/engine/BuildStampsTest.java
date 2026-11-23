@@ -25,9 +25,9 @@ class BuildStampsTest {
                 .containsExactly(
                         "  client  " + JkVersion.VERSION + " · commit 4ee07400a592",
                         "  engine  0.51.0 · commit 4ee07400a592 · pid 4242");
-        assertThat(BuildStamps.versionLines(own(A), Optional.of(engine(B + "-dirty"))))
+        assertThat(BuildStamps.versionLines(own(A), Optional.of(engine(B))))
                 .last()
-                .isEqualTo("  engine  0.51.0 · commit 5ff18511b6a3 (dirty) · pid 4242 (not the client's build)");
+                .isEqualTo("  engine  0.51.0 · commit 5ff18511b6a3 · pid 4242 (not the client's build)");
         assertThat(BuildStamps.versionLines(new BuildStamps.Client(null, false), Optional.empty()))
                 .containsExactly("  client  " + JkVersion.VERSION + " · commit unknown", "  engine  not running");
     }
@@ -55,7 +55,6 @@ class BuildStampsTest {
     void an_unstamped_side_is_no_mismatch() {
         assertThat(BuildStamps.differ(A, B)).isTrue();
         assertThat(BuildStamps.differ(A, A)).isFalse();
-        assertThat(BuildStamps.differ(A, A + "-dirty")).isTrue();
         assertThat(BuildStamps.differ(null, B)).isFalse();
         assertThat(BuildStamps.differ(A, "")).isFalse();
     }

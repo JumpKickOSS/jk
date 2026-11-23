@@ -865,12 +865,13 @@ so two builds of one version can be told apart and ordered by the source they we
 and a reinstall of the same jar moves neither; a JumpKick running from a classes directory writes
 neither. The stamps are provenance, not pins: they choose no artifact and never make a lock stale.
 
-`Build-Time`, and the `Build-Commit` beside it (the commit, with `-dirty` when the checkout had
-uncommitted changes), belong to the checkout that packaged the archive. Only the engine jar
+`Build-Time`, and the `Build-Commit` beside it (the HEAD commit, whatever is edited on top of it),
+belong to the checkout that packaged the archive. Only the engine jar
 JumpKick installs as its own carries them, and the client's jar only in a release build of a clean
 checkout. They are part of those archives' keys: each commit packages its own engine jar (a repackage of the classes and jars it already has, not a
 rebuild), and one commit packages the same bytes on every host whatever its action cache holds. No
-library jar carries the stamps, so a new commit recompiles and retests nothing on their account.
+library jar carries the stamps, so a new commit recompiles and retests nothing on their account, and
+an uncommitted edit the engine jar does not contain (docs, the client) does not repackage it.
 The client, native image and jar alike, carries the commit only when it is a release build (a
 version without `-SNAPSHOT`, from a clean checkout); a snapshot's client keys on no commit and is
 neither relinked nor repackaged when only the commit moved or another module was edited.

@@ -36,8 +36,8 @@ the running build and refuses with its number.
 
 ### Live and queued jobs
 
-`jk engine status` prints the engine's version and the commit it was built from (`(dirty)` when
-the checkout had uncommitted changes, `unknown` for a build outside a git checkout), a `Client` row
+`jk engine status` prints the engine's version and the commit it was built from (the checkout's
+HEAD, edits on top not noted; `unknown` for a build outside a git checkout), a `Client` row
 with the same for the `jk` you ran, marked `(not the engine's build)` when the two commits differ (`commit`,
 `clientVersion`, `clientCommit`, `clientCommitRecorded` in `-O jsonl`; `jk --version -v` prints the pair
 without starting an engine, `engine  not running` when none is up, and `jk doctor`'s `engine` row

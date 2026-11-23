@@ -36,7 +36,6 @@ import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.ManifestPaths;
-import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.InstallDestination;
 import cc.jumpkick.model.JkVersion;
@@ -908,16 +907,12 @@ public final class InstallCommand {
     }
 
     /**
-     * The commit {@code dir}'s checkout is at, with {@code -dirty} when it has uncommitted changes
-     * (untracked files included, as the build's own stamp counts them); null outside a git checkout
-     * or without git.
+     * The commit {@code dir}'s checkout is at, as the engine jar's own stamp names it (the commit
+     * alone, whatever is edited on top); null outside a git checkout or without git.
      */
     static @Nullable String checkoutCommit(Path dir) {
-        ReleaseCommand.Git git = new ReleaseCommand.Git(dir);
-        String sha = git.output("rev-parse", "--verify", "HEAD");
-        if (sha == null || sha.isBlank()) return null;
-        String status = git.output("status", "--porcelain");
-        return BuildIdentity.commitStamp(sha, status != null && !status.isEmpty());
+        String sha = new ReleaseCommand.Git(dir).output("rev-parse", "--verify", "HEAD");
+        return sha == null || sha.isBlank() ? null : sha.strip();
     }
 
     private static @Nullable Integer rejectInvalidLauncherName(String name) {

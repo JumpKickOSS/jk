@@ -9,13 +9,13 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * The commit an install of jk's own client records beside it: the checkout's HEAD, marked dirty
- * when the tree has uncommitted changes, and nothing outside a git checkout.
+ * The commit an install of jk's own client records beside it: the checkout's HEAD, as the engine
+ * jar's stamp names it whatever is edited on top, and nothing outside a git checkout.
  */
 class InstallCheckoutCommitTest {
 
     @Test
-    void head_is_recorded_with_its_dirty_mark_and_no_checkout_records_nothing(@TempDir Path tmp) throws Exception {
+    void head_is_recorded_edited_or_not_and_no_checkout_records_nothing(@TempDir Path tmp) throws Exception {
         Path repo = Files.createDirectories(tmp.resolve("repo"));
         ReleaseCommand.Git git = new ReleaseCommand.Git(repo);
         assertThat(git.run("init", "-q", "-b", "main")).isNull();
@@ -27,7 +27,9 @@ class InstallCheckoutCommitTest {
 
         assertThat(InstallCommand.checkoutCommit(repo)).isEqualTo(head);
         Files.writeString(repo.resolve("a.txt"), "edited");
-        assertThat(InstallCommand.checkoutCommit(repo)).isEqualTo(head + "-dirty");
+        assertThat(InstallCommand.checkoutCommit(repo))
+                .as("an edit on top names the same commit the engine jar is stamped with")
+                .isEqualTo(head);
 
         assertThat(InstallCommand.checkoutCommit(Files.createDirectories(tmp.resolve("tarball"))))
                 .isNull();

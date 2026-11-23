@@ -92,15 +92,12 @@ class BuildIdentityTest {
     }
 
     @Test
-    void the_commit_is_the_manifests_attribute_and_reads_short_with_its_dirty_mark() {
+    void the_commit_is_the_manifests_attribute_and_reads_short() {
         String sha = "4ee07400a592deadbeef4ee07400a592deadbeef";
         Manifest stamped = new Manifest();
-        stamped.getMainAttributes()
-                .putValue(BuildIdentity.BUILD_COMMIT_ATTRIBUTE, BuildIdentity.commitStamp(sha, true));
-        assertThat(BuildIdentity.builtFrom(stamped)).isEqualTo(sha + "-dirty");
+        stamped.getMainAttributes().putValue(BuildIdentity.BUILD_COMMIT_ATTRIBUTE, sha);
+        assertThat(BuildIdentity.builtFrom(stamped)).isEqualTo(sha);
         assertThat(BuildIdentity.describeCommit(BuildIdentity.builtFrom(stamped)))
-                .isEqualTo("4ee07400a592 (dirty)");
-        assertThat(BuildIdentity.describeCommit(BuildIdentity.commitStamp(sha, false)))
                 .isEqualTo("4ee07400a592");
 
         Manifest bare = new Manifest();

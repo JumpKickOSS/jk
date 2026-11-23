@@ -21,7 +21,8 @@ import org.junit.jupiter.api.io.TempDir;
  * only in a release build of a clean checkout, as its native image does: a snapshot client's key
  * names no commit, so an edit elsewhere in the tree does not repackage it. Every other assembly, and
  * a checkout git does not describe, carries no such attribute. The stamp is part of the assembly's
- * key, so a warm action cache never restores another commit's stamp.
+ * key, so a warm action cache never restores another commit's stamp; it names the commit alone, so
+ * an edit the jar does not contain (docs, another module) repackages nothing.
  */
 class AssemblyBuildTimeTest {
 
@@ -84,8 +85,17 @@ class AssemblyBuildTimeTest {
                 .as("an edit the client does not contain does not repackage it")
                 .isEqualTo(assemblyKey(module, client, WORKTREE));
         assertThat(assemblyKey(module, productLib(), edited))
-                .as("the engine lib still names the edited checkout")
-                .isNotEqualTo(assemblyKey(module, productLib(), WORKTREE));
+                .as("nor the engine lib: its stamp names the commit, not the edits on top")
+                .isEqualTo(assemblyKey(module, productLib(), WORKTREE));
+    }
+
+    @Test
+    void an_edited_checkout_stamps_the_engine_lib_with_its_commit_alone() {
+        GitFetcher.Worktree edited =
+                new GitFetcher.Worktree("4ee07400a592deadbeef", "main", COMMITTED, true, Optional.empty());
+        assertThat(PackagingKeys.assemblyAttributes(productLib(), Optional.of(edited)))
+                .containsEntry(BuildIdentity.BUILD_TIME_ATTRIBUTE, "2026-09-17T15:57:16Z")
+                .containsEntry(BuildIdentity.BUILD_COMMIT_ATTRIBUTE, "4ee07400a592deadbeef");
     }
 
     @Test

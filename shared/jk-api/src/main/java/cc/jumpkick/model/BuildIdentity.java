@@ -187,22 +187,14 @@ public final class BuildIdentity {
 
     /**
      * The manifest attribute the packaging writes beside {@value #BUILD_TIME_ATTRIBUTE}: the commit
-     * the jar was built from, 40 hex digits, with {@value #DIRTY_SUFFIX} when the checkout had
-     * uncommitted changes. Like the time, it is the checkout's, so a clean tag packages the same
-     * bytes on every host.
+     * the jar was built from, 40 hex digits. Like the time, it is the checkout's HEAD and says nothing
+     * of uncommitted changes, so a commit packages the same bytes on every host and an edit the jar
+     * does not contain leaves its stamp, and so its key, where they were.
      */
     public static final String BUILD_COMMIT_ATTRIBUTE = "Build-Commit";
 
     /** The system property a native image of jk's client is linked with to carry the same stamp. */
     public static final String COMMIT_PROPERTY = "jk.build.commit";
-
-    /** Marks a stamp whose checkout had uncommitted changes. */
-    public static final String DIRTY_SUFFIX = "-dirty";
-
-    /** The stamp for a checkout at {@code sha}, marked when {@code dirty}. */
-    public static String commitStamp(String sha, boolean dirty) {
-        return dirty ? sha + DIRTY_SUFFIX : sha;
-    }
 
     /**
      * The commit stamp of the running code: linked into a native image, or the {@value
@@ -236,15 +228,10 @@ public final class BuildIdentity {
         return stamp == null || stamp.isBlank() ? null : stamp.strip();
     }
 
-    /**
-     * A stamp as people read it: 12 hex digits, then {@code (dirty)} when marked; {@code "unknown"}
-     * for no stamp.
-     */
+    /** A stamp as people read it: its first 12 hex digits; {@code "unknown"} for no stamp. */
     public static String describeCommit(@Nullable String stamp) {
         if (stamp == null || stamp.isBlank()) return "unknown";
-        boolean dirty = stamp.endsWith(DIRTY_SUFFIX);
-        String sha = dirty ? stamp.substring(0, stamp.length() - DIRTY_SUFFIX.length()) : stamp;
-        return (sha.length() > 12 ? sha.substring(0, 12) : sha) + (dirty ? " (dirty)" : "");
+        return stamp.length() > 12 ? stamp.substring(0, 12) : stamp;
     }
 
     /** The jar the running code was loaded from, or {@code null} for a classes directory or a native image. */

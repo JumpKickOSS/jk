@@ -347,7 +347,7 @@ public final class PlannerTails {
         if (stamp.isPresent()) {
             GitFetcher.Worktree w = stamp.get();
             attrs.put(BuildIdentity.BUILD_TIME_ATTRIBUTE, w.commitTime().toString());
-            attrs.put(BuildIdentity.BUILD_COMMIT_ATTRIBUTE, BuildIdentity.commitStamp(w.sha(), w.dirty()));
+            attrs.put(BuildIdentity.BUILD_COMMIT_ATTRIBUTE, w.sha());
         }
         return attrs;
     }

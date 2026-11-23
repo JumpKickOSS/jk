@@ -190,9 +190,10 @@ public final class PackagingKeys {
     /**
      * Whether a module jk installs as its own product carries the commit of {@code worktree}: the
      * engine lib always, the client only in a release build (no {@code -SNAPSHOT}) of a clean
-     * checkout. The stamp is part of the key, so a stamped archive is rebuilt by every edit anywhere
-     * in the checkout; a snapshot client's jar and image key on no commit and are not rebuilt by an
-     * edit they do not contain. The native client's install records the commit beside it instead.
+     * checkout. The stamp is part of the key and names the commit alone, never the edits on top of
+     * it, so a stamped archive is repackaged by every commit but not by an edit it does not contain;
+     * a snapshot client's jar and image key on no commit at all. The native client's install records
+     * the commit beside it instead.
      */
     static boolean stampsCommit(JkBuild project, GitFetcher.Worktree worktree) {
         JkBuild.Install install = project.install();
