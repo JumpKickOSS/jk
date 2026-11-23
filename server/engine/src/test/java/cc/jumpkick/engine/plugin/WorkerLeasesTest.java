@@ -121,11 +121,20 @@ class WorkerLeasesTest {
     }
 
     /**
-     * A native-image builder that names no heap takes 85% of the worker cap it is contained at; it
-     * is leased that much and launched with it as -J-Xmx, so it cannot outgrow the lease.
+     * A native-image builder that names no heap takes 85% of the worker cap it is contained at, with
+     * that much free; it is leased that much and launched with it as -J-Xmx, so it cannot outgrow the lease.
      */
     @Test
     void an_unsized_native_image_builder_is_leased_and_given_its_share_of_the_worker_cap() throws Exception {
+        MemoryProbe.forTests(new MemoryProbe.Memory(64L << 30, 48L << 30));
+        try {
+            unsizedBuilderGetsItsShare();
+        } finally {
+            MemoryProbe.forTests(null);
+        }
+    }
+
+    private static void unsizedBuilderGetsItsShare() throws Exception {
         SessionContext.where(SessionContext.installed().withJvm(PluginTuning.NONE), () -> {
             long budget = 12L << 30;
             WorkerLeases.Ledger ledger = ledger(budget, 4);

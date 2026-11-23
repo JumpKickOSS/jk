@@ -12,15 +12,15 @@ import org.jspecify.annotations.Nullable;
 /**
  * The heap a native-image builder gets. A module's first build, and any build whose dependencies
  * changed or whose classpath grew by more than {@value #GROWTH_PERCENT}%, gets the {@link
- * #generous} heap. Otherwise it gets twice the largest peak learned from its
+ * #generous} heap, sized to what the host has free. Otherwise it gets twice the largest peak learned from its
  * earlier builds, at least {@value #FLOOR_MIB} MiB, scaled by how much the classpath grew and never
  * more than the generous heap. A build that ends for memory gets one {@link #retry}.
  */
 public final class NativeHeap {
 
     /**
-     * Share of the worker cap the generous heap is: what the GraalVM driver itself asks for in a
-     * container.
+     * Share of the worker cap, and of the free memory, the generous heap is: what the GraalVM driver
+     * itself asks for in a container.
      */
     static final double GENEROUS_SHARE = 0.85;
 
@@ -147,10 +147,28 @@ public final class NativeHeap {
                         + " after native-image was killed at its worker cap");
     }
 
-    /** The generous builder heap: {@link #GENEROUS_SHARE} of the worker cap under {@code capacityBytes}. */
+    /**
+     * The generous builder heap under {@code capacityBytes}, with the memory the host has free now
+     * as {@link MemoryProbe#probe} reads it.
+     */
     public static long generous(long capacityBytes) {
+        return generous(capacityBytes, MemoryProbe.probe().availableBytes());
+    }
+
+    /**
+     * The generous builder heap: {@link #GENEROUS_SHARE} of the worker cap under {@code
+     * capacityBytes}, and no more than that share of {@code availableBytes}, what the host or the
+     * container has free. The budget is the host's, but other engines in the same container (a
+     * gate's nested engines, another session's engine with its own home) use it too without leasing
+     * from this engine, and a builder sized past what is free is killed by the kernel. The free
+     * memory never lowers the heap below {@value #FLOOR_MIB} MiB, under which a link fails anyway.
+     */
+    static long generous(long capacityBytes, long availableBytes) {
         long workerCap = WorkerRss.workerCapBytes(0, capacityBytes);
-        return Math.max(WorkerLeases.MIN_XMX, (long) ((workerCap > 0 ? workerCap : capacityBytes) * GENEROUS_SHARE));
+        long share = (long) ((workerCap > 0 ? workerCap : capacityBytes) * GENEROUS_SHARE);
+        if (availableBytes > 0)
+            share = Math.min(share, Math.max(FLOOR_MIB << 20, (long) (availableBytes * GENEROUS_SHARE)));
+        return Math.max(WorkerLeases.MIN_XMX, share);
     }
 
     private static Choice generous(long generousBytes, String why) {

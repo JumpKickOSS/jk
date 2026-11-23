@@ -617,7 +617,7 @@ public final class PlannerNative {
         NativeHeap.Retry retry = NativeHeap.retry(
                 heap,
                 run.cause(),
-                generous,
+                NativeHeap.generous(WorkerLeases.engine().capacityBytes()),
                 Runtime.getRuntime().availableProcessors(),
                 allArgs.stream().anyMatch(a -> a.startsWith("--parallelism")));
         if (retry != null) {

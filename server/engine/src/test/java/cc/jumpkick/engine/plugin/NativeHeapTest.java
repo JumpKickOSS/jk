@@ -107,6 +107,30 @@ class NativeHeapTest {
         assertThat(big.xmxBytes()).isEqualTo(GENEROUS);
     }
 
+    /**
+     * The generous heap is a share of the worker cap, lowered to the same share of the memory free
+     * now, so a builder in a container other engines also use is not sized past what is left. The
+     * free memory never takes it under the learned floor, and an unread one leaves the cap alone.
+     */
+    @Test
+    void the_generous_heap_fits_the_memory_free_now() {
+        long budget = 12 * GIB;
+        long capShare = (long) (WorkerRss.workerCapBytes(0, budget) * NativeHeap.GENEROUS_SHARE);
+
+        assertThat(NativeHeap.generous(budget, 64 * GIB)).as("plenty free").isEqualTo(capShare);
+        assertThat(NativeHeap.generous(budget, -1)).as("free memory unread").isEqualTo(capShare);
+        assertThat(NativeHeap.generous(budget, 6 * GIB))
+                .as("other engines hold half the container")
+                .isEqualTo((long) (6 * GIB * NativeHeap.GENEROUS_SHARE))
+                .isLessThan(capShare);
+        assertThat(NativeHeap.generous(budget, GIB)).as("almost nothing free").isEqualTo(NativeHeap.FLOOR_MIB << 20);
+
+        long small = 2 * GIB;
+        assertThat(NativeHeap.generous(small, GIB))
+                .as("a budget smaller than the floor keeps its own share")
+                .isEqualTo((long) (WorkerRss.workerCapBytes(0, small) * NativeHeap.GENEROUS_SHARE));
+    }
+
     @Test
     void inputs_round_trip_through_the_store(@TempDir Path dir) throws Exception {
         LearnedHeaps heaps = new LearnedHeaps(dir.resolve("heaps"));

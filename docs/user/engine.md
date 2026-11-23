@@ -569,7 +569,10 @@ learned peak, else a quarter of the budget up to 2 GiB, never more than its `-XX
 (25% by default) of memory; it keeps its own ceiling, and the ledger charges its measured resident
 set when that is larger. `native-image` with no `-J-Xmx` gets a builder heap
 JumpKick passes as `-J-Xmx` and leases with its overhead. A module's first native build gets the
-generous heap, 85% of the per-worker cap (what GraalVM's driver would take on its own). Later
+generous heap, 85% of the per-worker cap (what GraalVM's driver would take on its own), and no
+more than 85% of the memory the host or container has free when the step starts, though never
+under 2 GiB: other engines in the same container, which lease from their own budgets, are not
+outgrown into a kernel kill. Later
 builds get twice the largest peak the module's earlier builds reached, at least 2 GiB, scaled up
 with classpath growth. JumpKick goes back to the generous heap when a dependency is added, removed or
 moved to another version, when reachability metadata changes, or when the classpath grew more
