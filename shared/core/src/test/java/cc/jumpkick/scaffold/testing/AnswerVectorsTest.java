@@ -91,6 +91,37 @@ class AnswerVectorsTest {
     }
 
     @Test
+    void each_value_keeps_the_vectors_that_show_every_value_at_least_once() {
+        List<Field> fields = List.of(layout(), database(), deps("guava", "commons-io"), bool("native"));
+        List<AnswerVectors.Vector> all = AnswerVectors.of(fields);
+        List<AnswerVectors.Vector> some = AnswerVectors.eachValue(fields);
+
+        assertThat(some.getFirst().label()).isEqualTo(AnswerVectors.DEFAULTS);
+        assertThat(all).containsSubsequence(some);
+        // database has three values, so three vectors are the least that show each one.
+        assertThat(some).hasSize(3);
+        List<Map<String, String>> rows = new ArrayList<>();
+        rows.add(Map.of(
+                "layout", "traditional",
+                "database", "none",
+                "deps.guava", "false",
+                "deps.commons-io", "false",
+                "native", "false"));
+        for (AnswerVectors.Vector v : some.subList(1, some.size())) rows.add(axes(v.answers()));
+        Map<String, List<String>> values = Map.of(
+                "layout", List.of("traditional", "simple"),
+                "database", List.of("none", "h2", "postgres"),
+                "deps.guava", List.of("false", "true"),
+                "deps.commons-io", List.of("false", "true"),
+                "native", List.of("false", "true"));
+        values.forEach((axis, taken) -> {
+            for (String value : taken) {
+                assertThat(rows).as("%s=%s", axis, value).anyMatch(r -> value.equals(r.get(axis)));
+            }
+        });
+    }
+
+    @Test
     void a_new_option_demands_a_vector_that_picks_it() {
         List<AnswerVectors.Vector> before = AnswerVectors.of(List.of(layout(), deps("guava")));
         List<AnswerVectors.Vector> after = AnswerVectors.of(List.of(layout(), deps("guava", "jackson")));

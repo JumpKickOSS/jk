@@ -48,6 +48,9 @@ public final class AnswerVectors {
     /** One axis of the cover: a field, or one option of a {@code multi}, and the values it takes. */
     private record Dim(Field field, @Nullable String option, List<Object> values) {}
 
+    /** A vector and the value index it gives each axis. */
+    private record Row(Vector vector, int[] values) {}
+
     /**
      * The vectors for {@code fields}, the template-dependent fields of a new-project form (the layout
      * choice and the template's asks), in form order.
@@ -55,6 +58,53 @@ public final class AnswerVectors {
      * @throws IllegalArgumentException for a field with no options to enumerate and no default
      */
     public static List<Vector> of(List<Field> fields) {
+        return rows(fields, dims(fields)).stream().map(Row::vector).toList();
+    }
+
+    /**
+     * Those of {@link #of} that every value of every field appears in at least once: the defaults,
+     * then, while a value is missing, the earliest vector that adds the most missing values (a
+     * {@code multi} counts each option picked and left out). In the order {@link #of} gives them.
+     *
+     * @throws IllegalArgumentException as {@link #of}
+     */
+    public static List<Vector> eachValue(List<Field> fields) {
+        List<Dim> dims = dims(fields);
+        List<Row> all = rows(fields, dims);
+        List<Row> rows = new ArrayList<>(all);
+        Set<List<Integer>> missing = new LinkedHashSet<>();
+        for (int k = 0; k < dims.size(); k++) {
+            for (int v = 0; v < dims.get(k).values().size(); v++) missing.add(List.of(k, v));
+        }
+        Set<Row> picked = new LinkedHashSet<>();
+        while (!rows.isEmpty()) {
+            Row best = rows.getFirst();
+            int bestGain = gain(best, missing);
+            for (Row r : rows) {
+                int gain = gain(r, missing);
+                if (gain > bestGain) {
+                    best = r;
+                    bestGain = gain;
+                }
+            }
+            if (bestGain == 0 && !picked.isEmpty()) break;
+            rows.remove(best);
+            for (int k = 0; k < best.values().length; k++) missing.remove(List.of(k, best.values()[k]));
+            picked.add(best);
+        }
+        return all.stream().filter(picked::contains).map(Row::vector).toList();
+    }
+
+    /** How many of {@code missing} the row's values add. */
+    private static int gain(Row row, Set<List<Integer>> missing) {
+        int gain = 0;
+        for (int k = 0; k < row.values().length; k++) {
+            if (missing.contains(List.of(k, row.values()[k]))) gain++;
+        }
+        return gain;
+    }
+
+    private static List<Dim> dims(List<Field> fields) {
         List<Dim> dims = new ArrayList<>();
         for (Field f : fields) {
             switch (f.kind()) {
@@ -71,16 +121,20 @@ public final class AnswerVectors {
                 }
             }
         }
+        return dims;
+    }
+
+    private static List<Row> rows(List<Field> fields, List<Dim> dims) {
         int[] defaults = defaults(dims);
-        List<Vector> out = new ArrayList<>();
-        out.add(new Vector(DEFAULTS, answers(fields, dims, defaults, true)));
+        List<Row> out = new ArrayList<>();
+        out.add(new Row(new Vector(DEFAULTS, answers(fields, dims, defaults, true)), defaults));
         Set<String> seen = new LinkedHashSet<>();
         seen.add(key(defaults));
         for (int[] row : cover(dims)) {
             if (!seen.add(key(row))) continue;
-            out.add(new Vector(label(fields, dims, row, defaults), answers(fields, dims, row, false)));
+            out.add(new Row(new Vector(label(fields, dims, row, defaults), answers(fields, dims, row, false)), row));
         }
-        return List.copyOf(out);
+        return out;
     }
 
     /** An answer as a label spells it: a list in brackets, anything else as its text. */

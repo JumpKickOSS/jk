@@ -136,8 +136,11 @@ the default template.
   instead of a repository, and write every version `…`, so `jk update` and a release leave them
   alone.
 - **Build, test, guard and native** (`TemplateCatalogE2eTest`, CLI, slow tier). The same vectors
-  through `jk new -t`, each built, tested and guarded clean; a template that asks `native` is linked
-  once with `jk native` when `GRAALVM_HOME` names a GraalVM, and skipped otherwise. An Android
+  through `jk new -t`, each format-checked; the ones in which every layout and every option appears
+  at least once (`AnswerVectors.eachValue`) are built, tested and guarded clean too. The cases are
+  dealt to the shard classes `TemplateCatalogShard<n>E2eTest`, which the suite's pool runs in
+  parallel JVMs (`--class 'TemplateCatalog*E2eTest'` selects them all). A template that asks
+  `native` is linked once with `jk native` when `GRAALVM_HOME` names a GraalVM, and skipped otherwise. An Android
   template builds only where an Android SDK has its licenses accepted, and is skipped otherwise; a
   template with a known defect (`KNOWN_DEFECTS`, each with its reason) is scaffolded but not built.
 - **Conformance** (`NewProjectConformanceTest`, CLI, fast tier). One scripted answer set through

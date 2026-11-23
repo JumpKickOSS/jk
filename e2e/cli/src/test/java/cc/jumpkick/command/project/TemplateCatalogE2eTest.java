@@ -9,6 +9,7 @@ import cc.jumpkick.cli.testing.Capture;
 import cc.jumpkick.cli.testing.PublishedSdk;
 import cc.jumpkick.engine.runtime.NewProjectForm;
 import cc.jumpkick.engine.runtime.NewProjectOps;
+import cc.jumpkick.form.Field;
 import cc.jumpkick.form.Form;
 import cc.jumpkick.form.Values;
 import cc.jumpkick.host.JkDirs;
@@ -26,6 +27,7 @@ import java.util.jar.JarFile;
 import java.util.jar.Manifest;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.IntStream;
 import java.util.stream.Stream;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.DynamicTest;
@@ -38,12 +40,12 @@ import org.junit.jupiter.api.io.TempDir;
  * scaffolded with {@code jk new -t <path>}, and every template a first-party plugin jar bundles (the
  * trees under {@code plugins/<plugin>/src/main/resources/templates/}) with {@code jk new -t <id>}
  * through the jar this build produced, once per answer vector of the new-project corpus, and the
- * project it writes passes {@code jk format -c}, {@code jk build}, {@code jk test} and {@code jk
- * guard} with no edits — the contract the catalog's README promises. The vectors are the corpus's
- * ({@link AnswerVectors}, the ones {@code NewProjectCorpusTest} snapshots): the defaults, then a
- * pairwise set in which every
- * layout the template declares and every option it asks appears, so a binding only a non-default
- * answer reaches is built too, and an option added to a template is built as soon as it is asked.
+ * project it writes passes {@code jk format -c} with no edits. The vectors are the corpus's
+ * ({@link AnswerVectors#of}, the ones {@code NewProjectCorpusTest} snapshots): the defaults, then a
+ * pairwise set. Those in which every layout and every option a template asks appears at least once
+ * ({@link AnswerVectors#eachValue}) also pass {@code jk build}, {@code jk test} and {@code jk
+ * guard} — the contract the catalog's README promises — so a binding only a non-default answer
+ * reaches is built too, and an option added to a template is built as soon as it is asked.
  * A plugin template builds against the SDK this checkout publishes, and its jar is checked for a
  * plugin's shape. A release's scaffold pins that SDK already; a {@code -SNAPSHOT}'s pins the newest
  * published release at or below it, which predates whatever the checkout changed in the SDK, so the
@@ -62,9 +64,18 @@ import org.junit.jupiter.api.io.TempDir;
  * end to end that breaks when a template's pins move, the same cost and cadence as the other
  * framework e2e suites, and too long for the integration push gate. The snapshot comparison of the
  * same vectors is the fast tier's.
+ *
+ * <p>The cases are dealt round-robin to {@link #SHARDS} subclasses, {@code
+ * TemplateCatalogShard<n>E2eTest}, so the suite's pool runs them in parallel JVMs, each with its own
+ * engine and scratch and all on one warm store. Nothing here writes the shared home: a plugin
+ * scaffold names the checkout's SDK repository in its own {@code jk.toml}. All shards: {@code jk
+ * test -s slow -m e2e/cli --class 'TemplateCatalog*E2eTest'}.
  */
 @Tag("slow")
-class TemplateCatalogE2eTest {
+abstract class TemplateCatalogE2eTest {
+
+    /** How many shard classes deal the cases; each is {@code TemplateCatalogShard<n>E2eTest}. */
+    static final int SHARDS = 6;
 
     /**
      * The version this checkout's SDK is published at for a plugin scaffold: the running version
@@ -102,11 +113,18 @@ class TemplateCatalogE2eTest {
     @TempDir
     Path scratch;
 
+    private final int shard;
+
     private @Nullable String sdkRepo;
+
+    /** The suite's cases at {@code shard}, {@code shard + SHARDS}, … in catalog order. */
+    TemplateCatalogE2eTest(int shard) {
+        this.shard = shard;
+    }
 
     @TestFactory
     Stream<DynamicTest> every_template_scaffolds_builds_tests_and_guards_clean_for_each_answer_vector()
-            throws IOException {
+            throws IOException, ClassNotFoundException {
         Path repo = RepoRoot.find(TemplateCatalogE2eTest.class);
         Path root = repo.resolve("templates");
         List<Path> templates = templates(root);
@@ -131,7 +149,14 @@ class TemplateCatalogE2eTest {
         }
         assertThat(bundled).as("templates under plugins/*/%s", PLUGIN_TEMPLATES).isGreaterThanOrEqualTo(10);
 
-        List<DynamicTest> tests = new ArrayList<>();
+        // Fake-green floor: a missing shard class would drop its cases without a failure.
+        for (int n = 0; n < SHARDS; n++) {
+            String shardClass = TemplateCatalogE2eTest.class.getPackageName() + ".TemplateCatalogShard" + n + "E2eTest";
+            assertThat(Class.forName(shardClass)).as(shardClass).isAssignableTo(TemplateCatalogE2eTest.class);
+        }
+
+        List<DynamicTest> built = new ArrayList<>();
+        List<DynamicTest> formatted = new ArrayList<>();
         for (var e : all.entrySet()) {
             String id = e.getKey();
             Path template = e.getValue().tree();
@@ -139,21 +164,33 @@ class TemplateCatalogE2eTest {
             readEveryFile(template);
             // The form is read off the tree; a plugin's is the same tree its jar bundles.
             Form form = NewProjectForm.of(NewProjectOps.templateForm(template.toString(), null, template));
+            List<Field> fields = NewProjectForm.templateFields(form);
+            List<AnswerVectors.Vector> toBuild = AnswerVectors.eachValue(fields);
             int n = 0;
             boolean linked = false;
-            for (AnswerVectors.Vector v : AnswerVectors.of(NewProjectForm.templateFields(form))) {
+            for (AnswerVectors.Vector v : AnswerVectors.of(fields)) {
                 String dir = id.replace('/', '-') + "-" + n++;
                 List<String> flags = flags(v.answers());
                 String name = id + " (" + v.label() + ")";
-                tests.add(DynamicTest.dynamicTest(name, () -> scaffoldAndCheck(id, ref, name, dir, flags)));
+                if (!toBuild.contains(v)) {
+                    formatted.add(DynamicTest.dynamicTest(
+                            name + " formats clean", () -> scaffoldAndFormatCheck(ref, name, dir, flags)));
+                    continue;
+                }
+                built.add(DynamicTest.dynamicTest(name, () -> scaffoldAndCheck(id, ref, name, dir, flags)));
                 if (!linked && Boolean.TRUE.equals(v.answers().get(NATIVE))) {
                     linked = true;
-                    tests.add(DynamicTest.dynamicTest(
+                    built.add(DynamicTest.dynamicTest(
                             name + " links with jk native", () -> scaffoldAndLink(ref, name, dir, flags)));
                 }
             }
         }
-        return tests.stream();
+        return Stream.concat(dealt(built), dealt(formatted));
+    }
+
+    /** This shard's share of {@code tests}: every {@link #SHARDS}th, from its own index. */
+    private Stream<DynamicTest> dealt(List<DynamicTest> tests) {
+        return IntStream.range(0, tests.size()).filter(i -> i % SHARDS == shard).mapToObj(tests::get);
     }
 
     /** A template's tree in this checkout, and the ref {@code jk new -t} names it by. */
@@ -233,6 +270,12 @@ class TemplateCatalogE2eTest {
                 .isTrue();
     }
 
+    /** A vector no built one needs: scaffolded and format-checked, as {@link #scaffoldAndCheck} starts. */
+    private void scaffoldAndFormatCheck(String ref, String name, String dir, List<String> flags) {
+        Path project = scaffold(ref, name, dir, flags);
+        jk(name, "-C", project.toString(), "format", "-c");
+    }
+
     private void scaffoldAndCheck(String id, String ref, String name, String dir, List<String> flags)
             throws IOException {
         Path project = scaffold(ref, name, dir, flags);
@@ -249,26 +292,17 @@ class TemplateCatalogE2eTest {
                     () -> name + " builds only with an Android SDK whose licenses are accepted (jk android"
                             + " licenses --yes), which this test does not do to the machine");
         }
-        boolean pinsSdk = pinCheckoutSdk(project, manifest);
-        Path userConfig = JkDirs.userConfigFile();
-        String priorConfig = Files.isRegularFile(userConfig) ? Files.readString(userConfig) : null;
-        if (pinsSdk) {
-            Files.writeString(userConfig, (priorConfig == null ? "" : priorConfig) + """
+        if (pinCheckoutSdk(project, manifest)) {
+            Path jkToml = project.resolve("jk.toml");
+            Files.writeString(jkToml, Files.readString(jkToml) + """
 
                     [repositories.jumpkick]
                     url    = "%s"
                     groups = ["cc.jumpkick", "cc.jumpkick.*"]
                     """.formatted(sdkRepo()));
         }
-        try {
-            for (String verb : List.of("build", "test", "guard")) {
-                jk(name, "-C", project.toString(), verb);
-            }
-        } finally {
-            if (pinsSdk) {
-                if (priorConfig != null) Files.writeString(userConfig, priorConfig);
-                else Files.delete(userConfig);
-            }
+        for (String verb : List.of("build", "test", "guard")) {
+            jk(name, "-C", project.toString(), verb);
         }
         if (Files.isRegularFile(project.resolve("src/main/resources/jk-plugin.toml"))) {
             assertPluginJar(project, name);
@@ -355,9 +389,9 @@ class TemplateCatalogE2eTest {
     }
 
     /**
-     * The checkout's SDK, published once for the suite at {@link #SDK_VERSION}, which jumpkick.build
+     * The checkout's SDK, published once per shard at {@link #SDK_VERSION}, which jumpkick.build
      * serves only once that release ships, if ever with these bytes: this repository stands in for
-     * jumpkick, from the user's config, while a plugin scaffold builds.
+     * jumpkick, from the scaffold's own {@code jk.toml}, while a plugin scaffold builds.
      */
     private String sdkRepo() throws IOException {
         if (sdkRepo == null)
