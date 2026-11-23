@@ -19,6 +19,7 @@ jk test -S OrdersTest#refunds   # one method of it (* wildcards in the method to
 jk test -X -m app -m orders -S orders:OrdersIT   # app's whole suite, only OrdersIT in orders
 jk test -U                  # suspended test JVM listening on localhost:5005 — attach and go
 jk test -T                   # JaCoCo agent on every suite JVM; Coverage block in jk-results.md, HTML per module
+jk test --rerun              # run the selected tests again; compiles and packages stay cached
 jk test -t report       # failing tests are reported, the run still exits 0
 jk test -f                   # ranked classes for the working tree (does not run them)
 jk test -e HEAD~2      # ranked classes since that ref (does not run them)
@@ -333,6 +334,15 @@ skipped it gives the reason: `OK test app · 1 test, 1 skipped · 0.6s — skipp
 suite replayed from its green stamp counts the tests it skipped too:
 `Tests passed. Build up to date (served from cache); 2 tests skipped`.
 
+## Run the tests again (`--rerun`)
+
+`jk test --rerun` runs every test class the run selects, in every module whose suite it runs,
+even where a green stamp would replay the suite. Compiles, packages and every cache key stay as
+they are, so a compile already done is not done again. Use it to time a suite, or to check that a
+test that passed once still passes on unchanged code. It combines with the selection flags (`-s`,
+`-S`, `-m`, `-X`, `--quarantined`), and the run's plan shows such a suite as `run tests · rerun`.
+`-r` (`--redo`) runs the compiles again as well.
+
 ## The slowest tests (`[test] fast-method-budget`)
 
 `jk test` ends with the run's slowest test classes and methods, above the result line: the top
@@ -394,7 +404,7 @@ when the module's run ends; a class re-run after its JVM ran out of heap reports
 MCP `build`) puts it in the verdict: under a failed test whose class printed, `printed N lines; jk test
 -v shows them`, and on a `-v` run an `OUT <class> printed N lines` block per class holding its last
 40 lines (200 across the run), naming the report file when earlier lines are left out. An up-to-date
-suite prints nothing; `-r` runs it again.
+suite prints nothing; `--rerun` runs it again.
 While the run goes, each class that finishes adds a `class-finish` line to the run's
 `details.jsonl` (its tests, failures, skips and wall), so a run cancelled or timed out part way
 still names every class that completed ([Machine output](machine-output.md#event-vocabulary)). A
@@ -516,7 +526,7 @@ passed the suite's marker is green and the next run skips it whole. A class that
 passes with nothing changed is flaky or depends on what ran before it, and the run warns
 `test-passed-on-rerun` naming it, and its `class-finish` row in `jk results -O jsonl` carries
 `"passedOnRerun":true` ([Machine output](machine-output.md#event-vocabulary)); past a threshold it is quarantined
-([Flaky tests](#flaky-tests-are-quarantined-jk-flaky)). `--redo`, `--debug-jvm`, a coverage run and `--affected` run their
+([Flaky tests](#flaky-tests-are-quarantined-jk-flaky)). `--redo`, `--rerun`, `--debug-jvm`, a coverage run and `--affected` run their
 whole selection. A change to any stamp input still re-runs every class.
 
 A suite whose classes share state — a database one class seeds and the next reads, a server the
@@ -561,7 +571,7 @@ then reads `… passed earlier and nothing they reach or read has changed since;
 again`, and each replayed class's `class-finish` row carries `replayedFrom`. `jk explain` prices
 such a suite as the run will: its step reads `run tests · … · ~12 tests · 281 classes replayed`
 once the module's compile is current, and its Tests row counts only those tests. A class that reached the network,
-or a suite that did outside every class, is never replayed; `--redo` runs every class. Set at the
+or a suite that did outside every class, is never replayed; `--rerun` runs every class. Set at the
 workspace root, it holds for every member that does not say otherwise. It needs the class records, so `JK_TEST_TELEMETRY=off` or `JK_TEST_SHADOW=off` in the
 caller's shell runs it as `"class"`.
 
@@ -984,8 +994,8 @@ com.acme.OrdersTest  orders
 `issue`) ([MCP](mcp.md)).
 
 `jk test --quarantined` runs only the quarantined classes, in every module that has them, to check
-whether a fix holds. It cannot be combined with `--class`; add `-r` to run classes that already
-passed under the same inputs.
+whether a fix holds. It cannot be combined with `--class`; add `--rerun` to run classes that
+already passed under the same inputs.
 
 The dashboard's project page lists the quarantined and the flaky classes with their recent runs on
 its **Flaky tests** tab, and the bell rings with a toast when a run quarantines a class

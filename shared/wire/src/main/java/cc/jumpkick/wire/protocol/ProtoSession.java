@@ -62,6 +62,7 @@ public final class ProtoSession {
                 .withTestSelection(ProtoJobs.testSelectionOf(request))
                 .withDebugJvm(ProtoJobs.debugJvmOf(request))
                 .withCoverage(Jsonl.bool(request, ProtoJobs.COVERAGE, false))
+                .withRerunTests(Jsonl.bool(request, ProtoJobs.RERUN_TESTS, false))
                 .withTestFailures(TestFailureMode.parse(Jsonl.str(request, ProtoJobs.TEST_FAILURES))
                         .orElse(null))
                 .withSkipNode(Jsonl.bool(request, ProtoJobs.SKIP_NODE, false))
@@ -242,7 +243,7 @@ public final class ProtoSession {
 
     /**
      * The options every build verb shares — profile, workers, keep-going, parallel tests, the test
-     * selection, the failure mode, skip-node, coverage, release — onto a request that does not name them
+     * selection, the failure mode, skip-node, coverage, a test re-run, release — onto a request that does not name them
      * itself, so every verb's engine half reads them through {@link #sessionOf} the same way.
      */
     static String withBuildOptions(String request, Session session) {
@@ -268,6 +269,9 @@ public final class ProtoSession {
             f.string(ProtoJobs.KEY_AUDIT, session.keyAudit().wireName());
         }
         if (!Jsonl.has(request, ProtoJobs.COVERAGE)) f.optionalTrue(ProtoJobs.COVERAGE, session.coverage());
+        if (!Jsonl.has(request, ProtoJobs.RERUN_TESTS)) {
+            f.optionalTrue(ProtoJobs.RERUN_TESTS, session.rerunTests());
+        }
         if (!Jsonl.has(request, "lanesOnly")) f.optionalTrue("lanesOnly", session.lanesOnly());
         if (!Jsonl.has(request, "release")) f.optionalTrue("release", session.release());
         if (!Jsonl.has(request, "releaseVerb") && session.releaseVerb() != ReleaseVerb.NONE) {

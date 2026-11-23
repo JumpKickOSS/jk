@@ -45,6 +45,7 @@ class ShortFlagsTest {
             "tool install --destination",
             "guard --schema",
             "test --quarantined",
+            "test --rerun",
             "stats --since",
             "audit --vex",
             "code move --via",

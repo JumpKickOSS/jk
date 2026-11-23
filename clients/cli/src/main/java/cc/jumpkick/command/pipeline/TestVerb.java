@@ -58,6 +58,9 @@ final class TestVerb implements BuildVerb {
     /** {@code --coverage}: suite JVMs under the JaCoCo agent, a report per module. */
     private boolean coverage;
 
+    /** {@code --rerun}: every selected suite runs, while compiles and packages stay cached. */
+    private boolean rerun;
+
     @Override
     public String name() {
         return "test";
@@ -97,7 +100,8 @@ final class TestVerb implements BuildVerb {
                 Opt.flag("Only the quarantined test classes", "--quarantined"),
                 Opt.value("<port>", "Debug test JVM (JDWP; 5005, 0=free)", "-U", "--debug-jvm")
                         .withFallback(""),
-                Opt.flag("JaCoCo agent; jacoco.xml per module", "-T", "--coverage"));
+                Opt.flag("JaCoCo agent; jacoco.xml per module", "-T", "--coverage"),
+                Opt.flag("Run tests again; compiles stay cached", "--rerun"));
     }
 
     @Override
@@ -105,11 +109,13 @@ final class TestVerb implements BuildVerb {
         this.exclusive = in.isSet("exclusive");
         this.debugJvm = DebugAttach.fromFlag(in);
         this.coverage = in.isSet("coverage");
+        this.rerun = in.isSet("rerun");
         // One listener means one JVM at a time: module suites take the port in turn.
         if (debugJvm != null) run.flags(run.flags().serialTests());
         SessionContext.install(SessionContext.current()
                 .withParallelTests(run.flags().parallelTests())
-                .withCoverage(coverage));
+                .withCoverage(coverage)
+                .withRerunTests(rerun));
     }
 
     @Override

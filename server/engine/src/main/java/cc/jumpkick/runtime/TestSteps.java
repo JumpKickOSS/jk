@@ -921,8 +921,8 @@ final class TestSteps {
         for (int n : bySource.values()) estimated += n;
         s.testCount = estimated;
         String tests = estimated > 0 ? "~" + ForecastSteps.count(estimated, "test") : "tests";
-        // The run's own rule (SuiteRunRules.forcedRunReason): a rebuild, debug or coverage run never
-        // replays a green marker, so neither does its forecast.
+        // The run's own rule (SuiteRunRules.forcedRunReason): a rebuild, re-run, debug or coverage
+        // run never replays a green marker, so neither does its forecast.
         String forced = SuiteRunRules.forcedRunReason(SessionContext.current(), s.project);
         if (forced != null) {
             return new TaskForecast.Task(

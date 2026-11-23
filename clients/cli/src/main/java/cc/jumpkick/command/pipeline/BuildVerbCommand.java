@@ -454,6 +454,7 @@ public final class BuildVerbCommand implements CliCommand {
         }
         for (String c : in.values("class")) argv.add("--class=" + c);
         if (in.isSet("quarantined")) argv.add("--quarantined");
+        if (in.isSet("rerun")) argv.add("--rerun");
         if (in.isSet("exclusive")) argv.add("-X");
         if (in.isSet("aot-cache")) argv.add("--aot-cache");
         return argv;

@@ -11,6 +11,8 @@ import cc.jumpkick.cli.args.ArgParser;
 import cc.jumpkick.cli.args.ParseException;
 import cc.jumpkick.command.project.ExplainCommand;
 import cc.jumpkick.command.toolchain.ToolInstallCommand;
+import cc.jumpkick.config.Session;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.TestQuarantine;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
@@ -129,6 +131,29 @@ class TestCommandOptionsTest {
         assertThatThrownBy(() -> BuildFlags.quarantinedClasses(root, List.of("OrdersTest")))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessage(BuildFlags.QUARANTINED_WITH_CLASS);
+    }
+
+    /** {@code --rerun} asks for the suites alone: the session re-runs tests and leaves the caches on. */
+    @Test
+    void rerun_reruns_the_tests_and_leaves_rebuild_off() throws Exception {
+        Session plain = rerunSession();
+        assertThat(plain.rerunTests()).isFalse();
+        Session rerun = rerunSession("--rerun");
+        assertThat(rerun.rerunTests()).isTrue();
+        assertThat(rerun.config().rebuildOr(false)).isFalse();
+        assertThat(rerun.force()).isFalse();
+        assertThat(BuildVerbCommand.argv(new TestVerb(), parse("--rerun"))).contains("--rerun");
+    }
+
+    /** The session {@code jk test <args>} parses into, inside an invocation of its own. */
+    private static Session rerunSession(String... args) throws Exception {
+        return SessionContext.invocation(() -> {
+            Invocation in = parse(args);
+            BuildFlags flags = BuildFlags.from(in);
+            TestVerb verb = new TestVerb();
+            verb.parse(in, new BuildRun(verb, flags, in, null, null, null));
+            return SessionContext.current();
+        });
     }
 
     @Test

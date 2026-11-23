@@ -146,7 +146,7 @@ public final class TaskForecaster {
             @Nullable Path workerJar,
             @Nullable Set<Path> only,
             Planner planner) {
-        // --force/--rerun bypasses jk's build caches, so every step runs — the forecast must say
+        // --force/--redo bypasses jk's build caches, so every step runs — the forecast must say
         // so too (otherwise the plan tree renders "Fully Cached" while the ETA, which honors force,
         // predicts a full rebuild — a self-contradiction).
         boolean force = SessionContext.current().config().forceOr(false)

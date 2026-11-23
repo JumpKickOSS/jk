@@ -12,7 +12,8 @@ import org.junit.jupiter.api.Test;
 
 /**
  * The one rule the run and the forecast both read for "this suite runs whatever its last green
- * marker says": a rebuild, a debug JVM, or a coverage run (asked for, or the module's own).
+ * marker says": a rebuild, a test re-run, a debug JVM, or a coverage run (asked for, or the
+ * module's own).
  */
 class PlannerTestForcedRunTest {
 
@@ -24,13 +25,15 @@ class PlannerTestForcedRunTest {
             """;
 
     @Test
-    void rebuild_debug_and_coverage_each_force_a_run_and_nothing_else_does() throws Exception {
+    void rebuild_rerun_debug_and_coverage_each_force_a_run_and_nothing_else_does() throws Exception {
         JkBuild project = JkBuildParser.parse(TOML);
         Session plain = Session.defaults();
         assertThat(SuiteRunRules.forcedRunReason(plain, project)).isNull();
         assertThat(SuiteRunRules.forcedRunReason(
                         plain.withConfig(JkConfig.empty().withRebuild(true)), project))
                 .isEqualTo("rebuild");
+        assertThat(SuiteRunRules.forcedRunReason(plain.withRerunTests(true), project))
+                .isEqualTo("rerun");
         assertThat(SuiteRunRules.forcedRunReason(plain.withDebugJvm(new DebugJvm("localhost", 5005, false)), project))
                 .isEqualTo("debug");
         assertThat(SuiteRunRules.forcedRunReason(plain.withCoverage(true), project))

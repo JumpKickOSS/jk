@@ -17,11 +17,13 @@ final class SuiteRunRules {
 
     /**
      * Why {@code project}'s suite must run whatever its last green marker says, or {@code null}: a
-     * rebuild bypasses the caches, a debug request needs a JVM to attach to, and a coverage run
-     * needs a report a replayed marker does not have.
+     * rebuild bypasses the caches, a re-run ({@code jk test --rerun}) asks for the tests alone, a
+     * debug request needs a JVM to attach to, and a coverage run needs a report a replayed marker
+     * does not have.
      */
     static @Nullable String forcedRunReason(Session session, JkBuild project) {
         if (session.config().rebuildOr(false)) return "rebuild";
+        if (session.rerunTests()) return "rerun";
         if (session.debugJvm() != null) return "debug";
         if (session.coverage() || project.build().testCoverage()) return "coverage";
         return null;
