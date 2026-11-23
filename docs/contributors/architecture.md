@@ -204,6 +204,11 @@ code (the CLI owns the terminal and is out of scope).
 - **Perf probes.** `cc.jumpkick.runtime.base.Perf` writes `perf <label> ms=<n>` and
   `perf <label> key=value …` at debug; there is no separate switch. Reading them:
   `JK_LOG_LEVEL=debug`, restart the engine, then `grep ' perf ' ~/.jk/state/engine/*.log`.
+  `Perf.laps()` writes one stage's phases as one line. A suite that reaches its launch writes
+  `perf run-tests.before <module> ms=… siblings=… stamp=… after-stamp=…`: the sibling and worker
+  jar waits, the stamp key, then the replay check, discovery and cone check together. The cone
+  check also writes `perf cone-check <module> ms=… waited=…`, where `waited` is the time it queued
+  behind another suite's class records.
 - **Swallowed exceptions.** A catch of `Exception`, `Throwable` or `RuntimeException` whose body
   would otherwise be a comment logs `Log.debug("<method>: <why it is tolerated>", e)`; the
   `swallowed-broad-catch-ratchet` guard holds the count of comment-only ones at zero. What the

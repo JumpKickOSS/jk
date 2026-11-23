@@ -376,6 +376,8 @@ final class TestClassRecording {
         Map<String, Long> runs = new HashMap<>();
         // Whether a launch has no header, or its pool reached another host: none of its classes replays.
         Map<String, Boolean> poolReached = new HashMap<>();
+        // Another suite's records and recordings hold both permits: the wait is timed apart from the walk.
+        long started = Clock.SYSTEM.nanos();
         try {
             ONE.acquire();
         } catch (InterruptedException stopped) {
@@ -384,6 +386,7 @@ final class TestClassRecording {
         }
         // The index stands only while no recording is read anywhere in the engine.
         try (RecordingReader.Permit permit = RecordingReader.Permit.acquire()) {
+            long held = Clock.SYSTEM.nanos();
             ClassCones.Index index = ClassCones.index(roots.cone(), INDEX_CLASSES);
             ClassShadow keys = new ClassShadow(
                     index,
@@ -421,6 +424,18 @@ final class TestClassRecording {
                                 Jsonl.longValue(row, "ranAt", 0),
                                 Jsonl.longValue(row, "millis", 0)));
             });
+            Log.debug(
+                    "perf cone-check " + moduleDir,
+                    "ms",
+                    (Clock.SYSTEM.nanos() - started) / 1_000_000,
+                    "waited",
+                    (held - started) / 1_000_000,
+                    "indexed",
+                    index.size(),
+                    "replays",
+                    out.size(),
+                    "runs",
+                    runs.size());
         } finally {
             ONE.release();
         }

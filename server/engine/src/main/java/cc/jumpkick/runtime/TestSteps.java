@@ -136,20 +136,20 @@ final class TestSteps {
             settleUnmatched(ctx, in, effectiveSel, suites, actionCache, testTaskId, !testSrcs.isEmpty(), snippets);
             return;
         }
+        // Each phase up to the launch as one perf line, the cone check's own in its cone-check line.
+        Perf.Laps laps = Perf.laps();
         // The test runtime classpath is the siblings' jars: wait for them to be written.
         SiblingWaits.awaitSiblingTestRuntime(ctx, in);
         // Worker jars feed both the forked JVM and the TestStamp: nested-engine CLI modules
         // enrich with the engine, every PluginJar and the native client, so the stamp matches what
         // the suite actually loads and starts — the same set the forecast uses.
-        Map<String, String> workerJars =
-                SiblingWaits.awaitWorkerSiblings(ctx, in, testStampWorkerJars(in.dir(), projectUnderTest));
+        Map<String, String> workerJars = laps.lap(
+                "siblings", SiblingWaits.awaitWorkerSiblings(ctx, in, testStampWorkerJars(in.dir(), projectUnderTest)));
         TestStampInputs stamp = stampInputs(ctx, in, projectUnderTest, pluginDecls, workerJars);
-        List<Path> testRtCp = stamp.runtimeClasspath();
         WorkerEnv testEnv = suiteEnvironment(ctx, in, projectUnderTest);
-        TestTier tier = stamp.tier();
-        InputGuard suiteGuard = suiteGuard(ctx, testClasses, testRtCp);
+        InputGuard suiteGuard = suiteGuard(ctx, testClasses, stamp.runtimeClasspath());
         SuiteDiscovery.Rekey rekey = () -> namedStampKey(ctx, in, stamp, affected, testSrcs);
-        String stampKey = stampKey(rekey, affected, projectUnderTest, effectiveSel);
+        String stampKey = laps.lap("stamp", stampKey(rekey, affected, projectUnderTest, effectiveSel));
         KeyAudit.used(in.dir(), TaskNames.RUN_TESTS, stampKey, rekey::key);
         // --force forces a real test run, matching the compile/package
         // freshness checks above (which all guard on !rerun). Without
@@ -160,10 +160,10 @@ final class TestSteps {
         // A coverage run is a request for a report; a replayed green marker has none.
         boolean coverage = in.session().coverage() || projectUnderTest.build().testCoverage();
         boolean rerun = SuiteRunRules.forcedRunReason(in.session(), projectUnderTest) != null;
-        if (replayedGreenRun(ctx, rerun, stampKey, projectUnderTest, testEnv, tier)
+        if (replayedGreenRun(ctx, rerun, stampKey, projectUnderTest, testEnv, stamp.tier())
                 || replayedGuardRun(ctx, rerun, affected, stamp, testSrcs, projectUnderTest, testEnv, suites)) return;
         List<Path> runtimeCp = TestLaunch.testRuntimeCpWithLanguageRuntimes(
-                ctx, shape.kotlin(), shape.groovy(), cas, testRtCp, testSrcs);
+                ctx, shape.kotlin(), shape.groovy(), cas, stamp.runtimeClasspath(), testSrcs);
         // Discovery writes under target/ and reads sibling manifests, so it can throw: it runs
         // before the gate, which is only ever taken inside the try that releases it.
         SuiteDiscovery.Run reads = recordReads(ctx, in, projectUnderTest, effectiveSel, testEnv, runtimeCp, affected);
@@ -174,6 +174,7 @@ final class TestSteps {
         // whole selection.
         boolean whole = rerun || affected != null || stamp.cachesModule();
         TestClassLedger ledger = beginLedger(ctx, reads, stamp, whole, testClasses, runtimeCp, stampKey, moduleLabel);
+        laps.end("after-stamp", "run-tests.before " + in.dir());
         TestLaunch.reweightForRealRun(ctx, in);
         if (suites.describe() != null) ctx.output(suites.describe());
         Path coverageExec = coverage ? TestLaunch.coverageExecFile(ctx) : null;
@@ -229,8 +230,8 @@ final class TestSteps {
             // The worker count is decided once the gate is held: a suite parked at the gate is not
             // running, and the ones running when it starts are what it shares with.
             int testWorkers = debug ? 1 : TestLaunch.dispatchWorkers(in, projectUnderTest.build(), pluginDecls);
-            tagExcluded =
-                    listener(ctx, in, ledger, testWorkers, moduleLabel, snippets, suites, tier, affected, effectiveSel);
+            tagExcluded = listener(
+                    ctx, in, ledger, testWorkers, moduleLabel, snippets, suites, stamp.tier(), affected, effectiveSel);
             try {
                 result = starts.run((one, cp, l) ->
                         TestLaunch.launch(ctx, in, one, cp, testWorkers, workerJars, env.launchEnv(), l, tagExcluded));
