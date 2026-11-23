@@ -110,11 +110,16 @@ public final class McpBridge {
     private volatile Consumer<String> toClient = line -> {};
 
     public McpBridge(Endpoints endpoints, @Nullable String project) {
+        this(endpoints, project, Duration.ofSeconds(10));
+    }
+
+    /** A bridge whose connects give up after {@code connectTimeout}; tests shorten it. */
+    McpBridge(Endpoints endpoints, @Nullable String project, Duration connectTimeout) {
         this.endpoints = endpoints;
         this.project = project;
         this.http = Http.proxiedClientBuilder()
                 .version(HttpClient.Version.HTTP_1_1)
-                .connectTimeout(Duration.ofSeconds(10))
+                .connectTimeout(connectTimeout)
                 .build();
     }
 

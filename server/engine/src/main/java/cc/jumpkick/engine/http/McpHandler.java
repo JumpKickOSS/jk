@@ -201,7 +201,7 @@ public final class McpHandler {
     }
 
     /** Shrink one second of a wait's {@code timeout_s}; tests only. */
-    void waitSecondMs(long ms) {
+    public void waitSecondMs(long ms) {
         ctx.waitSecondMs(ms);
     }
 

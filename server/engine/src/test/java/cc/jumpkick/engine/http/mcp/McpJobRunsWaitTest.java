@@ -84,6 +84,9 @@ class McpJobRunsWaitTest {
                 null,
                 null);
         ctx.liveJid(jid -> jid == 3545L);
+        // The job never ends, so the wait can only run out: make its one second short.
+        ctx.waitSecondMs(20);
+        ctx.journalSettleMs(20);
 
         Map<String, Object> result =
                 McpJobRuns.run(new McpCall(ctx, Map.of("dir", "/w", "kind", "test", "timeout_s", 1), null), null);
