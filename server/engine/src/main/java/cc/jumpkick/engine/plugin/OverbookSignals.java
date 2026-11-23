@@ -33,7 +33,9 @@ import org.jspecify.annotations.Nullable;
  * pressure signal, so the free memory alone decides.
  *
  * <p>Readings are reused for {@link #CACHE_NANOS}. A grant checks the cached sample under the ledger
- * lock; the cache is what keeps that check from reading {@code /proc} on every fork.
+ * lock; the cache is what keeps that check from reading {@code /proc} on every fork. The ledger
+ * charges each grant against the sample it was judged on, so a burst of grants on one sample
+ * spends its free figure once, not once per grant.
  */
 public final class OverbookSignals {
 
@@ -77,6 +79,15 @@ public final class OverbookSignals {
         /** Both averages are strictly under their limits. */
         public boolean pressureLow() {
             return someAvg10 < SOME_AVG10_LIMIT && fullAvg10 < FULL_AVG10_LIMIT;
+        }
+
+        /**
+         * This sample with {@code spentBytes} fewer free: what grants made since it was taken will
+         * use, which it cannot see yet. An unreadable figure stays unreadable.
+         */
+        public Reading less(long spentBytes) {
+            if (freeBytes < 0 || spentBytes <= 0) return this;
+            return new Reading(enabled, Math.max(0, freeBytes - spentBytes), someAvg10, fullAvg10);
         }
 
         /** {@code freeBytes} covers {@code leaseBytes} plus {@code headroomBytes}, without overflow. */
@@ -383,6 +394,30 @@ public final class OverbookSignals {
                 Log.debug("memory pressure level: sysctlbyname unavailable", unavailable);
                 return null;
             }
+        }
+    }
+
+    /**
+     * What a ledger has granted since the sample it last judged an overbooked grant on, at worst
+     * bytes: that sample cannot see forks that have not started yet. Used under the ledger's lock.
+     */
+    static final class Spent {
+        private @Nullable Reading judgedOn;
+        private long bytes;
+
+        /** {@code reading} less what was granted since it was first judged on; a new sample starts over. */
+        Reading left(Reading reading) {
+            if (reading != judgedOn) {
+                judgedOn = reading;
+                bytes = 0;
+            }
+            return reading.less(bytes);
+        }
+
+        /** Count a grant's {@code delta} bytes, negative for one undone; saturating, never below zero. */
+        void add(long delta) {
+            long next = bytes + delta;
+            bytes = delta > 0 && next < 0 ? Long.MAX_VALUE : Math.max(0, next);
         }
     }
 

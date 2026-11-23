@@ -673,7 +673,11 @@ usage in that sample, not at the reservation they hold. On Linux pressure has to
 container's and the workers group's `memory.pressure` when those files are present. The
 reserved total, including the new lease, stays at or under twice the budget (one and a half
 times under `CI`) across every engine of the host, so a run
-of grants between samples cannot grow without a bound. The sample is reused for 250 ms. When the pressure rises or the free
+of grants between samples cannot grow without a bound. The sample is reused for 250 ms; every
+lease granted while it is, inside the budget or past it, is charged against its free memory at
+its worst case, since the sample cannot see forks that have not started yet. A burst of grants on
+one sample therefore spends that free memory once, not once per grant, and the free figure the
+engine log names is what was left of the sample when that grant was judged. When the pressure rises or the free
 memory falls short, further leases wait in the same queue. A running fork is never killed to
 make room. The engine log records each grant that started past the budget, with the cap and
 the sample that allowed it:

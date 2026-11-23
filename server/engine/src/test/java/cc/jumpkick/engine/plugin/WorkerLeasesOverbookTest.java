@@ -222,6 +222,37 @@ class WorkerLeasesOverbookTest {
     }
 
     @Test
+    void each_grant_of_a_burst_spends_the_free_memory_the_one_before_it_left() throws Exception {
+        AtomicLong clock = new AtomicLong(1_000);
+        FakeSignals raw = healthy();
+        long budget = 10 * GIB;
+        long headroom = OverbookSignals.headroom(budget, false);
+        raw.freeBytes = 8 * GIB;
+        OverbookSignals.Source cached = OverbookSignals.caching(raw, clock::get, OverbookSignals.CACHE_NANOS);
+        WorkerLeases.Ledger ledger = ledger(budget, 8, cached);
+        List<WorkerLeases.Grant> held = new ArrayList<>();
+        try {
+            held.add(ledger.acquireBytes(budget, false, null));
+            held.add(ledger.acquireBytes(3 * GIB, false, null));
+            held.add(ledger.acquireBytes(3 * GIB, false, null));
+            assertThat(held).extracting(WorkerLeases.Grant::overbooked).containsExactly(false, true, true);
+            assertStaysQueued(ledger, 3 * GIB);
+            assertThat(raw.reads).as("the whole burst saw one sample").isEqualTo(1);
+            assertThat(ledger.snapshot().overbookedBytes())
+                    .as("the burst spends no more than the sample had free past the headroom")
+                    .isLessThanOrEqualTo(raw.freeBytes - headroom);
+
+            clock.addAndGet(OverbookSignals.CACHE_NANOS);
+            held.add(ledger.acquireBytes(3 * GIB, false, null));
+            assertThat(held.getLast().overbooked())
+                    .as("a fresh sample is judged on its own")
+                    .isTrue();
+        } finally {
+            for (WorkerLeases.Grant grant : held) grant.close();
+        }
+    }
+
+    @Test
     void readings_are_reused_until_the_cache_expires_and_the_cap_still_binds() throws Exception {
         AtomicLong clock = new AtomicLong(1_000);
         FakeSignals raw = healthy();

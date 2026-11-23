@@ -240,6 +240,8 @@ public final class WorkerLeases {
         private long excess;
         /** Held workers {@linkplain WorkerRss#farOverLease far over their lease}. */
         private int overLeaseCount;
+        /** What was granted since the signals sample an overbooked grant was last judged on. */
+        private final OverbookSignals.Spent spent = new OverbookSignals.Spent();
 
         private int jvmRunning;
         private Duration waitAtMost = WAIT_AT_MOST;
@@ -970,7 +972,7 @@ public final class WorkerLeases {
             long ceiling = ceiling(cap);
             if (overLeaseCount > 0) return false;
             if (bytes > ceiling || charged > ceiling - bytes) return false;
-            OverbookSignals.Reading reading = readSignals();
+            OverbookSignals.Reading reading = spent.left(readSignals());
             if (!reading.enabled() || !reading.pressureLow()) return false;
             if (!reading.covers(waiter.demand.worstBytes(), OverbookSignals.headroom(cap, cautious))) return false;
             waiter.overbooked = true;
@@ -991,6 +993,7 @@ public final class WorkerLeases {
         private void take(LeaseWaiter waiter) {
             held.add(waiter);
             leased += waiter.demand.bytes();
+            spent.add(waiter.demand.worstBytes());
             lastGrant = Clock.SYSTEM.nanos();
             if (waiter.demand.cpuSlot()) jvmRunning++;
             waiter.granted = true;
@@ -1000,6 +1003,7 @@ public final class WorkerLeases {
         private void untake(LeaseWaiter waiter) {
             held.remove(waiter);
             leased = Math.max(0, leased - waiter.demand.bytes());
+            spent.add(-waiter.demand.worstBytes());
             if (waiter.demand.cpuSlot()) jvmRunning = Math.max(0, jvmRunning - 1);
             waiter.granted = false;
         }
