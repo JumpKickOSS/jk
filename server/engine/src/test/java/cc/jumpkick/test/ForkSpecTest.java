@@ -64,6 +64,19 @@ class ForkSpecTest {
     }
 
     @Test
+    void only_a_launch_whose_jvms_may_start_their_own_engines_drives_engines() {
+        assertThat(homes(true, false).drivesEngines()).isTrue();
+        assertThat(homes(true, true).drivesEngines())
+                .as("the fast tier starts no engine")
+                .isFalse();
+        assertThat(homes(false, false).drivesEngines()).isFalse();
+    }
+
+    private static ForkSpec homes(boolean workerHomes, boolean walled) {
+        return new ForkSpec(true, false, 0, workerHomes, List.of(), List.of(), List.of(), List.of(), List.of(), walled);
+    }
+
+    @Test
     void the_settings_it_carries_each_move_the_token() {
         String base = ForkSpec.DEFAULT.token();
         List<ForkSpec> moved = List.of(

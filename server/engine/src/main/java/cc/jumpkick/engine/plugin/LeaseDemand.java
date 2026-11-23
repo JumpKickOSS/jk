@@ -60,7 +60,8 @@ record LeaseDemand(
                 "");
     }
 
-    LeaseDemand resident() {
+    /** The same demand without a JVM slot: a resident helper, or a JVM whose work runs in forks leased elsewhere. */
+    LeaseDemand withoutSlot() {
         return new LeaseDemand(bytes, xmxBytes, jvm, clamped, userPinned, overBudget, false, worstBytes, pin);
     }
 

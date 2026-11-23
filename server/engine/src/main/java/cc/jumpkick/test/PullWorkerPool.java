@@ -348,6 +348,7 @@ final class PullWorkerPool {
             List<String> flags = launcher.jvmFlags(JvmRole.PULL_WORKER, concurrency, tmp);
             heap.accumulateAndGet(HeapFlags.parseXmx(flags), Math::max);
             shard.command.set(PluginLoader.command(javaHome, classpath, flags, args));
+            PluginProcess.Starter starter = launcher.poolStarter();
             HeapScope.Key key = SuiteRetry.key(
                     SuiteRetry.project(launcher.inferredModuleDir()), moduleLabel, JvmOptions.hostFeature(javaHome));
             if (key == null) {
@@ -363,7 +364,7 @@ final class PullWorkerPool {
                         handler,
                         passthrough,
                         TestWorkerEnv.poolIdleTimeoutMs(launcher.idleTimeoutMs()),
-                        launcher.heaps());
+                        starter);
             }
             try {
                 return HeapScope.call(
@@ -379,7 +380,7 @@ final class PullWorkerPool {
                                 handler,
                                 passthrough,
                                 TestWorkerEnv.poolIdleTimeoutMs(launcher.idleTimeoutMs()),
-                                launcher.heaps()));
+                                starter));
             } catch (IOException | InterruptedException | RuntimeException e) {
                 throw e;
             } catch (Exception e) {

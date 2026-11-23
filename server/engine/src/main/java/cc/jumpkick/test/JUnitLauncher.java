@@ -9,6 +9,7 @@ import cc.jumpkick.engine.plugin.HeapFlags;
 import cc.jumpkick.engine.plugin.HeapLadder;
 import cc.jumpkick.engine.plugin.HeapNotes;
 import cc.jumpkick.engine.plugin.HeapScope;
+import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.engine.plugin.LearnedHeaps;
 import cc.jumpkick.engine.plugin.PluginJar;
@@ -436,6 +437,18 @@ public final class JUnitLauncher {
      */
     boolean workerHomes() {
         return fork.workerHomes();
+    }
+
+    /**
+     * How a pooled test JVM is forked and leased: with no JVM slot when it {@linkplain
+     * ForkSpec#drivesEngines drives engines}, so the slot stays free for the forks of the engine it
+     * waits on; otherwise as every worker is.
+     */
+    PluginProcess.Starter poolStarter() {
+        LearnedHeaps heaps = heaps();
+        return fork.drivesEngines()
+                ? (pb, heap) -> JobWorkers.startWithoutSlot(pb, heap, heaps)
+                : PluginProcess.starter(heaps);
     }
 
     /** The runner arguments of pull-mode shard worker {@code workerId}: the pull protocol plus this run's filters. */

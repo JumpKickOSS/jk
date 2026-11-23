@@ -542,6 +542,17 @@ public final class WorkerLeases {
         }
 
         /**
+         * As {@link #acquire(List, Long, JvmOptions.HeapChoice)} for a JVM that takes no CPU slot: one
+         * whose work runs in processes that lease their own slots, such as a test JVM that drives
+         * engines of its own. It holding a slot for its whole life would keep that slot from the very
+         * forks it waits on.
+         */
+        public Grant acquireWithoutSlot(List<String> command, @Nullable Long requestId, JvmOptions.HeapChoice choice)
+                throws InterruptedException {
+            return acquire(LeaseDemand.of(command, choice, capacityBytes()).withoutSlot(), requestId);
+        }
+
+        /**
          * As {@link #acquire(List, Long, JvmOptions.HeapChoice)} for a helper that stays resident
          * between requests: it leases its memory but takes no CPU slot, so an idle helper never holds
          * back a fork that has work to run, and {@code resident} is asked to give the memory back
@@ -550,7 +561,7 @@ public final class WorkerLeases {
         public Grant acquireResident(List<String> command, JvmOptions.HeapChoice choice, LeaseResident resident)
                 throws InterruptedException {
             return acquire(new LeaseWaiter(
-                    LeaseDemand.of(command, choice, capacityBytes()).resident(),
+                    LeaseDemand.of(command, choice, capacityBytes()).withoutSlot(),
                     null,
                     Objects.requireNonNull(resident, "resident")));
         }
@@ -570,7 +581,7 @@ public final class WorkerLeases {
          */
         public Grant acquireResidentBytes(long bytes, LeaseResident resident) throws InterruptedException {
             long leasedBytes = Math.min(Math.max(1, bytes), Math.max(1, capacityBytes()));
-            LeaseDemand demand = new LeaseDemand(leasedBytes, 0, true, leasedBytes < bytes, false, false).resident();
+            LeaseDemand demand = new LeaseDemand(leasedBytes, 0, true, leasedBytes < bytes, false, false).withoutSlot();
             return acquire(new LeaseWaiter(demand, null, Objects.requireNonNull(resident, "resident")));
         }
 

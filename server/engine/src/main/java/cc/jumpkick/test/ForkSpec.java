@@ -68,6 +68,14 @@ public record ForkSpec(
         excludeClasses = List.copyOf(excludeClasses);
     }
 
+    /**
+     * Whether the launch's test JVMs start engines of their own and wait on them. Those engines'
+     * forks lease the JVM slots the work needs, so a pooled test JVM leases its memory and no slot.
+     */
+    public boolean drivesEngines() {
+        return workerHomes && !walled;
+    }
+
     /** The flags ahead of the module's own JVM arguments, which may override them. */
     public List<String> leading() {
         // Surefire and Gradle fork test JVMs with assertions on; a Java or Kotlin `assert` in a test

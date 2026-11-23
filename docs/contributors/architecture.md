@@ -71,7 +71,9 @@ How JumpKick is structured today. For day-to-day usage see [user documentation](
   budget and JVM cap are every engine's, and a reader drops the line of an engine whose pid is gone or was reused and kills the
   workers it names that still run (pid and start instant both match), so a draining engine and
   its successor share one set of limits and a crashed one blocks nobody; a test JVM's ledger
-  joins nothing — and which asks a resident helper such
+  joins nothing, and a pooled test JVM of a suite that starts engines of its own
+  (`ForkSpec.drivesEngines`) leases its memory but no JVM slot, so it never holds a slot that the
+  forks of the engine it waits on need — and which asks a resident helper such
   as the build-script host to exit when the head of the queue would fit without its lease, so
   the head waits only on forks doing work; a planned worker is leased at its expected resident
   set (`LearnedHeaps#price`, from the resident peaks `WorkerGc` records per module and per kind

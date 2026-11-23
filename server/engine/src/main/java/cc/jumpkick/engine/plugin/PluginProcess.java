@@ -210,7 +210,7 @@ public final class PluginProcess {
                 onProtocol,
                 onPassthrough,
                 0L,
-                LearnedHeaps.engine(),
+                starter(LearnedHeaps.engine()),
                 ORPHAN_DRAIN_GRACE_MS);
     }
 
@@ -245,9 +245,28 @@ public final class PluginProcess {
             long idleTimeoutMs,
             LearnedHeaps heaps)
             throws IOException, InterruptedException {
+        return converse(command, env, workDir, prefix, onProtocol, onPassthrough, idleTimeoutMs, starter(heaps));
+    }
+
+    /** As {@link #converse(List, WorkerEnv, Path, String, BiConsumer, Consumer, long)}, forked and leased by {@code starter}. */
+    public static WorkerExit converse(
+            List<String> command,
+            WorkerEnv env,
+            @Nullable Path workDir,
+            String prefix,
+            BiConsumer<String, Conversation> onProtocol,
+            @Nullable Consumer<String> onPassthrough,
+            long idleTimeoutMs,
+            Starter starter)
+            throws IOException, InterruptedException {
         ProcessBuilder pb = builder(command, env);
         if (workDir != null && Files.isDirectory(workDir)) pb.directory(workDir.toFile());
-        return converse(pb, prefix, onProtocol, onPassthrough, idleTimeoutMs, heaps, ORPHAN_DRAIN_GRACE_MS);
+        return converse(pb, prefix, onProtocol, onPassthrough, idleTimeoutMs, starter, ORPHAN_DRAIN_GRACE_MS);
+    }
+
+    /** The production {@link Starter}: a JVM slot and a memory lease, learned peaks recorded on {@code heaps}. */
+    public static Starter starter(LearnedHeaps heaps) {
+        return (p, heap) -> JobWorkers.start(p, heap, heaps);
     }
 
     /** As the watchdog overload with the orphan drain grace given in millis (tests). */
@@ -265,7 +284,7 @@ public final class PluginProcess {
                 onProtocol,
                 null,
                 idleTimeoutMs,
-                LearnedHeaps.engine(),
+                starter(LearnedHeaps.engine()),
                 orphanDrainGraceMs);
     }
 
@@ -376,7 +395,7 @@ public final class PluginProcess {
             BiConsumer<String, Conversation> onProtocol,
             @Nullable Consumer<String> onPassthrough,
             long idleTimeoutMs,
-            LearnedHeaps heaps,
+            Starter starter,
             long orphanDrainGraceMs)
             throws IOException, InterruptedException {
         WorkerCommands commands = WorkerCommands.open();
@@ -389,7 +408,7 @@ public final class PluginProcess {
                     onPassthrough,
                     commands,
                     idleTimeoutMs,
-                    (p, heap) -> JobWorkers.start(p, heap, heaps),
+                    starter,
                     orphanDrainGraceMs,
                     process -> null);
         } finally {
