@@ -530,11 +530,16 @@ that is how a stale override shows up. `-O jsonl` carries the same facts as
 is queued), and `workerOverLease` (the Over lease line, `""` when no worker is). The
 dashboard's Admin page shows the same line.
 
-The worker limits are one per host: every engine of one state directory leases from them
-together, so an engine still draining after `jk engine stop` and the engine that took over
-never hold more between them than one engine could alone. Host-wide are the budget, its
-twice-the-budget overbooking cap, the running-JVM cap, and the free
-memory overbooking reads. Each engine records its line in `<state>/engine/worker-leases` —
+The worker limits are one per memory budget: every engine of the same user that draws on
+one budget leases from them together, whatever `JK_HOME` it runs from, so an engine still
+draining after `jk engine stop` and the engine that took over, or engines with different
+homes in one container, never hold more between them than one engine could alone. The
+budget is the host's, or, when a cgroup above the engine sets `memory.max`, the tightest such
+group's. Shared are the budget, its twice-the-budget overbooking cap, the running-JVM cap,
+and the free memory overbooking reads. Each engine records its line in
+`jk-<user>-leases/<budget>/worker-leases` under JumpKick's temporary directory (`/var/tmp` on
+Linux), where `<budget>` is `host` or `cgroup-<id>`; when that directory cannot be made owner-only
+the engine says so in its log and keeps the file in `<state>/engine` instead —
 its budget, its running-JVM cap, the bytes it holds, its running JVMs, how many leases it has
 queued, and the pid of each worker it forked — and counts the others' lines before it grants
 a lease; the leased total and the JVM count on the Workers line, and the

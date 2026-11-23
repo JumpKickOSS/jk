@@ -65,9 +65,10 @@ import org.jspecify.annotations.Nullable;
  * the budget is granted only when {@link OverbookSignals#live()} says the host has room.
  *
  * <p>The budget, its cap and the JVM slot cap bound the host, not one process. An engine process
- * {@linkplain #shareHost joins} its state directory's {@link HostLeases}, and each grant counts the
- * bytes and JVMs every other engine of that directory holds, so a displaced engine still draining
- * and its successor together stay inside them. They lease against one budget and one JVM cap, the
+ * {@linkplain #shareHost joins} the {@link HostLeases} of its memory budget ({@link LeaseScope}),
+ * and each grant counts the bytes and JVMs every other engine of that budget holds, whatever its
+ * state directory, so a displaced engine still draining and its successor, or the nested engines of
+ * a gate, together stay inside them. They lease against one budget and one JVM cap, the
  * ones the engine that was there first recorded. A ledger that joins nothing, as in a test JVM,
  * counts only its own leases against its own limits.
  */
@@ -134,11 +135,12 @@ public final class WorkerLeases {
     }
 
     /**
-     * Count every engine of {@code engineDir} against this process's ledger from now on. Only the
-     * engine process calls this, before it forks a worker; a test JVM's ledger stays its own.
+     * Count every engine of this memory budget against this process's ledger from now on, sharing in
+     * {@code engineDir} only when the budget's own directory cannot be used. Only the engine process
+     * calls this, before it forks a worker; a test JVM's ledger stays its own.
      */
     public static void shareHost(Path engineDir) {
-        PROCESS.shareHost(HostLeases.forThisProcess(engineDir));
+        PROCESS.shareHost(HostLeases.forThisProcess(LeaseScope.dir(engineDir)));
     }
 
     /** Test seam: {@link #engine()} answers {@code ledger}, or this process's own when {@code null}. */
