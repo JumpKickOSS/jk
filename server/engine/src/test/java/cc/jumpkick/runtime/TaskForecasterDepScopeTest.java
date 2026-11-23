@@ -68,6 +68,10 @@ class TaskForecasterDepScopeTest {
         assertThat(onlyEngine.compileDepDirty()).isFalse();
         assertThat(onlyEngine.testDepDirty()).isTrue();
         assertThat(onlyEngine.testDeps()).containsExactly(eng);
+        // The cone forecast looks for the worker jars it rebuilds (jk-cli-e2e is handed jk-engine's
+        // assembly as -Djk.engine.jar) among every dirty sibling, a test-only one included.
+        assertThat(onlyEngine.orderDeps()).isEmpty();
+        assertThat(ForecastScope.dirtySiblings(onlyEngine)).containsExactly(eng);
 
         // Core dirty — main compile dep
         var onlyCore = TaskForecaster.depDirtiness(unit, Set.of(eng, core), Set.of(core), byCoord, byName);
@@ -79,6 +83,7 @@ class TaskForecasterDepScopeTest {
         var both = TaskForecaster.depDirtiness(unit, Set.of(eng, core), Set.of(eng, core), byCoord, byName);
         assertThat(both.compileDepDirty()).isTrue();
         assertThat(both.testDepDirty()).isTrue();
+        assertThat(ForecastScope.dirtySiblings(both)).containsExactlyInAnyOrder(eng, core);
     }
 
     @Test

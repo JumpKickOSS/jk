@@ -882,7 +882,8 @@ final class TestSteps {
                 layout.classesDir(),
                 prepared.classpaths().testRuntime(),
                 edits,
-                TestStampInputs.rebuildingWorkers(s.dir, s.project, s.orderDeps).values(),
+                TestStampInputs.rebuildingWorkers(s.dir, s.project, s.dirtySiblings())
+                        .values(),
                 SuiteResources.launchNames(
                         s.dir,
                         prepared.parsed().compact(),

@@ -337,7 +337,9 @@ yet, so the forecast reads the edit instead (`TestClassRecording.replayedAfter`)
 API hint names the sources whose content moved (`SourceApiIndex.Hint.changed`), the classes on disk
 compiled from them are the classes that move, and a class that passed replays unless one of them lies
 in its cone and either moved a declaration or ran in its window (`coneUsed`); a module-keyed class
-runs. A worker jar the stamp keys whose sibling is rebuilding runs the classes it would key
+runs. A worker jar the stamp keys whose sibling is rebuilding (any dirty sibling, on the suite's
+classpaths or reached by build order alone: jk-cli-e2e reaches jk-engine as a test dependency and is
+handed its assembly as `-Djk.engine.jar`) runs the classes it would key
 ([above](#nested-engines-and-worker-jars)): those whose record names it as a code file or says more
 code files than it names, those whose record says `(started)`, and the module-keyed ones; nothing
 replays when the record file's pool read it. The step says the same `~12 tests · 281 classes

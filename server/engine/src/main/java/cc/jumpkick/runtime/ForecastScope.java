@@ -106,6 +106,23 @@ public final class ForecastScope implements StepForecast.Scope {
      */
     final List<Path> orderDeps;
 
+    /**
+     * Every dirty sibling whose jar the suite may be handed by path ({@code -Djk.engine.jar}, a
+     * {@code test-plugin-jars} worker): one on its compile or test classpath as well as one it
+     * reaches by build order alone.
+     */
+    List<Path> dirtySiblings() {
+        return dirtySiblings(dep);
+    }
+
+    /** Every sibling {@code dep} names dirty: on the compile classpath, on a test scope only, or by build order alone. */
+    static List<Path> dirtySiblings(TaskForecaster.DepDirtiness dep) {
+        List<Path> out = new ArrayList<>(dep.compileDeps());
+        out.addAll(dep.testDeps());
+        out.addAll(dep.orderDeps());
+        return out;
+    }
+
     /** What this module's dirty compile-scope dependencies' edits look like, for its compile texts. */
     final TaskForecaster.DepHint depHint;
 
