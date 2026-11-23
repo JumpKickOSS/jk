@@ -413,6 +413,22 @@ on a jk-cli subset and on hotel-reservations, reporting the median and spread of
 step's own time, the recording's size and the attribution pass's time. Computing the cone is engine
 time, memoized per class tree content, and is measured the same way in shadow mode.
 
+**The use marks** were measured on their own on bocamacmini (10 CPUs, 16 GiB): an engine built from
+the tree under a private `JK_HOME`, `jk test -m <module> -X -r` with the test JVMs pinned (`-w`),
+marks on (`cache = "cone"`) and off (`"class"`, which leaves the shadow and the attribution pass
+running), alternating, caches warm. The host was shared (load average 10 to 30 through the runs)
+and the pairs spread by about 10%, so these runs do not resolve whether the marks' wall cost is
+inside the budget; that needs an idle host:
+
+| Suite | Pairs | run-tests on / off, median | Pair deltas | Recording | Events | Attribution |
+|-------|-------|----------------------------|-------------|-----------|--------|-------------|
+| jk-engine, 966 classes, 6 JVMs | 4 | 92.4 s / 89.1 s | −4.5% to +11.0% | 39.2 / 33.6 MiB | 855k / 737k | 2.34 / 2.34 s |
+| jk-cli, 374 classes, 2 JVMs | 5 | 40.3 s / 41.9 s | −10.7% to +3.0% | 6.0 / 4.2 MiB | 73k / 34k | 99 / 90 ms |
+
+The marks add a sixth to jk-engine's recording and double jk-cli's events, and leave the attribution
+pass's time where it was. That pass is 2.6% of jk-engine's run-tests step with or without them, and
+the records and the shadow after it bring the work after the suite to 6.3 s, 7% of the step.
+
 ## Staging
 
 1. **Records** (selection unchanged). The class event and the attribution pass, the
