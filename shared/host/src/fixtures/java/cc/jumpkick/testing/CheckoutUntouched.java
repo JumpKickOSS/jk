@@ -189,7 +189,8 @@ public final class CheckoutUntouched implements BeforeAllCallback, AfterAllCallb
     }
 
     private static @Nullable String git(Path root, String... args) {
-        List<String> command = GitCommand.of("-C", root.toString());
+        // Marked as the harness's: the class's recording does not count it as a program the class ran.
+        List<String> command = GitCommand.of("-c", GitCommand.HARNESS, "-C", root.toString());
         command.addAll(List.of(args));
         return Processes.outputIfOk(
                 new ProcessBuilder(command).redirectError(ProcessBuilder.Redirect.DISCARD),

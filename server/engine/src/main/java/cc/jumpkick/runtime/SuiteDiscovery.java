@@ -25,6 +25,7 @@ import java.nio.file.attribute.FileTime;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
@@ -96,6 +97,30 @@ final class SuiteDiscovery {
                     stampExtras,
                     resourceDirs,
                     stampKey));
+        }
+
+        /**
+         * The classes this run replays under {@code [test] cache = "cone"}: those whose key has not
+         * moved since they passed ({@link TestClassRecording#unmoved}).
+         */
+        Map<String, TestClassLedger.Entry> unmoved(
+                Path testClasses,
+                Path mainClasses,
+                List<Path> runtimeCp,
+                List<String> stampExtras,
+                List<Path> resourceDirs,
+                @Nullable String stampKey)
+                throws IOException {
+            return TestClassRecording.unmoved(
+                    moduleDir,
+                    layout,
+                    selection,
+                    testClasses,
+                    mainClasses,
+                    runtimeCp,
+                    stampExtras,
+                    resourceDirs,
+                    stampKey);
         }
 
         /**

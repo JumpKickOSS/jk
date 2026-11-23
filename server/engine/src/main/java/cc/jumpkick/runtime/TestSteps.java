@@ -157,15 +157,20 @@ final class TestSteps {
         boolean rerun = SuiteRunRules.forcedRunReason(in.session(), projectUnderTest) != null;
         if (replayedGreenRun(ctx, rerun, stampKey, projectUnderTest, testEnv, tier)
                 || replayedGuardRun(ctx, rerun, affected, stamp, testSrcs, projectUnderTest, testEnv, suites)) return;
-        // Under the same stamp the classes that passed before still stand: a red or cut-short
-        // suite runs only what has not passed yet. A forced, debug, coverage or affected run, and a
-        // module that says [test] cache = "module", runs its whole selection.
-        boolean whole = rerun || affected != null || projectUnderTest.build().testCacheModule();
-        TestClassLedger ledger = TestClassLedger.begin(ctx, actionCache, stampKey, moduleLabel, tier.name(), whole);
-        TestLaunch.reweightForRealRun(ctx, in);
-        if (suites.describe() != null) ctx.output(suites.describe());
         List<Path> runtimeCp = TestLaunch.testRuntimeCpWithLanguageRuntimes(
                 ctx, shape.kotlin(), shape.groovy(), cas, testRtCp, testSrcs);
+        // Discovery writes under target/ and reads sibling manifests, so it can throw: it runs
+        // before the gate too, never between the acquire and the try that releases it.
+        SuiteDiscovery.Run reads = recordReads(ctx, in, projectUnderTest, effectiveSel, testEnv, runtimeCp, affected);
+        // Under the same stamp the classes that passed before still stand: a red or cut-short
+        // suite runs only what has not passed yet. Under [test] cache = "cone" so does a class that
+        // passed under another stamp when nothing it reaches or read has moved since. A forced,
+        // debug, coverage or affected run, and a module that says [test] cache = "module", runs its
+        // whole selection.
+        boolean whole = rerun || affected != null || stamp.cachesModule();
+        TestClassLedger ledger = beginLedger(ctx, reads, stamp, whole, testClasses, runtimeCp, stampKey, moduleLabel);
+        TestLaunch.reweightForRealRun(ctx, in);
+        if (suites.describe() != null) ctx.output(suites.describe());
         // Test execution is serialized across the checkout's concurrently-built units
         // unless the user opted into parallel tests — shared ports/locks/fixtures. The
         // worker count is decided once the gate is held: a suite parked at the gate is
@@ -175,9 +180,6 @@ final class TestSteps {
         Path coverageExec = coverage ? TestLaunch.coverageExecFile(ctx) : null;
         // The agent and the report tool come first: a coverage run that cannot fetch
         // JaCoCo fails before any suite starts, not after the suite ran uninstrumented.
-        // Discovery writes under target/ and reads sibling manifests, so it can throw: it runs
-        // before the gate too, never between the acquire and the try that releases it.
-        SuiteDiscovery.Run reads = recordReads(ctx, in, projectUnderTest, effectiveSel, testEnv, runtimeCp, affected);
         // What the suite's JVMs read of the caller's environment is fetched and recorded as they run.
         SuiteEnvDelivery env = envDelivery(ctx, projectUnderTest, testEnv);
         CoverageTools.Jacoco jacoco = resolveBeforeGate(
@@ -263,6 +265,33 @@ final class TestSteps {
                 snippets,
                 said);
         keepTokens(effectiveSel, settledKey, result, affected, rekey);
+    }
+
+    /**
+     * The class ledger under {@code stampKey}, with the classes whose key has not moved since they
+     * passed settled too under {@code [test] cache = "cone"} ({@link SuiteDiscovery.Run#unmoved}).
+     */
+    private TestClassLedger beginLedger(
+            TaskContext ctx,
+            SuiteDiscovery.Run reads,
+            TestStampInputs stamp,
+            boolean whole,
+            Path testClasses,
+            List<Path> runtimeCp,
+            @Nullable String stampKey,
+            String moduleLabel)
+            throws IOException {
+        Map<String, TestClassLedger.Entry> unmoved = whole || !stamp.cachesByCone()
+                ? Map.of()
+                : reads.unmoved(
+                        testClasses,
+                        mainClasses(ctx),
+                        runtimeCp,
+                        stamp.extras(),
+                        ctx.get(COMPILED_TESTS).map(CompiledTests::resourceDirs).orElse(List.of()),
+                        stampKey);
+        return TestClassLedger.begin(
+                ctx, actionCache, stampKey, moduleLabel, stamp.tier().name(), whole, unmoved);
     }
 
     /**

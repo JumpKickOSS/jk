@@ -18,6 +18,7 @@ import cc.jumpkick.model.PomRepositoriesPolicy;
 import cc.jumpkick.model.Project;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.Sidecar;
+import cc.jumpkick.model.TestCache;
 import cc.jumpkick.model.TestFailureMode;
 import cc.jumpkick.model.TestJvm;
 import cc.jumpkick.model.ToolchainSpec;
@@ -334,7 +335,7 @@ public final class ManifestBuild {
                     TestFailureMode.FAIL,
                     0,
                     0,
-                    false,
+                    TestCache.CLASS,
                     policies.platform(),
                     policies.unmapped(),
                     policies.pomRepositories(),
@@ -384,7 +385,7 @@ public final class ManifestBuild {
                 s.testFailures,
                 s.testFastMethodBudgetMs,
                 s.testIdleTimeoutMs,
-                s.testCacheModule,
+                s.testCache,
                 policies.platform(),
                 policies.unmapped(),
                 policies.pomRepositories(),

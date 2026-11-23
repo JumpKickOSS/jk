@@ -18,6 +18,7 @@ import cc.jumpkick.model.DeclaredSuite;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Profile;
 import cc.jumpkick.model.SuiteSettings;
+import cc.jumpkick.model.TestCache;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.base.CompileSupport;
 import cc.jumpkick.runtime.base.FilteredResources;
@@ -376,6 +377,28 @@ public record TestStampInputs(
         Path root = WorkspaceScan.owningRoot(moduleDir).orElse(null);
         if (root == null || root.normalize().equals(moduleDir.normalize())) return 0;
         return JkBuildParser.parseLocal(ManifestPaths.manifestIn(root)).build().testFastMethodBudgetMs();
+    }
+
+    /** Whether the module's suite reruns whole or not at all ({@code [test] cache = "module"}). */
+    boolean cachesModule() throws IOException {
+        return testCache(facts.project(), facts.dir()) == TestCache.MODULE;
+    }
+
+    /** Whether a class whose key has not moved is replayed across a changed stamp ({@code [test] cache = "cone"}). */
+    boolean cachesByCone() throws IOException {
+        return testCache(facts.project(), facts.dir()) == TestCache.CONE;
+    }
+
+    /**
+     * {@code [test] cache}: the module's own when it says other than the default, else its workspace
+     * root's, so one line at the root turns per-class selection on for every member.
+     */
+    static TestCache testCache(JkBuild module, Path moduleDir) throws IOException {
+        TestCache own = module.build().testCache();
+        if (own != TestCache.CLASS) return own;
+        Path root = WorkspaceScan.owningRoot(moduleDir).orElse(null);
+        if (root == null || root.normalize().equals(moduleDir.normalize())) return own;
+        return JkBuildParser.parseLocal(ManifestPaths.manifestIn(root)).build().testCache();
     }
 
     /**

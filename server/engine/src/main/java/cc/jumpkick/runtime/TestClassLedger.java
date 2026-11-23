@@ -126,16 +126,28 @@ final class TestClassLedger {
     }
 
     /**
-     * The ledger under {@code stampKey}; a run that runs its {@code whole} selection (forced,
-     * debug, coverage, affected) leaves nothing out. A run that may leave classes out says so with
-     * {@link TestsNotRerun}.
+     * The ledger under {@code stampKey}, with the classes of {@code unmoved} (their key unchanged since
+     * they passed under an earlier stamp, {@link TestClassRecording#unmoved}) settled too where this
+     * stamp recorded nothing of them; a run that runs its {@code whole} selection (forced, debug,
+     * coverage, affected) leaves nothing out. A run that may leave classes out says so with {@link
+     * TestsNotRerun}.
      */
     static TestClassLedger begin(
-            TaskContext ctx, ActionCache cache, @Nullable String stampKey, String module, String tier, boolean whole) {
+            TaskContext ctx,
+            ActionCache cache,
+            @Nullable String stampKey,
+            String module,
+            String tier,
+            boolean whole,
+            Map<String, Entry> unmoved) {
         TestClassLedger ledger = load(cache, stampKey, module, tier);
         ledger.whole = whole;
-        int settled = whole ? 0 : ledger.settledInAnyLaunch();
-        if (settled > 0) ctx.warn(TestsNotRerun.CODE, TestsNotRerun.message(settled));
+        if (whole) return ledger;
+        int sameStamp = ledger.settledInAnyLaunch();
+        unmoved.forEach(ledger.previous::putIfAbsent);
+        int settled = ledger.settledInAnyLaunch();
+        if (settled > sameStamp) ctx.warn(TestsNotRerun.CODE, TestsNotRerun.unmoved(settled));
+        else if (settled > 0) ctx.warn(TestsNotRerun.CODE, TestsNotRerun.message(settled));
         return ledger;
     }
 

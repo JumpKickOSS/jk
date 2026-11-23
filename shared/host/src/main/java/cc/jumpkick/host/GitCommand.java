@@ -15,6 +15,13 @@ public final class GitCommand {
     /** The git on PATH. */
     private static final List<String> PATH_GIT = List.of("git");
 
+    /**
+     * The setting a test harness's own git command carries ({@code git -c HARNESS ...}), which git
+     * ignores: the engine reads a test class's recording without counting the command as a program
+     * the class started, since the harness runs it around every class whatever the class does.
+     */
+    public static final String HARNESS = "jk.harness=true";
+
     private GitCommand() {}
 
     /** {@code git args}. */

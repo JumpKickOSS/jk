@@ -17,6 +17,12 @@ public final class TestsNotRerun {
                 + " passed earlier under these same inputs and are not run again; running the rest (--redo runs every class)";
     }
 
+    /** The message for {@code n} classes left out when some passed under other inputs that none of them reach. */
+    public static String unmoved(int n) {
+        return n + " test class" + (n == 1 ? "" : "es")
+                + " passed earlier and nothing they reach or read has changed since; they are not run again, running the rest (--redo runs every class)";
+    }
+
     /** The classes a {@link #CODE} warning's {@code message} says were left out; 0 for any other text. */
     public static int count(String message) {
         int end = 0;

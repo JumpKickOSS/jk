@@ -512,6 +512,18 @@ cache = "module"   # default "class"
 A red or cut-short run of it then runs every class again, not only the ones that have not passed;
 a green run is still replayed whole from its marker.
 
+With `cache = "cone"` a changed stamp no longer re-runs every class. A class that passed is replayed
+when its key still matches its class record ([what a suite read](#what-a-suite-read-discovered-inputs)): its bytes and
+those of every workspace class it reaches (its cone), the files it read, the suite's settings,
+external classpath and selection. An edit to one main class runs the classes whose cone holds it,
+and any class keyed by its whole module (one that started a program, loaded a workspace class its
+cone does not name, or names a classpath scanner), and replays the rest. The warning then reads
+`… passed earlier and nothing they reach or read has changed since; they are not run again`, and
+each replayed class's `class-finish` row carries `replayedFrom`. A class that reached the network,
+or a suite that did outside every class, is never replayed; `--redo` runs every class. Set at the
+workspace root, it holds for every member that does not say otherwise. It needs the class records, so `JK_TEST_TELEMETRY=off` or `JK_TEST_SHADOW=off` in the
+caller's shell runs it as `"class"`.
+
 ## The tier table partitions its vocabulary
 
 The root's suites that claim tags form a tier table, with the default suite as the fast tier, and
@@ -1483,8 +1495,9 @@ names, and the number of workspace classes it loaded; a class that read more fil
 names says so and stands for every file its suite was found to read. The records are written and
 read a line at a time. A test is named as a container path and a
 case (`["com.example", "OrdersTest"]`), not by Java alone. The native libraries, programs and
-system files are evidence that a result is bound to the platform it ran on; none of it keys
-anything yet, and a class that did not run keeps the record of the run it last ran in. Set
+system files are evidence that a result is bound to the platform it ran on and key nothing. Each
+record also keeps the class's key, which `[test] cache = "cone"` replays it by; a class that did not
+run keeps the record of the run it last ran in. Set
 `JK_TEST_TELEMETRY=off` in the shell running `jk` to run without the class windows, the property
 notes and the records (the suite's own recording stays).
 

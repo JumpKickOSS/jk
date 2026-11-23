@@ -60,6 +60,13 @@ final class TestClassRecords {
     /** The longest row a reader takes; a longer one is no record. */
     static final int MAX_ROW_CHARS = 256 * 1024;
 
+    static {
+        // The header names the pool's reads: at 300 characters a path they stay within one row.
+        if (ClassReads.POOLED_READS_KEPT * 300 > MAX_ROW_CHARS / 2) {
+            throw new IllegalStateException("the pool's reads must fit within a record row");
+        }
+    }
+
     /** The most environment variables and system properties a row names, each; the rest are counted. */
     static final int NAMES_KEPT = ClassReads.NAMES_KEPT;
 

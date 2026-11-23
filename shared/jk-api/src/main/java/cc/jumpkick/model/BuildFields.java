@@ -51,7 +51,7 @@ final class BuildFields {
     TestFailureMode testFailures;
     long testFastMethodBudgetMs;
     long testIdleTimeoutMs;
-    boolean testCacheModule;
+    TestCache testCache;
     PlatformPolicy platformPolicy;
     UnmappedPolicy unmappedPolicy;
     PomRepositoriesPolicy pomRepositories;
@@ -115,7 +115,7 @@ final class BuildFields {
         testFailures = b.testFailures();
         testFastMethodBudgetMs = b.testFastMethodBudgetMs();
         testIdleTimeoutMs = b.testIdleTimeoutMs();
-        testCacheModule = b.testCacheModule();
+        testCache = b.testCache();
         platformPolicy = b.platformPolicy();
         unmappedPolicy = b.unmappedPolicy();
         pomRepositories = b.pomRepositories();
@@ -166,7 +166,7 @@ final class BuildFields {
                 testFailures,
                 testFastMethodBudgetMs,
                 testIdleTimeoutMs,
-                testCacheModule,
+                testCache,
                 platformPolicy,
                 unmappedPolicy,
                 pomRepositories,

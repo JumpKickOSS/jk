@@ -47,13 +47,15 @@ class ledger already keys it), is a hash of three parts.
 - the declared environment values (`[env]`, `[test] env`, profile env) and the shell's locale;
 - every **external** runtime classpath entry by content: every entry that is not a workspace
   module's output (dependency jars, the JUnit platform and engines, language runtimes);
-- the suite resource roots by tree content.
+- the suite resource roots by tree content;
+- the selection (`sel:`, `suites-run:`): which suites and tags run decides which of a class's
+  methods run, so a class that passed in the fast tier says nothing of the methods a wider run
+  selects, and a record from one selection never answers another.
 
 Left out of the suite part, because a finer part replaces them: the test sources and the module's
 main classes (the class part), sibling jars (the class part),
 the discovered reads (the observed part), the test compiles' action keys (their output is the
-class bytes), the lock file (the external classpath is what it decides), and the selection
-(`sel:`, `suites-run:`): which other suites run does not change what this class computes.
+class bytes), and the lock file (the external classpath is what it decides).
 
 **The class part**, its static cone: the class's own bytes and those of every class nested in it,
 then every **workspace** class reachable from them, transitively, each by its name and the digest
@@ -192,7 +194,7 @@ and bounded, so per-class reads use the suite's own representation rather than a
 repository-scanning class that reads 50,000 files therefore costs a row like any other and re-runs
 whenever any input of its suite moves, which is what it reads anyway. Whether a class's loads lay in
 its cone is decided when it runs and kept as its `fallback`. The suite's line holds counts and the
-bounded pool, never a class's content. The record file and the shadow log are written and read a row
+bounded pool (up to 400 data files), never a class's content. The record file and the shadow log are written and read a row
 at a time; a row past 256 KiB (none this writes) is skipped as unreadable.
 
 **The memory bound.** One suite records at a time across the engine. What it holds outside the
@@ -263,7 +265,7 @@ time, memoized per class tree content, and is measured the same way in shadow mo
    the would-run set, else the run says `per-class-unsound` (in shadow mode a debug warning, and a
    test failure in JumpKick's own suites).
 3. **Selection** behind a third value of the existing setting, `[test] cache = "cone"`, set in
-   JumpKick's own root manifest only. `"class"` (the default: a red or cut-short run re-runs only what has
+   JumpKick's own root manifest only (built, the root's line waiting on the bootstrap pin: see below). `"class"` (the default: a red or cut-short run re-runs only what has
    not passed under an unchanged stamp) and `"module"` stay as they are, and so does the suite
    marker; `-r` runs every class.
 
@@ -288,5 +290,40 @@ entry of its runtime classpath and walks a class's cone; `ClassKeys` takes the k
 its last record matches that record's (green) key, holds the outcome to it, appends a line to
 `per-class-shadow.ndjson` beside the records (`ran`, `wouldRun`, `why` per class, `changed`,
 `unsound`, timings) and leaves each class's new key in its record. `JK_TEST_SHADOW=off` turns the
-shadow alone off. Selection is unchanged.
+shadow alone off.
+
+What the shadow showed on real runs of jk-engine (940 classes) and what closed each, in
+`ClassReads` unless said:
+
+- A test harness's own command around every class is not a program the class started: JumpKick's
+  `CheckoutUntouched` runs `git status` before and after each class and marks it with
+  `-c jk.harness=true` (`GitCommand.HARNESS`), which is left out. Before the mark 916 classes fell
+  back to the module key for `process git`.
+- A code file gone once the run ended (a jar a test wrote in its own temp directory) is no input,
+  as a data file gone is not; and JumpKick's own env-probe agent jar (`EnvProbeJar.isProbeJar`) is keyed,
+  as the suite's reads already treat it. Code files are charged to every later class of the JVM, so
+  either one put most classes past their bound of 4.
+- A sibling's class tree beside its jar on the classpath (`<module>/target/classes`) is a class
+  tree: a load there is a class loaded by name and checked against the cone
+  (`TestClassRecording.Roots`), never a code file every later class read.
+- The pool keeps up to `POOLED_READS_KEPT` (400) data files, not a class's 8: it is one list per
+  suite, and past its bound every class was keyed on everything the suite read, which in jk-engine
+  is every engine source, so any edit moved every key. jk-engine's pool is 180 template files.
+
+Still keyed by the module after these: a class that loads a library by path past its bound of 4
+code files (jk-engine's in-process Scala compiles load a few dozen sbt jars from the local Maven
+repository, charged to every later class of that JVM: 284 classes), and a class that starts a
+program (about 120).
+
+**Selection.** `[test] cache = "cone"` (`TestCache.CONE`; a member takes the workspace root's when
+it says nothing). JumpKick's own root sets it once the bootstrap pin reads the value: a release
+before it refuses `"cone"`, so the value ships reader first
+([bootstrap chain](self-host.md#the-bootstrap-chain)). Before a suite runs, `TestClassRecording.unmoved`
+walks the record file a row at a time and asks `ClassShadow.whyRun`, the shadow's own question, of
+each class over the cones as they are now; a class it would replay becomes a settled entry of the
+class ledger (`TestClassLedger.begin`), so the launcher leaves it out, its `class-finish` row says
+`replayedFrom`, its counts join the summary, and it is stored under the new stamp. The cone index
+stands under the recording reader's permit, as the shadow's does. A class that reached the network,
+a suite whose pool did, a class gone from the workspace and a red record never replay; nor does
+anything under `--redo`, `--affected`, `"module"`, or with the shadow off.
 

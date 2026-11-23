@@ -3,6 +3,7 @@ package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.task.TestStamp;
 import cc.jumpkick.test.ClassCones;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -88,6 +89,20 @@ class ClassKeysTest {
         assertThat(key(cone, seen, "reads", ws).key())
                 .as("a new pass lists the directory again and sees the file added beside")
                 .isNotEqualTo(first);
+    }
+
+    @Test
+    void the_selection_stays_in_the_suite_part_and_the_test_compile_does_not() throws Exception {
+        String fast = ClassKeys.suitePart(List.of("sel:fast", "suites-run:test", "x"), List.of(), List.of());
+        assertThat(ClassKeys.suitePart(List.of("sel:all", "suites-run:test,integration", "x"), List.of(), List.of()))
+                .as("a wider run selects methods a fast run never ran")
+                .isNotEqualTo(fast);
+        assertThat(ClassKeys.suitePart(
+                        List.of("sel:fast", "suites-run:test", "x", TestStamp.COMPILE_TEST + "abc"),
+                        List.of(),
+                        List.of()))
+                .as("the class bytes the compile wrote are the cone's")
+                .isEqualTo(fast);
     }
 
     private static ClassKeys.Observed observed(List<String> reads, boolean more, List<String> processes) {

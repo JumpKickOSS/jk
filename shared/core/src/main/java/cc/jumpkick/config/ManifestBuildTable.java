@@ -10,6 +10,7 @@ import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.DebugInfo;
 import cc.jumpkick.model.DeclaredSuite;
 import cc.jumpkick.model.SuiteSettings;
+import cc.jumpkick.model.TestCache;
 import cc.jumpkick.model.TestFailureMode;
 import cc.jumpkick.model.TestJvm;
 import cc.jumpkick.model.VersionSelector;
@@ -75,7 +76,7 @@ final class ManifestBuildTable {
         TestFailureMode testFailures = TestFailureMode.FAIL;
         long testFastMethodBudgetMs;
         long testIdleTimeoutMs;
-        boolean testCacheModule;
+        TestCache testCache = TestCache.CLASS;
         final List<String> testTools = new ArrayList<>();
         final List<String> testJvmArgs = new ArrayList<>();
         final Map<String, String> testSystemProperties = new LinkedHashMap<>();
@@ -367,13 +368,13 @@ final class ManifestBuildTable {
                     ManifestBuild.durationMillis(test.get(List.of("fast-method-budget")), "[test].fast-method-budget");
         }
         // [test] cache — "class" (the default) keeps each class that passed under an unchanged stamp;
-        // "module" reruns the suite whole, for suites whose classes share state.
+        // "module" reruns the suite whole, for suites whose classes share state; "cone" also replays,
+        // across a changed stamp, a class whose cone and reads have not moved.
         if (test.contains("cache")) {
             Object cache = test.get(List.of("cache"));
-            if ("module".equals(cache)) s.testCacheModule = true;
-            else if (!"class".equals(cache)) {
-                throw new JkBuildParseException("[test].cache must be \"class\" or \"module\", not " + cache);
-            }
+            s.testCache = TestCache.parse(cache)
+                    .orElseThrow(() -> new JkBuildParseException(
+                            "[test].cache must be \"class\", \"module\" or \"cone\", not " + cache));
         }
         // [test] idle-timeout — how long a test JVM may print nothing before it is killed as hung.
         if (test.contains("idle-timeout")) {

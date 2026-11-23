@@ -69,11 +69,13 @@ final class ClassKeys {
      */
     record Key(String key, @Nullable String fallback) {}
 
-    /** The stamp tokens a finer part replaces: the selection, the test compiles, discovered reads. */
+    /**
+     * The stamp tokens a finer part replaces: the test compiles, discovered reads. The selection stays:
+     * which suites and tags run decides which of a class's methods run, so a class that passed in a
+     * run of the fast tier says nothing of its methods a wider run selects.
+     */
     static boolean replacedToken(String token) {
-        return token.startsWith("sel:")
-                || token.startsWith("suites-run:")
-                || token.startsWith(TestStamp.COMPILE_TEST)
+        return token.startsWith(TestStamp.COMPILE_TEST)
                 || token.startsWith(TestStamp.COMPILE_TEST_KOTLIN)
                 || token.startsWith(TestStamp.COMPILE_TEST_GROOVY)
                 || SuiteReads.isReadsToken(token);

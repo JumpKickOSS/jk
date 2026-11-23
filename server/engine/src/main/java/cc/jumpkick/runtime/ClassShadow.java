@@ -129,8 +129,12 @@ final class ClassShadow {
         return new TestClassRecords.Shadowed(key.key(), fallback, cone.digest() + " " + cone.size(), why);
     }
 
-    /** Why per-class selection would run the class whose record was {@code prev}, or null to replay it. */
-    private @Nullable String whyRun(@Nullable String prev, String launch, ClassCones.Cone cone) {
+    /**
+     * Why per-class selection runs the class whose record was {@code prev}, or null to replay it: the
+     * one answer both this shadow and the selection ({@link TestClassRecording#unmoved}) give.
+     */
+    @Nullable
+    String whyRun(@Nullable String prev, String launch, ClassCones.Cone cone) {
         if (prev == null) return "no-record";
         String prevKey = Jsonl.str(prev, "classKey");
         if (prevKey == null) return "no-key";

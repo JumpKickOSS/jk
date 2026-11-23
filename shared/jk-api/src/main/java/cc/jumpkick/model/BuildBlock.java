@@ -119,10 +119,9 @@ public record BuildBlock(
          */
         long testIdleTimeoutMs,
         /**
-         * {@code [test] cache = "module"}: the suite reruns whole or not at all, where by default the
-         * classes that passed under an unchanged stamp are not run again.
+         * {@code [test] cache}: which classes a run may leave out. Default {@link TestCache#CLASS}.
          */
-        boolean testCacheModule,
+        TestCache testCache,
         /**
          * {@code [resolve] platform}: how BOM managed pins constrain the graph. Default
          * {@link PlatformPolicy#ENFORCED}.
@@ -258,7 +257,7 @@ public record BuildBlock(
             TestFailureMode.FAIL,
             0,
             0,
-            false,
+            TestCache.CLASS,
             PlatformPolicy.ENFORCED,
             UnmappedPolicy.MEDIATE,
             PomRepositoriesPolicy.USE,
@@ -290,6 +289,7 @@ public record BuildBlock(
         kspOptions = kspOptions == null ? List.of() : List.copyOf(kspOptions);
         javac = javac == null ? JavacConfig.EMPTY : javac;
         testFailures = testFailures == null ? TestFailureMode.FAIL : testFailures;
+        testCache = testCache == null ? TestCache.CLASS : testCache;
         if (testFastMethodBudgetMs < 0) testFastMethodBudgetMs = 0;
         if (testIdleTimeoutMs < 0) testIdleTimeoutMs = 0;
         extraSrc = extraSrc == null ? List.of() : List.copyOf(new LinkedHashSet<>(extraSrc));

@@ -3,9 +3,11 @@ package cc.jumpkick.test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.host.GitCommand;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
@@ -114,6 +116,104 @@ class ClassReadsTest {
     }
 
     @Test
+    void the_pool_names_more_files_than_a_class_keeps(@TempDir Path tmp) throws Exception {
+        Path ws = Files.createDirectories(tmp.resolve("ws"));
+        Path recordings = Files.createDirectories(tmp.resolve("rec"));
+        List<Path> templates = new ArrayList<>();
+        for (int i = 0; i < ClassReads.READS_KEPT + 2; i++) templates.add(write(ws, "template-" + i + ".txt"));
+
+        try (Recording r = new Recording()) {
+            r.enable("jdk.FileRead").withThreshold(Duration.ZERO);
+            r.enable(ClassReads.WINDOW_EVENT).withThreshold(Duration.ZERO);
+            r.start();
+            for (Path t : templates) Files.readString(t);
+            window("demo.ATest").commit();
+            r.stop();
+            r.dump(recordings.resolve("one.jfr"));
+        }
+
+        ClassReads.Attributed seen =
+                ClassReads.attribute(recordings, ws, new ClassReads.Layout(List.of(), List.of(), Set.of(), ws, null));
+
+        assertThat(seen.pooled().readsMore())
+                .as("what discovery read keys every class by content, not as all the suite read")
+                .isFalse();
+        assertThat(seen.pooled().reads()).containsExactlyInAnyOrderElementsOf(templates);
+    }
+
+    @Test
+    void a_code_file_gone_once_the_run_ended_is_no_class_input(@TempDir Path tmp) throws Exception {
+        Path ws = Files.createDirectories(tmp.resolve("ws"));
+        Path kept = Files.write(Files.createDirectories(ws.resolve("tools")).resolve("tool.jar"), new byte[] {4});
+        Path made = Files.write(Files.createDirectories(tmp.resolve("made")).resolve("made.jar"), new byte[] {5});
+        Path recordings = Files.createDirectories(tmp.resolve("rec"));
+
+        try (Recording r = new Recording()) {
+            r.enable("jdk.FileRead").withThreshold(Duration.ZERO);
+            r.enable(ClassReads.WINDOW_EVENT).withThreshold(Duration.ZERO);
+            r.start();
+            Window first = window("demo.MakerTest");
+            Files.readAllBytes(made);
+            Files.readAllBytes(kept);
+            first.commit();
+            Window second = window("demo.LaterTest");
+            second.commit();
+            r.stop();
+            r.dump(recordings.resolve("one.jfr"));
+        }
+        Files.delete(made);
+
+        ClassReads.Attributed seen =
+                ClassReads.attribute(recordings, ws, new ClassReads.Layout(List.of(), List.of(), Set.of(), ws, null));
+
+        assertThat(Objects.requireNonNull(seen.classes().get("demo.MakerTest")).code())
+                .as("the jar the run made and removed is none of its inputs")
+                .containsExactly(kept);
+        assertThat(Objects.requireNonNull(seen.classes().get("demo.LaterTest")).code())
+                .as("nor one a later class's loader could be served from")
+                .containsExactly(kept);
+    }
+
+    @Test
+    void a_command_the_test_harness_marks_is_no_program_the_class_started(@TempDir Path tmp) throws Exception {
+        Path ws = Files.createDirectories(tmp.resolve("ws"));
+        Path recordings = Files.createDirectories(tmp.resolve("rec"));
+        String java = ProcessHandle.current().info().command().orElseThrow();
+
+        try (Recording r = new Recording()) {
+            r.enable("jdk.ProcessStart");
+            r.enable(ClassReads.WINDOW_EVENT).withThreshold(Duration.ZERO);
+            r.start();
+            Window harnessed = window("demo.QuietTest");
+            run(java, "-D" + GitCommand.HARNESS, "-version");
+            harnessed.commit();
+            Window starting = window("demo.StartingTest");
+            run(java, "-version");
+            starting.commit();
+            r.stop();
+            r.dump(recordings.resolve("one.jfr"));
+        }
+
+        ClassReads.Attributed seen =
+                ClassReads.attribute(recordings, ws, new ClassReads.Layout(List.of(), List.of(), Set.of(), ws, null));
+
+        assertThat(Objects.requireNonNull(seen.classes().get("demo.QuietTest")).processes())
+                .as("the harness's own command around the class")
+                .isEmpty();
+        assertThat(Objects.requireNonNull(seen.classes().get("demo.StartingTest"))
+                        .processes())
+                .containsExactly(java);
+    }
+
+    private static void run(String... command) throws Exception {
+        new ProcessBuilder(command)
+                .redirectErrorStream(true)
+                .redirectOutput(ProcessBuilder.Redirect.DISCARD)
+                .start()
+                .waitFor();
+    }
+
+    @Test
     void the_systems_own_files_are_evidence_and_never_reads() {
         ClassReads.Layout layout = new ClassReads.Layout(List.of(), List.of(), Set.of(), Path.of("/ws"), null);
         assertThat(ClassReads.classify(Path.of("/proc/self/status"), layout)).isEqualTo(ClassReads.Where.OS);
@@ -121,6 +221,9 @@ class ClassReadsTest {
         assertThat(ClassReads.classify(Path.of("/System/Library/x"), layout)).isEqualTo(ClassReads.Where.OS);
         assertThat(ClassReads.classify(Path.of("/ws/data/x.json"), layout)).isEqualTo(ClassReads.Where.DATA);
         assertThat(ClassReads.classify(Path.of("/ws/lib/x.jar"), layout)).isEqualTo(ClassReads.Where.CODE);
+        assertThat(ClassReads.classify(Path.of("/home/u/.jk/cache/env-reads/env-probe-2-ab.jar"), layout))
+                .as("jk's own probe agent")
+                .isEqualTo(ClassReads.Where.KEYED);
     }
 
     @Test

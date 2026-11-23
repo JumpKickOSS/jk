@@ -135,4 +135,24 @@ class TestClassRecordsTest {
         assertThat(TestClassRecords.container("Top")).containsExactly("", "Top");
         assertThat(TestClassRecords.className(List.of("", "Top"))).isEqualTo("Top");
     }
+
+    @Test
+    void a_siblings_class_tree_beside_its_jar_loads_classes_by_name(@TempDir Path tmp) throws Exception {
+        Path ws = Files.createDirectories(tmp.resolve("ws"));
+        Path sibling = Files.createDirectories(ws.resolve("sdk/target"));
+        Path jar = Files.write(sibling.resolve("sdk-1.0.jar"), new byte[] {1});
+        Path tree = Files.createDirectories(sibling.resolve("classes"));
+        Path library =
+                Files.write(Files.createDirectories(tmp.resolve("store")).resolve("lib-1.0.jar"), new byte[] {2});
+        Path tests = ws.resolve("m/target/test-classes");
+        Path main = ws.resolve("m/target/classes");
+
+        TestClassRecording.Roots roots = TestClassRecording.Roots.of(ws, tests, main, List.of(jar, library));
+
+        assertThat(roots.classTrees()).containsExactly(tests, main, tree);
+        assertThat(roots.cone())
+                .as("the jar holds the same classes for the cone")
+                .containsExactly(tests, main, jar);
+        assertThat(roots.external()).containsExactly(library);
+    }
 }

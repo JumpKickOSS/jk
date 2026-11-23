@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.test;
 
+import cc.jumpkick.host.GitCommand;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.ProcessEnv;
@@ -98,6 +99,13 @@ public final class ClassReads {
     /** The most data files a class keeps; past it the class keys on every file its suite read. */
     public static final int READS_KEPT = 8;
 
+    /**
+     * The most data files the pool keeps, what no class's window held: one list for the whole suite,
+     * so it can name what a suite reads at discovery (templates, a registry) where a class's bound
+     * would key every class on every file the suite read. Held within a record row's bound.
+     */
+    public static final int POOLED_READS_KEPT = 400;
+
     /** The most code files a class keeps; past it the class is keyed by its whole module. */
     public static final int CODE_KEPT = 4;
 
@@ -136,6 +144,7 @@ public final class ClassReads {
     public static final long PEAK_BYTES = (CLASSES_KEPT + 1) * CLASS_BYTES
             + CLASSES_KEPT * 2L * NAMES_KEPT * 64
             + LOADED_KEPT * 48L
+            + POOLED_READS_KEPT * 200L
             + (ClassReads.WRITTEN_KEPT + ClassReads.CODE_FILES_KEPT + ClassReads.EXISTS_KEPT) * 200L;
 
     /**
@@ -167,9 +176,19 @@ public final class ClassReads {
         private boolean codeMore;
         private boolean loadedMore;
         private boolean bound;
+        private final int readsKept;
+
+        private Observation(int readsKept) {
+            this.readsKept = readsKept;
+        }
 
         public static Observation empty() {
-            return new Observation();
+            return new Observation(READS_KEPT);
+        }
+
+        /** The pool's: what no class's window held, with room for {@link #POOLED_READS_KEPT} data files. */
+        static Observation pool() {
+            return new Observation(POOLED_READS_KEPT);
         }
 
         /** Data files read, outside every keyed root, at most {@link #READS_KEPT}. */
@@ -222,7 +241,7 @@ public final class ClassReads {
 
         public void addRead(Path p) {
             if (readsMore || reads.contains(p)) return;
-            if (reads.size() < READS_KEPT) reads.add(p);
+            if (reads.size() < readsKept) reads.add(p);
             else readsMore = true;
         }
 
@@ -361,7 +380,7 @@ public final class ClassReads {
         }
         Map<String, Observation> classes = new LinkedHashMap<>();
         int[] loadedLeft = {LOADED_KEPT};
-        Observation pooled = Observation.empty();
+        Observation pooled = Observation.pool();
         boolean complete = true;
         long events = 0;
         for (Path jfr : recordings) {
@@ -424,7 +443,11 @@ public final class ClassReads {
         switch (name) {
             case "jdk.FileRead" -> join.accept(at, Kind.READ, v[0]);
             case "jdk.FileWrite" -> join.accept(at, Kind.WRITE, v[0]);
-            case "jdk.ProcessStart" -> join.accept(at, Kind.PROCESS, program(v[0]));
+            case "jdk.ProcessStart" -> {
+                // A test harness's own command around every class (CheckoutUntouched's git status)
+                // is no program the class started.
+                if (v[0] != null && !v[0].contains(GitCommand.HARNESS)) join.accept(at, Kind.PROCESS, program(v[0]));
+            }
             case "jdk.NativeLibraryLoad" -> {
                 // A failed load (JDK 22 and later say so) loaded nothing.
                 if (v[1] != null && !Boolean.parseBoolean(v[1])) return;
@@ -558,7 +581,8 @@ public final class ClassReads {
         /**
          * A code file read by the time a class finished is one its JVM's loaders may serve it from:
          * the classes a file's first read reaches are every class any read of it reaches, and it is
-         * the pool's when its last read came after every window closed.
+         * the pool's when its last read came after every window closed. One gone once the run ended
+         * is none of them.
          */
         /** The code files already judged, by their verdict under their real path, the last few thousand. */
         private final Map<Path, Where> code = new LinkedHashMap<>(256, 0.75f, true) {
@@ -594,6 +618,9 @@ public final class ClassReads {
             long lastEnd = Long.MIN_VALUE;
             for (Window w : windows) lastEnd = Math.max(lastEnd, w.end());
             for (Map.Entry<Path, long[]> c : codeReads.entrySet()) {
+                // A code file gone once the run ended was made and removed by it (a jar a test wrote
+                // in its temp directory): no input, and no load a later class may be served from.
+                if (!exists(c.getKey())) continue;
                 long first = c.getValue()[0];
                 for (Window w : windows) {
                     Observation o = classes.get(w.testClass());
@@ -640,6 +667,8 @@ public final class ClassReads {
         String name = String.valueOf(p.getFileName());
         if (name.endsWith(".class") && under(p, layout.classTrees())) return Where.LOADED;
         if (under(p, layout.scratch())) return Where.KEYED;
+        // jk's own probe agent, on every probed test JVM: the suite's key holds the code that cut it.
+        if (EnvProbeJar.isProbeJar(p)) return Where.KEYED;
         if (osPath(p)) return Where.OS;
         if (layout.javaHome() != null && p.startsWith(layout.javaHome())) return Where.KEYED;
         // What the suite's key holds whole (the classpath, the test runner, the plugin workers it

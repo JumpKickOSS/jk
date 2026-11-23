@@ -4,6 +4,7 @@ package cc.jumpkick.runtime;
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.time.Clock;
+import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.task.JdkToolchain;
 import cc.jumpkick.test.ClassCones;
@@ -21,6 +22,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.concurrent.Semaphore;
 import org.jspecify.annotations.Nullable;
 
@@ -99,28 +101,15 @@ final class TestClassRecording {
             try {
                 Path target = layout.moduleTargetDir();
                 Path workspace = layout.workspaceRoot().toAbsolutePath().normalize();
-                List<Path> classTrees = new ArrayList<>(List.of(testClasses, mainClasses));
-                List<Path> coneRoots = new ArrayList<>(classTrees);
-                Set<Path> classpathJars = new HashSet<>();
-                List<Path> external = new ArrayList<>();
-                for (Path entry : runtimeCp) {
-                    Path abs = entry.toAbsolutePath().normalize();
-                    if (!abs.startsWith(workspace)) {
-                        classpathJars.add(abs);
-                        external.add(abs);
-                        continue;
-                    }
-                    coneRoots.add(abs);
-                    if (Files.isDirectory(abs)) classTrees.add(abs);
-                    // A sibling's jar is its classes, which the cone holds one by one.
-                    else classpathJars.add(abs);
-                }
+                Roots roots = Roots.of(workspace, testClasses, mainClasses, runtimeCp);
+                List<Path> coneRoots = roots.cone();
+                List<Path> external = roots.external();
                 List<Path> scratch = List.of(target, TestHomes.root());
                 ClassReads.Attributed seen = ClassReads.attribute(
                         SuiteReads.recordingDir(target),
                         moduleDir,
                         new ClassReads.Layout(
-                                classTrees, List.copyOf(keyed), classpathJars, workspace, javaHome, scratch));
+                                roots.classTrees(), List.copyOf(keyed), roots.jars(), workspace, javaHome, scratch));
                 long attributedMs = (Clock.SYSTEM.nanos() - started) / 1_000_000;
                 TestClassRecords.Lookups lookups = TestClassRecords.Lookups.read(EnvReadReport.recordDir(moduleDir));
                 Map<String, TestClassRecords.Outcome> ran = TestClassRecords.outcomes(ledger.recorded());
@@ -168,6 +157,116 @@ final class TestClassRecording {
                     + (Clock.SYSTEM.nanos() - started) / 1_000_000 + " ms in all"
                     + (shadow == null ? "" : "; " + shadow.wouldRun() + " would run"));
         }
+    }
+
+    /**
+     * Where a suite's classes come from: the class trees they load from by file (with the class tree
+     * of each sibling whose jar is on the classpath: a loader handed that tree loads the jar's classes
+     * from it, and a load there is the class's by name, never a code file every later class read),
+     * the roots its cones walk (its own trees and every sibling's jar), the jars on its classpath, and
+     * the classpath entries outside the workspace, which the suite part keys whole.
+     */
+    record Roots(List<Path> classTrees, List<Path> cone, Set<Path> jars, List<Path> external) {
+        static Roots of(Path workspace, Path testClasses, Path mainClasses, List<Path> runtimeCp) {
+            List<Path> classTrees = new ArrayList<>(List.of(testClasses, mainClasses));
+            List<Path> cone = new ArrayList<>(classTrees);
+            Set<Path> jars = new HashSet<>();
+            List<Path> external = new ArrayList<>();
+            for (Path entry : runtimeCp) {
+                Path abs = entry.toAbsolutePath().normalize();
+                if (!abs.startsWith(workspace)) {
+                    jars.add(abs);
+                    external.add(abs);
+                    continue;
+                }
+                cone.add(abs);
+                if (Files.isDirectory(abs)) {
+                    classTrees.add(abs);
+                    continue;
+                }
+                // A sibling's jar is its classes, which the cone holds one by one.
+                jars.add(abs);
+                Path target = abs.getParent();
+                if (target != null
+                        && target.getParent() != null
+                        && BuildLayout.TARGET.equals(String.valueOf(target.getFileName()))) {
+                    Path tree = BuildLayout.classesDir(target.getParent());
+                    if (Files.isDirectory(tree)) classTrees.add(tree);
+                }
+            }
+            return new Roots(classTrees, cone, jars, external);
+        }
+    }
+
+    /**
+     * Before a suite runs under {@code [test] cache = "cone"}: each class whose last record passed and
+     * whose key, taken now over its cone and what that record says it read, is still the key the
+     * record was stored under, by its launch and class as the class ledger names it, with the counts
+     * it replays. Nothing that class reaches changed since it passed. A class that reached past the
+     * host, or whose suite did outside every class, is never replayed, nor a class no longer in the
+     * workspace. Empty when the shadow is off ({@link TestTelemetry#shadow}): its keys are not kept.
+     */
+    static Map<String, TestClassLedger.Entry> unmoved(
+            Path moduleDir,
+            BuildLayout layout,
+            TestSelection selection,
+            Path testClasses,
+            Path mainClasses,
+            List<Path> runtimeCp,
+            List<String> stampExtras,
+            List<Path> resourceDirs,
+            @Nullable String stampKey)
+            throws IOException {
+        if (!TestTelemetry.shadow()) return Map.of();
+        Path file = TestClassRecords.file(moduleDir);
+        String header = TestClassRecords.header(file);
+        if (header == null || reachedPastHost(Jsonl.nested(header, "pooled"))) return Map.of();
+        Path workspace = layout.workspaceRoot().toAbsolutePath().normalize();
+        Roots roots = Roots.of(workspace, testClasses, mainClasses, runtimeCp);
+        String suitePart = ClassKeys.suitePart(stampExtras, roots.external(), resourceDirs);
+        String reads = SuiteReads.digest(moduleDir, selection, layout.workspaceRoot());
+        Map<String, TestClassLedger.Entry> out = new TreeMap<>();
+        try {
+            ONE.acquire();
+        } catch (InterruptedException stopped) {
+            Thread.currentThread().interrupt();
+            return Map.of();
+        }
+        // The index stands only while no recording is read anywhere in the engine.
+        try (RecordingReader.Permit permit = RecordingReader.Permit.acquire()) {
+            ClassCones.Index index = ClassCones.index(roots.cone(), INDEX_CLASSES);
+            ClassShadow keys = new ClassShadow(
+                    index,
+                    suitePart,
+                    workspace,
+                    ClassShadow.pooledOf(header),
+                    ClassKeys.Observed.NONE,
+                    reads,
+                    reads,
+                    stampKey);
+            TestClassRecords.forEachRow(file, (key, row) -> {
+                String launch = Jsonl.str(row, "launch");
+                String cls = TestClassRecords.className(Jsonl.strArray(row, "container"));
+                if (launch == null || reachedPastHost(row) || !index.contains(cls)) return;
+                if (keys.whyRun(row, launch, index.cone(cls)) != null) return;
+                out.put(
+                        key,
+                        new TestClassLedger.Entry(
+                                Jsonl.longValue(row, "tests", 0),
+                                0,
+                                Jsonl.longValue(row, "skipped", 0),
+                                Jsonl.longValue(row, "ranAt", 0),
+                                Jsonl.longValue(row, "millis", 0)));
+            });
+        } finally {
+            ONE.release();
+        }
+        return out;
+    }
+
+    /** Whether a record row, or the pool of its header, says the network was reached. */
+    private static boolean reachedPastHost(@Nullable String row) {
+        return row != null && !Jsonl.strArray(row, "network").isEmpty();
     }
 
     /** The observation of the class {@code o} names, when its recording was read whole. */
