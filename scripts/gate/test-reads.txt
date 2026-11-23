@@ -111,6 +111,7 @@ docs/user/why.md
 docs/user/windows.md
 docs/user/workspaces.md
 docs/user/wrapper.md
+hosting/jk-updates/scripts/assemble.sh
 hosting/public/agent-demo-poster.webp
 hosting/public/demo-poster.webp
 hosting/public/index.html

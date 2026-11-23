@@ -171,6 +171,9 @@ module and selection, and `scripts/gate/docs-only.sh write` collects the docs am
 workspace member from JumpKick's cache, leaving out the record of `jk test -s docs`. Run it after a
 run of every suite and commit the result. The Full tier runs `scripts/gate/docs-only.sh check` once
 all its suites ran, and is red naming each doc a suite read that the list lacks.
+The Branch tier runs the same check after its tests and warns, without refusing the branch, when
+the suites it ran read a doc the list lacks; add that line to the list by hand, since `write` after a
+partial run drops what the suites that did not run read.
 
 **The docs suite** holds the tests that scan the doc tree: `MachineOutputCallersTest` (every
 `-O json` caller, in the docs too) and `PluginDefaultDocsTest` (every built-in plugin default a page

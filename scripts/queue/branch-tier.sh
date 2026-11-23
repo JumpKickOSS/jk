@@ -5,7 +5,8 @@
 # every module that depends on them (all of them when a file outside every module changed). The
 # modules they build on compile, main and test, but their suites do not run, and nothing is
 # packaged past the jars the tests read: no native client. Then the tree suite (`jk test -s tree`),
-# the tests that scan every module's sources, which no module's fast tier holds. A pass is recorded
+# the tests that scan every module's sources, which no module's fast tier holds, and a warning when
+# those runs read a doc scripts/gate/test-reads.txt lacks. A pass is recorded
 # as a note on HEAD under refs/notes/branch-tier naming HEAD's tree, which scripts/queue/submit.sh
 # requires. The working tree must be clean, so what passed is what HEAD holds.
 #
@@ -45,6 +46,12 @@ else
   echo "branch-tier: no module changed since $(git rev-parse --short "$base"); no tests to run"
 fi
 test_s=$((SECONDS - started))
+
+# The suites just run recorded the docs they read; one test-reads.txt lacks would turn the Full tier
+# red. A warning, not a refusal: the recordings may hold another checkout's runs on this host.
+if [[ -n "$modules" ]] && ! bash "$root/scripts/gate/docs-only.sh" check; then
+  echo "branch-tier: warning: test-reads.txt lacks a doc a test read; the Full tier fails on it" >&2
+fi
 
 git notes --ref=branch-tier add -f -m "passed $(git rev-parse 'HEAD^{tree}') on $(hostname) at $(date -u +%Y-%m-%dT%H:%M:%SZ)" HEAD
 echo "branch-tier: $(git rev-parse --short HEAD) passed in $((guard_s + test_s))s (guard ${guard_s}s, tests ${test_s}s); submit it with scripts/queue/submit.sh"
