@@ -4,6 +4,7 @@ package cc.jumpkick.test;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.plugin.HeapFlags;
 import cc.jumpkick.engine.plugin.HeapScope;
+import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.engine.plugin.PluginLoader;
 import cc.jumpkick.engine.plugin.PluginProcess;
@@ -92,8 +93,8 @@ final class PullWorkerPool {
      * One pull-queue pool over {@code classes}; report accumulation stays with the caller. A {@code
      * widen} of non-null is the count the suite would start at now: while classes are still queued
      * the pool re-reads it every {@link #WIDEN_EVERY_MS} and starts more workers up to it, one at a
-     * time and only while the lease ledger has a free JVM slot and the memory for one more
-     * ({@link #roomFor}). It never stops a worker it started.
+     * time and only while the lease ledger would grant one more at once ({@link #roomFor}). It never
+     * stops a worker it started.
      */
     TestSummary run(
             int workers,
@@ -243,31 +244,31 @@ final class PullWorkerPool {
             if (queue.isEmpty() || SessionCancel.cancelled()) return;
             int want = Math.min(Math.min(widen.getAsInt(), classCount), shards.size() + queue.size());
             if (want <= shards.size()) continue;
-            long lease = leaseOf(shards);
-            if (lease < 0 || !roomFor(WorkerLeases.engine().snapshot(), lease)) continue;
+            List<String> command = shards.getFirst().command.get();
+            if (command.isEmpty() || !roomFor(command)) continue;
             start(shards, queue, workerIdBase, want, true, xml, md);
             if (announce) listener.onWorkers(shards.size());
         }
     }
 
     /**
-     * Whether the ledger can take one more test JVM leased at {@code leaseBytes} without anyone
-     * waiting: nothing is queued for a lease, a JVM slot is free and the bytes fit the budget.
+     * Whether the lease ledger would grant one more worker forked as {@code command} now, leased and
+     * priced as the pool's workers are: the rule a waiting lease is granted by, overbooking
+     * included, with nobody waiting ahead of it.
      */
-    static boolean roomFor(WorkerLeases.Snapshot ledger, long leaseBytes) {
-        if (ledger.queued() > 0 || ledger.runningJvms() >= ledger.cpuCap()) return false;
-        return ledger.budgetBytes() - ledger.leasedBytes() >= leaseBytes;
+    private boolean roomFor(List<String> command) {
+        HeapScope.Key key = heapKey();
+        JobWorkers.Lease lease = launcher.poolLease();
+        if (key == null) return JobWorkers.admitsNow(command, launcher.heaps(), lease);
+        return HeapScope.call(key, () -> {
+            return JobWorkers.admitsNow(command, launcher.heaps(), lease);
+        });
     }
 
-    /**
-     * The lease the pool's first worker's heap asks for, what one more worker would take; {@code -1}
-     * before that worker has built its command.
-     */
-    private static long leaseOf(List<Shard> shards) {
-        List<String> command = shards.getFirst().command.get();
-        if (command.isEmpty()) return -1;
-        return WorkerLeases.jvmLease(
-                Math.max(0, JvmOptions.HeapChoice.inspect(command).xmxBytes()));
+    /** The learned-heap key the pool's workers are forked under, or null when the module has none. */
+    private HeapScope.@Nullable Key heapKey() {
+        return SuiteRetry.key(
+                SuiteRetry.project(launcher.inferredModuleDir()), moduleLabel, JvmOptions.hostFeature(javaHome));
     }
 
     /** Start worker {@code shards.size() + 1} of the pool, its JVM sized for {@code concurrency}. */
@@ -379,8 +380,7 @@ final class PullWorkerPool {
             heap.accumulateAndGet(HeapFlags.parseXmx(flags), Math::max);
             shard.command.set(PluginLoader.command(javaHome, classpath, flags, args));
             PluginProcess.Starter starter = launcher.poolStarter();
-            HeapScope.Key key = SuiteRetry.key(
-                    SuiteRetry.project(launcher.inferredModuleDir()), moduleLabel, JvmOptions.hostFeature(javaHome));
+            HeapScope.Key key = heapKey();
             if (key == null) {
                 return PluginLoader.converse(
                         javaHome,

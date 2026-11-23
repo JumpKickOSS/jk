@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 import cc.jumpkick.config.PluginTuning;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.plugin.FakeWorkerShell;
+import cc.jumpkick.engine.plugin.OverbookSignals;
 import cc.jumpkick.engine.plugin.WorkerLeases;
 import cc.jumpkick.orchestrator.TestProgressListener;
 import cc.jumpkick.run.TestSummary;
@@ -25,7 +26,8 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * A suite that starts narrow because the build was wide widens once the share grows, and only as
- * far as the lease ledger has JVM slots: every pull worker it adds forks through a lease. The fake
+ * far as the lease ledger would grant one more at once, past the budget when the host has room
+ * to overbook: every pull worker it adds forks through a lease. The fake
  * {@code java} lists six classes and, as a pull worker, takes a second over each.
  */
 @Tag("integration")
@@ -85,24 +87,28 @@ class JUnitLauncherWideningTest {
     }
 
     @Test
-    void room_is_a_free_jvm_slot_and_the_bytes_with_nobody_waiting() {
-        long lease = WorkerLeases.jvmLease(GIB);
-        assertThat(PullWorkerPool.roomFor(snapshot(8 * GIB, 0, 0, 3, 8), lease)).isTrue();
-        assertThat(PullWorkerPool.roomFor(snapshot(8 * GIB, 0, 0, 8, 8), lease))
-                .as("every JVM slot is held")
-                .isFalse();
-        assertThat(PullWorkerPool.roomFor(snapshot(8 * GIB, 0, 1, 3, 8), lease))
-                .as("a lease is already waiting")
-                .isFalse();
-        assertThat(PullWorkerPool.roomFor(snapshot(8 * GIB, 8 * GIB - lease + 1, 0, 3, 8), lease))
-                .as("the bytes do not fit")
-                .isFalse();
-        assertThat(PullWorkerPool.roomFor(snapshot(8 * GIB, 8 * GIB - lease, 0, 3, 8), lease))
-                .isTrue();
-    }
+    void a_suite_widens_past_the_budget_when_the_host_has_room_to_overbook(@TempDir Path dir) throws Exception {
+        assumeTrue(TestWorkers.effectiveJobs() >= 2, "the jobs budget allows two test workers");
+        assumeTrue(TestWorkers.clampByHeap(2) == 2, "host heap allows two test workers");
+        OverbookSignals.Source healthy = () -> new OverbookSignals.Reading(true, 256 * GIB, 0, 0);
+        WorkerLeases.Ledger ledger = new WorkerLeases.Ledger(() -> 16 * GIB, () -> 8, id -> false, healthy);
+        WorkerLeases.engineForTests(ledger);
+        Path home = fakeJdk(dir);
+        RunningJvms peak = RunningJvms.watch(ledger);
 
-    private static WorkerLeases.Snapshot snapshot(long budget, long leased, int queued, int running, int cap) {
-        return new WorkerLeases.Snapshot(budget, leased, 0, queued, running, cap, "", "");
+        TestSummary summary;
+        // Another module holds all but 1 GiB of the budget, so a second worker fits only past it.
+        try (WorkerLeases.Grant other = ledger.acquireBytes(15 * GIB, false, null)) {
+            summary = launcher(dir, () -> 8)
+                    .run(home, classes(dir), List.of(), cache(dir), 1, Map.of(), TestProgressListener.noop());
+        }
+
+        peak.stop();
+        assertThat(summary.failures()).isEmpty();
+        assertThat(summary.succeeded()).isEqualTo(6);
+        assertThat(summary.workers()).as("the pool widened past the budget").isEqualTo(2);
+        assertThat(pullWorkers(home)).isEqualTo(2);
+        assertThat(peak.most()).as("both workers held a lease").isEqualTo(2);
     }
 
     private static JUnitLauncher launcher(Path dir, IntSupplier share) {

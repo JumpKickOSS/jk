@@ -527,7 +527,7 @@ public final class WorkerLeases {
          */
         public Grant acquire(List<String> command, @Nullable Long requestId, JvmOptions.HeapChoice choice)
                 throws InterruptedException {
-            return acquire(LeaseDemand.of(command, choice, capacityBytes()), requestId);
+            return acquire(LeaseDemand.of(command, choice, capacityBytes(), JobWorkers.Lease.SLOT), requestId);
         }
 
         /**
@@ -540,7 +540,8 @@ public final class WorkerLeases {
          */
         public Grant acquireWithoutSlot(List<String> command, @Nullable Long requestId, JvmOptions.HeapChoice choice)
                 throws InterruptedException {
-            return acquire(drivingEngines(command, choice).withoutSlot(), requestId);
+            return acquire(
+                    LeaseDemand.of(command, choice, capacityBytes(), JobWorkers.Lease.DRIVES_ENGINES), requestId);
         }
 
         /**
@@ -551,12 +552,22 @@ public final class WorkerLeases {
          */
         public Grant acquireRunningEngines(List<String> command, @Nullable Long requestId, JvmOptions.HeapChoice choice)
                 throws InterruptedException {
-            return acquire(drivingEngines(command, choice), requestId);
+            return acquire(LeaseDemand.of(command, choice, capacityBytes(), JobWorkers.Lease.RUNS_ENGINES), requestId);
         }
 
-        private LeaseDemand drivingEngines(List<String> command, JvmOptions.HeapChoice choice) {
-            long capacity = capacityBytes();
-            return LeaseDemand.of(command, choice, capacity).drivingEngines(choice.priceBytes(), capacity);
+        /**
+         * Whether {@code command}, priced as {@code choice} and leased as {@code lease}, would be
+         * granted now without waiting: nobody is waiting ahead of it and the rule that grants a
+         * waiting lease admits it, past the budget when the host has room to overbook. Nothing is
+         * granted.
+         */
+        public boolean admitsNow(List<String> command, JvmOptions.HeapChoice choice, JobWorkers.Lease lease) {
+            refresh();
+            synchronized (lock) {
+                LeaseDemand demand = LeaseDemand.of(command, choice, capacityBytes(), lease);
+                if (!queue.isEmpty() || demand.worstBytes() > ceiling(capacityBytes())) return false;
+                return admit(new LeaseWaiter(demand, null, null));
+            }
         }
 
         /**

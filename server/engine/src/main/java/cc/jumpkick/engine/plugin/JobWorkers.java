@@ -124,6 +124,15 @@ public final class JobWorkers {
         return launch(pb, true, null, WorkerLeases.engine(), choice, heaps, lease);
     }
 
+    /**
+     * Whether {@link #start(ProcessBuilder, JvmOptions.HeapChoice, LearnedHeaps, Lease)} of {@code
+     * command} from this thread would be granted its lease now without waiting, priced as that
+     * start prices it.
+     */
+    public static boolean admitsNow(List<String> command, LearnedHeaps heaps, Lease lease) {
+        return WorkerLeases.engine().admitsNow(command, priced(JvmOptions.HeapChoice.inspect(command), heaps), lease);
+    }
+
     /** How a fork is leased, and whether its learned peak counts its whole process tree. */
     public enum Lease {
         /** A JVM slot and the fork's own price. */

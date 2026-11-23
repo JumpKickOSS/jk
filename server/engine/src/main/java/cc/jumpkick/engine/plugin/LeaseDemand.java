@@ -60,6 +60,18 @@ record LeaseDemand(
                 "");
     }
 
+    /** What {@code command}, priced as {@code choice}, leases against {@code capacityBytes} when forked as {@code lease}. */
+    static LeaseDemand of(
+            List<String> command, JvmOptions.HeapChoice choice, long capacityBytes, JobWorkers.Lease lease) {
+        LeaseDemand own = of(command, choice, capacityBytes);
+        return switch (lease) {
+            case SLOT -> own;
+            case DRIVES_ENGINES ->
+                own.drivingEngines(choice.priceBytes(), capacityBytes).withoutSlot();
+            case RUNS_ENGINES -> own.drivingEngines(choice.priceBytes(), capacityBytes);
+        };
+    }
+
     /** The same demand without a JVM slot: a resident helper, or a JVM whose work runs in forks leased elsewhere. */
     LeaseDemand withoutSlot() {
         return new LeaseDemand(bytes, xmxBytes, jvm, clamped, userPinned, overBudget, false, worstBytes, pin);
