@@ -81,6 +81,7 @@ class SuiteLaunchNamesTest {
                     started.add(name);
                     return new JUnitLauncher();
                 },
+                name -> true,
                 List.of(),
                 (one, cp, launch) -> new TestSummary(0, 0, 0, 0, List.of()));
         Set<String> named = resources.launchNames(filter);

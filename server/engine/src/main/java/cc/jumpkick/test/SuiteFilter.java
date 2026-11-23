@@ -13,6 +13,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -376,8 +377,18 @@ public final class SuiteFilter {
      * launch of a tag suite that claims nothing in the module go unstarted.
      */
     public boolean runsCompiledClass(Path testClasses, List<String> excludeClasses) {
+        return runsCompiledClass(testClasses, excludeClasses, name -> true);
+    }
+
+    /**
+     * {@link #runsCompiledClass(Path, List)} counting only the classes {@code left} keeps, asked of
+     * a class this filter runs and of nothing else: false lets a launch whose every class passed
+     * earlier, or holds no test, go unstarted.
+     */
+    public boolean runsCompiledClass(Path testClasses, List<String> excludeClasses, Predicate<String> left) {
         if (!Files.isDirectory(testClasses)) return true;
-        return compiledClasses(testClasses, true).stream().anyMatch(runnable(excludeClasses));
+        Predicate<String> runnable = runnable(excludeClasses);
+        return compiledClasses(testClasses, true).stream().anyMatch(name -> runnable.test(name) && left.test(name));
     }
 
     /**
@@ -432,6 +443,33 @@ public final class SuiteFilter {
                     }
                 }
                 return byClass.get(name);
+            }
+        };
+    }
+
+    /**
+     * Whether a top-level class compiled under {@code testClasses} may hold a test, as {@link
+     * TestClassIndex} judges it over {@code classpath} on first use: false for a helper or fixture
+     * JUnit would find no test in, true for every other class, or for any when the tree cannot be
+     * read.
+     */
+    public static Predicate<String> holdsTestsIn(Path testClasses, List<Path> classpath) {
+        Set<String> helpers = new HashSet<>();
+        boolean[] read = {false};
+        return name -> {
+            synchronized (helpers) {
+                if (!read[0]) {
+                    read[0] = true;
+                    try {
+                        for (TestClassIndex.Entry entry : TestClassIndex.scan(testClasses, Set.of(), classpath)) {
+                            if (!entry.runsTests()) helpers.add(entry.className());
+                        }
+                    } catch (IOException | UncheckedIOException unreadable) {
+                        // Nothing known: every class may hold a test.
+                        helpers.clear();
+                    }
+                }
+                return !helpers.contains(name);
             }
         };
     }

@@ -28,6 +28,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.function.Predicate;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -173,7 +174,8 @@ record SuiteResources(Map<String, List<Path>> bySuite) {
      * no selected suite has settings of its own, else one launch per directory suite, its roots
      * first, its classes alone, and within it one per {@link SuiteFilter#launches} set of suites,
      * the results as one summary. A launch the {@code --class} patterns or the affected classes
-     * name nothing in is not started, nor one whose suites claim no compiled class.
+     * name nothing in is not started, nor one whose suites claim no compiled class, nor one whose
+     * every class passed earlier or holds no test by {@code holdsTests} ({@link #runsAnything}).
      */
     TestSummary launch(
             Path testClasses,
@@ -182,13 +184,16 @@ record SuiteResources(Map<String, List<Path>> bySuite) {
             List<String> excludeClasses,
             AffectedTestRun.@Nullable Outcome affected,
             Launcher launcher,
+            Predicate<String> holdsTests,
             List<Path> runtimeCp,
             Launch launch)
             throws Exception {
         List<SuiteFilter.Launch> launches = suites.launches();
         if (!split() && launches.size() == 1) {
             SuiteFilter.Launch only = launches.getFirst();
-            return launch.run(launcher.of(ONE_LAUNCH, only.settings()).withSuites(suites), runtimeCp, only);
+            JUnitLauncher one = launcher.of(ONE_LAUNCH, only.settings()).withSuites(suites);
+            if (!runsAnything(one, suites, testClasses, classPatterns, excludeClasses, holdsTests)) return NOTHING_RAN;
+            return launch.run(one, runtimeCp, only);
         }
         TestSummary total = null;
         for (Map.Entry<String, List<Path>> group : groups().entrySet()) {
@@ -211,6 +216,7 @@ record SuiteResources(Map<String, List<Path>> bySuite) {
                 }
                 String name = launchName(group.getKey(), shared);
                 JUnitLauncher one = launcher.of(name, shared.settings()).withSuites(unit);
+                if (!runsAnything(one, unit, testClasses, classPatterns, excludeClasses, holdsTests)) continue;
                 if (names != null) one.withClassNames(names);
                 List<Path> classpath = new ArrayList<>(group.getValue());
                 classpath.addAll(runtimeCp);
@@ -218,7 +224,32 @@ record SuiteResources(Map<String, List<Path>> bySuite) {
                 total = total == null ? ran : total.plus(ran);
             }
         }
-        return total != null ? total : new TestSummary(0, 0, 0, 0, List.of());
+        return total != null ? total : NOTHING_RAN;
+    }
+
+    /** The summary of a run that started no launch. */
+    private static final TestSummary NOTHING_RAN = new TestSummary(0, 0, 0, 0, List.of());
+
+    /**
+     * Whether launch {@code one} of {@code unit} has a class left to run. It has unless it leaves
+     * classes out ({@link JUnitLauncher#settled}) and each class {@code unit} runs is one of them,
+     * nested in one, or in a top-level class {@code holdsTests} says holds no test: the JVMs of such
+     * a launch would discover nothing. A run naming classes ({@code --class}) is the runner's to
+     * judge.
+     */
+    private static boolean runsAnything(
+            JUnitLauncher one,
+            SuiteFilter unit,
+            Path testClasses,
+            List<String> classPatterns,
+            List<String> excludeClasses,
+            Predicate<String> holdsTests) {
+        if (one.settled().isEmpty() || !classPatterns.isEmpty()) return true;
+        Set<String> settled = Set.copyOf(one.settled());
+        return unit.runsCompiledClass(testClasses, excludeClasses, name -> {
+            String top = TestClassLedger.topLevel(name);
+            return !settled.contains(top) && holdsTests.test(top);
+        });
     }
 
     /**

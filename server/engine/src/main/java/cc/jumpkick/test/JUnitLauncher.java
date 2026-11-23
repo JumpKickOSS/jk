@@ -103,6 +103,11 @@ public final class JUnitLauncher {
         return this;
     }
 
+    /** The classes this launch leaves out ({@link #withSettled}), top-level binary names. */
+    public List<String> settled() {
+        return settled;
+    }
+
     /**
      * The run's suites over a test-classes tree shared with other suites: no JVM of the run
      * discovers or executes a test another suite owns, whatever the other filters select.

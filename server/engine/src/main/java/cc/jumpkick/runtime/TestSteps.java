@@ -226,11 +226,11 @@ final class TestSteps {
                                 testClasses,
                                 suites,
                                 effectiveSel.classes(),
-                                // The settled classes are left out by the launcher alone: a launch
-                                // whose only matches passed earlier still starts, and runs nothing.
                                 projectUnderTest.build().testExcludeClasses(),
                                 affected,
                                 launcher,
+                                // A launch whose classes all passed earlier or hold no test starts no JVM.
+                                SuiteFilter.holdsTestsIn(testClasses, tagCp),
                                 runtimeCp,
                                 (one, cp, l) -> TestLaunch.launch(
                                         ctx, in, one, cp, testWorkers, workerJars, env.launchEnv(), l, tagExcluded));

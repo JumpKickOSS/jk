@@ -574,7 +574,8 @@ it. A class that read more files than its record names (a test
 that reads every plugin's manifest) stands on the files its suite read in the directories that
 cover its own reads, so a source another class of the suite scanned does not run it. The warning
 then reads `… passed earlier and nothing they reach or read has changed since; they are not run
-again`, and each replayed class's `class-finish` row carries `replayedFrom`. `jk explain` prices
+again`, and each replayed class's `class-finish` row carries `replayedFrom`. When the replayed classes
+leave nothing to run but classes with no test in them (helpers, fixtures), no test JVM starts. `jk explain` prices
 such a suite as the run will: its step reads `run tests · … · ~12 tests · 281 classes replayed`
 once the module's compile is current, and its Tests row counts only those tests. A class that reached the network,
 or a suite that did outside every class, is never replayed; `--rerun` runs every class. Set at the
