@@ -279,6 +279,56 @@ class ClassReadsTest {
         assertThat(first.usedMore()).isFalse();
     }
 
+    /**
+     * What a JVM ran outside every window is state only its own classes may read: one class that
+     * started an engine before its window must not widen the keys of every class of the suite.
+     */
+    @Test
+    void a_use_outside_every_window_is_no_class_of_another_launch(@TempDir Path tmp) throws Exception {
+        Path ws = Files.createDirectories(tmp.resolve("ws"));
+        Path recordings = Files.createDirectories(tmp.resolve("rec"));
+        recordUse(recordings.resolve("unit.jfr"), "demo.Registry", "demo.UnitTest");
+        recordUse(recordings.resolve("integration.jfr"), "demo.Engine", "demo.IntegrationTest");
+        ClassReads.Layout layout = new ClassReads.Layout(List.of(), List.of(), Set.of(), ws, null);
+
+        ClassReads.Attributed seen = ClassReads.attribute(
+                recordings,
+                ws,
+                layout,
+                classes -> classes.contains("demo.IntegrationTest") ? "test:integration" : "test:test");
+        ClassReads.Observation unit = Objects.requireNonNull(seen.of("test:test", "demo.UnitTest"));
+        ClassReads.Observation integration =
+                Objects.requireNonNull(seen.of("test:integration", "demo.IntegrationTest"));
+        assertThat(unit.used("demo.Registry")).as("its own JVM's").isTrue();
+        assertThat(unit.used("demo.Engine"))
+                .as("the integration launch's JVM's")
+                .isFalse();
+        assertThat(integration.used("demo.Engine")).as("its own JVM's").isTrue();
+        assertThat(integration.used("demo.Registry"))
+                .as("the default launch's JVM's")
+                .isFalse();
+
+        ClassReads.Attributed untold = ClassReads.attribute(recordings, ws, layout);
+        assertThat(Objects.requireNonNull(untold.classes().get("demo.UnitTest")).used("demo.Engine"))
+                .as("launches untold: still another JVM's")
+                .isFalse();
+    }
+
+    /** A recording of one JVM at {@code file}: {@code used} ran before the window of {@code testClass}. */
+    private static void recordUse(Path file, String used, String testClass) throws Exception {
+        try (Recording r = new Recording()) {
+            r.enable(ClassReads.WINDOW_EVENT).withThreshold(Duration.ZERO);
+            r.enable(ClassReads.USE_EVENT);
+            r.start();
+            use(used);
+            Window w = window(testClass);
+            use(testClass);
+            w.commit();
+            r.stop();
+            r.dump(file);
+        }
+    }
+
     private static void use(String className) {
         Use u = new Use();
         u.className = className;

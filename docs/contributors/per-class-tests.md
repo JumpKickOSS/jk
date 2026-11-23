@@ -98,7 +98,8 @@ classes. The env probe marks every class loaded from a directory or from a jar i
 a sibling module's (`EntryMarks`: a call to `ClassUses.used` at the start of every method body; the
 engine names the workspace in the agent argument), and the first call since a window opened
 records a `jk.ClassUse` event, which `ClassReads` joins to the windows that hold it like a file read;
-a use outside every window counts for every class. The record row keeps which of the cone's
+a use outside every window counts for every class its JVM ran, not another JVM's nor another
+launch's. The record row keeps which of the cone's
 classes ran as a bitmask over the cone in name order (`coneUsed`), so the next run takes the key
 over the same classes. Every class of a test class of a test class whose own use is missing (a JVM the probe did not mark, a JDK
 without the flight recorder), whose suite named more than `USED_NAMES_KEPT` classes, or whose class

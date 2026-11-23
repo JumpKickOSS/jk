@@ -49,7 +49,7 @@ import org.jspecify.annotations.Nullable;
  * the observed half of the class's cone. A class loads once per JVM, so a class's loads are not all
  * the classes it ran: where the probe marks the workspace's classes (its class trees and siblings' jars), a {@code jk.ClassUse} event
  * names each one whose code ran in the window ({@link Observation#used}), and a use outside every
- * window is every class's. Reads of the operating system's own trees and native
+ * window counts for every class its JVM ran. Reads of the operating system's own trees and native
  * libraries outside the JDK are platform evidence: kept, never keyed.
  */
 public final class ClassReads {
@@ -784,8 +784,6 @@ public final class ClassReads {
                     complete = false;
                 }
             }
-            // A use outside every window (discovery, a static initialiser) leaves state any class may read.
-            for (Observation o : classes.values()) o.addUses(pooled);
             return new Attributed(
                     classes, pooled, code, complete, recordings.size(), events, launchesTold ? launches : Map.of());
         } finally {
@@ -842,6 +840,9 @@ public final class ClassReads {
         private final Map<String, Observation> classes;
         /** What no window holds goes to each: the suite's pool, and its launch's where told. */
         private final List<Observation> pools;
+
+        /** The uses no window of this JVM held, which every class it ran may have read the state of. */
+        private final Observation unheldUses = Observation.empty();
 
         private final SuiteCode suiteCode;
         /** Whether each recently asked path is there, the last {@value #EXISTS_KEPT} asked. */
@@ -930,7 +931,10 @@ public final class ClassReads {
                     into.forEach(o -> o.addTool(value));
                 }
                 case HOST -> into.forEach(o -> o.addHost(value));
-                case USE -> into.forEach(o -> o.addUsed(value, useNames));
+                case USE -> {
+                    into.forEach(o -> o.addUsed(value, useNames));
+                    if (!inWindow) unheldUses.addUsed(value, useNames);
+                }
                 case NATIVE -> {
                     if (!underJdk(value, layout)) into.forEach(o -> o.addNative(value));
                 }
@@ -1009,10 +1013,13 @@ public final class ClassReads {
             long lastEnd = Long.MIN_VALUE;
             for (Window w : windows) lastEnd = Math.max(lastEnd, w.end());
             // A program outlives the window that started it, as a loaded jar does: every later class
-            // of the JVM may talk to what it runs.
+            // of the JVM may talk to what it runs. A use outside every window (discovery, a static
+            // initialiser) leaves state any class of the JVM may read, and none of another JVM's.
             for (Window w : windows) {
                 Observation o = classes.get(w.testClass());
-                if (firstStart <= w.end() && o != null) o.addTool(STARTED_PROGRAM);
+                if (o == null) continue;
+                if (firstStart <= w.end()) o.addTool(STARTED_PROGRAM);
+                o.addUses(unheldUses);
             }
             for (Map.Entry<Path, long[]> c : codeReads.entrySet()) {
                 // A code file gone once the run ended was made and removed by it (a jar a test wrote
