@@ -769,8 +769,8 @@ public final class ActionKey {
 
     /**
      * A 12-hex-char tag of {@code dir}'s real absolute path: the one spelling in the cache that
-     * names a checkout. It qualifies the incremental compiler state ({@link #stateDir}), whose
-     * analysis holds absolute paths and belongs to one checkout only; never a key or a pointer.
+     * names a checkout. It qualifies the incremental compiler state ({@link #stateDir}), which
+     * follows that checkout's own compiles and hits; never a key or a pointer.
      */
     public static String checkoutTag(@Nullable Path dir) {
         Path p = (dir == null ? Path.of("") : dir).toAbsolutePath().normalize();

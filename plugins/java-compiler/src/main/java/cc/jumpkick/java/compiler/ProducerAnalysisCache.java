@@ -13,10 +13,10 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.zip.GZIPInputStream;
+import org.jspecify.annotations.Nullable;
 import sbt.internal.inc.Analysis;
 import sbt.internal.inc.consistent.ConsistentAnalysisFormat;
 import sbt.internal.inc.consistent.SerializerFactory;
-import xsbti.compile.analysis.ReadWriteMappers;
 
 /**
  * The decoded producer analyses of every compile and forecast in one worker. A module with many
@@ -70,7 +70,9 @@ final class ProducerAnalysisCache {
 
     /**
      * The analysis in {@code file} with Java classes' bytecode hashes cleared, empty when the file
-     * is missing or is not a Zinc analysis. Not checked against the classes it describes.
+     * is missing or is not a Zinc analysis. Not checked against the classes it describes. Its paths
+     * are read under the root its workdir names ({@link PortableAnalysis}), which keys the entry
+     * with the bytes.
      */
     Optional<Analysis> load(Path file) {
         byte[] gz;
@@ -79,12 +81,14 @@ final class ProducerAnalysisCache {
         } catch (IOException | RuntimeException e) {
             return Optional.empty();
         }
-        String key = Hashing.sha256Hex(gz);
+        Path dir = file.toAbsolutePath().getParent();
+        @Nullable Path root = dir == null ? null : PortableAnalysis.rootOf(dir).orElse(null);
+        String key = Hashing.sha256Hex(gz) + (root == null ? "" : "\n" + root);
         synchronized (this) {
             Entry hit = entries.get(key);
             if (hit != null) return Optional.of(hit.analysis());
         }
-        Optional<Analysis> decoded = decode(gz).map(ClasspathAnalyses::apiOnlyForJava);
+        Optional<Analysis> decoded = decode(gz, root).map(ClasspathAnalyses::apiOnlyForJava);
         decoded.ifPresent(a -> put(key, new Entry(a, (long) gz.length * DECODED_PER_COMPRESSED)));
         return decoded;
     }
@@ -117,9 +121,9 @@ final class ProducerAnalysisCache {
      * bad gzip header throws here, where the store would leak its stream ({@link
      * ZincWorkdir#gzipHeaderReadable}); a stream over bytes has nothing to leak.
      */
-    private Optional<Analysis> decode(byte[] gz) {
+    private Optional<Analysis> decode(byte[] gz, @Nullable Path root) {
         try (InputStream in = new GZIPInputStream(new ByteArrayInputStream(gz))) {
-            var format = new ConsistentAnalysisFormat(ReadWriteMappers.getEmptyMappers(), true);
+            var format = new ConsistentAnalysisFormat(PortableAnalysis.mappers(root), true);
             var read = format.read(SerializerFactory.binary().deserializerFor(in));
             decodes.incrementAndGet();
             return read._1() instanceof Analysis analysis ? Optional.of(analysis) : Optional.empty();

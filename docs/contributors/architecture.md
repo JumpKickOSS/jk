@@ -638,8 +638,13 @@ and exclusions stay GA-scoped.
    Every key opens with its task id, `<base>@<tag>`, and the tag names the output within the
    project — the lock's `project-id` plus the output's workspace-relative path, hashed — never
    the checkout. Two worktrees of one project therefore compute one key set and share every
-   hit; the incremental compiler state, whose Zinc analysis holds absolute paths, is the one
-   thing keyed by the checkout's real path (`ActionKey.stateDir`). A record spells its inputs
+   hit; the incremental compiler state is the one thing keyed by the checkout's real path
+   (`ActionKey.stateDir`). The engine names the project root in it (`root`), and the compiler
+   worker spells every path under that root from the root (`PortableAnalysis`), so a javac
+   compile caches its state beside its classes (`JavaCompile.storeState`: the analysis, the
+   processor marker, the generated-file and warnings ledgers) and a hit in any checkout lays it
+   back (`restoreState`): the next edit compiles what it changed, not every source the restored
+   classes and the checkout's last compile differ in. A record spells its inputs
    the same way (`PortablePath.key`: module-relative under a project — a `jk.toml` or a `pom.xml`
    dir — relative to the root under JumpKick's own store, cache or home (`store:repos/central/…`), and
    the whole path only elsewhere, so two inputs never share an entry), so `jk explain`

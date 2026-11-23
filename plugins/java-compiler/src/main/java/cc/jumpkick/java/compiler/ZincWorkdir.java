@@ -25,6 +25,7 @@ import java.util.Set;
 import java.util.TreeSet;
 import java.util.concurrent.TimeUnit;
 import java.util.zip.GZIPInputStream;
+import org.jspecify.annotations.Nullable;
 import sbt.internal.inc.FileAnalysisStore;
 import xsbti.compile.AnalysisContents;
 import xsbti.compile.AnalysisStore;
@@ -44,21 +45,26 @@ final class ZincWorkdir {
     private final Path aggregatingMarker;
     private final Path analysisOffMarker;
     private final Path processorsMarker;
+    private final @Nullable Path root;
 
     private ZincWorkdir(Path workdir) {
         this.analysisFile = workdir.resolve("zinc");
         this.aggregatingMarker = workdir.resolve("aggregating");
         this.analysisOffMarker = workdir.resolve("analysis-off");
         this.processorsMarker = workdir.resolve("processors");
+        this.root = PortableAnalysis.rootOf(workdir).orElse(null);
     }
 
     static ZincWorkdir of(Path workdir) {
         return new ZincWorkdir(workdir);
     }
 
-    /** Zinc's own store over {@link #analysisFile} — the only place the two are paired. */
+    /**
+     * Zinc's own store over {@link #analysisFile} — the only place the two are paired — spelling the
+     * paths under the project root portably ({@link PortableAnalysis}).
+     */
     AnalysisStore store() {
-        return FileAnalysisStore.binary(analysisFile.toFile());
+        return FileAnalysisStore.binary(analysisFile.toFile(), PortableAnalysis.mappers(root));
     }
 
     Path analysisFile() {
@@ -163,22 +169,27 @@ final class ZincWorkdir {
 
     /** {@link #classpathDigest} over the processor path; the empty string when there is none. */
     static String processorDigest(List<Path> processorPath) throws IOException {
-        return processorPath.isEmpty() ? "" : classpathDigest(processorPath);
+        return digestUnder(processorPath, null);
+    }
+
+    /** As {@link #processorDigest(List)}, an entry under {@code root} spelled from there. */
+    private static String digestUnder(List<Path> processorPath, @Nullable Path root) throws IOException {
+        return processorPath.isEmpty() ? "" : classpathDigest(processorPath, root);
     }
 
     /**
      * {@link #processorDigest(List)} with the contents of the resources the processors read from
      * {@code classOutput} last time ({@link #resourcesRead}): an edit of one changes what the
      * processors produce, and the analysis goes as for a changed processor. A resource no processor
-     * read — Lombok, Error Prone and NullAway read none — leaves the digest alone.
+     * read — Lombok, Error Prone and NullAway read none — leaves the digest alone. A processor entry
+     * under the project root is spelled from the root, so the marker holds in every checkout.
      */
     String processorDigest(List<Path> processorPath, Path classOutput) throws IOException {
         return processorDigest(processorPath, classOutput, resourcesRead());
     }
 
-    private static String processorDigest(List<Path> processorPath, Path classOutput, Set<String> read)
-            throws IOException {
-        String processors = processorDigest(processorPath);
+    private String processorDigest(List<Path> processorPath, Path classOutput, Set<String> read) throws IOException {
+        String processors = digestUnder(processorPath, root);
         return processors.isEmpty()
                 ? processors
                 : processors + CopiedResources.of(classOutput).stamp(classOutput, read);
@@ -205,7 +216,7 @@ final class ZincWorkdir {
         try {
             if (!Files.isRegularFile(analysisOffMarker)) return Optional.empty();
             List<String> lines = Files.readAllLines(analysisOffMarker);
-            if (lines.size() >= 2 && lines.get(0).strip().equals(classpathDigest(classpath))) {
+            if (lines.size() >= 2 && lines.get(0).strip().equals(classpathDigest(classpath, null))) {
                 return Optional.of(lines.get(1).strip());
             }
             Files.deleteIfExists(analysisOffMarker);
@@ -221,7 +232,7 @@ final class ZincWorkdir {
      */
     void markAnalysisOff(String missingType, List<Path> classpath) throws IOException {
         Files.createDirectories(analysisOffMarker.getParent());
-        Files.writeString(analysisOffMarker, classpathDigest(classpath) + "\n" + missingType + "\n");
+        Files.writeString(analysisOffMarker, classpathDigest(classpath, null) + "\n" + missingType + "\n");
         tryDeleteAnalysis();
     }
 
@@ -230,12 +241,16 @@ final class ZincWorkdir {
      * for a jar its size and mtime and for a classes directory the sorted (relative path, content
      * hash) of every file in it; an absent entry digests as absent. A sibling module rebuilt with
      * the bytes it had keeps the digest, so its consumers stay incremental; the hashes are memoised
-     * by size and mtime ({@link ContentHashes}), so an untouched file is read once per worker.
+     * by size and mtime ({@link ContentHashes}), so an untouched file is read once per worker. A path
+     * under {@code root} is spelled as {@link PortableAnalysis} spells it.
      */
-    private static String classpathDigest(List<Path> classpath) throws IOException {
+    private static String classpathDigest(List<Path> classpath, @Nullable Path root) throws IOException {
         MessageDigest digest = Hashing.newSha256();
+        String rootText = root == null ? "" : root.toAbsolutePath().normalize().toString();
         for (Path entry : classpath) {
-            digest.update((entry.toAbsolutePath().normalize() + "\n").getBytes(StandardCharsets.UTF_8));
+            String spelled = entry.toAbsolutePath().normalize().toString();
+            if (root != null) spelled = PortableAnalysis.replace(spelled, rootText, PortableAnalysis.MARK);
+            digest.update((spelled + "\n").getBytes(StandardCharsets.UTF_8));
             if (Files.isDirectory(entry)) {
                 List<String> listing = new ArrayList<>();
                 PathUtil.forEachRegularFile(
