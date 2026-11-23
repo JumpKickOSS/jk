@@ -174,15 +174,18 @@ for a night of benches.
 A change is docs-only when every file it touches is a doc (a file under `docs/` or `hosting/`, or a
 Markdown file at the root) that no test reads but those of the docs suite, which the docs tier
 runs; `scripts/gate/docs-only.sh range <base> <tip>` says whether a range is. The docs tests read
-are `scripts/gate/test-reads.txt`. Nobody writes it by hand: JumpKick records every file a suite
-reads ([discovered inputs](../user/test.md#what-a-suite-read-discovered-inputs)), one record per
-module and selection, and `scripts/gate/docs-only.sh write` collects the docs among them for every
-workspace member from JumpKick's cache, leaving out the record of `jk test -s docs`. Run it after a
-run of every suite and commit the result. The Full tier runs `scripts/gate/docs-only.sh check` once
-all its suites ran, and is red naming each doc a suite read that the list lacks.
-The Branch tier runs the same check after its tests and warns, without refusing the branch, when
-the suites it ran read a doc the list lacks; add that line to the list by hand, since `write` after a
-partial run drops what the suites that did not run read.
+are `scripts/gate/test-reads.txt`. JumpKick records every file a suite reads
+([discovered inputs](../user/test.md#what-a-suite-read-discovered-inputs)), one record per module
+and selection, and `scripts/gate/docs-only.sh write` adds the docs among them to the list for every
+workspace member from JumpKick's cache. It reads only the records of the selections a gate runs:
+the default suite, each suite the root `jk.toml` declares but the docs suite, its `guard-suites`
+(`-g`) and `--all`. A run of chosen classes or tags (`--class`, `-I`) keeps a record of its own,
+which the list never takes in, so a scratch test that reads the whole checkout leaves it alone. A
+host's cache holds only the suites it ran, so `write` never drops a listed doc git still tracks; a
+doc no test reads any more leaves the list by hand. The Full tier runs `scripts/gate/docs-only.sh
+check` once all its suites ran, and is red naming each doc a suite read that the list lacks. The
+Branch tier runs the same check after its tests and warns, without refusing the branch, when the
+suites it ran read a doc the list lacks; `write` and a commit of the list settle it.
 
 **The docs suite** holds the tests that scan the doc tree: `MachineOutputCallersTest` (every
 `-O json` caller, in the docs too) and `PluginDefaultDocsTest` (every built-in plugin default a page

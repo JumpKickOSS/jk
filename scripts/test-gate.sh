@@ -617,8 +617,10 @@ grep -q '^DOCS_SUITE_EXIT=4' "$WORK/logs/integ-gate-22.log" || fail "the log doe
 cache="$WORK/cache"
 tag="$(printf '%s\n%s' p1 mod/b | { sha256sum 2>/dev/null || shasum -a 256; } | cut -c1-12)"
 mkdir -p "$cache/projects/m-$tag/suite-reads"
+# Recorded under `jk test`'s selection: docs-only.sh reads only the selections a gate runs.
+unitsel="$(printf '%s' 'suites=test;+tag=;-tag=' | { sha256sum 2>/dev/null || shasum -a 256; } | cut -c1-12)"
 printf '%s\n' 'file ws:docs/d.md' 'file ws:mod/b/B.java' 'file ws:docs/gone.md' 'command proc:git' \
-  >"$cache/projects/m-$tag/suite-reads/test-inputs-0123456789ab"
+  >"$cache/projects/m-$tag/suite-reads/test-inputs-$unitsel"
 # What `jk test -s docs` alone read is the docs tier's, and never in the list.
 docsel="$(printf '%s' 'suites=docs;+tag=;-tag=' | { sha256sum 2>/dev/null || shasum -a 256; } | cut -c1-12)"
 printf '%s\n' 'file ws:README.md' 'file ws:docs/d.md' >"$cache/projects/m-$tag/suite-reads/test-inputs-$docsel"

@@ -2,7 +2,9 @@
 # Network-free fixtures for scripts/gate/docs-only.sh: write adds the docs a member's recordings show
 # a suite reading to test-reads.txt, leaves out what the docs suite alone read, keeps a listed doc
 # this host's cache never saw read, and drops one git no longer tracks; check names a recorded read
-# the list lacks; range tells a change to a listed doc from one to a doc no test reads.
+# the list lacks; range tells a change to a listed doc from one to a doc no test reads. Only the
+# selections a gate runs count: the default suite, a declared suite, the guard suites; never a run
+# of chosen classes.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -33,11 +35,26 @@ git -C "$repo" -c user.name=t -c user.email=t@t commit -qm base
 # Where jk keeps a member's recordings: one file per selection under projects/m-<tag>/suite-reads.
 reads_dir="$WORK/cache/projects/m-$(printf '%s\n%s' p-test mod/a | sha12)/suite-reads"
 mkdir -p "$reads_dir"
-printf 'file ws:docs/read.md\nfile ws:mod/a/X.java\n' >"$reads_dir/test-inputs-$(printf unit | sha12)"
-printf 'file ws:docs/docs-suite.md\n' >"$reads_dir/test-inputs-$(printf '%s' 'suites=docs;+tag=;-tag=' | sha12)"
+recorded() { printf '%s\n' "${@:2}" >"$reads_dir/test-inputs-$(printf '%s' "$1" | sha12)"; }
+recorded 'suites=test;+tag=;-tag=' 'file ws:docs/read.md' 'file ws:mod/a/X.java'
+recorded 'suites=docs;+tag=;-tag=' 'file ws:docs/docs-suite.md'
+# A scratch class run alone that read the whole checkout keys a selection no gate runs.
+recorded 'suites=test;+tag=;-tag=;class=ScratchProbe' 'file ws:docs/free.md' 'file ws:README.md' 'command git'
 run() { (cd "$repo" && JK_CACHE_DIR="$WORK/cache" bash "$D" "$@"); }
 
 [[ "$(run reads)" == docs/read.md ]] || fail "reads: want docs/read.md, got $(run reads)"
+
+# A suite the root declares and its guard suites (`-g`) are a gate's selections too.
+cp "$repo/jk.toml" "$WORK/jk.toml"
+printf '%s\n' '[test]' 'guard-suites = [' '  "test", # the fast tier' '  "integration",' ']' '' \
+  '[test.suites.release] # a tier' 'tags = ["release"]' >>"$repo/jk.toml"
+recorded 'suites=test,integration;+tag=;-tag=' 'file ws:README.md'
+recorded 'suites=release;+tag=;-tag=' 'file ws:docs/free.md'
+[[ "$(run reads | tr '\n' ' ')" == "README.md docs/free.md docs/read.md " ]] ||
+  fail "reads of the declared and guard suites: got $(run reads)"
+rm "$reads_dir/test-inputs-$(printf '%s' 'suites=test,integration;+tag=;-tag=' | sha12)" \
+  "$reads_dir/test-inputs-$(printf '%s' 'suites=release;+tag=;-tag=' | sha12)"
+mv "$WORK/jk.toml" "$repo/jk.toml"
 run check 2>"$WORK/check.err" && fail "check passed with docs/read.md missing from the list"
 grep -q 'a test reads docs/read.md, which test-reads.txt does not list' "$WORK/check.err" ||
   fail "check did not name docs/read.md: $(cat "$WORK/check.err")"

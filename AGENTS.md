@@ -299,8 +299,8 @@ everything that came in is docs-only, and applies and gates it again otherwise. 
 root) that no test reads but those of the docs suite (`jk test -s docs`, the tests that scan the
 doc tree). The docs tests read are `scripts/gate/test-reads.txt`, written by
 `scripts/gate/docs-only.sh write` from what the suites were seen reading; the Full tier is red while
-a read is missing from it. Tests read `docs/user/skill.md`, `machine-output.md`, `why.md` and the
-examples under `docs/user/examples/`, so a change to one is not docs-only. A docs-only batch skips
+a read is missing from it. It counts only the suites a gate runs whole, never a `--class` or `-I`
+run, so a scratch test that reads the whole checkout does not land in it. A docs-only batch skips
 the Queue tier and runs the docs checks alone (`GATE_TIER=docs`: `jk guard`, which holds the link
 check, `bench/scoreboard --render --check` and the docs suite); every code batch runs the docs suite
 too, and the Full tier still runs everything. A new test that walks a directory of docs is tagged
