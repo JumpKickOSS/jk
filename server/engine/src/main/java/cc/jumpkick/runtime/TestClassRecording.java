@@ -331,17 +331,16 @@ final class TestClassRecording {
                 resourceDirs,
                 stampKey,
                 launches);
-        long tests = 0;
-        for (TestClassLedger.Entry e : split.unmoved().values()) tests += e.tests();
-        return new Replayed(split.unmoved().size(), tests, split.ran(), split.recorded());
+        return new Replayed(split.replays(), split.runs());
     }
 
     /**
-     * The classes {@link #unmoved} replays, the tests of the recorded classes it runs, and every class
-     * recorded under the launches asked ({@code recorded}).
+     * The rows {@link #unmoved} replays, and by class the tests of the recorded classes it replays
+     * ({@code replays}) and of those it runs ({@code runs}) under the launches asked.
      */
-    private record Split(Map<String, TestClassLedger.Entry> unmoved, long ran, Set<String> recorded) {
-        static final Split NONE = new Split(Map.of(), 0, Set.of());
+    private record Split(
+            Map<String, TestClassLedger.Entry> unmoved, Map<String, Long> replays, Map<String, Long> runs) {
+        static final Split NONE = new Split(Map.of(), Map.of(), Map.of());
     }
 
     /** {@link #unmoved} over the rows of {@code launches}, every launch's when null. */
@@ -367,10 +366,10 @@ final class TestClassRecording {
         String suitePart = ClassKeys.suitePart(stampExtras, roots.external(), resourceDirs);
         ClassKeys.SuiteReadSet reads = readSet(moduleDir, selection, layout.workspaceRoot());
         Map<String, TestClassLedger.Entry> out = new TreeMap<>();
-        Set<String> recorded = new HashSet<>();
+        Map<String, Long> replays = new HashMap<>();
+        Map<String, Long> runs = new HashMap<>();
         // Whether a launch has no header, or its pool reached another host: none of its classes replays.
         Map<String, Boolean> poolReached = new HashMap<>();
-        long[] ran = {0};
         try {
             ONE.acquire();
         } catch (InterruptedException stopped) {
@@ -396,20 +395,21 @@ final class TestClassRecording {
                 String launch = Jsonl.str(row, "launch");
                 String cls = TestClassRecords.className(Jsonl.strArray(row, "container"));
                 if (launch == null || (launches != null && !launches.contains(launch)) || !index.contains(cls)) return;
-                recorded.add(cls);
+                long tests = Jsonl.longValue(row, "tests", 0);
                 if (poolReached.computeIfAbsent(launch, l -> {
                             String own = headers.get(l);
                             return own == null || reachedPastHost(Jsonl.nested(own, "pooled"));
                         })
                         || reachedPastHost(row)
                         || keys.whyRun(row, launch, cls) != null) {
-                    ran[0] += Jsonl.longValue(row, "tests", 0);
+                    runs.merge(cls, tests, Long::sum);
                     return;
                 }
+                replays.merge(cls, tests, Long::sum);
                 out.put(
                         key,
                         new TestClassLedger.Entry(
-                                Jsonl.longValue(row, "tests", 0),
+                                tests,
                                 0,
                                 Jsonl.longValue(row, "skipped", 0),
                                 Jsonl.longValue(row, "ranAt", 0),
@@ -418,7 +418,7 @@ final class TestClassRecording {
         } finally {
             ONE.release();
         }
-        return new Split(out, ran[0], recorded);
+        return new Split(out, replays, runs);
     }
 
     /** What the suite at {@code moduleDir} was found to read under {@code selection}, as {@link SuiteReads#digest} reads it. */
@@ -468,8 +468,8 @@ final class TestClassRecording {
         Map<String, PoolAfter> pools = new HashMap<>();
         long codeSince = listsAny(header, jars, workspace) ? Long.MAX_VALUE : SuiteCodeFiles.since(header, workspace);
         Roots roots = Roots.of(workspace, testClasses, mainClasses, runtimeCp);
-        long[] replayed = {0, 0, 0};
-        Set<String> recorded = new HashSet<>();
+        Map<String, Long> replays = new HashMap<>();
+        Map<String, Long> runs = new HashMap<>();
         try {
             ONE.acquire();
         } catch (InterruptedException stopped) {
@@ -492,7 +492,6 @@ final class TestClassRecording {
                 String cls = TestClassRecords.className(Jsonl.strArray(row, "container"));
                 String launch = String.valueOf(Jsonl.str(row, "launch"));
                 if (!launches.contains(launch) || !index.contains(cls)) return;
-                recorded.add(cls);
                 long tests = Jsonl.longValue(row, "tests", 0);
                 PoolAfter pool = pools.computeIfAbsent(launch, l -> PoolAfter.of(headers.get(l), jars, workspace));
                 boolean codeMoved = Jsonl.str(row, "fallback") == null
@@ -502,16 +501,15 @@ final class TestClassRecording {
                 if (pool.runsAll()
                         || codeMoved
                         || runsAfter(row, cls, index, moved, bodiesOnly, jars, pool.process(), workspace)) {
-                    replayed[2] += tests;
+                    runs.merge(cls, tests, Long::sum);
                     return;
                 }
-                replayed[0]++;
-                replayed[1] += tests;
+                replays.merge(cls, tests, Long::sum);
             });
         } finally {
             ONE.release();
         }
-        return new Replayed((int) replayed[0], replayed[1], replayed[2], recorded);
+        return new Replayed(replays, runs);
     }
 
     /**
@@ -569,24 +567,66 @@ final class TestClassRecording {
     }
 
     /**
-     * How many classes a suite replays and the tests they hold, the tests of the recorded classes it
-     * runs ({@code ran}), and every class with a record under the launches asked ({@code recorded}).
+     * By class, the tests of each recorded class a suite replays ({@code replays}) and of each it runs
+     * ({@code runs}), under the launches asked.
      */
-    record Replayed(int classes, long tests, long ran, Set<String> recorded) {
-        static final Replayed NONE = new Replayed(0, 0, 0, Set.of());
+    record Replayed(Map<String, Long> replays, Map<String, Long> runs) {
+        static final Replayed NONE = new Replayed(Map.of(), Map.of());
+
+        /** How many classes replay. */
+        int classes() {
+            return replays.size();
+        }
+
+        /** The tests the replayed classes hold. */
+        long tests() {
+            return sum(replays);
+        }
+
+        /** The tests of the recorded classes that run. */
+        long ran() {
+            return sum(runs);
+        }
+
+        /** Every class with a record under the launches asked. */
+        Set<String> recorded() {
+            Set<String> out = new HashSet<>(replays.keySet());
+            out.addAll(runs.keySet());
+            return out;
+        }
+
+        /**
+         * Only the classes {@code selected} names. A launch's rows outlive the selection that wrote
+         * them: a class later tagged out of the suite, or deleted, keeps its row, and the run never
+         * starts it, so the forecast must not count it either.
+         */
+        Replayed within(Set<String> selected) {
+            Map<String, Long> keptReplays = new HashMap<>(replays);
+            Map<String, Long> keptRuns = new HashMap<>(runs);
+            keptReplays.keySet().retainAll(selected);
+            keptRuns.keySet().retainAll(selected);
+            return new Replayed(keptReplays, keptRuns);
+        }
 
         /**
          * The tests the run re-runs, for a selection whose sources count {@code bySource} tests by
-         * class: each recorded class that runs by its record, and each class no record covers by its
-         * sources. A source's count is read from its text and a record's from what ran, a
-         * parameterized test's every case among it, so the two never offset each other: a class
-         * whose source counts more tests than its record says ran still replays whole.
+         * class: each selected class that runs by its record ({@link #within}), and each class no
+         * record covers by its sources. A source's count is read from its text and a record's from
+         * what ran, a parameterized test's every case among it, so the two never offset each other: a
+         * class whose source counts more tests than its record says ran still replays whole.
          */
         long rerun(Map<String, Integer> bySource) {
-            long out = ran;
+            long out = within(bySource.keySet()).ran();
             for (Map.Entry<String, Integer> source : bySource.entrySet()) {
-                if (!recorded.contains(source.getKey())) out += source.getValue();
+                String cls = source.getKey();
+                if (!replays.containsKey(cls) && !runs.containsKey(cls)) out += source.getValue();
             }
+            return out;
+        }
+
+        private static long sum(Map<String, Long> tests) {
+            long out = 0;
+            for (long n : tests.values()) out += n;
             return out;
         }
     }

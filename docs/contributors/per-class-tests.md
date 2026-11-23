@@ -385,7 +385,12 @@ them is rebuilding or changed after the class finished, so jk-engine-e2e's class
 plugin jar but not the engine's, replay after an engine edit. The step says the same `~12 tests ·
 281 classes replayed`. Both read only the records of the launches the selection starts
 (`SuiteResources.launchNames`, the names `SuiteResources.launch` gives them): the record file keeps
-every launch's rows, so after `jk test -g` it also holds the default selection's. A class that runs
+every launch's rows, so after `jk test -g` it also holds the default selection's. A launch's rows
+also outlive its selection: a class tagged out of the suite, or deleted, keeps the row an earlier run
+wrote, and the run never starts it. So only the classes whose sources the selection holds count
+(`Replayed.within`); in a long-lived home the default launch of jk-engine held about 200
+module-keyed rows of classes since tagged `integration`, which the forecast priced as running after
+every engine edit. A class that runs
 is priced by the tests its record counts, and a class with no record by the tests its source
 declares. The two never offset each other: records count every case of a parameterized or property
 test, and a source's count is read from its text, a `@Test` in a text block included, so a class

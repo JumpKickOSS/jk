@@ -845,13 +845,15 @@ final class TestSteps {
      * The tests a dirty suite runs, as the forecast says them: {@code all} of the tests the sources
      * count ({@code bySource}, by class), or, where the classes' cones replay some ({@code
      * replayed}), the rest of them ({@link TestClassRecording.Replayed#rerun}), which {@code s} then
-     * counts ({@link ForecastScope#rerunTests}).
+     * counts ({@link ForecastScope#rerunTests}). Only the classes the sources name count ({@link
+     * TestClassRecording.Replayed#within}).
      */
     private static String coneTests(
             ForecastScope s,
-            TestClassRecording.@Nullable Replayed replayed,
+            TestClassRecording.@Nullable Replayed recorded,
             Map<String, Integer> bySource,
             String all) {
+        TestClassRecording.Replayed replayed = recorded == null ? null : recorded.within(bySource.keySet());
         if (replayed == null || replayed.classes() == 0) return all;
         s.rerunTests = (int) replayed.rerun(bySource);
         return "~" + ForecastSteps.count(s.rerunTests, "test") + " · " + replayed.classes()

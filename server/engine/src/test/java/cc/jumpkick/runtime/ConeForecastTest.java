@@ -172,7 +172,7 @@ class ConeForecastTest {
 
     @Test
     void a_class_whose_source_counts_more_tests_than_ran_replays_whole(@TempDir Path ws) throws Exception {
-        TestClassRecording.Replayed replayed = new TestClassRecording.Replayed(1, 12, 0, Set.of("demo.T"));
+        TestClassRecording.Replayed replayed = new TestClassRecording.Replayed(Map.of("demo.T", 12L), Map.of());
         assertThat(replayed.rerun(Map.of("demo.T", 19)))
                 .as("a source counts @Test in a text block it holds")
                 .isZero();
@@ -218,6 +218,51 @@ class ConeForecastTest {
         assertThat(replayed.rerun(Map.of("demo.T", 3, "demo.U", 2, "demo.V", 13)))
                 .as("what no record covers is priced by the sources")
                 .isEqualTo(20);
+    }
+
+    /**
+     * A launch's rows outlive the selection that wrote them: S, recorded in the default suite's launch
+     * before it was tagged out of the suite, keyed by its module, would run after any edit, but the
+     * run never starts it, so its tests are not priced and it is not among the classes replayed.
+     */
+    @Test
+    void a_class_the_suite_no_longer_selects_is_not_priced_by_its_old_record(@TempDir Path ws) throws Exception {
+        BuildLayout layout = module(ws);
+        write(layout.classesDir(), "demo/Dep", dep());
+        write(layout.testClassesDir(), "demo/T", caller("demo.T"));
+        write(layout.testClassesDir(), "demo/U", plain("demo.U"));
+        write(layout.testClassesDir(), "demo/S", plain("demo.S"));
+        write(layout.testClassesDir(), "demo/R", plain("demo.R"));
+        writeRows(
+                layout.moduleRoot(),
+                null,
+                row("T", 3, null),
+                row("U", 2, null),
+                Jsonl.append(
+                        row("S", 40, null),
+                        JsonFields.fields().string("fallback", "process git").body()),
+                Jsonl.append(
+                        row("R", 9, null),
+                        JsonFields.fields().string("fallback", "process git").body()));
+
+        TestClassRecording.Replayed replayed = Objects.requireNonNull(TestClassRecording.replayedAfter(
+                layout.moduleRoot(),
+                layout,
+                layout.testClassesDir(),
+                layout.classesDir(),
+                List.of(),
+                List.of(edit(SourceApiIndex.Kind.BODY_ONLY)),
+                List.of(),
+                Set.of("")));
+        Map<String, Integer> selected = Map.of("demo.T", 3, "demo.U", 2, "demo.R", 9);
+        assertThat(replayed.ran())
+                .as("T ran Dep; S and R are keyed by their module")
+                .isEqualTo(52);
+        assertThat(replayed.rerun(selected))
+                .as("T and R by their records; S, tagged out, never starts")
+                .isEqualTo(12);
+        assertThat(replayed.within(selected.keySet()).classes()).isEqualTo(1);
+        assertThat(replayed.within(Set.of("demo.T")).recorded()).containsExactly("demo.T");
     }
 
     /**
