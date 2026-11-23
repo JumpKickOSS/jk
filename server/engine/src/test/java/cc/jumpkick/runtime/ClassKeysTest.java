@@ -465,14 +465,79 @@ class ClassKeysTest {
                 .isEqualTo("module pooled process /usr/bin/node");
     }
 
+    /**
+     * A tool started outside every class's window (a static initialiser asking {@code node
+     * --version}) served no class in particular: the record file's header keeps it, and every class
+     * stands on its identity, so an upgrade of it re-runs them all and a class recorded beside it
+     * under the old identity runs once more.
+     */
+    @Test
+    void a_tool_started_outside_every_window_keys_every_class_by_its_identity(@TempDir Path ws) throws Exception {
+        ClassCones.Index index = ClassCones.index(List.of(Files.createDirectories(ws.resolve("classes"))));
+        ClassReads.Observation pool = ClassReads.Observation.empty();
+        pool.addTool("node");
+        String header = TestClassRecords.header(
+                "g:m",
+                new ClassReads.Attributed(Map.of(), pool, true, 1, 1),
+                TestClassRecords.Lookups.none(),
+                ws,
+                null);
+        ClassKeys.Observed pooled = ClassShadow.pooledOf(header);
+        assertThat(pooled.tools()).containsExactly("node");
+        assertThat(ClassKeys.pooledFallback(pooled))
+                .as("a tool is no program started")
+                .isNull();
+
+        Map<String, String> v24 = ClassKeys.programs(List.of("proc:node=v24.1.0", "proc:sh=posix"));
+        Map<String, String> v25 = ClassKeys.programs(List.of("proc:node=v25.0.0", "proc:sh=posix"));
+        Map<String, String> shUpgraded = ClassKeys.programs(List.of("proc:node=v24.1.0", "proc:sh=posix2"));
+        TestClassRecords.Outcome ran = new TestClassRecords.Outcome("", "demo.T", 1, 0, 0, 1_000, 1);
+        TestClassRecords.Shadowed before = shadow(index, ws, pooled, v24).of(ran, ClassReads.Observation.empty(), null);
+        assertThat(before.fallback()).as("the class keeps its cone").isNull();
+        assertThat(shadow(index, ws, pooled, v25)
+                        .of(ran, ClassReads.Observation.empty(), null)
+                        .key())
+                .as("node upgraded")
+                .isNotEqualTo(before.key());
+        assertThat(shadow(index, ws, pooled, shUpgraded)
+                        .of(ran, ClassReads.Observation.empty(), null)
+                        .key())
+                .as("a program the pool did not start")
+                .isEqualTo(before.key());
+        assertThat(shadow(index, ws, ClassKeys.Observed.NONE, v24)
+                        .of(ran, ClassReads.Observation.empty(), null)
+                        .key())
+                .as("a pool that started no tool")
+                .isNotEqualTo(before.key());
+
+        String row = JsonFields.object()
+                .string("launch", "")
+                .string("outcome", "passed")
+                .number("ranAt", 1_000)
+                .bool("attributed", true)
+                .string("classKey", before.key())
+                .finish();
+        assertThat(shadow(index, ws, pooled, v24).whyRun(row, "", "demo.T"))
+                .as("the same node")
+                .isNull();
+        assertThat(shadow(index, ws, pooled, v25).whyRun(row, "", "demo.T"))
+                .as("recorded beside the old node")
+                .isEqualTo("key");
+    }
+
     private static ClassShadow shadow(ClassCones.Index index, Path ws, ClassKeys.Observed pooled) {
+        return shadow(index, ws, pooled, Map.of());
+    }
+
+    private static ClassShadow shadow(
+            ClassCones.Index index, Path ws, ClassKeys.Observed pooled, Map<String, String> programs) {
         return new ClassShadow(
                 index,
                 "suite",
                 ws,
                 pooled,
                 pooled,
-                Map.of(),
+                programs,
                 ClassKeys.SuiteReadSet.NONE,
                 ClassKeys.SuiteReadSet.NONE,
                 Long.MAX_VALUE,

@@ -244,7 +244,9 @@ classes whose window contains its start time, in that JVM:
   shutdown hook, a background thread between classes): pooled to every class the JVM ran. A
   program started there (other than the test JDK's own launcher, or a tool keyed by its identity)
   keys every class of the suite by its module (`pooled process …`): what it reads is in no
-  recording, and no record says which class it served.
+  recording, and no record says which class it served. A tool started there (the header's pooled
+  `tools`) keys every class by the identity the suite's stamp gives it, so an upgrade of it re-runs
+  them all.
 - **After a class finished**: never that class's. Its outcome was decided by then.
 - **Code files** (`.jar`, `.zip`, `.jmod`, a `.class` outside the workspace class trees): the class
   in whose window it was read and every class that ran later in that JVM.

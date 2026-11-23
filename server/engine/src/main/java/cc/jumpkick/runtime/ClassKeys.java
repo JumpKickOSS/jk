@@ -265,7 +265,9 @@ final class ClassKeys {
      * pool ({@code pooled}) were seen to read. A read set past its record's bound is keyed as the
      * files the suite was found to read ({@code suiteReads}, the suite's discovered inputs) under the
      * class's read roots with the file names it read, which hold the class's own, or as every one of
-     * them when it has neither or the pool is past its bound. A class keyed by its module stands on every program the
+     * them when it has neither or the pool is past its bound. Every class stands on the identity of each
+     * tool the pool started ({@code pooled}'s tools, named as {@link #identified} names them): no record
+     * says which class it served. A class keyed by its module stands on every program the
      * suite's stamp keys ({@code programs}, from {@link #programs}): no record says what a program it
      * started read, nor which. {@code listings} holds each directory's listing once it is taken, for
      * the caller to share across the classes of one pass.
@@ -304,6 +306,7 @@ final class ClassKeys {
         for (String tool : seen.tools()) feed(md, "tool:" + tool);
         if (!pooled.readsMore()) feedFiles(md, "pooled-read", pooled.reads(), workspace, listings);
         feedFiles(md, "pooled-code", pooled.code(), workspace, null);
+        for (String tool : identified(pooled, programs).tools()) feed(md, "pooled-tool:" + tool);
         return new Key((fallback == null ? "" : "module:") + Hashing.hex(md.digest()), fallback);
     }
 

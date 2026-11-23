@@ -443,6 +443,7 @@ final class TestClassRecords {
                 .array("code", spelled(pooled.code(), root))
                 .optionalTrue("codeMore", pooled.codeMore())
                 .array("processes", List.copyOf(pooled.processes()))
+                .array("tools", List.copyOf(pooled.tools()))
                 .array("nativeCode", List.copyOf(pooled.nativeCode()))
                 .array("osPaths", spelled(pooled.osPaths(), root))
                 .array("network", List.copyOf(pooled.hosts()))

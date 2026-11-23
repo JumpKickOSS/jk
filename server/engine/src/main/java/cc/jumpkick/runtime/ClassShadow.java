@@ -282,7 +282,10 @@ final class ClassShadow {
                 Jsonl.bool(pooled, "readsMore", false),
                 Jsonl.strArray(pooled, "code"),
                 Jsonl.bool(pooled, "codeMore", false),
-                Jsonl.strArray(pooled, "processes"));
+                Jsonl.strArray(pooled, "processes"),
+                Jsonl.strArray(pooled, "tools"),
+                List.of(),
+                List.of());
     }
 
     static ClassKeys.Observed observed(ClassReads.Observation o, Path workspace) {
