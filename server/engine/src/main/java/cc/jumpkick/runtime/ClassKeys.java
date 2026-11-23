@@ -19,6 +19,7 @@ import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.function.Predicate;
@@ -99,7 +100,8 @@ final class ClassKeys {
      * fallback} every workspace class ({@code module}, the digest of them all), and what it and the
      * pool ({@code pooled}) were seen to read. A read set past its record's bound is keyed as every
      * file the suite was found to read ({@code suiteReads}, the suite's discovered inputs as one
-     * digest), which holds the class's own.
+     * digest), which holds the class's own. {@code listings} holds each directory's listing once it
+     * is taken, for the caller to share across the classes of one pass.
      */
     static Key key(
             String launch,
@@ -110,16 +112,17 @@ final class ClassKeys {
             String module,
             String suiteReads,
             Path workspace,
-            @Nullable String fallback) {
+            @Nullable String fallback,
+            Map<Path, String> listings) {
         MessageDigest md = Hashing.newSha256();
         feed(md, "suite:" + suitePart);
         feed(md, "launch:" + launch);
         feed(md, fallback == null ? "cone:" + cone.digest() : "module:" + module);
         if (seen.readsMore() || pooled.readsMore()) feed(md, "suite-reads:" + suiteReads);
-        if (!seen.readsMore()) feedFiles(md, "read", seen.reads(), workspace, true);
-        feedFiles(md, "code", seen.code(), workspace, false);
-        if (!pooled.readsMore()) feedFiles(md, "pooled-read", pooled.reads(), workspace, true);
-        feedFiles(md, "pooled-code", pooled.code(), workspace, false);
+        if (!seen.readsMore()) feedFiles(md, "read", seen.reads(), workspace, listings);
+        feedFiles(md, "code", seen.code(), workspace, null);
+        if (!pooled.readsMore()) feedFiles(md, "pooled-read", pooled.reads(), workspace, listings);
+        feedFiles(md, "pooled-code", pooled.code(), workspace, null);
         return new Key((fallback == null ? "" : "module:") + Hashing.hex(md.digest()), fallback);
     }
 
@@ -151,9 +154,16 @@ final class ClassKeys {
         return null;
     }
 
-    /** Each file by content, or {@code absent}; for data, the listing of a workspace directory it lies in too. */
+    /**
+     * Each file by content, or {@code absent}; for data ({@code listings} not null), the listing of a
+     * workspace directory it lies in too, taken once into {@code listings}.
+     */
     private static void feedFiles(
-            MessageDigest md, String kind, Collection<String> spelled, Path workspace, boolean listing) {
+            MessageDigest md,
+            String kind,
+            Collection<String> spelled,
+            Path workspace,
+            @Nullable Map<Path, String> listings) {
         Set<Path> files = new TreeSet<>();
         for (String s : spelled) {
             try {
@@ -172,9 +182,11 @@ final class ClassKeys {
             }
             feed(md, kind + ":" + spell(workspace, f) + "=" + content);
             Path parent = f.getParent();
-            if (listing && parent != null && SuiteReads.keysListing(parent, workspace)) dirs.add(parent);
+            if (listings != null && parent != null && SuiteReads.keysListing(parent, workspace)) dirs.add(parent);
         }
-        for (Path dir : dirs) feed(md, "list:" + spell(workspace, dir) + "=" + listing(dir));
+        if (listings == null) return;
+        for (Path dir : dirs)
+            feed(md, "list:" + spell(workspace, dir) + "=" + listings.computeIfAbsent(dir, ClassKeys::listing));
     }
 
     private static String listing(Path dir) {

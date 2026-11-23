@@ -6,7 +6,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.test.ClassCones;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -59,11 +61,41 @@ class ClassKeysTest {
                 .isEqualTo("unattributed");
     }
 
+    /**
+     * A data file's directory is keyed by its listing, taken once per pass: the classes of one pass
+     * share it, and only a pass after the directory changed sees the new name.
+     */
+    @Test
+    void a_directorys_listing_is_taken_once_for_every_class_of_a_pass(@TempDir Path ws) throws Exception {
+        ClassCones.Cone cone = ClassCones.index(List.of(Files.createDirectories(ws.resolve("classes"))))
+                .cone("demo.T");
+        Path data = Files.createDirectories(ws.resolve("data"));
+        Files.writeString(data.resolve("a.txt"), "a");
+        ClassKeys.Observed seen = observed(List.of("data/a.txt"), false, List.of());
+        Map<Path, String> pass = new HashMap<>();
+        String first = ClassKeys.key(
+                        "", cone, "suite", seen, ClassKeys.Observed.NONE, "module", "reads", ws, null, pass)
+                .key();
+        assertThat(pass)
+                .as("the listing the pass took")
+                .containsOnlyKeys(data.toAbsolutePath().normalize());
+
+        Files.writeString(data.resolve("b.txt"), "b");
+        assertThat(ClassKeys.key("", cone, "suite", seen, ClassKeys.Observed.NONE, "module", "reads", ws, null, pass)
+                        .key())
+                .as("another class of the same pass reuses the listing")
+                .isEqualTo(first);
+        assertThat(key(cone, seen, "reads", ws).key())
+                .as("a new pass lists the directory again and sees the file added beside")
+                .isNotEqualTo(first);
+    }
+
     private static ClassKeys.Observed observed(List<String> reads, boolean more, List<String> processes) {
         return new ClassKeys.Observed(true, reads, more, List.of(), false, processes);
     }
 
     private static ClassKeys.Key key(ClassCones.Cone cone, ClassKeys.Observed seen, String suiteReads, Path ws) {
-        return ClassKeys.key("", cone, "suite", seen, ClassKeys.Observed.NONE, "module", suiteReads, ws, null);
+        return ClassKeys.key(
+                "", cone, "suite", seen, ClassKeys.Observed.NONE, "module", suiteReads, ws, null, new HashMap<>());
     }
 }

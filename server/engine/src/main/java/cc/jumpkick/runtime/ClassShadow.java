@@ -13,6 +13,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
@@ -65,6 +66,12 @@ final class ClassShadow {
     private final Map<String, Integer> reasons = new TreeMap<>();
 
     /**
+     * Each workspace directory's listing, taken once for the pass: the run that left these reads is
+     * over, and a directory beside a suite's data can hold tens of thousands of files.
+     */
+    private final Map<Path, String> listings = new HashMap<>();
+
+    /**
      * The shadow of one run: cones from {@code index}, keys under {@code suitePart}; {@code
      * pooledBefore} and {@code readsBefore} are what the records were keyed over before this run (the
      * pool of the record file's header and the suite's discovered inputs as one digest), {@code
@@ -105,8 +112,8 @@ final class ClassShadow {
                 o.testClass(),
                 index::contains);
         if (index.full()) fallback = "index past its bound";
-        ClassKeys.Key key =
-                ClassKeys.key(o.launch(), cone, suitePart, now, pooledNow, module, readsAfter, workspace, fallback);
+        ClassKeys.Key key = ClassKeys.key(
+                o.launch(), cone, suitePart, now, pooledNow, module, readsAfter, workspace, fallback, listings);
         String why = whyRun(previous, o.launch(), cone);
         ran++;
         if (why != null) {
@@ -130,7 +137,16 @@ final class ClassShadow {
         if (!"passed".equals(Jsonl.str(prev, "outcome"))) return "red";
         String fallback = Jsonl.str(prev, "fallback");
         ClassKeys.Key now = ClassKeys.key(
-                launch, cone, suitePart, fromRow(prev), pooledBefore, module, readsBefore, workspace, fallback);
+                launch,
+                cone,
+                suitePart,
+                fromRow(prev),
+                pooledBefore,
+                module,
+                readsBefore,
+                workspace,
+                fallback,
+                listings);
         if (now.key().equals(prevKey)) return null;
         return fallback != null ? "module " + fallback : "key";
     }
