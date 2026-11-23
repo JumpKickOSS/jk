@@ -40,7 +40,7 @@ public enum KeyContract {
      * whose outcome the stamp keys by value ({@link #BY_VALUE}). The {@code suite-code-keyed} guard
      * keeps the types that select and judge a suite inside the one or the other.
      */
-    SUITE("bcfc9049d6cc", List.of(Sources.SERVER, Sources.SHARED), KeyContract::suiteSource),
+    SUITE("0638165ce54d", List.of(Sources.SERVER, Sources.SHARED), KeyContract::suiteSource),
 
     /**
      * The code that writes an artifact or a verdict the engine produces itself: the jar, assembly
@@ -50,7 +50,7 @@ public enum KeyContract {
      * but a native image's keys by it.
      */
     ARTIFACT(
-            "5b2f955cad27",
+            "20effe77154f",
             List.of(
                     Sources.ENGINE + "compile/*Packager.java",
                     Sources.ENGINE + "runtime/PlannerJlink.java",
