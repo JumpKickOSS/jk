@@ -842,15 +842,18 @@ final class TestSteps {
     }
 
     /**
-     * The tests a dirty suite runs, as the forecast says them: {@code all} of the {@code estimated},
-     * or, where the classes' cones replay some ({@code replayed}), the rest of them ({@link
-     * TestClassRecording.Replayed#rerun}), which {@code s} then counts ({@link
-     * ForecastScope#rerunTests}).
+     * The tests a dirty suite runs, as the forecast says them: {@code all} of the tests the sources
+     * count ({@code bySource}, by class), or, where the classes' cones replay some ({@code
+     * replayed}), the rest of them ({@link TestClassRecording.Replayed#rerun}), which {@code s} then
+     * counts ({@link ForecastScope#rerunTests}).
      */
     private static String coneTests(
-            ForecastScope s, TestClassRecording.@Nullable Replayed replayed, int estimated, String all) {
+            ForecastScope s,
+            TestClassRecording.@Nullable Replayed replayed,
+            Map<String, Integer> bySource,
+            String all) {
         if (replayed == null || replayed.classes() == 0) return all;
-        s.rerunTests = (int) replayed.rerun(estimated);
+        s.rerunTests = (int) replayed.rerun(bySource);
         return "~" + ForecastSteps.count(s.rerunTests, "test") + " · " + replayed.classes()
                 + (replayed.classes() == 1 ? " class" : " classes") + " replayed";
     }
@@ -910,7 +913,10 @@ final class TestSteps {
         BuildLayout layout = prepared.parsed().layout();
         // The tests this run selects: an integration run is priced by its integration tests, not
         // every unit test beside them.
-        int estimated = TestSupport.estimateSelectedSuiteTestCount(s.dir, compact, SessionContext.selectionFor(s.dir));
+        Map<String, Integer> bySource =
+                TestSupport.estimateSelectedSuiteTests(s.dir, compact, SessionContext.selectionFor(s.dir));
+        int estimated = 0;
+        for (int n : bySource.values()) estimated += n;
         s.testCount = estimated;
         String tests = estimated > 0 ? "~" + ForecastSteps.count(estimated, "test") : "tests";
         // The run's own rule (SuiteRunRules.forcedRunReason): a rebuild, debug or coverage run never
@@ -939,7 +945,7 @@ final class TestSteps {
                     SessionContext.selectionFor(s.dir),
                     KeyContract.SUITE.keyVersion(),
                     OrchestratorCode.digest());
-            if (jk == null) tests = coneTests(s, replayedByCones(s, prepared, kspRuns), estimated, tests);
+            if (jk == null) tests = coneTests(s, replayedByCones(s, prepared, kspRuns), bySource, tests);
             String why = jk != null
                     ? "run tests · " + jk + " · " + tests
                     : jarOnly
@@ -952,7 +958,7 @@ final class TestSteps {
         String worker = TestStampInputs.rebuildingWorker(s.dir, s.project, s.orderDeps);
         if (worker != null) {
             // Nothing on the suite's classpath moves: under cones only the classes that read the jar run.
-            tests = coneTests(s, replayedByCones(s, prepared, List.of()), estimated, tests);
+            tests = coneTests(s, replayedByCones(s, prepared, List.of()), bySource, tests);
             return new TaskForecast.Task(
                     TaskNames.RUN_TESTS,
                     TaskForecast.Status.RUN,
@@ -1032,7 +1038,7 @@ final class TestSteps {
                                 () -> stamp.forecastKey(compact, layout.classesDir(), finalMainFp));
         String priced = red || network || unread != null || stampKey == null
                 ? tests
-                : pricedByCone(s, stamp, layout, compact, stampKey, estimated, tests);
+                : pricedByCone(s, stamp, layout, compact, stampKey, bySource, tests);
         return new TaskForecast.Task(
                 TaskNames.RUN_TESTS,
                 TaskForecast.Status.RUN,
@@ -1055,7 +1061,7 @@ final class TestSteps {
             BuildLayout layout,
             boolean compact,
             String stampKey,
-            int estimated,
+            Map<String, Integer> bySource,
             String tests)
             throws IOException {
         if (!stamp.cachesByCone()) return tests;
@@ -1072,6 +1078,6 @@ final class TestSteps {
                 stampKey,
                 SuiteResources.launchNames(
                         s.dir, compact, selection, s.project.build().runSuites()));
-        return coneTests(s, replayed, estimated, tests);
+        return coneTests(s, replayed, bySource, tests);
     }
 }

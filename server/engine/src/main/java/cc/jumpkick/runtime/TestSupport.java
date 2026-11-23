@@ -221,6 +221,17 @@ public final class TestSupport {
      * empty suite at 50 s.
      */
     public static int estimateSelectedSuiteTestCount(Path moduleDir, boolean compact, TestSelection selection) {
+        int total = 0;
+        for (int n : estimateSelectedSuiteTests(moduleDir, compact, selection).values()) total += n;
+        return total;
+    }
+
+    /**
+     * {@link #estimateSelectedSuiteTestCount} by the class each source names: what a forecast prices
+     * by the sources when a class has no record of what it ran.
+     */
+    public static Map<String, Integer> estimateSelectedSuiteTests(
+            Path moduleDir, boolean compact, TestSelection selection) {
         Map<String, DeclaredSuite> declared = declaredSuites(moduleDir);
         List<String> discovered = TestSuites.available(moduleDir, compact, declared);
         var resolved = TestStampInputs.resolveSuites(selection, moduleDir, compact, declared);
@@ -247,12 +258,14 @@ public final class TestSupport {
                     return file == null ? null : sourceTags(file);
                 })
                 .acceptor();
-        int total = 0;
+        Map<String, Integer> out = new LinkedHashMap<>();
         for (Map.Entry<String, Path> source : byClass.entrySet()) {
             if (runs.test(source.getKey()))
-                total += facts(source.getValue()).selected(selection.includeTags(), selection.excludeTags());
+                out.put(
+                        source.getKey(),
+                        facts(source.getValue()).selected(selection.includeTags(), selection.excludeTags()));
         }
-        return total;
+        return out;
     }
 
     /** The module's {@code [test.suites]} declared suites; none when its manifest does not parse. */

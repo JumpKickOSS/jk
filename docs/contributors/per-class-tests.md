@@ -372,15 +372,19 @@ in its cone and either moved a declaration or ran in its window (`coneUsed`); a 
 runs. A worker jar the stamp keys whose sibling is rebuilding (any dirty sibling, on the suite's
 classpaths or reached by build order alone: jk-cli-e2e reaches jk-engine as a test dependency and is
 handed its assembly as `-Djk.engine.jar`) runs the classes it would key
-([above](#nested-engines-and-worker-jars)): those whose record names it as a code file or says more
-code files than it names, those whose record says `(started)`, and the module-keyed ones; nothing
-replays when the record file's pool read it. The step says the same `~12 tests · 281 classes
-replayed`. Both read only the records of the launches the selection starts
+([above](#nested-engines-and-worker-jars)): those whose record names it as a code file, those whose
+record says `(started)`, and the module-keyed ones; nothing replays when the record file's pool read
+it. A class whose record, or the pool beside it, read more code files than it names stands on the
+code files the header lists (`SuiteCodeFiles`), as the selection decides it: it runs when one of
+them is rebuilding or changed after the class finished, so jk-engine-e2e's classes, which read every
+plugin jar but not the engine's, replay after an engine edit. The step says the same `~12 tests ·
+281 classes replayed`. Both read only the records of the launches the selection starts
 (`SuiteResources.launchNames`, the names `SuiteResources.launch` gives them): the record file keeps
 every launch's rows, so after `jk test -g` it also holds the default selection's. A class that runs
-is priced by the tests its record counts, and only what no record covers by the sources' count:
-records count every case of a parameterized or property test, so the sources' count less the
-replayed tests can be nothing while classes still run. It is an estimate where the run's answer is exact: the cones are walked over the classes
+is priced by the tests its record counts, and a class with no record by the tests its source
+declares. The two never offset each other: records count every case of a parameterized or property
+test, and a source's count is read from its text, a `@Test` in a text block included, so a class
+that replays is priced at nothing whatever its source counts. It is an estimate where the run's answer is exact: the cones are walked over the classes
 on disk, and a hint reads a private signature edit as body-only, where the class's bodyless digest
 moves. An edit the forecast cannot read (a sibling with no hint, a source that is not Java, a moved
 test source, a KSP round) prices the whole selection.

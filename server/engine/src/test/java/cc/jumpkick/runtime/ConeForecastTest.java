@@ -17,6 +17,7 @@ import java.lang.constant.MethodTypeDesc;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
@@ -28,7 +29,8 @@ import org.junit.jupiter.api.io.TempDir;
  * cones, as the run will decide it: a body-only edit replays a class that reaches the edited class
  * but never ran it, and runs one that ran it; an edit that moves a declaration runs every class
  * whose cone holds the edited class; an edit the forecast cannot read counts every test. A worker
- * jar the suite is handed by path that is rebuilding runs only the classes that read it.
+ * jar the suite is handed by path that is rebuilding runs only the classes that read it, and a
+ * class that read more code files than its record names runs only when one its suite lists moves.
  */
 class ConeForecastTest {
 
@@ -81,7 +83,7 @@ class ConeForecastTest {
 
         writeRows(moduleDir, null, withCode(row("T", 3, null), "lib/a.jar", true), row("U", 2, null));
         assertThat(replayedWith(layout, engineJar))
-                .as("T read more code files than its record names")
+                .as("T read more code files than its record names, and the header lists none")
                 .isEqualTo(2);
 
         writeRows(
@@ -131,6 +133,51 @@ class ConeForecastTest {
     }
 
     @Test
+    void a_class_past_its_code_bound_runs_only_when_a_code_file_its_suite_lists_moves(@TempDir Path ws)
+            throws Exception {
+        BuildLayout layout = module(ws);
+        Path moduleDir = layout.moduleRoot();
+        write(layout.testClassesDir(), "demo/T", plain("demo.T"));
+        write(layout.testClassesDir(), "demo/U", plain("demo.U"));
+        Path engineJar = ws.resolve("engine/target/engine-all.jar");
+        Path pluginJar = Files.createDirectories(ws.resolve("lib")).resolve("plugin.jar");
+        Files.writeString(pluginJar, "plugin");
+        String t = withCode(row("T", 3, null), "lib/plugin.jar", true);
+        String held = 500 + " " + ClassKeys.content(pluginJar) + " lib/plugin.jar";
+
+        writeHeader(moduleDir, List.of(held), t, row("U", 2, null));
+        assertThat(replayedWith(layout, engineJar))
+                .as("the engine jar is not among the code files the suite read")
+                .isEqualTo(5);
+        writeHeader(moduleDir, List.of(held, 500 + " old engine/target/engine-all.jar"), t, row("U", 2, null));
+        assertThat(replayedWith(layout, engineJar))
+                .as("the engine jar is among them and rebuilding")
+                .isEqualTo(2);
+        writeHeader(
+                moduleDir,
+                List.of(2_000 + " " + ClassKeys.content(pluginJar) + " lib/plugin.jar"),
+                t,
+                row("U", 2, null));
+        assertThat(replayedWith(layout)).as("a listed file changed after T ran").isEqualTo(2);
+        Files.writeString(pluginJar, "rebuilt");
+        writeHeader(moduleDir, List.of(held), t, row("U", 2, null));
+        assertThat(replayedWith(layout))
+                .as("a listed file changed since the header")
+                .isEqualTo(2);
+    }
+
+    @Test
+    void a_class_whose_source_counts_more_tests_than_ran_replays_whole(@TempDir Path ws) throws Exception {
+        TestClassRecording.Replayed replayed = new TestClassRecording.Replayed(1, 12, 0, Set.of("demo.T"));
+        assertThat(replayed.rerun(Map.of("demo.T", 19)))
+                .as("a source counts @Test in a text block it holds")
+                .isZero();
+        assertThat(replayed.rerun(Map.of("demo.T", 19, "demo.V", 4)))
+                .as("V has no record")
+                .isEqualTo(4);
+    }
+
+    @Test
     void only_the_launches_the_selection_starts_count_and_a_class_that_runs_is_priced_by_its_record(@TempDir Path ws)
             throws Exception {
         BuildLayout layout = module(ws);
@@ -160,10 +207,11 @@ class ConeForecastTest {
         assertThat(replayed.ran())
                 .as("T, which ran Dep, by its record in the gate's launch")
                 .isEqualTo(7);
-        assertThat(replayed.rerun(10))
+        assertThat(replayed.recorded()).containsExactlyInAnyOrder("demo.T", "demo.U");
+        assertThat(replayed.rerun(Map.of("demo.T", 1, "demo.U", 1)))
                 .as("the sources count fewer tests than the records: what runs is still priced")
                 .isEqualTo(7);
-        assertThat(replayed.rerun(60))
+        assertThat(replayed.rerun(Map.of("demo.T", 3, "demo.U", 2, "demo.V", 13)))
                 .as("what no record covers is priced by the sources")
                 .isEqualTo(20);
     }
@@ -225,6 +273,17 @@ class ConeForecastTest {
                     JsonFields.object().array("code", List.of(pooledCode)).finish());
         }
         Files.writeString(file, header.finish() + "\n" + String.join("\n", rows) + "\n");
+    }
+
+    /** A record file of {@code rows} whose header lists the suite's code files as {@code suiteCode}. */
+    private static void writeHeader(Path moduleDir, List<String> suiteCode, String... rows) throws Exception {
+        Path file = TestClassRecords.file(moduleDir);
+        Files.createDirectories(file.getParent());
+        String header = JsonFields.object()
+                .string("kind", "suite")
+                .array(SuiteCodeFiles.FIELD, suiteCode)
+                .finish();
+        Files.writeString(file, header + "\n" + String.join("\n", rows) + "\n");
     }
 
     private static SourceApiIndex.Hint edit(SourceApiIndex.Kind kind) {
