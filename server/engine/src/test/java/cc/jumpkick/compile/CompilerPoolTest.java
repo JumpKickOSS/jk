@@ -282,6 +282,42 @@ class CompilerPoolTest {
     }
 
     @Test
+    void a_pool_whose_worker_exits_before_its_first_compile_is_dropped_and_the_next_compile_forks_afresh(
+            @TempDir Path dir) throws Exception {
+        Fakes fakes = new Fakes(0);
+        String key = "unborn-" + job();
+        CompileWork first = item(dir, "first", job());
+        CompilerPool pool = CompilerPool.forKey(
+                key,
+                null,
+                () -> new CompilerPool(
+                        key, null, fakes, req -> Files.createTempFile(dir, "spec", ".spec"), Duration.ofMillis(50)),
+                first);
+        pool.enqueue(first);
+        fakes.await(0).die("Unrecognized option: -Q=");
+        awaitTrue(first.compile::isDone, "the compile fails with the death");
+        assertThat(first.compile).isCompletedExceptionally();
+        awaitTrue(() -> CompilerPool.get(key) == null, "the pool is dropped");
+
+        Fakes healthy = new Fakes(1);
+        CompileWork next = item(dir, "next", job());
+        CompilerPool fresh = CompilerPool.forKey(
+                key,
+                null,
+                () -> new CompilerPool(
+                        key, null, healthy, req -> Files.createTempFile(dir, "spec", ".spec"), Duration.ofMillis(50)),
+                next);
+        assertThat(fresh).isNotSameAs(pool);
+        fresh.enqueue(next);
+        Fake worker = healthy.await(0);
+        awaitTrue(() -> worker.dispatched().contains(next.id), "the fresh worker takes the compile");
+        worker.frame(result(next.id, "OK"));
+        assertThat(next.compile.get(10, TimeUnit.SECONDS).success()).isTrue();
+        assertThat(fakes.started).as("the dead pool forked no second worker").hasSize(1);
+        CompilerPool.closeAllForTests();
+    }
+
+    @Test
     void a_spec_that_cannot_be_written_fails_its_item_and_the_worker_takes_the_next(@TempDir Path dir)
             throws Exception {
         Fakes fakes = new Fakes(1);

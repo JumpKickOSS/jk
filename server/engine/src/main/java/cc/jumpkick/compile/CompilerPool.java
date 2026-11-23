@@ -52,7 +52,7 @@ import org.jspecify.annotations.Nullable;
  * death, which fails it with what the worker printed. A worker that ran out of heap halves its
  * pool's concurrency for {@link #OUT_OF_HEAP_HALVING}. A worker that dies before it ever said hello
  * cannot be started, so everything queued fails with its death rather than starting worker after
- * worker.
+ * worker, and the pool is dropped: the next compile of its key makes a fresh one.
  *
  * <p><strong>A job's end.</strong> Its queued compiles fail and those in flight are cancelled. The
  * job's teardown waits for their answers, and a worker whose compile for the job does not answer
@@ -466,6 +466,9 @@ final class CompilerPool {
         boolean started = worker.threads() > 0;
         Long stoppedFor = worker.stoppedForJob();
         CompilerBudget.release(worker);
+        // A worker that never said hello would fail the same way for every item handed to this
+        // pool: the next compile of its key makes a fresh pool and forks afresh instead.
+        boolean dropped = !started && POOLS.remove(key, this);
         synchronized (this) {
             workers.remove(worker);
             List<CompileWork> held = worker.takeInflight();
@@ -498,6 +501,7 @@ final class CompilerPool {
             }
             notifyAll();
         }
+        if (dropped) CompilerWorker.detached("jk-javac-retire", this::close);
         for (CompileWork w : firstDeaths) w.compile.whenComplete((r, e) -> revivedAnswered());
         wakeAll();
         Throwable report = withTranscript(worker, cause);

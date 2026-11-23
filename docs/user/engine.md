@@ -702,7 +702,10 @@ a second. When it runs out of compiles it collects at once and its heap shrinks 
 between builds, so an idle worker holds little of the budget and a test JVM is not kept waiting
 for a reservation. A worker lingering between builds takes no JVM slot and exits when a fork
 needs the memory it holds. It runs every compile of its JDK on its own threads, one per core it sees;
-`JK_COMPILE_CONCURRENCY` pins the count for measurement.
+`JK_COMPILE_CONCURRENCY` pins the count for measurement. A build whose worker flags differ
+(`--jvm-arg`, `--ram-percent`, a `[jvm]` table) gets a compiler worker of its own, so one
+command's flags never reach another's compiles; a worker that exits before its first compile is
+dropped, and the next build starts a fresh one.
 
 Forked JVMs that are actually running are also capped at the machine's online processors,
 or at the cgroup CPU quota when that quota is finite, separate from the memory lease, so
