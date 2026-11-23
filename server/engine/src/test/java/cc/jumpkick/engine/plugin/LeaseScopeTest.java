@@ -145,6 +145,34 @@ class LeaseScopeTest {
         }
     }
 
+    /**
+     * A test's engine is not the worker the outer engine records but a child of it: the test JVM
+     * (this one) starts the engine. It takes the nested scope, and with it the nested wait limit.
+     */
+    @Test
+    void an_engine_a_test_jvm_starts_takes_the_nested_scope_and_its_limit() throws Exception {
+        Path leases = root.resolve("var/tmp/jk-me-leases");
+        Process outerEngine = Sleepers.sleeper(120).start();
+        Process testsEngine = Sleepers.sleeper(120).start();
+        try {
+            HostLeases.Owner testJvm = HostLeases.Owner.current();
+            HostLeases.Owner outer = HostLeases.Owner.of(outerEngine.toHandle());
+            assumeTrue(testJvm.startedAtMillis() > 0 && outer.startedAtMillis() > 0);
+            Path host = LeaseScope.usable(leases.resolve(LeaseScope.HOST), root.resolve("home-outer"));
+            record(host, outer, testJvm.pid() + ":" + testJvm.startedAtMillis());
+
+            LeaseScope.Shared shared =
+                    LeaseScope.of(leases, LeaseScope.ancestry(testsEngine.toHandle()), root.resolve("home-test"));
+
+            assertThat(shared.dir()).isEqualTo(host.resolve(LeaseScope.NESTED));
+            assertThat(shared.nested()).isTrue();
+            assertThat(shared.waitAtMost()).isEqualTo(LeaseScope.NESTED_WAIT_AT_MOST);
+        } finally {
+            outerEngine.destroyForcibly();
+            testsEngine.destroyForcibly();
+        }
+    }
+
     @Test
     void an_engine_inside_a_worker_of_an_inner_engine_leases_a_level_further_down() throws Exception {
         Path leases = root.resolve("var/tmp/jk-me-leases");

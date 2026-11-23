@@ -77,7 +77,12 @@ final class LeaseScope {
     /** Where this engine's leases are shared; in {@code engineDir} when they are its own. */
     static Shared of(Path engineDir) {
         Path leases = HostTemp.dir().resolve(userDir(System.getProperty("user.name")));
-        Path inner = innerOf(leases, ancestry(ProcessHandle.current()));
+        return of(leases, ancestry(ProcessHandle.current()), engineDir);
+    }
+
+    /** Where an engine whose process and parents are {@code ancestors} shares the leases under {@code leases}. */
+    static Shared of(Path leases, Set<Long> ancestors, Path engineDir) {
+        Path inner = innerOf(leases, ancestors);
         Path shared = inner != null ? inner : leases.resolve(budget(OwnCgroup.HOST, Os.isLinux()));
         return new Shared(usable(shared, engineDir), inner != null);
     }
