@@ -629,7 +629,11 @@ waits when every JVM slot is taken (one per logical processor); that is ordinary
 and writes nothing. A warm helper takes no JVM slot, so only forks that are working fill
 them. While none of a step's forks runs and its next one
 waits, the terminal dims its row and says why: `Waiting for a free slot…` or
-`Waiting for memory…`. A memory wait of 5 seconds or more is recorded on the step as
+`Waiting for memory…`. A step that waits for something else says so the same way:
+`Waiting for a free engine thread…` while every engine thread is busy and its work has not begun,
+or `Waiting for another jk's guard suite run on this tree…` while another engine holds the lock on
+that module's guard report. Without a terminal (`--no-ansi`, CI) the 30-second progress line ends
+with the same words after `=`. A memory wait of 5 seconds or more is recorded on the step as
 `waited Ns for memory`. Several waits on one step add up to that one line. `target/jk-results.md` and the agent report each carry it, and they carry
 `retried with 1.0 GiB heap after running out of 512 MiB` when a planned heap was retried.
 A workspace names the module on both lines.

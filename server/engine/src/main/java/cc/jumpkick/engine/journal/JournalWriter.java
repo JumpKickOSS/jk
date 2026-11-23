@@ -250,6 +250,12 @@ public final class JournalWriter {
         if (a != null) a.noteForkOutput(dir, step, line);
     }
 
+    /** What a step in flight waits for, or {@code null} once it works; the accumulator keeps the latest. */
+    public void accStepWaiting(long requestId, String dir, String step, @Nullable String reason) {
+        BuildAccumulator a = sessions.accumulator(requestId);
+        if (a != null) a.noteWaiting(dir, step, reason);
+    }
+
     public void accStepFinish(
             long requestId, String dir, String step, String phase, String status, long millis, long waitMillis) {
         // A gap the step ran across is on its row before the row is written.

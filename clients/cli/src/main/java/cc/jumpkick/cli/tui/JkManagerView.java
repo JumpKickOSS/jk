@@ -3,6 +3,7 @@ package cc.jumpkick.cli.tui;
 
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.run.StepWait;
 import cc.jumpkick.task.TransferBoard;
 import cc.jumpkick.terminal.Ansi;
 import cc.jumpkick.terminal.Size;
@@ -11,6 +12,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
 
 /** Finish / settle / plan-paint collaborator for {@link JkManager} — the ANSI half of the mode axis. */
 @NullMarked
@@ -644,13 +646,10 @@ final class JkManagerView {
                 renderWorkRow("", phaseLabel, failed, false, detail), failed ? n.briefError : "");
     }
 
-    /** The detail of a row whose step waits for {@code reason} ({@code slot}, {@code memory}); empty while it works. */
-    static String waitingDetail(String reason) {
-        return switch (reason == null ? "" : reason) {
-            case "slot" -> "Waiting for a free slot" + Glyphs.ELLIPSIS;
-            case "memory" -> "Waiting for memory" + Glyphs.ELLIPSIS;
-            default -> "";
-        };
+    /** The detail of a row whose step waits for {@code reason} ({@link StepWait}); empty while it works. */
+    static String waitingDetail(@Nullable String reason) {
+        String what = StepWait.phrase(reason);
+        return what.isEmpty() ? "" : "Waiting for " + what + Glyphs.ELLIPSIS;
     }
 
     /** Dim segment separator between module, phase, and detail on a work row. */

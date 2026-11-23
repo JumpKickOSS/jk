@@ -263,6 +263,11 @@ public final class EngineListeners {
             }
 
             @Override
+            public void stepWaiting(String d, String step, @Nullable String reason) {
+                journal.accStepWaiting(rid, d, step, reason);
+            }
+
+            @Override
             public void stepLabel(String d, String step, String label) {
                 journal.accStepLabel(rid, d, step, label);
             }

@@ -125,7 +125,9 @@ and names them ([Test](test.md#flaky-tests-are-quarantined-jk-flaky)); `CANCELLE
 deadline interrupted, and only that. A cancelled run names what it interrupted: the step that was
 in flight is a `CANCELLED` row under `## Failed steps` carrying the time it had run, and one error
 under `## Failures` says so — `` `run-tests` was in flight for 20m 43s when the run was cancelled ``
-— with the last 60 lines the step's forked process printed as its fenced block; `details.jsonl`
+— with the last 60 lines the step's forked process printed as its fenced block. A step that was
+waiting rather than working says for what:
+`` `guard` was in flight for 19m 57s, waiting for a free engine thread, when the run was cancelled ``; `details.jsonl`
 holds every step event up to the cancel. When one module fails, the build stops admitting the others
 and the modules already in flight are stopped where they stand and waited for before the record
 is written, so every module that had started is in it — the same failure produces the same record

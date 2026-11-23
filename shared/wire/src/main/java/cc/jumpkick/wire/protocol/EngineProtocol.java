@@ -235,7 +235,7 @@ public final class EngineProtocol {
     /** Server → client: {@code BuildPlanListener.label}. */
     public static final String LABEL = "label";
 
-    /** Server → client: {@code BuildPlanListener.waiting}, a step's wait for a worker lease. */
+    /** Server → client: {@code BuildPlanListener.waiting}, what a step waits for (a lease, a thread, a lock). */
     public static final String TASK_WAIT = "task-wait";
 
     /** Server → client: {@code BuildPlanListener.output}. */

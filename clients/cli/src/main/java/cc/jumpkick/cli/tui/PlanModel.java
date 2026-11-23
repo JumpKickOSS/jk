@@ -140,8 +140,8 @@ final class PlanModel {
     }
 
     /**
-     * The step waits for a worker lease with none of its forks running: {@code "slot"} or {@code
-     * "memory"}; {@code null} once a fork runs again.
+     * The step does no work of its own while it waits for {@code reason} ({@link
+     * cc.jumpkick.run.StepWait}); {@code null} once it works again.
      */
     public void stepWaiting(String module, String stepKey, @Nullable String reason) {
         synchronized (lock) {

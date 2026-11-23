@@ -12,6 +12,7 @@ import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.SlowestTests;
 import cc.jumpkick.run.SourceLocation;
 import cc.jumpkick.run.StepCache;
+import cc.jumpkick.run.StepWait;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.runtime.base.CacheBenefit;
 import cc.jumpkick.runtime.base.ChromeTimeline;
@@ -91,10 +92,12 @@ public final class BuildAccumulator {
     // uses the "" (SINGLE_PLAN_DIR) bucket; workspace modules use their real dir. Rendered as a
     // chain per module (the dashboard shows one chain per module, not one merged strip).
     private final Map<String, Map<String, BuildRecord.Task>> stepsByDir = new ConcurrentHashMap<>();
-    // When each step in flight started (dir + step → epoch millis) and the last lines its fork
-    // printed, both dropped as the step finishes: they exist for the step a cancel interrupts.
+    // When each step in flight started (dir + step → epoch millis), the last lines its fork
+    // printed and what it waits for now, all dropped as the step finishes: they exist for the step
+    // a cancel interrupts.
     private final Map<String, Long> stepStartedAt = new ConcurrentHashMap<>();
     private final Map<String, ArrayDeque<String>> forkTails = new ConcurrentHashMap<>();
+    private final Map<String, String> stepWaits = new ConcurrentHashMap<>();
 
     /** Per running step (its {@link #stepKey}), the time the engine was not running while it ran. */
     private final Map<String, Long> stepSuspended = new ConcurrentHashMap<>();
@@ -564,6 +567,17 @@ public final class BuildAccumulator {
         }
     }
 
+    /**
+     * What a step in flight waits for now ({@link StepWait}); {@code null} or blank once it works
+     * again. A run cancelled while the step waits says what held it.
+     */
+    public void noteWaiting(String dir, String step, @Nullable String reason) {
+        if (step == null || step.isBlank()) return;
+        String key = stepKey(dirKey(dir), step);
+        if (reason == null || reason.isBlank()) stepWaits.remove(key);
+        else stepWaits.put(key, reason);
+    }
+
     private static String stepKey(String dir, String step) {
         return dir + '\u0000' + step;
     }
@@ -606,7 +620,7 @@ public final class BuildAccumulator {
                         byDir.getKey(),
                         t.name(),
                         JkResultsStopped.CANCELLED_CODE,
-                        inFlightMessage(t.name(), millis, lines.size()),
+                        inFlightMessage(t.name(), millis, lines.size(), stepWaits.remove(key)),
                         null,
                         null,
                         null,
@@ -624,13 +638,18 @@ public final class BuildAccumulator {
         }
     }
 
-    /** The one line of the error a cancel leaves under a step it interrupted. */
-    static String inFlightMessage(String step, long millis, int tailLines) {
+    /**
+     * The one line of the error a cancel leaves under a step it interrupted; {@code waiting}, what the
+     * step was waiting for then ({@link StepWait}), or {@code null} when it was working.
+     */
+    static String inFlightMessage(String step, long millis, int tailLines, @Nullable String waiting) {
         String ran = millis > 0 ? " for " + JkResultsMarkdown.fmtDuration(millis) : "";
-        String fork = tailLines == 0
-                ? "; its fork printed nothing"
-                : " — the fork's last " + (tailLines == 1 ? "line" : tailLines + " lines") + ":";
-        return "`" + step + "` was in flight" + ran + " when the run was cancelled" + fork;
+        String what = StepWait.phrase(waiting);
+        String held = what.isEmpty() ? "" : ", waiting for " + what + ",";
+        String fork = tailLines > 0
+                ? " — the fork's last " + (tailLines == 1 ? "line" : tailLines + " lines") + ":"
+                : what.isEmpty() ? "; its fork printed nothing" : "";
+        return "`" + step + "` was in flight" + ran + held + " when the run was cancelled" + fork;
     }
 
     /**
@@ -785,6 +804,7 @@ public final class BuildAccumulator {
                 .put(step, new BuildRecord.Task(step, phase, status, millis, waitMillis, detail, suspended, cache));
         stepStartedAt.remove(stepKey(d, step));
         forkTails.remove(stepKey(d, step));
+        stepWaits.remove(stepKey(d, step));
         if (timeline != null) {
             timeline.complete(timelineModule(d), step, status == null ? "" : status, millis);
         }

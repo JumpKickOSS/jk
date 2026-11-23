@@ -287,7 +287,7 @@ public final class JkManager implements AutoCloseable, LiveRegion, DownloadsView
         model.stepMessage(module == null ? "" : module, stepKey, message);
     }
 
-    /** The step waits for a worker lease ({@code slot}, {@code memory}), or works again ({@code null}). */
+    /** The step waits for what {@code reason} names ({@link cc.jumpkick.run.StepWait}), or works again ({@code null}). */
     public void stepWaiting(@Nullable String module, String stepKey, @Nullable String reason) {
         model.stepWaiting(module == null ? "" : module, stepKey, reason);
     }

@@ -4,6 +4,7 @@ package cc.jumpkick.engine.plugin;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.time.Clock;
+import cc.jumpkick.run.JkThreads;
 import cc.jumpkick.run.StepScope;
 import cc.jumpkick.run.TaskContext;
 import java.nio.file.Path;
@@ -671,7 +672,8 @@ public final class WorkerLeases {
                             if (left <= 0) giveUp(waiter, now - arrived, lastGrant > arrived ? still : -1);
                             else {
                                 refuseIfItNeverFits(waiter);
-                                lock.wait(Math.max(1, Math.min(250, TimeUnit.NANOSECONDS.toMillis(left))));
+                                JkThreads.waitManaged(
+                                        lock, Math.max(1, Math.min(250, TimeUnit.NANOSECONDS.toMillis(left))));
                             }
                         }
                         // Every waiter waits on what refused the head; grantQueued dropped a cancelled one.

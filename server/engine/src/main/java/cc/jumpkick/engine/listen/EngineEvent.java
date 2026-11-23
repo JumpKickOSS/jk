@@ -90,7 +90,7 @@ public sealed interface EngineEvent {
 
     record Output(String dir, String step, String line) implements EngineEvent {}
 
-    /** {@code step} waits for a worker lease ({@code "slot"}, {@code "memory"}), or works again ({@code ""}). */
+    /** {@code step} waits for what {@code reason} names ({@link cc.jumpkick.run.StepWait}), or works again ({@code ""}). */
     record Waiting(String dir, String step, String reason) implements EngineEvent {}
 
     /**

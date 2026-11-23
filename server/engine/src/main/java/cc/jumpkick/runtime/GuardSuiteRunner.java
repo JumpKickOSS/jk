@@ -23,6 +23,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.function.Consumer;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -116,6 +117,18 @@ final class GuardSuiteRunner {
      * Reentrant: a body may call {@link #run}.
      */
     static <T> T takingTurn(Path report, Turn<T> body) throws IOException, InterruptedException {
+        return takingTurn(report, reason -> {}, body);
+    }
+
+    /** The wait {@code waiting} hears while another engine holds the tree's turn on the report. */
+    static final String OTHER_ENGINE = "another jk's guard suite run on this tree";
+
+    /**
+     * As above; {@code waiting} hears {@link #OTHER_ENGINE} while another engine holds the turn, and
+     * {@code null} once this run has it, so a step blocked on that engine says so.
+     */
+    static <T> T takingTurn(Path report, Consumer<@Nullable String> waiting, Turn<T> body)
+            throws IOException, InterruptedException {
         Path guardDir = Objects.requireNonNull(report.toAbsolutePath().getParent(), "report has a parent");
         Files.createDirectories(guardDir);
         Path key = guardDir.normalize();
@@ -123,8 +136,19 @@ final class GuardSuiteRunner {
         try (KeyedLocks.Held turn = RUNS.holdInterruptibly(key);
                 FileChannel channel = FileChannel.open(
                         guardDir.resolve(LOCK_FILE), StandardOpenOption.CREATE, StandardOpenOption.WRITE);
-                FileLock held = channel.lock()) {
+                FileLock held = lockTelling(channel, waiting)) {
             return body.run();
+        }
+    }
+
+    private static FileLock lockTelling(FileChannel channel, Consumer<@Nullable String> waiting) throws IOException {
+        FileLock now = channel.tryLock();
+        if (now != null) return now;
+        waiting.accept(OTHER_ENGINE);
+        try {
+            return channel.lock();
+        } finally {
+            waiting.accept(null);
         }
     }
 

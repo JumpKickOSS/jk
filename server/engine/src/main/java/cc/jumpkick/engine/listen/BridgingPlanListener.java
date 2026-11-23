@@ -52,6 +52,9 @@ public final class BridgingPlanListener implements BuildPlanListener {
         /** What the action cache did for {@code step}. */
         default void stepCache(String dir, String step, StepCache cache) {}
 
+        /** What {@code step} waits for ({@link cc.jumpkick.run.StepWait}), or {@code null} once it works. */
+        default void stepWaiting(String dir, String step, @Nullable String reason) {}
+
         /** A line a step's fork printed outside its protocol; journal-only, never a wire event. */
         default void forkOutput(String dir, String step, String line) {}
 
@@ -188,6 +191,7 @@ public final class BridgingPlanListener implements BuildPlanListener {
     @Override
     public void waiting(String step, @Nullable String reason) {
         sink.emit(new EngineEvent.Waiting(dir, step, reason == null ? "" : reason));
+        hooks.stepWaiting(dir, step, reason);
     }
 
     @Override

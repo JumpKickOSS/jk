@@ -37,7 +37,7 @@ public enum KeyContract {
      * suite's JVMs ({@link #LAUNCH}), whose stamp keys what they start with by value. The {@code suite-code-keyed} guard
      * keeps the types that select and judge a suite inside the one or the other.
      */
-    SUITE("a2927c4a8420", List.of(Sources.SERVER, Sources.SHARED), KeyContract::suiteSource),
+    SUITE("18976f0cffe4", List.of(Sources.SERVER, Sources.SHARED), KeyContract::suiteSource),
 
     /**
      * The code that writes an artifact or a verdict the engine produces itself: the jar, assembly
@@ -47,7 +47,7 @@ public enum KeyContract {
      * but a native image's keys by it.
      */
     ARTIFACT(
-            "5bcb82c76e3e",
+            "d75dafc4c767",
             List.of(
                     Sources.ENGINE + "compile/*Packager.java",
                     Sources.ENGINE + "runtime/PlannerJlink.java",

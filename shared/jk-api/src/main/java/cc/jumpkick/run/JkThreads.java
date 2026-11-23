@@ -58,6 +58,37 @@ public final class JkThreads {
         }
     }
 
+    /**
+     * True when every thread of {@link #cpu()} is busy, so a task submitted now queues until one
+     * finishes or blocks in a way the pool compensates for. False before the pool exists.
+     */
+    public static boolean cpuSaturated() {
+        return cpuReal instanceof ForkJoinPool pool && pool.getActiveThreadCount() >= pool.getParallelism();
+    }
+
+    /**
+     * {@code monitor.wait(millis)}, whose monitor the caller holds, as a {@link
+     * ForkJoinPool#managedBlock}: a {@link #cpu()} thread that waits so lets the pool start another
+     * for the tasks queued behind it, which a plain wait does not. Off the pool it is a plain wait.
+     */
+    public static void waitManaged(Object monitor, long millis) throws InterruptedException {
+        ForkJoinPool.managedBlock(new ForkJoinPool.ManagedBlocker() {
+            private boolean waited;
+
+            @Override
+            public boolean block() throws InterruptedException {
+                monitor.wait(millis);
+                waited = true;
+                return true;
+            }
+
+            @Override
+            public boolean isReleasable() {
+                return waited;
+            }
+        });
+    }
+
     /** Virtual-thread executor. One thread per task; names start with {@code jk-io-}. */
     public static ExecutorService io() {
         ExecutorService local = io;

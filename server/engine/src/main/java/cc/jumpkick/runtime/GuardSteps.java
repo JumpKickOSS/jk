@@ -262,7 +262,7 @@ final class GuardSteps {
             // on this tree waits, so the report the test kind reads is this run's.
             withSuite = evaluate -> {
                 try {
-                    return GuardSuiteRunner.takingTurn(GuardSuiteRunner.report(inputs), () -> {
+                    return GuardSuiteRunner.takingTurn(GuardSuiteRunner.report(inputs), ctx::waiting, () -> {
                         for (String p : GuardSuiteRunner.run(inputs, workspaceModules))
                             ctx.error("guards", "GUARD suite  scanner-failed\n  Observed: " + p);
                         return evaluate.get();
