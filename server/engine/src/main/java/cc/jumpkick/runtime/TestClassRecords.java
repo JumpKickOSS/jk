@@ -61,9 +61,10 @@ final class TestClassRecords {
     static final int MAX_ROW_CHARS = 256 * 1024;
 
     static {
-        // The header names the pool's reads: at 300 characters a path they stay within one row.
-        if (ClassReads.POOLED_READS_KEPT * 300 > MAX_ROW_CHARS / 2) {
-            throw new IllegalStateException("the pool's reads must fit within a record row");
+        // The header names the pool's reads at 300 characters a path and the suite's code files at
+        // 400 (with a time and a digest): they stay within one row.
+        if (ClassReads.POOLED_READS_KEPT * 300 + ClassReads.SUITE_CODE_KEPT * 400 > MAX_ROW_CHARS * 3 / 4) {
+            throw new IllegalStateException("the pool's reads and the suite's code files must fit within a record row");
         }
     }
 
@@ -379,11 +380,26 @@ final class TestClassRecords {
     }
 
     /**
-     * The file's first line: the run it was written by, what no class's window held, the toolchain,
-     * and counts; never any class's own content.
+     * The file's first line with no earlier header to merge the suite's code files with, and no run
+     * start to date them by: no class stands on them until a run lists them again.
      */
     static String header(
             String module, ClassReads.Attributed seen, Lookups lookups, Path root, @Nullable String toolchain) {
+        return header(
+                module, seen, lookups, root, toolchain, SuiteCodeFiles.listed(null, seen.code(), root, Long.MAX_VALUE));
+    }
+
+    /**
+     * The file's first line: the run it was written by, what no class's window held, the code files
+     * its JVMs read ({@code code}), the toolchain, and counts; never any class's own content.
+     */
+    static String header(
+            String module,
+            ClassReads.Attributed seen,
+            Lookups lookups,
+            Path root,
+            @Nullable String toolchain,
+            SuiteCodeFiles.Listed code) {
         ClassReads.Observation pooled = seen.pooled();
         boolean bound = pooled.platformBound();
         int boundClasses = 0;
@@ -402,7 +418,9 @@ final class TestClassRecords {
                 .number("events", seen.events())
                 .number("classes", seen.classes().size())
                 .bool("platformBound", bound || boundClasses > 0)
-                .number("platformBoundClasses", boundClasses);
+                .number("platformBoundClasses", boundClasses)
+                .array(SuiteCodeFiles.FIELD, code.entries())
+                .optionalTrue(SuiteCodeFiles.MORE, code.more());
         JsonFields pool = JsonFields.object()
                 .array("reads", spelled(pooled.reads(), root))
                 .optionalTrue("readsMore", pooled.readsMore())

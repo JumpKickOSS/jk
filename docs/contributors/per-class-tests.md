@@ -192,9 +192,13 @@ it loaded, never their names. A class that read more data files says `readsMore`
 every file its suite was found to read: the suite's discovered inputs, which hold that set exactly
 and bounded, so per-class reads use the suite's own representation rather than a second one. A
 repository-scanning class that reads 50,000 files therefore costs a row like any other and re-runs
-whenever any input of its suite moves, which is what it reads anyway. Whether a class's loads lay in
-its cone is decided when it runs and kept as its `fallback`. The suite's line holds counts and the
-bounded pool (up to 400 data files), never a class's content. The record file and the shadow log are written and read a row
+whenever any input of its suite moves, which is what it reads anyway. A class that read more code
+files says `codeMore` and stands on every code file its suite's JVMs read: the suite's line lists
+them (`suiteCode`, up to 128, each with its content and since when it has held it), and the class
+is replayed only when every one of them held since before the class finished. Whether a class's
+loads lay in its cone is decided when it runs and kept as its `fallback`. The suite's line holds
+counts, the bounded pool (up to 400 data files) and the suite's code files, never a class's
+content. The record file and the shadow log are written and read a row
 at a time; a row past 256 KiB (none this writes) is skipped as unreadable.
 
 **The memory bound.** One suite records at a time across the engine. What it holds outside the
@@ -310,10 +314,21 @@ What the shadow showed on real runs of jk-engine (940 classes) and what closed e
   suite, and past its bound every class was keyed on everything the suite read, which in jk-engine
   is every engine source, so any edit moved every key. jk-engine's pool is 180 template files.
 
-Still keyed by the module after these: a class that loads a library by path past its bound of 4
-code files (jk-engine's in-process Scala compiles load a few dozen sbt jars from the local Maven
-repository, charged to every later class of that JVM: 284 classes), and a class that starts a
-program (about 120).
+- A class past its bound of 4 code files stands on the suite's code files (`SuiteCodeFiles`), not on
+  its module. jk-engine's in-process compiles load 32 zinc and Scala jars from the local Maven
+  repository, charged to every later class of that JVM: 375 to 391 classes a run fell back for them.
+  The suite's line lists each file with its content and since when it has held it, merged with the
+  run before, so a class replayed in a run that loaded none of them still finds its own. A file new
+  to the list, or whose content moved, holds from the start of the run that saw it; past 128 files
+  the list starts over from that run's own; past what the run itself can list, a class past its own
+  bound is keyed by its module again. The pool's code files past its bound of 4, which keyed no
+  class, now hold every class to the same list.
+
+Still keyed by the module after these, on bocaminipc-2 after a body-only edit of `SelfHostEngine`
+(134 of jk-engine's 941 classes, 522 before the suite's code files): a class that starts a program,
+whose reads no recording holds (`git` 98, a program the test wrote in its own temp directory 9,
+`setsid` 8, `sleep` 4, a shell or `env` 8, `node` 2, a second JDK's `java` 1), and a class that
+loaded a workspace class its cone does not name (4).
 
 **Selection.** `[test] cache = "cone"` (`TestCache.CONE`; a member takes the workspace root's when
 it says nothing). JumpKick's own root sets it once the bootstrap pin reads the value: a release

@@ -40,7 +40,9 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>A class whose cone cannot be trusted is keyed by its whole module, every workspace class on
  * its classpath in place of its cone: one that started a program, loaded a workspace class its cone
- * does not name, names a classpath-scanning entry point, or has no attributed record.
+ * does not name, names a classpath-scanning entry point, or has no attributed record. A class that
+ * read more code files than its record names stands on every code file its suite read instead
+ * (the suite code files of its record file's header), and on its module only when the suite read more than that list holds.
  */
 final class ClassKeys {
 
@@ -130,20 +132,22 @@ final class ClassKeys {
 
     /**
      * Why a class's cone cannot be trusted, or null when it can: no attributed record, a program
-     * started, more code files or loaded classes than are kept, a scanning entry point in the cone,
-     * or a workspace class it loaded ({@code loaded}) that the cone does not name. Decided when the
-     * class ran, from what it loaded then; its record keeps the answer.
+     * started, more code files than its suite's list holds ({@code suiteCodeMore}), more loaded
+     * classes than are kept, a scanning entry point in the cone, or a workspace class it loaded
+     * ({@code loaded}) that the cone does not name. Decided when the class ran, from what it loaded
+     * then; its record keeps the answer.
      */
     static @Nullable String fallback(
             ClassCones.Cone cone,
             Observed seen,
             Collection<String> loaded,
             boolean loadedMore,
+            boolean suiteCodeMore,
             String testClass,
             Predicate<String> indexed) {
         if (!seen.attributed()) return "unattributed";
         if (!seen.processes().isEmpty()) return "process " + seen.processes().getFirst();
-        if (seen.codeMore()) return "code past the record's bound";
+        if (seen.codeMore() && suiteCodeMore) return "code past the suite's bound";
         if (loadedMore) return "loads past the record's bound";
         if (cone.scanner() != null) return "scanner " + cone.scanner();
         for (String l : loaded) {
@@ -176,19 +180,22 @@ final class ClassKeys {
         }
         Set<Path> dirs = new TreeSet<>();
         for (Path f : files) {
-            String content;
-            try {
-                content = FileHashMemo.contentHash(f);
-            } catch (IOException notHashed) {
-                content = Files.isRegularFile(f) ? "unreadable" : "absent";
-            }
-            feed(md, kind + ":" + spell(workspace, f) + "=" + content);
+            feed(md, kind + ":" + spell(workspace, f) + "=" + content(f));
             Path parent = f.getParent();
             if (listings != null && parent != null && SuiteReads.keysListing(parent, workspace)) dirs.add(parent);
         }
         if (listings == null) return;
         for (Path dir : dirs)
             feed(md, "list:" + spell(workspace, dir) + "=" + listings.computeIfAbsent(dir, ClassKeys::listing));
+    }
+
+    /** A file's content as a key holds it: its digest, or {@code absent} or {@code unreadable}. */
+    static String content(Path file) {
+        try {
+            return FileHashMemo.contentHash(file);
+        } catch (IOException notHashed) {
+            return Files.isRegularFile(file) ? "unreadable" : "absent";
+        }
     }
 
     private static String listing(Path dir) {
@@ -208,7 +215,8 @@ final class ClassKeys {
         return Hashing.sha256Hex(String.join("\n", names));
     }
 
-    private static String spell(Path root, Path p) {
+    /** {@code p} relative to {@code root} with forward slashes when it lies in it, else as it is. */
+    static String spell(Path root, Path p) {
         return p.startsWith(root) ? root.relativize(p).toString().replace('\\', '/') : p.toString();
     }
 

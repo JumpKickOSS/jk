@@ -106,8 +106,20 @@ public final class ClassReads {
      */
     public static final int POOLED_READS_KEPT = 400;
 
-    /** The most code files a class keeps; past it the class is keyed by its whole module. */
+    /**
+     * The most code files a class keeps; past it the class stands on every code file its suite read
+     * ({@link #SUITE_CODE_KEPT}).
+     */
     public static final int CODE_KEPT = 4;
+
+    /**
+     * The most code files a suite's record names, every JVM's together: what a class that read more
+     * than its own {@link #CODE_KEPT} stands on. A JVM's code files are charged to every class that
+     * ran after it read them, so one in-process compile that loads a few dozen jars puts every later
+     * class of its JVM past its own bound; the suite's list names them once. Past this, such a class
+     * is keyed by its whole module.
+     */
+    public static final int SUITE_CODE_KEPT = 128;
 
     /** The most of each kind of platform evidence a class keeps: presence decides, a few say what. */
     public static final int EVIDENCE_KEPT = 2;
@@ -145,6 +157,7 @@ public final class ClassReads {
             + CLASSES_KEPT * 2L * NAMES_KEPT * 64
             + LOADED_KEPT * 48L
             + POOLED_READS_KEPT * 200L
+            + SUITE_CODE_KEPT * 200L
             + (ClassReads.WRITTEN_KEPT + ClassReads.CODE_FILES_KEPT + ClassReads.EXISTS_KEPT) * 200L;
 
     /**
@@ -302,17 +315,63 @@ public final class ClassReads {
     }
 
     /**
+     * Every code file a suite's JVMs read that was still there once the run ended, at most {@link
+     * #SUITE_CODE_KEPT}, and whether there were more.
+     */
+    public static final class SuiteCode {
+        private final Set<Path> files = new TreeSet<>();
+        private boolean more;
+
+        public static SuiteCode empty() {
+            return new SuiteCode();
+        }
+
+        public static SuiteCode of(Collection<Path> files) {
+            SuiteCode code = new SuiteCode();
+            files.forEach(code::add);
+            return code;
+        }
+
+        public Set<Path> files() {
+            return Collections.unmodifiableSet(files);
+        }
+
+        public boolean more() {
+            return more;
+        }
+
+        void add(Path p) {
+            if (more || files.contains(p)) return;
+            if (files.size() < SUITE_CODE_KEPT) files.add(p);
+            else more = true;
+        }
+    }
+
+    /**
      * A suite's run, split by class.
      *
      * @param classes each top-level class that ran in a window, by binary name
      * @param pooled what no window held: every class's
+     * @param code every code file the suite's JVMs read, which holds each class's and the pool's
      * @param complete false when a recording could not be read whole: no class of it is attributed
      * @param jvms how many recordings were read
      * @param events how many events were joined
      */
     public record Attributed(
-            Map<String, Observation> classes, Observation pooled, boolean complete, int jvms, long events) {
-        public static final Attributed NONE = new Attributed(Map.of(), Observation.empty(), false, 0, 0);
+            Map<String, Observation> classes,
+            Observation pooled,
+            SuiteCode code,
+            boolean complete,
+            int jvms,
+            long events) {
+        public static final Attributed NONE =
+                new Attributed(Map.of(), Observation.empty(), SuiteCode.empty(), false, 0, 0);
+
+        /** A run whose JVMs read no code file outside what the suite's key holds. */
+        public Attributed(
+                Map<String, Observation> classes, Observation pooled, boolean complete, int jvms, long events) {
+            this(classes, pooled, SuiteCode.empty(), complete, jvms, events);
+        }
     }
 
     /** One window: a class from its start to its finish, in epoch nanos. */
@@ -381,6 +440,7 @@ public final class ClassReads {
         Map<String, Observation> classes = new LinkedHashMap<>();
         int[] loadedLeft = {LOADED_KEPT};
         Observation pooled = Observation.pool();
+        SuiteCode code = SuiteCode.empty();
         boolean complete = true;
         long events = 0;
         for (Path jfr : recordings) {
@@ -416,7 +476,7 @@ public final class ClassReads {
                         pass.run(FRAME, frame);
                     }
                 }
-                Join join = new Join(windows, written, cwd, layout, classes, pooled, loadedLeft);
+                Join join = new Join(windows, written, cwd, layout, classes, pooled, code, loadedLeft);
                 try (RecordingReader.Permit permit = RecordingReader.Permit.acquire()) {
                     pass.run(EVENTS, (name, start, end, v) -> read(name, start, v, join));
                 }
@@ -435,7 +495,7 @@ public final class ClassReads {
                 }
             }
         }
-        return new Attributed(classes, pooled, complete, recordings.size(), events);
+        return new Attributed(classes, pooled, code, complete, recordings.size(), events);
     }
 
     /** The second pass: one event, given to its classes as it is read. */
@@ -473,6 +533,7 @@ public final class ClassReads {
         private final Layout layout;
         private final Map<String, Observation> classes;
         private final Observation pooled;
+        private final SuiteCode suiteCode;
         /** Whether each recently asked path is there, the last {@value #EXISTS_KEPT} asked. */
         private final Map<Path, Boolean> exists = new LinkedHashMap<>(256, 0.75f, true) {
             @Override
@@ -499,8 +560,10 @@ public final class ClassReads {
                 Layout layout,
                 Map<String, Observation> classes,
                 Observation pooled,
+                SuiteCode suiteCode,
                 int[] loadedLeft) {
             this.loadedLeft = loadedLeft;
+            this.suiteCode = suiteCode;
             this.windows = new ArrayList<>(windows);
             this.windows.sort(Comparator.comparingLong(Window::start));
             this.written = written;
@@ -614,6 +677,7 @@ public final class ClassReads {
                     if (o != null) o.codeMore = true;
                 }
                 pooled.codeMore = true;
+                suiteCode.more = true;
             }
             long lastEnd = Long.MIN_VALUE;
             for (Window w : windows) lastEnd = Math.max(lastEnd, w.end());
@@ -621,6 +685,7 @@ public final class ClassReads {
                 // A code file gone once the run ended was made and removed by it (a jar a test wrote
                 // in its temp directory): no input, and no load a later class may be served from.
                 if (!exists(c.getKey())) continue;
+                suiteCode.add(c.getKey());
                 long first = c.getValue()[0];
                 for (Window w : windows) {
                     Observation o = classes.get(w.testClass());

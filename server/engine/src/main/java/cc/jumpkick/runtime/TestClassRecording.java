@@ -114,8 +114,16 @@ final class TestClassRecording {
                 TestClassRecords.Lookups lookups = TestClassRecords.Lookups.read(EnvReadReport.recordDir(moduleDir));
                 Map<String, TestClassRecords.Outcome> ran = TestClassRecords.outcomes(ledger.recorded());
                 Path file = TestClassRecords.file(moduleDir);
+                String previous = TestClassRecords.header(file);
+                SuiteCodeFiles.Listed code =
+                        SuiteCodeFiles.listed(previous, seen.code(), workspace, firstFinished(ran));
                 String header = TestClassRecords.header(
-                        moduleLabel, seen, lookups, workspace, javaHome == null ? null : JdkToolchain.token(javaHome));
+                        moduleLabel,
+                        seen,
+                        lookups,
+                        workspace,
+                        javaHome == null ? null : JdkToolchain.token(javaHome),
+                        code);
                 if (!TestTelemetry.shadow()) {
                     TestClassRecords.merge(
                             moduleDir,
@@ -126,14 +134,23 @@ final class TestClassRecording {
                     return;
                 }
                 String suitePart = ClassKeys.suitePart(stampExtras, external, resourceDirs);
-                ClassKeys.Observed pooledBefore = ClassShadow.pooledOf(TestClassRecords.header(file));
+                ClassKeys.Observed pooledBefore = ClassShadow.pooledOf(previous);
                 ClassKeys.Observed pooledNow = ClassShadow.observed(seen.pooled(), workspace);
                 ClassShadow shadow;
                 // The index stands only while no recording is read anywhere in the engine.
                 try (RecordingReader.Permit permit = RecordingReader.Permit.acquire()) {
                     ClassCones.Index index = ClassCones.index(coneRoots, INDEX_CLASSES);
                     shadow = new ClassShadow(
-                            index, suitePart, workspace, pooledBefore, pooledNow, readsBefore, readsAfter, stampKey);
+                            index,
+                            suitePart,
+                            workspace,
+                            pooledBefore,
+                            pooledNow,
+                            readsBefore,
+                            readsAfter,
+                            SuiteCodeFiles.since(previous, workspace),
+                            code.more(),
+                            stampKey);
                     ClassShadow s = shadow;
                     TestClassRecords.merge(moduleDir, header, ran, (o, prev) -> {
                         ClassReads.Observation obs = observation(seen, o);
@@ -243,6 +260,8 @@ final class TestClassRecording {
                     ClassKeys.Observed.NONE,
                     reads,
                     reads,
+                    SuiteCodeFiles.since(header, workspace),
+                    false,
                     stampKey);
             TestClassRecords.forEachRow(file, (key, row) -> {
                 String launch = Jsonl.str(row, "launch");
@@ -262,6 +281,15 @@ final class TestClassRecording {
             ONE.release();
         }
         return out;
+    }
+
+    /** When the first of {@code ran} finished: the start of the run, as its records date it. */
+    private static long firstFinished(Map<String, TestClassRecords.Outcome> ran) {
+        long first = Long.MAX_VALUE;
+        for (TestClassRecords.Outcome o : ran.values()) {
+            if (o.ranAt() > 0) first = Math.min(first, o.ranAt());
+        }
+        return first == Long.MAX_VALUE ? Clock.SYSTEM.millis() : first;
     }
 
     /** Whether a record row, or the pool of its header, says the network was reached. */

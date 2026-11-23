@@ -517,7 +517,9 @@ when its key still matches its class record ([what a suite read](#what-a-suite-r
 those of every workspace class it reaches (its cone), the files it read, the suite's settings,
 external classpath and selection. An edit to one main class runs the classes whose cone holds it,
 and any class keyed by its whole module (one that started a program, loaded a workspace class its
-cone does not name, or names a classpath scanner), and replays the rest. The warning then reads
+cone does not name, or names a classpath scanner), and replays the rest. A class that ran after a
+test loaded more jars by path than its record names (an in-process compiler's) stands on every jar
+its suite loaded that way: it runs again when one of them changes. The warning then reads
 `… passed earlier and nothing they reach or read has changed since; they are not run again`, and
 each replayed class's `class-finish` row carries `replayedFrom`. A class that reached the network,
 or a suite that did outside every class, is never replayed; `--redo` runs every class. Set at the

@@ -17,7 +17,7 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * A class's key moves with what it read; past its record's bound it moves with everything its suite
  * read; it falls back to its module when it loaded a workspace class its cone does not name, started
- * a program, loaded past its bound or has no record.
+ * a program, loaded past its bound, read more code files than its suite's list holds or has no record.
  */
 class ClassKeysTest {
 
@@ -42,10 +42,11 @@ class ClassKeysTest {
                 .as("within its bound, only its own")
                 .isEqualTo(key(cone, seen, "reads-1", ws).key());
 
-        assertThat(ClassKeys.fallback(cone, seen, List.of("demo.B"), false, "demo.T", Set.of("demo.B")::contains))
+        assertThat(ClassKeys.fallback(
+                        cone, seen, List.of("demo.B"), false, false, "demo.T", Set.of("demo.B")::contains))
                 .as("a workspace class loaded outside its cone")
                 .isEqualTo("reflective demo.B");
-        assertThat(ClassKeys.fallback(cone, seen, List.of("demo.Gone"), false, "demo.T", Set.of()::contains))
+        assertThat(ClassKeys.fallback(cone, seen, List.of("demo.Gone"), false, false, "demo.T", Set.of()::contains))
                 .as("a class gone from the workspace moved the cone itself")
                 .isNull();
         assertThat(ClassKeys.fallback(
@@ -53,12 +54,20 @@ class ClassKeysTest {
                         observed(List.of(), false, List.of("/usr/bin/git")),
                         List.of(),
                         false,
+                        false,
                         "demo.T",
                         c -> true))
                 .startsWith("process");
-        assertThat(ClassKeys.fallback(cone, seen, List.of(), true, "demo.T", c -> true))
+        ClassKeys.Observed pastOwnCode = new ClassKeys.Observed(true, List.of(), false, List.of(), true, List.of());
+        assertThat(ClassKeys.fallback(cone, pastOwnCode, List.of(), false, false, "demo.T", c -> true))
+                .as("past its own code bound it stands on its suite's code files, not its module")
+                .isNull();
+        assertThat(ClassKeys.fallback(cone, pastOwnCode, List.of(), false, true, "demo.T", c -> true))
+                .as("past its suite's too")
+                .isEqualTo("code past the suite's bound");
+        assertThat(ClassKeys.fallback(cone, seen, List.of(), true, false, "demo.T", c -> true))
                 .startsWith("loads past");
-        assertThat(ClassKeys.fallback(cone, ClassKeys.Observed.NONE, List.of(), false, "demo.T", c -> true))
+        assertThat(ClassKeys.fallback(cone, ClassKeys.Observed.NONE, List.of(), false, false, "demo.T", c -> true))
                 .isEqualTo("unattributed");
     }
 

@@ -221,6 +221,8 @@ class TestClassRecordingScaleTest {
                     ClassShadow.observed(seen.pooled(), ws),
                     "reads",
                     "reads",
+                    Long.MIN_VALUE,
+                    false,
                     "stamp");
             TestClassRecords.Lookups lookups = TestClassRecords.Lookups.none();
             String header = TestClassRecords.header("g:m", seen, lookups, ws, null);

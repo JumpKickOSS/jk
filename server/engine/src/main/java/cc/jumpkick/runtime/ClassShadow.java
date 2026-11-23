@@ -56,6 +56,8 @@ final class ClassShadow {
     private final ClassKeys.Observed pooledNow;
     private final String readsBefore;
     private final String readsAfter;
+    private final long codeSince;
+    private final boolean codePastBound;
 
     private int ran;
     private int wouldRun;
@@ -75,8 +77,10 @@ final class ClassShadow {
      * The shadow of one run: cones from {@code index}, keys under {@code suitePart}; {@code
      * pooledBefore} and {@code readsBefore} are what the records were keyed over before this run (the
      * pool of the record file's header and the suite's discovered inputs as one digest), {@code
-     * pooledNow} and {@code readsAfter} what this run leaves; {@code stampKey}, the suite's, keys every
-     * class when the index could not hold the workspace.
+     * pooledNow} and {@code readsAfter} what this run leaves; {@code codeSince} is since when the code
+     * files the record file's header lists have held still ({@link SuiteCodeFiles#since}) and {@code
+     * codePastBound} whether this run read more than such a list holds; {@code stampKey}, the
+     * suite's, keys every class when the index could not hold the workspace.
      */
     ClassShadow(
             ClassCones.Index index,
@@ -86,6 +90,8 @@ final class ClassShadow {
             ClassKeys.Observed pooledNow,
             String readsBefore,
             String readsAfter,
+            long codeSince,
+            boolean codePastBound,
             @Nullable String stampKey) {
         this.index = index;
         // An index past its bound names only part of the workspace: every class is keyed by the
@@ -97,6 +103,8 @@ final class ClassShadow {
         this.pooledNow = pooledNow;
         this.readsBefore = readsBefore;
         this.readsAfter = readsAfter;
+        this.codeSince = codeSince;
+        this.codePastBound = codePastBound;
     }
 
     /** What the shadow says of the class {@code o} names, given its row before this run: a new key and why it would have run. */
@@ -109,6 +117,7 @@ final class ClassShadow {
                 now,
                 obs == null ? List.of() : obs.loaded(),
                 obs != null && obs.loadedMore(),
+                codePastBound,
                 o.testClass(),
                 index::contains);
         if (index.full()) fallback = "index past its bound";
@@ -131,7 +140,9 @@ final class ClassShadow {
 
     /**
      * Why per-class selection runs the class whose record was {@code prev}, or null to replay it: the
-     * one answer both this shadow and the selection ({@link TestClassRecording#unmoved}) give.
+     * one answer both this shadow and the selection ({@link TestClassRecording#unmoved}) give. A class
+     * that read more code files than its record names, or ran beside a pool that did, runs when one
+     * of its suite's code files changed after it finished.
      */
     @Nullable
     String whyRun(@Nullable String prev, String launch, ClassCones.Cone cone) {
@@ -151,8 +162,10 @@ final class ClassShadow {
                 workspace,
                 fallback,
                 listings);
-        if (now.key().equals(prevKey)) return null;
-        return fallback != null ? "module " + fallback : "key";
+        if (!now.key().equals(prevKey)) return fallback != null ? "module " + fallback : "key";
+        boolean pastOwnCode = Jsonl.bool(prev, "codeMore", false) || pooledBefore.codeMore();
+        if (fallback == null && pastOwnCode && codeSince >= Jsonl.longValue(prev, "ranAt", 0)) return "code moved";
+        return null;
     }
 
     /** Whether the class's outcome moved since {@code prev}: its verdict or its counts. */

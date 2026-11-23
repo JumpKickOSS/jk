@@ -175,6 +175,41 @@ class ClassReadsTest {
     }
 
     @Test
+    void the_suite_names_every_code_file_its_jvms_read_past_a_classs_own_bound(@TempDir Path tmp) throws Exception {
+        Path ws = Files.createDirectories(tmp.resolve("ws"));
+        Path repo = Files.createDirectories(tmp.resolve("repo"));
+        List<Path> jars = new ArrayList<>();
+        for (int i = 0; i < ClassReads.CODE_KEPT + 3; i++) {
+            jars.add(Files.write(repo.resolve("lib-" + i + ".jar"), new byte[] {(byte) i}));
+        }
+        Path recordings = Files.createDirectories(tmp.resolve("rec"));
+
+        try (Recording r = new Recording()) {
+            r.enable("jdk.FileRead").withThreshold(Duration.ZERO);
+            r.enable(ClassReads.WINDOW_EVENT).withThreshold(Duration.ZERO);
+            r.start();
+            Window compiler = window("demo.CompileTest");
+            for (Path jar : jars) Files.readAllBytes(jar);
+            compiler.commit();
+            window("demo.LaterTest").commit();
+            r.stop();
+            r.dump(recordings.resolve("one.jfr"));
+        }
+
+        ClassReads.Attributed seen =
+                ClassReads.attribute(recordings, ws, new ClassReads.Layout(List.of(), List.of(), Set.of(), ws, null));
+
+        ClassReads.Observation later = Objects.requireNonNull(seen.classes().get("demo.LaterTest"));
+        assertThat(later.codeMore())
+                .as("a later class of the JVM is charged every jar its loaders may serve it from")
+                .isTrue();
+        assertThat(seen.code().files())
+                .as("the suite's list holds each of them, once")
+                .containsExactlyInAnyOrderElementsOf(jars);
+        assertThat(seen.code().more()).isFalse();
+    }
+
+    @Test
     void a_command_the_test_harness_marks_is_no_program_the_class_started(@TempDir Path tmp) throws Exception {
         Path ws = Files.createDirectories(tmp.resolve("ws"));
         Path recordings = Files.createDirectories(tmp.resolve("rec"));
