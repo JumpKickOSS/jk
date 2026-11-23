@@ -26,8 +26,9 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * Where the probe told which of a cone's classes ran in a test class's window, a class that did not
  * run keys by its bytes less its method bodies: an edit inside a body it never ran replays the test
- * class, while an edit to a body it ran, to a signature or to a static initialiser runs it. A class
- * from a jar, and a test class whose own use the probe never named, key every class by its bytes.
+ * class, while an edit to a body it ran, to a signature or to a static initialiser runs it, whether
+ * the class sits in a class tree or in a sibling's jar. A test class whose own use the probe never
+ * named keys every class by its bytes.
  */
 class ConeUsesTest {
 
@@ -81,20 +82,29 @@ class ConeUsesTest {
     }
 
     @Test
-    void a_class_from_a_jar_keys_by_its_bytes(@TempDir Path ws) throws Exception {
+    void a_siblings_jar_counts_as_a_class_tree_does(@TempDir Path ws) throws Exception {
         Path classes = ws.resolve("classes");
         write(classes, "demo/T", testClass());
         Path jar = ws.resolve("dep.jar");
         jar(jar, dep(1, CD_int, 0));
         ClassCones.Cone cone = ClassCones.index(List.of(classes, jar)).cone("demo.T");
-        String used = cone.used(c -> c.equals("demo.T"));
-        assertThat(used)
-                .as("one bit, the test class's: the jar's class has none")
-                .isEqualTo("80");
+        String unused = cone.used(c -> c.equals("demo.T"));
+        String ran = cone.used(c -> true);
+        assertThat(unused).as("a bit for each class, the jar's among them").isEqualTo("40");
+        assertThat(ran).isEqualTo("c0");
 
         jar(jar, dep(2, CD_int, 0));
-        ClassCones.Cone moved = ClassCones.index(List.of(classes, jar)).cone("demo.T");
-        assertThat(moved.digest(used)).isNotEqualTo(cone.digest(used));
+        ClassCones.Cone body = ClassCones.index(List.of(classes, jar)).cone("demo.T");
+        assertThat(body.digest(unused))
+                .as("a body in the jar the test class never ran")
+                .isEqualTo(cone.digest(unused));
+        assertThat(body.digest(ran)).as("a body in the jar it ran").isNotEqualTo(cone.digest(ran));
+
+        jar(jar, dep(2, CD_long, 0));
+        ClassCones.Cone signature = ClassCones.index(List.of(classes, jar)).cone("demo.T");
+        assertThat(signature.digest(unused))
+                .as("a signature in the jar is what every caller sees")
+                .isNotEqualTo(cone.digest(unused));
     }
 
     private static ClassReads.Observation observation(String... used) {

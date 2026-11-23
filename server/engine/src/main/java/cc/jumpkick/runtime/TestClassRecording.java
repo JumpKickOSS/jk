@@ -8,6 +8,7 @@ import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.runtime.base.TestEnv;
 import cc.jumpkick.task.JdkToolchain;
+import cc.jumpkick.task.SourceApiIndex;
 import cc.jumpkick.test.ClassCones;
 import cc.jumpkick.test.ClassReads;
 import cc.jumpkick.test.RecordingReader;
@@ -22,9 +23,11 @@ import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.Semaphore;
+import java.util.function.Predicate;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -299,6 +302,81 @@ final class TestClassRecording {
     /** What the suite at {@code moduleDir} was found to read under {@code selection}, as {@link SuiteReads#digest} reads it. */
     private static ClassKeys.SuiteReadSet readSet(Path moduleDir, TestSelection selection, Path workspace) {
         return new ClassKeys.SuiteReadSet(SuiteReads.tokens(moduleDir, selection, workspace), workspace);
+    }
+
+    /**
+     * Before a compile an edit is waiting on, under {@code [test] cache = "cone"}: which of the
+     * suite's classes that passed last time will replay, and how many tests they hold, once {@code edits} are built, for the
+     * forecast to count only the rest. Each edit names the sources whose content moved in one
+     * module (this one or a sibling on the suite's classpath) and whether their declarations kept.
+     * A class replays when its last record passed, kept its key, reached no other host, fell back
+     * to no module key, and no class compiled from a moved source lies in its cone, or, where the
+     * module's edit kept every declaration, none it ran ({@code coneUsed}). The cones are walked over
+     * the classes on disk, the edit's own not yet compiled. Null when the records cannot tell: none,
+     * an edit of unknown shape, the shadow off.
+     */
+    static @Nullable Replayed replayedAfter(
+            Path moduleDir,
+            BuildLayout layout,
+            Path testClasses,
+            Path mainClasses,
+            List<Path> runtimeCp,
+            List<SourceApiIndex.Hint> edits)
+            throws IOException {
+        if (!TestTelemetry.shadow()) return null;
+        for (SourceApiIndex.Hint e : edits) {
+            if (e.changed() == null || e.kind() == SourceApiIndex.Kind.UNKNOWN) return null;
+        }
+        Path file = TestClassRecords.file(moduleDir);
+        String header = TestClassRecords.header(file);
+        if (header == null) return null;
+        if (reachedPastHost(Jsonl.nested(header, "pooled"))) return Replayed.NONE;
+        Path workspace = layout.workspaceRoot().toAbsolutePath().normalize();
+        Roots roots = Roots.of(workspace, testClasses, mainClasses, runtimeCp);
+        long[] replayed = {0, 0};
+        try {
+            ONE.acquire();
+        } catch (InterruptedException stopped) {
+            Thread.currentThread().interrupt();
+            return null;
+        }
+        try (RecordingReader.Permit permit = RecordingReader.Permit.acquire()) {
+            ClassCones.Index index = ClassCones.index(roots.cone(), INDEX_CLASSES);
+            if (index.full()) return Replayed.NONE;
+            Set<String> moved = new HashSet<>();
+            Set<String> bodiesOnly = new HashSet<>();
+            for (SourceApiIndex.Hint e : edits) {
+                for (String source : Objects.requireNonNull(e.changed(), "checked above")) {
+                    Set<String> classes = index.compiledFrom(source);
+                    moved.addAll(classes);
+                    if (e.kind() == SourceApiIndex.Kind.BODY_ONLY) bodiesOnly.addAll(classes);
+                }
+            }
+            TestClassRecords.forEachRow(file, (key, row) -> {
+                String cls = TestClassRecords.className(Jsonl.strArray(row, "container"));
+                if (Jsonl.str(row, "classKey") == null
+                        || !"passed".equals(Jsonl.str(row, "outcome"))
+                        || reachedPastHost(row)
+                        || !index.contains(cls)
+                        || (Jsonl.str(row, "fallback") != null && !moved.isEmpty())) return;
+                ClassCones.Cone cone = index.cone(cls, Jsonl.strArray(row, "reflective"));
+                String used = Jsonl.str(row, "coneUsed");
+                Predicate<String> ran = used == null ? c -> true : cone.ranBy(used);
+                for (String c : moved) {
+                    if (cone.contains(c) && (!bodiesOnly.contains(c) || ran.test(c))) return;
+                }
+                replayed[0]++;
+                replayed[1] += Jsonl.longValue(row, "tests", 0);
+            });
+        } finally {
+            ONE.release();
+        }
+        return new Replayed((int) replayed[0], replayed[1]);
+    }
+
+    /** How many classes a suite replays, and the tests they hold. */
+    record Replayed(int classes, long tests) {
+        static final Replayed NONE = new Replayed(0, 0);
     }
 
     /** When the first of {@code ran} finished: the start of the run, as its records date it. */

@@ -47,7 +47,7 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>A class file read under one of the suite's class trees is a class loading: noted by name, as
  * the observed half of the class's cone. A class loads once per JVM, so a class's loads are not all
- * the classes it ran: where the probe marks the class trees' classes, a {@code jk.ClassUse} event
+ * the classes it ran: where the probe marks the workspace's classes (its class trees and siblings' jars), a {@code jk.ClassUse} event
  * names each one whose code ran in the window ({@link Observation#used}), and a use outside every
  * window is every class's. Reads of the operating system's own trees and native
  * libraries outside the JDK are platform evidence: kept, never keyed.

@@ -49,9 +49,10 @@ import org.jspecify.annotations.Nullable;
  * Micronaut, ArchUnit's importer, ClassGraph, Reflections, CDI) says so: what such a framework loads
  * no reference shows, so the class is keyed by its whole module.
  *
- * <p>A class read from a directory has a second digest, of its bytes less every method body but its
- * static initialiser's ({@link Cone#digest(String)}): what the classes that ran it see of it when
- * its own code did not run in their window.
+ * <p>Every class has a second digest, of its bytes less every method body but its static
+ * initialiser's ({@link Cone#digest(String)}): what the classes that ran it see of it when its own
+ * code did not run in their window. The probe marks a sibling's jar as it marks a class tree, so
+ * this holds for a class read from either.
  *
  * <p>The index is compact: each name once, each class's references as an array of name numbers and
  * its digests as two longs each, so a module with tens of thousands of workspace classes on its classpath
@@ -83,16 +84,14 @@ public final class ClassCones {
         }
 
         /**
-         * Which of the cone's classes read from a directory ran, by {@code ran}: one bit for each,
-         * in name order, the first the high bit of the first byte, as hex. What {@link
-         * #digest(String)} takes back.
+         * Which of the cone's classes ran, by {@code ran}: one bit for each, in name order, the
+         * first the high bit of the first byte, as hex. What {@link #digest(String)} takes back.
          */
         public String used(Predicate<String> ran) {
             List<Integer> order = index.sorted(members);
             BitSet bits = new BitSet();
             int bit = 0;
             for (int id : order) {
-                if (!index.observable.get(id)) continue;
                 if (ran.test(index.names.get(id).replace('/', '.'))) bits.set(bit);
                 bit++;
             }
@@ -103,10 +102,27 @@ public final class ClassCones {
         }
 
         /**
-         * The cone as one digest, each class read from a directory whose bit in {@code used} ({@link
-         * #used}) is clear named by its bytes less its method bodies: a body that did not run in the
-         * class's window cannot have decided its outcome. A class that ran, a class from a jar and a
-         * class past the bits {@code used} holds are named by their bytes.
+         * Whether the class {@code binaryName} lies in the cone and ran by {@code used} ({@link
+         * #used}), or past the bits it holds; what {@link #digest(String)} names by its bytes. A
+         * reader asking of several classes takes {@link #ranBy} once.
+         */
+        public Predicate<String> ranBy(String used) {
+            List<Integer> order = index.sorted(members);
+            Map<Integer, Integer> bitOf = new HashMap<>();
+            for (int bit = 0; bit < order.size(); bit++) bitOf.put(order.get(bit), bit);
+            byte[] bits = Index.bits(used);
+            return binaryName -> {
+                Integer id = index.ids.get(internal(binaryName));
+                Integer bit = id == null ? null : bitOf.get(id);
+                return bit != null && Index.ran(bits, bit);
+            };
+        }
+
+        /**
+         * The cone as one digest, each class whose bit in {@code used} ({@link #used}) is clear
+         * named by its bytes less its method bodies: a body that did not run in the class's window
+         * cannot have decided its outcome. A class that ran and a class past the bits {@code used}
+         * holds are named by their bytes.
          */
         public String digest(String used) {
             return index.digestOf(members, used);
@@ -155,10 +171,8 @@ public final class ClassCones {
         private final List<int @Nullable []> refs = new ArrayList<>();
 
         private long[] digests = new long[64];
-        /** By name number: the digest of a directory's class less its method bodies. */
+        /** By name number: the digest of the class less its method bodies. */
         private long[] bodyless = new long[64];
-        /** The classes read from a directory, which a probe can mark and so tell when they ran. */
-        private final BitSet observable = new BitSet();
 
         private int[] scanners = new int[16];
         private final List<Integer> providers = new ArrayList<>();
@@ -198,7 +212,7 @@ public final class ClassCones {
             return refs.get(id) != null;
         }
 
-        private void define(String internalName, byte[] bytes, boolean fromDirectory) {
+        private void define(String internalName, byte[] bytes) {
             if (defined >= most) {
                 full = true;
                 return;
@@ -213,12 +227,9 @@ public final class ClassCones {
             ByteBuffer d = ByteBuffer.wrap(cf.digest());
             digests[2 * id] = d.getLong();
             digests[2 * id + 1] = d.getLong();
-            if (fromDirectory) {
-                ByteBuffer b = ByteBuffer.wrap(bodyless(bytes, cf.digest()));
-                bodyless[2 * id] = b.getLong();
-                bodyless[2 * id + 1] = b.getLong();
-                observable.set(id);
-            }
+            ByteBuffer b = ByteBuffer.wrap(bodyless(bytes, cf.digest()));
+            bodyless[2 * id] = b.getLong();
+            bodyless[2 * id + 1] = b.getLong();
             scanners[id] = cf.scanner() == null ? -1 : id(cf.scanner());
             defined++;
         }
@@ -226,6 +237,30 @@ public final class ClassCones {
         /** How many classes the roots hold. */
         public int size() {
             return defined;
+        }
+
+        /**
+         * The classes of the roots a source file at {@code path} compiles to, by the longest tail
+         * of its path that names a class, with every class nested in it: {@code
+         * src/main/java/a/B.java} names {@code a.B} and {@code a.B$C}. Empty when no class of the
+         * roots is named so, as for a source not yet compiled.
+         */
+        public Set<String> compiledFrom(String path) {
+            String p = path.replace('\\', '/');
+            int dot = p.lastIndexOf('.');
+            if (dot > p.lastIndexOf('/')) p = p.substring(0, dot);
+            Set<String> out = new TreeSet<>();
+            for (String tail = p; ; ) {
+                Integer id = ids.get(tail);
+                if (id != null && defines(id)) {
+                    out.add(tail.replace('/', '.'));
+                    for (int n : nestedOf(tail)) out.add(names.get(n).replace('/', '.'));
+                    return out;
+                }
+                int slash = tail.indexOf('/');
+                if (slash < 0) return out;
+                tail = tail.substring(slash + 1);
+            }
         }
 
         /** Whether {@code binaryName} is a class of the roots. */
@@ -322,7 +357,7 @@ public final class ClassCones {
             return digestOf(members, null);
         }
 
-        /** The digest of {@code members}; with {@code used}, a directory's class whose bit is clear by its bodyless digest. */
+        /** The digest of {@code members}; with {@code used}, a class whose bit is clear by its bodyless digest. */
         private String digestOf(BitSet members, @Nullable String used) {
             MessageDigest md = Hashing.newSha256();
             ByteBuffer two = ByteBuffer.allocate(16);
@@ -332,9 +367,8 @@ public final class ClassCones {
                 md.update(names.get(id).getBytes(StandardCharsets.UTF_8));
                 long[] by = digests;
                 if (used != null) {
-                    boolean ran = true;
-                    if (observable.get(id)) ran = ran(bits, bit++);
-                    md.update((byte) (!observable.get(id) ? 0 : ran ? 1 : 2));
+                    boolean ran = ran(bits, bit++);
+                    md.update((byte) (ran ? 1 : 2));
                     if (!ran) by = bodyless;
                 }
                 two.clear();
@@ -405,7 +439,7 @@ public final class ClassCones {
             if (!rel.endsWith(".class") || rel.endsWith("module-info.class")) continue;
             String name = rel.substring(0, rel.length() - ".class".length());
             Integer id = index.ids.get(name);
-            if (id == null || !index.defines(id)) index.define(name, Files.readAllBytes(f), true);
+            if (id == null || !index.defines(id)) index.define(name, Files.readAllBytes(f));
         }
     }
 
@@ -427,7 +461,7 @@ public final class ClassCones {
                 Integer id = index.ids.get(name);
                 if (id != null && index.defines(id)) continue;
                 try (InputStream in = zip.getInputStream(e)) {
-                    index.define(name, in.readAllBytes(), false);
+                    index.define(name, in.readAllBytes());
                 }
             }
         }

@@ -36,7 +36,7 @@ public enum KeyContract {
      * that sizes a suite JVM's heap ({@link #HEAP}), which no key names. The {@code suite-code-keyed} guard
      * keeps the types that select and judge a suite inside the one or the other.
      */
-    SUITE("4a2164985c23", List.of(Sources.SERVER, Sources.SHARED), KeyContract::suiteSource),
+    SUITE("2f6b89f90044", List.of(Sources.SERVER, Sources.SHARED), KeyContract::suiteSource),
 
     /**
      * The code that writes an artifact or a verdict the engine produces itself: the jar, assembly

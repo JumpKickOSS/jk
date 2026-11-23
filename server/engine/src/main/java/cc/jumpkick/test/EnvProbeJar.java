@@ -37,7 +37,10 @@ public final class EnvProbeJar {
     /** The agent argument's prefix that leaves system-property reads unprobed; no absolute path starts so. */
     static final String NO_PROPS = "!props ";
 
-    /** The probe's argument prefix that marks classes from directories (the probe's {@code EnvProbe.USES}). */
+    /**
+     * The probe's argument prefix that marks the workspace's classes (the probe's {@code
+     * EnvProbe.USES}), the workspace following as {@code <length>:<path> }.
+     */
     static final String USES = "+uses ";
 
     private EnvProbeJar() {}
@@ -51,10 +54,11 @@ public final class EnvProbeJar {
      * runs unprobed too: the probe sits on the bootstrap class path, and would stand in for the
      * very classes the suite tests.
      *
-     * <p>With {@code uses}, the probe also marks every class loaded from a directory, so the
-     * recording names the classes whose code ran in each test class's window ({@link ClassReads}).
+     * <p>With a {@code uses} workspace, the probe also marks every class loaded from a directory or
+     * from a jar inside that workspace, so the recording names the classes whose code ran in each
+     * test class's window ({@link ClassReads}).
      */
-    public static @Nullable String prepare(Path cacheRoot, Path recordDir, Path classesDir, boolean uses) {
+    public static @Nullable String prepare(Path cacheRoot, Path recordDir, Path classesDir, @Nullable Path uses) {
         if (Files.isDirectory(classesDir.resolve(PACKAGE))) return null;
         try {
             Files.createDirectories(recordDir);
@@ -68,16 +72,23 @@ public final class EnvProbeJar {
 
     /** The {@code -javaagent} flag that records into {@code recordDir}, cutting the jar into {@code cacheDir} when needed. */
     public static String flag(Path runnerJar, Path cacheDir, Path recordDir) throws IOException {
-        return flag(runnerJar, cacheDir, recordDir, false);
+        return flag(runnerJar, cacheDir, recordDir, null);
     }
 
-    /** As {@link #flag(Path, Path, Path)}, the probe marking classes from directories when {@code uses}. */
-    public static String flag(Path runnerJar, Path cacheDir, Path recordDir, boolean uses) throws IOException {
+    /** As {@link #flag(Path, Path, Path)}, the probe marking the classes of the workspace {@code uses} when given. */
+    public static String flag(Path runnerJar, Path cacheDir, Path recordDir, @Nullable Path uses) throws IOException {
         // Absolute: the test JVM resolves the agent against its own working directory, the module,
         // so a cache directory given relative (as a build root can be) would name no jar there.
         // With the class telemetry off the agent repoints environment lookups alone.
-        return "-javaagent:" + jar(runnerJar, cacheDir).toAbsolutePath() + "=" + (uses ? USES : "")
+        return "-javaagent:" + jar(runnerJar, cacheDir).toAbsolutePath() + "=" + uses(uses)
                 + (TestTelemetry.on() ? "" : NO_PROPS) + recordDir.toAbsolutePath();
+    }
+
+    /** The argument's part that has the probe mark the classes of {@code workspace}; empty for none. */
+    static String uses(@Nullable Path workspace) {
+        if (workspace == null) return "";
+        String root = workspace.toAbsolutePath().normalize().toString();
+        return USES + root.length() + ":" + root + " ";
     }
 
     static Path jar(Path runnerJar, Path cacheDir) throws IOException {

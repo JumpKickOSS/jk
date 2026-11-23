@@ -317,11 +317,13 @@ final class TestSteps {
     /**
      * How the run's test JVMs reach the caller's environment ({@link SuiteEnvDelivery}), said once
      * per JDK when that JDK keeps the probe from the programs a test starts. A suite replayed by its
-     * classes' cones has the probe mark its classes, so its records say which classes each one ran;
-     * a coverage run does not, since the coverage agent must see the classes as compiled.
+     * classes' cones has the probe mark the workspace's classes, its own and its siblings' jars, so
+     * its records say which classes each one ran; a coverage run does not, since the coverage agent
+     * must see the classes as compiled.
      */
     private SuiteEnvDelivery envDelivery(TaskContext ctx, JkBuild project, WorkerEnv testEnv) throws IOException {
         Path javaHome = ctx.require(JAVA_HOME);
+        BuildLayout layout = ctx.require(MODULE).layout();
         boolean uses = TestTelemetry.shadow()
                 && !in.session().coverage()
                 && !project.build().testCoverage()
@@ -329,11 +331,11 @@ final class TestSteps {
         SuiteEnvDelivery env = SuiteEnvDelivery.prepare(
                 in.cache(),
                 EnvReadReport.recordDir(in.dir()),
-                ctx.require(MODULE).layout().classesDir(),
+                layout.classesDir(),
                 javaHome,
                 project,
                 testEnv,
-                uses);
+                uses ? layout.workspaceRoot() : null);
         String unhooked = env.unhooked();
         if (unhooked == null) return env;
         boolean[] first = {false};
@@ -801,6 +803,44 @@ final class TestSteps {
     }
 
     /**
+     * The tests a dirty suite runs, as the forecast says them: {@code all} of the {@code estimated},
+     * or, where the classes' cones replay some once the pending compiles are built ({@link
+     * #replayedByCones}), the rest of them, which {@code s} then counts ({@link
+     * ForecastScope#rerunTests}).
+     */
+    private static String coneTests(
+            ForecastScope s, ForecastScope.Prepared prepared, boolean kspRuns, int estimated, String all)
+            throws Exception {
+        TestClassRecording.Replayed replayed = replayedByCones(s, prepared, kspRuns);
+        if (replayed == null || replayed.classes() == 0) return all;
+        s.rerunTests = (int) Math.max(0, estimated - replayed.tests());
+        return "~" + ForecastSteps.count(s.rerunTests, "test") + " · " + replayed.classes()
+                + (replayed.classes() == 1 ? " class" : " classes") + " replayed";
+    }
+
+    /**
+     * Which of the suite's classes replay once the pending compiles are built, by their cones ({@link TestClassRecording#replayedAfter}), or null when the forecast counts them all:
+     * a module not under {@code [test] cache = "cone"}, a test source or KSP round that moves, a
+     * worker jar its stamp hashes rebuilding, or a dirty sibling whose edit the forecast cannot read.
+     */
+    private static TestClassRecording.@Nullable Replayed replayedByCones(
+            ForecastScope s, ForecastScope.Prepared prepared, boolean kspRuns) throws Exception {
+        if (s.testDirty || kspRuns) return null;
+        if (TestStampInputs.testCache(s.project, s.dir) != TestCache.CONE) return null;
+        if (TestStampInputs.rebuildingWorker(s.dir, s.project, s.orderDeps) != null) return null;
+        var edits = s.pendingEdits();
+        if (edits == null) return null;
+        BuildLayout layout = prepared.parsed().layout();
+        return TestClassRecording.replayedAfter(
+                s.dir,
+                layout,
+                layout.testClassesDir(),
+                layout.classesDir(),
+                prepared.classpaths().testRuntime(),
+                edits);
+    }
+
+    /**
      * run-tests' price: dirty when a compile it reads runs or a test-scope sibling is rebuilding,
      * else the green marker under the same stamp key the live step stores — the runtime classpath
      * as the run hashes it, a wiped tree read as the bytes the build restores.
@@ -849,6 +889,7 @@ final class TestSteps {
                     SessionContext.current().testSelection(),
                     KeyContract.SUITE.keyVersion(),
                     OrchestratorCode.digest());
+            if (jk == null) tests = coneTests(s, prepared, kspRuns, estimated, tests);
             String why = jk != null
                     ? "run tests · " + jk + " · " + tests
                     : jarOnly

@@ -515,10 +515,11 @@ a green run is still replayed whole from its marker.
 With `cache = "cone"` a changed stamp no longer re-runs every class. A class that passed is replayed
 when its key still matches its class record ([what a suite read](#what-a-suite-read-discovered-inputs)): its bytes and
 those of every workspace class it reaches (its cone), the files it read, the suite's settings,
-external classpath and selection. A class of your class directories that a test class reaches but
-whose code did not run while it ran counts by its signatures and static initialiser only, so a
-change inside a method body runs only the classes that ran that class's code; JumpKick learns which
-ran by marking the classes it loads from a directory, which a coverage run leaves alone. An edit to a
+external classpath and selection. A workspace class that a test class reaches but whose code did
+not run while it ran counts by its signatures and static initialiser only, so a change inside a
+method body runs only the classes that ran that class's code, in this module or in a module that
+depends on it; JumpKick learns which ran by marking the classes it loads from your class directories
+and your modules' jars, which a coverage run leaves alone. An edit to a
 signature runs every class whose cone holds it, and so does any class keyed by its whole module (one
 that started a program that could read what no recording sees, or names a classpath scanner), and
 replays the rest. A workspace class a test loaded by name joins its cone, so an edit to that class

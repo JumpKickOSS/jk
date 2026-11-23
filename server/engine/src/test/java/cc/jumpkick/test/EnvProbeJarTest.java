@@ -66,4 +66,25 @@ class EnvProbeJarTest {
         String jar = flag.substring("-javaagent:".length(), flag.indexOf('='));
         assertThat(Path.of(jar)).isAbsolute().exists();
     }
+
+    /** The workspace rides the argument with its length, as the probe reads it back. */
+    @Test
+    void the_flag_names_the_workspace_whose_classes_the_probe_marks(@TempDir Path tmp) throws Exception {
+        Path runner = tmp.resolve("runner.jar");
+        try (JarOutputStream out = new JarOutputStream(Files.newOutputStream(runner))) {
+            out.putNextEntry(new JarEntry("cc/jumpkick/testrunner/env/EnvProbe.class"));
+            out.write(new byte[] {(byte) 0xca, (byte) 0xfe});
+            out.closeEntry();
+        }
+        Path ws = tmp.resolve("a b");
+        String root = ws.toAbsolutePath().normalize().toString();
+
+        String flag = EnvProbeJar.flag(runner, tmp.resolve("cache"), tmp.resolve("reads"), ws);
+
+        assertThat(flag.substring(flag.indexOf('=') + 1))
+                .startsWith(EnvProbeJar.USES + root.length() + ":" + root + " ")
+                .endsWith(tmp.resolve("reads").toAbsolutePath().toString());
+        assertThat(EnvProbeJar.flag(runner, tmp.resolve("cache"), tmp.resolve("reads")))
+                .doesNotContain(EnvProbeJar.USES);
+    }
 }

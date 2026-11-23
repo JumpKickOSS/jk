@@ -93,19 +93,26 @@ initialiser leaves, which a caller sees without running the class. Which classes
 the probe, not the loads: a class loads once per JVM, in whichever window first needs it, and in
 jk-engine `SelfHostEngine` loads within the first twelve classes of each of its four test JVMs, so a
 sound rule over loads (charge each load to every later class of the JVM) would have spared some 15
-classes. The env probe marks every class loaded from a directory (`EntryMarks`: a call to
-`ClassUses.used` at the start of every method body), and the first call since a window opened
+classes. The env probe marks every class loaded from a directory or from a jar inside the workspace,
+a sibling module's (`EntryMarks`: a call to `ClassUses.used` at the start of every method body; the
+engine names the workspace in the agent argument), and the first call since a window opened
 records a `jk.ClassUse` event, which `ClassReads` joins to the windows that hold it like a file read;
 a use outside every window counts for every class. The record row keeps which of the cone's
-directory classes ran as a bitmask over the cone in name order (`coneUsed`), so the next run takes
-the key over the same classes. A class from a jar, which the probe does not mark, keys by its bytes;
-so does every class of a test class whose own use is missing (a JVM the probe did not mark, a JDK
+classes ran as a bitmask over the cone in name order (`coneUsed`), so the next run takes the key
+over the same classes. Every class of a test class of a test class whose own use is missing (a JVM the probe did not mark, a JDK
 without the flight recorder), whose suite named more than `USED_NAMES_KEPT` classes, or whose class
 the probe could not mark (that class is named in every window instead). A coverage run is not
 marked: JaCoCo must see the classes as compiled. The holes: a body that ran in an earlier window and
 left state a later class reads without running that class's code (a static field it changed after
 initialisation, an object it cached that the later class reads by reflection) is not in the later
-class's key.
+class's key; nor is a workspace class whose code ran from a copy outside the workspace that the run
+deleted (a sibling's jar a test copied into its temp directory and loaded), which is no code file
+the key holds and was never marked.
+
+Sibling jars are marked because a module's cones cross into them: a body-only edit of
+`SelfHostEngine` ran all 11 fast-tier classes of jk-cli-e2e (9 by a moved key, 2 by the module) and
+all 3 of jk-engine-e2e (by a moved key), each reaching the edited class through jk-engine's jar,
+which keyed every class by its bytes.
 
 **The observed part**, from the class's last run (its record):
 - each file it read in its window (see attribution) that no other part keys, by content, with the
@@ -278,8 +285,15 @@ current), `jk explain` takes each class's key as the run will (`TestClassRecordi
 `SuiteDiscovery.replayedByCone`) and prices only the classes whose key moved: `run tests · <the stamp
 input that moved> · ~12 tests · 281 classes replayed`, and the module's `rerunTests` (the Tests
 row's Rebuild column) counts those tests alone. When a compile is pending the new bytes do not exist
-yet and the forecast prices the whole selection. Not built yet: walking the last run's cones from
-the classes of the changed sources to state an upper bound, `up to 12 of 466 classes`.
+yet, so the forecast reads the edit instead (`TestClassRecording.replayedAfter`): each dirty module's
+API hint names the sources whose content moved (`SourceApiIndex.Hint.changed`), the classes on disk
+compiled from them are the classes that move, and a class that passed replays unless one of them lies
+in its cone and either moved a declaration or ran in its window (`coneUsed`); a module-keyed class
+runs. The step says the same `~12 tests · 281 classes replayed`. It is an estimate where the run's
+answer is exact: the cones are walked over the classes on disk, and a hint reads a private signature
+edit as body-only, where the class's bodyless digest moves. An edit the forecast cannot read (a
+sibling with no hint, a source that is not Java, a moved test source, a KSP round, a rebuilding worker
+jar) prices the whole selection.
 
 ## Which classes run together
 

@@ -728,9 +728,29 @@ public final class ForecastScope implements StepForecast.Scope {
         return names.isEmpty() ? null : names;
     }
 
+    /**
+     * What the pending compiles will rewrite of the classes this module's suite runs: its own edit
+     * unless its compile is dirty only for a sibling's jar, then each dirty sibling's, as the
+     * siblings published them ({@link #hints}). Null when a dirty sibling published none.
+     */
+    @Nullable
+    List<SourceApiIndex.Hint> pendingEdits() {
+        List<SourceApiIndex.Hint> edits = new ArrayList<>();
+        if (compileDirty && !depOnlyDirty) edits.add(ownHint);
+        List<Path> siblings = new ArrayList<>(dep.compileDeps());
+        siblings.addAll(dep.testDeps());
+        siblings.addAll(orderDeps);
+        for (Path sibling : siblings) {
+            TaskForecaster.ModuleHint h = hints.get(sibling.toAbsolutePath().normalize());
+            if (h == null) return null;
+            edits.add(h.hint());
+        }
+        return edits;
+    }
+
     private void publishHint() {
         SourceApiIndex.Hint hint = ownHint.codeKept() && treeMayMoveBeyondCode()
-                ? new SourceApiIndex.Hint(ownHint.kind(), ownHint.files())
+                ? new SourceApiIndex.Hint(ownHint.kind(), ownHint.files(), false, null)
                 : ownHint;
         hints.put(
                 dir.toAbsolutePath().normalize(),

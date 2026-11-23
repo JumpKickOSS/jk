@@ -1505,8 +1505,8 @@ reason = "the flaky-test quarantine: run-tests records each class's outcome in i
 [[runtime-efferent-coupling.entries]]
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.TestSteps"
-value  = 28
-reason = "the flaky-test quarantine: run-tests records each class's outcome in its history (TestSteps 28 to 29) and a run red only in quarantined classes does not fail (TestLaunch 21 to 22), both through TestFlakes"
+value  = 29
+reason = "the flaky-test quarantine through TestFlakes, then the run-tests forecast under cache = \"cone\" counting the tests whose classes replay once the pending compiles are built (TestClassRecording.replayedAfter)"
 [[runtime-efferent-coupling.entries]]
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.workspace.WorkspacePreflightPhase"
@@ -1599,8 +1599,8 @@ reason = "the runtime packages as the coupling guard first measured them"
 [[runtime-mutual-classes.entries]]
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.ForecastScope~cc.jumpkick.runtime.TaskForecaster"
-value  = 22
-reason = "frozen higher on 2026-11-22: the run-tests forecast reads whether each dirty sibling's edit moved only comments (DepHint.codeKept)"
+value  = 23
+reason = "frozen higher on 2026-11-23: the run-tests forecast under cache = \"cone\" reads which sources each dirty sibling's edit rewrites (ModuleHint.hint), after 2026-11-22's DepHint.codeKept"
 [[runtime-mutual-classes.entries]]
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.ForecastSteps~cc.jumpkick.runtime.TaskForecaster"

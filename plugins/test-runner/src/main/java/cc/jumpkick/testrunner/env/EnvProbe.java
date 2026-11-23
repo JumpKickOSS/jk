@@ -5,6 +5,8 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.lang.instrument.ClassFileTransformer;
 import java.lang.instrument.Instrumentation;
+import java.net.URISyntaxException;
+import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -16,6 +18,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 import org.jspecify.annotations.Nullable;
 
@@ -41,10 +44,11 @@ import org.jspecify.annotations.Nullable;
  * java.lang} to it ({@link Instrumentation#redefineModule}).
  *
  * <p>With {@link #USES} first in the argument, as the engine asks for a suite it replays by its
- * classes' cones, every class loaded from a directory also gets a call to {@link ClassUses#used} at
- * the start of each method body ({@link EntryMarks}), so the recording names the classes whose code
- * ran in each test class's window. That one rewrite moves instructions; it needs the flight
- * recorder's API and is not asked for under coverage.
+ * classes' cones, every class loaded from a directory or from a jar inside the workspace (a sibling
+ * module's) also gets a call to {@link ClassUses#used} at the start of each method body ({@link
+ * EntryMarks}), so the recording names the classes whose code ran in each test class's window. That
+ * one rewrite moves instructions; it needs the flight recorder's API and is not asked for under
+ * coverage.
  */
 public final class EnvProbe {
 
@@ -104,9 +108,11 @@ public final class EnvProbe {
     static final String NO_PROPS = "!props ";
 
     /**
-     * The agent argument's prefix, before any other, that has every class loaded from a directory
-     * marked so its use is recorded ({@link ClassUses}), as the engine writes it for a suite whose
-     * classes it replays by their cones; no absolute path starts so.
+     * The agent argument's prefix, before any other, that has every class loaded from a directory or
+     * from a jar inside the workspace marked so its use is recorded ({@link ClassUses}), as the
+     * engine writes it for a suite whose classes it replays by their cones; no absolute path starts
+     * so. The workspace follows it as {@code <length>:<path> }, the length in chars, so any path
+     * reads back whole.
      */
     static final String USES = "+uses ";
 
@@ -117,16 +123,17 @@ public final class EnvProbe {
             check(Path.of(args.substring(CHECK.length())), inst);
             return;
         }
-        boolean asked = args.startsWith(USES);
-        boolean uses = asked && recordable();
-        String rest = asked ? args.substring(USES.length()) : args;
+        Uses asked = Uses.of(args);
+        String rest = asked.rest();
+        String root = asked.workspace();
+        Workspace workspace = root != null && recordable() ? Workspace.of(Path.of(root)) : null;
         boolean props = !rest.startsWith(NO_PROPS);
         Path dir = Path.of(props ? rest : rest.substring(NO_PROPS.length()));
         long pid = ProcessHandle.current().pid();
         BrokerLink link = BrokerLink.in(dir);
         EnvLookups.deliverThrough(link);
         boolean programs = link != null && openToRecorder(inst) && EnvLookups.prepareStart();
-        inst.addTransformer(new Transformer(programs, props, uses), programs);
+        inst.addTransformer(new Transformer(programs, props, workspace), programs);
         // Unhooked, the programs this JVM starts see its own environment: the engine checked this
         // JDK first ({@link #check}) and launches it with the caller's whole environment when it refuses.
         if (programs) hookProcessBuilder(inst);
@@ -139,6 +146,21 @@ public final class EnvProbe {
                         "jk-env-probe"));
     }
 
+    /**
+     * The agent argument split at {@link #USES}: the workspace whose classes to mark, null when the
+     * argument does not ask, and the argument past it.
+     */
+    record Uses(@Nullable String workspace, String rest) {
+        static Uses of(String args) {
+            if (!args.startsWith(USES)) return new Uses(null, args);
+            int from = USES.length();
+            int colon = args.indexOf(':', from);
+            int start = colon + 1;
+            int end = start + Integer.parseInt(args.substring(from, colon));
+            return new Uses(args.substring(start, end), args.substring(end + 1));
+        }
+    }
+
     /** The check's JVM runs nothing past the agent: {@code java -javaagent:<probe>=check:<file> -cp <probe> EnvProbe}. */
     public static void main(String[] args) {}
 
@@ -149,7 +171,7 @@ public final class EnvProbe {
         else if (!EnvLookups.prepareStart())
             verdict = "unhooked: java.lang.ProcessImpl.start is not the method the probe calls";
         else {
-            inst.addTransformer(new Transformer(true, false, false), true);
+            inst.addTransformer(new Transformer(true, false, null), true);
             verdict = hookProcessBuilder(inst)
                     ? HOOKED
                     : "unhooked: java.lang.ProcessBuilder does not start programs through ProcessImpl.start "
@@ -208,9 +230,10 @@ public final class EnvProbe {
     private static final class Transformer implements ClassFileTransformer {
         private final boolean programs;
         private final boolean props;
-        private final boolean uses;
+        /** Where the classes to mark come from, or null when none is marked. */
+        private final @Nullable Workspace uses;
 
-        Transformer(boolean programs, boolean props, boolean uses) {
+        Transformer(boolean programs, boolean props, @Nullable Workspace uses) {
             this.programs = programs;
             this.props = props;
             this.uses = uses;
@@ -241,7 +264,8 @@ public final class EnvProbe {
             } catch (RuntimeException malformed) {
                 repointed = null; // the class loads as compiled
             }
-            if (!uses || className == null || !fromDirectory(domain)) return repointed;
+            Workspace marks = uses;
+            if (marks == null || className == null || !marks.marks(domain)) return repointed;
             byte[] in = repointed == null ? bytes : repointed;
             String binaryName = className.replace('/', '.');
             byte[] marked = EntryMarks.mark(in, ClassUses.id(binaryName));
@@ -251,16 +275,54 @@ public final class EnvProbe {
     }
 
     /**
-     * Whether the class comes from a directory of class files, as a workspace's class trees are:
-     * a jar is a library the suite's key holds whole, or a sibling module's, whose classes key by
-     * their bytes.
+     * The workspace whose classes the probe marks: every class from a directory of class files, as
+     * a module's class trees are, and every class from a jar inside the workspace, as a sibling
+     * module's is. A jar outside it is a library the suite's key holds whole. A jar's verdict is
+     * taken once, by its path as the class path names it and by its real path, so a workspace
+     * reached through a link still marks its jars.
      */
-    private static boolean fromDirectory(@Nullable ProtectionDomain domain) {
-        if (domain == null || domain.getCodeSource() == null) return false;
-        var location = domain.getCodeSource().getLocation();
-        return location != null
-                && "file".equals(location.getProtocol())
-                && location.getPath().endsWith("/");
+    static final class Workspace {
+        private final Path root;
+        private final @Nullable Path real;
+        private final Map<String, Boolean> jars = new ConcurrentHashMap<>();
+
+        private Workspace(Path root, @Nullable Path real) {
+            this.root = root;
+            this.real = real;
+        }
+
+        static Workspace of(Path root) {
+            Path abs = root.toAbsolutePath().normalize();
+            return new Workspace(abs, realPath(abs));
+        }
+
+        /** Whether the class {@code domain} defines is to be marked. */
+        boolean marks(@Nullable ProtectionDomain domain) {
+            if (domain == null || domain.getCodeSource() == null) return false;
+            var location = domain.getCodeSource().getLocation();
+            if (location == null || !"file".equals(location.getProtocol())) return false;
+            if (location.getPath().endsWith("/")) return true;
+            return jars.computeIfAbsent(location.toString(), u -> inside(location));
+        }
+
+        private boolean inside(URL location) {
+            try {
+                Path jar = Path.of(location.toURI()).toAbsolutePath().normalize();
+                if (jar.startsWith(root)) return true;
+                Path jarReal = realPath(jar);
+                return real != null && jarReal != null && jarReal.startsWith(real);
+            } catch (URISyntaxException | RuntimeException unreadable) {
+                return false;
+            }
+        }
+
+        private static @Nullable Path realPath(Path p) {
+            try {
+                return p.toRealPath();
+            } catch (IOException | RuntimeException absent) {
+                return null;
+            }
+        }
     }
 
     /** A JDK module the application loader defines ({@code jdk.compiler}, …): its code source is a {@code jrt:} URL. */

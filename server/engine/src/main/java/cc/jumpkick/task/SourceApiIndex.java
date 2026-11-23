@@ -50,11 +50,22 @@ public final class SourceApiIndex {
     /**
      * The hint for a module: {@code files} names the sources whose declarations moved,
      * module-relative. {@code codeKept} says the edit moved comments and layout alone, so the
-     * classes it compiles to differ from those on disk only in their line tables.
+     * classes it compiles to differ from those on disk only in their line tables. {@code changed}
+     * names every source whose content moved or that is new, module-relative, the classes the
+     * compile will rewrite; null when that is not known.
      */
-    public record Hint(Kind kind, List<String> files, boolean codeKept) {
+    public record Hint(
+            Kind kind,
+            List<String> files,
+            boolean codeKept,
+            @Nullable List<String> changed) {
         public Hint {
             files = List.copyOf(files);
+            changed = changed == null ? null : List.copyOf(changed);
+        }
+
+        public Hint(Kind kind, List<String> files, boolean codeKept) {
+            this(kind, files, codeKept, null);
         }
 
         public Hint(Kind kind, List<String> files) {
@@ -191,6 +202,8 @@ public final class SourceApiIndex {
         for (String rel : baseline.keySet()) {
             if (!seen.containsKey(rel)) moved.add(rel);
         }
+        List<String> rewritten = new ArrayList<>(moved);
+        for (Path abs : changed) rewritten.add(Objects.requireNonNull(relative(module, abs), "under the module"));
         boolean codeKept = false;
         if (!changed.isEmpty()) {
             JavaSourceApi.View view = privateMembersMatter ? JavaSourceApi.View.PROCESSOR : JavaSourceApi.View.EXPORTED;
@@ -207,8 +220,8 @@ public final class SourceApiIndex {
             // classes through a comment edit.
             codeKept = moved.isEmpty() && !privateMembersMatter && codeKept(changed, module, baseline);
         }
-        if (!moved.isEmpty()) return new Hint(Kind.API_CHANGED, moved);
-        return new Hint(Kind.BODY_ONLY, List.of(), codeKept);
+        if (!moved.isEmpty()) return new Hint(Kind.API_CHANGED, moved, false, rewritten);
+        return new Hint(Kind.BODY_ONLY, List.of(), codeKept, rewritten);
     }
 
     /** True when every one of {@code changed} parses to the code digest its baseline row holds. */
