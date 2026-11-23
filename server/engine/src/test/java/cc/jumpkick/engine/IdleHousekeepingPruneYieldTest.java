@@ -25,7 +25,6 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.LockSupport;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
@@ -45,17 +44,16 @@ import org.junit.jupiter.api.io.TempDir;
  * next boundary.
  *
  * <p>The build is pinned to a known point of the pass by a hook at the prune's safe points, so
- * nothing here races a wall clock to land inside the pass; the bound is on how long the plan
- * job's read lock takes once it queues.
+ * nothing here races a wall clock to land inside the pass. What a build waits for is counted in
+ * safe points, not timed: the plan job must get the gate with no safe point run after it queued,
+ * which a loaded host cannot turn red and a prune that kept going after the build arrived cannot
+ * pass. The cache is small for the same reason; its size buys no proof.
  */
 class IdleHousekeepingPruneYieldTest {
 
-    /** "A few hundred ms": the longest a plan job may wait on the gate once it has queued. */
-    private static final Duration BOUND = Duration.ofMillis(500);
-
-    private static final int LIVE = 400;
-    private static final int EXPIRED = 100;
-    private static final int GARBAGE = 1_500;
+    private static final int LIVE = 40;
+    private static final int EXPIRED = 10;
+    private static final int GARBAGE = 150;
     private static final Pattern OUTPUT = Pattern.compile("^OUTPUT ([0-9a-f]{64}) ", Pattern.MULTILINE);
 
     @TempDir
@@ -66,6 +64,10 @@ class IdleHousekeepingPruneYieldTest {
 
     private final List<String> log = new CopyOnWriteArrayList<>();
     private final ReentrantReadWriteLock gate = new ReentrantReadWriteLock(true);
+    /** The engine's count of live plan jobs: non-zero stops a pass at its next safe point. */
+    private final AtomicInteger activeBuildPlans = new AtomicInteger();
+
+    private final List<Thread> boundaryThreads = new CopyOnWriteArrayList<>();
     private final List<Path> liveKeys = new ArrayList<>();
     private final List<Path> liveBlobs = new ArrayList<>();
     private final List<Path> expiredKeys = new ArrayList<>();
@@ -103,14 +105,21 @@ class IdleHousekeepingPruneYieldTest {
         for (int i = 0; i < GARBAGE; i++) garbage.add(blob(cas, "garbage-" + i, 2 * day));
     }
 
+    /**
+     * A boundary a stopped method left running would go on to its idle chores (host warmup among
+     * them) under whatever home the JVM has once the test's is restored: it is told a build arrived,
+     * the way the engine stops a pass, and is waited for first.
+     */
     @AfterEach
-    void restoreEnv() {
+    void restoreEnv() throws InterruptedException {
+        activeBuildPlans.set(1);
+        for (Thread boundary : boundaryThreads) boundary.join(TimeUnit.SECONDS.toMillis(60));
         restore("jk.env.JK_HOME", priorHome);
         restore("jk.env.JK_AUTO_PRUNE", priorAutoPrune);
     }
 
     @Test
-    void a_build_arriving_mid_sweep_starts_within_the_bound_and_the_prune_finishes_at_the_next_boundary()
+    void a_build_arriving_mid_sweep_gets_the_gate_at_that_safe_point_and_the_prune_finishes_at_the_next_boundary()
             throws Exception {
         // The sweep unlinks its victims in walk order, so the first garbage blob the walk meets is
         // the first one to go: once it is gone the pass is inside the sweep's delete loop.
@@ -119,7 +128,7 @@ class IdleHousekeepingPruneYieldTest {
     }
 
     @Test
-    void a_build_arriving_mid_eviction_starts_within_the_bound_and_no_key_loses_a_blob() throws Exception {
+    void a_build_arriving_mid_eviction_gets_the_gate_at_that_safe_point_and_no_key_loses_a_blob() throws Exception {
         // Oldest last use goes first: the expired key aged most is the first entry evicted.
         Path firstEvicted = expiredKeys.getLast();
         Path itsBlob = expiredBlobs.getLast();
@@ -142,8 +151,7 @@ class IdleHousekeepingPruneYieldTest {
                 gate.readLock().lock();
                 gate.readLock().unlock();
             }));
-            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
-            while (!gate.hasQueuedThreads() && System.nanoTime() < deadline) LockSupport.parkNanos(1_000_000L);
+            awaitQueued();
         });
         housekeeping.maybeEnqueuePrune(cache);
 
@@ -186,39 +194,43 @@ class IdleHousekeepingPruneYieldTest {
 
     /**
      * Run a boundary, park it at the first safe point after {@code reached}, queue a plan job on
-     * the gate, and hold the prune to the bound; then a second boundary must finish the pass. A stop
-     * {@code midSweep} leaves garbage behind; a later one finds the sweep already done.
+     * the gate, and require the job to get it with no further safe point run; then a second
+     * boundary must finish the pass. A stop {@code midSweep} leaves garbage behind; a later one
+     * finds the sweep already done.
      */
     private void assertYieldsAndFinishes(BooleanSupplier reached, boolean midSweep) throws Exception {
         IdleHousekeeping housekeeping = idle();
         CountDownLatch atSafePoint = new CountDownLatch(1);
         AtomicBoolean parked = new AtomicBoolean();
+        AtomicInteger safePoints = new AtomicInteger();
+        AtomicInteger queuedAt = new AtomicInteger(-1);
         housekeeping.onPruneSafePoint(() -> {
+            int at = safePoints.incrementAndGet();
             if (parked.get() || !reached.getAsBoolean()) return;
             parked.set(true);
             atSafePoint.countDown();
             // Hold here until the plan job is queued on the gate, so the very next question the
             // prune asks is the one under test.
-            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
-            while (!gate.hasQueuedThreads() && System.nanoTime() < deadline) LockSupport.parkNanos(1_000_000L);
+            awaitQueued();
+            queuedAt.set(at);
         });
         housekeeping.maybeEnqueuePrune(cache);
 
         Thread boundary = Thread.ofPlatform().name("boundary").start(housekeeping::run);
+        boundaryThreads.add(boundary);
         assertThat(atSafePoint.await(60, TimeUnit.SECONDS))
                 .as("the prune reached the point under test")
                 .isTrue();
         assertThat(gate.isWriteLocked()).as("the prune holds the gate").isTrue();
 
-        AtomicLong waitedNanos = new AtomicLong(-1);
+        AtomicInteger admittedAt = new AtomicInteger(-1);
         CountDownLatch admitted = new CountDownLatch(1);
         CountDownLatch release = new CountDownLatch(1);
         // What JobEnvelope does for every plan job: the gate's read lock for the run.
         Thread build = Thread.ofPlatform().name("plan-job").start(() -> {
-            long t0 = System.nanoTime();
             gate.readLock().lock();
             try {
-                waitedNanos.set(System.nanoTime() - t0);
+                admittedAt.set(safePoints.get());
                 admitted.countDown();
                 release.await();
             } catch (InterruptedException e) {
@@ -228,9 +240,10 @@ class IdleHousekeepingPruneYieldTest {
             }
         });
         assertThat(admitted.await(60, TimeUnit.SECONDS)).isTrue();
-        assertThat(Duration.ofNanos(waitedNanos.get()))
-                .as("the plan job waited for the prune's next safe point, not the pass")
-                .isLessThan(BOUND);
+        assertThat(queuedAt.get()).as("the prune saw the plan job queue").isPositive();
+        assertThat(admittedAt.get())
+                .as("safe points the prune ran before the plan job got the gate (it queued at the one it stopped at)")
+                .isEqualTo(queuedAt.get());
 
         // The stopped pass left the cache consistent while the build had it.
         assertEveryKeyHasItsBlobs();
@@ -258,6 +271,21 @@ class IdleHousekeepingPruneYieldTest {
         assertEveryKeyHasItsBlobs();
     }
 
+    /**
+     * Hold the prune at its safe point until a plan job queues on the gate; let it go once the test
+     * is over (a build was declared, or the thread interrupted) so a stopped method leaves no pass
+     * parked on the gate.
+     */
+    private void awaitQueued() {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(60);
+        while (!gate.hasQueuedThreads()
+                && activeBuildPlans.get() == 0
+                && !Thread.currentThread().isInterrupted()
+                && System.nanoTime() < deadline) {
+            LockSupport.parkNanos(1_000_000L);
+        }
+    }
+
     private void assertEveryKeyHasItsBlobs() throws IOException {
         Cas cas = new Cas(cache);
         Set<String> missing = new HashSet<>();
@@ -281,7 +309,7 @@ class IdleHousekeepingPruneYieldTest {
 
     private IdleHousekeeping idle() {
         return new IdleHousekeeping(
-                new AtomicInteger(0),
+                activeBuildPlans,
                 gate,
                 new JkHistoryConfig(false, 30, 512),
                 new BuildJournal(roots.resolve("builds")),
