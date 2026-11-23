@@ -24,6 +24,7 @@ import org.junit.jupiter.api.io.TempDir;
 @Tag("integration")
 class SlowestTestsE2eTest {
 
+    @Tag("slow")
     @Test
     void a_slow_method_is_ranked_and_over_the_roots_budget_warns(@TempDir Path tmp) throws Exception {
         Path ws = workspace(tmp, 1_200);
@@ -52,6 +53,7 @@ class SlowestTestsE2eTest {
         assertThat(replay).as("a suite served from cache is not timed").doesNotContain("slowest-tests");
     }
 
+    @Tag("slow")
     @Test
     void a_method_at_four_budgets_is_stopped_and_fails(@TempDir Path tmp) throws Exception {
         Path ws = workspace(tmp, 600_000);

@@ -117,6 +117,7 @@ class EngineServerLameDuckTest extends EngineServerHarness {
         else System.setProperty(EngineTransport.TRANSPORT_PROPERTY, previousTransport);
     }
 
+    @Tag("slow")
     @ParameterizedTest
     @ValueSource(strings = {"unix", "tcp"})
     void a_stopping_engine_answers_status_refuses_jobs_and_exits_at_its_drain_deadline(String transport)

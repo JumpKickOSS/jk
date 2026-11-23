@@ -161,7 +161,7 @@ class FrontDoorProxyTest extends HttpEngineServerHarness {
             }
             if (path.equals("/api/thinks")) {
                 try {
-                    Thread.sleep(1_500);
+                    Thread.sleep(600);
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                 }

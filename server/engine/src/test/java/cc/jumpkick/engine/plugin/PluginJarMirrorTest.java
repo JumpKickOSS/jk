@@ -20,6 +20,7 @@ import java.util.Map;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.io.TempDir;
@@ -106,6 +107,7 @@ class PluginJarMirrorTest {
                 .isEmpty();
     }
 
+    @Tag("slow")
     @Test
     void a_mirror_that_does_not_answer_fails_the_fetch_and_nothing_falls_back() throws Exception {
         String rel = PluginJar.PUBLISHER.relativePath();

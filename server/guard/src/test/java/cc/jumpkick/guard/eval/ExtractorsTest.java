@@ -23,6 +23,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
@@ -260,6 +261,7 @@ class ExtractorsTest {
                 .hasMessageContaining("outside the workspace");
     }
 
+    @Tag("slow")
     @Test
     @Timeout(value = 60, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
     void a_catastrophic_rule_regex_stops_at_the_deadline(@TempDir Path root) throws Exception {

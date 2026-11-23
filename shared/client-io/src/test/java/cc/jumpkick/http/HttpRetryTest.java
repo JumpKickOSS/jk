@@ -23,6 +23,7 @@ import java.time.Duration;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.io.TempDir;
@@ -41,6 +42,7 @@ class HttpRetryTest {
         ConnectFaults.forget();
     }
 
+    @Tag("slow")
     @Test
     void a_short_retry_after_is_waited_out_and_the_request_asked_again() throws Exception {
         AtomicInteger hits = new AtomicInteger();
@@ -105,6 +107,7 @@ class HttpRetryTest {
     }
 
     /** A mirror asked after Central's silence has its short rate limit waited out like any host's. */
+    @Tag("slow")
     @Test
     void a_mirror_asked_after_central_s_silence_has_its_retry_after_honoured(@TempDir Path dir) throws Exception {
         CentralMirror m = new CentralMirror(
@@ -201,7 +204,7 @@ class HttpRetryTest {
     /** A handler that accepts and says nothing for longer than the tests' request timeout. */
     private static void silent(HttpExchange exchange) throws IOException {
         try {
-            Thread.sleep(1_500);
+            Thread.sleep(600);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }

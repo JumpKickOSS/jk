@@ -4,12 +4,14 @@ package cc.jumpkick.engine.http.mcp;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.host.time.Clock;
+import cc.jumpkick.testing.FakeClock;
 import cc.jumpkick.wire.protocol.ExecPlan;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.List;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -112,7 +114,20 @@ class McpAppReadyTest {
             nobody = s.getLocalPort();
         }
 
-        McpAppReady.Result r = new McpAppReady(app, ExecPlan.Probe.NONE, nobody, 1_500, Clock.SYSTEM).await();
+        // Each look moves the clock a second: the wait ends at its second look, not after 1.5 s.
+        FakeClock clock = new FakeClock();
+        Clock stepping = new Clock() {
+            @Override
+            public long millis() {
+                return clock.advance(Duration.ofSeconds(1)).millis();
+            }
+
+            @Override
+            public long nanos() {
+                return clock.nanos();
+            }
+        };
+        McpAppReady.Result r = new McpAppReady(app, ExecPlan.Probe.NONE, nobody, 1_500, stepping).await();
         String verdict = McpAppRuns.verdict(app, r, 1_500);
 
         assertThat(r.outcome()).isEqualTo(McpAppReady.Outcome.TIMED_OUT);

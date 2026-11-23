@@ -32,6 +32,7 @@ import org.junit.jupiter.api.Test;
 @Tag("integration")
 class HttpAdmissionTest extends HttpEngineServerHarness {
 
+    @Tag("slow")
     @Test
     void bind_on_a_held_port_fails_without_hanging() {
         // `server` (from @BeforeEach) already holds an OS-assigned loopback port. A second server

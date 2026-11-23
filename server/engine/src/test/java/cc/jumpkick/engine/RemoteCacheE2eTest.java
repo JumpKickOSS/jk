@@ -389,6 +389,7 @@ class RemoteCacheE2eTest extends EngineServerHarness {
      * behind the build and left; every other record is stored, and the run says once, at its end,
      * what was not stored and why, with the counts in its history.
      */
+    @Tag("slow")
     @Test
     void a_record_the_service_keeps_refusing_is_left_and_the_rest_are_stored_and_said() throws Exception {
         Path root = shortTempDir();

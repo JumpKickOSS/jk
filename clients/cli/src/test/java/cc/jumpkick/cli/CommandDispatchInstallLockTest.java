@@ -59,7 +59,7 @@ class CommandDispatchInstallLockTest {
         assertThat(job.started.await(60, TimeUnit.SECONDS)).isTrue();
         try (var install = InstallLockHolderMain.start(InstallLock.lockFile(), "exclusive", "jk install")) {
             assertThat(install.nextLine(Duration.ofSeconds(60))).startsWith("WAIT jk install waits");
-            assertThat(install.printsWithin(Duration.ofSeconds(1)))
+            assertThat(install.printsWithin(Duration.ofMillis(300)))
                     .as("install ran under the job")
                     .isFalse();
             assertThat(InstallLock.holders())

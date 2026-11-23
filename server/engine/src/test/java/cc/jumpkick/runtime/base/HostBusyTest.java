@@ -105,25 +105,28 @@ class HostBusyTest {
     void an_idle_engine_stops_sampling_and_its_next_read_still_has_an_interval() throws Exception {
         Assumptions.assumeTrue(Files.isReadable(Path.of("/proc/stat")), "Linux only");
         HostBusy.forTests(null);
-        HostBusy.keepWarmForTests(Duration.ofMillis(1_500));
+        HostBusy.periodForTests(Duration.ofMillis(50));
+        HostBusy.keepWarmForTests(Duration.ofMillis(150));
         try {
             HostBusy.jobStarted(-42);
             long atStart = HostBusy.SAMPLED.get();
-            Thread.sleep(3_000);
+            Thread.sleep(300);
             assertThat(HostBusy.SAMPLED.get() - atStart)
                     .as("samples while a job runs")
                     .isGreaterThanOrEqualTo(2);
             HostBusy.jobEnded(-42);
-            Thread.sleep(1_500 + 2_000);
+            Thread.sleep(150 + 350);
             assertThat(HostBusy.sampling())
                     .as("sampling past the last job and the keep-warm")
                     .isFalse();
             long idle = HostBusy.SAMPLED.get();
-            Thread.sleep(2_500);
+            Thread.sleep(250);
             assertThat(HostBusy.SAMPLED.get())
                     .as("samples taken by an idle engine")
                     .isEqualTo(idle);
 
+            // A period past the short read again, so the first read after idle waits out its interval.
+            HostBusy.periodForTests(null);
             long before = Clock.SYSTEM.nanos();
             double read = HostBusy.external();
             long tookMs = (Clock.SYSTEM.nanos() - before) / 1_000_000;
@@ -131,6 +134,7 @@ class HostBusyTest {
             assertThat(tookMs).isBetween(HostBusy.SHORT_READ.toMillis() - 20, HostBusy.SHORT_READ.toMillis() + 500);
         } finally {
             HostBusy.keepWarmForTests(null);
+            HostBusy.periodForTests(null);
         }
     }
 }

@@ -116,7 +116,7 @@ class HttpStallTest {
     @Test
     @Timeout(30)
     void a_streamed_body_slower_than_the_timeout_still_arrives() throws Exception {
-        Duration timeout = Duration.ofMillis(750);
+        Duration timeout = Duration.ofMillis(400);
         byte[] head = "slow ".getBytes(StandardCharsets.UTF_8);
         byte[] tail = "body".getBytes(StandardCharsets.UTF_8);
         server.createContext("/slow/body.jar", exchange -> {
@@ -195,7 +195,7 @@ class HttpStallTest {
             }
         });
         Http http = new Http(Http.standardClient(), new Duration[] {Duration.ofMillis(10), Duration.ofMillis(10)})
-                .withBodyIdle(Duration.ofMillis(500));
+                .withBodyIdle(Duration.ofMillis(300));
         URI uri = base.resolve("/stalled/maven-metadata.xml");
         HostRateLimiter oneAtATime = new HostRateLimiter(1);
 
@@ -205,7 +205,7 @@ class HttpStallTest {
                     .isInstanceOf(IOException.class)
                     .hasMessageContaining(uri.toString())
                     .hasMessageContaining("no bytes")
-                    .hasMessageContaining("500 ms");
+                    .hasMessageContaining("300 ms");
         }
         assertThat(calls.get()).as("each stalled request is asked once").isEqualTo(2);
     }

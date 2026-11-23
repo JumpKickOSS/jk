@@ -57,6 +57,8 @@ public final class ToolIdentity {
     /** A tool that hangs on {@code --version} is not going to tell us anything better later. */
     private static final long VERSION_TIMEOUT_MILLIS = 5_000;
 
+    private static volatile long versionTimeoutMillis = VERSION_TIMEOUT_MILLIS;
+
     /** What {@link #probe} answers when the tool printed no version line or did not exit in time. */
     static final String NO_VERSION = "no-version";
 
@@ -258,7 +260,7 @@ public final class ToolIdentity {
         VersionKey key = new VersionKey(exe, dir, path);
         String known = versions.get(key);
         if (known != null) return known;
-        Answer a = probeOnce(exe, dir, path, VERSION_TIMEOUT_MILLIS);
+        Answer a = probeOnce(exe, dir, path, versionTimeoutMillis);
         // A version line is remembered for the request, as a shim may answer another one in another
         // directory; a hang for as long as the file holds still (HUNG); a tool that exited without a
         // version line is asked again.
@@ -317,6 +319,11 @@ public final class ToolIdentity {
         clock = c == null ? Clock.SYSTEM : c;
     }
 
+    /** Test seam: how long {@code --version} may take; {@code null} restores the default. */
+    static void versionTimeoutForTests(@Nullable Duration timeout) {
+        versionTimeoutMillis = timeout == null ? VERSION_TIMEOUT_MILLIS : timeout.toMillis();
+    }
+
     /** Test seam: forget every hung verdict and warning. */
     static void forgetForTests() {
         HUNG.clear();
@@ -328,7 +335,7 @@ public final class ToolIdentity {
 
     /** The first non-blank line {@code --version} prints, or a word saying why there is none. */
     static String probe(Path exe, Path dir, @Nullable String path) {
-        return probe(exe, dir, path, VERSION_TIMEOUT_MILLIS).line();
+        return probe(exe, dir, path, versionTimeoutMillis).line();
     }
 
     /**

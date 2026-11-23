@@ -25,6 +25,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Predicate;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -349,6 +350,7 @@ class HostLeasesTest {
         }
     }
 
+    @Tag("slow")
     @Test
     void a_release_the_shared_file_could_not_take_is_recorded_once_it_can() throws Exception {
         WorkerLeases.Ledger ledger = engine(1001, BUDGET, 8, owner -> true);
@@ -460,6 +462,7 @@ class HostLeasesTest {
         awaitFile("1001 0 " + BUDGET + " 8 0 0 0\n");
     }
 
+    @Tag("slow")
     @Test
     void an_engine_reading_an_old_total_gives_the_last_room_back_to_the_engine_that_took_it() throws Exception {
         WorkerLeases.Ledger first = engine(1001, BUDGET, 8, owner -> true);
@@ -479,6 +482,7 @@ class HostLeasesTest {
         }
     }
 
+    @Tag("slow")
     @Test
     void two_engines_racing_for_the_last_room_grant_it_once() throws Exception {
         WorkerLeases.Ledger first = engine(1001, BUDGET, 8, owner -> true).waitAtMost(Duration.ofMillis(300));

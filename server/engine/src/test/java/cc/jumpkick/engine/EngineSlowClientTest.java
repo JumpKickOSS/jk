@@ -49,6 +49,7 @@ class EngineSlowClientTest extends EngineServerHarness {
      */
     private static final Duration ANSWERED = Duration.ofSeconds(20);
 
+    @Tag("slow")
     @Test
     @Timeout(60)
     void

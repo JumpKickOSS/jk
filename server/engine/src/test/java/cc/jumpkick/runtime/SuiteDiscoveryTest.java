@@ -9,6 +9,7 @@ import cc.jumpkick.test.SuiteReads;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Set;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -44,6 +45,7 @@ class SuiteDiscoveryTest {
                 .isTrue();
     }
 
+    @Tag("slow")
     @Test
     void a_program_whose_path_holds_a_space_that_held_still_moved_nothing(@TempDir Path tmp) throws Exception {
         Path tool = Files.writeString(
@@ -57,6 +59,7 @@ class SuiteDiscoveryTest {
                 .isNull();
     }
 
+    @Tag("slow")
     @Test
     void a_hard_link_the_build_makes_is_not_a_write(@TempDir Path tmp) throws Exception {
         Path read = Files.writeString(tmp.resolve("worker.pom"), "<project/>");
@@ -68,6 +71,7 @@ class SuiteDiscoveryTest {
                 .isNull();
     }
 
+    @Tag("slow")
     @Test
     void an_entry_made_and_removed_during_the_run_leaves_the_listing_as_it_was(@TempDir Path tmp) throws Exception {
         Path read = Files.writeString(tmp.resolve(".gitconfig"), "[user]\n");
@@ -78,6 +82,7 @@ class SuiteDiscoveryTest {
                 .isNull();
     }
 
+    @Tag("slow")
     @Test
     void an_entry_added_during_the_run_moves_the_listing(@TempDir Path tmp) throws Exception {
         Path read = Files.writeString(tmp.resolve("a.txt"), "a");
@@ -88,6 +93,7 @@ class SuiteDiscoveryTest {
                 .isEqualTo(added);
     }
 
+    @Tag("slow")
     @Test
     void a_modules_build_output_appearing_is_not_a_listing_change(@TempDir Path tmp) throws Exception {
         Path module = Files.createDirectories(tmp.resolve("web"));
@@ -113,6 +119,7 @@ class SuiteDiscoveryTest {
         assertThat(SuiteReads.keysListing(outside, ws)).isFalse();
     }
 
+    @Tag("slow")
     @Test
     void git_swapping_its_index_while_a_suite_runs_moves_nothing_it_is_keyed_on(@TempDir Path tmp) throws Exception {
         Path ws = Files.createDirectories(tmp.resolve("ws"));

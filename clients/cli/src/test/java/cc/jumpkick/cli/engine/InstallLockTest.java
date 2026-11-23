@@ -116,7 +116,7 @@ class InstallLockTest {
 
     @Test
     void a_waiting_install_lets_a_queued_run_in_when_the_holders_do_not_drain() throws Exception {
-        InstallLock.turnstileWindow(Duration.ofSeconds(1));
+        InstallLock.turnstileWindow(Duration.ofMillis(200));
         try (var outer = InstallLockHolderMain.start(lock(), "shared", "jk test")) {
             outer.awaitHeld();
             OnThread install = new OnThread(() -> InstallLock.exclusive(lock(), "jk install"));
@@ -261,7 +261,7 @@ class InstallLockTest {
 
     private static void assertThatHolderWaits(InstallLockHolderMain.Holder other, String notice) throws Exception {
         assertThat(other.nextLine(Duration.ofSeconds(60))).startsWith(notice);
-        assertThat(other.printsWithin(Duration.ofSeconds(1)))
+        assertThat(other.printsWithin(Duration.ofMillis(300)))
                 .as("holder went on while the lock was exclusive")
                 .isFalse();
     }

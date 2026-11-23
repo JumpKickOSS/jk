@@ -46,7 +46,7 @@ class IntegrationTierTimeoutTest {
         Map<String, String> tier = junitParameters(integrationSuite().settings().forkArgs());
         assertThat(tier).containsKey(TIMEOUT).containsEntry(THREAD_MODE, "SEPARATE_THREAD");
         Map<String, String> params = new LinkedHashMap<>(tier);
-        params.put(TIMEOUT, "1s");
+        params.put(TIMEOUT, "200ms");
         params.remove(THREAD_DUMP);
         params.put("junit.jupiter.conditions.deactivate", "org.junit.*DisabledCondition");
         LauncherDiscoveryRequest request = LauncherDiscoveryRequestBuilder.request()
@@ -69,7 +69,7 @@ class IntegrationTierTimeoutTest {
         assertThat(summary.getTestsFailedCount()).isEqualTo(1);
         TestExecutionSummary.Failure failure = summary.getFailures().getFirst();
         assertThat(failure.getTestIdentifier().getDisplayName()).isEqualTo("hangs()");
-        assertThat(failure.getException()).hasMessageContaining("hangs() timed out after 1 second");
+        assertThat(failure.getException()).hasMessageContaining("hangs() timed out after 200 milliseconds");
         assertThat(tookMs)
                 .describedAs("the run waited for the blocked accept instead of failing the test at its timeout")
                 .isLessThan(HANG_MS / 2);

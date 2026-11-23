@@ -8,6 +8,7 @@ import java.io.OutputStream;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledOnOs;
 import org.junit.jupiter.api.condition.OS;
@@ -22,6 +23,7 @@ class PluginProcessStragglerTest {
      * A worker whose root has exited while a descendant it started still runs, as Windows reports a
      * dead root's children: the straggler is stopped with it.
      */
+    @Tag("slow")
     @Test
     void a_descendant_that_outlives_the_worker_is_stopped() throws Exception {
         Process straggler = new ProcessBuilder("sleep", "60").start();

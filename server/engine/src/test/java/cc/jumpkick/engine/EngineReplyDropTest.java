@@ -24,6 +24,7 @@ import org.junit.jupiter.api.Test;
 @Tag("integration")
 class EngineReplyDropTest extends EngineServerHarness {
 
+    @Tag("slow")
     @Test
     void a_client_that_asks_without_reading_is_dropped_on_the_reply_bound() throws Exception {
         EnginePaths.Paths p = paths(shortTempDir());

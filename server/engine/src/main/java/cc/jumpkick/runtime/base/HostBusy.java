@@ -39,11 +39,14 @@ import org.jspecify.annotations.Nullable;
  */
 public final class HostBusy {
 
-    /** Samples the share is read over, one a second. */
+    /** Samples the share is read over, one each {@link #PERIOD}. */
     static final int WINDOW = 4;
 
     /** How long sampling goes on after the last job ended or the last read of the load. */
     static final Duration KEEP_WARM = Duration.ofSeconds(30);
+
+    /** How often the sampler reads the host's ticks. */
+    static final Duration PERIOD = Duration.ofSeconds(1);
 
     /** The interval a read with no window waits for, from the sampler's first sample. */
     static final Duration SHORT_READ = Duration.ofMillis(250);
@@ -66,6 +69,8 @@ public final class HostBusy {
     private static volatile long warmUntil;
 
     private static volatile long keepWarmNanos = KEEP_WARM.toNanos();
+
+    private static volatile long periodMillis = PERIOD.toMillis();
 
     /** Samples taken over the engine's life. */
     static final AtomicLong SAMPLED = new AtomicLong();
@@ -122,6 +127,11 @@ public final class HostBusy {
     /** Sets how long the sampler outlives the last job and read; {@code null} goes back to {@link #KEEP_WARM}. */
     static void keepWarmForTests(@Nullable Duration keepWarm) {
         keepWarmNanos = (keepWarm == null ? KEEP_WARM : keepWarm).toNanos();
+    }
+
+    /** Sets how often the sampler reads; {@code null} goes back to {@link #PERIOD}. */
+    static void periodForTests(@Nullable Duration every) {
+        periodMillis = (every == null ? PERIOD : every).toMillis();
     }
 
     /** Whether the sampler thread runs now. */
@@ -192,7 +202,7 @@ public final class HostBusy {
     private static void loop() {
         try {
             while (true) {
-                Thread.sleep(Duration.ofSeconds(1));
+                Thread.sleep(periodMillis);
                 synchronized (LOCK) {
                     if (JOBS.isEmpty() && Clock.SYSTEM.nanos() - warmUntil > 0) {
                         running = false;

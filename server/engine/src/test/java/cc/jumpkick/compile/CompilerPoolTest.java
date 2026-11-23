@@ -41,7 +41,7 @@ class CompilerPoolTest {
     @BeforeEach
     void manySlots() {
         CompilerBudget.slotsForTests(64);
-        CompilerPool.closeWaitForTests(2_000);
+        CompilerPool.closeWaitForTests(200);
     }
 
     @AfterEach

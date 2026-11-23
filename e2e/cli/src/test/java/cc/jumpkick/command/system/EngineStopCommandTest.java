@@ -62,6 +62,7 @@ class EngineStopCommandTest {
         return new Settled(exit[0], streams);
     }
 
+    @Tag("slow")
     @Test
     void a_drain_whose_ack_misses_the_watchdog_never_hard_kills_a_busy_engine() throws Exception {
         Path socket = tempDirs.create().resolve("gen1.sock");

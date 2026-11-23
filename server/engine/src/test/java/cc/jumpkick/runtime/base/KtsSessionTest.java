@@ -526,6 +526,7 @@ class KtsSessionTest {
         BuildLogicKtsHost.evaluate(quick, project, outB);
         long pid = KtsSession.hostPid();
 
+        KtsSession.cancelGraceForTests(Duration.ofMillis(300));
         AtomicBoolean cancelled = new AtomicBoolean();
         AtomicReference<Throwable> outcome = new AtomicReference<>();
         Thread build = new Thread(() -> {

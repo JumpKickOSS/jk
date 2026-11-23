@@ -63,22 +63,27 @@ class ToolIdentityTest {
                         + "; exec /bin/sleep 120");
         String path = bin.toString();
 
-        Request.of(1, new IoLedger()).run(() -> {
-            try {
-                // On this thread: the request is bound here, not on a timeout helper's thread.
-                long start = System.nanoTime();
-                assertThat(ToolIdentity.of("node", path, tmp)).startsWith("no-version sha256:");
-                assertThat(Duration.ofNanos(System.nanoTime() - start)).isLessThan(Duration.ofSeconds(20));
-                assertThat(ToolIdentity.of("node", path, tmp))
-                        .as("the hang is remembered for the request")
-                        .startsWith("no-version sha256:");
-                assertThat(Files.readString(count).strip())
-                        .as("asked twice, then remembered")
-                        .isEqualTo("2");
-            } finally {
-                RequestScope.release();
-            }
-        });
+        ToolIdentity.versionTimeoutForTests(Duration.ofMillis(300));
+        try {
+            Request.of(1, new IoLedger()).run(() -> {
+                try {
+                    // On this thread: the request is bound here, not on a timeout helper's thread.
+                    long start = System.nanoTime();
+                    assertThat(ToolIdentity.of("node", path, tmp)).startsWith("no-version sha256:");
+                    assertThat(Duration.ofNanos(System.nanoTime() - start)).isLessThan(Duration.ofSeconds(20));
+                    assertThat(ToolIdentity.of("node", path, tmp))
+                            .as("the hang is remembered for the request")
+                            .startsWith("no-version sha256:");
+                    assertThat(Files.readString(count).strip())
+                            .as("asked twice, then remembered")
+                            .isEqualTo("2");
+                } finally {
+                    RequestScope.release();
+                }
+            });
+        } finally {
+            ToolIdentity.versionTimeoutForTests(null);
+        }
     }
 
     @Test

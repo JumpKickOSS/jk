@@ -20,6 +20,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -645,6 +646,7 @@ class WorkspaceSchedulerTest {
      * member parks on the root and the root is never admitted. The schedule fails naming the root
      * rather than waiting forever.
      */
+    @Tag("slow")
     @Test
     void a_member_parked_on_a_root_that_awaits_it_fails_instead_of_hanging() {
         SiblingArtifacts siblings = new SiblingArtifacts(

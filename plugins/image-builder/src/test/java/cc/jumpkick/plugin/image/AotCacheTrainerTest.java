@@ -376,11 +376,11 @@ class AotCacheTrainerTest {
     @DisabledOnOs(OS.WINDOWS)
     void a_stop_is_waited_for_past_its_grace(@TempDir Path tmp) throws Exception {
         Path stopped = tmp.resolve("stopped");
-        Path runtime = Files.writeString(tmp.resolve("runtime"), "#!/bin/sh\nsleep 2\ntouch '" + stopped + "'\n");
+        Path runtime = Files.writeString(tmp.resolve("runtime"), "#!/bin/sh\nsleep 0.6\ntouch '" + stopped + "'\n");
         Files.setPosixFilePermissions(runtime, PosixFilePermissions.fromString("rwx------"));
         Process run = new ProcessBuilder("sh", "-c", "exit 0").start();
 
-        AotCacheTrainer.requestStop(run, runtime.toString(), "n", Duration.ofSeconds(1));
+        AotCacheTrainer.requestStop(run, runtime.toString(), "n", Duration.ofMillis(200));
 
         assertThat(stopped).exists();
     }

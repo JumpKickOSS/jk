@@ -43,13 +43,19 @@ Tag new heavy tests at class level:
 
 ```java
 @Tag("integration") // engine/e2e / Jk.execute / workers
-@Tag("slow")        // Android / multi-minute / large downloads
+@Tag("slow")        // Android / multi-minute / large downloads / waits out a real clock for 1s or more
 @Tag("network")     // talks to a real remote (Maven Central, a forge)
 @Tag("release")     // worth running once per release: a real browser (CI on the release tag)
 @Tag("live")        // writes to this machine's own services (the OS keychain); desktop, on demand
 @Tag("bench")       // microbench only (never PR)
 @Tag("docs")        // walks the doc tree (docs/, the root Markdown); every gate tier runs it alone
 ```
+
+**No blocking tier waits on a clock.** A test in the fast or integration tier never sleeps,
+polls or waits out a timeout for a second or more: it moves a `FakeClock`, waits on a latch, or
+shortens the wait through the code's test seam (`…ForTests`). A test that can only prove its point
+by letting a real second pass carries `@Tag("slow")` on that method, so it runs with the slow
+suite (`jk test -s slow`) and not in the gates a landing waits on.
 
 **The fast tier cannot hang, and cannot reach an engine.** The root's `fast-method-budget` is 5s:
 a fast method over it is a warning, and one still running at four budgets (20s) is stopped and

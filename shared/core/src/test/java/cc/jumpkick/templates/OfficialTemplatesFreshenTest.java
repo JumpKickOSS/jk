@@ -208,7 +208,7 @@ class OfficialTemplatesFreshenTest {
         ExecutorService pool = Executors.newSingleThreadExecutor();
         try {
             Future<?> git = pool.submit(() -> {
-                OfficialTemplatesFreshen.runGit(List.of(script.toString()), Duration.ofSeconds(3));
+                OfficialTemplatesFreshen.runGit(List.of(script.toString()), Duration.ofMillis(800));
                 return null;
             });
             long reported = System.nanoTime() + TimeUnit.SECONDS.toNanos(3);

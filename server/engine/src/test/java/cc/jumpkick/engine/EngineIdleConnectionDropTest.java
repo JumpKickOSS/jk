@@ -27,7 +27,7 @@ import org.junit.jupiter.api.Test;
 class EngineIdleConnectionDropTest extends EngineServerHarness {
 
     /** The hello window under test; the production window is the same code path, only longer. */
-    private static final long HELLO_IDLE_MS = 2_000;
+    private static final long HELLO_IDLE_MS = 600;
 
     @Test
     void a_silent_connection_is_closed_within_the_hello_window_and_counted() throws Exception {
@@ -85,7 +85,7 @@ class EngineIdleConnectionDropTest extends EngineServerHarness {
         try (Client c = new Client(EnginePaths.activeSocket(p))) {
             assertThat(EngineProtocol.typeOf(c.send(ProtoLifecycle.hello("1.0"))))
                     .isEqualTo(EngineProtocol.HELLO_ACK);
-            Thread.sleep(HELLO_IDLE_MS + 1_000);
+            Thread.sleep(HELLO_IDLE_MS + 300);
             String pong = c.send(ProtoLifecycle.ping());
             assertThat(EngineProtocol.typeOf(pong))
                     .as("still served past the hello window")

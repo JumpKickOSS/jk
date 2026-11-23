@@ -253,7 +253,7 @@ class FileLocksTest {
         FileLocks.Hold hold = (FileLocks.Hold) FileLocks.tryHold(lock);
         try {
             hold.write("pid=1\nbuild=7\n" + "x".repeat(32 * 1024));
-            interruptDescribers(lock, Duration.ofSeconds(1));
+            interruptDescribers(lock, Duration.ofMillis(300));
             assertThat(probeFromAnotherProcess(lock)).isEqualTo("held");
             hold.write("pid=1\nbuild=8\n");
         } finally {
@@ -266,7 +266,7 @@ class FileLocksTest {
     void interrupting_a_describer_keeps_the_lock_a_body_runs_under(@TempDir Path dir) throws Exception {
         Path lock = Files.writeString(dir.resolve("build.lock"), "x".repeat(32 * 1024));
         String seen = FileLocks.withLock(lock, () -> {
-            interruptDescribers(lock, Duration.ofSeconds(1));
+            interruptDescribers(lock, Duration.ofMillis(300));
             return probeFromAnotherProcess(lock);
         });
         assertThat(seen).isEqualTo("held");

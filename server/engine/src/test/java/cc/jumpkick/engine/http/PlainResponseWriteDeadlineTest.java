@@ -64,7 +64,7 @@ class PlainResponseWriteDeadlineTest {
 
     @Test
     void a_large_write_goes_out_in_slices_each_within_the_deadline() throws IOException {
-        // Takes 100 ms per 64 KiB: the whole megabyte in one write would take 1.6 s.
+        // Takes 100 ms per 64 KiB: the whole 512 KiB in one write would take 0.8 s, past the limit.
         AtomicInteger largest = new AtomicInteger();
         OutputStream slow = new OutputStream() {
             @Override
@@ -77,7 +77,7 @@ class PlainResponseWriteDeadlineTest {
             }
         };
         try (OutputStream out = new WriteDeadline(slow, LIMIT)) {
-            out.write(new byte[1 << 20]);
+            out.write(new byte[512 << 10]);
         }
         assertThat(largest.get()).isEqualTo(WriteDeadline.SLICE);
     }

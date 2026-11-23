@@ -44,7 +44,7 @@ class WorkspaceVariantPomSubstitutionOrderE2eTest {
     final LoopbackHttp http = new LoopbackHttp();
 
     /** How long core's compile is held at its start, so a consumer admitted early would get there first. */
-    private static final long HOLD_MILLIS = 1_500;
+    private static final long HOLD_MILLIS = 500;
 
     @Test
     void a_sibling_a_variant_values_published_library_depends_on_compiles_before_its_consumer(@TempDir Path tmp)

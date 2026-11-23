@@ -100,6 +100,8 @@ class SuiteSettingsE2eTest {
                 .isEqualTo(2L);
     }
 
+    @Tag("slow")
+    @Tag("slow")
     @Test
     void a_suites_timeout_fails_a_method_that_ignores_interrupts() throws Exception {
         Run run = run(suites("hang"));
