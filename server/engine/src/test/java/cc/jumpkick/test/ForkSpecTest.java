@@ -88,6 +88,23 @@ class ForkSpecTest {
         assertThat(lease(homes(false, false), false)).isEqualTo(JobWorkers.Lease.SLOT);
     }
 
+    /**
+     * A test JVM that drives an engine leaves room for that engine's work: an auto pool of them runs
+     * at half the share, never below one. Every other pool keeps the whole share.
+     */
+    @Test
+    void a_pool_that_drives_engines_runs_at_half_the_share() {
+        JUnitLauncher driving = new JUnitLauncher().withFork(homes(true, false));
+        assertThat(driving.poolShare(7)).isEqualTo(3);
+        assertThat(driving.poolShare(10)).isEqualTo(5);
+        assertThat(driving.poolShare(1)).isEqualTo(1);
+        assertThat(new JUnitLauncher().withFork(homes(true, true)).poolShare(7))
+                .as("the fast tier starts no engine")
+                .isEqualTo(7);
+        assertThat(new JUnitLauncher().withFork(homes(false, false)).poolShare(7))
+                .isEqualTo(7);
+    }
+
     private static JobWorkers.Lease lease(ForkSpec fork, boolean runsEngines) {
         return new JUnitLauncher().withFork(fork).withRunsEngines(runsEngines).poolLease();
     }

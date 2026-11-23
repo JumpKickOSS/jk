@@ -69,8 +69,10 @@ import org.junit.jupiter.api.io.TempDir;
  * <p>The cases are dealt to {@link #SHARDS} subclasses, {@code TemplateCatalogShard<n>E2eTest}, so
  * the suite's pool runs them in parallel JVMs, each with its own engine and scratch and all on one
  * warm store. The class takes as long as its slowest shard, so the dealing balances estimated cost
- * ({@link #dealt}). Six because the cases are CPU-bound: on a ten-core host eight shards made every
- * case slower and the class longer. Nothing here writes the shared home: a plugin
+ * ({@link #dealt}). Three because each shard's engine compiles and tests on cores of its own: on a
+ * ten-core host eight shards made every case slower and the class longer, and on a seven-core host
+ * six left their engines' builds waiting for room until one gave up and the memory limit killed two
+ * shards. Nothing here writes the shared home: a plugin
  * scaffold names the checkout's SDK repository in its own {@code jk.toml}. All shards: {@code jk
  * test -s slow -m e2e/cli --class 'TemplateCatalog*E2eTest'}.
  */
@@ -78,7 +80,7 @@ import org.junit.jupiter.api.io.TempDir;
 abstract class TemplateCatalogE2eTest {
 
     /** How many shard classes deal the cases; each is {@code TemplateCatalogShard<n>E2eTest}. */
-    static final int SHARDS = 6;
+    static final int SHARDS = 3;
 
     /**
      * The version this checkout's SDK is published at for a plugin scaffold: the running version

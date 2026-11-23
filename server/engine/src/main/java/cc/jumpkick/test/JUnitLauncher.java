@@ -463,6 +463,17 @@ public final class JUnitLauncher {
         return (pb, heap) -> JobWorkers.start(pb, heap, heaps, lease);
     }
 
+    /**
+     * The share an auto-sized pool runs at out of {@code share}: half of it, at least one, when its
+     * test JVMs {@linkplain ForkSpec#drivesEngines drive engines}. Such a JVM mostly waits while the
+     * engine it started compiles and tests on other cores, so a pool as wide as the share leaves that
+     * work no cores and no memory: on a seven-core host six test JVMs sat idle while their engines'
+     * builds waited for room, one gave up after ten minutes and the memory limit killed two.
+     */
+    int poolShare(int share) {
+        return fork.drivesEngines() ? Math.max(1, share / 2) : share;
+    }
+
     /** How {@link #poolStarter} leases a pooled test JVM. */
     JobWorkers.Lease poolLease() {
         if (fork.drivesEngines()) return JobWorkers.Lease.DRIVES_ENGINES;
@@ -641,7 +652,7 @@ public final class JUnitLauncher {
                 if (discovery.crashed()) return discovery.verdict(moduleLabel).withWorkers(1);
                 preDiscovered = discovery.classes();
             }
-            int share = wanted > 0 ? wanted : TestWorkers.effectiveJobs();
+            int share = poolShare(wanted > 0 ? wanted : TestWorkers.effectiveJobs());
             Map<String, Long> recorded = RecentClassWalls.forModule(inferredModuleDir);
             List<String> selection = preDiscovered;
             resolvedWorkers =
@@ -650,9 +661,10 @@ public final class JUnitLauncher {
             // Worth a pool only when the whole jobs budget would make more of the suite than now.
             if (live != null
                     && selection.size() > 1
-                    && TestWorkers.autoCount(TestWorkers.effectiveJobs(), recorded, selection, selection.size())
+                    && TestWorkers.autoCount(
+                                    poolShare(TestWorkers.effectiveJobs()), recorded, selection, selection.size())
                             > resolvedWorkers) {
-                widen = () -> TestWorkers.autoCount(live.getAsInt(), recorded, selection, selection.size());
+                widen = () -> TestWorkers.autoCount(poolShare(live.getAsInt()), recorded, selection, selection.size());
             }
         } else if (!classNames.isEmpty()) {
             preDiscovered = classNames;

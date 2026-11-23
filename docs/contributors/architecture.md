@@ -75,7 +75,9 @@ How JumpKick is structured today. For day-to-day usage see [user documentation](
   joins nothing, and a pooled test JVM of a suite that starts engines of its own
   (`ForkSpec.drivesEngines`) leases its memory but no JVM slot, so it never holds a slot that the
   forks of the engine it waits on need, and is priced at its process tree's resident peak, past
-  its own `-Xmx` lease when that is larger, since those forks lease from its own ledger alone; a
+  its own `-Xmx` lease when that is larger, since those forks lease from its own ledger alone (an
+  auto-sized pool of them runs at half the suite's share, so the engines they wait on keep cores
+  and memory of their own); a
   pooled test JVM of the engine's own suite outside the fast tier runs its engines in-process and
   takes a slot, but is priced at its process tree the same way — and which asks a resident helper such
   as the build-script host to exit when the head of the queue would fit without its lease, so
