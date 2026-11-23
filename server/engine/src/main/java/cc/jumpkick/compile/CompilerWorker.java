@@ -559,11 +559,16 @@ final class CompilerWorker {
                 items.add(new ForkedJavac.Invalidation(w.compiledSources.get(i), why));
             }
             w.forecast.complete(new ForkedJavac.Plan(full, w.reason == null ? "" : w.reason, items));
-            w.compile.complete(new ForkedJavac.Result(true, List.of(), Map.of(), List.of(), waitMillis(w)));
+            w.compile.complete(new ForkedJavac.Result(true, List.of(), Map.of(), List.of(), waitMillis(w), ""));
         } else {
             boolean success = "OK".equals(w.status);
-            w.compile.complete(
-                    new ForkedJavac.Result(success, w.diagnostics, w.generated, w.compiledSources, waitMillis(w)));
+            w.compile.complete(new ForkedJavac.Result(
+                    success,
+                    w.diagnostics,
+                    w.generated,
+                    w.compiledSources,
+                    waitMillis(w),
+                    w.reason == null ? "" : w.reason));
             w.forecast.complete(new ForkedJavac.Plan(false, "", List.of()));
         }
     }

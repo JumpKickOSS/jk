@@ -164,12 +164,14 @@ class JavaIncrementalCompilerTest {
 
         String out = captureCompile(dir, procDir, classOut, genOut, workdir, widget);
         assertThat(out).contains("\"t\":\"result\",\"status\":\"OK\"");
+        assertThat(out).as("the whole compile says why").contains("\"reason\":\"annotation processors changed\"");
         assertThat(generated).content().contains("return 2;");
         assertThat(classOut.resolve("app/WidgetGen.class")).isRegularFile();
 
         // Nothing changed since: the analysis is kept and the compile stays incremental.
         assertThat(captureCompile(dir, procDir, classOut, genOut, workdir, widget))
-                .contains("\"t\":\"result\",\"status\":\"OK\"");
+                .contains("\"t\":\"result\",\"status\":\"OK\"")
+                .doesNotContain("\"reason\"");
         assertThat(generated).content().contains("return 2;");
     }
 

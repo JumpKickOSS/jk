@@ -42,21 +42,25 @@ public final class ForkedJavac {
      * @param generated generated source file → the input source file(s) it originated from
      * @param compiledSources sources Zinc (or javac) actually compiled this invocation
      * @param waitMillis time the request sat in the shared worker's queue before it was dispatched
+     * @param fullReason why the worker's prior analysis could not carry the compile, so every source
+     *     compiled ({@code annotation processors changed}); empty when it could or there was none
      */
     public record Result(
             boolean success,
             List<CompileResult.Diagnostic> diagnostics,
             Map<Path, Set<Path>> generated,
             List<Path> compiledSources,
-            long waitMillis) {
+            long waitMillis,
+            String fullReason) {
         public Result {
             diagnostics = List.copyOf(diagnostics);
             compiledSources = compiledSources == null ? List.of() : List.copyOf(compiledSources);
             generated = generated == null ? Map.of() : Map.copyOf(generated); // copy like the other two
+            fullReason = fullReason == null ? "" : fullReason;
         }
 
         public Result(boolean success, List<CompileResult.Diagnostic> diagnostics, Map<Path, Set<Path>> generated) {
-            this(success, diagnostics, generated, List.of(), 0L);
+            this(success, diagnostics, generated, List.of(), 0L, "");
         }
     }
 

@@ -31,6 +31,7 @@ import java.util.Optional;
 import java.util.ServiceConfigurationError;
 import java.util.ServiceLoader;
 import java.util.Set;
+import java.util.function.BooleanSupplier;
 import javax.annotation.processing.Processor;
 import javax.tools.ToolProvider;
 import org.jspecify.annotations.Nullable;
@@ -122,12 +123,26 @@ public final class ZincJavaCompiler {
 
     private ZincJavaCompiler() {}
 
+    /**
+     * @param fullReason why the prior analysis could not carry this compile, so every source
+     *     compiled ({@code annotation processors changed}); empty when it could or there was none
+     */
     public record Result(
-            boolean success, List<Diag> diagnostics, List<Path> compiledSources, Map<Path, Set<Path>> generated) {
+            boolean success,
+            List<Diag> diagnostics,
+            List<Path> compiledSources,
+            Map<Path, Set<Path>> generated,
+            String fullReason) {
         public Result {
             diagnostics = List.copyOf(diagnostics);
             compiledSources = List.copyOf(compiledSources);
             generated = generated == null ? Map.of() : Map.copyOf(generated);
+            fullReason = fullReason == null ? "" : fullReason;
+        }
+
+        public Result(
+                boolean success, List<Diag> diagnostics, List<Path> compiledSources, Map<Path, Set<Path>> generated) {
+            this(success, diagnostics, compiledSources, generated, "");
         }
 
         public Result(boolean success, List<Diag> diagnostics, List<Path> compiledSources) {
@@ -427,8 +442,7 @@ public final class ZincJavaCompiler {
         try {
             createDirectories(classOutput, workdir, sourceOutput);
             ZincWorkdir zinced = ZincWorkdir.of(workdir);
-            zinced.discardAnalysisIfAggregating();
-            zinced.discardAnalysisIfProcessorsChanged(zinced.processorDigest(job.processorSource(), classOutput));
+            String fullReason = dropStaleAnalysis(job, zinced);
 
             IncrementalCompiler zinc = ZincUtil.defaultIncrementalCompiler();
             FileConverter converter = PlainVirtualFileConverter.converter();
@@ -530,7 +544,7 @@ public final class ZincJavaCompiler {
             zinced.markProcessors(job.processorSource(), classOutput, prev.isPresent(), provenance);
             phases.mark("persist-analysis");
             phases.write(classOutput, sources.size());
-            return new Result(true, reporter.diagnostics(), javac.compiledSources(), provenance.generated);
+            return new Result(true, reporter.diagnostics(), javac.compiledSources(), provenance.generated, fullReason);
         } catch (IOException e) {
             // Errors.text, not getMessage(): a message-less IOException would otherwise put null on
             // the wire as the diagnostic text.
@@ -634,19 +648,10 @@ public final class ZincJavaCompiler {
         if (!zinced.hasAnalysis()) {
             return new Plan(true, "no zinc analysis", allSources(sources, "no zinc analysis"));
         }
-        if (!FILER_PROVENANCE && !job.processorSource().isEmpty()) {
-            String why = "annotation processors on a JDK below 18";
-            return new Plan(true, why, allSources(sources, why));
-        }
-        if (zinced.aggregating()) {
-            return new Plan(
-                    true,
-                    "aggregating annotation processors",
-                    allSources(sources, "aggregating annotation processors"));
-        }
-        if (zinced.processorsChanged(job.processorSource(), classOutput)) {
-            return new Plan(
-                    true, "annotation processors changed", allSources(sources, "annotation processors changed"));
+        String dropped =
+                analysisDropped(job, zinced, () -> zinced.processorsChanged(job.processorSource(), classOutput));
+        if (!dropped.isEmpty()) {
+            return new Plan(true, dropped, allSources(sources, dropped));
         }
         FileConverter converter = PlainVirtualFileConverter.converter();
         Optional<AnalysisContents> prev = zinced.readAnalysis(zinced.store());
@@ -815,6 +820,29 @@ public final class ZincJavaCompiler {
                 }
             }
         }
+    }
+
+    /**
+     * Drop a prior analysis that cannot carry this compile, returning why ({@link #analysisDropped});
+     * empty when it was kept or there was none.
+     */
+    private static String dropStaleAnalysis(JavaCompileJob job, ZincWorkdir zinced) throws IOException {
+        String digest = zinced.processorDigest(job.processorSource(), job.classOutput());
+        String why = zinced.hasAnalysis() ? analysisDropped(job, zinced, () -> zinced.processorsChanged(digest)) : "";
+        zinced.discardAnalysisIfAggregating();
+        zinced.discardAnalysisIfProcessorsChanged(digest);
+        return why;
+    }
+
+    /**
+     * Why a prior analysis cannot carry this compile, so every source compiles; empty when it can.
+     * The forecast and the compile both ask here, so a build's label names the reason its forecast did.
+     */
+    private static String analysisDropped(JavaCompileJob job, ZincWorkdir zinced, BooleanSupplier processorsChanged) {
+        if (!FILER_PROVENANCE && !job.processorSource().isEmpty()) return "annotation processors on a JDK below 18";
+        if (zinced.aggregating()) return "aggregating annotation processors";
+        if (processorsChanged.getAsBoolean()) return "annotation processors changed";
+        return "";
     }
 
     private static List<Invalidation> allSources(List<Path> sources, String why) {

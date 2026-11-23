@@ -510,6 +510,33 @@ class JavaApIncrementalCompileTest {
                 .anyMatch(src -> src.endsWith("Widget.java"));
     }
 
+    /**
+     * A compile that goes whole because a resource the processor reads changed is named by that
+     * reason, as the forecast names it, not by the one source that also moved; the incremental
+     * compile after it names what moved.
+     */
+    @Test
+    void a_whole_compile_names_the_reason_its_forecast_names(@TempDir Path dir) throws Exception {
+        Project p = new Project(dir, workerJar(), configReadingProcessor(dir), dir.resolve("target/classes"));
+        p.copyResource("META-INF/config.txt", "Gen\n");
+        p.write("app/Widget.java", widget("one"));
+        p.write("app/Plain.java", "package app; public class Plain {}");
+        p.build();
+
+        p.copyResource("META-INF/config.txt", "Made\n");
+        p.write("app/Plain.java", "package app; public class Plain { int edited; }");
+        JavaCompile.Prediction forecast = p.predict();
+        JavaCompile.Result whole = p.build();
+        assertThat(forecast.outcome()).isEqualTo(JavaCompile.Outcome.FULL);
+        assertThat(whole.compiledSources()).hasSize(2);
+        assertThat(whole.missReason())
+                .isEqualTo("annotation processors changed")
+                .isEqualTo(forecast.reason());
+
+        p.write("app/Plain.java", "package app; public class Plain { int again; }");
+        assertThat(p.build().missReason()).isEqualTo("1 source changed");
+    }
+
     // ---- harness ----------------------------------------------------------
 
     private static Path workerJar() {
@@ -604,14 +631,20 @@ class JavaApIncrementalCompileTest {
             return build(true);
         }
 
-        JavaCompile.Result build(boolean useCache) throws IOException {
+        /** What {@code jk explain} forecasts for the next {@link #build()}, from the worker's plan. */
+        JavaCompile.Prediction predict() throws IOException {
+            return JavaCompile.predict(
+                    "compile-main", request(), "jk-test", actionCache, stateDir, workerJar, genSrc, WorkerEnv.strict());
+        }
+
+        private CompileRequest request() throws IOException {
             List<Path> sources = new ArrayList<>();
             try (var s = Files.walk(srcRoot)) {
                 for (Path p : (Iterable<Path>) s::iterator) {
                     if (p.toString().endsWith(".java")) sources.add(p);
                 }
             }
-            CompileRequest req = CompileRequest.builder()
+            return CompileRequest.builder()
                     .sources(sources)
                     .classpath(List.of(procDir)) // so @Gen/@Reg resolve
                     .outputDir(out)
@@ -622,10 +655,13 @@ class JavaApIncrementalCompileTest {
                     .processorPath(List.of(procDir))
                     .javaHome(Path.of(System.getProperty("java.home")))
                     .build();
+        }
+
+        JavaCompile.Result build(boolean useCache) throws IOException {
             JavaCompile.Result r = JavaCompile.run(
                     "compile-main",
                     "test:module compile-main",
-                    req,
+                    request(),
                     "jk-test",
                     useCache,
                     cas,

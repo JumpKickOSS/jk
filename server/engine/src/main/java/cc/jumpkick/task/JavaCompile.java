@@ -83,8 +83,10 @@ public final class JavaCompile {
      * @param movedSources sources whose bytes changed between the key and the worker's return;
      *     the compile is not recorded and the next build recompiles them
      * @param waitMillis time spent queued behind the shared compiler worker; see TaskContext#waited
-     * @param missReason what moved since the step's last record when the key missed ({@link
-     *     ActionKey#missReason}); empty on a hit, with no prior record, or when nothing it names moved
+     * @param missReason why the compile ran: the compiler's reason when its prior analysis could
+     *     not carry the compile ({@code annotation processors changed}), else what moved since the
+     *     step's last record ({@link ActionKey#missReason}); empty on a hit, with no prior record,
+     *     or when nothing it names moved
      */
     public record Result(
             boolean success,
@@ -429,7 +431,9 @@ public final class JavaCompile {
                 wr.compiledSources(),
                 List.of(),
                 wr.waitMillis(),
-                missReason);
+                // A whole compile is named by its compiler's reason, as the forecast names it: the
+                // key's diff would say only the source that moved.
+                wr.fullReason().isEmpty() ? missReason : wr.fullReason());
     }
 
     /**

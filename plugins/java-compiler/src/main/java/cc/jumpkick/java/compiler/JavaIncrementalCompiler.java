@@ -102,6 +102,7 @@ public final class JavaIncrementalCompiler implements Plugin {
                     r.compiledSources().stream()
                             .map(p -> p.toAbsolutePath().normalize().toString())
                             .toList());
+            if (!r.fullReason().isEmpty()) fields.put("reason", r.fullReason());
             out.accept(PluginReply.result(fields));
             return r.success() ? 0 : 1;
         } finally {
