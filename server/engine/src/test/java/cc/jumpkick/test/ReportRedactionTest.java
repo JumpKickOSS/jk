@@ -8,6 +8,9 @@ import cc.jumpkick.config.Request;
 import cc.jumpkick.config.ResolvedSecrets;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.orchestrator.ResultAggregator;
+import cc.jumpkick.orchestrator.SuiteReport;
+import cc.jumpkick.orchestrator.TestProgressListener;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
@@ -41,7 +44,7 @@ class ReportRedactionTest {
         XmlTestReport xml = new XmlTestReport();
         MarkdownTestReport md = new MarkdownTestReport();
         RunResults sink = new RunResults();
-        ResultAggregator agg = new ResultAggregator(TestProgressListener.noop(), 0, xml, md, "");
+        ResultAggregator agg = new ResultAggregator(TestProgressListener.noop(), 0, SuiteReport.all(xml, md), "");
 
         agg.accept(started(CLASS_ID));
         agg.accept(started(METHOD_ID));
@@ -79,7 +82,7 @@ class ReportRedactionTest {
             assertThat(BuildEnv.secretsFor(project).redact("url=" + secret))
                     .as("the wire's redactor masks a .env value by declaration")
                     .isEqualTo("url=***");
-            ResultAggregator agg = new ResultAggregator(TestProgressListener.noop(), 0, xml, null, "");
+            ResultAggregator agg = new ResultAggregator(TestProgressListener.noop(), 0, SuiteReport.all(xml, null), "");
             agg.accept(started(CLASS_ID));
             agg.accept(started(METHOD_ID));
             agg.userOutput("url=" + secret);

@@ -17,6 +17,9 @@ import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.orchestrator.OrchestratorCode;
+import cc.jumpkick.orchestrator.TestClassMatch;
+import cc.jumpkick.orchestrator.TestRun;
 import cc.jumpkick.run.BuildStage;
 import cc.jumpkick.run.SessionCancel;
 import cc.jumpkick.run.StepForecast;
@@ -35,7 +38,6 @@ import cc.jumpkick.task.CompiledTests;
 import cc.jumpkick.task.InputGuard;
 import cc.jumpkick.task.KeyAudit;
 import cc.jumpkick.task.KeyContract;
-import cc.jumpkick.task.TestRun;
 import cc.jumpkick.task.TestStamp;
 import cc.jumpkick.task.ToolchainPolicy;
 import cc.jumpkick.task.WorkerClosure;
@@ -769,7 +771,13 @@ final class TestSteps {
             return new Judged(result, null);
         }
         if (in.projectModules().size() > 1) {
-            TestClassMatch.skip(ctx, sel, tagExcluded, suiteHint);
+            // A workspace module the patterns matched nothing in skips, leaving the runner's
+            // tag-excluded warning and the suite hint, when there are, for the run-wide verdict.
+            if (tagExcluded != null || suiteHint != null) {
+                ctx.put(TEST_RUN, new TestRun(null, tagExcluded, suiteHint));
+            }
+            ctx.label(TestClassMatch.skipLabel(sel.classes(), suiteHint));
+            ctx.cached();
             return null;
         }
         return new Judged(null, TestClassMatch.noMatchMessage(sel, tagExcluded, suiteHint));
@@ -845,7 +853,10 @@ final class TestSteps {
         String keptHint = kept == null ? "" : " · comment-only edit in " + String.join(", ", kept) + " (hint)";
         if (kept == null && (s.compileDirty || s.compileDepDirty || s.testDirty || s.testDepDirty || kspRuns)) {
             String jk = StampTokens.jkMoved(
-                    s.dir, SessionContext.current().testSelection(), KeyContract.SUITE.keyVersion());
+                    s.dir,
+                    SessionContext.current().testSelection(),
+                    KeyContract.SUITE.keyVersion(),
+                    OrchestratorCode.digest());
             String why = jk != null
                     ? "run tests · " + jk + " · " + tests
                     : jarOnly

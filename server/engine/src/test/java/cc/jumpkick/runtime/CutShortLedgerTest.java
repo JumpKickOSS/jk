@@ -4,9 +4,9 @@ package cc.jumpkick.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.orchestrator.TestProgressListener;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.InputGuard;
-import cc.jumpkick.test.TestProgressListener;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;

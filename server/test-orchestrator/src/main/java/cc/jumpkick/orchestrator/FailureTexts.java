@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.test;
+package cc.jumpkick.orchestrator;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -11,18 +11,18 @@ import org.jspecify.annotations.Nullable;
  * per test; kept once, a thousand such failures cost one trace in the engine heap, not a thousand.
  * Not thread-safe: each report calls it under its own lock.
  */
-final class FailureTexts {
+public final class FailureTexts {
 
     private final Map<String, String> canonical = new HashMap<>();
 
     /** The copy of {@code text} already held, else {@code text}, now held; {@code null} stays {@code null}. */
     @Nullable
-    String of(@Nullable String text) {
+    public String of(@Nullable String text) {
         return text == null ? null : held(text);
     }
 
     /** The copy of {@code text} already held, else {@code text}, now held. */
-    String held(String text) {
+    public String held(String text) {
         String held = canonical.putIfAbsent(text, text);
         return held != null ? held : text;
     }

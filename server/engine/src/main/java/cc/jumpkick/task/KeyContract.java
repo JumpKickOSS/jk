@@ -26,13 +26,15 @@ import org.jspecify.annotations.Nullable;
 public enum KeyContract {
 
     /**
-     * The code that picks which test classes a suite runs, builds the JVM that runs them and reads
-     * their outcome: the package {@code cc.jumpkick.test} and every class of the engine whose own
-     * name carries {@code Test}, {@code Suite} or {@code JUnit} ({@link #suiteCode}). A run-tests
-     * stamp keys by it. The {@code suite-code-keyed} guard keeps the types that select and judge a
-     * suite inside it.
+     * The code that picks which test classes a suite runs and builds the JVM that runs them: the
+     * package {@code cc.jumpkick.test} and every class of the engine whose own name carries {@code
+     * Test}, {@code Suite} or {@code JUnit} ({@link #suiteCode}). A run-tests stamp keys by it. The
+     * code that judges a suite's outcome is not here: it lives in the package {@code
+     * cc.jumpkick.orchestrator}, which the stamp keys by its compiled classes ({@code
+     * OrchestratorCode}). The {@code suite-code-keyed} guard keeps the types that select and judge
+     * a suite inside the one or the other.
      */
-    SUITE("d0d383c29e26", List.of(Sources.SERVER, Sources.SHARED), KeyContract::suiteSource),
+    SUITE("c18ac684474e", List.of(Sources.SERVER, Sources.SHARED), KeyContract::suiteSource),
 
     /**
      * The code that writes an artifact or a verdict the engine produces itself: the jar, assembly
@@ -42,7 +44,7 @@ public enum KeyContract {
      * but a native image's keys by it.
      */
     ARTIFACT(
-            "365874468fe2",
+            "939abf19aa05",
             List.of(
                     Sources.ENGINE + "compile/*Packager.java",
                     Sources.ENGINE + "runtime/PlannerJlink.java",
@@ -83,6 +85,10 @@ public enum KeyContract {
     private static final String MAIN = "/src/main/java/";
     private static final String ROOT = "cc/jumpkick/";
     private static final String PACKAGE = ROOT + "test/";
+
+    /** The package of the code that judges a suite, keyed by its classes and never by this contract. */
+    private static final String ORCHESTRATOR = ROOT + "orchestrator/";
+
     private static final String CLASS = ".class";
 
     /** The words a class's own name carries when it is suite code, wherever its package. */
@@ -146,10 +152,10 @@ public enum KeyContract {
     /**
      * Whether the archive entry {@code entry} is suite code: a jk class of the package {@code
      * cc.jumpkick.test}, or one whose top-level class name carries {@code Test}, {@code Suite} or
-     * {@code JUnit}.
+     * {@code JUnit}, outside the package {@code cc.jumpkick.orchestrator}.
      */
     public static boolean suiteCode(String entry) {
-        if (!entry.startsWith(ROOT) || !entry.endsWith(CLASS)) return false;
+        if (!entry.startsWith(ROOT) || !entry.endsWith(CLASS) || entry.startsWith(ORCHESTRATOR)) return false;
         if (entry.startsWith(PACKAGE)) return true;
         String simple = entry.substring(entry.lastIndexOf('/') + 1, entry.length() - CLASS.length());
         int nested = simple.indexOf('$');

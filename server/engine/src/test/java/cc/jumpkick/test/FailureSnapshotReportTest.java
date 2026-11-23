@@ -4,6 +4,10 @@ package cc.jumpkick.test;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.SecretRedactor;
+import cc.jumpkick.orchestrator.FailureClip;
+import cc.jumpkick.orchestrator.ResultAggregator;
+import cc.jumpkick.orchestrator.SuiteReport;
+import cc.jumpkick.orchestrator.TestProgressListener;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
@@ -28,7 +32,7 @@ class FailureSnapshotReportTest {
 
     private static MarkdownTestReport.Held recorded(String snapshot, SecretRedactor secrets) {
         MarkdownTestReport md = new MarkdownTestReport();
-        var agg = new ResultAggregator(TestProgressListener.noop(), 0, null, md, "g:app", secrets);
+        var agg = new ResultAggregator(TestProgressListener.noop(), 0, SuiteReport.all(null, md), "g:app", secrets);
         agg.accept(failed(snapshot));
         return md.forget(List.of());
     }

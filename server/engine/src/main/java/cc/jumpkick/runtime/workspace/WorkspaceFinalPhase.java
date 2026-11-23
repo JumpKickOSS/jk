@@ -4,14 +4,15 @@ package cc.jumpkick.runtime.workspace;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.model.command.Exit;
-import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.orchestrator.TestClassMatch;
+import cc.jumpkick.orchestrator.TestRun;
 import cc.jumpkick.runtime.BuildGraph;
+import cc.jumpkick.runtime.BuildPlanner;
 import cc.jumpkick.runtime.Calibration;
 import cc.jumpkick.runtime.MemoAudit;
 import cc.jumpkick.runtime.ModuleInputProvenance;
 import cc.jumpkick.runtime.PreflightMemo;
 import cc.jumpkick.runtime.SettledReads;
-import cc.jumpkick.runtime.TestClassMatch;
 import cc.jumpkick.runtime.base.RunMeasures;
 import cc.jumpkick.runtime.base.StepTimings;
 import cc.jumpkick.task.VerifyCache;
@@ -71,10 +72,12 @@ final class WorkspaceFinalPhase {
      * meet. {@code null} when some module matched, or the run selected no classes.
      */
     static @Nullable WorkspaceResult noClassMatched(WorkspaceRunPhase.Run run) {
-        List<BuildPlan> plans =
-                run.prepared().plans().values().stream().map(ModulePlan::plan).toList();
+        List<TestRun> runs = run.prepared().plans().values().stream()
+                .map(ModulePlan::plan)
+                .flatMap(plan -> plan.get(BuildPlanner.TEST_RUN).stream())
+                .toList();
         boolean skipTests = run.prepared().resources().request().skipTests();
-        String verdict = TestClassMatch.runWideVerdict(SessionContext.current(), skipTests, plans);
+        String verdict = TestClassMatch.runWideVerdict(SessionContext.current(), skipTests, runs);
         if (verdict == null) return null;
         return new WorkspaceResult(false, Exit.USAGE, run.outcomes(), List.of(verdict), false);
     }

@@ -5,10 +5,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.orchestrator.TestRun;
 import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
-import cc.jumpkick.task.TestRun;
 import cc.jumpkick.testing.TestCaches;
 import java.io.IOException;
 import java.io.UncheckedIOException;

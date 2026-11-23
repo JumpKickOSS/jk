@@ -3,11 +3,11 @@ package cc.jumpkick.runtime.workspace;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.orchestrator.TestRun;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.runtime.BuildPlanner;
-import cc.jumpkick.task.TestRun;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
 import java.util.List;
 import org.jspecify.annotations.Nullable;

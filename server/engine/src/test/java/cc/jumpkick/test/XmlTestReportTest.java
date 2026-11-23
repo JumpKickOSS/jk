@@ -3,6 +3,8 @@ package cc.jumpkick.test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.orchestrator.FailureClip;
+import cc.jumpkick.orchestrator.TestEventFields;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -115,15 +117,15 @@ class XmlTestReportTest {
 
     @Test
     void class_names_come_from_the_segment_the_engine_uses() {
-        assertThat(XmlTestReport.classNameFrom("[engine:junit-jupiter]/[class:a.B]/[nested-class:C]/[method:m()]"))
+        assertThat(TestEventFields.classNameFrom("[engine:junit-jupiter]/[class:a.B]/[nested-class:C]/[method:m()]"))
                 .isEqualTo("a.B$C");
-        assertThat(XmlTestReport.classNameFrom("[engine:spock]/[spec:a.BSpec]/[feature:f]"))
+        assertThat(TestEventFields.classNameFrom("[engine:spock]/[spec:a.BSpec]/[feature:f]"))
                 .isEqualTo("a.BSpec");
-        assertThat(XmlTestReport.classNameFrom("[engine:junit-vintage]/[runner:a.OldTest]/[test:t(a.OldTest)]"))
+        assertThat(TestEventFields.classNameFrom("[engine:junit-vintage]/[runner:a.OldTest]/[test:t(a.OldTest)]"))
                 .isEqualTo("a.OldTest");
-        assertThat(XmlTestReport.classNameFrom("[engine:kotest]/[spec:a.KSpec]/[test:does a thing]"))
+        assertThat(TestEventFields.classNameFrom("[engine:kotest]/[spec:a.KSpec]/[test:does a thing]"))
                 .isEqualTo("a.KSpec");
-        assertThat(XmlTestReport.classNameFrom("[engine:cucumber]/[feature:x.feature]/[scenario:1]"))
+        assertThat(TestEventFields.classNameFrom("[engine:cucumber]/[feature:x.feature]/[scenario:1]"))
                 .isEqualTo("x.feature");
     }
 

@@ -706,6 +706,9 @@ population = { files = 2240 }
 [junit-pin-parity]
 population = { examined = 111 }
 
+[key-contract-recorded]
+population = { examined = 299 }
+
 [local-repo-owner]
 population = { files = 2959 }
 
@@ -1443,7 +1446,7 @@ population = { files = 2335 }
 
 [runtime-efferent-coupling]
 [runtime-efferent-coupling.populations]
-"server/engine" = { classes = 291, edges = 1064 }
+"server/engine" = { classes = 314, edges = 1140 }
 [[runtime-efferent-coupling.entries]]
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.CorePlan"
@@ -1502,7 +1505,7 @@ reason = "the flaky-test quarantine: run-tests records each class's outcome in i
 [[runtime-efferent-coupling.entries]]
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.TestSteps"
-value  = 29
+value  = 28
 reason = "the flaky-test quarantine: run-tests records each class's outcome in its history (TestSteps 28 to 29) and a run red only in quarantined classes does not fail (TestLaunch 21 to 22), both through TestFlakes"
 [[runtime-efferent-coupling.entries]]
 in     = "server/engine"

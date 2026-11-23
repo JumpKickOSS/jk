@@ -3,7 +3,10 @@ package cc.jumpkick.test;
 
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jsonl.Jsonl;
-import cc.jumpkick.plugin.protocol.JUnitUniqueIds;
+import cc.jumpkick.orchestrator.FailureClip;
+import cc.jumpkick.orchestrator.FailureTexts;
+import cc.jumpkick.orchestrator.SuiteReport;
+import cc.jumpkick.orchestrator.TestEventFields;
 import cc.jumpkick.util.MinimalXml;
 import java.io.IOException;
 import java.net.InetAddress;
@@ -30,7 +33,7 @@ import org.jspecify.annotations.Nullable;
  * <p>The output format matches Gradle's JUnit XML report schema so the files are consumable by CI
  * dashboards, IntelliJ, and test-aggregation tools without additional configuration.
  */
-public final class XmlTestReport {
+public final class XmlTestReport implements SuiteReport {
 
     private record Entry(
             String className,
@@ -76,6 +79,22 @@ public final class XmlTestReport {
         this.hostname = host;
     }
 
+    @Override
+    public void output(String className, String line) {
+        recordOutput(className, line);
+    }
+
+    @Override
+    public void finished(
+            String uniqueId, String xmlName, String label, long durationMs, @Nullable String throwableJson) {
+        recordFinished(uniqueId, xmlName, durationMs, throwableJson);
+    }
+
+    @Override
+    public void skipped(String uniqueId, String xmlName, String label, @Nullable String reason) {
+        recordSkipped(uniqueId, xmlName, reason);
+    }
+
     /**
      * Record a finished test (passed, failed, or aborted). {@code throwableJson} is the raw nested
      * JSON object from the protocol event's {@code throwable} field — {@code null} for a passing
@@ -83,7 +102,7 @@ public final class XmlTestReport {
      */
     public synchronized void recordFinished(
             String uniqueId, String display, long durationMs, @Nullable String throwableJson) {
-        String className = classNameFrom(uniqueId);
+        String className = TestEventFields.classNameFrom(uniqueId);
         String failureType = null, failureMessage = null, failureStack = null;
         if (throwableJson != null) {
             failureType = failureTexts.of(Jsonl.str(throwableJson, "class"));
@@ -99,7 +118,7 @@ public final class XmlTestReport {
      * Record a skipped test. {@code reason} is the skip reason from the protocol event, may be null.
      */
     public synchronized void recordSkipped(String uniqueId, String display, @Nullable String reason) {
-        String className = classNameFrom(uniqueId);
+        String className = TestEventFields.classNameFrom(uniqueId);
         entries.add(new Entry(className, display, 0, null, null, null, reason != null ? reason : ""));
     }
 
@@ -301,17 +320,6 @@ public final class XmlTestReport {
         sb.append("  <system-err><![CDATA[]]></system-err>\n");
         sb.append("</testsuite>\n");
         return sb.toString();
-    }
-
-    /**
-     * The test class a uniqueId belongs to ({@link JUnitLauncher#classFromUniqueId}), else the engine
-     * id, and the raw id only when the id has no recognisable segment at all.
-     */
-    static String classNameFrom(String uniqueId) {
-        String cls = JUnitLauncher.classFromUniqueId(uniqueId);
-        if (!cls.isEmpty()) return cls;
-        String engine = JUnitUniqueIds.engineOf(uniqueId);
-        return engine.isEmpty() ? uniqueId : engine;
     }
 
     private static String esc(String s) {

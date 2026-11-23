@@ -15,6 +15,7 @@ import cc.jumpkick.host.Os;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.TreeContent;
 import cc.jumpkick.model.BuildIdentity;
+import cc.jumpkick.orchestrator.OrchestratorCode;
 import cc.jumpkick.run.JkThreads;
 import cc.jumpkick.run.StepCache;
 import cc.jumpkick.run.StepScope;
@@ -1143,15 +1144,16 @@ public final class ActionCache {
     }
 
     /**
-     * The jk a record names as its producer: the cache-key version and every {@link KeyContract}'s
-     * digest, which between them are all a key hashes of jk itself. A record does not say which
+     * The jk a record names as its producer: the cache-key version, every {@link KeyContract}'s
+     * digest and the test orchestrator's ({@link OrchestratorCode}), which between them are all a
+     * key hashes of jk itself. A record does not say which
      * contract keyed it, so a miss under a moved contract reads as made by another jk for every
      * family; only a miss consults it.
      */
     static String producer() {
         StringBuilder made = new StringBuilder("jk/").append(BuildIdentity.cacheKeyVersion());
         for (KeyContract contract : KeyContract.values()) made.append('+').append(contract.digest());
-        return made.toString();
+        return made.append('+').append(OrchestratorCode.digest()).toString();
     }
 
     /**

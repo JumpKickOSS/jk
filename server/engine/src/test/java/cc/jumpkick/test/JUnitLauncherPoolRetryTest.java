@@ -13,6 +13,7 @@ import cc.jumpkick.engine.plugin.HeapNotes;
 import cc.jumpkick.engine.plugin.HeapScope;
 import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.engine.plugin.LearnedHeaps;
+import cc.jumpkick.orchestrator.TestProgressListener;
 import cc.jumpkick.run.TestSummary;
 import java.nio.file.Files;
 import java.nio.file.Path;

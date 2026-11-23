@@ -1,17 +1,60 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.test;
+package cc.jumpkick.orchestrator;
 
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.plugin.protocol.JUnitUniqueIds;
+import java.util.List;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The identity fields of one runner event, read the same way everywhere the aggregator looks at a
  * line: the split {@code testClass} / {@code testMethod} / {@code testEngine} fields when the runner
  * sent them, else what the unique id yields, else the legacy id or display name.
  */
-final class TestEventFields {
+public final class TestEventFields {
+
+    /**
+     * The segments engines use for the class-like node when there is no {@code [class:…]}: Spock and
+     * Kotest name the spec, Cucumber the feature. In lookup order. Vintage's {@code [runner:…]} is
+     * read by the shared walk itself.
+     */
+    private static final List<String> CLASS_LIKE_SEGMENTS = List.of("spec", "feature");
 
     private TestEventFields() {}
+
+    /**
+     * The test class a JUnit Platform unique id belongs to: {@code [class:…]} plus the
+     * {@code [nested-class:…]} join, else an engine's class-like segment ({@code [spec:…]},
+     * {@code [feature:…]}), else Vintage's runner (the shared {@link JUnitUniqueIds} walk); empty for
+     * an engine or suite root. The class-like segment wins over the Vintage walk, which would read a
+     * Kotest {@code [test:adds]} as a class named {@code adds}.
+     */
+    public static String classFromUniqueId(@Nullable String id) {
+        if (id == null) return "";
+        if (JUnitUniqueIds.segment(id, "class").isEmpty()) {
+            for (String segment : CLASS_LIKE_SEGMENTS) {
+                String value = JUnitUniqueIds.segment(id, segment);
+                if (!value.isEmpty()) return value;
+            }
+        }
+        return JUnitUniqueIds.classOf(id);
+    }
+
+    /** Engine id from {@code [engine:junit-jupiter]} — the shared {@link JUnitUniqueIds} walk. */
+    public static String engineFromUniqueId(@Nullable String id) {
+        return id == null ? "" : JUnitUniqueIds.engineOf(id);
+    }
+
+    /**
+     * The test class a uniqueId belongs to ({@link #classFromUniqueId}), else the engine id, and the
+     * raw id only when the id has no recognisable segment at all.
+     */
+    public static String classNameFrom(String uniqueId) {
+        String cls = classFromUniqueId(uniqueId);
+        if (!cls.isEmpty()) return cls;
+        String engine = JUnitUniqueIds.engineOf(uniqueId);
+        return engine.isEmpty() ? uniqueId : engine;
+    }
 
     /** Prefer split fields; fall back to uniqueId / legacy id / display. */
     static String identityKey(String json) {
@@ -49,7 +92,7 @@ final class TestEventFields {
     static String classNameOf(String json) {
         String c = Jsonl.str(json, "testClass");
         if (c != null && !c.isBlank()) return c;
-        return JUnitLauncher.classFromUniqueId(identityKey(json));
+        return classFromUniqueId(identityKey(json));
     }
 
     static String methodOf(String json) {
@@ -60,6 +103,6 @@ final class TestEventFields {
     static String engineOf(String json) {
         String e = Jsonl.str(json, "testEngine");
         if (e != null && !e.isBlank()) return e;
-        return JUnitLauncher.engineFromUniqueId(identityKey(json));
+        return engineFromUniqueId(identityKey(json));
     }
 }

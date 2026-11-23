@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.test;
+package cc.jumpkick.orchestrator;
 
 /**
  * Streaming callback surface for live test progress UI. {@link JUnitLauncher} invokes these as each

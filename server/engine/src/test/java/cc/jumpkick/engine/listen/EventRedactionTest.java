@@ -7,9 +7,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.config.RunNotices;
 import cc.jumpkick.config.SecretRedactor;
 import cc.jumpkick.host.Log;
+import cc.jumpkick.orchestrator.FailureClip;
 import cc.jumpkick.run.TestFailureInfo;
-import cc.jumpkick.test.FailureClip;
-import cc.jumpkick.test.JUnitLauncher;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
@@ -27,11 +26,11 @@ class EventRedactionTest {
     @Test
     void a_secret_cut_by_stack_truncation_is_masked_at_the_seam() {
         SecretRedactor r = SecretRedactor.of(List.of("s3cret-token-value"));
-        String stack = "E: leak s3cret-tok" + JUnitLauncher.STACK_TRUNCATION_MARKER + "12345 more chars)";
+        String stack = "E: leak s3cret-tok" + FailureClip.STACK_TRUNCATION_MARKER + "12345 more chars)";
         TestFailureInfo safe = requireNonNull(EventRedaction.redactFailure(r, failure("m", stack)));
         assertThat(safe.stack())
                 .isEqualTo(
-                        "E: leak " + SecretRedactor.MASK + JUnitLauncher.STACK_TRUNCATION_MARKER + "12345 more chars)");
+                        "E: leak " + SecretRedactor.MASK + FailureClip.STACK_TRUNCATION_MARKER + "12345 more chars)");
     }
 
     /** The clip cuts a long header line and a long cause line; each cut is a seam of its own. */
@@ -49,11 +48,10 @@ class EventRedactionTest {
     @Test
     void a_secret_cut_by_message_truncation_is_masked_at_the_seam() {
         SecretRedactor r = SecretRedactor.of(List.of("s3cret-token-value"));
-        String message = "expected s3cret-tok" + JUnitLauncher.MESSAGE_TRUNCATION_MARKER + "9 more chars)";
+        String message = "expected s3cret-tok" + FailureClip.MESSAGE_TRUNCATION_MARKER + "9 more chars)";
         TestFailureInfo safe = requireNonNull(EventRedaction.redactFailure(r, failure(message, "")));
         assertThat(safe.message())
-                .isEqualTo(
-                        "expected " + SecretRedactor.MASK + JUnitLauncher.MESSAGE_TRUNCATION_MARKER + "9 more chars)");
+                .isEqualTo("expected " + SecretRedactor.MASK + FailureClip.MESSAGE_TRUNCATION_MARKER + "9 more chars)");
     }
 
     @Test

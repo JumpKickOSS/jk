@@ -19,6 +19,7 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Profile;
 import cc.jumpkick.model.SuiteSettings;
 import cc.jumpkick.model.TestCache;
+import cc.jumpkick.orchestrator.OrchestratorCode;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.base.CompileSupport;
 import cc.jumpkick.runtime.base.FilteredResources;
@@ -509,6 +510,8 @@ public record TestStampInputs(
         BuildBlock build = project.build();
         List<String> extras = new ArrayList<>();
         extras.add("jk:" + KeyContract.SUITE.keyVersion());
+        // The code that judges the suite, by its own classes: an engine edit outside it replays.
+        extras.add("orchestrator:" + OrchestratorCode.digest());
         // Suite + tag filters are part of the outcome.
         if (selection != null) extras.add("sel:" + selection.identityToken());
         // Whether the suite JVM ran with -ea decides what an `assert` did.

@@ -1,19 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.runtime;
+package cc.jumpkick.orchestrator;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.TestSelection;
-import cc.jumpkick.run.BuildPlan;
-import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TestFailureInfo;
 import cc.jumpkick.run.TestSummary;
-import cc.jumpkick.task.TestRun;
-import cc.jumpkick.test.TestProgressListener;
-import java.util.ArrayList;
 import java.util.List;
-import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 
 /** A {@code --class} that matched nothing: skipped per module, failed per run. */
@@ -77,57 +71,17 @@ class TestClassMatchTest {
                 .isEqualTo("no test classes matched --class FooIT: " + hint + "; " + TAG_EXCLUDED);
 
         Session session = Session.defaults().withTestSelection(fooIt);
-        BuildPlan hinted = BuildPlan.builder("module")
-                .stateKeys(BuildPlanner.TEST_RUN)
-                .addTask(Task.builder("run-tests")
-                        .ticks(1)
-                        .execute(ctx -> ctx.put(BuildPlanner.TEST_RUN, new TestRun(null, null, hint)))
-                        .build())
-                .build();
-        hinted.run();
-        assertThat(TestClassMatch.runWideVerdict(session, false, List.of(plan(null), hinted)))
+        TestRun hinted = new TestRun(null, null, hint);
+        assertThat(TestClassMatch.runWideVerdict(session, false, List.of(hinted)))
                 .isEqualTo("no test classes matched --class FooIT: " + hint);
     }
 
     @Test
     void a_module_whose_tag_filter_dropped_the_named_class_is_the_run_wide_verdict() {
         Session session = Session.defaults().withTestSelection(ORDERS);
-        BuildPlan dropped = BuildPlan.builder("module")
-                .stateKeys(BuildPlanner.TEST_RUN)
-                .addTask(Task.builder("run-tests")
-                        .ticks(1)
-                        .execute(ctx -> ctx.put(BuildPlanner.TEST_RUN, new TestRun(null, TAG_EXCLUDED, null)))
-                        .build())
-                .build();
-        dropped.run();
-        assertThat(TestClassMatch.runWideVerdict(session, false, List.of(plan(null), dropped)))
+        TestRun dropped = new TestRun(null, TAG_EXCLUDED, null);
+        assertThat(TestClassMatch.runWideVerdict(session, false, List.of(dropped)))
                 .isEqualTo(TAG_EXCLUDED);
-    }
-
-    @Test
-    void the_capture_keeps_the_runners_tag_excluded_warning_and_forwards_every_warning() {
-        List<String> forwarded = new ArrayList<>();
-        TestProgressListener sink = new TestProgressListener() {
-            @Override
-            public void onWarning(String code, String message) {
-                forwarded.add(code);
-            }
-        };
-        var capture = new TagExcludedCapture(sink, true);
-        capture.onWarning("no-test-classes", "nothing here");
-        assertThat(capture.message()).isNull();
-        capture.onWarning("tag-excluded", TAG_EXCLUDED);
-        assertThat(capture.message()).isEqualTo(TAG_EXCLUDED);
-        assertThat(forwarded).containsExactly("no-test-classes", "tag-excluded");
-
-        // A run that only took classes away (exclude-classes, settled classes) named none for the
-        // tag filter to drop: the runner's warning about the classes it left out is not passed on.
-        forwarded.clear();
-        var unnamed = new TagExcludedCapture(sink, false);
-        unnamed.onWarning("tag-excluded", TAG_EXCLUDED);
-        unnamed.onWarning("no-test-classes", "nothing here");
-        assertThat(unnamed.message()).isNull();
-        assertThat(forwarded).containsExactly("no-test-classes");
     }
 
     @Test
@@ -148,12 +102,12 @@ class TestClassMatchTest {
     @Test
     void the_run_fails_only_when_no_module_matched() {
         Session session = Session.defaults().withTestSelection(ORDERS);
-        BuildPlan skipped = plan(null);
-        BuildPlan matched = plan(new TestSummary(2, 2, 0, 0, List.of()));
+        TestRun matched = TestRun.of(new TestSummary(2, 2, 0, 0, List.of()));
 
-        assertThat(TestClassMatch.runWideVerdict(session, false, List.of(skipped, skipped)))
+        assertThat(TestClassMatch.runWideVerdict(session, false, List.of()))
+                .as("modules that skipped leave no run")
                 .isEqualTo("no test classes matched --class OrdersTest");
-        assertThat(TestClassMatch.runWideVerdict(session, false, List.of(skipped, matched)))
+        assertThat(TestClassMatch.runWideVerdict(session, false, List.of(matched)))
                 .as("one module matched; the others skipping is the point")
                 .isNull();
     }
@@ -162,42 +116,27 @@ class TestClassMatchTest {
     void a_replayed_green_stamp_counts_as_a_match() {
         Session session = Session.defaults().withTestSelection(ORDERS);
         // The stamp carries the class filter, so a green marker for these patterns once matched.
-        BuildPlan replayed = plan(new TestSummary(2, 2, 0, 0, List.of()));
+        TestRun replayed = TestRun.of(new TestSummary(2, 2, 0, 0, List.of()));
         assertThat(TestClassMatch.runWideVerdict(session, false, List.of(replayed)))
                 .isNull();
     }
 
     @Test
     void runs_that_select_no_classes_or_run_no_suites_have_no_verdict() {
-        assertThat(TestClassMatch.runWideVerdict(Session.defaults(), false, List.of(plan(null))))
+        assertThat(TestClassMatch.runWideVerdict(Session.defaults(), false, List.of()))
                 .isNull();
         Session orders = Session.defaults().withTestSelection(ORDERS);
-        assertThat(TestClassMatch.runWideVerdict(orders, true, List.of(plan(null))))
+        assertThat(TestClassMatch.runWideVerdict(orders, true, List.of()))
                 .as("--skip-tests ran no suite to match against")
                 .isNull();
-        assertThat(TestClassMatch.runWideVerdict(orders.withAffected(true), false, List.of(plan(null))))
+        assertThat(TestClassMatch.runWideVerdict(orders.withAffected(true), false, List.of()))
                 .as("--affected chose the classes, not the patterns")
                 .isNull();
         Session scripts = Session.defaults()
                 .withTestSelection(TestSelection.of(
                         List.of(), false, List.of(), List.of(), true, true, false, List.of("OrdersTest")));
-        assertThat(TestClassMatch.runWideVerdict(scripts, false, List.of(plan(null))))
+        assertThat(TestClassMatch.runWideVerdict(scripts, false, List.of()))
                 .as("--scripts-only runs guard scripts, no JUnit")
                 .isNull();
-    }
-
-    /** A finished module plan whose run-tests step left {@code result} behind, or nothing when skipped. */
-    private static BuildPlan plan(@Nullable TestSummary result) {
-        BuildPlan plan = BuildPlan.builder("module")
-                .stateKeys(BuildPlanner.TEST_RUN)
-                .addTask(Task.builder("run-tests")
-                        .ticks(1)
-                        .execute(ctx -> {
-                            if (result != null) ctx.put(BuildPlanner.TEST_RUN, TestRun.of(result));
-                        })
-                        .build())
-                .build();
-        plan.run();
-        return plan;
     }
 }

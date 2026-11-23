@@ -1,16 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.test;
+package cc.jumpkick.orchestrator;
 
-import static cc.jumpkick.test.TestEventFields.classNameOf;
-import static cc.jumpkick.test.TestEventFields.engineOf;
-import static cc.jumpkick.test.TestEventFields.identityKey;
-import static cc.jumpkick.test.TestEventFields.methodOf;
-import static cc.jumpkick.test.TestEventFields.progressLabel;
-import static cc.jumpkick.test.TestEventFields.xmlName;
+import static cc.jumpkick.orchestrator.TestEventFields.classNameOf;
+import static cc.jumpkick.orchestrator.TestEventFields.engineOf;
+import static cc.jumpkick.orchestrator.TestEventFields.identityKey;
+import static cc.jumpkick.orchestrator.TestEventFields.methodOf;
+import static cc.jumpkick.orchestrator.TestEventFields.progressLabel;
+import static cc.jumpkick.orchestrator.TestEventFields.xmlName;
 
 import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.SecretRedactor;
-import cc.jumpkick.engine.plugin.WorkerExit;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.plugin.protocol.JUnitUniqueIds;
 import cc.jumpkick.run.SessionCancel;
@@ -42,12 +41,11 @@ import org.jspecify.annotations.Nullable;
  * Launcher.execute} call — so in pull mode a worker's final summary reflects only its last
  * class.
  */
-final class ResultAggregator {
+public final class ResultAggregator {
 
     private final TestProgressListener listener;
     private final int workerId;
-    private final @Nullable XmlTestReport xmlReport;
-    private final @Nullable MarkdownTestReport mdReport;
+    private final SuiteReport report;
     private final String moduleLabel;
 
     /**
@@ -98,53 +96,33 @@ final class ResultAggregator {
     private @Nullable String runningClass;
 
     /** Test-friendly ctor: no listener, no worker id, no reports. */
-    ResultAggregator() {
-        this(TestProgressListener.noop(), 0, null, null, "");
+    public ResultAggregator() {
+        this(TestProgressListener.noop(), 0);
     }
 
-    /** For tests of the XML naming. */
-    ResultAggregator(XmlTestReport xml) {
-        this(TestProgressListener.noop(), 0, xml, null, "");
+    public ResultAggregator(TestProgressListener listener, int workerId) {
+        this(listener, workerId, SuiteReport.NONE, "");
     }
 
-    ResultAggregator(TestProgressListener listener, int workerId) {
-        this(listener, workerId, null, null, "");
+    public ResultAggregator(TestProgressListener listener, int workerId, SuiteReport report, String moduleLabel) {
+        this(listener, workerId, report, moduleLabel, BuildEnv.secretsFor(null));
     }
 
-    ResultAggregator(
+    public ResultAggregator(
             TestProgressListener listener,
             int workerId,
-            @Nullable XmlTestReport xmlReport,
-            @Nullable MarkdownTestReport mdReport) {
-        this(listener, workerId, xmlReport, mdReport, "");
-    }
-
-    ResultAggregator(
-            TestProgressListener listener,
-            int workerId,
-            @Nullable XmlTestReport xmlReport,
-            @Nullable MarkdownTestReport mdReport,
-            @Nullable String moduleLabel) {
-        this(listener, workerId, xmlReport, mdReport, moduleLabel, BuildEnv.secretsFor(null));
-    }
-
-    ResultAggregator(
-            TestProgressListener listener,
-            int workerId,
-            @Nullable XmlTestReport xmlReport,
-            @Nullable MarkdownTestReport mdReport,
-            @Nullable String moduleLabel,
+            SuiteReport report,
+            String moduleLabel,
             SecretRedactor secrets) {
         this.secrets = secrets;
         this.jsonSecrets = secrets.forEscapedJson();
         this.listener = listener;
         this.workerId = workerId;
-        this.xmlReport = xmlReport;
-        this.mdReport = mdReport;
-        this.moduleLabel = moduleLabel == null ? "" : moduleLabel;
+        this.report = report;
+        this.moduleLabel = moduleLabel;
     }
 
-    synchronized void accept(String json) {
+    public synchronized void accept(String json) {
         // A non-protocol line shows up here only in tests that call accept
         // directly. In production the caller already stripped the prefix, so
         // any line that doesn't look like a JSON object is user output.
@@ -155,7 +133,7 @@ final class ResultAggregator {
         // The runner clips a long message or stack line in the fork, which can cut a secret short.
         acceptJson(jsonSecrets.redactClipped(
                 json,
-                JUnitLauncher.MESSAGE_TRUNCATION_MARKER,
+                FailureClip.MESSAGE_TRUNCATION_MARKER,
                 FailureClip.LINE_TRUNCATION_MARKER,
                 FailureClip.VALUE_TRUNCATION_MARKER));
     }
@@ -167,12 +145,10 @@ final class ResultAggregator {
      * secrets are masked first, in every copy; the masked line is returned for the caller's crash
      * capture.
      */
-    synchronized String userOutput(String raw) {
+    public synchronized String userOutput(String raw) {
         String line = secrets.redact(raw);
         listener.onUserOutput(workerId, line);
-        if (runningClass == null) return line;
-        if (xmlReport != null) xmlReport.recordOutput(runningClass, line);
-        if (mdReport != null) mdReport.recordOutput(runningClass, line);
+        if (runningClass != null) report.output(runningClass, line);
         return line;
     }
 
@@ -210,7 +186,7 @@ final class ResultAggregator {
         String id = identityKey(json);
         String label = progressLabel(json);
         // Only a class-like node names a suite; the engine root's fallback name is not a class.
-        String cls = XmlTestReport.classNameFrom(id);
+        String cls = TestEventFields.classNameFrom(id);
         if (!cls.isEmpty() && !cls.equals(id) && !cls.equals(JUnitUniqueIds.engineOf(id))) runningClass = cls;
         listener.onTestStarted(id, label, isTest, eventWorker(json));
     }
@@ -249,7 +225,7 @@ final class ResultAggregator {
                 captureFailure(json, label.isEmpty() ? "container" : label + " (container)", true);
             }
             // The class is done: what the JVM prints next belongs to no class until one starts.
-            if (runningClass != null && runningClass.equals(XmlTestReport.classNameFrom(id))) runningClass = null;
+            if (runningClass != null && runningClass.equals(TestEventFields.classNameFrom(id))) runningClass = null;
         }
         listener.onTestFinished(id, label, status, isTest, wasStatic, duration, w);
         if (isTest) {
@@ -260,11 +236,9 @@ final class ResultAggregator {
                 // report cannot tell a missing fixture from a busy machine.
                 String why = throwable != null ? Jsonl.str(throwable, "message") : null;
                 String reason = why == null || why.isBlank() ? "aborted" : why;
-                if (xmlReport != null) xmlReport.recordSkipped(id, xmlName, reason);
-                if (mdReport != null) mdReport.recordSkipped(id, label, reason);
+                report.skipped(id, xmlName, label, reason);
             } else {
-                if (xmlReport != null) xmlReport.recordFinished(id, xmlName, duration, throwable);
-                if (mdReport != null) mdReport.recordFinished(id, label, duration, throwable);
+                report.finished(id, xmlName, label, duration, throwable);
             }
         }
     }
@@ -292,9 +266,7 @@ final class ResultAggregator {
         // else the container/run label — there is no second short-name component to drift from it.
         String name = method.isEmpty() ? testName : method;
         failures.add(new TestFailureInfo(moduleLabel, engine, className, name, exClass, message, stack, w));
-        if (mdReport != null && throwableJson != null) {
-            mdReport.recordSnapshot(className, List.of(name, testName), FailureSnapshotLines.of(throwableJson));
-        }
+        if (throwableJson != null) report.failed(className, List.of(name, testName), throwableJson);
         listener.onFailure(identityKey(json), testName, exClass, message, stack, engine, className, method, w);
     }
 
@@ -312,10 +284,7 @@ final class ResultAggregator {
         String label = progressLabel(json);
         int w = eventWorker(json);
         listener.onTestSkipped(id, label, reason != null ? reason : "", isTest, wasStatic, w);
-        if (isTest) {
-            if (xmlReport != null) xmlReport.recordSkipped(id, xmlName(json, label), reason);
-            if (mdReport != null) mdReport.recordSkipped(id, label, reason);
-        }
+        if (isTest) report.skipped(id, xmlName(json, label), label, reason);
     }
 
     /** Event {@code worker} field, else this aggregator's id. */
@@ -328,7 +297,7 @@ final class ResultAggregator {
      * {@code throwable.stack} as a single string, clipped by {@link FailureClip#stack}. Accepts a
      * string (preferred) or a legacy line array and joins it.
      */
-    static String readStack(@Nullable String throwableJson) {
+    public static String readStack(@Nullable String throwableJson) {
         if (throwableJson == null) return "";
         String s = Jsonl.str(throwableJson, "stack");
         if (s == null) {
@@ -339,25 +308,24 @@ final class ResultAggregator {
         return FailureClip.stack(s);
     }
 
-    synchronized TestSummary toResult(WorkerExit exit) {
-        return toResult(exit, "", List.of());
+    public synchronized TestSummary toResult(WorkerEnd exit) {
+        return toResult(exit, "");
     }
 
     /**
-     * As {@link #toResult(WorkerExit)}. A fork that ended before running its plan to the end ({@link
-     * #incomplete}) with no test event at all is a {@link TestLauncherFailure} carrying {@code
-     * crashOutput} (the worker's captured stdout/stderr) and {@code command} (how the worker was
-     * started): the launcher never ran a test, so the step fails on that instead of counting one
-     * red test. After tests were reported it is one {@code (test run)} failure row carrying {@code
+     * As {@link #toResult(WorkerEnd)}. A fork that ended before running its plan to the end ({@link
+     * #incomplete}) with no test event at all raises {@link WorkerEnd#nothingRan} with {@code
+     * crashOutput} (the worker's captured stdout/stderr): the launcher never ran a test, so the step
+     * fails on that instead of counting one red test. After tests were reported it is one {@code (test run)} failure row carrying {@code
      * crashOutput}: the passes reported before the end are not the suite, and counting them green
      * would stamp the run and skip it next build.
      */
-    synchronized TestSummary toResult(WorkerExit exit, String crashOutput, List<String> command) {
+    public synchronized TestSummary toResult(WorkerEnd exit, String crashOutput) {
         long total = succeeded + failed + skipped;
         String why = incomplete(exit, total);
         if (why != null) {
             String crash = crashOutput == null ? "" : crashOutput;
-            if (total == 0) throw TestLauncherFailure.runner(moduleLabel, exit, crash, command);
+            if (total == 0) throw exit.nothingRan(moduleLabel, crash);
             failed++;
             total++;
             // The fork's own output rides as the row's detail: what it died of — its heap, say —
@@ -383,7 +351,7 @@ final class ResultAggregator {
      * lost some on the way. A cancel that arrived after every discovered test was reported did
      * finish: that one stays green.
      */
-    private @Nullable String incomplete(WorkerExit exit, long reported) {
+    private @Nullable String incomplete(WorkerEnd exit, long reported) {
         if (cancelAfterEveryTest(reported)) return null;
         int exitCode = exit.code();
         if (exitCode != 0 && !(exitCode == 1 && failed > 0 && planFinished)) {
@@ -407,7 +375,7 @@ final class ResultAggregator {
     }
 
     /** Snapshot of just the counters — used by the parallel-merge path. */
-    synchronized TestSummary snapshot() {
+    public synchronized TestSummary snapshot() {
         long total = succeeded + failed + skipped;
         return new TestSummary(
                 total,
@@ -419,14 +387,14 @@ final class ResultAggregator {
                 Map.copyOf(classWallMs));
     }
 
-    /** Class walls collected this worker (for parallel merge). */
     /** Whether a container event is a class's own, not a method's (a template or factory) inside it. */
     private static boolean namesNoMethod(String json) {
         return methodOf(json).isEmpty()
                 && JUnitUniqueIds.methodOf(identityKey(json)).isEmpty();
     }
 
-    synchronized Map<String, Long> classWallMs() {
+    /** Class walls collected this worker (for parallel merge). */
+    public synchronized Map<String, Long> classWallMs() {
         return Map.copyOf(classWallMs);
     }
 }

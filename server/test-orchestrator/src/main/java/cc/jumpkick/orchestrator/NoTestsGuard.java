@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.test;
+package cc.jumpkick.orchestrator;
 
 import cc.jumpkick.run.TestFailureInfo;
 import cc.jumpkick.run.TestSummary;
@@ -12,20 +12,20 @@ import org.jspecify.annotations.Nullable;
  * them: a Platform that dropped the framework's engine, a framework classloader that failed. A
  * summary of zero tests and zero failures under that warning is not a green run.
  */
-final class NoTestsGuard implements TestProgressListener {
+public final class NoTestsGuard implements TestProgressListener {
 
     /** The runner's warning code; {@code LauncherPath.NO_TESTS_DISCOVERED} in the test-runner plugin. */
-    static final String CODE = "no-tests-discovered";
+    public static final String CODE = "no-tests-discovered";
 
     private final TestProgressListener delegate;
     private @Nullable String message;
 
-    NoTestsGuard(TestProgressListener delegate) {
+    public NoTestsGuard(TestProgressListener delegate) {
         this.delegate = delegate;
     }
 
     /** {@code summary} unless the runner reported an empty discovery over a suite that ran nothing. */
-    TestSummary verdict(TestSummary summary, String moduleLabel) {
+    public TestSummary verdict(TestSummary summary, String moduleLabel) {
         if (message == null || summary.total() != 0 || summary.failed() != 0) return summary;
         return new TestSummary(
                         1, 0, 1, 0, List.of(new TestFailureInfo(moduleLabel, "", "", "(test run)", "", message, "")))

@@ -5,9 +5,10 @@ import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.TestSelection;
+import cc.jumpkick.orchestrator.RunShortfall;
+import cc.jumpkick.orchestrator.TestClassMatch;
 import cc.jumpkick.run.TestFailureInfo;
 import cc.jumpkick.run.TestSummary;
-import cc.jumpkick.runtime.TestClassMatch;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;

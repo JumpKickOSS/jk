@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.test;
+package cc.jumpkick.orchestrator;
 
 import cc.jumpkick.run.TestFailureInfo;
 import java.util.List;
@@ -18,7 +18,7 @@ import org.jspecify.annotations.Nullable;
 public final class RunShortfall {
 
     /** The {@code method} of a shortfall row; there is no test behind it. */
-    static final String RUN = "(test run)";
+    public static final String RUN = "(test run)";
 
     /** How a cancelled run's row starts. */
     static final String CANCELLED = "test run cancelled";
@@ -34,7 +34,7 @@ public final class RunShortfall {
      * cancel that landed after the last class had run and every worker finished its queue left
      * nothing unrun, and the summary stands on its own.
      */
-    static @Nullable String of(boolean cancelled, boolean stoppedMidClass, int undispatched) {
+    public static @Nullable String of(boolean cancelled, boolean stoppedMidClass, int undispatched) {
         if (!cancelled) return undispatched == 0 ? null : INCOMPLETE + ": " + neverRan(undispatched);
         if (!stoppedMidClass && undispatched == 0) return null;
         StringBuilder why = new StringBuilder(CANCELLED);
@@ -48,7 +48,7 @@ public final class RunShortfall {
     }
 
     /** The shortfall row for {@code moduleLabel}, or {@code null} when {@link #of} says the run completed. */
-    static @Nullable TestFailureInfo row(
+    public static @Nullable TestFailureInfo row(
             String moduleLabel, boolean cancelled, boolean stoppedMidClass, int undispatched) {
         String why = of(cancelled, stoppedMidClass, undispatched);
         return why == null ? null : new TestFailureInfo(moduleLabel, "", "", RUN, "", why, "", 0);

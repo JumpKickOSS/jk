@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.test;
+package cc.jumpkick.orchestrator;
 
 import org.jspecify.annotations.Nullable;
 
@@ -8,10 +8,9 @@ import org.jspecify.annotations.Nullable;
  * failure, so the summary, the live event, the journal and the test reports all hold the same
  * clipped text. A failure shows a few dozen frames and its cause chain; that is what the clip keeps.
  *
- * <p>Every cut is marked: {@link JUnitLauncher#MESSAGE_TRUNCATION_MARKER} ends a clipped message,
- * {@link #LINE_TRUNCATION_MARKER} a clipped stack line and {@link
- * JUnitLauncher#STACK_TRUNCATION_MARKER} a clipped stack, so secret redaction can mask a value the
- * cut split.
+ * <p>Every cut is marked: {@link #MESSAGE_TRUNCATION_MARKER} ends a clipped message, {@link
+ * #LINE_TRUNCATION_MARKER} a clipped stack line and {@link #STACK_TRUNCATION_MARKER} a clipped
+ * stack, so secret redaction can mask a value the cut split.
  */
 public final class FailureClip {
 
@@ -27,9 +26,15 @@ public final class FailureClip {
     /** Characters of a stack kept after the line clip. */
     public static final int MAX_STACK_CHARS = 16_384;
 
+    /** Ends a stack {@link #stack} cut; {@code EventRedaction} keys the cut-seam masking off it. */
+    public static final String STACK_TRUNCATION_MARKER = "\n\t... stack truncated (";
+
+    /** Ends a message {@link #message} cut, and the test runner's own message cap. */
+    public static final String MESSAGE_TRUNCATION_MARKER = " ... message truncated (";
+
     /**
      * Marks a value of a failure snapshot the test runner cut short, before its remainder count
-     * ({@link FailureSnapshotLines}).
+     * (the engine's {@code FailureSnapshotLines}).
      */
     public static final String VALUE_TRUNCATION_MARKER = "... (+";
 
@@ -47,7 +52,7 @@ public final class FailureClip {
      */
     public static String message(String message) {
         if (message.length() <= MAX_MESSAGE_CHARS || runnerCapped(message)) return message;
-        return cut(message, MAX_MESSAGE_CHARS, JUnitLauncher.MESSAGE_TRUNCATION_MARKER);
+        return cut(message, MAX_MESSAGE_CHARS, MESSAGE_TRUNCATION_MARKER);
     }
 
     /**
@@ -93,7 +98,7 @@ public final class FailureClip {
         if (sb.length() <= MAX_STACK_CHARS) return sb.toString();
         int at = sb.lastIndexOf("\n", MAX_STACK_CHARS);
         if (at <= 0) at = MAX_STACK_CHARS;
-        return sb.substring(0, at) + JUnitLauncher.STACK_TRUNCATION_MARKER + (sb.length() - at) + MORE;
+        return sb.substring(0, at) + STACK_TRUNCATION_MARKER + (sb.length() - at) + MORE;
     }
 
     /** Characters of a message the live event carries; {@code jk-results.md} shows one line of it. */
@@ -111,7 +116,7 @@ public final class FailureClip {
      */
     public static String eventMessage(String message) {
         if (message.length() <= EVENT_MESSAGE_CHARS) return message;
-        return cut(message, EVENT_MESSAGE_CHARS, JUnitLauncher.MESSAGE_TRUNCATION_MARKER);
+        return cut(message, EVENT_MESSAGE_CHARS, MESSAGE_TRUNCATION_MARKER);
     }
 
     /**
@@ -151,9 +156,9 @@ public final class FailureClip {
      */
     private static boolean runnerCapped(String message) {
         if (!message.endsWith(MORE)) return false;
-        int at = message.lastIndexOf(JUnitLauncher.MESSAGE_TRUNCATION_MARKER);
+        int at = message.lastIndexOf(MESSAGE_TRUNCATION_MARKER);
         if (at < 0 || at > MAX_MESSAGE_CHARS) return false;
-        int digitsFrom = at + JUnitLauncher.MESSAGE_TRUNCATION_MARKER.length();
+        int digitsFrom = at + MESSAGE_TRUNCATION_MARKER.length();
         int digitsTo = message.length() - MORE.length();
         if (digitsTo <= digitsFrom) return false;
         for (int i = digitsFrom; i < digitsTo; i++) {

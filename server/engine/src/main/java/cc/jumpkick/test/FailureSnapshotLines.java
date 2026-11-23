@@ -2,6 +2,7 @@
 package cc.jumpkick.test;
 
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.orchestrator.FailureClip;
 import java.util.ArrayList;
 import java.util.List;
 

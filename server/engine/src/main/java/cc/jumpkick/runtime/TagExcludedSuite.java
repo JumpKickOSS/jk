@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.config.TestSelection;
+import cc.jumpkick.orchestrator.TestClassMatch;
 import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TestSummary;
 import java.util.ArrayList;

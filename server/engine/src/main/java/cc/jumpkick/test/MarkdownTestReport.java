@@ -2,6 +2,10 @@
 package cc.jumpkick.test;
 
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.orchestrator.FailureClip;
+import cc.jumpkick.orchestrator.FailureTexts;
+import cc.jumpkick.orchestrator.SuiteReport;
+import cc.jumpkick.orchestrator.TestEventFields;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -26,7 +30,7 @@ import org.jspecify.annotations.Nullable;
  * forty-kilobyte trace costs kilobytes, not megabytes. A publish with no request
  * open is dropped: nothing would drain it.
  */
-public final class MarkdownTestReport {
+public final class MarkdownTestReport implements SuiteReport {
 
     public record Entry(
             String className,
@@ -124,6 +128,27 @@ public final class MarkdownTestReport {
         this.keepOutput = keepOutput;
     }
 
+    @Override
+    public void output(String className, String line) {
+        recordOutput(className, line);
+    }
+
+    @Override
+    public void finished(
+            String uniqueId, String xmlName, String label, long durationMs, @Nullable String throwableJson) {
+        recordFinished(uniqueId, label, durationMs, throwableJson);
+    }
+
+    @Override
+    public void skipped(String uniqueId, String xmlName, String label, @Nullable String reason) {
+        recordSkipped(uniqueId, label, reason);
+    }
+
+    @Override
+    public void failed(String className, List<String> names, String throwableJson) {
+        recordSnapshot(className, names, FailureSnapshotLines.of(throwableJson));
+    }
+
     /** One line the test JVM printed while {@code className} ran. */
     public synchronized void recordOutput(String className, String line) {
         printedLines.merge(className, 1, Integer::sum);
@@ -140,7 +165,7 @@ public final class MarkdownTestReport {
      */
     public synchronized void recordFinished(
             String uniqueId, String display, long durationMs, @Nullable String throwableJson) {
-        String className = XmlTestReport.classNameFrom(uniqueId);
+        String className = TestEventFields.classNameFrom(uniqueId);
         String failureMessage = null, failureStack = null;
         if (throwableJson != null) {
             failureMessage = Jsonl.str(throwableJson, "message");
@@ -172,7 +197,7 @@ public final class MarkdownTestReport {
      * Record a skipped test. {@code reason} is the skip reason from the protocol event, may be null.
      */
     public synchronized void recordSkipped(String uniqueId, String display, @Nullable String reason) {
-        String className = XmlTestReport.classNameFrom(uniqueId);
+        String className = TestEventFields.classNameFrom(uniqueId);
         entries.add(new Entry(className, display, 0, null, null, reason != null ? reason : ""));
     }
 

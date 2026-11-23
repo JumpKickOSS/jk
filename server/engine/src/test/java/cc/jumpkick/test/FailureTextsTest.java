@@ -3,6 +3,7 @@ package cc.jumpkick.test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.orchestrator.FailureTexts;
 import org.junit.jupiter.api.Test;
 
 /** A failure text a report already holds is handed back, so a repeated trace is kept once. */

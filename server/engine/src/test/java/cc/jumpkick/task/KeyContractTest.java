@@ -11,7 +11,7 @@ class KeyContractTest {
 
     @Test
     void suite_code_is_the_test_package_and_the_classes_named_for_tests_suites_and_junit() {
-        assertThat(KeyContract.suiteCode("cc/jumpkick/test/ResultAggregator.class"))
+        assertThat(KeyContract.suiteCode("cc/jumpkick/test/JUnitLauncher.class"))
                 .isTrue();
         assertThat(KeyContract.suiteCode("cc/jumpkick/test/PullWorkerPool$Lease.class"))
                 .isTrue();
@@ -36,6 +36,18 @@ class KeyContractTest {
                 .isFalse();
         assertThat(KeyContract.suiteCode("cc/jumpkick/test/sets/junit4.txt")).isFalse();
         assertThat(KeyContract.suiteCode("org/junit/platform/launcher/TestPlan.class"))
+                .isFalse();
+    }
+
+    @Test
+    void the_code_that_judges_a_suite_is_keyed_by_its_classes_not_by_the_contract() {
+        assertThat(KeyContract.suiteCode("cc/jumpkick/orchestrator/ResultAggregator.class"))
+                .isFalse();
+        assertThat(KeyContract.suiteCode("cc/jumpkick/orchestrator/TestClassMatch.class"))
+                .as("named for tests, but in the orchestrator's package")
+                .isFalse();
+        assertThat(KeyContract.SUITE.keeps(
+                        "server/test-orchestrator/src/main/java/cc/jumpkick/orchestrator/TestClassMatch.java"))
                 .isFalse();
     }
 

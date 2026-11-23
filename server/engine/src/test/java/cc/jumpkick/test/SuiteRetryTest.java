@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.entry;
 
 import cc.jumpkick.engine.plugin.WorkerContainment;
+import cc.jumpkick.orchestrator.RunShortfall;
 import cc.jumpkick.run.TestFailureInfo;
 import cc.jumpkick.run.TestSummary;
 import java.util.List;

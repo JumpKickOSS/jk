@@ -70,6 +70,7 @@ modules = [
   "shared/wire",
   "shared/ide",
   "server/guard",
+  "server/test-orchestrator",
   "server/engine",
   # Rule packs (cc.jumpkick.guards:*) — live under server/guard/packs/
   "server/guard/packs/spring",

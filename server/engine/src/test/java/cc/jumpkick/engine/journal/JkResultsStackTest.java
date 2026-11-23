@@ -3,7 +3,7 @@ package cc.jumpkick.engine.journal;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.test.FailureClip;
+import cc.jumpkick.orchestrator.FailureClip;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;

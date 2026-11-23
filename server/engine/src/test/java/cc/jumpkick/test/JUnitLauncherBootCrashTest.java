@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import cc.jumpkick.engine.plugin.OverbookSignals;
 import cc.jumpkick.engine.plugin.WorkerLeases;
+import cc.jumpkick.orchestrator.TestProgressListener;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;

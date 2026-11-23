@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.journal;
 
-import cc.jumpkick.test.FailureClip;
+import cc.jumpkick.orchestrator.FailureClip;
 import java.util.ArrayList;
 import java.util.List;
 import org.jspecify.annotations.NullMarked;

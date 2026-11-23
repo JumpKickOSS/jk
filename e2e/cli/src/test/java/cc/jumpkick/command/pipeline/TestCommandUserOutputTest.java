@@ -3,11 +3,11 @@ package cc.jumpkick.command.pipeline;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.orchestrator.TestProgressListener;
 import cc.jumpkick.run.BuildPlanKey;
 import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TestFailureInfo;
 import cc.jumpkick.runtime.TestSupport;
-import cc.jumpkick.test.TestProgressListener;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.PrintStream;

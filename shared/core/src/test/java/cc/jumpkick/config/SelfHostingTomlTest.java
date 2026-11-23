@@ -76,6 +76,7 @@ class SelfHostingTomlTest {
                         "shared/wire",
                         "shared/ide",
                         "server/guard",
+                        "server/test-orchestrator",
                         "server/engine",
                         "server/guard/packs/spring",
                         "server/guard/packs/quarkus",

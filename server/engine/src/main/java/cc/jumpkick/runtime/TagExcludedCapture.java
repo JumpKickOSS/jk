@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
-import cc.jumpkick.test.TestProgressListener;
+import cc.jumpkick.orchestrator.TestProgressListener;
 import org.jspecify.annotations.Nullable;
 
 /**

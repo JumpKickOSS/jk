@@ -2,6 +2,7 @@
 package cc.jumpkick.test;
 
 import cc.jumpkick.engine.plugin.WorkerExit;
+import cc.jumpkick.orchestrator.ResultAggregator;
 import cc.jumpkick.run.TestFailureInfo;
 import cc.jumpkick.run.TestSummary;
 import java.io.PrintWriter;

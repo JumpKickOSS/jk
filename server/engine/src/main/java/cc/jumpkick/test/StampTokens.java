@@ -5,6 +5,7 @@ import cc.jumpkick.cache.ActionRecordText;
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.Log;
+import cc.jumpkick.orchestrator.OrchestratorCode;
 import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.task.KeyAudit;
 import java.io.IOException;
@@ -30,13 +31,20 @@ public final class StampTokens {
 
     /**
      * The reason for a key whose jk moved, when which part did is not known: its version, its
-     * cache-key salt, or the engine code that runs a suite ({@link cc.jumpkick.task.KeyContract#SUITE}).
-     * A suite's stamp names the part ({@link #jkChanged}).
+     * cache-key salt, the engine code that runs a suite ({@link cc.jumpkick.task.KeyContract#SUITE})
+     * or the code that judges one ({@link OrchestratorCode}). A suite's stamp names the part
+     * ({@link #jkChanged}).
      */
     public static final String JK_CHANGED = "jk changed";
 
     /** The extras token every stamp carries for the jk that took it ({@link cc.jumpkick.task.KeyContract#keyVersion}). */
     private static final String JK_TOKEN = "x:jk:";
+
+    /** The extras token every stamp carries for the code that judged its suite ({@link OrchestratorCode#digest}). */
+    private static final String ORCHESTRATOR_TOKEN = "x:orchestrator:";
+
+    /** The part of the jk a reason names when the code that judges a suite moved. */
+    private static final String ORCHESTRATOR_PART = "test orchestrator";
 
     /** Where the tokens of the module's last green run under {@code selection} are kept. */
     static Path file(Path moduleDir, TestSelection selection) {
@@ -118,19 +126,21 @@ public final class StampTokens {
 
     /**
      * {@link #jkChanged} when the module's last green run under {@code selection} was keyed by
-     * another jk than {@code keyVersion} names, else null: a forecast that cannot take the suite's key
-     * yet (its compile is dirty) still says the jk moved, which is why every step of the tree reruns.
+     * another jk than {@code keyVersion} and {@code orchestrator} name, else null: a forecast that
+     * cannot take the suite's key yet (its compile is dirty) still says the jk moved, which is why
+     * every step of the tree reruns.
      */
-    public static @Nullable String jkMoved(Path moduleDir, TestSelection selection, String keyVersion) {
+    public static @Nullable String jkMoved(
+            Path moduleDir, TestSelection selection, String keyVersion, String orchestrator) {
         Map<String, String> was = load(moduleDir, selection);
         if (was == null) return null;
-        for (String name : was.keySet()) {
-            if (name.startsWith(JK_TOKEN)) {
-                String now = JK_TOKEN + keyVersion;
-                return name.equals(now) ? null : jkChanged(name, now);
-            }
-        }
-        return null;
+        Map<String, String> now = Map.of(JK_TOKEN + keyVersion, "", ORCHESTRATOR_TOKEN + orchestrator, "");
+        String jk = jkToken(was);
+        String judged = orchestratorToken(was);
+        boolean jkMoved = !jk.isEmpty() && !now.containsKey(jk);
+        boolean judgeMoved = !judged.isEmpty() && !now.containsKey(judged);
+        if (!jkMoved && !judgeMoved) return null;
+        return jkChanged(jkMoved ? jk : JK_TOKEN + keyVersion, JK_TOKEN + keyVersion, judgeMoved);
     }
 
     /**
@@ -141,13 +151,22 @@ public final class StampTokens {
      * token is spelled otherwise.
      */
     static String jkChanged(String was, String now) {
+        return jkChanged(was, now, false);
+    }
+
+    /** As {@link #jkChanged(String, String)}, naming the {@code test orchestrator} too when {@code judgeMoved}. */
+    static String jkChanged(String was, String now, boolean judgeMoved) {
         String[] a = jkParts(was);
         String[] b = jkParts(now);
-        if (a == null || b == null) return JK_CHANGED;
         List<String> moved = new ArrayList<>();
-        for (int i = 0; i < JK_PARTS.size(); i++) {
-            if (!a[i].equals(b[i])) moved.add(JK_PARTS.get(i));
+        if (a != null && b != null) {
+            for (int i = 0; i < JK_PARTS.size(); i++) {
+                if (!a[i].equals(b[i])) moved.add(JK_PARTS.get(i));
+            }
+        } else if (!was.equals(now)) {
+            return JK_CHANGED;
         }
+        if (judgeMoved) moved.add(ORCHESTRATOR_PART);
         return moved.isEmpty() ? JK_CHANGED : JK_CHANGED + " (" + String.join(", ", moved) + ")";
     }
 
@@ -168,9 +187,11 @@ public final class StampTokens {
     static @Nullable String reason(Map<String, String> was, Map<String, String> now) {
         List<KeyAudit.Token> moved = KeyAudit.diff(was, now);
         if (moved.isEmpty()) return null;
+        boolean judgeMoved = moved.stream().anyMatch(t -> t.name().startsWith(ORCHESTRATOR_TOKEN));
         for (KeyAudit.Token t : moved) {
-            if (t.name().startsWith(JK_TOKEN)) return jkChanged(jkToken(was), jkToken(now));
+            if (t.name().startsWith(JK_TOKEN)) return jkChanged(jkToken(was), jkToken(now), judgeMoved);
         }
+        if (judgeMoved) return JK_CHANGED + " (" + ORCHESTRATOR_PART + ")";
         // The caller's variables by name, never by value: which one changed, came or went.
         String env = variablesMoved(moved);
         if (env != null) {
@@ -193,6 +214,14 @@ public final class StampTokens {
     private static String jkToken(Map<String, String> tokens) {
         for (String name : tokens.keySet()) {
             if (name.startsWith(JK_TOKEN)) return name;
+        }
+        return "";
+    }
+
+    /** The orchestrator token among {@code tokens}, or an empty name when there is none. */
+    private static String orchestratorToken(Map<String, String> tokens) {
+        for (String name : tokens.keySet()) {
+            if (name.startsWith(ORCHESTRATOR_TOKEN)) return name;
         }
         return "";
     }

@@ -3,6 +3,7 @@ package cc.jumpkick.test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.orchestrator.FailureClip;
 import org.junit.jupiter.api.Test;
 
 class FailureClipTest {
@@ -60,7 +61,7 @@ class FailureClipTest {
         String message = "expected: <" + "x".repeat(3_000_000) + "> but was: <y>";
         String cut = FailureClip.message(message);
         assertThat(cut.length()).isLessThanOrEqualTo(FailureClip.MAX_MESSAGE_CHARS + 64);
-        assertThat(cut).contains(JUnitLauncher.MESSAGE_TRUNCATION_MARKER).endsWith(" more chars)");
+        assertThat(cut).contains(FailureClip.MESSAGE_TRUNCATION_MARKER).endsWith(" more chars)");
 
         String astral = "a".repeat(FailureClip.MAX_MESSAGE_CHARS - 1) + "😀tail";
         String cutAstral = FailureClip.message(astral);
@@ -73,10 +74,10 @@ class FailureClipTest {
     @Test
     void a_runner_capped_message_keeps_its_remainder_count() {
         String runnerCapped = "x".repeat(FailureClip.MAX_MESSAGE_CHARS)
-                + JUnitLauncher.MESSAGE_TRUNCATION_MARKER
+                + FailureClip.MESSAGE_TRUNCATION_MARKER
                 + "3000000 more chars)";
         assertThat(FailureClip.message(runnerCapped)).isSameAs(runnerCapped);
-        String quoting = "y".repeat(20_000) + JUnitLauncher.MESSAGE_TRUNCATION_MARKER + "12 more chars)";
+        String quoting = "y".repeat(20_000) + FailureClip.MESSAGE_TRUNCATION_MARKER + "12 more chars)";
         assertThat(FailureClip.message(quoting).length()).isLessThanOrEqualTo(FailureClip.MAX_MESSAGE_CHARS + 64);
     }
 

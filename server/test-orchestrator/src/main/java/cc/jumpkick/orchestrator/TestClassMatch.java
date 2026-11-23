@@ -1,12 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.runtime;
+package cc.jumpkick.orchestrator;
 
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.TestSelection;
-import cc.jumpkick.run.BuildPlan;
-import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TestSummary;
-import cc.jumpkick.task.TestRun;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -53,25 +50,12 @@ public final class TestClassMatch {
 
     /**
      * The step label of a module the patterns skipped, same shape as the absent-suite skip, with
-     * {@code suiteHint} ({@link cc.jumpkick.test.SuiteFilter#classHint}) when the patterns name
+     * {@code suiteHint} (the engine's {@code SuiteFilter.classHint}) when the patterns name
      * classes another suite of the module owns.
      */
     public static String skipLabel(List<String> patterns, @Nullable String suiteHint) {
         String label = "skipped: no classes match --class " + String.join(", ", patterns);
         return suiteHint == null ? label : label + "; " + suiteHint;
-    }
-
-    /**
-     * Skip a workspace module the patterns matched nothing in, leaving the runner's
-     * {@code tag-excluded} warning and the suite hint, when there are, for {@link #runWideVerdict}.
-     */
-    public static void skip(
-            TaskContext ctx, TestSelection selection, @Nullable String tagExcluded, @Nullable String suiteHint) {
-        if (tagExcluded != null || suiteHint != null) {
-            ctx.put(BuildPlanner.TEST_RUN, new TestRun(null, tagExcluded, suiteHint));
-        }
-        ctx.label(skipLabel(selection.classes(), suiteHint));
-        ctx.cached();
     }
 
     /** The failure line: the patterns, so the typo is on the screen; "tests" when one names a method. */
@@ -101,25 +85,27 @@ public final class TestClassMatch {
     /**
      * The workspace's verdict once every module has finished: the no-match message when the session
      * asked for classes, the run executed suites, and no module's suite ran a test — otherwise
-     * {@code null}. A module that matched carries a {@link TestRun#result} with tests in it, whether
-     * it ran them or replayed a green stamp for the same patterns. A module whose tag filter dropped
-     * a named class left {@link TestRun#tagExcluded}, and a module whose unselected suite owns a
-     * named class left {@link TestRun#suiteHint}; the verdict carries them.
+     * {@code null}. {@code runs} holds what each module's test step left. A module that matched
+     * carries a {@link TestRun#result} with tests in it, whether it ran them or replayed a green
+     * stamp for the same patterns. A module whose tag filter dropped a named class left {@link
+     * TestRun#tagExcluded}, and a module whose unselected suite owns a named class left {@link
+     * TestRun#suiteHint}; the verdict carries them.
      */
-    public static @Nullable String runWideVerdict(Session session, boolean skipTests, Collection<BuildPlan> plans) {
+    public static @Nullable String runWideVerdict(Session session, boolean skipTests, Collection<TestRun> runs) {
         TestSelection selection = session.testSelection();
         if (selection.classes().isEmpty() || session.affected()) return null;
         if (skipTests || selection.scriptsOnly()) return null;
-        for (BuildPlan plan : plans) {
-            TestSummary result =
-                    plan.get(BuildPlanner.TEST_RUN).map(TestRun::result).orElse(null);
+        for (TestRun run : runs) {
+            TestSummary result = run.result();
             if (result != null && result.total() > 0) return null;
         }
         List<String> excluded = new ArrayList<>();
         List<String> hints = new ArrayList<>();
-        for (BuildPlan plan : plans) {
-            plan.get(BuildPlanner.TEST_RUN).map(TestRun::tagExcluded).ifPresent(excluded::add);
-            plan.get(BuildPlanner.TEST_RUN).map(TestRun::suiteHint).ifPresent(hints::add);
+        for (TestRun run : runs) {
+            String tagExcluded = run.tagExcluded();
+            String suiteHint = run.suiteHint();
+            if (tagExcluded != null) excluded.add(tagExcluded);
+            if (suiteHint != null) hints.add(suiteHint);
         }
         return noMatchMessage(
                 selection,

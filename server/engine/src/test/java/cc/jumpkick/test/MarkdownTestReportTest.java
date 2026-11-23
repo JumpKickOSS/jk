@@ -10,6 +10,7 @@ import cc.jumpkick.engine.jobs.JobSessions;
 import cc.jumpkick.engine.journal.BuildAccumulator;
 import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.engine.journal.JournalWriter;
+import cc.jumpkick.orchestrator.FailureClip;
 import cc.jumpkick.run.JkThreads;
 import cc.jumpkick.runtime.base.BuildMetrics;
 import java.nio.file.Files;

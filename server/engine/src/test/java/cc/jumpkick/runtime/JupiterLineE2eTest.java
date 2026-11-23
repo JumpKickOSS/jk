@@ -3,11 +3,11 @@ package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.orchestrator.TestRun;
 import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.TestSummary;
-import cc.jumpkick.task.TestRun;
 import cc.jumpkick.testing.TestCaches;
 import java.io.IOException;
 import java.nio.file.Files;

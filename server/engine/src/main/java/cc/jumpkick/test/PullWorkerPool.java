@@ -11,6 +11,10 @@ import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.engine.plugin.WorkerExit;
 import cc.jumpkick.engine.plugin.WorkerLeases;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.orchestrator.ResultAggregator;
+import cc.jumpkick.orchestrator.RunShortfall;
+import cc.jumpkick.orchestrator.SuiteReport;
+import cc.jumpkick.orchestrator.TestProgressListener;
 import cc.jumpkick.run.SessionCancel;
 import cc.jumpkick.run.TestFailureInfo;
 import cc.jumpkick.run.TestSummary;
@@ -257,8 +261,9 @@ final class PullWorkerPool {
         // workerIdBase keeps ids unique across the sharded and serial-tag pools, so the
         // per-worker temp/state suffixes and failure attributions never collide.
         int workerId = workerIdBase + shards.size() + 1;
-        var shard =
-                new Shard(workerId, new ResultAggregator(listener, workerId, xml, md, moduleLabel, launcher.secrets()));
+        var shard = new Shard(
+                workerId,
+                new ResultAggregator(listener, workerId, SuiteReport.all(xml, md), moduleLabel, launcher.secrets()));
         List<String> args = launcher.pullWorkerArgs(workerId, testClassesDir);
         // Virtual: the thread blocks on the child's stdout for the worker's whole life —
         // exactly the shape VT is for.

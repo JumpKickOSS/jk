@@ -3,6 +3,7 @@ package cc.jumpkick.test;
 
 import cc.jumpkick.engine.plugin.WorkerExit;
 import cc.jumpkick.host.Classpaths;
+import cc.jumpkick.orchestrator.WorkerEnd;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -157,6 +158,31 @@ public final class TestLauncherFailure extends RuntimeException {
     /** A suite-running fork (the single runner or a pool worker), started as {@code command}, died before its first event. */
     public static TestLauncherFailure runner(String moduleLabel, WorkerExit exit, String output, List<String> command) {
         return new TestLauncherFailure(moduleLabel, "test runner", exit, output, command);
+    }
+
+    /**
+     * How a suite-running fork started as {@code command} ended, as the verdict reads it: its exit,
+     * and this failure ({@link #runner}) when it died before its first test.
+     */
+    public static WorkerEnd ending(WorkerExit exit, List<String> command) {
+        return new Ending(exit, command);
+    }
+
+    private record Ending(WorkerExit exit, List<String> command) implements WorkerEnd {
+        @Override
+        public int code() {
+            return exit.code();
+        }
+
+        @Override
+        public String failure(String otherwise) {
+            return exit.failure(otherwise);
+        }
+
+        @Override
+        public RuntimeException nothingRan(String moduleLabel, String crashOutput) {
+            return runner(moduleLabel, exit, crashOutput, command);
+        }
     }
 
     public String moduleLabel() {

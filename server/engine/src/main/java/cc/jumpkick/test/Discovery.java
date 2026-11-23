@@ -3,6 +3,7 @@ package cc.jumpkick.test;
 
 import cc.jumpkick.engine.plugin.WorkerExit;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.orchestrator.TestProgressListener;
 import cc.jumpkick.run.TestSummary;
 import java.util.ArrayList;
 import java.util.List;

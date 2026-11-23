@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.tuple;
 
 import cc.jumpkick.cache.ActionRecordText;
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.orchestrator.TestProgressListener;
 import cc.jumpkick.run.BuildPlanKey;
 import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TestClassResult;
@@ -13,7 +14,6 @@ import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.TestStamp;
 import cc.jumpkick.test.SuiteFilter;
-import cc.jumpkick.test.TestProgressListener;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;

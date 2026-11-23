@@ -110,18 +110,38 @@ class StampTokensTest {
     @Test
     void a_forecast_whose_compile_is_dirty_still_names_a_new_jk(@TempDir Path dir) {
         TestSelection sel = TestSelection.DEFAULT;
-        assertThat(StampTokens.jkMoved(dir, sel, "0.52.0-SNAPSHOT#8+aaaaaaaaaaaa"))
+        assertThat(StampTokens.jkMoved(dir, sel, "0.52.0-SNAPSHOT#8+aaaaaaaaaaaa", "cccccccccccc"))
                 .isNull();
         StampTokens.keep(dir, sel, "k", () -> {
             KeyAudit.tap("x:jk:0.52.0-SNAPSHOT#8+aaaaaaaaaaaa");
             return "k";
         });
-        assertThat(StampTokens.jkMoved(dir, sel, "0.52.0-SNAPSHOT#8+aaaaaaaaaaaa"))
+        assertThat(StampTokens.jkMoved(dir, sel, "0.52.0-SNAPSHOT#8+aaaaaaaaaaaa", "cccccccccccc"))
                 .isNull();
-        assertThat(StampTokens.jkMoved(dir, sel, "0.52.0-SNAPSHOT#8+bbbbbbbbbbbb"))
+        assertThat(StampTokens.jkMoved(dir, sel, "0.52.0-SNAPSHOT#8+bbbbbbbbbbbb", "cccccccccccc"))
                 .isEqualTo("jk changed (suite code)");
-        assertThat(StampTokens.jkMoved(dir, sel, "0.53.0-SNAPSHOT#8+aaaaaaaaaaaa"))
+        assertThat(StampTokens.jkMoved(dir, sel, "0.53.0-SNAPSHOT#8+aaaaaaaaaaaa", "cccccccccccc"))
                 .isEqualTo("jk changed (version)");
+    }
+
+    @Test
+    void moved_judging_code_is_named_as_the_test_orchestrator(@TempDir Path dir) {
+        TestSelection sel = TestSelection.DEFAULT;
+        StampTokens.keep(dir, sel, "k", () -> {
+            KeyAudit.tap("x:jk:0.52.0#8+aaaaaaaaaaaa");
+            KeyAudit.tap("x:orchestrator:cccccccccccc");
+            return "k";
+        });
+        assertThat(StampTokens.jkMoved(dir, sel, "0.52.0#8+aaaaaaaaaaaa", "cccccccccccc"))
+                .isNull();
+        assertThat(StampTokens.jkMoved(dir, sel, "0.52.0#8+aaaaaaaaaaaa", "dddddddddddd"))
+                .isEqualTo("jk changed (test orchestrator)");
+        assertThat(StampTokens.jkMoved(dir, sel, "0.52.0#8+bbbbbbbbbbbb", "dddddddddddd"))
+                .isEqualTo("jk changed (suite code, test orchestrator)");
+        assertThat(StampTokens.reason(
+                        Map.of("x:jk:0.52.0#8+aaaaaaaaaaaa", "", "x:orchestrator:cccccccccccc", ""),
+                        Map.of("x:jk:0.52.0#8+aaaaaaaaaaaa", "", "x:orchestrator:dddddddddddd", "")))
+                .isEqualTo("jk changed (test orchestrator)");
     }
 
     /**

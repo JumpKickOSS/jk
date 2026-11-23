@@ -4,9 +4,9 @@ package cc.jumpkick.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.orchestrator.TestProgressListener;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.task.ActionCache;
-import cc.jumpkick.test.TestProgressListener;
 import java.nio.file.Path;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;

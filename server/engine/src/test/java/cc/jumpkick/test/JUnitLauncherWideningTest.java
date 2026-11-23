@@ -8,6 +8,7 @@ import cc.jumpkick.config.PluginTuning;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.plugin.FakeWorkerShell;
 import cc.jumpkick.engine.plugin.WorkerLeases;
+import cc.jumpkick.orchestrator.TestProgressListener;
 import cc.jumpkick.run.TestSummary;
 import java.nio.file.Files;
 import java.nio.file.Path;

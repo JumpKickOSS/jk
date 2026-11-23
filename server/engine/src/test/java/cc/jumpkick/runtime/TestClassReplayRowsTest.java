@@ -4,12 +4,12 @@ package cc.jumpkick.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.orchestrator.TestProgressListener;
 import cc.jumpkick.run.BuildPlanKey;
 import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TestClassResult;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.task.ActionCache;
-import cc.jumpkick.test.TestProgressListener;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;

@@ -4,6 +4,9 @@ package cc.jumpkick.test;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.Request;
+import cc.jumpkick.orchestrator.ResultAggregator;
+import cc.jumpkick.orchestrator.SuiteReport;
+import cc.jumpkick.orchestrator.TestProgressListener;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -27,7 +30,7 @@ class JUnitLauncherPublishTest {
         RunResults sink = new RunResults();
         Request.detached().with(RunResults.SLOT, sink).run(() -> {
             var md = new MarkdownTestReport(false);
-            var agg = new ResultAggregator(TestProgressListener.noop(), 0, null, md);
+            var agg = new ResultAggregator(TestProgressListener.noop(), 0, SuiteReport.all(null, md), "");
             agg.accept("{\"event\":\"finished\",\"uniqueId\":\"[engine:junit-jupiter]/[class:A]/[method:a()]\","
                     + "\"testClass\":\"A\",\"testMethod\":\"a()\",\"type\":\"TEST\",\"status\":\"SUCCESSFUL\"}");
             launcher.publishTests(md, dir, null);

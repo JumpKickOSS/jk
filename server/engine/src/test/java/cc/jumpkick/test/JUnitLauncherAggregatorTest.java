@@ -8,6 +8,10 @@ import static org.assertj.core.api.Assertions.catchThrowableOfType;
 import cc.jumpkick.config.Request;
 import cc.jumpkick.engine.plugin.PluginProcess;
 import cc.jumpkick.engine.plugin.WorkerExit;
+import cc.jumpkick.orchestrator.ResultAggregator;
+import cc.jumpkick.orchestrator.SuiteReport;
+import cc.jumpkick.orchestrator.TestEventFields;
+import cc.jumpkick.orchestrator.TestProgressListener;
 import cc.jumpkick.plugin.protocol.JUnitUniqueIds;
 import cc.jumpkick.run.SessionCancel;
 import cc.jumpkick.run.TestFailureInfo;
@@ -34,7 +38,7 @@ class JUnitLauncherAggregatorTest {
     /** The summary of a fork that ran its plan to the end and exited 0, as the runner does. */
     private static TestSummary completed(ResultAggregator agg) {
         agg.accept(PLAN_FINISHED);
-        return agg.toResult(WorkerExit.noWorker(0));
+        return agg.toResult(TestLauncherFailure.ending(WorkerExit.noWorker(0), List.of()));
     }
 
     @Test
@@ -64,7 +68,7 @@ class JUnitLauncherAggregatorTest {
     void the_xml_names_an_invocation_by_its_display_name_and_a_plain_test_by_its_method(@TempDir Path dir)
             throws Exception {
         var xml = new XmlTestReport();
-        var agg = new ResultAggregator(xml);
+        var agg = new ResultAggregator(TestProgressListener.noop(), 0, xml, "");
         agg.accept(
                 "{\"event\":\"finished\",\"uniqueId\":\"[engine:junit-jupiter]/[class:C]/[test-template:t(String)]"
                         + "/[test-template-invocation:#1]\",\"testEngine\":\"junit-jupiter\",\"testClass\":\"C\","
@@ -81,7 +85,7 @@ class JUnitLauncherAggregatorTest {
     void an_aborted_test_s_skip_names_the_assumption_that_aborted_it(@TempDir Path dir) throws Exception {
         var xml = new XmlTestReport();
         var md = new MarkdownTestReport();
-        var agg = new ResultAggregator(TestProgressListener.noop(), 0, xml, md);
+        var agg = new ResultAggregator(TestProgressListener.noop(), 0, SuiteReport.all(xml, md), "");
         agg.accept("{\"event\":\"finished\",\"uniqueId\":\"[engine:junit-jupiter]/[class:A]/[method:a()]\","
                 + "\"testClass\":\"A\",\"testMethod\":\"a()\",\"type\":\"TEST\",\"status\":\"ABORTED\","
                 + "\"throwable\":{\"class\":\"org.opentest4j.TestAbortedException\","
@@ -101,7 +105,7 @@ class JUnitLauncherAggregatorTest {
     @Test
     void output_printed_while_a_class_runs_lands_in_that_class_s_system_out(@TempDir Path dir) throws Exception {
         var xml = new XmlTestReport();
-        var agg = new ResultAggregator(xml);
+        var agg = new ResultAggregator(TestProgressListener.noop(), 0, xml, "");
         agg.userOutput("JVM banner before any class");
         agg.accept("{\"event\":\"started\",\"uniqueId\":\"[engine:junit-jupiter]/[class:A]\",\"type\":\"CONTAINER\"}");
         agg.userOutput("A says hello");
@@ -132,7 +136,7 @@ class JUnitLauncherAggregatorTest {
         RunResults sink = new RunResults();
         Request.detached().with(RunResults.SLOT, sink).run(() -> {
             var md = new MarkdownTestReport(true);
-            var agg = new ResultAggregator(TestProgressListener.noop(), 0, null, md);
+            var agg = new ResultAggregator(TestProgressListener.noop(), 0, SuiteReport.all(null, md), "");
             agg.userOutput("JVM banner before any class");
             agg.accept(
                     "{\"event\":\"started\",\"uniqueId\":\"[engine:junit-jupiter]/[class:A]\",\"type\":\"CONTAINER\"}");
@@ -230,7 +234,9 @@ class JUnitLauncherAggregatorTest {
         agg.accept("{\"event\":\"plan_finished\",\"duration_ms\":100}");
         agg.accept("{\"event\":\"finished\",\"id\":\"a\",\"type\":\"TEST\",\"status\":\"SUCCESSFUL\"}");
 
-        assertThat(agg.toResult(WorkerExit.noWorker(0)).total()).isEqualTo(1);
+        assertThat(agg.toResult(TestLauncherFailure.ending(WorkerExit.noWorker(0), List.of()))
+                        .total())
+                .isEqualTo(1);
     }
 
     /**
@@ -245,7 +251,7 @@ class JUnitLauncherAggregatorTest {
         agg.accept("{\"event\":\"finished\",\"id\":\"a\",\"type\":\"TEST\",\"status\":\"SUCCESSFUL\"}");
         agg.accept("{\"event\":\"finished\",\"id\":\"b\",\"type\":\"TEST\",\"status\":\"SUCCESSFUL\"}");
 
-        var result = agg.toResult(WorkerExit.noWorker(0));
+        var result = agg.toResult(TestLauncherFailure.ending(WorkerExit.noWorker(0), List.of()));
 
         assertThat(result.allPassed()).isFalse();
         assertThat(result.total()).isEqualTo(3);
@@ -268,7 +274,7 @@ class JUnitLauncherAggregatorTest {
             agg.accept("{\"event\":\"finished\",\"id\":\"a\",\"type\":\"TEST\",\"status\":\"SUCCESSFUL\"}");
             agg.accept("{\"event\":\"finished\",\"id\":\"b\",\"type\":\"TEST\",\"status\":\"FAILED\"}");
 
-            var result = agg.toResult(WorkerExit.noWorker(exit));
+            var result = agg.toResult(TestLauncherFailure.ending(WorkerExit.noWorker(exit), List.of()));
 
             assertThat(result.failures())
                     .as("exit %d with no plan_finished", exit)
@@ -279,7 +285,8 @@ class JUnitLauncherAggregatorTest {
     @Test
     void a_fork_that_exits_0_with_no_event_and_no_plan_is_a_launcher_failure() {
         var agg = new ResultAggregator();
-        assertThatThrownBy(() -> agg.toResult(WorkerExit.noWorker(0), "", List.of("java", "-cp", "x", "Main")))
+        assertThatThrownBy(() -> agg.toResult(
+                        TestLauncherFailure.ending(WorkerExit.noWorker(0), List.of("java", "-cp", "x", "Main")), ""))
                 .isInstanceOfSatisfying(TestLauncherFailure.class, f -> {
                     assertThat(f.exit()).isZero();
                     assertThat(f.phase()).isEqualTo("test runner");
@@ -357,15 +364,15 @@ class JUnitLauncherAggregatorTest {
         assertThat(JUnitUniqueIds.percentDecode("bar(int%5B%5D)")).isEqualTo("bar(int[])");
         assertThat(JUnitUniqueIds.percentDecode("foo%2Fbar%251")).isEqualTo("foo/bar%1");
         assertThat(JUnitUniqueIds.percentDecode("plain")).isEqualTo("plain");
-        assertThat(JUnitLauncher.classFromUniqueId(
+        assertThat(TestEventFields.classFromUniqueId(
                         "[engine:junit-jupiter]/[class:demo.FooTest]/[method:bar(int%5B%5D)]"))
                 .isEqualTo("demo.FooTest");
-        assertThat(JUnitLauncher.classFromUniqueId("[engine:spock]/[spec:demo.FooSpec]/[feature:$spock_feature_0_1]"))
+        assertThat(TestEventFields.classFromUniqueId("[engine:spock]/[spec:demo.FooSpec]/[feature:$spock_feature_0_1]"))
                 .isEqualTo("demo.FooSpec");
-        assertThat(JUnitLauncher.classFromUniqueId("[engine:cucumber]/[feature:x.feature]/[scenario:1]"))
+        assertThat(TestEventFields.classFromUniqueId("[engine:cucumber]/[feature:x.feature]/[scenario:1]"))
                 .isEqualTo("x.feature");
-        assertThat(JUnitLauncher.classFromUniqueId("[engine:junit-jupiter]")).isEmpty();
-        assertThat(JUnitLauncher.engineFromUniqueId(
+        assertThat(TestEventFields.classFromUniqueId("[engine:junit-jupiter]")).isEmpty();
+        assertThat(TestEventFields.engineFromUniqueId(
                         "[engine:junit-jupiter]/[class:demo.FooTest]/[method:bar(int%5B%5D)]"))
                 .isEqualTo("junit-jupiter");
     }
@@ -670,7 +677,7 @@ class JUnitLauncherAggregatorTest {
     void a_non_zero_exit_after_a_pass_is_not_green() {
         var agg = new ResultAggregator();
         agg.accept("{\"event\":\"finished\",\"id\":\"method\",\"type\":\"TEST\",\"status\":\"SUCCESSFUL\"}");
-        var result = agg.toResult(WorkerExit.noWorker(137));
+        var result = agg.toResult(TestLauncherFailure.ending(WorkerExit.noWorker(137), List.of()));
         assertThat(result.allPassed()).isFalse();
         assertThat(result.failed()).isEqualTo(1);
     }
@@ -680,15 +687,19 @@ class JUnitLauncherAggregatorTest {
         var finished = new ResultAggregator();
         finished.accept("{\"event\":\"finished\",\"id\":\"method\",\"type\":\"TEST\",\"status\":\"SUCCESSFUL\"}");
         finished.accept(PLAN_FINISHED);
-        assertThat(finished.toResult(WorkerExit.noWorker(0)).allPassed()).isTrue();
-        assertThat(finished.toResult(WorkerExit.noWorker(0)).failed()).isZero();
+        assertThat(finished.toResult(TestLauncherFailure.ending(WorkerExit.noWorker(0), List.of()))
+                        .allPassed())
+                .isTrue();
+        assertThat(finished.toResult(TestLauncherFailure.ending(WorkerExit.noWorker(0), List.of()))
+                        .failed())
+                .isZero();
 
         SessionCancel.bind(() -> true);
         try {
             var cancelled = new ResultAggregator();
             cancelled.accept("{\"event\":\"discovery_total\",\"classes\":1,\"tests\":1}");
             cancelled.accept("{\"event\":\"finished\",\"id\":\"method\",\"type\":\"TEST\",\"status\":\"SUCCESSFUL\"}");
-            var result = cancelled.toResult(WorkerExit.noWorker(137));
+            var result = cancelled.toResult(TestLauncherFailure.ending(WorkerExit.noWorker(137), List.of()));
             assertThat(result.allPassed()).isTrue();
             assertThat(result.failed()).isZero();
         } finally {
@@ -701,7 +712,9 @@ class JUnitLauncherAggregatorTest {
         var agg = new ResultAggregator();
         String crash = "Exception in thread \"main\" java.lang.NoClassDefFoundError: Missing\n"
                 + "\tat cc.jumpkick.Boot.main(Boot.java:1)";
-        assertThatThrownBy(() -> agg.toResult(WorkerExit.noWorker(1), crash, List.of())) // no events, non-zero exit
+        assertThatThrownBy(() -> agg.toResult(
+                        TestLauncherFailure.ending(WorkerExit.noWorker(1), List.of()),
+                        crash)) // no events, non-zero exit
                 .isInstanceOfSatisfying(TestLauncherFailure.class, f -> {
                     assertThat(f.exit()).isEqualTo(1);
                     assertThat(f.phase()).isEqualTo("test runner");

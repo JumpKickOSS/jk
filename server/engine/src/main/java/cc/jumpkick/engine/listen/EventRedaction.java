@@ -6,9 +6,8 @@ import cc.jumpkick.config.Redacted;
 import cc.jumpkick.config.RunNotices;
 import cc.jumpkick.config.SecretRedactor;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.orchestrator.FailureClip;
 import cc.jumpkick.run.TestFailureInfo;
-import cc.jumpkick.test.FailureClip;
-import cc.jumpkick.test.JUnitLauncher;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Objects;
@@ -152,9 +151,9 @@ public final class EventRedaction {
         String message;
         String stack;
         try {
-            message = redactor.redactClipped(f.message(), JUnitLauncher.MESSAGE_TRUNCATION_MARKER);
+            message = redactor.redactClipped(f.message(), FailureClip.MESSAGE_TRUNCATION_MARKER);
             stack = redactor.redactClipped(
-                    f.stack(), FailureClip.LINE_TRUNCATION_MARKER, JUnitLauncher.STACK_TRUNCATION_MARKER);
+                    f.stack(), FailureClip.LINE_TRUNCATION_MARKER, FailureClip.STACK_TRUNCATION_MARKER);
         } catch (RuntimeException e) {
             warnFailOpen(e);
             return f;

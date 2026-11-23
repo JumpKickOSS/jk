@@ -6,6 +6,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.config.ResolvedSecrets;
 import cc.jumpkick.config.SecretRedactor;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.orchestrator.ResultAggregator;
+import cc.jumpkick.orchestrator.TestProgressListener;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.AfterEach;

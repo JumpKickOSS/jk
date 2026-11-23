@@ -24,6 +24,9 @@ import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.DeclaredSuite;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.orchestrator.FailureClip;
+import cc.jumpkick.orchestrator.TestEventFields;
+import cc.jumpkick.orchestrator.TestProgressListener;
 import cc.jumpkick.plugin.protocol.JUnitUniqueIds;
 import cc.jumpkick.run.SlowestTests;
 import cc.jumpkick.run.TaskContext;
@@ -37,10 +40,7 @@ import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.JavaCompile;
 import cc.jumpkick.test.ClassTags;
-import cc.jumpkick.test.FailureClip;
-import cc.jumpkick.test.JUnitLauncher;
 import cc.jumpkick.test.SuiteFilter;
-import cc.jumpkick.test.TestProgressListener;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -629,7 +629,7 @@ public final class TestSupport {
                 // tree (finish-only labels lag one event behind). Prefer Class > method when the
                 // unique id carries a class segment and display is the bare method name.
                 // Skip engine/suite roots (no [class:…] segment) so we don't flash "JUnit Jupiter".
-                if (!isTest && JUnitLauncher.classFromUniqueId(id).isEmpty()) {
+                if (!isTest && TestEventFields.classFromUniqueId(id).isEmpty()) {
                     return;
                 }
                 // A class container's start, named as its finish will be (TestClassTally): the
@@ -753,7 +753,7 @@ public final class TestSupport {
     /** The budget warning: which test, its wall, and the budget it went over. */
     static String overBudget(String uniqueId, long millis, long budgetMs) {
         String method = SlowestTests.methodName(JUnitUniqueIds.methodOf(uniqueId));
-        String test = JUnitLauncher.classFromUniqueId(uniqueId) + (method.isEmpty() ? "" : "#" + method);
+        String test = TestEventFields.classFromUniqueId(uniqueId) + (method.isEmpty() ? "" : "#" + method);
         return test + " took " + SlowestTests.duration(millis) + ", over the fast-tier budget of "
                 + SlowestTests.duration(budgetMs) + " ([test] fast-method-budget)";
     }
@@ -774,7 +774,7 @@ public final class TestSupport {
      * " > "} display separator — the CLI paints this with Java syntax highlighting.
      */
     static String liveTestDetail(String uniqueId, String display, boolean isTest) {
-        String cls = JUnitLauncher.classFromUniqueId(uniqueId);
+        String cls = TestEventFields.classFromUniqueId(uniqueId);
         String simple = simpleClassName(cls);
         String d = normalizeTestDisplay(display);
         // Display never shows package FQCNs in param lists (wire may still carry them).

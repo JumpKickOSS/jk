@@ -560,7 +560,7 @@ class LauncherPathTest {
     // --- the message cap -----------------------------------------------------
 
     /**
-     * The engine's {@code JUnitLauncher.MESSAGE_TRUNCATION_MARKER}. Spelled out
+     * The engine's {@code FailureClip.MESSAGE_TRUNCATION_MARKER}. Spelled out
      * here because the engine is not on this worker's classpath — the two must stay identical or
      * the engine stops recognising a worker-capped message and re-cuts it.
      */

@@ -22,7 +22,11 @@ import cc.jumpkick.engine.plugin.WorkerLeases;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.TestSuites;
-import cc.jumpkick.plugin.protocol.JUnitUniqueIds;
+import cc.jumpkick.orchestrator.NoTestsGuard;
+import cc.jumpkick.orchestrator.ResultAggregator;
+import cc.jumpkick.orchestrator.RunShortfall;
+import cc.jumpkick.orchestrator.SuiteReport;
+import cc.jumpkick.orchestrator.TestProgressListener;
 import cc.jumpkick.run.SessionCancel;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.runtime.base.RecentClassWalls;
@@ -46,12 +50,6 @@ import org.jspecify.annotations.Nullable;
  * Every test JVM starts with its stdin closed. Protocol lines are {@code ##JKT:}-prefixed JSONL.
  */
 public final class JUnitLauncher {
-
-    /** Marker appended by {@link FailureClip#stack}; {@code EventRedaction} keys the cut-seam masking off it. */
-    public static final String STACK_TRUNCATION_MARKER = "\n\t... stack truncated (";
-
-    /** Marker appended by {@link FailureClip#message} and the test runner's own message cap. */
-    public static final String MESSAGE_TRUNCATION_MARKER = " ... message truncated (";
 
     /** Marker prefix every protocol line carries. Must match {@code JsonEventWriter.PREFIX}. */
     static final String PROTOCOL_PREFIX = "##JKT:";
@@ -777,7 +775,8 @@ public final class JUnitLauncher {
         runXml = xml;
         MarkdownTestReport md = new MarkdownTestReport(keepOutput);
         runMd = md;
-        var aggregator = new ResultAggregator(listener, /* workerId */ 0, xml, md, moduleLabel, secrets());
+        var aggregator =
+                new ResultAggregator(listener, /* workerId */ 0, SuiteReport.all(xml, md), moduleLabel, secrets());
         // Capture the worker's non-protocol output so a hard crash (uncaught
         // throwable / System.exit before any test event) can be explained instead
         // of surfacing only as "runner exited N".
@@ -815,7 +814,9 @@ public final class JUnitLauncher {
             WorkerExit exit = key == null
                     ? launch(javaHome, classpath, flags, args, aggregator, crash)
                     : HeapScope.call(key, () -> launch(javaHome, classpath, flags, args, aggregator, crash));
-            return aggregator.toResult(exit, crash.text(), PluginLoader.command(javaHome, classpath, flags, args));
+            return aggregator.toResult(
+                    TestLauncherFailure.ending(exit, PluginLoader.command(javaHome, classpath, flags, args)),
+                    crash.text());
         } catch (PluginProcess.HandlerFailure e) {
             listener.onUserOutput(WorkerFailureRow.SINGLE_WORKER, Objects.requireNonNull(e.getMessage()));
             return WorkerFailureRow.singleFork(aggregator, moduleLabel, e.handler());
@@ -1042,7 +1043,7 @@ public final class JUnitLauncher {
             XmlTestReport xml = runXml;
             MarkdownTestReport md = Objects.requireNonNull(runMd, "runMd");
             Held held = new Held(md, md.forget(names), xml, xml == null ? null : xml.forget(names));
-            var aggregator = new ResultAggregator(listener, 0, xml, md, moduleLabel, secrets());
+            var aggregator = new ResultAggregator(listener, 0, SuiteReport.all(xml, md), moduleLabel, secrets());
             List<String> retryFlags = jvmFlags(JvmRole.SUITE, 1, testTmpDir);
             Path classesDir = Objects.requireNonNull(testClassesDir, "testClassesDir");
             List<String> args = withTagArgs(List.of("--scan-classpath=" + classesDir), names);
@@ -1237,35 +1238,5 @@ public final class JUnitLauncher {
         } catch (IllegalStateException e) {
             throw new IOException("jk test: " + e.getMessage(), e);
         }
-    }
-
-    /**
-     * The segments engines use for the class-like node when there is no {@code [class:…]}: Spock and
-     * Kotest name the spec, Cucumber the feature. In lookup order. Vintage's {@code [runner:…]} is
-     * read by the shared walk itself.
-     */
-    private static final List<String> CLASS_LIKE_SEGMENTS = List.of("spec", "feature");
-
-    /**
-     * The test class a JUnit Platform unique id belongs to: {@code [class:…]} plus the
-     * {@code [nested-class:…]} join, else an engine's class-like segment ({@code [spec:…]},
-     * {@code [feature:…]}), else Vintage's runner (the shared {@link JUnitUniqueIds} walk); empty for
-     * an engine or suite root. The class-like segment wins over the Vintage walk, which would read a
-     * Kotest {@code [test:adds]} as a class named {@code adds}.
-     */
-    public static String classFromUniqueId(@Nullable String id) {
-        if (id == null) return "";
-        if (JUnitUniqueIds.segment(id, "class").isEmpty()) {
-            for (String segment : CLASS_LIKE_SEGMENTS) {
-                String value = JUnitUniqueIds.segment(id, segment);
-                if (!value.isEmpty()) return value;
-            }
-        }
-        return JUnitUniqueIds.classOf(id);
-    }
-
-    /** Engine id from {@code [engine:junit-jupiter]} — the shared {@link JUnitUniqueIds} walk. */
-    public static String engineFromUniqueId(String id) {
-        return id == null ? "" : JUnitUniqueIds.engineOf(id);
     }
 }
