@@ -74,7 +74,8 @@ final class TextFiles {
             ".firebase");
     private static final List<String> BINARY_EXT = List.of(
             ".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".jar", ".zip", ".xz", ".gz", ".tar", ".class", ".aot",
-            ".woff", ".woff2", ".ttf", ".pdf", ".so", ".dylib", ".exe", ".dll", ".bin", ".idx", ".lock");
+            ".woff", ".woff2", ".ttf", ".pdf", ".so", ".dylib", ".exe", ".dll", ".bin", ".idx", ".lock", ".mp4",
+            ".webm", ".mov", ".mp3", ".wav", ".ogg");
 
     /** The largest file a text rule reads; source files are kilobytes, anything past this is data. */
     static final long MAX_BYTES = 2L * 1024 * 1024;

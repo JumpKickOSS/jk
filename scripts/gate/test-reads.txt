@@ -114,6 +114,7 @@ docs/user/wrapper.md
 hosting/jk-updates/scripts/assemble.sh
 hosting/public/agent-demo-poster.webp
 hosting/public/demo-poster.webp
+hosting/public/demo.webm
 hosting/public/index.html
 hosting/public/install.ps1
 hosting/public/install.sh
