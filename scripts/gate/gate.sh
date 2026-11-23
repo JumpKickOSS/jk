@@ -301,13 +301,13 @@
       margs=()
       for mo in $mods; do margs+=(-m "$mo"); done
       [ "${#margs[@]}" -eq 0 ] || integ changed -s integration -c -X --no-ansi "${margs[@]}"
-      # The curated lane, one `jk test` per module, in the modules the run above did not cover.
-      while read -r -a cmd; do
-        cm=""
-        for k in "${!cmd[@]}"; do [ "${cmd[$k]}" = -m ] && cm="${cmd[$((k + 1))]}"; done
-        grep -Fxq -- "$cm" <<<"$mods" && continue
-        integ "curated-${cm//\//-}" "${cmd[@]:2}"
-      done < <(JK=jk bash scripts/curated-integration.sh --print)
+      # The curated lane, one `jk test` over every module the run above did not cover.
+      except=()
+      for mo in $mods; do except+=(--except "$mo"); done
+      lane="$(JK=jk bash scripts/curated-integration.sh --print ${except[@]+"${except[@]}"} 2>>"$L")" ||
+        red "RED (curated lane: scripts/curated-integration.sh could not read its registry)"
+      read -r -a cmd <<<"$lane"
+      [ "${#cmd[@]}" -eq 0 ] || integ curated "${cmd[@]:2}"
     fi
     # The docs suite checks the docs against the code, so a code change can break it too.
     tested docs test -s docs -c --no-ansi

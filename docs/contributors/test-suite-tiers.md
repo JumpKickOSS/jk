@@ -197,10 +197,11 @@ spawn, worker, workspace, install or lock regression could merge with a determin
 test — sitting in the nightly suite run — that would have caught it.
 
 `scripts/curated-integration.sh` closes that gap. It reads `curated-integration.txt` at the
-checkout root and runs one `jk test -s integration -m <module> -S …` per module the
-registry names, as a step of the self-host job on every run of `ci.yml`. The Queue tier runs the
-same commands (`--print`) in every module the batch did not change. JumpKick fails a run in
-which no class matched, so a renamed or deleted entry fails the lane instead of shrinking it.
+checkout root and runs one `jk test -s integration -c -m <module> -S … -m <module> -S …` over
+every module the registry names, as a step of the self-host job on every run of `ci.yml`. The
+Queue tier runs the same command (`--print`), with `--except` leaving out each module the batch
+changed, since that module's whole integration suite runs anyway. Guard G63 fails on an entry whose
+class is renamed or deleted, so the lane does not quietly shrink.
 
 **Curated membership is a duplicate execution policy, not a tag.** Every listed class is
 `@Tag("integration")` and still runs in the nightly suite run; nothing is reclassified to make the
@@ -212,9 +213,9 @@ The registry has one line per class:
 module | class | surface | outcomes | why it is merge-critical
 ```
 
-One `jk test` per module, so a module's classes run in that module's isolated sandbox under the
-same workers, engine and home the fast tier used, and a red module does not stop the next one; the
-lane is red when any module is.
+One `jk test` for all the modules, so their classes run side by side, each module's in its own
+isolated sandbox under the same workers, engine and home the fast tier used. `-c` keeps a red
+module from stopping the next one, and the lane is red when any module is.
 
 Six surfaces have to stay covered — `wire`, `spawn`, `workers`, `workspace`, `install`, `lock` —
 each with at least one `success` and one `failure` entry. Guard **G63** (`curated-integration`)

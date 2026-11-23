@@ -448,6 +448,7 @@ qbase="$(git -C "$q" rev-parse HEAD)"
 changed() { (cd "$q" && bash scripts/gate/changed-modules.sh "$@" | tr '\n' ' '); }
 
 echo 2 >"$q/docs/d.md" && echo 2 >"$q/README.md" && echo 2 >"$q/scripts/notes.txt" && echo '# none' >"$q/.jk/test/quarantine.toml" && qc docs
+qdocs="$(git -C "$q" rev-parse HEAD)"
 [[ "$(changed "$qbase")" == "" ]] || fail "docs, a root Markdown file, scripts and the test quarantine selected members: $(changed "$qbase")"
 echo 2 >"$q/mod/a/packs/p/P.java" && qc pack
 [[ "$(changed "$qbase")" == "mod/a/packs/p " ]] || fail "a nested member's file did not select it alone: $(changed "$qbase")"
@@ -468,13 +469,24 @@ gate 5 GATE_TIER=queue GATE_BASE="$qbase"
 got="$(sed -n '/^install /,$p' "$WORK/calls-5" | grep -E '^(install|engine stop|test)')"
 want="$(printf '%s\n' 'install -S' 'engine stop' 'install -c' 'engine stop' \
   'test -s integration -c -X --no-ansi -m mod/a -m mod/a/packs/p' \
-  'test -s integration --no-ansi -m mod/b --class b.CuratedBTest' 'test -s docs -c --no-ansi' \
+  'test -s integration -c --no-ansi -m mod/b --class b.CuratedBTest' 'test -s docs -c --no-ansi' \
   'test -s tree -c --no-ansi')"
 [[ "$got" == "$want" ]] || fail "the Queue tier ran:
 $got
 want:
 $want"
 grep -q '^CHANGED_MODULES since .*: mod/a mod/a/packs/p' "$WORK/logs/integ-gate-5.log" || fail "the log does not name the changed members"
+# No member changed: no integration suite, and the curated lane in one run over both its members.
+tip="$qdocs"
+git -C "$q" checkout -q --detach "$qdocs"
+gate 46 GATE_TIER=queue GATE_BASE="$qbase"
+[[ "$(verdict 46)" == "GREEN $tip" ]] || fail "a Queue tier with no member changed was not green: $(cat "$WORK/logs/integ-gate-46.log")"
+got="$(grep -E '^test -s integration' "$WORK/calls-46")"
+[[ "$got" == 'test -s integration -c --no-ansi -m mod/a --class a.CuratedATest -m mod/b --class b.CuratedBTest' ]] ||
+  fail "with no member changed the Queue tier ran: $got"
+grep -q '^INTEG curated EXIT=0' "$WORK/logs/integ-gate-46.log" || fail "the log does not name the curated run: $(cat "$WORK/logs/integ-gate-46.log")"
+tip="$qtip"
+git -C "$q" checkout -q --detach "$qtip"
 gate 45 GATE_TIER=queue GATE_BASE="$qbase" NATIVE_LINKED=-S
 grep -qx 'NATIVE_LINKS reinstall=1 install=0' "$WORK/logs/integ-gate-45.log" || fail "the Queue tier logged: $(grep NATIVE "$WORK/logs/integ-gate-45.log")"
 if grep -q '^RELEASE_SUITE_EXIT' "$WORK/logs/integ-gate-5.log"; then fail "the Queue tier ran the release suite"; fi

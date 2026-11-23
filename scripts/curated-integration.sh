@@ -1,27 +1,47 @@
 #!/usr/bin/env bash
-# The curated integration lane: the classes curated-integration.txt names, run module by module
-# in the integration suite. It is the only integration coverage a pull request gets; the full
-# suite stays nightly.
+# The curated integration lane: the classes curated-integration.txt names, run in the integration
+# suite of the modules that hold them. It is the only integration coverage a pull request gets; the
+# full suite stays nightly.
 #
 # Usage:
-#   scripts/curated-integration.sh            # run the lane
-#   scripts/curated-integration.sh --print    # print one `jk test` command per module and exit
+#   scripts/curated-integration.sh [--except <module>]...            # run the lane
+#   scripts/curated-integration.sh --print [--except <module>]...    # print its `jk test` command and exit
 #
 # Environment:
 #   JK                 the jk client to run (default: jk on PATH)
 #   CURATED_REGISTRY   the registry to read (default: curated-integration.txt at the checkout root)
 #
-# One `jk test` per module, every module attempted, non-zero when any module was red: a red class is
-# a verdict about its module, not a reason to skip the next one. Each class is named exactly with
-# `--class`, and jk fails a run in which no class matched, so a renamed or deleted entry fails the
-# lane instead of shrinking it. Guard G63 (`curated-integration`) holds the registry's shape, the
-# classes it names and this script's place in the branch gate.
+# One `jk test` for every module, so the modules' classes run side by side, and `-c` attempts every
+# module: a red class is a verdict about its module, not a reason to skip the next one. Each class is
+# named exactly with `--class`. `--except <module>` leaves out a module whose whole integration suite
+# runs anyway (the Queue tier's changed modules); with every module left out it prints and runs
+# nothing. A renamed or deleted entry is guard G63's to catch (`curated-integration`), which also
+# holds the registry's shape, the classes it names and this script's place in the branch gate.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 JK="${JK:-jk}"
 REGISTRY="${CURATED_REGISTRY:-$ROOT/curated-integration.txt}"
-MODE="${1:-run}"
+MODE=run
+EXCEPT=" "
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --print) MODE=--print ;;
+    --except)
+      [[ $# -ge 2 ]] || {
+        echo "curated-integration: --except needs a module" >&2
+        exit 2
+      }
+      EXCEPT+="$2 "
+      shift
+      ;;
+    *)
+      echo "curated-integration: unknown argument $1; usage: curated-integration.sh [--print] [--except <module>]..." >&2
+      exit 2
+      ;;
+  esac
+  shift
+done
 
 if [[ ! -f "$REGISTRY" ]]; then
   echo "curated-integration: no registry at $REGISTRY" >&2
@@ -69,28 +89,26 @@ if [[ ${#MODULES[@]} -eq 0 ]]; then
   exit 2
 fi
 
-failed=0
+cmd=("$JK" test -s integration -c --no-ansi)
+ran=()
 for i in "${!MODULES[@]}"; do
-  module="${MODULES[$i]}"
-  cmd=("$JK" test -s integration --no-ansi -m "$module")
+  [[ "$EXCEPT" == *" ${MODULES[$i]} "* ]] && continue
+  ran+=("${MODULES[$i]}")
   # shellcheck disable=SC2206 # the value is the space-separated `--class <fqcn>` flags built above
-  cmd+=(${CLASSES[$i]})
-  if [[ "$MODE" == "--print" ]]; then
-    printf '%s\n' "${cmd[*]}"
-    continue
-  fi
-  echo "== curated integration lane: $module"
-  if ! (cd "$ROOT" && "${cmd[@]}"); then
-    failed=$((failed + 1))
-    echo "curated-integration: $module is red" >&2
-  fi
+  cmd+=(-m "${MODULES[$i]}" ${CLASSES[$i]})
 done
 
 if [[ "$MODE" == "--print" ]]; then
+  [[ ${#ran[@]} -eq 0 ]] || printf '%s\n' "${cmd[*]}"
   exit 0
 fi
-if [[ "$failed" -gt 0 ]]; then
-  echo "curated-integration: $failed module(s) red" >&2
+if [[ ${#ran[@]} -eq 0 ]]; then
+  echo "curated-integration: every module is left out, so the lane runs nothing"
+  exit 0
+fi
+echo "== curated integration lane: ${ran[*]}"
+if ! (cd "$ROOT" && "${cmd[@]}"); then
+  echo "curated-integration: red in ${ran[*]}" >&2
   exit 1
 fi
-echo "curated-integration: every module green (${#MODULES[@]} modules)"
+echo "curated-integration: green in ${ran[*]}"
