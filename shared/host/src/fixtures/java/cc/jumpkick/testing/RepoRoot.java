@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.testing;
 
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.net.URISyntaxException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -60,6 +63,11 @@ public final class RepoRoot {
      * <p>Asserts the file is present rather than handing back a path that reads as empty later: a
      * tripwire that cannot find its subject has to fail, not pass.
      *
+     * <p>Reads the file once in the test JVM, so the reads jk records for the test hold it and an
+     * edit re-runs the test even when only a program the test starts reads it: what a child process
+     * reads is not recorded. A plain {@link FileInputStream}, because every JDK's flight recorder
+     * sees its reads.
+     *
      * @throws AssertionError if the file is absent
      */
     public static Path file(Class<?> anchor, String fromRoot) {
@@ -67,6 +75,11 @@ public final class RepoRoot {
         Path p = root.resolve(fromRoot).normalize();
         if (!Files.isRegularFile(p)) {
             throw new AssertionError("no such file in the checkout: " + fromRoot + " (root " + root + ")");
+        }
+        try (InputStream in = new FileInputStream(p.toFile())) {
+            in.read();
+        } catch (IOException e) {
+            throw new AssertionError("cannot read " + fromRoot + " (root " + root + ")", e);
         }
         return p;
     }

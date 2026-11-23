@@ -5,6 +5,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
+import java.util.List;
+import jdk.jfr.Recording;
+import jdk.jfr.consumer.RecordingFile;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -34,5 +38,26 @@ class RepoRootTest {
         Files.writeString(worktree.resolve("B.java"), "class B {}");
 
         assertThat(SourceText.javaUnder(root)).containsExactly(root.resolve("src/A.java"));
+    }
+
+    @Test
+    void a_file_named_from_the_root_is_read_where_the_recorder_sees_it(@TempDir Path tmp) throws Exception {
+        Path recording = tmp.resolve("reads.jfr");
+        Path file;
+        try (Recording r = new Recording()) {
+            r.enable("jdk.FileRead").withThreshold(Duration.ZERO);
+            r.start();
+            file = RepoRoot.file(RepoRootTest.class, "jk.toml");
+            r.stop();
+            r.dump(recording);
+        }
+
+        List<String> read = RecordingFile.readAllEvents(recording).stream()
+                .filter(e -> e.getEventType().getName().equals("jdk.FileRead"))
+                .map(e -> e.getString("path"))
+                .toList();
+        assertThat(read)
+                .as("a script handed to a child is keyed only if the test JVM reads it")
+                .contains(file.toString());
     }
 }
