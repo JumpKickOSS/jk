@@ -229,8 +229,8 @@ work on something else and read answers with `ka inbox`. Stopping without finish
   to back on the newest `main` and moves origin's `green` branch to each commit that passes;
   releases are cut from `green`. A red cycle names the batch that caused it on its tickets; when
   the failing classes fail with one of its commits and pass without it, the loop submits that
-  commit's revert to the queue and reopens its ticket, and after two red cycles the queue lands only
-  the fix
+  commit's revert to the queue and reopens its ticket, and after two red cycles alike the queue lands
+  only the fix
   ([Full tier loop](docs/contributors/self-host.md#the-full-tier-loop)).
 - **Branch tier** — before a branch is submitted to the queue: `scripts/queue/branch-tier.sh`,
   which runs `jk guard` and the fast tier of the modules the branch changed and of their

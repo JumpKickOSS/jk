@@ -209,12 +209,16 @@ that passed; before there is a `green`, it always does. Then:
   [holds it](#windows-and-macos), and releases are cut from it ([releases](releases.md#cutting-a-release-by-hand)).
   A gate green because its failed classes passed on its re-run ([flaky tests](#flaky-tests)) is a
   green cycle, and its line in `full-runs.log` names those classes.
-- **Red** finds the batch that made it red among the queue's batches landed since `green`
-  (`queue-batches.log`). It bisects them: it gates batch tips with the Full tier until it knows the
-  first red one, and gates no commit twice. It names that batch, with its branches and the log of
-  its red gate, in `full-runs.log`.
-- **A confirmed culprit is reverted**, once per batch. The loop runs the classes the batch's red gate
-  failed again (`scripts/gate/rerun-classes.sh`: the reinstall without tests, then those classes
+- **Red** reads what its own gate failed, from that gate's log: its red set, the test classes still
+  red after the re-run, the fixtures that failed and the steps that ended red. It finds the batch
+  that made it red among the queue's batches landed since `green` (`queue-batches.log`). It bisects
+  them: it gates batch tips with the Full tier until it knows the first whose own gate fails one of
+  the classes or fixtures this gate fails, and gates no commit twice. A batch whose gate was red for
+  something else is not blamed, and a red in no class or fixture (guard alone, say) names no batch.
+  It names the batch, with its branches, the classes or fixtures both gates fail, this gate's log
+  and the batch's, in `full-runs.log`.
+- **A confirmed culprit is reverted**, once per batch. The loop runs the classes both the batch's red gate
+  and this one failed again (`scripts/gate/rerun-classes.sh`: the reinstall without tests, then those classes
   alone): they must fail at the batch's tip and pass at its base, and a bisect of the batch's
   commits finds the one they fail with and pass without. It reverts that commit on top of the red
   tip, passes the revert through the Branch tier and submits it to the queue as
@@ -225,11 +229,13 @@ that passed; before there is a `green`, it always does. Then:
   when run again, they fail before the batch too, or the revert conflicts with later work. It
   comments once on each ticket the batch's commits name (a subject `<ticket>: …`), saying why;
   revert the batch's commits or fix forward, through the queue.
-- **Two red cycles in a row** (`FULL_HOLD_AFTER`) write `full-hold` in the queue's repository: the
-  batch's tickets (`ticket <id>`) and commits (`commit <sha>`). While it exists the queue lands only
-  a fix, a branch with a commit for one of those tickets or one that reverts one of those commits;
-  the others wait, and `scripts/queue/status.sh` shows them `held`. The next green cycle removes it.
-  A hold that names nothing (no batch was found red) lands nothing until a person adds a line to it.
+- **Two red cycles in a row with the same red set** (`FULL_HOLD_AFTER`) write `full-hold` in the
+  queue's repository: the culprit batch's tickets (`ticket <id>`) and commits (`commit <sha>`). While
+  it exists the queue lands only a fix, a branch with a commit for one of those tickets or one that
+  reverts one of those commits; the others wait, and `scripts/queue/status.sh` shows them `held`. A
+  red set unlike the last red cycle's counts as the first red cycle again (`full-red-set` keeps the
+  last one). A red cycle that does not hold the queue removes a hold an earlier one wrote, so a red
+  that names no batch never holds it; the next green cycle removes it too.
 - **A JumpKick that cannot start is an infra failure**, not a red: before each gate, and after a
   gate red at guard (which runs on the install the tip has not replaced yet), the loop runs
   `jk engine start` in its checkout. When that fails, `full-runs.log` says `INFRA` with the first

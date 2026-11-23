@@ -12,7 +12,10 @@
 # moves, no ticket is told, and the queue is not held. While the pause file exists the loop starts no
 # cycle, even one it was waiting on the gate lock for, and says once in full-runs.log that it is
 # paused and why; removing the file resumes it. A jk that cannot start its engine, before a gate or
-# when a gate is red at guard, is an infra failure: no verdict, no culprit, no red cycle, no hold.
+# when a gate is red at guard, is an infra failure: no verdict, no culprit, no red cycle, no hold. A
+# red cycle after an earlier red gate for something else names the batch whose gate fails what this
+# one fails, not the earlier one; a red in no class or fixture names no batch and never holds the
+# queue, and a red set unlike the last one counts as the first red cycle again.
 #
 # The loop runs as on a host of its own: it reaches the queue's state only over ssh (a stand-in that
 # runs the command here for the host queuehost), takes a gate lock that is not the queue's, and
@@ -35,7 +38,9 @@ fail() {
 # The stand-in jk passes the Branch tier, and cannot start its engine while jk-broken exists; ka logs each call and says every ticket is done. The
 # stand-in gate passes the Queue tier always and the Full tier unless the tip carries red.txt or
 # flaky.txt, when cc.example.RedTest fails, and logs each Full gate's tip and base; on a tip whose
-# own commit writes once.txt the class passes on the gate's re-run, and the gate is green naming it. The stand-in
+# own commit writes once.txt the class passes on the gate's re-run, and the gate is green naming it. A tip
+# whose own commit writes guard.txt is red at guard; one that carries other.txt fails
+# cc.example.OtherTest. The stand-in
 # re-run fails that class on a commit that carries red.txt, and logs each commit it runs on.
 mkdir -p "$WORK/bin"
 cat >"$WORK/bin/jk" <<JK
@@ -84,7 +89,12 @@ if [ -n "${FIXTURE_GATE_BREAKS_JK:-}" ]; then
 fi
 [ "$GATE_TIER" = full ] && echo "$tip" >>"$GATE_LOG_DIR/full-gated" && echo "$GATE_BASE" >>"$GATE_LOG_DIR/full-bases" \
   && git tag --list 'v*' >"$GATE_LOG_DIR/full-tags"
-if [ "$GATE_TIER" = full ] && git ls-tree -r --name-only HEAD | grep -qxE '(red|flaky).txt'; then
+if [ "$GATE_TIER" = full ] && git log -1 --name-only --format= HEAD | grep -qx guard.txt; then
+  { echo "GUARD_EXIT=70"; echo "RED (guard)"; } >"$L"
+elif [ "$GATE_TIER" = full ] && git ls-tree -r --name-only HEAD | grep -qx other.txt; then
+  { echo "FAIL cc.example.OtherTest"; echo "RED"; } >"$L"
+  echo '{"type":"error","code":"test-failure","module":"core","testClass":"cc.example.OtherTest"}' >"$GATE_LOG_DIR/g$n-rerun.jsonl"
+elif [ "$GATE_TIER" = full ] && git ls-tree -r --name-only HEAD | grep -qxE '(red|flaky).txt'; then
   { echo "FAIL cc.example.RedTest"; echo "RED"; } >"$L"
   echo '{"type":"error","code":"test-failure","module":"core","testClass":"cc.example.RedTest$Inner"}' >"$GATE_LOG_DIR/g$n-rerun.jsonl"
 elif [ "$GATE_TIER" = full ] && git log -1 --name-only --format= HEAD | grep -qx once.txt; then
@@ -390,5 +400,46 @@ rm "$WORK/jk-broken"
 full || fail "the cycle after jk started again failed: $(runs)"
 [[ "$(gated)" -eq $((n + 1)) ]] || fail "the cycle after jk started again did not gate the tip"
 [[ "$(origin green)" == "$(origin main)" ]] || fail "the tip did not pass once jk started: $(runs)"
+
+# --- a red after an earlier red gate: the batch red at guard is not blamed for a later red in a
+# class, nor held for; the batch whose gate fails that class is, and the hold names it only once
+# the same red repeats ---
+: >"$KA_LOG"
+land p guard.txt "TK-PPPP1: red at guard when gated"
+FULL_HOLD_AFTER=1 full || fail "the cycle red at guard failed: $(runs)"
+last_run_has -q "RED culprit unknown: this gate failed in no test class or fixture (exit GUARD, step guard)" \
+  || fail "a red at guard alone named a batch or did not say why: $(runs)"
+[[ -f "$QUEUE_REPO/full-hold" ]] && fail "a red that names no batch held the queue: $(cat "$QUEUE_REPO/full-hold")"
+[[ -s "$KA_LOG" ]] && fail "a red that names no batch told a ticket: $(cat "$KA_LOG")"
+guardlog="$(tail -1 "$QUEUE_REPO/full-verdicts" | cut -d' ' -f3)"
+land k other.txt "TK-KKKK1: breaks OtherTest"
+kbatch="$(git -C "$dev" rev-parse --short=12 "$(origin main)")"
+full || fail "the red cycle after the red at guard failed: $(runs)"
+runs_has -q "RED culprit batch [0-9]* ($kbatch: k@.* tickets TK-KKKK1; its gate fails core cc.example.OtherTest too; red cycles 1; log [^ ]*/integ-gate-$(tail -1 "$QUEUE_REPO/full-verdicts" | cut -d' ' -f3).log" \
+  || fail "the cycle after the red at guard did not name k's batch from its own log: $(runs)"
+runs_has -q "integ-gate-$guardlog.log, the batch's" && fail "a later red read the gate log of the red at guard: $(runs)"
+grep -q 'TK-PPPP1' "$KA_LOG" && fail "the batch red at guard was told of a red in a class: $(cat "$KA_LOG")"
+[[ "$(cat "$QUEUE_REPO/full-reds")" -eq 1 ]] || fail "a new red set did not count as the first red cycle: $(cat "$QUEUE_REPO/full-reds")"
+[[ -f "$QUEUE_REPO/full-hold" ]] && fail "the first red cycle of a new red set held the queue"
+land m m.txt "TK-MMMM1: m"
+full || fail "the second red cycle in OtherTest failed: $(runs)"
+runs_has -q "RED culprit batch [0-9]* ($kbatch: .*red cycles 2;" \
+  || fail "the same red twice did not count two red cycles on k's batch: $(runs)"
+grep -qx 'ticket TK-KKKK1' "$QUEUE_REPO/full-hold" || fail "the hold does not name k's ticket: $(cat "$QUEUE_REPO/full-hold" 2>/dev/null)"
+grep -q 'TK-PPPP1\|TK-MMMM1' "$QUEUE_REPO/full-hold" && fail "the hold names a batch that did not fail the class: $(cat "$QUEUE_REPO/full-hold")"
+# The red changes to one in no class or fixture: no batch, the hold lifts.
+git -C "$dev" fetch -q && git -C "$dev" checkout -q -b unk origin/main
+tick && git -C "$dev" rm -q other.txt && echo again >"$dev/guard.txt" && git -C "$dev" add guard.txt \
+  && git -C "$dev" commit -qm "TK-KKKK1: no longer breaks OtherTest"
+submit unk
+queue || fail "the queue did not run for k's fix"
+[[ "$(status unk)" == "unk: landed "* ]] || fail "k's fix did not land under the hold: $(status unk)"
+full || fail "the cycle red at guard after the fix failed: $(runs)"
+[[ -f "$QUEUE_REPO/full-hold" ]] && fail "a red that names no batch left the hold: $(cat "$QUEUE_REPO/full-hold")"
+runs_has -q "the queue's hold is lifted: this red names no batch" || fail "the lifted hold was not logged: $(runs)"
+[[ "$(cat "$QUEUE_REPO/full-reds")" -eq 1 ]] || fail "a changed red set did not start the count again: $(cat "$QUEUE_REPO/full-reds")"
+land n2 n2.txt "TK-NNNN1: n"
+full || fail "the cycle after the red at guard failed: $(runs)"
+[[ "$(origin green)" == "$(origin main)" ]] || fail "the tip did not pass after the red at guard: $(runs)"
 
 echo "test-full-loop: ok ($(gated) Full gates, $(reruns | wc -l | tr -d ' ') re-runs)"
