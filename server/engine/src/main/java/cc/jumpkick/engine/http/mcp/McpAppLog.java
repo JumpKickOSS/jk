@@ -85,27 +85,29 @@ public final class McpAppLog {
                 : null;
     }
 
-    /** {@link #tail(List, String, int, int, long)} inside {@link #BUDGET_CHARS} and {@link #REGEX_MILLIS}. */
+    /** {@link #tail(List, String, int, int, long, Clock)} inside {@link #BUDGET_CHARS} and {@link #REGEX_MILLIS}. */
     public static Tail tail(List<String> lines, @Nullable String request, int max) {
-        return tail(lines, request, max, BUDGET_CHARS, REGEX_MILLIS);
+        return tail(lines, request, max, BUDGET_CHARS, REGEX_MILLIS, Clock.SYSTEM);
     }
 
     /**
      * The last {@code max} of {@code lines} that belong to {@code request} (every line when it is
      * null or blank), each cut to {@link #LINE_CHARS}, fewer when they would pass {@code budget}
-     * characters. A regex request stops after {@code regexMillis} with what it matched so far.
+     * characters. A regex request stops after {@code regexMillis} of {@code clock}'s ticker with what
+     * it matched so far.
      *
      * @throws PatternSyntaxException when {@code request} is {@code /…/} around no valid regex
      */
-    public static Tail tail(List<String> lines, @Nullable String request, int max, int budget, long regexMillis) {
+    public static Tail tail(
+            List<String> lines, @Nullable String request, int max, int budget, long regexMillis, Clock clock) {
         List<String> picked = lines;
         boolean cut = false;
         if (request != null && !request.isBlank()) {
             Pattern regex = regexOf(request);
-            long deadline = Clock.SYSTEM.nanos() + regexMillis * 1_000_000;
+            long deadline = clock.nanos() + regexMillis * 1_000_000;
             Predicate<String> match = regex == null
                     ? line -> line.contains(request.strip())
-                    : line -> regex.matcher(new Timed(line, deadline)).find();
+                    : line -> regex.matcher(new Timed(line, clock, deadline)).find();
             picked = new ArrayList<>();
             cut = request(lines, match, picked);
         }
@@ -149,11 +151,11 @@ public final class McpAppLog {
         return line.length() <= LINE_CHARS ? line : line.substring(0, LINE_CHARS) + "…";
     }
 
-    /** A regex's input that ends the match once {@code deadline} ({@link Clock#nanos}) passes. */
-    private record Timed(CharSequence text, long deadline) implements CharSequence {
+    /** A regex's input that ends the match once {@code clock}'s {@link Clock#nanos} passes {@code deadline}. */
+    private record Timed(CharSequence text, Clock clock, long deadline) implements CharSequence {
         @Override
         public char charAt(int index) {
-            if (Clock.SYSTEM.nanos() - deadline > 0) throw new OutOfTime();
+            if (clock.nanos() - deadline > 0) throw new OutOfTime();
             return text.charAt(index);
         }
 
@@ -164,7 +166,7 @@ public final class McpAppLog {
 
         @Override
         public CharSequence subSequence(int start, int end) {
-            return new Timed(text.subSequence(start, end), deadline);
+            return new Timed(text.subSequence(start, end), clock, deadline);
         }
 
         @Override

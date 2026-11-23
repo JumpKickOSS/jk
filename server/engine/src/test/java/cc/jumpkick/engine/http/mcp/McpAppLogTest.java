@@ -3,6 +3,7 @@ package cc.jumpkick.engine.http.mcp;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.host.time.Clock;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -71,10 +72,28 @@ class McpAppLogTest {
         lines.add("GET /fast req=a1");
         for (int i = 0; i < 50; i++) lines.add("a".repeat(30) + "!");
 
-        McpAppLog.Tail tail = McpAppLog.tail(lines, "/req=a1|(.*a){12}$/", 60, McpAppLog.BUDGET_CHARS, 50);
+        McpAppLog.Tail tail = McpAppLog.tail(lines, "/req=a1|(.*a){12}$/", 60, McpAppLog.BUDGET_CHARS, 1, new Ticker());
 
         assertThat(tail.cut()).isTrue();
         assertThat(tail.lines()).containsExactly("GET /fast req=a1");
+    }
+
+    /**
+     * A ticker that moves one nanosecond per read, so a regex's time is the characters it reads: a
+     * millisecond is a million reads, past any plain line and short of a catastrophic one.
+     */
+    private static final class Ticker implements Clock {
+        private long nanos;
+
+        @Override
+        public long millis() {
+            return 0;
+        }
+
+        @Override
+        public long nanos() {
+            return nanos++;
+        }
     }
 
     @Test
