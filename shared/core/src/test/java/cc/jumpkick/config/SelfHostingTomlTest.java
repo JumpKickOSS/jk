@@ -8,6 +8,7 @@ import cc.jumpkick.layout.SourceLayout;
 import cc.jumpkick.library.LibraryCatalog;
 import cc.jumpkick.lock.LockManifestDigest;
 import cc.jumpkick.lock.LockfileReader;
+import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.WorkspaceMerge;
@@ -15,8 +16,11 @@ import cc.jumpkick.plugin.manifest.PluginModule;
 import cc.jumpkick.testing.RepoRoot;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.regex.Pattern;
@@ -319,6 +323,45 @@ class SelfHostingTomlTest {
                 .extracting(d -> d.library())
                 .contains("jk-cli", "jk-engine");
         assertThat(e2e.build().testPluginJars()).isNotEmpty();
+    }
+
+    @Test
+    void no_edge_reaches_the_engine_or_a_worker_from_the_cli_suite() throws Exception {
+        // The direct edges above are not enough: a sibling the CLI tests use that gained an engine
+        // edge of its own would bring every engine change back into the CLI suite's key.
+        JkBuild root = JkBuildParser.parse(REPO.resolve("jk.toml"));
+        Map<String, JkBuild> byName = new HashMap<>();
+        Set<String> workers = new TreeSet<>();
+        for (String module : workspaceOf(root).modules()) {
+            JkBuild member = JkBuildParser.parse(REPO.resolve(module).resolve("jk.toml"));
+            byName.put(member.project().name(), member);
+            if (module.startsWith("plugins/")) workers.add(member.project().name());
+        }
+
+        Set<String> cone = new TreeSet<>();
+        ArrayDeque<Dependency> pending = new ArrayDeque<>();
+        JkBuild cli = JkBuildParser.parse(REPO.resolve("clients/cli/jk.toml"));
+        pending.addAll(cli.dependencies().of(Scope.TEST));
+        pending.addAll(runtimeEdges(cli));
+        while (!pending.isEmpty()) {
+            Dependency edge = pending.pop();
+            JkBuild sibling = byName.get(edge.library());
+            if (sibling == null || !cone.add(edge.library())) continue;
+            pending.addAll(runtimeEdges(sibling));
+            // A sibling's fixtures compile against its own test classpath.
+            if (edge.fixtures()) pending.addAll(sibling.dependencies().of(Scope.TEST));
+        }
+
+        assertThat(cone).contains("jk-engine-api").doesNotContain("jk-engine", "jk-cli-e2e");
+        assertThat(cone).doesNotContainAnyElementsOf(workers);
+    }
+
+    private static List<Dependency> runtimeEdges(JkBuild build) {
+        List<Dependency> edges = new ArrayList<>();
+        for (Scope scope : List.of(Scope.EXPORT, Scope.MAIN, Scope.PROVIDED, Scope.RUNTIME)) {
+            edges.addAll(build.dependencies().of(scope));
+        }
+        return edges;
     }
 
     @Test
