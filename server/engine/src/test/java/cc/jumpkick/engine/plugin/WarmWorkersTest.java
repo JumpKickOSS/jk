@@ -46,7 +46,7 @@ class WarmWorkersTest {
 
     /** A run's pid line, chatter and protocol lines. */
     private static final class Seen implements WarmWorkers.Listener {
-        long pid = -1;
+        volatile long pid = -1;
         final List<String> output = new CopyOnWriteArrayList<>();
 
         @Override
@@ -268,17 +268,20 @@ class WarmWorkersTest {
         Files.writeString(spec, "hang\n");
         Seen seen = new Seen();
         AtomicBoolean cancel = new AtomicBoolean();
+        // A cancel before the worker has said its pid stops it unseen, so the cancel waits for the
+        // pid; under host load a worker may take many seconds to get that far.
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(60);
         Thread.ofVirtual().start(() -> {
             try {
-                Thread.sleep(500);
+                while (seen.pid < 0 && System.nanoTime() - deadline < 0) Thread.sleep(25);
             } catch (InterruptedException ignored) {
                 // the test is ending
             }
             cancel.set(true);
         });
         WarmWorkers.Outcome out = WarmWorkers.run(launch("a"), spec, seen, cancel::get);
+        assertThat(seen.pid).as("the worker said its pid before the deadline").isPositive();
         assertThat(out.died()).isTrue();
-        assertThat(seen.pid).isPositive();
         assertThat(ProcessHandle.of(seen.pid).map(ProcessHandle::isAlive).orElse(false))
                 .isFalse();
         assertThat(WarmWorkers.idleCount()).isZero();
