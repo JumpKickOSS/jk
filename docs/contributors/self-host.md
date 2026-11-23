@@ -217,8 +217,8 @@ that passed; before there is a `green`, it always does. Then:
   among the queue's batches landed since `green` (`queue-batches.log`). It bisects them: it gates
   batch tips with the Full tier until it knows the first whose own gate fails one of the classes,
   fixtures or guard checks this gate fails, and gates no commit twice. A batch whose gate was red
-  for something else is not blamed, and a red in no class, fixture or guard check names no batch: a
-  guard that exits 70, JumpKick's internal error, names no check. It names the batch, with its
+  for something else is not blamed, and a red in no class, fixture or guard check (a step alone,
+  such as a reinstall that failed) names no batch. It names the batch, with its
   branches, what both gates fail, this gate's log and the batch's, in `full-runs.log`.
 - **A confirmed culprit is reverted**, once per batch. The loop runs the classes both the batch's red gate
   and this one failed again (`scripts/gate/rerun-classes.sh`: the reinstall without tests, then those classes
@@ -243,7 +243,9 @@ that passed; before there is a `green`, it always does. Then:
   gate red at guard (which runs on the install the tip has not replaced yet), the loop runs
   `jk engine start` in its checkout. When that fails, `full-runs.log` says `INFRA` with the first
   line JumpKick printed, and the loop records no verdict, names no culprit, counts no red cycle and
-  holds nothing.
+  holds nothing. A gate red at guard because JumpKick failed inside it (exit 70, its internal
+  error, as when the engine dies mid-guard) with no check failed is one too: `INFRA jk failed
+  inside guard`, and the same nothing recorded.
   It tries the tip again `FULL_POLL` seconds later; `--once` exits 5.
 
 It runs in a checkout and a JumpKick home of its own (`JK_HOME`), so its gates never replace the

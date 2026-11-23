@@ -20,7 +20,7 @@
 # every verdict) until it knows the first whose own gate fails one of the classes, fixtures or guard
 # checks this gate fails, and names it in full-runs.log. A batch whose gate was red for something
 # else is not the culprit, and a red in no class, fixture or guard check (a step alone, such as a
-# guard that exited 70, jk's internal error) names no batch. Once per batch it then tries to
+# reinstall that failed) names no batch. Once per batch it then tries to
 # confirm one commit of it: the classes that failed both gates fail
 # again at its tip and pass at its base, and a bisect of its commits with those classes finds the
 # one they fail with and pass without (scripts/gate/rerun-classes.sh). It reverts that commit on top
@@ -40,7 +40,8 @@
 # or after a gate red at guard, which runs on the install the tip has not replaced yet) is an
 # infra failure, not a verdict: full-runs.log says INFRA with jk's first line, and the loop names no
 # culprit, counts no red cycle, holds nothing and records no verdict, so the tip is gated again on
-# the next cycle, FULL_POLL seconds later.
+# the next cycle, FULL_POLL seconds later. So is a gate red at guard because jk failed inside it
+# (exit 70, JumpKick's internal error, as when its engine dies mid-guard) with no check failed.
 #
 # While <QUEUE_REPO>/pause exists the loop starts no cycle: a cycle in flight finishes, the loop logs
 # once in full-runs.log that it is paused, with the file's first line as the reason, and looks again
@@ -140,7 +141,9 @@
     return 1
   }
   # judge <sha>: print GREEN or RED for the commit, gating it with the Full tier unless it was
-  # judged before; fail with 5 when jk cannot start, with 2 when the gate reached no verdict.
+  # judged before; fail with 5 when jk cannot start or failed inside a guard that failed no check
+  # (exit 70, JumpKick's internal error, as when its engine dies mid-guard), with 2 when the gate
+  # reached no verdict.
   judge() {
     local sha="$1" known n L verdict
     known="$(awk -v s="$sha" '$1 == s { print $2 }' "$V" 2>/dev/null | tail -1)"
@@ -160,6 +163,10 @@
       "GREEN $sha") verdict "$sha GREEN $n" && echo GREEN ;;
       RED*)
         if [ "$verdict" = "RED (guard)" ] && ! jk_starts "$sha"; then return 5; fi
+        if [ "$verdict" = "RED (guard)" ] && grep -aqE '^GUARD_EXIT=70( |$)' "$L" && ! grep -aq '^GUARD FAIL ' "$L"; then
+          log "full $n $(date -u +%Y-%m-%dT%H:%M:%SZ) $(short "$sha") INFRA jk failed inside guard (exit 70, its internal error) and guard failed no check; no verdict ($(hostname):$L)"
+          return 5
+        fi
         verdict "$sha RED $n" && echo RED
         ;;
       *)
