@@ -8,6 +8,7 @@ import static org.assertj.core.api.Assertions.catchThrowableOfType;
 import cc.jumpkick.config.Request;
 import cc.jumpkick.engine.plugin.PluginProcess;
 import cc.jumpkick.engine.plugin.WorkerExit;
+import cc.jumpkick.orchestrator.DiscoveryListing;
 import cc.jumpkick.orchestrator.ResultAggregator;
 import cc.jumpkick.orchestrator.SuiteReport;
 import cc.jumpkick.orchestrator.TestEventFields;
@@ -564,7 +565,7 @@ class JUnitLauncherAggregatorTest {
                 throw new IllegalStateException("decoder choked on totals");
             }
         };
-        var listing = new Discovery.Listing();
+        var listing = new DiscoveryListing();
         Consumer<String> handler = listing.handler(listener);
         handler.accept("{\"event\":\"discovered\",\"class\":\"com.acme.ATest\"}");
         RuntimeException thrown = catchThrowableOfType(
@@ -572,7 +573,7 @@ class JUnitLauncherAggregatorTest {
                 () -> handler.accept("{\"event\":\"discovery_total\",\"classes\":1,\"tests\":3}"));
         PluginProcess.HandlerFailure end = new PluginProcess.HandlerFailure(thrown);
 
-        Discovery discovery = listing.handlerFailed("", end.handler());
+        Discovery discovery = Discovery.handlerFailed(listing, "", end.handler());
 
         assertThat(discovery.classes()).containsExactly("com.acme.ATest");
         assertThat(discovery.crashed())
@@ -602,13 +603,13 @@ class JUnitLauncherAggregatorTest {
      */
     @Test
     void a_discovery_fork_without_its_total_is_crashed_whatever_its_exit() {
-        var listing = new Discovery.Listing();
+        var listing = new DiscoveryListing();
         Consumer<String> handler = listing.handler(TestProgressListener.noop());
         handler.accept("{\"event\":\"discovered\",\"class\":\"com.acme.ATest\"}");
         handler.accept("{\"event\":\"discovered\",\"class\":\"com.acme.BTest\"}");
         assertThat(listing.complete()).isFalse();
 
-        Discovery cutShort = listing.ended(WorkerExit.noWorker(0), "", List.of("java", "Main"));
+        Discovery cutShort = Discovery.ended(listing, WorkerExit.noWorker(0), "", List.of("java", "Main"));
         assertThat(cutShort.classes()).containsExactly("com.acme.ATest", "com.acme.BTest");
         assertThat(cutShort.crashed()).isTrue();
         assertThatThrownBy(() -> cutShort.verdict("m")).isInstanceOfSatisfying(TestLauncherFailure.class, f -> {
@@ -618,16 +619,18 @@ class JUnitLauncherAggregatorTest {
                     .startsWith(
                             "test discovery exited 0 before announcing its total (2 classes named, none of them run)");
         });
-        assertThat(listing.ended(WorkerExit.noWorker(137), "", List.of()).crashed())
+        assertThat(Discovery.ended(listing, WorkerExit.noWorker(137), "", List.of())
+                        .crashed())
                 .isTrue();
 
         handler.accept("{\"event\":\"discovery_total\",\"classes\":2,\"tests\":5}");
         assertThat(listing.complete()).isTrue();
-        assertThat(listing.ended(WorkerExit.noWorker(0), "", List.of()).crashed())
+        assertThat(Discovery.ended(listing, WorkerExit.noWorker(0), "", List.of())
+                        .crashed())
                 .isFalse();
 
         // Nothing named and no total: the existing launcher failure, with the fork's exit.
-        Discovery empty = new Discovery.Listing().ended(WorkerExit.noWorker(3), "boom", List.of());
+        Discovery empty = Discovery.ended(new DiscoveryListing(), WorkerExit.noWorker(3), "boom", List.of());
         assertThatThrownBy(() -> empty.verdict("m")).isInstanceOfSatisfying(TestLauncherFailure.class, f -> {
             assertThat(f.exit()).isEqualTo(3);
             assertThat(f.getMessage()).startsWith("test discovery exited 3 before any test ran");

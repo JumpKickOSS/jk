@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.test;
+package cc.jumpkick.orchestrator;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -122,7 +122,7 @@ class ConeRoot {
     }
 
     Object named() throws Exception {
-        return Class.forName("cc.jumpkick.test.ConeNamed");
+        return Class.forName("cc.jumpkick.orchestrator.ConeNamed");
     }
 }
 
@@ -142,7 +142,7 @@ class ConeNamed {}
 
 class ConeSpawns {
     ProcessBuilder engine() {
-        return new ProcessBuilder("java", "-cp", "engine.jar", "cc.jumpkick.test.ConeNamed");
+        return new ProcessBuilder("java", "-cp", "engine.jar", "cc.jumpkick.orchestrator.ConeNamed");
     }
 }
 

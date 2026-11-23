@@ -4,8 +4,8 @@ package cc.jumpkick.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.jsonl.JsonFields;
+import cc.jumpkick.orchestrator.ClassCones;
 import cc.jumpkick.task.TestStamp;
-import cc.jumpkick.test.ClassCones;
 import cc.jumpkick.test.ClassReads;
 import java.io.InputStream;
 import java.nio.file.Files;
@@ -75,10 +75,10 @@ class ClassKeysTest {
     @Test
     void a_class_loaded_outside_the_cone_keys_the_class_by_its_own_cone(@TempDir Path ws) throws Exception {
         Path classes = Files.createDirectories(ws.resolve("classes"));
-        copy(classes, "demo/T", FIXTURE + "ConeFar");
-        copy(classes, "demo/Ext", FIXTURE + "ConeNamed");
-        copy(classes, "demo/Other", FIXTURE + "ConeUnrelated");
-        copy(classes, "demo/T$Nested", FIXTURE + "ConeUnrelated");
+        copy(classes, "demo/T", FIXTURE + "KeyFixtureFar");
+        copy(classes, "demo/Ext", FIXTURE + "KeyFixtureNamed");
+        copy(classes, "demo/Other", FIXTURE + "KeyFixtureUnrelated");
+        copy(classes, "demo/T$Nested", FIXTURE + "KeyFixtureUnrelated");
         ClassCones.Index index = ClassCones.index(List.of(classes));
         assertThat(ClassKeys.reflective(index, "demo.T", List.of("demo.T", "demo.T$Nested", "demo.Ext", "lib.Outside")))
                 .as("only the workspace class outside its cone")
@@ -87,13 +87,13 @@ class ClassKeysTest {
         ClassKeys.Observed seen = observed(List.of(), false, List.of());
         String before = key(index.cone("demo.T", List.of("demo.Ext")), seen, ClassKeys.SuiteReadSet.NONE, ws)
                 .key();
-        copy(classes, "demo/Other", FIXTURE + "ConeNamed");
+        copy(classes, "demo/Other", FIXTURE + "KeyFixtureNamed");
         ClassCones.Index otherEdited = ClassCones.index(List.of(classes));
         assertThat(key(otherEdited.cone("demo.T", List.of("demo.Ext")), seen, ClassKeys.SuiteReadSet.NONE, ws)
                         .key())
                 .as("a class it never loaded changed")
                 .isEqualTo(before);
-        copy(classes, "demo/Ext", FIXTURE + "ConeUnrelated");
+        copy(classes, "demo/Ext", FIXTURE + "KeyFixtureUnrelated");
         ClassCones.Index extEdited = ClassCones.index(List.of(classes));
         assertThat(key(extEdited.cone("demo.T", List.of("demo.Ext")), seen, ClassKeys.SuiteReadSet.NONE, ws)
                         .key())
@@ -102,7 +102,7 @@ class ClassKeysTest {
 
         List<String> many = new ArrayList<>();
         for (int i = 0; i <= ClassKeys.REFLECTIVE_KEPT; i++) {
-            copy(classes, "demo/L" + i, FIXTURE + "ConeUnrelated");
+            copy(classes, "demo/L" + i, FIXTURE + "KeyFixtureUnrelated");
             many.add("demo.L" + i);
         }
         assertThat(ClassKeys.reflective(ClassCones.index(List.of(classes)), "demo.T", many))
@@ -535,16 +535,16 @@ class ClassKeysTest {
     @Test
     void a_class_that_replayed_keeps_its_key_when_the_pool_beside_it_moves(@TempDir Path ws) throws Exception {
         Path classes = Files.createDirectories(ws.resolve("classes"));
-        copy(classes, "demo/T", FIXTURE + "ConeUnrelated");
-        copy(classes, "demo/U", FIXTURE + "ConeUnrelated");
-        copy(classes, "demo/Other", FIXTURE + "ConeUnrelated");
+        copy(classes, "demo/T", FIXTURE + "KeyFixtureUnrelated");
+        copy(classes, "demo/U", FIXTURE + "KeyFixtureUnrelated");
+        copy(classes, "demo/Other", FIXTURE + "KeyFixtureUnrelated");
         Path module = Files.createDirectories(ws.resolve("m"));
         Path pooledFile = Files.writeString(ws.resolve("pool.txt"), "one");
 
         recordRun(module, classes, ws, ClassReads.Observation.empty(), List.of("demo.T", "demo.U"));
         assertThat(selected(module, classes, ws, "demo.U")).as("nothing moved").isNull();
 
-        copy(classes, "demo/Other", FIXTURE + "ConeNamed");
+        copy(classes, "demo/Other", FIXTURE + "KeyFixtureNamed");
         ClassReads.Observation pool = ClassReads.Observation.empty();
         pool.addRead(pooledFile);
         recordRun(module, classes, ws, pool, List.of("demo.T"));
@@ -571,8 +571,8 @@ class ClassKeysTest {
     @Test
     void another_launchs_pool_is_no_input_of_this_launchs_classes(@TempDir Path ws) throws Exception {
         Path classes = Files.createDirectories(ws.resolve("classes"));
-        copy(classes, "demo/T", FIXTURE + "ConeUnrelated");
-        copy(classes, "demo/U", FIXTURE + "ConeUnrelated");
+        copy(classes, "demo/T", FIXTURE + "KeyFixtureUnrelated");
+        copy(classes, "demo/U", FIXTURE + "KeyFixtureUnrelated");
         Path module = Files.createDirectories(ws.resolve("m"));
         String integration = "test:integration";
         ClassReads.Observation started = ClassReads.Observation.empty();
@@ -711,7 +711,7 @@ class ClassKeysTest {
                 .key();
     }
 
-    private static final String FIXTURE = "cc/jumpkick/test/";
+    private static final String FIXTURE = "cc/jumpkick/runtime/";
 
     /** The bytes of the test fixture class {@code fixture} as the workspace class {@code internalName}. */
     private static void copy(Path classes, String internalName, String fixture) throws Exception {
@@ -744,3 +744,14 @@ class ClassKeysTest {
                 new HashMap<>());
     }
 }
+
+/** A class that calls nothing: what a fixture's bytes are copied from. */
+class KeyFixtureFar {
+    int value() {
+        return 1;
+    }
+}
+
+class KeyFixtureNamed {}
+
+class KeyFixtureUnrelated {}

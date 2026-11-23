@@ -7,7 +7,7 @@ import static java.lang.constant.ConstantDescs.CD_long;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.jsonl.JsonFields;
-import cc.jumpkick.test.ClassCones;
+import cc.jumpkick.orchestrator.ClassCones;
 import cc.jumpkick.test.ClassReads;
 import java.lang.classfile.ClassFile;
 import java.lang.constant.ClassDesc;

@@ -4,7 +4,7 @@ package cc.jumpkick.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.jsonl.Jsonl;
-import cc.jumpkick.test.ClassCones;
+import cc.jumpkick.orchestrator.ClassCones;
 import cc.jumpkick.test.ClassReads;
 import java.io.IOException;
 import java.lang.classfile.ClassFile;

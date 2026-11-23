@@ -5,6 +5,7 @@ import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.model.DeclaredSuite;
 import cc.jumpkick.model.SuiteSettings;
+import cc.jumpkick.orchestrator.ClassTags;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;

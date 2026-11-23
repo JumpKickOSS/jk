@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.tuple;
 
 import cc.jumpkick.model.DeclaredSuite;
 import cc.jumpkick.model.SuiteSettings;
+import cc.jumpkick.orchestrator.ClassTags;
 import cc.jumpkick.run.TestFailureInfo;
 import cc.jumpkick.run.TestSummary;
 import java.nio.file.Files;

@@ -611,7 +611,9 @@ and exclusions stay GA-scoped.
    writes the stamp, nor `SuiteReads`, which keeps and reads back a suite's discovered reads as the
    stamp's tokens, so both move it by what they write, nor `SuiteRetry`, which sizes a suite JVM's
    heap, which no key names, nor `TestLaunch`, `JUnitLauncher` and `ForkSpec`, which fork a
-   suite's JVMs) into run-tests stamps. What those JVMs start with on every host is a value
+   suite's JVMs, nor `AffectedTests`, which hands an affected run its classes and spells their
+   digest as the stamp's token, and `TestClassStamps`, which writes compile-test's freshness
+   stamps, both keyed by value) into run-tests stamps. What those JVMs start with on every host is a value
    instead, the fork spec: the flags JumpKick adds around the module's own, the runner's tag and class
    filters, the excluded classes, the serial tags, the idle timeout, and the environment defaults
    with the fast tier's walls, but no heap, temp directory, port, worker count or jar path.
@@ -629,8 +631,11 @@ and exclusions stay GA-scoped.
    the next heap and when it stops, `RetryLoop`), decides which of a
    suite's recorded reads count as its inputs (`DiscoveryRules`: the events recorded, a file read
    before the run wrote it, one outside every keyed root, a program started, a socket that left the
-   host) and decides which suites run (`SuiteChoice`: the suites a selection resolves to, whether the
-   guard's green run covers it, whether its launch is the walled default tier) is
+   host), decides which suites run (`SuiteChoice`: the suites a selection resolves to, whether the
+   guard's green run covers it, whether its launch is the walled default tier) and decides which of
+   a suite's classes run or replay (`DiscoveryListing`: the classes a discovery fork named and
+   whether a suite may run off the list; `ClassTags`: the tags a test class carries, which place it
+   in a tag suite; `ClassCones`: each test class's static cone, which keys its replay) is
    its own module, `server/test-orchestrator`, in the one package `cc.jumpkick.orchestrator`; the
    engine bundles it, and a run-tests stamp names it as `orchestrator:<digest>`, the digest of
    that package's classes as the running jar holds them (`OrchestratorCode`: each entry's name,

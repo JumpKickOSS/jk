@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.test;
+package cc.jumpkick.orchestrator;
 
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Log;

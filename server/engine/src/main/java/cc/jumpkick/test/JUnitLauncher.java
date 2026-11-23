@@ -23,6 +23,7 @@ import cc.jumpkick.engine.plugin.WorkerLeases;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.TestSuites;
+import cc.jumpkick.orchestrator.DiscoveryListing;
 import cc.jumpkick.orchestrator.NoTestsGuard;
 import cc.jumpkick.orchestrator.ResultAggregator;
 import cc.jumpkick.orchestrator.RetryLoop;
@@ -1076,7 +1077,7 @@ public final class JUnitLauncher {
             TestProgressListener listener,
             List<String> extraExcludes)
             throws IOException, InterruptedException {
-        var listing = new Discovery.Listing();
+        var listing = new DiscoveryListing();
         var crash = new CaptureBuffer();
         List<String> flags = jvmFlags(JvmRole.DISCOVERY, 1, testTmpDir);
         List<String> args =
@@ -1099,9 +1100,9 @@ public final class JUnitLauncher {
                             heaps));
         } catch (PluginProcess.HandlerFailure e) {
             // The parent's own decoder ended the listing: a handler row, and no trust in the list.
-            return listing.handlerFailed(crash.text(), e.handler());
+            return Discovery.handlerFailed(listing, crash.text(), e.handler());
         }
-        return listing.ended(exit, crash.text(), PluginLoader.command(javaHome, classpath, flags, args));
+        return Discovery.ended(listing, exit, crash.text(), PluginLoader.command(javaHome, classpath, flags, args));
     }
 
     // -------- shared helpers --------------------------------------------

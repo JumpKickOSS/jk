@@ -124,6 +124,28 @@ class KeyContractTest {
                 .isTrue();
     }
 
+    /**
+     * Which classes a suite runs or replays is decided by code the stamp keys by its classes (the
+     * orchestrator's) or by a value the stamp names, never by the hand-recorded digest.
+     */
+    @Test
+    void the_code_that_selects_a_suites_classes_is_not_keyed_by_the_contract() {
+        for (String source : List.of(
+                "server/test-orchestrator/src/main/java/cc/jumpkick/orchestrator/ClassCones.java",
+                "server/test-orchestrator/src/main/java/cc/jumpkick/orchestrator/ClassTags.java",
+                "server/test-orchestrator/src/main/java/cc/jumpkick/orchestrator/DiscoveryListing.java",
+                "server/engine/src/main/java/cc/jumpkick/test/AffectedTests.java",
+                "server/engine/src/main/java/cc/jumpkick/runtime/TestClassStamps.java")) {
+            assertThat(KeyContract.SUITE.keeps(source)).as(source).isFalse();
+        }
+        assertThat(KeyContract.suiteCode("cc/jumpkick/test/AffectedTests$Row.class"))
+                .as("a nested class is its top-level class's")
+                .isFalse();
+        assertThat(KeyContract.suiteCode("cc/jumpkick/test/AffectedTestRanker.class"))
+                .as("only the classes named stand outside")
+                .isTrue();
+    }
+
     @Test
     void a_source_file_is_judged_by_the_class_it_compiles_to() {
         assertThat(KeyContract.entryOf("server/engine/src/main/java/cc/jumpkick/test/Discovery.java"))

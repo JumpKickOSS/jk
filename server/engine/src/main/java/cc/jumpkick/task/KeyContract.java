@@ -30,14 +30,17 @@ public enum KeyContract {
      * package {@code cc.jumpkick.test} and every class of the engine whose own name carries {@code
      * Test}, {@code Suite} or {@code JUnit} ({@link #suiteCode}). A run-tests stamp keys by it. The
      * code that judges a suite's outcome, decides which suites run, which of a suite's reads count as
-     * its inputs and which failures a retry answers is not here: it lives in the package {@code cc.jumpkick.orchestrator}, which the stamp keys by its compiled classes ({@code
+     * its inputs, which failures a retry answers, which classes a discovery fork listed, which tags
+     * a test class carries and what a test class's static cone holds is not here: it lives in the
+     * package {@code cc.jumpkick.orchestrator}, which the stamp keys by its compiled classes ({@code
      * OrchestratorCode}). Nor is the code that writes the stamp and its discovered-read tokens
      * ({@link #STAMP}): what it changes reaches a suite only through the key it writes; nor the code
      * that sizes a suite JVM's heap ({@link #HEAP}), which no key names; nor the code that forks a
-     * suite's JVMs ({@link #LAUNCH}), whose stamp keys what they start with by value. The {@code suite-code-keyed} guard
+     * suite's JVMs ({@link #LAUNCH}), whose stamp keys what they start with by value; nor the code
+     * whose outcome the stamp keys by value ({@link #BY_VALUE}). The {@code suite-code-keyed} guard
      * keeps the types that select and judge a suite inside the one or the other.
      */
-    SUITE("18976f0cffe4", List.of(Sources.SERVER, Sources.SHARED), KeyContract::suiteSource),
+    SUITE("e604454aef71", List.of(Sources.SERVER, Sources.SHARED), KeyContract::suiteSource),
 
     /**
      * The code that writes an artifact or a verdict the engine produces itself: the jar, assembly
@@ -120,6 +123,15 @@ public enum KeyContract {
     private static final List<String> LAUNCH =
             List.of(ROOT + "runtime/TestLaunch", PACKAGE + "JUnitLauncher", PACKAGE + "ForkSpec");
 
+    /**
+     * The classes whose outcome reaches a suite by a value the stamp keys. {@code AffectedTests}
+     * hands an affected run the classes its ranking picked and spells their digest as the stamp's
+     * token ({@code identityToken}), so a change to which classes it hands on moves the key by what
+     * it hands on. {@code TestClassStamps} writes compile-test's freshness stamps, which reach a
+     * suite only through the test classes the stamp keys by content.
+     */
+    private static final List<String> BY_VALUE = List.of(ROOT + "runtime/TestClassStamps", PACKAGE + "AffectedTests");
+
     /** The words a class's own name carries when it is suite code, wherever its package. */
     private static final List<String> WORDS = List.of("Test", "Suite", "JUnit");
 
@@ -182,15 +194,16 @@ public enum KeyContract {
      * Whether the archive entry {@code entry} is suite code: a jk class of the package {@code
      * cc.jumpkick.test}, or one whose top-level class name carries {@code Test}, {@code Suite} or
      * {@code JUnit}, outside the package {@code cc.jumpkick.orchestrator}, the classes that write
-     * the stamp ({@link #STAMP}), those that size a suite JVM's heap ({@link #HEAP}) and those that
-     * fork it ({@link #LAUNCH}).
+     * the stamp ({@link #STAMP}), those that size a suite JVM's heap ({@link #HEAP}), those that
+     * fork it ({@link #LAUNCH}) and those whose outcome the stamp keys by value ({@link #BY_VALUE}).
      */
     public static boolean suiteCode(String entry) {
         if (!entry.startsWith(ROOT) || !entry.endsWith(CLASS) || entry.startsWith(ORCHESTRATOR)) return false;
         String name = entry.substring(0, entry.length() - CLASS.length());
         int nested = name.indexOf('$');
         String owner = nested < 0 ? name : name.substring(0, nested);
-        if (STAMP.contains(owner) || HEAP.contains(owner) || LAUNCH.contains(owner)) return false;
+        if (STAMP.contains(owner) || HEAP.contains(owner) || LAUNCH.contains(owner) || BY_VALUE.contains(owner))
+            return false;
         if (entry.startsWith(PACKAGE)) return true;
         String simple = entry.substring(entry.lastIndexOf('/') + 1, entry.length() - CLASS.length());
         nested = simple.indexOf('$');
