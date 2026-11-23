@@ -16,7 +16,8 @@
 #                              class on another checkout's run: it ranks by them and runs the class.
 #                              A row jk wrote here is never touched.
 #   classes <member>           print `<class> here|shipped` for each top-level class the member has a
-#                              row of in an integration launch: jk wrote it here, or an import added it
+#                              row of in an integration launch, or in the one launch of a run that
+#                              starts one (its name is empty): jk wrote it here, or an import added it
 #   path <member>              print where jk keeps the member's records
 #
 # Run in the checkout, under the JumpKick home its engine uses. Members are the root jk.toml's
@@ -72,7 +73,7 @@ case "$1" in
     [[ -f "$f" ]] || exit 0
     jq -rR 'fromjson? // empty
       | select(type == "object" and (has("kind") | not) and (.launch | type == "string") and (.container | type == "array"))
-      | select(.launch | split(":")[1] // "" | split(",") | index("integration"))
+      | select(.launch == "" or (.launch | split(":")[1] // "" | split(",") | index("integration")))
       | ((.container[0] | if . == "" then "" else . + "." end) + .container[1]) + " "
         + (if .classKey == null then "shipped" else "here" end)' "$f" | sort -u
     ;;

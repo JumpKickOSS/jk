@@ -3,7 +3,7 @@
 # them (its real path's digest under the cache); export copies them; import adds another
 # checkout's rows without their keys, keeps every row jk wrote here and the headers, replaces a row
 # an earlier import added only with a newer one, and adds nothing twice; classes names each class
-# of an integration launch and who recorded it.
+# of an integration launch or of a run's only launch (named "") and who recorded it.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -61,6 +61,7 @@ mkdir -p "$(dirname "$q")"
   row test:integration ATest 200 own
   row test:integration DTest 300
   row test:integration ETest 300
+  row "" FTest 300 own
 } >"$q"
 imp() { (cd "$WORK/queue" && JK_CACHE_DIR="$WORK/cache-queue" bash "$CR" import "$WORK/ship" mod/a); }
 imp
@@ -82,7 +83,7 @@ imp
 [[ "$(cat "$q")" == "$before" ]] || fail "a second import changed the records: $(diff <(echo "$before") "$q")"
 
 got="$(cd "$WORK/queue" && JK_CACHE_DIR="$WORK/cache-queue" bash "$CR" classes mod/a | tr '\n' ';')"
-[[ "$got" == "a.ATest here;a.BTest shipped;a.DTest shipped;a.ETest shipped;" ]] || fail "classes: $got"
+[[ "$got" == "a.ATest here;a.BTest shipped;a.DTest shipped;a.ETest shipped;a.FTest here;" ]] || fail "classes: $got"
 
 # A member the Full tier shipped nothing for, and one with no records here: left alone, no error.
 rm -rf "$WORK/ship/mod/a"
