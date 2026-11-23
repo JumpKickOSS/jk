@@ -16,6 +16,7 @@ import cc.jumpkick.model.DeclaredSuite;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.orchestrator.ClassTags;
 import cc.jumpkick.task.ClassAbi;
+import cc.jumpkick.task.SourceApiIndex;
 import cc.jumpkick.test.AbiIndex;
 import cc.jumpkick.test.AffectedChangedPublish;
 import cc.jumpkick.test.AffectedTestRanker;
@@ -100,9 +101,14 @@ public final class AffectedTestsCompute {
                 if (rel.isBlank()) rel = ".";
                 String coord = unit.project().group() + ":" + unit.project().name();
                 var row = List.of(new AffectedTests.ModuleRow(rel, coord, "dirty"));
-                // No compile happens on this path: a dirty source newer than its compiled class
-                // means the bytecode is a lie — refuse rather than rank from it.
-                String stale = AffectedTestRanker.staleDirtyMain(root, modDir, dirty, layout.classesDir());
+                // No compile happens on this path: a dirty source whose content moved past its
+                // compiled class means the bytecode is a lie — refuse rather than rank from it.
+                String stale = AffectedTestRanker.staleDirtyMain(
+                        root,
+                        modDir,
+                        dirty,
+                        layout.classesDir(),
+                        SourceApiIndex.load(SourceApiIndex.path(layout.buildDir())));
                 if (stale != null) {
                     return AffectedTests.refused(
                             new AffectedTests.Refuse("stale", stale + " is newer than its compiled class; build first"),

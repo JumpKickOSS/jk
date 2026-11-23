@@ -5,6 +5,8 @@ import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.task.ClassAbi;
+import cc.jumpkick.task.FileHashMemo;
+import cc.jumpkick.task.SourceApiIndex;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -356,9 +358,13 @@ public final class AffectedTestRanker {
     /**
      * The module-relative path of a dirty main source that is newer than its compiled class, or
      * {@code null} when every dirty class file is at least as fresh as its source (or absent —
-     * ranking from sources is honest, stale bytecode is not).
+     * ranking from sources is honest, stale bytecode is not). A source that is newer by its time
+     * but whose content is the one {@code compiled} records for the classes on disk is not stale:
+     * a checkout rewrites a file with the same bytes, and a compile served from the cache leaves
+     * the class times older than the sources it was keyed by.
      */
-    public static @Nullable String staleDirtyMain(Path root, Path moduleDir, List<String> dirty, Path classesDir) {
+    public static @Nullable String staleDirtyMain(
+            Path root, Path moduleDir, List<String> dirty, Path classesDir, Map<String, SourceApiIndex.Row> compiled) {
         Path module = moduleDir.toAbsolutePath().normalize();
         Path base = root.toAbsolutePath().normalize();
         SourceFqcs fqcs = SourceFqcs.of(module, Set.of(TestSuites.DEFAULT));
@@ -376,7 +382,8 @@ public final class AffectedTestRanker {
             Path classFile = classesDir.resolve(hit.fqc().replace('.', '/') + ".class");
             try {
                 if (Files.isRegularFile(classFile)
-                        && Files.getLastModifiedTime(classFile).compareTo(Files.getLastModifiedTime(p)) < 0) {
+                        && Files.getLastModifiedTime(classFile).compareTo(Files.getLastModifiedTime(p)) < 0
+                        && !compiledAsIs(compiled.get(rel), p)) {
                     return rel;
                 }
             } catch (IOException e) {
@@ -384,6 +391,11 @@ public final class AffectedTestRanker {
             }
         }
         return null;
+    }
+
+    /** Whether {@code source} holds the content the compile of the classes on disk recorded for it. */
+    private static boolean compiledAsIs(SourceApiIndex.@Nullable Row row, Path source) throws IOException {
+        return row != null && row.contentSha().equals(FileHashMemo.contentHash(source));
     }
 
     /** A source file whose compilation produces classes — the grain the ranker reasons in. */

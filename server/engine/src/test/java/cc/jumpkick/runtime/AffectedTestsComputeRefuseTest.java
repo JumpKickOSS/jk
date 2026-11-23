@@ -10,6 +10,7 @@ import cc.jumpkick.host.GitCommand;
 import cc.jumpkick.host.Processes;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.task.SourceApiIndex;
 import cc.jumpkick.test.AffectedTests;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -28,6 +29,31 @@ class AffectedTestsComputeRefuseTest {
 
     @Test
     void dirty_source_newer_than_its_class_refuses_stale(@TempDir Path ws) throws Exception {
+        // The compile of the classes saw the source before the edit.
+        builtThenEdited(ws, "package com.acme;\npublic class Foo {}\n");
+
+        AffectedTests r = AffectedTestsCompute.fromDisk(ws, TestSelection.DEFAULT, null, null);
+        assertThat(r.refused()).isTrue();
+        assertThat(requireNonNull(r.refuse()).code()).isEqualTo("stale");
+        assertThat(requireNonNull(r.refuse()).message()).startsWith("src/main/java/com/acme/Foo.java ");
+    }
+
+    @Test
+    void source_rewritten_with_the_compiled_content_is_not_stale(@TempDir Path ws) throws Exception {
+        // A checkout rewrites the source after the build with the bytes the build compiled: its
+        // time moves past the class's, its content does not.
+        builtThenEdited(ws, "package com.acme;\npublic class Foo { int x; }\n");
+
+        AffectedTests r = AffectedTestsCompute.fromDisk(ws, TestSelection.DEFAULT, null, null);
+        assertThat(r.refused()).as(String.valueOf(r.refuse())).isFalse();
+    }
+
+    /**
+     * A one-class project whose committed {@code Foo.java} is edited to add a field, and whose
+     * classes are an hour older than that edit; the compile of those classes recorded {@code
+     * compiled} as the source's content.
+     */
+    private static void builtThenEdited(Path ws, String compiled) throws Exception {
         git(ws, "init");
         git(ws, "config", "user.email", "t@t");
         git(ws, "config", "user.name", "t");
@@ -41,21 +67,19 @@ class AffectedTestsComputeRefuseTest {
         Files.writeString(src, "package com.acme;\npublic class Foo {}\n");
         git(ws, "add", ".");
         git(ws, "commit", "-q", "-m", "base");
-        Files.writeString(src, "package com.acme;\npublic class Foo { int x; }\n");
 
         var layout = BuildLayout.of(ws, JkBuildParser.parse(ws.resolve(ManifestPaths.MANIFEST)));
+        Files.writeString(src, compiled);
+        SourceApiIndex.write(SourceApiIndex.path(layout.buildDir()), SourceApiIndex.of(ws, List.of(src)));
+        Files.writeString(src, "package com.acme;\npublic class Foo { int x; }\n");
+
         Path classFile = layout.classesDir().resolve("com/acme/Foo.class");
         Files.createDirectories(classFile.getParent());
         ClassWriter cw = new ClassWriter(0);
         cw.visit(Opcodes.V25, Opcodes.ACC_PUBLIC, "com/acme/Foo", null, "java/lang/Object", null);
         cw.visitEnd();
         Files.write(classFile, cw.toByteArray());
-        // The class predates the edit: its bytecode is a lie about the dirty source.
         Files.setLastModifiedTime(classFile, FileTime.from(Instant.now().minusSeconds(3600)));
-
-        AffectedTests r = AffectedTestsCompute.fromDisk(ws, TestSelection.DEFAULT, null, null);
-        assertThat(r.refused()).isTrue();
-        assertThat(requireNonNull(r.refuse()).code()).isEqualTo("stale");
     }
 
     @Test
