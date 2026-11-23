@@ -47,7 +47,10 @@ the tier `GATE_TIER` names ([tiers](test-suite-tiers.md#gate-tiers)). It takes t
 Both reinstall before any test runs, because a test's verdict is keyed by the engine that ran it:
 a batch that changes the engine reruns every suite under its own engine, and the next gate reuses
 those verdicts for every module it did not change. The Queue and Full tiers then check that the
-engine which served the tests is the tip's and run the shell fixtures. Each tier writes `GREEN <sha>` or `RED` to `integ-gate-<n>.log` under
+engine which served the tests is the tip's, and run the shell fixtures (`scripts/test-*.sh`) in the
+background beside every step from guard on; a fixture whose header holds the line
+`# gate-fixture: after-install` runs the tip's build, so it starts once the tier's last install has
+finished. Each tier writes `GREEN <sha>` or `RED` to `integ-gate-<n>.log` under
 `GATE_LOG_DIR`. A gate never pushes.
 The header of `scripts/gate/gate.sh` lists its settings; `scripts/test-gate.sh` runs it against a
 stand-in `jk`.

@@ -22,6 +22,9 @@
 # suite run alone was seen reading a doc that scripts/gate/test-reads.txt does not list. The docs
 # tier runs guard, the scoreboard check and the docs suite alone, and is red over a range that is
 # not docs-only or when the docs suite is.
+# The shell fixtures start beside guard and the gate waits for them, a red step included; a failing
+# one makes the gate red with its FIXTURE FAIL line, and one marked to run the tip's own build
+# starts only after the tier's last install, never after a failed reinstall, and in no docs tier.
 # Last of all it runs itself once more under a gate's environment, as the gate's own fixture run
 # does, and must pass there too.
 set -euo pipefail
@@ -31,7 +34,8 @@ set -euo pipefail
 # each case here is written against. Neither the settings nor the stand-ins' switches carry in.
 unset "${!GATE_@}" "${!FLAKY_@}" "${!PRE_@}" POST_SCRIPTS FAIL_PUSHGATE FAIL_REINSTALL FAIL_INTEG \
   FAIL_SLOW FAIL_DOCS FAIL_INTEG_ONCE FAIL_INSTALL_ONCE RESULTS_FIRST RERUN_JSONL RESULTS_RUN JK_CALLS KA_STATE FAIL_SCOREBOARD FAIL_GUARD GUARD_DIRTIES \
-  JK_CACHE_DIR JK_QUEUE_REMOTE BRANCH_TIER_BASE QUARANTINE_ADD KA_FAIL NATIVE_LINKED NATIVE_NO_TRANSCRIPT JK_HOME
+  JK_CACHE_DIR JK_QUEUE_REMOTE BRANCH_TIER_BASE QUARANTINE_ADD KA_FAIL NATIVE_LINKED NATIVE_NO_TRANSCRIPT JK_HOME \
+  FIXTURE_LOG FIXTURE_FAILS FIXTURE_SLOW GUARD_AWAITS_FIXTURE
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/jk-gate.XXXXXX")"
@@ -143,7 +147,8 @@ tickets() { find "$WORK/ka" -type f | wc -l | tr -d ' '; }
 # the transcript of the jk command it ran last (of $RESULTS_RUN when set), and
 # reports the checkout's HEAD as the engine's commit. A run that runs tests quarantines class
 # $QUARANTINE_ADD of mod/a in the checkout, as jk does past its threshold. `jk guard` exits
-# $FAIL_GUARD when it is set, and leaves the file guard-dirt in the checkout when GUARD_DIRTIES is.
+# $FAIL_GUARD when it is set, and leaves the file guard-dirt in the checkout when GUARD_DIRTIES is;
+# under GUARD_AWAITS_FIXTURE it fails unless a shell fixture starts within ten seconds.
 export HOME="$WORK/home"
 mkdir -p "$HOME/.jk/bin"
 cat >"$HOME/.jk/bin/jk" <<'EOF'
@@ -182,6 +187,10 @@ case "$1" in
     grep -v '"type":"session-start"' "$t" || true
     ;;
   guard)
+    if [[ -n "${GUARD_AWAITS_FIXTURE:-}" ]]; then
+      for _ in $(seq 100); do grep -qx 'ok started' "$FIXTURE_LOG" && break; sleep 0.1; done
+      grep -qx 'ok started' "$FIXTURE_LOG" || exit 1
+    fi
     [[ -z "${GUARD_DIRTIES:-}" ]] || echo dirt >guard-dirt
     exit "${FAIL_GUARD:-0}"
     ;;
@@ -218,7 +227,14 @@ cp "$ROOT"/scripts/queue/*.sh "$repo/scripts/queue/"
 printf '%s\n' '#!/usr/bin/env bash' 'echo "release-notes $*" >>"$JK_CALLS"' >"$repo/scripts/release-notes.sh"
 cp "$ROOT/scripts/release-version.sh" "$repo/scripts/"
 echo 'version = "9.8.7"' >"$repo/jk.toml"
-printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$repo/scripts/test-ok.sh"
+# Two fixtures, logging to $FIXTURE_LOG: one that fails under FIXTURE_FAILS and takes two seconds
+# under FIXTURE_SLOW, and one that runs the tip's build and logs how many installs ran before it.
+# shellcheck disable=SC2016 # the fixtures read their variables when they run
+printf '%s\n' '#!/usr/bin/env bash' 'echo "ok started" >>"$FIXTURE_LOG"' '[[ -z "${FIXTURE_SLOW:-}" ]] || sleep 2' \
+  'echo "ok done" >>"$FIXTURE_LOG"' '[[ -z "${FIXTURE_FAILS:-}" ]]' >"$repo/scripts/test-ok.sh"
+# shellcheck disable=SC2016 # the fixtures read their variables when they run
+printf '%s\n' '#!/usr/bin/env bash' '# gate-fixture: after-install' \
+  'echo "tip after $(grep -c "^install" "$JK_CALLS") installs" >>"$FIXTURE_LOG"' >"$repo/scripts/test-tip.sh"
 git -C "$repo" init -q
 git -C "$repo" config user.name gate
 git -C "$repo" config user.email gate@example.invalid
@@ -235,13 +251,15 @@ gate() {
   local n="$1"
   shift
   : >"$WORK/calls-$n"
-  env JK_CALLS="$WORK/calls-$n" GATE_CHECKOUT="$repo" GATE_LOG_DIR="$WORK/logs" \
+  : >"$WORK/fixtures-$n"
+  env JK_CALLS="$WORK/calls-$n" FIXTURE_LOG="$WORK/fixtures-$n" GATE_CHECKOUT="$repo" GATE_LOG_DIR="$WORK/logs" \
     GATE_LOCK="$WORK/gate.lock" RERUN_JSONL="$WORK/rerun.jsonl" FLAKY_KA="$WORK/bin/ka" \
     KA_STATE="$WORK/ka" FLAKY_BASE="$tip" JK_QUEUE_REMOTE="$WORK/queue.git" \
     "$@" bash "$launcher" "$n" "$tip" >/dev/null 2>&1
   [[ "$(tail -1 "$WORK/logs/integ-gate-$n.log")" == "GATE$n DONE" ]] || fail "gate $n did not finish: $(cat "$WORK/logs/integ-gate-$n.log")"
 }
 verdict() { grep -E '^(GREEN |RED|CHECKOUT |NO CHECKOUT)' "$WORK/logs/integ-gate-$1.log" | tail -1; }
+fixtures() { cat "$WORK/fixtures-$1"; }
 
 gate 1
 [[ "$(verdict 1)" == "GREEN $tip" ]] || fail "a clean tip was not green: $(cat "$WORK/logs/integ-gate-1.log")"
@@ -256,6 +274,20 @@ $got
 want:
 $want"
 [[ ! -f "$WORK/logs/quarantine-tickets.tsv" ]] || fail "a gate with nothing quarantined opened a ticket"
+grep -qx 'FIXTURES started 1; after the installs: scripts/test-tip.sh' "$WORK/logs/integ-gate-1.log" ||
+  fail "the gate did not start its fixtures: $(cat "$WORK/logs/integ-gate-1.log")"
+grep -q '^FIXTURES_FAIL=0 ' "$WORK/logs/integ-gate-1.log" || fail "the gate did not collect its fixtures: $(cat "$WORK/logs/integ-gate-1.log")"
+[[ "$(fixtures 1)" == "$(printf '%s\n' 'ok started' 'ok done' 'tip after 2 installs')" ]] ||
+  fail "the Full tier's fixtures ran as: $(fixtures 1)"
+# The fixtures run beside guard: a guard that waits for one to start is green.
+gate 60 GUARD_AWAITS_FIXTURE=1
+[[ "$(verdict 60)" == "GREEN $tip" ]] || fail "the fixtures did not start before guard ended: $(cat "$WORK/logs/integ-gate-60.log")"
+# A failing fixture: red, naming it, and the other fixture still runs.
+gate 61 FIXTURE_FAILS=1
+[[ "$(verdict 61)" == "RED" ]] || fail "a failing fixture did not make the gate red: $(cat "$WORK/logs/integ-gate-61.log")"
+[[ "$(grep '^FIXTURE FAIL' "$WORK/logs/integ-gate-61.log")" == "FIXTURE FAIL scripts/test-ok.sh" ]] ||
+  fail "the gate did not name the failing fixture alone: $(cat "$WORK/logs/integ-gate-61.log")"
+grep -qx 'tip after 2 installs' "$WORK/fixtures-61" || fail "a failing fixture kept the other from running: $(fixtures 61)"
 grep -q '^FLAKY the quarantine on .* is current' "$WORK/logs/integ-gate-1.log" || fail "the gate did not review the quarantine: $(cat "$WORK/logs/integ-gate-1.log")"
 if grep -q -- '-s slow' "$WORK/calls-1"; then fail "a Full tier with no base ran the slow tier: $(cat "$WORK/calls-1")"; fi
 grep -qx 'test -s docs -c --no-ansi' "$WORK/calls-1" || fail "the Full tier did not run the docs suite alone: $(cat "$WORK/calls-1")"
@@ -311,7 +343,7 @@ cat >"$WORK/guard-red.jsonl" <<'EOF2'
 {"schema":1,"type":"task-finish","task":"guard-tree","status":"FAIL","module":"m:web"}
 {"schema":1,"type":"error","task":"guard","code":"one-owner","module":"m:cli","message":"GUARD one-owner  no-bite"}
 EOF2
-gate 50 FAIL_GUARD=1 RESULTS_RUN=build RERUN_JSONL="$WORK/guard-red.jsonl"
+gate 50 FAIL_GUARD=1 FIXTURE_SLOW=1 RESULTS_RUN=build RERUN_JSONL="$WORK/guard-red.jsonl"
 [[ "$(verdict 50)" == "RED (guard)" ]] || fail "a red guard did not stop the gate: $(cat "$WORK/logs/integ-gate-50.log")"
 got="$(grep '^GUARD FAIL ' "$WORK/logs/integ-gate-50.log" || true)"
 want="$(printf '%s\n' 'GUARD FAIL m:core compile-java' 'GUARD FAIL no-system-out' 'GUARD FAIL one-owner')"
@@ -320,6 +352,10 @@ $got
 want:
 $want"
 if grep -q '^install' "$WORK/calls-50"; then fail "the gate installed after a red guard: $(cat "$WORK/calls-50")"; fi
+# The fixtures started beside the red guard finished before the gate did, and the one that runs the
+# tip's build never started.
+[[ "$(fixtures 50)" == "$(printf '%s\n' 'ok started' 'ok done')" ]] || fail "a red guard's fixtures ran as: $(fixtures 50)"
+grep -q '^FIXTURES_FAIL=0 ' "$WORK/logs/integ-gate-50.log" || fail "a red guard did not collect its fixtures: $(cat "$WORK/logs/integ-gate-50.log")"
 # jk's internal error names no check, and reads no transcript; nor does a transcript of another run.
 gate 51 FAIL_GUARD=70 RESULTS_RUN=build RERUN_JSONL="$WORK/guard-red.jsonl"
 [[ "$(verdict 51)" == "RED (guard)" ]] || fail "a guard that exited 70 did not stop the gate: $(cat "$WORK/logs/integ-gate-51.log")"
@@ -339,6 +375,7 @@ gate 3 FAIL_REINSTALL=1
 [[ "$(verdict 3)" == "RED (reinstall)" ]] || fail "a failed reinstall did not stop the gate: $(cat "$WORK/logs/integ-gate-3.log")"
 grep -q 'compile failed' "$WORK/logs/integ-gate-3.log" || fail "the gate log does not say why the reinstall failed"
 if grep -q '^install -g' "$WORK/calls-3"; then fail "the push gate ran after a failed reinstall"; fi
+if grep -q '^tip' "$WORK/fixtures-3"; then fail "the tip's fixture ran after a failed reinstall: $(fixtures 3)"; fi
 
 # --- the quarantine ---
 git init -q --bare "$WORK/queue.git"
@@ -422,7 +459,7 @@ mkdir -p "$q/scripts/gate" "$q/scripts/queue" "$q/mod/a/packs/p" "$q/mod/b" "$q/
 cp "$ROOT"/scripts/gate/*.sh "$q/scripts/gate/"
 cp "$ROOT"/scripts/queue/*.sh "$q/scripts/queue/"
 cp "$ROOT/scripts/curated-integration.sh" "$q/scripts/"
-cp "$repo/scripts/release-notes.sh" "$repo/scripts/test-ok.sh" "$repo/scripts/release-version.sh" "$q/scripts/"
+cp "$repo/scripts/release-notes.sh" "$repo/scripts/test-ok.sh" "$repo/scripts/test-tip.sh" "$repo/scripts/release-version.sh" "$q/scripts/"
 cat >"$q/jk.toml" <<'EOF'
 version = "9.8.7"
 
@@ -489,6 +526,8 @@ $got
 want:
 $want"
 grep -q '^CHANGED_MODULES since .*: mod/a mod/a/packs/p' "$WORK/logs/integ-gate-5.log" || fail "the log does not name the changed members"
+[[ "$(fixtures 5)" == "$(printf '%s\n' 'ok started' 'ok done' 'tip after 2 installs')" ]] ||
+  fail "the Queue tier's fixtures ran as: $(fixtures 5)"
 # No member changed: no integration suite, and the curated lane in one run over both its members.
 tip="$qdocs"
 git -C "$q" checkout -q --detach "$qdocs"
@@ -536,6 +575,7 @@ git -C "$q" checkout -q --detach "$qtip"
 gate 22 GATE_TIER=queue GATE_BASE="$qbase" FAIL_REINSTALL=1
 [[ "$(verdict 22)" == "RED (reinstall)" ]] || fail "a failed reinstall did not stop the Queue tier: $(cat "$WORK/logs/integ-gate-22.log")"
 if grep -qE '^(install -c|test )' "$WORK/calls-22"; then fail "the Queue tier ran tests after a failed reinstall: $(cat "$WORK/calls-22")"; fi
+if grep -q '^tip' "$WORK/fixtures-22"; then fail "the tip's fixture ran after a failed reinstall: $(fixtures 22)"; fi
 
 # Red with a compile error beside a failed class: red, naming the run, and not run again.
 gate 7 GATE_TIER=queue GATE_BASE="$qbase" FAIL_INTEG=1 RERUN_JSONL="$WORK/red-other.jsonl"
@@ -655,6 +695,7 @@ grep -q 'stale: docs/d.md' "$WORK/logs/integ-gate-18.log" || fail "the log does 
 gate 23 GATE_TIER=docs GATE_BASE="$dbase" FAIL_DOCS=1
 [[ "$(verdict 23)" == "RED" ]] || fail "a red docs suite passed the docs tier: $(cat "$WORK/logs/integ-gate-23.log")"
 grep -q '^DOCS_SUITE_EXIT=4' "$WORK/logs/integ-gate-23.log" || fail "the log does not name the red docs suite"
+[[ -z "$(fixtures 23)" ]] || fail "the docs tier ran the shell fixtures: $(fixtures 23)"
 gate 19 GATE_TIER=docs GATE_BASE="$qroot"
 [[ "$(verdict 19)" == "RED (not docs-only since $qroot)" ]] || fail "a range with code passed the docs tier: $(cat "$WORK/logs/integ-gate-19.log")"
 echo 2 >"$q/docs/read.md" && qc read
@@ -676,4 +717,4 @@ if [[ -z "${TEST_GATE_NESTED:-}" ]]; then
     fail "under a Queue-tier gate's environment: $(cat "$WORK/nested.log")"
 fi
 
-echo "test-gate: ok (41 gate runs, 5 of them quarantining; again under a gate's environment)"
+echo "test-gate: ok (43 gate runs, 5 of them quarantining; again under a gate's environment)"

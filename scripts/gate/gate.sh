@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # The gate a tip must pass, in one of three tiers. Each detaches a checkout at the tip, runs
 # `jk guard` and never pushes; the Full and Queue tiers then check that the engine which served the
-# tests is the tip's and run the shell fixtures. Both start with the reinstall without tests
-# (`jk install -S`), so every test they run runs under the tip's own engine: test verdicts are keyed
-# by the engine that ran them, so a change to the engine reruns every suite in the gate that lands
-# it, and the gate after it reuses them. The install that runs tests after it, under the engine it
-# installed, restores the native client the reinstall linked: the log's `NATIVE_LINKS
-# reinstall=<n> install=<n>` line counts the native images each of the two linked.
+# tests is the tip's, and run the shell fixtures beside their steps. Both start with the reinstall
+# without tests (`jk install -S`), so every test they run runs under the tip's own engine: test
+# verdicts are keyed by the engine that ran them, so a change to the engine reruns every suite in
+# the gate that lands it, and the gate after it reuses them. The install that runs tests after it,
+# under the engine it installed, restores the native client the reinstall linked: the log's
+# `NATIVE_LINKS reinstall=<n> install=<n>` line counts the native images each of the two linked.
 #
 # The Full tier (GATE_TIER=full, the default): after the reinstall, `jk install -g -c` (the fast
 # tier with the gated tiers, run once) under a freshly started engine, the docs suite (`jk test -s
@@ -48,6 +48,13 @@
 # in the checkout; the gate saves that file, restores the checkout, and then opens a ticket for each
 # class jk added and submits the file, with their tickets and without the classes whose ticket
 # closed, to the merge queue (scripts/gate/flaky.sh review, its output in g<n>-quarantine.log).
+#
+# The shell fixtures (scripts/test-*.sh) of the Full and Queue tiers run one after another in the
+# background from the checkout on, beside guard and the steps after it; the gate waits for them at
+# the end, a red step included, and writes a `FIXTURE FAIL <script>` line for each that failed. A
+# fixture whose header holds the line `# gate-fixture: after-install` runs the tip's own build, so
+# it starts once the tier's last install has finished (scripts/test-headless-keychain.sh, which
+# installs target/dist/jk). Each fixture's output lands in g<n>-fixture-<script>.log.
 #
 # The docs tier (GATE_TIER=docs), which the merge queue runs in place of the Queue tier when
 # everything since GATE_BASE is docs-only (scripts/gate/docs-only.sh range): `jk guard`, which holds
@@ -112,7 +119,33 @@
     GATE_LOG_DIR="$D" bash scripts/gate/flaky.sh review "$D/g$n-quarantine.toml" "$D/g$n-quarantine.log" >>"$L" 2>&1 \
       || echo "FLAKY review failed" >>"$L"
   }
-  done_gate() { quarantine_review; echo "GATE$n DONE" >>"$L"; exit 0; }
+  # fixtures_start <script...>: those fixtures one after another in the background, each one's exit
+  # status in g<n>-fixture-<script>.exit.
+  fixture_pids=() fixtures_run=()
+  fixtures_start() {
+    [ "$#" -gt 0 ] || return 0
+    fixtures_run+=("$@")
+    (
+      for t in "$@"; do
+        bash "$t" >"$D/g$n-fixture-$(basename "$t").log" 2>&1
+        echo "$?" >"$D/g$n-fixture-$(basename "$t").exit"
+      done
+    ) </dev/null &
+    fixture_pids+=("$!")
+  }
+  # fixtures_collect: waits for every fixture started, then a FIXTURE FAIL line for each that did not
+  # exit 0, and FIXTURES_FAIL=1 in the log and $ff when any failed; at most once.
+  ff=0
+  fixtures_collect() {
+    [ "${#fixture_pids[@]}" -gt 0 ] || return 0
+    wait "${fixture_pids[@]}"
+    fixture_pids=()
+    for t in "${fixtures_run[@]}"; do
+      [ "$(cat "$D/g$n-fixture-$(basename "$t").exit" 2>/dev/null)" = 0 ] || { echo "FIXTURE FAIL $t" >>"$L"; ff=1; }
+    done
+    echo "FIXTURES_FAIL=$ff $(date +%H:%M:%S)" >>"$L"
+  }
+  done_gate() { fixtures_collect; quarantine_review; echo "GATE$n DONE" >>"$L"; exit 0; }
   red() { echo "$1" >>"$L"; done_gate; }
   # flaky_named <details.jsonl> <command>: a FLAKY line in the log for each class that passed on the
   # re-run, when the transcript is that run of `jk <command>`.
@@ -167,6 +200,18 @@
     echo "engine restarted under WSL_INTEROP=$WSL_INTEROP" >>"$L"
   fi
   echo "tip $(git rev-parse --short HEAD) $(date +%H:%M:%S) jk $(jk --version) tier $tier" >>"$L"
+
+  # The shell fixtures start now, beside every step below; those that run the tip's own build wait
+  # for the tier's last install.
+  early=() late=()
+  if [ "$tier" != docs ]; then
+    rm -f "$D/g$n-fixture-"*.exit
+    for t in scripts/test-*.sh; do
+      if grep -qx '# gate-fixture: after-install' "$t"; then late+=("$t"); else early+=("$t"); fi
+    done
+    fixtures_start ${early[@]+"${early[@]}"}
+    echo "FIXTURES started ${#early[@]}; after the installs: ${late[*]:-none}" >>"$L"
+  fi
 
   # Targeted tests first, fail fast: PRE_MODULES, then PRE_SCRIPTS.
   for pm in ${PRE_MODULES:-}; do
@@ -289,6 +334,7 @@
     echo "INSTALL_EXIT=$m $(date +%H:%M:%S)" >>"$L"
     echo "NATIVE_LINKS reinstall=$linked install=$(native_links "$since")" >>"$L"
     [ "$m" -eq 0 ] || red "RED (install)"
+    fixtures_start ${late[@]+"${late[@]}"}
     # The integration runs below start a fresh engine from the jar just installed.
     jk engine stop >/dev/null 2>&1
 
@@ -375,6 +421,7 @@
         echo "RERUN green, but the first run was red outside a test class: the push gate stays red" >>"$L"
       fi
     fi
+    fixtures_start ${late[@]+"${late[@]}"}
   fi
 
   # The engine's commit, read after the tests ran under a freshly started engine. It counts when
@@ -428,11 +475,7 @@
     echo "TEST_READS_EXIT=$dr $(date +%H:%M:%S)" >>"$L"
   fi
 
-  ff=0
-  for t in scripts/test-*.sh; do
-    bash "$t" >"$D/g$n-fixture-$(basename "$t").log" 2>&1 || { echo "FIXTURE FAIL $t" >>"$L"; ff=1; }
-  done
-  echo "FIXTURES_FAIL=$ff $(date +%H:%M:%S)" >>"$L"
+  fixtures_collect
   for ps in ${POST_SCRIPTS:-}; do
     pl="$D/g$n-post-$(basename "$ps").log"
     bash "$ps" >"$pl" 2>&1
