@@ -15,6 +15,7 @@ import java.util.Set;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -80,6 +81,7 @@ class ActionTreeTest {
                         Path.of("/cache/actions/incremental-java"), Path.of("/cache/actions/incremental-kotlin"));
     }
 
+    @Tag("tree")
     @Test
     void no_production_source_types_an_action_directory_name() throws IOException {
         Path root = repoRoot();

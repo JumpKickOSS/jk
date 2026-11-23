@@ -18,6 +18,7 @@ import java.util.TreeSet;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -149,6 +150,7 @@ class UserConfigKeysTest {
         }
     }
 
+    @Tag("tree")
     @Test
     void every_key_a_reader_of_the_file_reads_is_known() throws IOException {
         List<String> unknown = new ArrayList<>();
@@ -252,6 +254,7 @@ class UserConfigKeysTest {
         assertThatThrownBy(() -> UserConfigTable.open("o").key("k")).hasMessageContaining("open");
     }
 
+    @Tag("tree")
     @Test
     void every_declared_table_is_listed() throws Exception {
         Path root = RepoRoot.find(UserConfigKeysTest.class);

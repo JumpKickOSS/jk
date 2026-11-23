@@ -21,7 +21,8 @@
 # freshly started engine, the integration suite of each module changed since GATE_BASE
 # (scripts/gate/changed-modules.sh; every module when a root build file changed) and the curated
 # lane's classes (curated-integration.txt) in the other modules, then the docs suite (`jk test -s
-# docs`). jk passes a run red only in the classes .jk/test/quarantine.toml holds; a run red in other
+# docs`) and the tree suite (`jk test -s tree`, the tests that scan every module's sources). The
+# Full tier runs the tree suite inside `jk install -g`, as one of the guard suites. jk passes a run red only in the classes .jk/test/quarantine.toml holds; a run red in other
 # classes runs them once more under the same inputs, and passes when they pass there. Each class
 # still red is a `FAILED <module> <class>` line of the log, its failure in g<n>-failures.txt.
 #
@@ -192,7 +193,7 @@
   quarantine=1
   rm -f "$D/g$n-quarantine.toml"
 
-  m=0 s=0 r=0 rn=0 sl=0 dr=0 ds=0
+  m=0 s=0 r=0 rn=0 sl=0 dr=0 ds=0 ts=0
   if [ "$tier" = queue ]; then
     # tested <label> <jk args...>: one jk run that runs tests, its exit in $e. A run red only in
     # test classes runs once more under the same stamp, which runs only those classes: jk records
@@ -263,6 +264,11 @@
     tested docs test -s docs -c --no-ansi
     ds=$e
     echo "DOCS_SUITE_EXIT=$ds $(date +%H:%M:%S)" >>"$L"
+    # The tests that scan every module's sources sit outside each module's fast tier, so that an
+    # edit re-runs only them; they check the whole tree, so they run whatever changed.
+    tested tree test -s tree -c --no-ansi
+    ts=$e
+    echo "TREE_SUITE_EXIT=$ts $(date +%H:%M:%S)" >>"$L"
   else
     jk install -g -c >"$D/g$n-snapshot.log" 2>&1
     s=$?
@@ -366,7 +372,7 @@
   git status --porcelain >>"$L"
 
   if [ "$eng" -eq 0 ] && [ "$m" -eq 0 ] && [ "$s" -eq 0 ] && [ "$r" -eq 0 ] && [ "$sl" -eq 0 ] && [ "$ff" -eq 0 ] \
-    && [ "$rn" -eq 0 ] && [ "$dr" -eq 0 ] && [ "$ds" -eq 0 ] && [ -z "$(git status --porcelain)" ]; then
+    && [ "$rn" -eq 0 ] && [ "$dr" -eq 0 ] && [ "$ds" -eq 0 ] && [ "$ts" -eq 0 ] && [ -z "$(git status --porcelain)" ]; then
     echo "GREEN $(git rev-parse HEAD)" >>"$L"
   else
     echo "RED" >>"$L"

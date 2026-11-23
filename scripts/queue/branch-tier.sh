@@ -4,9 +4,10 @@
 # `--affected-since <merge-base>` selects, those changed since the branch left origin/main and
 # every module that depends on them (all of them when a file outside every module changed). The
 # modules they build on compile, main and test, but their suites do not run, and nothing is
-# packaged past the jars the tests read: no native client. A pass is recorded as a note on HEAD
-# under refs/notes/branch-tier naming HEAD's tree, which scripts/queue/submit.sh requires. The
-# working tree must be clean, so what passed is what HEAD holds.
+# packaged past the jars the tests read: no native client. Then the tree suite (`jk test -s tree`),
+# the tests that scan every module's sources, which no module's fast tier holds. A pass is recorded
+# as a note on HEAD under refs/notes/branch-tier naming HEAD's tree, which scripts/queue/submit.sh
+# requires. The working tree must be clean, so what passed is what HEAD holds.
 #
 # Usage: scripts/queue/branch-tier.sh
 #
@@ -38,6 +39,8 @@ modules="$(printf '%s\n' "$jars" | awk -F'\t' -v root="$root/" 'NF == 2 {
 }' | sort -u | paste -sd, -)" || fail "a selected module is outside $root"
 if [[ -n "$modules" ]]; then
   jk test --exclusive -m "$modules" || fail "the fast tier of the modules the branch reaches is red"
+  # The tests that scan every module's sources are in no module's fast tier, and any change can break them.
+  jk test -s tree || fail "the tree suite (the tests that scan every module's sources) is red"
 else
   echo "branch-tier: no module changed since $(git rev-parse --short "$base"); no tests to run"
 fi

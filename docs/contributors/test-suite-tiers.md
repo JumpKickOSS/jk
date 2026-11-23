@@ -13,7 +13,7 @@ over every subset of the tag vocabulary, that each is run by exactly one suite, 
 
 `jk build` runs every module's fast tier (the default suite: what no suite claims); `jk install`,
 which is that same build plus the reinstall, gates every local merge into `main`; `jk install -g`,
-which runs `[test] guard-suites = ["test", "integration", "e2e"]` against the JumpKick it installs, is
+which runs `[test] guard-suites = ["test", "integration", "e2e", "tree"]` against the JumpKick it installs, is
 the heart of the Full tier ([gate tiers](#gate-tiers)). The house rules run under `jk build` and `jk guard`
 ([self-host](self-host.md#house-rule-gate)).
 
@@ -23,6 +23,7 @@ the heart of the Full tier ([gate tiers](#gate-tiers)). The house rules run unde
 | `jk test` | what no suite claims | — | yes |
 | `jk test -s integration` | `integration` | `slow`, `network`, `release`, `live`, `bench` | yes |
 | `jk test -s docs` | `docs` | `integration`, `slow`, `network`, `release`, `live`, `bench` | yes |
+| `jk test -s tree` | `tree` | `docs`, `integration`, `slow`, `network`, `release`, `live`, `bench` | yes |
 | `jk test -s slow` | `slow` | `network`, `release`, `live`, `bench` | yes |
 | `jk test -s network` | `network` | `release`, `live`, `bench` | yes |
 | `jk test -s release` | `release` | `live`, `bench` | yes |
@@ -49,7 +50,15 @@ Tag new heavy tests at class level:
 @Tag("live")        // writes to this machine's own services (the OS keychain); desktop, on demand
 @Tag("bench")       // microbench only (never PR)
 @Tag("docs")        // walks the doc tree (docs/, the root Markdown); every gate tier runs it alone
+@Tag("tree")        // scans every module's production sources; the Branch, Queue and Full tiers run it
 ```
+
+**A test that scans the whole tree runs in the tree suite.** A suite is keyed on every file its
+tests read, so one method that walks every module's `src/main/java` keys its module's whole fast
+tier on the whole tree: an edit to an engine method body would re-run all of `shared/core`.
+Tag that method `@Tag("tree")` (the method, not the class, when the rest of the class reads only
+its own module) and the edit re-runs only the tree suite. A test that reads a few named files
+outside its module stays where it is.
 
 **No blocking tier waits on a clock.** A test in the fast or integration tier never sleeps,
 polls or waits out a timeout for a second or more: it moves a `FakeClock`, waits on a latch, or
@@ -99,9 +108,9 @@ the last commit it passed.
 
 | Tier | Command | What runs | When | Blocks |
 |------|---------|-----------|------|--------|
-| Branch | `scripts/queue/branch-tier.sh` | `jk guard`, then `jk test --exclusive` over the modules `--affected-since <merge-base>` selects: the fast tier of the modules the branch changed and their dependents (every module when a file outside them changed). The modules they build on compile but their suites do not run, and no native client is built; the Queue tier runs both | Before a branch is submitted to the merge queue | The submission |
-| Queue | `GATE_TIER=queue scripts/gate/run.sh <n> <sha>` | `jk guard`; `jk install -S` (the reinstall without tests, so every test runs under the batch's own engine); one `jk install -c` (every module's fast tier, then the reinstall); the integration suite of each module the batch changed (`scripts/gate/changed-modules.sh`); the [curated lane](#the-curated-integration-lane)'s classes in every other module; `jk test -s docs`; the shell fixtures | Every batch the merge queue gates | The push to `origin/main` |
-| Full | `scripts/gate/full-loop.sh`, each cycle `GATE_TIER=full scripts/gate/gate.sh <n> <sha>` | `jk guard`; `jk install -S`; `jk install -g -c` (the fast tier once, with every `integration` and `e2e` class); `jk test -s docs`; `jk test -s release`; `jk test -s slow` when a plugin (a member under `plugins/`) or a root build file changed since `green` (`GATE_BASE`); the shell fixtures; the release notes | Back to back on the newest `main`, on a host of its own that shares no lock with the queue ([the Full tier loop](self-host.md#the-full-tier-loop)) | A release: it is cut from `green`. `main` may be red on it for a cycle or two: a confirmed culprit commit is reverted through the queue, and after two red cycles the queue lands only the fix |
+| Branch | `scripts/queue/branch-tier.sh` | `jk guard`, then `jk test --exclusive` over the modules `--affected-since <merge-base>` selects: the fast tier of the modules the branch changed and their dependents (every module when a file outside them changed). The modules they build on compile but their suites do not run, and no native client is built; the Queue tier runs both. Then `jk test -s tree` | Before a branch is submitted to the merge queue | The submission |
+| Queue | `GATE_TIER=queue scripts/gate/run.sh <n> <sha>` | `jk guard`; `jk install -S` (the reinstall without tests, so every test runs under the batch's own engine); one `jk install -c` (every module's fast tier, then the reinstall); the integration suite of each module the batch changed (`scripts/gate/changed-modules.sh`); the [curated lane](#the-curated-integration-lane)'s classes in every other module; `jk test -s docs`; `jk test -s tree`; the shell fixtures | Every batch the merge queue gates | The push to `origin/main` |
+| Full | `scripts/gate/full-loop.sh`, each cycle `GATE_TIER=full scripts/gate/gate.sh <n> <sha>` | `jk guard`; `jk install -S`; `jk install -g -c` (the fast tier once, with every `integration`, `e2e` and `tree` class); `jk test -s docs`; `jk test -s release`; `jk test -s slow` when a plugin (a member under `plugins/`) or a root build file changed since `green` (`GATE_BASE`); the shell fixtures; the release notes | Back to back on the newest `main`, on a host of its own that shares no lock with the queue ([the Full tier loop](self-host.md#the-full-tier-loop)) | A release: it is cut from `green`. `main` may be red on it for a cycle or two: a confirmed culprit commit is reverted through the queue, and after two red cycles the queue lands only the fix |
 | Windows, macOS | `scripts/gate/platform-loop.sh windows` and `macos`, each run `scripts/gate/platform-run.sh` on the host | In a checkout and home of their own on Daybreak (Git Bash) and bocamacmini: `jk install -S`; every module's fast tier; each fast or integration test class with an OS condition; the product smoke | Each tip the Full loop takes, beside its Linux gate; a busy platform skips to the newest ([Windows and macOS](self-host.md#windows-and-macos)) | Nothing at first: a red run files a ticket. Once a platform has been green for a week, `green` moves only to tips it passed too |
 | Nightly | `ci-nightly.yml` | `integration`, `slow`, `network`, `bench`, the coverage ratchet, the examples | Its schedule, when the workflow is enabled | Nothing |
 | Release | `ci.yml` on the release tag | The fast tier, `docs`, the curated lane, `release`, the whole `integration` tier, Windows and macOS | `jk release` pushes a tag | The release |

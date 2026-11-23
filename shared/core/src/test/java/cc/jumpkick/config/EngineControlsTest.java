@@ -14,6 +14,7 @@ import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 /** Docs, dashboard dump, and live env reads stay on {@link EngineControls}. */
@@ -61,6 +62,7 @@ class EngineControlsTest {
                         .toArray(String[]::new));
     }
 
+    @Tag("tree")
     @Test
     void every_live_jk_engine_env_is_in_the_catalog() throws IOException {
         Set<String> live = new LinkedHashSet<>();

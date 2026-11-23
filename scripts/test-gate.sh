@@ -157,6 +157,7 @@ case "$1" in
   test)
     [[ -n "${FAIL_SLOW:-}" && " $* " == *" -s slow "* ]] && { echo "FAIL a.AndroidE2eTest"; exit 4; }
     [[ -n "${FAIL_DOCS:-}" && " $* " == *" -s docs "* ]] && { echo "FAIL a.DocsTest"; exit 4; }
+    [[ -n "${FAIL_TREE:-}" && " $* " == *" -s tree "* ]] && { echo "FAIL a.TreeTest"; exit 4; }
     if [[ " $* " == *" -X "* ]]; then
       [[ -n "${FAIL_INTEG:-}" ]] && { echo "FAIL a.FlakyTest"; exit 4; }
       [[ -n "${FAIL_INTEG_ONCE:-}" && "$(grep -c -- ' -X ' "$JK_CALLS")" -eq 1 ]] && { echo "FAIL b.NewTest"; exit 4; }
@@ -387,7 +388,8 @@ gate 5 GATE_TIER=queue GATE_BASE="$qbase"
 got="$(sed -n '/^install /,$p' "$WORK/calls-5" | grep -E '^(install|engine stop|test)')"
 want="$(printf '%s\n' 'install -S' 'engine stop' 'install -c' 'engine stop' \
   'test -s integration -c -X --no-ansi -m mod/a -m mod/a/packs/p' \
-  'test -s integration --no-ansi -m mod/b --class b.CuratedBTest' 'test -s docs -c --no-ansi')"
+  'test -s integration --no-ansi -m mod/b --class b.CuratedBTest' 'test -s docs -c --no-ansi' \
+  'test -s tree -c --no-ansi')"
 [[ "$got" == "$want" ]] || fail "the Queue tier ran:
 $got
 want:
@@ -408,6 +410,9 @@ grep -q '^INTEG changed EXIT=4' "$WORK/logs/integ-gate-7.log" || fail "the log d
 gate 24 GATE_TIER=queue GATE_BASE="$qbase" FAIL_DOCS=1 RERUN_JSONL="$WORK/red-other.jsonl"
 [[ "$(verdict 24)" == "RED" ]] || fail "a red docs suite did not make the Queue tier red: $(cat "$WORK/logs/integ-gate-24.log")"
 grep -q '^DOCS_SUITE_EXIT=4' "$WORK/logs/integ-gate-24.log" || fail "the log does not name the red docs suite"
+gate 25 GATE_TIER=queue GATE_BASE="$qbase" FAIL_TREE=1 RERUN_JSONL="$WORK/red-other.jsonl"
+[[ "$(verdict 25)" == "RED" ]] || fail "a red tree suite did not make the Queue tier red: $(cat "$WORK/logs/integ-gate-25.log")"
+grep -q '^TREE_SUITE_EXIT=4' "$WORK/logs/integ-gate-25.log" || fail "the log does not name the red tree suite"
 
 # Red in a class that passes when run once more: green.
 gate 10 GATE_TIER=queue GATE_BASE="$qbase" FAIL_INTEG_ONCE=1 RESULTS_FIRST="$WORK/red-new.jsonl" \
@@ -444,7 +449,7 @@ tip="$qroot"
 gate 8 GATE_TIER=queue GATE_BASE="$qtip"
 [[ "$(verdict 8)" == "GREEN $tip" ]] || fail "the Queue tier over a root change was not green: $(cat "$WORK/logs/integ-gate-8.log")"
 got="$(grep -E '^test' "$WORK/calls-8")"
-[[ "$got" == "$(printf '%s\n' 'test -s integration -c --no-ansi' 'test -s docs -c --no-ansi')" ]] ||
+[[ "$got" == "$(printf '%s\n' 'test -s integration -c --no-ansi' 'test -s docs -c --no-ansi' 'test -s tree -c --no-ansi')" ]] ||
   fail "a root change ran: $got"
 
 # The Full tier: no slow tier when no plugin changed since its base; the slow tier when one did,

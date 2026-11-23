@@ -136,6 +136,7 @@ if submit stale; then fail "a tip committed after its Branch tier was submitted"
 
 # The Branch tier tests what -e selects, by module path, and not the modules those build on.
 grep -qx 'test --exclusive -m mod/a' "$JK_LOG" || fail "the Branch tier did not test mod/a alone: $(cat "$JK_LOG")"
+grep -qx 'test -s tree' "$JK_LOG" || fail "the Branch tier did not run the tree suite: $(cat "$JK_LOG")"
 
 # --- a batch: two branches land once each, the conflicting one is ejected ---
 branch a origin/main base.txt from-a

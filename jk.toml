@@ -143,10 +143,12 @@ modules = [
 #
 #   jk test                fast tier: the default suite, what no suite claims. The merge gate
 #                          (`jk install`) runs it.
-#   jk test -g             test + integration + e2e (guard-suites). The Full tier (`jk install -g`)
-#                          runs them.
+#   jk test -g             test + integration + e2e + tree (guard-suites). The Full tier
+#                          (`jk install -g`) runs them.
 #   jk test -s docs        tests that scan the doc tree. The docs, Queue and Full tiers run it on
 #                          its own, so what it reads stays out of scripts/gate/test-reads.txt.
+#   jk test -s tree        tests that scan every module's sources. The Branch and Queue tiers run
+#                          it; the Full tier runs it with the guard suites.
 #   jk test -s slow        framework and language e2e. Nightly, never gating.
 #   jk test -s network     talks to a real remote. Nightly, never gating.
 #   jk test -s release     a real browser or other cost worth paying once per release. CI on the tag.
@@ -155,7 +157,7 @@ modules = [
 #   jk test --all          every suite but live and bench (explicit).
 # ---------------------------------------------------------------------------
 [test]
-guard-suites = ["test", "integration", "e2e"]
+guard-suites = ["test", "integration", "e2e", "tree"]
 # Every member's fast tier: a method slower than this is a warning naming it. The slowest fast
 # methods take under 2.5s alone; a method that needs more belongs in a slower tier.
 fast-method-budget = "5s"
@@ -182,6 +184,14 @@ env = { JK_HTTP_DENY_HOSTS = "jumpkick.build" }
 [test.suites.docs]
 tags = ["docs"]
 exclude-tags = ["integration", "slow", "network", "release", "live", "bench"]
+
+# The tests that scan every module's production sources (a catalog no reader may bypass, a helper
+# with one owner): what they read is the whole tree, so in a module's default suite they would key
+# it on every source file, and an edit anywhere would re-run that module's whole fast tier. Here an
+# edit re-runs only them. A test with the docs tag as well runs with the docs suite.
+[test.suites.tree]
+tags = ["tree"]
+exclude-tags = ["docs", "integration", "slow", "network", "release", "live", "bench"]
 
 # Framework / language end-to-end: does an Android / Grails / Scala / KSP / Protobuf
 # project still build all the way through. Off the gate: what it asserts breaks when a

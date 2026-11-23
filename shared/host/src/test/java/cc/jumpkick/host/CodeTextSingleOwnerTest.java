@@ -12,6 +12,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -27,6 +28,7 @@ class CodeTextSingleOwnerTest {
     /** The names {@link #LEXER_DECL} looks for; a file naming none of them skips the regex. */
     private static final List<String> LEXER_NAMES = List.of("blankNonCode", "javaCodeOnly", "blankComments");
 
+    @Tag("tree")
     @Test
     void only_CodeText_declares_a_blanker() throws IOException {
         Path root = RepoRoot.find(CodeTextSingleOwnerTest.class);

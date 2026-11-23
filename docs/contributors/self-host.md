@@ -29,10 +29,11 @@ the tier `GATE_TIER` names ([tiers](test-suite-tiers.md#gate-tiers)). It takes t
   `jk install -S` (the reinstall without tests), then under a freshly started engine
   `jk install -c` (every module's fast tier, then the reinstall), the integration suite of each
   module changed since `GATE_BASE` (`scripts/gate/changed-modules.sh`), the curated lane's
-  classes in the other modules, and the docs suite (`jk test -s docs`), which holds the docs to
-  the code.
+  classes in the other modules, the docs suite (`jk test -s docs`), which holds the docs to
+  the code, and the tree suite (`jk test -s tree`), the tests that scan every module's sources.
 - **`GATE_TIER=full`** (the default): `jk install -S` (the reinstall without tests), `jk install -g`
-  under a freshly started engine (the one run of the fast tier, with the gated tiers), then
+  under a freshly started engine (the one run of the fast tier, with the gated tiers and the tree
+  suite), then
   `jk test -s docs`, `jk test -s release`, `jk test -s slow` when a member under `plugins/` or a root build file
   changed since `GATE_BASE` (none without it), the release notes, and
   `scripts/gate/docs-only.sh check`: red when a suite was seen reading a doc that
@@ -550,6 +551,7 @@ that claims a tag is one slow tier; members inherit them:
 ```bash
 jk test                          # fast tier: what no suite claims
 jk test -g                       # the guard suites, which the Full tier (jk install -g) runs
+jk test -s tree                  # the tests that scan every module's sources (Branch, Queue, Full)
 jk test -s slow                  # framework / language e2e (nightly)
 jk test -s network               # talks to a real remote (nightly)
 jk test -s release               # a real browser (CI on the release tag)
