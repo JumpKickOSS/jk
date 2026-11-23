@@ -140,6 +140,13 @@ submit() {
   (cd "$dev" && bash "$Q/branch-tier.sh" >/dev/null && bash "$Q/submit.sh" "$1" >/dev/null) || fail "submitting $1 failed"
 }
 status() { (cd "$dev" && bash "$Q/status.sh" "$1"); }
+# Greps a branch's status from a captured copy: piped into grep -q, status would die of SIGPIPE
+# writing a line after the match, and pipefail would fail the check.
+status_has() {
+  local out
+  out="$(status "$1")" || return 1
+  grep "${@:2}" <<<"$out"
+}
 queue() {
   QUEUE_CHECKOUT="$WORK/qco" QUEUE_GATE="$WORK/gate.sh" QUEUE_LOG_DIR="$logs" bash "$Q/loop.sh" --once
 }
@@ -153,6 +160,8 @@ full() {
 origin() { git -C "$WORK/origin.git" rev-parse -q --verify "$1"; }
 gated() { wc -l <"$logs/full-gated" | tr -d ' '; }
 runs() { cat "$QUEUE_REPO/full-runs.log"; }
+runs_has() { grep "$@" "$QUEUE_REPO/full-runs.log"; }
+last_run_has() { grep "$@" <<<"$(tail -1 "$QUEUE_REPO/full-runs.log")"; }
 reruns() { cat "$logs/reruns" 2>/dev/null; }
 bounded() { # <command...>: run it, but fail it when it has not ended within a minute
   local pid
@@ -197,14 +206,14 @@ green="$(origin green)"
 full || fail "the red cycle failed"
 [[ "$(origin green)" == "$green" ]] || fail "a red tip moved green"
 [[ "$(sed -n 2p "$logs/full-bases")" == "$green" ]] || fail "a gate's base was not green: $(cat "$logs/full-bases")"
-runs | grep -q "RED culprit batch [0-9]* ($(git -C "$dev" rev-parse --short=12 "$culprit"): r@" \
+runs_has -q "RED culprit batch [0-9]* ($(git -C "$dev" rev-parse --short=12 "$culprit"): r@" \
   || fail "the red cycle did not name r's batch: $(runs)"
 [[ "$(gated)" -eq 4 ]] || fail "the red cycle gated $(gated) commits in all, want 4: a, then the tip, r and b"
 [[ "$(reruns | tr '\n' ' ')" == "$culprit $before_r $prep " ]] \
   || fail "the re-runs were not the batch's tip, its base, then its first commit: $(reruns)"
 rb="full-revert/TK-RRRR1-$(git -C "$dev" rev-parse --short=12 "$bad")"
 revert="$(git --git-dir="$QUEUE_REPO" rev-parse -q --verify "refs/queue/$rb")" || fail "no revert waits in the queue: $(runs)"
-git --git-dir="$QUEUE_REPO" log -1 --format=%B "$revert" | grep -qx "This reverts commit $bad." || fail "the revert does not revert $bad"
+grep -qx "This reverts commit $bad." <<<"$(git --git-dir="$QUEUE_REPO" log -1 --format=%B "$revert")" || fail "the revert does not revert $bad"
 [[ "$(git --git-dir="$QUEUE_REPO" rev-parse "$revert^")" == "$(origin main)" ]] || fail "the revert is not on the red tip"
 [[ -z "$(git -C "$WORK/fco" status --porcelain)" ]] || fail "the revert left the Full checkout dirty"
 git -C "$WORK/fco" rev-parse -q --verify "refs/heads/$rb" >/dev/null && fail "the revert's branch was left in the Full checkout"
@@ -224,11 +233,11 @@ full || fail "the cycle after the revert failed"
 land s flaky.txt "TK-SSSS1: fails the Full tier now and then"
 culprit="$(origin main)"
 full || fail "the unconfirmed red cycle failed"
-runs | grep -q "reverts nothing: the classes its gate failed pass when run again" || fail "the loop did not say why it reverted nothing: $(runs)"
+runs_has -q "reverts nothing: the classes its gate failed pass when run again" || fail "the loop did not say why it reverted nothing: $(runs)"
 [[ "$(grep -c '^comment|TK-SSSS1|.*reverts nothing, because the classes its gate failed pass' "$KA_LOG")" -eq 1 ]] \
   || fail "the batch's ticket was not told why nothing was reverted: $(cat "$KA_LOG")"
 grep -q '^move|' "$KA_LOG" && fail "an unconfirmed culprit's ticket was reopened"
-git --git-dir="$QUEUE_REPO" for-each-ref refs/queue/full-revert | grep -q . && fail "an unconfirmed culprit was reverted"
+[[ -n "$(git --git-dir="$QUEUE_REPO" for-each-ref refs/queue/full-revert)" ]] && fail "an unconfirmed culprit was reverted"
 n="$(gated)"
 land d d.txt "TK-DDDD1: d"
 full || fail "the second red cycle failed"
@@ -245,17 +254,17 @@ echo "waiting $(git -C "$dev" rev-parse HEAD) group 7.1: batch 7 was red" >"$QUE
 git -C "$dev" checkout -q -b fix origin/main && tick && git -C "$dev" revert --no-edit "$culprit" >/dev/null && submit fix
 git -C "$dev" checkout -q -b fwd origin/main && commit "$dev" f.txt "TK-SSSS1: also note the fix" && submit fwd
 queue || fail "the held queue did not run"
-status e | grep -q '^e: waiting .* held:' || fail "an unrelated branch was not held: $(status e)"
+status_has e -q '^e: waiting .* held:' || fail "an unrelated branch was not held: $(status e)"
 [[ "$(status fix)" == "fix: landed "* ]] || fail "the revert did not land: $(status fix)"
 [[ "$(status fwd)" == "fwd: landed "* ]] || fail "a commit for the culprit's ticket did not land: $(status fwd)"
 queue || fail "the held queue failed with nothing but held branches"
-status e | grep -q '^e: waiting .* held:' || fail "the held branch moved: $(status e)"
+status_has e -q '^e: waiting .* held:' || fail "the held branch moved: $(status e)"
 
 # --- the fix is green: green moves, the hold lifts, the held branch lands ---
 full || fail "the green cycle after the fix failed"
 [[ "$(origin green)" == "$(origin main)" ]] || fail "green did not move to the fixed tip: $(runs)"
 [[ -f "$QUEUE_REPO/full-hold" ]] && fail "a green cycle left the hold"
-runs | tail -1 | grep -q 'GREEN green; the queue.s hold is lifted' || fail "the green cycle does not say the hold lifted: $(runs)"
+last_run_has -q 'GREEN green; the queue.s hold is lifted' || fail "the green cycle does not say the hold lifted: $(runs)"
 queue || fail "the queue did not run after the hold"
 [[ "$(status e)" == "e: landed "* ]] || fail "the held branch did not land after the hold: $(status e)"
 
@@ -266,7 +275,7 @@ for k in 1 2; do
   land "once$k" once.txt "TK-OOOO$k: lands beside a flaky class"
   full || fail "flaky cycle $k failed"
   [[ "$(origin green)" == "$(origin main)" ]] || fail "flaky cycle $k did not move green: $(runs)"
-  runs | tail -1 | grep -q "GREEN green; passed on the re-run: core cc.example.RedTest$" ||
+  last_run_has -q "GREEN green; passed on the re-run: core cc.example.RedTest$" ||
     fail "flaky cycle $k does not name the class that passed on the re-run: $(runs)"
 done
 [[ -f "$QUEUE_REPO/full-hold" ]] && fail "two flaky cycles held the queue: $(cat "$QUEUE_REPO/full-hold")"
@@ -278,7 +287,7 @@ done
 land x red.txt "TK-XXXX1: x"
 land y red.txt "TK-YYYY1: y builds on x"
 full || fail "the conflicting red cycle failed"
-runs | grep -q "reverts nothing: its revert of [0-9a-f]* conflicts with later work" || fail "the loop did not say the revert conflicts: $(runs)"
+runs_has -q "reverts nothing: its revert of [0-9a-f]* conflicts with later work" || fail "the loop did not say the revert conflicts: $(runs)"
 grep -q '^comment|TK-XXXX1|.*conflicts with later work' "$KA_LOG" || fail "x's ticket was not told the revert conflicts: $(cat "$KA_LOG")"
 grep -q '^move|' "$KA_LOG" && fail "a culprit that was not reverted had its ticket reopened"
 [[ -z "$(git -C "$WORK/fco" status --porcelain)" ]] || fail "the conflicting revert left the Full checkout dirty"
@@ -306,7 +315,7 @@ if [[ -z "$fake_flock" ]]; then
   flock -u 8
   exec 8>&-
 fi
-for _ in $(seq 100); do runs | grep -q '^full paused' && break; sleep 0.1; done
+for _ in $(seq 100); do runs_has -q '^full paused' && break; sleep 0.1; done
 sleep 3
 kill -0 "$looping" 2>/dev/null || fail "the paused loop ended: $(cat "$WORK/paused.out")"
 [[ "$(gated)" -eq "$n" ]] || fail "a paused loop started a gate"
@@ -315,7 +324,7 @@ rm "$QUEUE_REPO/pause"
 for _ in $(seq 200); do kill -0 "$looping" 2>/dev/null || break; sleep 0.1; done
 if kill -0 "$looping" 2>/dev/null; then kill "$looping"; fail "the loop did not resume: $(runs)"; fi
 wait "$looping" || fail "the resumed loop failed: $(cat "$WORK/paused.out")"
-runs | grep -q '^full resumed ' || fail "the log does not say the loop resumed: $(runs)"
+runs_has -q '^full resumed ' || fail "the log does not say the loop resumed: $(runs)"
 [[ "$(gated)" -eq $((n + 1)) ]] || fail "the resumed loop did not gate the new tip: $(runs)"
 
 # --- no lock is shared with the queue: a cycle runs while the queue's host holds its gate lock, and
@@ -340,6 +349,10 @@ if [[ -z "$fake_flock" ]]; then
   bounded land v v.txt "TK-VVVV1: v" 8>&- || fail "a batch did not land while the Full loop's lock was held"
   flock -u 8
   exec 8>&-
+else
+  # Without flock there is no lock to hold; the fixed tip still passes, which lifts the hold.
+  full || fail "the cycle after the fix failed: $(runs)"
+  [[ "$(origin green)" == "$(origin main)" ]] || fail "the fixed tip did not pass: $(runs)"
 fi
 
 # --- the queue's host cannot be reached: the cycle gates nothing and says so ---
@@ -361,14 +374,14 @@ rc=0
 FULL_HOLD_AFTER=1 full || rc=$?
 [[ "$rc" -eq 5 ]] || fail "a cycle whose jk cannot start exited $rc, want 5: $(runs)"
 [[ "$(gated)" -eq "$n" ]] || fail "a cycle whose jk cannot start gated"
-runs | tail -1 | grep -q "$(git -C "$dev" rev-parse --short=12 "$(origin main)") INFRA jk cannot start: ! Engine > no build engine for JumpKick 9.9.9-SNAPSHOT; no verdict" \
+last_run_has -q "$(git -C "$dev" rev-parse --short=12 "$(origin main)") INFRA jk cannot start: ! Engine > no build engine for JumpKick 9.9.9-SNAPSHOT; no verdict" \
   || fail "the infra failure was not logged: $(runs)"
 rm "$WORK/jk-broken"
 rc=0
 FIXTURE_GATE_BREAKS_JK="$WORK/jk-broken" FULL_HOLD_AFTER=1 full || rc=$?
 [[ "$rc" -eq 5 ]] || fail "a cycle red at guard with no engine exited $rc, want 5: $(runs)"
 [[ "$(gated)" -eq "$n" ]] || fail "a gate red at guard with no engine counted as gated"
-runs | tail -1 | grep -q "INFRA jk cannot start" || fail "a guard that could not start jk was not logged as infra: $(runs)"
+last_run_has -q "INFRA jk cannot start" || fail "a guard that could not start jk was not logged as infra: $(runs)"
 grep -q "^$(origin main) " "$QUEUE_REPO/full-verdicts" && fail "a cycle whose jk cannot start recorded a verdict"
 [[ "$(cat "$QUEUE_REPO/full-reds")" == "$reds" ]] || fail "a cycle whose jk cannot start counted as red"
 [[ -f "$QUEUE_REPO/full-hold" ]] && fail "a cycle whose jk cannot start held the queue: $(cat "$QUEUE_REPO/full-hold")"

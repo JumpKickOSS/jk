@@ -223,7 +223,7 @@ gate() {
     GATE_LOCK="$WORK/gate.lock" RERUN_JSONL="$WORK/rerun.jsonl" FLAKY_KA="$WORK/bin/ka" \
     KA_STATE="$WORK/ka" FLAKY_BASE="$tip" JK_QUEUE_REMOTE="$WORK/queue.git" \
     "$@" bash "$launcher" "$n" "$tip" >/dev/null 2>&1
-  tail -1 "$WORK/logs/integ-gate-$n.log" | grep -qx "GATE$n DONE" || fail "gate $n did not finish: $(cat "$WORK/logs/integ-gate-$n.log")"
+  [[ "$(tail -1 "$WORK/logs/integ-gate-$n.log")" == "GATE$n DONE" ]] || fail "gate $n did not finish: $(cat "$WORK/logs/integ-gate-$n.log")"
 }
 verdict() { grep -E '^(GREEN |RED|CHECKOUT |NO CHECKOUT)' "$WORK/logs/integ-gate-$1.log" | tail -1; }
 
@@ -293,6 +293,13 @@ if grep -q '^install -g' "$WORK/calls-3"; then fail "the push gate ran after a f
 git init -q --bare "$WORK/queue.git"
 # waiting: the quarantine file the stand-in queue holds; subject: its commit's subject.
 waiting() { git --git-dir="$WORK/queue.git" show "refs/queue/gate/quarantine:.jk/test/quarantine.toml"; }
+# Greps the quarantine file from a captured copy: piped into grep -q, git show would die of SIGPIPE
+# writing a line after the match, and pipefail would fail the check.
+waiting_has() {
+  local out
+  out="$(waiting)" || return 1
+  grep "$@" <<<"$out"
+}
 subject() { git --git-dir="$WORK/queue.git" log -1 --format=%s refs/queue/gate/quarantine; }
 clean() { [[ -z "$(git -C "$repo" status --porcelain)" ]] || fail "gate $1 left the checkout dirty: $(git -C "$repo" status --porcelain)"; }
 
@@ -307,8 +314,8 @@ clean 30
 grep -q 'Flaky test FlakyTest' "$WORK/ka.new.log" || fail "the ticket does not name the class: $(cat "$WORK/ka.new.log")"
 grep -q '^FLAKY a.FlakyTest quarantined: TK-F0001' "$WORK/logs/integ-gate-30.log" || fail "the log does not name the ticket: $(cat "$WORK/logs/integ-gate-30.log")"
 grep -q '^FLAKY submitted' "$WORK/logs/integ-gate-30.log" || fail "the change was not submitted: $(cat "$WORK/logs/integ-gate-30.log") $(cat "$WORK/logs/g30-quarantine.log")"
-waiting | grep -qx 'issue = "TK-F0001"' || fail "the submitted file does not name the ticket: $(waiting)"
-waiting | grep -qx 'name = "a.FlakyTest"' || fail "the submitted file does not hold the class: $(waiting)"
+waiting_has -qx 'issue = "TK-F0001"' || fail "the submitted file does not name the ticket: $(waiting)"
+waiting_has -qx 'name = "a.FlakyTest"' || fail "the submitted file does not hold the class: $(waiting)"
 [[ "$(subject)" == "TK-F0001: a.FlakyTest is quarantined under TK-F0001" ]] || fail "the commit's subject was: $(subject)"
 [[ "$(git --git-dir="$WORK/queue.git" rev-parse refs/queue/gate/quarantine^)" == "$tip" ]] || fail "the change is not on the base alone"
 
@@ -339,10 +346,10 @@ gate 33
 [[ "$(verdict 33)" == "GREEN $tip" ]] || fail "the gate after the landing was not green: $(cat "$WORK/logs/integ-gate-33.log")"
 clean 33
 grep -q '^FLAKY a.FlakyTest leaves the quarantine: TK-F0001 is done' "$WORK/logs/integ-gate-33.log" || fail "the closed ticket did not release its class: $(cat "$WORK/logs/integ-gate-33.log")"
-if waiting | grep -q a.FlakyTest; then fail "the released class is still in the file: $(waiting)"; fi
-waiting | grep -qx 'issue = "TK-F0002"' || fail "the class still quarantined lost its ticket: $(waiting)"
-waiting | grep -qx 'issue = "TK-F0003"' || fail "the hand-added class got no ticket: $(waiting)"
-waiting | grep -qx 'issue-url = "https://example.org/i/9#c"' || fail "an issue's URL was lost: $(waiting)"
+if waiting_has -q a.FlakyTest; then fail "the released class is still in the file: $(waiting)"; fi
+waiting_has -qx 'issue = "TK-F0002"' || fail "the class still quarantined lost its ticket: $(waiting)"
+waiting_has -qx 'issue = "TK-F0003"' || fail "the hand-added class got no ticket: $(waiting)"
+waiting_has -qx 'issue-url = "https://example.org/i/9#c"' || fail "an issue's URL was lost: $(waiting)"
 [[ "$(waiting | grep -c '^issue-url')" -eq 1 ]] || fail "the gate wrote an issue URL of its own: $(waiting)"
 [[ "$(subject)" == "TK-F0001: The gate's test quarantine follows its tickets" ]] || fail "the commit's subject was: $(subject)"
 
