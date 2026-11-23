@@ -171,6 +171,31 @@ nothing: the ones that start Node, `git` outside their temp roots or an engine a
 and the ones that need no engine at all are clients/cli's
 ([tiers](test-suite-tiers.md)).
 
+**What the nested engine could record (not built).** The engine is another JVM, so no recording
+says which engine classes a test class ran. The environment probe in the engine the CLI spawns
+(`EngineSpawn.jarCommand`), marking the classes of its fat jar, would: its `jk.ClassUse` events
+joined to the spawning test JVM's class windows by wall time. Measured on bocabox-2 over 52
+jk-cli-e2e integration classes on one test JVM:
+
+- A class with isolated roots gets an engine of its own, and its attribution is exact. The tier's
+  engine, and each restart of it, served 22 to 27 classes, so most classes share one.
+- The engine sees no window, so the probe names each class once per engine. Charging a class with
+  every use of its engine up to the end of its window covers what the engine kept in memory for
+  later classes. Under that rule a body edit of an engine class the sample used re-runs 74 to 78
+  percent of the 52 (41 to 43 percent averaged over all 2,477 classes of the jar, about 300 of
+  which every engine runs at start); an edit of `SelfHostEngine` re-runs 32 to 38.
+- Per window (the engine naming classes again every 50 ms, a use charged to every window its slot
+  overlaps) the share is 31 percent, and `SelfHostEngine` re-runs 11. That rule misses state the
+  engine filled for an earlier class; an engine per class closes the hole, at a cold start each.
+- Marking adds about 47 µs to defining a class (230 ms for the jar's 4,946); a run's engines wrote
+  14 to 16 MB of recording, 37 MB with the 50 ms re-naming. Engines under test start without the
+  startup cache, so the agent costs none there.
+
+Two seams stand in the way. The spawned engine's environment drops `JAVA_TOOL_OPTIONS`
+(`EngineEnvironment`), so the probe would ride a forwarded `jk.*` property
+(`EngineSpawn.forwardedJvmArgs`). And `ClassReads.attribute` joins events only to windows in the same
+recording, so a nested recording needs the windows of the test JVM that spawned it.
+
 ## Static cone and observed cone
 
 The static cone is primary. It needs no run, it is the same in every JVM, and it does not depend on
