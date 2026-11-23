@@ -136,7 +136,8 @@ public final class EngineProtocol {
      * carries {@code jid} (already the cancel handle), {@code ahead}, {@code reason}, {@code
      * waitedMs} and the {@code live} jobs holding the heap. Sent when the job first queues and
      * again every report interval while it waits, all before {@link #JOB_START}; a job that fits
-     * at once never sends it.
+     * at once never sends it. With {@code reason} {@code cache} it is sent once after {@link
+     * #JOB_START}: cache maintenance holds the cache and the job waits for it to let go.
      */
     public static final String JOB_QUEUED = "job-queued";
 

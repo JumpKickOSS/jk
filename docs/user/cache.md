@@ -485,7 +485,9 @@ every checkout's list goes at once, and the rest take their turn by last use.
 `[cache] auto-prune` and `prune-interval-days` (default **7**) drive the engine’s
 idle-boundary pass, and a low-priority background collector asks every hour whether a pass is
 due, running it when no build is live (a build that arrives makes it yield at its next safe
-point). The interval tightens to **hourly** when the previous prune finished with the action
+point: between files and trees, never part-way through one). A build that has to wait for a pass,
+or for a `jk cache clean` someone started, prints `waiting for the cache prune to let go of the
+cache` and starts as soon as it does. The interval tightens to **hourly** when the previous prune finished with the action
 tier still at 90% or more of its budget, so a tier over its budget is back under it within the
 hour. Pressure tightens the cadence rather than bypassing it — bypassing would re-fire on every
 idle boundary, since a prune that ends under pressure ends under pressure however often it

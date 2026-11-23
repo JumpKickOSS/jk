@@ -7,14 +7,19 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Server → client: the job waits for coordinator memory behind {@code ahead} earlier jobs (see
- * {@link EngineProtocol#JOB_QUEUED}). {@code reason} names what it waits for; {@code "memory"} today.
- * {@code waitedMs} is how long it has waited so far ({@code 0} on the first line) and {@code live}
- * names the jobs holding the heap, so the client can say who it is waiting on.
+ * Server → client: the job waits before it can run (see {@link EngineProtocol#JOB_QUEUED}). {@code
+ * reason} names what it waits for: {@link #MEMORY}, coordinator memory behind {@code ahead} earlier
+ * jobs, where {@code waitedMs} is how long it has waited so far ({@code 0} on the first line) and
+ * {@code live} names the jobs holding the heap, so the client can say who it is waiting on; or
+ * {@link #CACHE}, cache maintenance that holds the cache and must stop or finish first, sent once,
+ * after {@link EngineProtocol#JOB_START}, with no jobs ahead.
  */
 public record JobQueuedFrame(long jid, int ahead, String reason, long waitedMs, List<Live> live) {
 
     public static final String MEMORY = "memory";
+
+    /** A cache prune or clean holds the cache; the job runs once it lets go. */
+    public static final String CACHE = "cache";
 
     /** One job holding engine memory while this one waits: its jid, kind, dir and start time. */
     public record Live(long jid, String kind, String dir, long sinceMillis) {

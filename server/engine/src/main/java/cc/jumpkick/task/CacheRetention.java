@@ -60,8 +60,10 @@ public final class CacheRetention {
     }
 
     /**
-     * As {@link #sweep(Path, Cas, Set, boolean)}, stopping at {@code yield}'s say-so between tiers
-     * and inside the action tier ({@link ActionCachePrune}); a tier's own instrument runs whole.
+     * As {@link #sweep(Path, Cas, Set, boolean)}, stopping at {@code yield}'s say-so between tiers,
+     * between the entries a tier's walk reads and before each victim it takes. A victim is one file
+     * or one tree and goes whole; a reset takes its tier in one go, since half a tier is not a state
+     * worth leaving.
      */
     public static Report sweep(
             Path cacheRoot, Cas cacheCas, Set<String> alreadyFreedShas, boolean dryRun, PruneYield yield)
@@ -143,20 +145,20 @@ public final class CacheRetention {
                     // Present so the table is total and the sweep below spares it.
                 }
                 case FILES -> {
-                    Tally t = sweepFiles(root, bound, now, grace, dryRun, probe);
+                    Tally t = sweepFiles(root, bound, now, grace, dryRun, probe, yield);
                     files += t.files();
                     bytes += t.bytes();
                 }
                 case SUBTREES -> {
-                    Tally t = sweepSubtrees(root, bound, now, grace, dryRun, probe);
+                    Tally t = sweepSubtrees(root, bound, now, grace, dryRun, probe, yield);
                     files += t.files();
                     bytes += t.bytes();
                 }
                 case NESTED_SUBTREES -> {
-                    Tally t = strays(root, now, grace, dryRun);
+                    Tally t = strays(root, now, grace, dryRun, yield);
                     for (Child parent : children(root)) {
                         if (parent.directory())
-                            t = t.plus(sweepSubtrees(parent.path(), bound, now, grace, dryRun, probe));
+                            t = t.plus(sweepSubtrees(parent.path(), bound, now, grace, dryRun, probe, yield));
                     }
                     files += t.files();
                     bytes += t.bytes();
@@ -185,7 +187,8 @@ public final class CacheRetention {
     // ---------------------------------------------------------------- instruments
 
     /** Window then cap over a tree of files. One victim is one file. */
-    private static Tally sweepFiles(Path root, Bound bound, long now, long grace, boolean dryRun, Probe probe)
+    private static Tally sweepFiles(
+            Path root, Bound bound, long now, long grace, boolean dryRun, Probe probe, PruneYield yield)
             throws IOException {
         if (!Files.isDirectory(root)) return new Tally(0, 0L);
         if (bound.cap() instanceof Bound.Cap.ResetAlways) return delete(root, dryRun);
@@ -201,9 +204,10 @@ public final class CacheRetention {
         boolean ranks = bound.window() != null || bound.cap() instanceof Bound.Cap.Count;
 
         List<Entry> entries = new ArrayList<>();
-        PathUtil.forEachRegularFile(
-                root,
-                (file, attrs) -> entries.add(new Entry(file, ranks ? probe.mtime(attrs) : 0L, probe.size(attrs))));
+        PathUtil.forEachRegularFile(root, (file, attrs) -> {
+            yield.check();
+            entries.add(new Entry(file, ranks ? probe.mtime(attrs) : 0L, probe.size(attrs)));
+        });
         long total = 0L;
         for (Entry e : entries) total += e.size();
 
@@ -211,6 +215,7 @@ public final class CacheRetention {
         List<Entry> survivors = new ArrayList<>();
         for (Entry e : entries) {
             if (expired(bound.window(), now, e.mtime()) && now - e.mtime() >= grace) {
+                yield.check();
                 out = out.plus(delete(e.path(), dryRun));
                 total -= e.size();
             } else {
@@ -225,6 +230,7 @@ public final class CacheRetention {
                     for (int i = 0; i < survivors.size() - max; i++) {
                         Entry e = survivors.get(i);
                         if (now - e.mtime() < grace) continue;
+                        yield.check();
                         out = out.plus(delete(e.path(), dryRun));
                     }
                 }
@@ -246,30 +252,33 @@ public final class CacheRetention {
      * directory per entry, so a loose file beside them is residue — most often the tarball an
      * interrupted base-image extract left behind, which no window and no cap is written against.
      */
-    private static Tally strays(Path root, long now, long grace, boolean dryRun) throws IOException {
+    private static Tally strays(Path root, long now, long grace, boolean dryRun, PruneYield yield) throws IOException {
         Tally out = new Tally(0, 0L);
         for (Child child : children(root)) {
             if (child.directory()) continue;
             if (age(child.path(), now) < grace) continue;
+            yield.check();
             out = out.plus(delete(child.path(), dryRun));
         }
         return out;
     }
 
     /** Window then cap over a directory of self-contained trees. One victim is one child tree. */
-    private static Tally sweepSubtrees(Path root, Bound bound, long now, long grace, boolean dryRun, Probe probe)
+    private static Tally sweepSubtrees(
+            Path root, Bound bound, long now, long grace, boolean dryRun, Probe probe, PruneYield yield)
             throws IOException {
         if (!Files.isDirectory(root)) return new Tally(0, 0L);
         record Tree(Path dir, long mtime) {}
         List<Tree> trees = new ArrayList<>();
         for (Child child : children(root)) {
-            if (child.directory()) trees.add(new Tree(child.path(), newestMtime(child.path(), probe)));
+            if (child.directory()) trees.add(new Tree(child.path(), newestMtime(child.path(), probe, yield)));
         }
 
-        Tally out = strays(root, now, grace, dryRun);
+        Tally out = strays(root, now, grace, dryRun, yield);
         List<Tree> survivors = new ArrayList<>();
         for (Tree t : trees) {
             if (expired(bound.window(), now, t.mtime()) && now - t.mtime() >= grace) {
+                yield.check();
                 out = out.plus(delete(t.dir(), dryRun));
             } else {
                 survivors.add(t);
@@ -280,6 +289,7 @@ public final class CacheRetention {
             for (int i = 0; i < survivors.size() - max; i++) {
                 Tree t = survivors.get(i);
                 if (now - t.mtime() < grace) continue;
+                yield.check();
                 out = out.plus(delete(t.dir(), dryRun));
             }
         }
@@ -323,9 +333,12 @@ public final class CacheRetention {
         return n;
     }
 
-    private static long newestMtime(Path dir, Probe probe) throws IOException {
+    private static long newestMtime(Path dir, Probe probe, PruneYield yield) throws IOException {
         long[] newest = {0L};
-        PathUtil.forEachRegularFile(dir, (f, attrs) -> newest[0] = Math.max(newest[0], probe.mtime(attrs)));
+        PathUtil.forEachRegularFile(dir, (f, attrs) -> {
+            yield.check();
+            newest[0] = Math.max(newest[0], probe.mtime(attrs));
+        });
         return newest[0];
     }
 

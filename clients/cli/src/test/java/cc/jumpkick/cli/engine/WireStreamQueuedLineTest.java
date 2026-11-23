@@ -37,4 +37,10 @@ class WireStreamQueuedLineTest {
                 .isEqualTo("queued behind 1 job for 1h 02m");
         assertThat(WireStream.formatWait(40_000L)).isEqualTo("40s");
     }
+
+    @Test
+    void a_job_held_by_cache_maintenance_says_so() {
+        assertThat(WireStream.waitingLine(new JobQueuedFrame(741, 0, JobQueuedFrame.CACHE, 0L, List.of())))
+                .isEqualTo("waiting for the cache prune to let go of the cache");
+    }
 }

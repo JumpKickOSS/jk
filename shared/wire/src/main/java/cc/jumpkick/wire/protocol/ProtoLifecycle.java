@@ -209,6 +209,11 @@ public final class ProtoLifecycle {
         return new JobQueuedFrame(jid, ahead, JobQueuedFrame.MEMORY, waitedMs, live).encode();
     }
 
+    /** The job waits for cache maintenance to let go of the cache (see {@link JobQueuedFrame#CACHE}). */
+    public static String jobWaitsForCache(long jid) {
+        return new JobQueuedFrame(jid, 0, JobQueuedFrame.CACHE, 0L, List.of()).encode();
+    }
+
     public static String jobStart(long jid, String kind, String dir, long buildNumber) {
         return jobStart(jid, kind, dir, buildNumber, null, -1);
     }

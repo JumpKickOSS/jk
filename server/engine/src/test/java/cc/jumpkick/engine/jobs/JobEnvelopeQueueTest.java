@@ -136,6 +136,64 @@ class JobEnvelopeQueueTest {
     }
 
     /**
+     * A plan job that finds cache maintenance holding the cache (the idle prune between builds)
+     * says so on its own connection and in the log as soon as it waits, rather than sitting silent
+     * until the prune lets go; then it runs.
+     */
+    @Test
+    void a_plan_job_held_by_cache_maintenance_says_why_it_waits_then_runs(@TempDir Path dir) throws Exception {
+        FakeEnvelopeHost host = new FakeEnvelopeHost();
+        JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS, gateFor(2_000, 40, 100));
+        AtomicBoolean ran = new AtomicBoolean();
+        StringWriter out = new StringWriter();
+        // What the idle prune holds for its pass.
+        host.gate.writeLock().lock();
+        Thread client;
+        try {
+            client = Thread.ofVirtual()
+                    .start(() -> ConnectedClient.submit(
+                            env,
+                            request("build-request", dir),
+                            JobRequest.plan("build", "jk-test-", (line, tok, w) -> {
+                                ran.set(true);
+                                return JobOutcome.declined();
+                            }),
+                            out));
+            Await.until(Duration.ofSeconds(5), () -> out.toString().contains("\"reason\":\"cache\""));
+            JobQueuedFrame waits = JobQueuedFrame.decode(firstLine(out, "job-queued"));
+            assertThat(waits.reason()).isEqualTo(JobQueuedFrame.CACHE);
+            assertThat(out.toString().indexOf("\"type\":\"job-start\""))
+                    .as("the job has its jid before it waits")
+                    .isNotNegative()
+                    .isLessThan(out.toString().indexOf("\"type\":\"job-queued\""));
+            assertThat(host.logs).anyMatch(l -> l.contains("waits for cache maintenance to let go of the cache"));
+            assertThat(ran).isFalse();
+        } finally {
+            host.gate.writeLock().unlock();
+        }
+        client.join(Duration.ofSeconds(10));
+
+        assertThat(ran).isTrue();
+        assertThat(host.logs).anyMatch(l -> l.contains("has the cache after"));
+        host.awaitSettled();
+    }
+
+    @Test
+    void a_plan_job_with_the_cache_free_sends_no_wait_line(@TempDir Path dir) throws Exception {
+        FakeEnvelopeHost host = new FakeEnvelopeHost();
+        JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS, gateFor(2_000, 40, 100));
+        StringWriter out = new StringWriter();
+        ConnectedClient.submit(
+                env,
+                request("build-request", dir),
+                JobRequest.plan("build", "jk-test-", (line, tok, w) -> JobOutcome.declined()),
+                out);
+        host.awaitSettled();
+        assertThat(out.toString()).contains("\"type\":\"job-start\"").doesNotContain("job-queued");
+        assertThat(host.logs).noneMatch(l -> l.contains("cache maintenance"));
+    }
+
+    /**
      * A detached build (an HTTP or MCP build) short of memory gets its jid while it waits, so its
      * request returns and frees its permit, and that jid cancels it in the queue.
      */

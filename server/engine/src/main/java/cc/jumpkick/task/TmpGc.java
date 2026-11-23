@@ -37,6 +37,15 @@ public final class TmpGc {
      * ttl}. Missing dir is a no-op. Returns counts for the prune summary line.
      */
     public static Report sweep(Path tmpDir, Duration ttl, boolean dryRun) throws IOException {
+        return sweep(tmpDir, ttl, dryRun, PruneYield.NEVER);
+    }
+
+    /**
+     * As {@link #sweep(Path, Duration, boolean)}, stopping at {@code yield}'s say-so between the
+     * files it reads and the files it deletes. Each file stands alone, so any stop leaves scratch
+     * consistent.
+     */
+    public static Report sweep(Path tmpDir, Duration ttl, boolean dryRun, PruneYield yield) throws IOException {
         if (!Files.isDirectory(tmpDir)) return new Report(0, 0L);
         long cutoff = Clock.SYSTEM.millis() - ttl.toMillis();
 
@@ -45,6 +54,7 @@ public final class TmpGc {
         // Attributes from the walk: mtime and size were two extra stats per file.
         long[] bytes = {0};
         PathUtil.forEachRegularFile(tmpDir, (file, attrs) -> {
+            yield.check();
             if (tracked(tmpDir.relativize(file))) return;
             if (attrs.lastModifiedTime().toMillis() < cutoff) {
                 doomed.add(file);
@@ -53,7 +63,10 @@ public final class TmpGc {
         });
         total = bytes[0];
         if (!dryRun) {
-            for (Path file : doomed) Files.deleteIfExists(file);
+            for (Path file : doomed) {
+                yield.check();
+                Files.deleteIfExists(file);
+            }
         }
         return new Report(doomed.size(), total);
     }
