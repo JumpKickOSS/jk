@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.within;
 
 import cc.jumpkick.builds.ProjectStore;
 import cc.jumpkick.host.time.Clock;
+import cc.jumpkick.testing.Await;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -110,28 +111,34 @@ class HostBusyTest {
         try {
             HostBusy.jobStarted(-42);
             long atStart = HostBusy.SAMPLED.get();
-            Thread.sleep(300);
-            assertThat(HostBusy.SAMPLED.get() - atStart)
-                    .as("samples while a job runs")
-                    .isGreaterThanOrEqualTo(2);
+            // A loaded host stretches every beat, so each step waits for what it means, not for a wall.
+            Await.until(
+                    Duration.ofSeconds(10),
+                    () -> HostBusy.SAMPLED.get() - atStart >= 2,
+                    () -> "samples while a job runs: " + (HostBusy.SAMPLED.get() - atStart));
             HostBusy.jobEnded(-42);
-            Thread.sleep(150 + 350);
-            assertThat(HostBusy.sampling())
-                    .as("sampling past the last job and the keep-warm")
-                    .isFalse();
+            Await.until(
+                    Duration.ofSeconds(10),
+                    () -> !HostBusy.sampling(),
+                    () -> "still sampling past the last job and the keep-warm");
             long idle = HostBusy.SAMPLED.get();
+            // A pause can only hide a sample here, never invent one: load cannot make this fail.
             Thread.sleep(250);
             assertThat(HostBusy.SAMPLED.get())
                     .as("samples taken by an idle engine")
                     .isEqualTo(idle);
 
-            // A period past the short read again, so the first read after idle waits out its interval.
-            HostBusy.periodForTests(null);
+            // A period the read never outlasts, so the only samples are the waking one and the short read's.
+            HostBusy.periodForTests(Duration.ofSeconds(5));
+            long sampledBefore = HostBusy.SAMPLED.get();
             long before = Clock.SYSTEM.nanos();
             double read = HostBusy.external();
             long tookMs = (Clock.SYSTEM.nanos() - before) / 1_000_000;
             assertThat(read).as("the first read after idle").isBetween(0.0, 1.0);
-            assertThat(tookMs).isBetween(HostBusy.SHORT_READ.toMillis() - 20, HostBusy.SHORT_READ.toMillis() + 500);
+            assertThat(HostBusy.SAMPLED.get() - sampledBefore)
+                    .as("the first read after idle waits out its short interval, not a period")
+                    .isEqualTo(2);
+            assertThat(tookMs).isGreaterThanOrEqualTo(HostBusy.SHORT_READ.toMillis() - 20);
         } finally {
             HostBusy.keepWarmForTests(null);
             HostBusy.periodForTests(null);
