@@ -128,8 +128,11 @@ and Maven behave:
 A discovered processor and a declared one are the same thing downstream: the worker loads the
 processor path, records what each processor generates, and the compile action key hashes the
 path's full content, and the main resources the processors can read from the class output.
-An edit to one of those resources compiles every source of the module again, so the processors
-read it; a checkout that rewrites a resource with the bytes it had keeps the next compile incremental.
+An edit to a resource a processor read through the Filer, or the arrival of one it looked for and
+did not find, compiles every source of the module again, so the processors read it anew. An edit to
+a resource no processor reads (Lombok, Error Prone and NullAway read none) compiles only the sources
+the edit touches, and a checkout that rewrites a resource with the bytes it had keeps the next
+compile incremental.
 A processor that reads a copied resource and writes that path back — Helidon's manifest merge —
 merges into the resource, not into the file the last build left, so the module keeps its
 incremental compiles; a full compile puts the resource back before the processors run. A classpath that registers no processor hands javac none, and the key hashes

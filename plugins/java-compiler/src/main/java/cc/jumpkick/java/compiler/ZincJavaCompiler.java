@@ -428,8 +428,7 @@ public final class ZincJavaCompiler {
             createDirectories(classOutput, workdir, sourceOutput);
             ZincWorkdir zinced = ZincWorkdir.of(workdir);
             zinced.discardAnalysisIfAggregating();
-            String processorDigest = ZincWorkdir.processorDigest(job.processorSource(), classOutput);
-            zinced.discardAnalysisIfProcessorsChanged(processorDigest);
+            zinced.discardAnalysisIfProcessorsChanged(zinced.processorDigest(job.processorSource(), classOutput));
 
             IncrementalCompiler zinc = ZincUtil.defaultIncrementalCompiler();
             FileConverter converter = PlainVirtualFileConverter.converter();
@@ -528,7 +527,7 @@ public final class ZincJavaCompiler {
                         full, constants.edges(), producers, List.of(cpFiles), classOutput, stamper, converter);
             }
             zinced.persistAnalysis(store, AnalysisContents.create(analysis, compiled.setup()));
-            zinced.markProcessors(processorDigest);
+            zinced.markProcessors(job.processorSource(), classOutput, prev.isPresent(), provenance);
             phases.mark("persist-analysis");
             phases.write(classOutput, sources.size());
             return new Result(true, reporter.diagnostics(), javac.compiledSources(), provenance.generated);

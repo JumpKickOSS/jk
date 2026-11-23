@@ -2,6 +2,7 @@
 package cc.jumpkick.java.compiler;
 
 import cc.jumpkick.host.Hashing;
+import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -10,9 +11,13 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.security.MessageDigest;
+import java.util.Collection;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
+import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
@@ -28,8 +33,9 @@ import java.util.concurrent.TimeUnit;
  * that is a copy is put back to its resource, never deleted, when last run's generated files are
  * cleared: the resource is still the module's and the processor's merge base. A read of a copy that
  * holds its resource's bytes is a read of the resource, not of last run's output, so it does not
- * make the module merging. And the resources' contents join the processor digest, so a resource edit
- * compiles every source again and the processors re-merge.
+ * make the module merging. And the contents of the resources a processor read through the Filer
+ * join the processor digest, so an edit of one compiles every source again and the processors read
+ * it anew; an edit of a resource no processor reads keeps the compile incremental.
  */
 final class CopiedResources {
 
@@ -79,17 +85,40 @@ final class CopiedResources {
     }
 
     /**
-     * The resources as they stand: each copy's resource path and content hash, digested; empty when
-     * there are none. Bytes rather than shapes: a checkout or a reset rewrites a resource with the
-     * bytes it had and a new mtime, and that must not compile every source of the module again.
+     * The class-output paths, relative and {@code /}-separated, of the resources a processor read
+     * through the Filer: a copy of a module resource, or a file that was not there when it was read
+     * and that no processor wrote, so adding that resource later counts as an edit.
      */
-    String stamp() throws IOException {
-        if (sources.isEmpty()) return "";
+    Set<String> read(Collection<Path> reads, Collection<Path> generated, Path classOutput) {
+        GeneratedProvenance.Canon canon = new GeneratedProvenance.Canon(List.of(classOutput));
+        Path classRoot = canon.canonical(classOutput);
+        Set<Path> copies = byCanonical(canon).keySet();
+        Set<Path> written = canon.all(generated);
+        Set<String> out = new TreeSet<>();
+        for (Path read : reads) {
+            Path file = canon.canonical(read);
+            if (!file.startsWith(classRoot) || file.equals(classRoot)) continue;
+            if (copies.contains(file) || (!written.contains(file) && !Files.exists(file))) {
+                out.add(classRoot.relativize(file).toString().replace(File.separatorChar, '/'));
+            }
+        }
+        return out;
+    }
+
+    /**
+     * The resources at {@code read} (class-output relative) as they stand: each one's path and its
+     * resource's content hash, or {@code -} when no resource is there, digested; empty when {@code
+     * read} is. Bytes rather than shapes: a checkout or a reset rewrites a resource with the bytes it
+     * had and a new mtime, and that must not compile every source of the module again.
+     */
+    String stamp(Path classOutput, Collection<String> read) throws IOException {
+        if (read.isEmpty()) return "";
+        Path classes = classOutput.toAbsolutePath().normalize();
         MessageDigest digest = Hashing.newSha256();
-        for (Path source : sources.values()) {
-            StringBuilder line = new StringBuilder(source.toString());
-            if (Files.isRegularFile(source)) line.append('\t').append(contentHash(source));
-            digest.update((line + "\n").getBytes(StandardCharsets.UTF_8));
+        for (String rel : new TreeSet<>(read)) {
+            Path source = sources.get(classes.resolve(rel).normalize());
+            String hash = source != null && Files.isRegularFile(source) ? contentHash(source) : "-";
+            digest.update((rel + "\t" + hash + "\n").getBytes(StandardCharsets.UTF_8));
         }
         return "+resources:" + Hashing.hex(digest.digest());
     }

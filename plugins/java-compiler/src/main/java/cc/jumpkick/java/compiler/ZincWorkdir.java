@@ -21,6 +21,8 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
+import java.util.TreeSet;
 import java.util.concurrent.TimeUnit;
 import java.util.zip.GZIPInputStream;
 import sbt.internal.inc.FileAnalysisStore;
@@ -89,16 +91,18 @@ final class ZincWorkdir {
     }
 
     /**
-     * True when the processor path's contents differ from what the analysis was last written
-     * against ({@link #processorDigest}). Zinc's setup records the processor path as strings, so a
-     * processor rebuilt in place under the same path — a sibling module's {@code target/classes} —
-     * would otherwise invalidate nothing and its consumers' generated code would stay stale.
+     * True when the processor path's contents, or the resources the processors read, differ from
+     * what the analysis was last written against ({@link #processorDigest(List, Path)}). Zinc's setup
+     * records the processor path as strings, so a processor rebuilt in place under the same path — a
+     * sibling module's {@code target/classes} — would otherwise invalidate nothing and its consumers'
+     * generated code would stay stale.
      */
     boolean processorsChanged(String processorDigest) {
         try {
-            String recorded = Files.isRegularFile(processorsMarker)
-                    ? Files.readString(processorsMarker).strip()
-                    : "";
+            List<String> marker = Files.isRegularFile(processorsMarker)
+                    ? Files.readAllLines(processorsMarker, StandardCharsets.UTF_8)
+                    : List.of();
+            String recorded = marker.isEmpty() ? "" : marker.get(0).strip();
             return !recorded.equals(processorDigest);
         } catch (IOException e) {
             return true;
@@ -110,13 +114,43 @@ final class ZincWorkdir {
         if (processorsChanged(processorDigest)) Files.deleteIfExists(analysisFile);
     }
 
-    /** Record the processor path the analysis just written was compiled with; no marker means no processors. */
-    void markProcessors(String processorDigest) throws IOException {
-        if (processorDigest.isEmpty()) {
-            Files.deleteIfExists(processorsMarker);
-        } else {
-            Files.writeString(processorsMarker, processorDigest + "\n");
+    /**
+     * The class-output paths of the resources the processors read through the Filer, as the last
+     * compile recorded them under its digest; none when no processor read one.
+     */
+    Set<String> resourcesRead() {
+        Set<String> out = new TreeSet<>();
+        try {
+            if (!Files.isRegularFile(processorsMarker)) return out;
+            List<String> lines = Files.readAllLines(processorsMarker, StandardCharsets.UTF_8);
+            for (String line : lines.subList(Math.min(1, lines.size()), lines.size())) {
+                if (!line.isEmpty()) out.add(GeneratedProvenance.unescape(line));
+            }
+        } catch (IOException unreadable) {
+            // The digest check reads the same marker and calls it changed; nothing is lost.
         }
+        return out;
+    }
+
+    /**
+     * Record the processor path and the resources the processors read ({@link #resourcesRead}) the
+     * analysis just written was compiled with; no marker means no processors. A {@code partial}
+     * compile ran the processors over some sources only, so what they read before still counts. The
+     * file is the digest on its first line, then one escaped class-output path per line.
+     */
+    void markProcessors(List<Path> processorPath, Path classOutput, boolean partial, ApProvenance provenance)
+            throws IOException {
+        Set<String> read = partial ? resourcesRead() : new TreeSet<>();
+        read.addAll(
+                CopiedResources.of(classOutput).read(provenance.reads(), provenance.generated.keySet(), classOutput));
+        String digest = processorDigest(processorPath, classOutput, read);
+        if (digest.isEmpty()) {
+            Files.deleteIfExists(processorsMarker);
+            return;
+        }
+        StringBuilder marker = new StringBuilder(digest).append('\n');
+        for (String rel : read) marker.append(GeneratedProvenance.escape(rel)).append('\n');
+        Files.writeString(processorsMarker, marker, StandardCharsets.UTF_8);
     }
 
     /** Whether {@code options} turn annotation processing on: javac then runs what it finds. */
@@ -133,15 +167,21 @@ final class ZincWorkdir {
     }
 
     /**
-     * {@link #processorDigest(List)} with the contents of the resources copied into {@code
-     * classOutput} beside it: a processor reads them, so an edited resource changes what every
-     * processor run produces, and the analysis goes as for a changed processor.
+     * {@link #processorDigest(List)} with the contents of the resources the processors read from
+     * {@code classOutput} last time ({@link #resourcesRead}): an edit of one changes what the
+     * processors produce, and the analysis goes as for a changed processor. A resource no processor
+     * read — Lombok, Error Prone and NullAway read none — leaves the digest alone.
      */
-    static String processorDigest(List<Path> processorPath, Path classOutput) throws IOException {
+    String processorDigest(List<Path> processorPath, Path classOutput) throws IOException {
+        return processorDigest(processorPath, classOutput, resourcesRead());
+    }
+
+    private static String processorDigest(List<Path> processorPath, Path classOutput, Set<String> read)
+            throws IOException {
         String processors = processorDigest(processorPath);
         return processors.isEmpty()
                 ? processors
-                : processors + CopiedResources.of(classOutput).stamp();
+                : processors + CopiedResources.of(classOutput).stamp(classOutput, read);
     }
 
     /** {@link #processorsChanged(String)} over {@link #processorDigest(List, Path)}; unreadable counts as changed. */

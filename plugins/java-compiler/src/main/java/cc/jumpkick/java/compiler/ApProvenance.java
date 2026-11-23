@@ -75,6 +75,11 @@ final class ApProvenance {
         this.pristine = pristine;
     }
 
+    /** The files a processor read from an output location before writing them, if it wrote them. */
+    Set<Path> reads() {
+        return readBack;
+    }
+
     void recordRead(FileObject read) {
         Path path = pathOf(read);
         if (path != null) readBack.add(path);

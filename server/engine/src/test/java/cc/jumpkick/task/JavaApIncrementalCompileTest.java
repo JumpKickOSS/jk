@@ -18,6 +18,8 @@ import java.nio.file.attribute.FileTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.TreeSet;
 import javax.tools.ToolProvider;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -390,20 +392,21 @@ class JavaApIncrementalCompileTest {
 
     /**
      * A resource a checkout rewrote with the bytes it had — a new mtime, nothing else — leaves a
-     * body edit an incremental compile of the edited source. An edit of the resource's bytes still
-     * compiles every source, so the processors read the new resource.
+     * body edit an incremental compile of the edited source. An edit of the bytes of a resource the
+     * processor reads through the Filer still compiles every source, so it reads the new resource.
      */
     @Test
     void a_resource_rewritten_with_the_same_bytes_keeps_a_body_edit_incremental(@TempDir Path dir) throws Exception {
-        Project p = new Project(dir, workerJar(), isolatingProcessor(dir), dir.resolve("target/classes"));
-        p.copyResource("app/config.txt", "one\n");
+        Project p = new Project(dir, workerJar(), configReadingProcessor(dir), dir.resolve("target/classes"));
+        p.copyResource("META-INF/config.txt", "Gen\n");
         p.write("app/Widget.java", widget("one"));
         p.write("app/Plain.java", "package app; public class Plain {}");
         p.build();
+        assertThat(p.classFile("app/WidgetGen.class")).isRegularFile();
 
-        Path resource = dir.resolve("resources/app/config.txt");
+        Path resource = dir.resolve("resources/META-INF/config.txt");
         FileTime before = Files.getLastModifiedTime(resource);
-        p.copyResource("app/config.txt", "one\n");
+        p.copyResource("META-INF/config.txt", "Gen\n");
         Files.setLastModifiedTime(resource, FileTime.fromMillis(before.toMillis() + 60_000));
         p.write("app/Plain.java", "package app; public class Plain { int edited; }");
         JavaCompile.Result touched = p.build();
@@ -412,12 +415,62 @@ class JavaApIncrementalCompileTest {
                 .noneMatch(src -> src.endsWith("Widget.java"))
                 .anyMatch(src -> src.endsWith("Plain.java"));
 
-        p.copyResource("app/config.txt", "two\n");
+        p.copyResource("META-INF/config.txt", "Made\n");
         p.write("app/Plain.java", "package app; public class Plain { int again; }");
         JavaCompile.Result edited = p.build();
         assertThat(edited.compiledSources())
-                .as("an edited resource compiles every source again")
+                .as("an edited resource the processor reads compiles every source again")
                 .anyMatch(src -> src.endsWith("Widget.java"));
+        assertThat(p.classFile("app/WidgetMade.class")).isRegularFile();
+    }
+
+    /**
+     * An edit of a resource no processor reads through the Filer — Lombok, Error Prone and NullAway
+     * read none — compiles only the edited source: the resource is not the processors' input.
+     */
+    @Test
+    void an_edit_of_a_resource_no_processor_reads_stays_incremental(@TempDir Path dir) throws Exception {
+        Project p = new Project(dir, workerJar(), isolatingProcessor(dir), dir.resolve("target/classes"));
+        p.copyResource("app/rates.json", "{\"rate\": 1}\n");
+        p.write("app/Widget.java", widget("one"));
+        p.write("app/Plain.java", "package app; public class Plain {}");
+        p.build();
+
+        p.copyResource("app/rates.json", "{\"rate\": 2}\n");
+        p.write("app/Plain.java", "package app; public class Plain { int edited; }");
+        JavaCompile.Result edited = p.build();
+        assertThat(edited.compiledSources())
+                .as("a resource no processor read is not a processor input")
+                .noneMatch(src -> src.endsWith("Widget.java"))
+                .anyMatch(src -> src.endsWith("Plain.java"));
+    }
+
+    /**
+     * A processor that read a resource keeps it an input after a partial compile that did not run it
+     * over the source that made it read, and a resource it looked for and did not find becomes one
+     * once it is added.
+     */
+    @Test
+    void a_resource_a_processor_read_stays_an_input_and_an_added_one_it_looked_for_counts(@TempDir Path dir)
+            throws Exception {
+        Project p = new Project(dir, workerJar(), configReadingProcessor(dir), dir.resolve("target/classes"));
+        p.copyResource("app/other.txt", "unrelated\n");
+        p.write("app/Widget.java", widget("one"));
+        p.write("app/Plain.java", "package app; public class Plain {}");
+        p.build();
+        assertThat(p.classFile("app/WidgetDefault.class")).isRegularFile();
+
+        p.write("app/Plain.java", "package app; public class Plain { int edited; }");
+        JavaCompile.Result partial = p.build();
+        assertThat(partial.compiledSources()).noneMatch(src -> src.endsWith("Widget.java"));
+
+        p.copyResource("META-INF/config.txt", "Gen\n");
+        p.write("app/Plain.java", "package app; public class Plain { int again; }");
+        JavaCompile.Result added = p.build();
+        assertThat(added.compiledSources())
+                .as("the resource the processor looked for is there now")
+                .anyMatch(src -> src.endsWith("Widget.java"));
+        assertThat(p.classFile("app/WidgetGen.class")).isRegularFile();
     }
 
     // ---- harness ----------------------------------------------------------
@@ -476,7 +529,7 @@ class JavaApIncrementalCompileTest {
         /**
          * What the engine's resource copy does ahead of the compile: {@code body} as the module's
          * resource {@code rel}, copied into the class output and recorded with its source in the
-         * ledger beside it.
+         * ledger beside it, among the resources copied before it.
          */
         void copyResource(String rel, String body) throws IOException {
             Path resource = root.resolve("resources").resolve(rel);
@@ -485,10 +538,12 @@ class JavaApIncrementalCompileTest {
             Path copy = out.resolve(rel);
             Files.createDirectories(copy.getParent());
             Files.copy(resource, copy, StandardCopyOption.REPLACE_EXISTING);
-            Path incremental = Files.createDirectories(out.resolveSibling("incremental"));
-            Files.writeString(
-                    incremental.resolve(MirroredOutputs.MAIN_SOURCES),
-                    MirroredOutputs.escape(rel) + "\t" + MirroredOutputs.escape(resource.toString()) + "\n");
+            Path ledger =
+                    Files.createDirectories(out.resolveSibling("incremental")).resolve(MirroredOutputs.MAIN_SOURCES);
+            String row = MirroredOutputs.escape(rel) + "\t" + MirroredOutputs.escape(resource.toString());
+            Set<String> rows = new TreeSet<>(Files.isRegularFile(ledger) ? Files.readAllLines(ledger) : List.of());
+            rows.add(row);
+            Files.write(ledger, rows);
         }
 
         Path classFile(String rel) {
@@ -745,7 +800,7 @@ class JavaApIncrementalCompileTest {
 
     /**
      * Isolating, but reads {@code META-INF/config.txt} from the class output first for the suffix
-     * of the type it generates — a read of a file it never writes.
+     * of the type it generates — a read of a file it never writes; {@code Default} when it is absent.
      */
     private static Path configReadingProcessor(Path dir) throws IOException {
         Path procDir = dir.resolve("proc-config");
@@ -773,9 +828,14 @@ class JavaApIncrementalCompileTest {
                                 for (Element e : r.getElementsAnnotatedWith(Gen.class)) {
                                     TypeElement t = (TypeElement) e;
                                     try {
-                                        String suffix = processingEnv.getFiler().getResource(
-                                                StandardLocation.CLASS_OUTPUT, "", "META-INF/config.txt")
-                                                .getCharContent(true).toString().strip();
+                                        String suffix;
+                                        try {
+                                            suffix = processingEnv.getFiler().getResource(
+                                                    StandardLocation.CLASS_OUTPUT, "", "META-INF/config.txt")
+                                                    .getCharContent(true).toString().strip();
+                                        } catch (IOException missing) {
+                                            suffix = "Default";
+                                        }
                                         String name = "app." + t.getSimpleName() + suffix;
                                         JavaFileObject f = processingEnv.getFiler().createSourceFile(name, t);
                                         try (Writer w = f.openWriter()) {
