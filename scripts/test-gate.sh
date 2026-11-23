@@ -198,6 +198,7 @@ repo="$WORK/repo"
 mkdir -p "$repo/scripts/gate" "$repo/scripts/queue"
 cp "$ROOT"/scripts/gate/*.sh "$repo/scripts/gate/"
 cp "$ROOT"/scripts/queue/*.sh "$repo/scripts/queue/"
+# shellcheck disable=SC2016 # the stand-in reads $* and $JK_CALLS when it runs
 printf '%s\n' '#!/usr/bin/env bash' 'echo "release-notes $*" >>"$JK_CALLS"' >"$repo/scripts/release-notes.sh"
 cp "$ROOT/scripts/release-version.sh" "$repo/scripts/"
 echo 'version = "9.8.7"' >"$repo/jk.toml"
