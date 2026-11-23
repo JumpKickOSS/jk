@@ -82,7 +82,8 @@ if [ -n "${FIXTURE_GATE_BREAKS_JK:-}" ]; then
   { echo "GUARD_EXIT=70"; echo "RED (guard)"; echo "GATE$n DONE"; } >"$L"
   exit 0
 fi
-[ "$GATE_TIER" = full ] && echo "$tip" >>"$GATE_LOG_DIR/full-gated" && echo "$GATE_BASE" >>"$GATE_LOG_DIR/full-bases"
+[ "$GATE_TIER" = full ] && echo "$tip" >>"$GATE_LOG_DIR/full-gated" && echo "$GATE_BASE" >>"$GATE_LOG_DIR/full-bases" \
+  && git tag --list 'v*' >"$GATE_LOG_DIR/full-tags"
 if [ "$GATE_TIER" = full ] && git ls-tree -r --name-only HEAD | grep -qxE '(red|flaky).txt'; then
   { echo "FAIL cc.example.RedTest"; echo "RED"; } >"$L"
   echo '{"type":"error","code":"test-failure","module":"core","testClass":"cc.example.RedTest$Inner"}' >"$GATE_LOG_DIR/g$n-rerun.jsonl"
@@ -165,9 +166,12 @@ bounded() { # <command...>: run it, but fail it when it has not ended within a m
   wait "$pid"
 }
 
-# --- green: the tip passes and green names it; the same tip is not gated twice ---
+# --- green: the tip passes and green names it; the same tip is not gated twice; a release tag
+# cut after the checkout was cloned is in the checkout the gate runs in ---
 land a a.txt "TK-AAAA1: a"
+git -C "$WORK/origin.git" tag v9.9.8 main
 full || fail "the first cycle failed: $(runs)"
+grep -qx v9.9.8 "$logs/full-tags" || fail "the gate's checkout has no tag cut after its clone: $(cat "$logs/full-tags")"
 grep -qx queuehost "$SSH_LOG" || fail "the loop did not reach the queue's repository over ssh"
 [[ "$(origin green)" == "$(origin main)" ]] || fail "green does not name the tip that passed: $(runs)"
 full || fail "a cycle with nothing new failed"

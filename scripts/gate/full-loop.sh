@@ -167,7 +167,9 @@
 
   cd "$co" || exit 2
   [ -z "$(git status --porcelain)" ] || { echo "full-loop: $co is not clean" >&2; exit 2; }
-  git fetch -q origin main || { echo "full-loop: fetching origin main failed" >&2; exit 2; }
+  # The release tags too: the gate's release-notes check asks whether v<version> is cut, and which
+  # tag came before it.
+  git fetch -q origin main "+refs/tags/v*:refs/tags/v*" || { echo "full-loop: fetching origin main failed" >&2; exit 2; }
   if git ls-remote --exit-code -q origin refs/heads/green >/dev/null 2>&1; then
     git fetch -q origin "+refs/heads/green:refs/remotes/origin/green" || exit 2
     green="$(git rev-parse refs/remotes/origin/green)"
