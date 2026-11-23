@@ -72,7 +72,9 @@ import org.junit.jupiter.api.io.TempDir;
  * ({@link #dealt}). Three because each shard's engine compiles and tests on cores of its own: on a
  * ten-core host eight shards made every case slower and the class longer, and on a seven-core host
  * six left their engines' builds waiting for room until one gave up and the memory limit killed two
- * shards. Nothing here writes the shared home: a plugin
+ * shards. A native link runs while no shard builds, and the shards' builds wait for it
+ * ({@link NativeLinkGate}): beside them its engine waited out its memory wait and the host killed a
+ * shard's JVM. Nothing here writes the shared home: a plugin
  * scaffold names the checkout's SDK repository in its own {@code jk.toml}. All shards: {@code jk
  * test -s slow -m e2e/cli --class 'TemplateCatalog*E2eTest'}.
  */
@@ -136,6 +138,8 @@ abstract class TemplateCatalogE2eTest {
     Path scratch;
 
     private final int shard;
+
+    private final NativeLinkGate gate = NativeLinkGate.forSuite();
 
     private @Nullable String sdkRepo;
 
@@ -321,7 +325,7 @@ abstract class TemplateCatalogE2eTest {
      * A native vector's project linked by {@code jk native} with the GraalVM {@code GRAALVM_HOME}
      * names, into an executable at {@code target/demo}.
      */
-    private void scaffoldAndLink(String ref, String name, String dir, List<String> flags) throws IOException {
+    private void scaffoldAndLink(String ref, String name, String dir, List<String> flags) throws Exception {
         String graal = System.getenv("GRAALVM_HOME");
         assumeTrue(
                 graal != null && Files.isExecutable(Path.of(graal, "bin", "native-image")),
@@ -336,7 +340,7 @@ abstract class TemplateCatalogE2eTest {
         String manifest = Files.readString(jkToml);
         assertThat(manifest).as("%s declares [native]", name).contains("\n[native]\n");
         Files.writeString(jkToml, manifest.replace("\n[native]\n", "\n[native]\nargs = [\"-Ob\", \"-J-Xmx3g\"]\n"));
-        jk(name, "-C", project.toString(), "native", "--skip-tests");
+        gate.link(() -> jk(name, "-C", project.toString(), "native", "--skip-tests"));
         Path exe = project.resolve("target/demo");
         assertThat(Files.isExecutable(exe))
                 .as("%s: jk native writes an executable at target/demo", name)
@@ -349,8 +353,7 @@ abstract class TemplateCatalogE2eTest {
         jk(name, "-C", project.toString(), "format", "-c");
     }
 
-    private void scaffoldAndCheck(String id, String ref, String name, String dir, List<String> flags)
-            throws IOException {
+    private void scaffoldAndCheck(String id, String ref, String name, String dir, List<String> flags) throws Exception {
         Path project = scaffold(ref, name, dir, flags);
         // As generated, every source is what the template's own formatter writes. jk guard outside
         // CI formats an unformatted file in place and passes, so only a check sees it, as CI=1 jk
@@ -374,9 +377,11 @@ abstract class TemplateCatalogE2eTest {
                     groups = ["cc.jumpkick", "cc.jumpkick.*"]
                     """.formatted(sdkRepo()));
         }
-        for (String verb : List.of("build", "test", "guard")) {
-            jk(name, "-C", project.toString(), verb);
-        }
+        gate.build(() -> {
+            for (String verb : List.of("build", "test", "guard")) {
+                jk(name, "-C", project.toString(), verb);
+            }
+        });
         if (Files.isRegularFile(project.resolve("src/main/resources/jk-plugin.toml"))) {
             assertPluginJar(project, name);
         }
