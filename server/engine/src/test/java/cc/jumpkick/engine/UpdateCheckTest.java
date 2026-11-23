@@ -3,6 +3,7 @@ package cc.jumpkick.engine;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assumptions.assumeFalse;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import cc.jumpkick.engine.savings.SavingsRates;
@@ -333,7 +334,7 @@ class UpdateCheckTest {
     @Test
     @DisabledOnOs(value = OS.WINDOWS, disabledReason = "the jk-updates scripts run on the publishing Linux runner")
     void a_model_added_to_the_table_the_jk_updates_scripts_sign_is_priced_after_one_check() throws Exception {
-        assumeTrue(runs("python3", "--version") && runs("openssl", "version"), "python3 and openssl on PATH");
+        assumeTrue(runs("openssl", "version"), "openssl on PATH");
         Path repo = Files.createDirectories(dir.resolve("jk-updates"));
         Files.write(repo.resolve("prices.toml"), table(later(5), 15.0));
         Files.write(repo.resolve("rates.json"), rates(5));
@@ -348,6 +349,7 @@ class UpdateCheckTest {
 
         Processes.Captured assembled = Processes.capture(
                 List.of("bash", assemble.toString(), repo.toString(), key.toString()), Duration.ofMinutes(1));
+        assumeFalse(assembled.output().contains("Python 3.11 or newer is required"), "a Python with tomllib");
         assertThat(assembled.ok()).as(assembled.output()).isTrue();
         for (String name : List.of("updates.json", "updates.json.sig", "prices.toml", "rates.json")) {
             replies.put("/" + name, new Reply(200, Files.readAllBytes(repo.resolve(name))));

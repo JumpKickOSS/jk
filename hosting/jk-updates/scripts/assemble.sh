@@ -31,9 +31,16 @@ if [[ ! -d "$DIR" ]]; then
   echo "assemble: not a directory: $DIR" >&2
   exit 2
 fi
-for tool in python3 openssl; do
-  command -v "$tool" >/dev/null 2>&1 || { echo "assemble: $tool is required" >&2; exit 2; }
+command -v openssl >/dev/null 2>&1 || { echo "assemble: openssl is required" >&2; exit 2; }
+# The first python3 on PATH may predate tomllib (macOS ships 3.9); take the first one that has it.
+PYTHON=
+for candidate in python3 python3.14 python3.13 python3.12 python3.11; do
+  if "$candidate" -c 'import tomllib' >/dev/null 2>&1; then
+    PYTHON="$candidate"
+    break
+  fi
 done
+[[ -n "$PYTHON" ]] || { echo "assemble: Python 3.11 or newer is required" >&2; exit 2; }
 
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/jk-updates-assemble.XXXXXX")"
 trap 'rm -rf "$WORK"' EXIT
@@ -63,7 +70,7 @@ if [[ "${JK_UPDATES_REQUIRE_TRUSTED_KEY:-}" == 1 ]]; then
 fi
 
 set +e
-python3 - "$DIR" "$WORK/updates.json" <<'PY'
+"$PYTHON" - "$DIR" "$WORK/updates.json" <<'PY'
 import datetime, hashlib, json, os, re, sys, tomllib
 
 src, out = sys.argv[1], sys.argv[2]
