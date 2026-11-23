@@ -127,10 +127,10 @@ public final class GuardExtension
             invocation.proceed();
             return;
         }
-        String replay = ledger.replay(
-                g.id(), params(ctx.getRequiredTestMethod()), why -> Log.info("guard " + g.id() + " runs: " + why));
+        List<String> params = params(ctx.getRequiredTestMethod());
+        String replay = ledger.replay(g.id(), params, why -> Log.info("guard " + g.id() + " runs: " + why));
         if (replay == null) {
-            ledger.starting(g.id());
+            ledger.starting(g.id(), params);
             invocation.proceed();
             return;
         }

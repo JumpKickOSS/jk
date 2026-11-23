@@ -14,6 +14,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Function;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 
@@ -32,11 +33,16 @@ public final class TextView implements Text {
     private volatile @Nullable List<String> walked;
     private volatile @Nullable Recorder recorder;
 
-    /** Hears every glob a guard lists and every file whose text it takes, before any cache answers. */
+    /**
+     * Hears every glob a guard lists and every file whose text it takes, before any cache answers, and
+     * answers a per-file scan from the last run when it can.
+     */
     interface Recorder {
         void glob(String glob);
 
         void file(String path);
+
+        List<String> perFile(String path, String salt, Function<String, List<String>> scan);
     }
 
     public TextView(Path root, List<Path> sources) {
@@ -127,6 +133,12 @@ public final class TextView implements Text {
     @Override
     public List<String> lines(String path) {
         return read(path).lines().toList();
+    }
+
+    @Override
+    public List<String> perFile(String path, String salt, Function<String, List<String>> scan) {
+        Recorder r = recorder;
+        return r == null ? scan.apply(path) : r.perFile(path, salt, scan);
     }
 
     private String read(String path) {

@@ -16,8 +16,11 @@ import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.jsonl.MiniJson;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -35,6 +38,12 @@ import org.junit.platform.launcher.listeners.SummaryGeneratingListener;
 class ReadLedgerTest {
 
     static final Map<String, AtomicInteger> RUNS = new ConcurrentHashMap<>();
+    /** Each file a per-file scan read, by guard: "guard path". */
+    static final Map<String, AtomicInteger> SCANS = new ConcurrentHashMap<>();
+
+    private static void scanned(String guard, String path) {
+        SCANS.computeIfAbsent(guard + " " + path, k -> new AtomicInteger()).incrementAndGet();
+    }
 
     private static void ran(String id) {
         RUNS.computeIfAbsent(id, k -> new AtomicInteger()).incrementAndGet();
@@ -70,6 +79,47 @@ class ReadLedgerTest {
             v.population(facts.classes().size());
         }
 
+        /** Judges each file on its own: a line that says "bad" is a violation. */
+        @Guard(id = "per-file", why = "w")
+        void perFile(Text text, Violations v) {
+            ran("per-file");
+            List<String> files = text.files("src/k/*.txt");
+            for (String rel : files) {
+                List<String> bad = text.perFile(rel, "bad lines", r -> {
+                    scanned("per-file", r);
+                    List<String> lines = text.lines(r);
+                    List<String> out = new ArrayList<>();
+                    for (int i = 0; i < lines.size(); i++)
+                        if (lines.get(i).contains("bad")) out.add(String.valueOf(i + 1));
+                    return out;
+                });
+                for (String line : bad) v.add(new TextSite(rel, Integer.parseInt(line), "bad"), "a bad line");
+            }
+            v.population(files.size());
+        }
+
+        /** A key used in one file and defined in none is a violation: a verdict that hangs on other files. */
+        @Guard(id = "closure", why = "w")
+        void closure(Text text, Violations v) {
+            ran("closure");
+            List<String> files = text.files("src/k/*.txt");
+            Set<String> defined = new HashSet<>();
+            Map<String, String> used = new TreeMap<>();
+            for (String rel : files) {
+                for (String word : text.perFile(rel, "words", r -> {
+                    scanned("closure", r);
+                    return text.lines(r);
+                })) {
+                    if (word.startsWith("define ")) defined.add(word.substring(7));
+                    if (word.startsWith("use ")) used.put(word.substring(4), rel);
+                }
+            }
+            used.forEach((key, rel) -> {
+                if (!defined.contains(key)) v.add(new TextSite(rel, 1, key), "uses " + key + ", which nothing defines");
+            });
+            v.population(files.size());
+        }
+
         @Guard(id = "throws", why = "w")
         void throwsUp(Text text, Violations v) {
             ran("throws");
@@ -86,7 +136,11 @@ class ReadLedgerTest {
     @BeforeEach
     void tree() throws Exception {
         RUNS.clear();
+        SCANS.clear();
         Files.createDirectories(root.resolve("src/docs"));
+        Files.createDirectories(root.resolve("src/k"));
+        Files.writeString(root.resolve("src/k/one.txt"), "use key\nbad\n");
+        Files.writeString(root.resolve("src/k/two.txt"), "define key\nfine\n");
         Files.writeString(root.resolve("src/a.txt"), "fine\nbad\n");
         Files.writeString(root.resolve("src/docs/one.md"), "# one\n");
         Files.writeString(root.resolve("model.json"), "{\"modules\":[\"\",\"lib\"]}");
@@ -121,7 +175,7 @@ class ReadLedgerTest {
         assertThat(summary.getSummary().getTestsFailedCount()).isZero();
         Map<String, Object> byId = new TreeMap<>();
         for (String l : Files.readAllLines(report)) byId.put(MiniJson.str(MiniJson.parse(l), "id"), MiniJson.parse(l));
-        assertThat(byId).as("every guard reports, run or replayed").hasSize(5);
+        assertThat(byId).as("every guard reports, run or replayed").hasSize(7);
         return byId;
     }
 
@@ -131,6 +185,11 @@ class ReadLedgerTest {
 
     private static int runs(String id) {
         AtomicInteger n = RUNS.get(id);
+        return n == null ? 0 : n.get();
+    }
+
+    private static int scans(String guard, String path) {
+        AtomicInteger n = SCANS.get(guard + " " + path);
         return n == null ? 0 : n.get();
     }
 
@@ -198,6 +257,69 @@ class ReadLedgerTest {
 
         assertThat(runs("reads-model")).isEqualTo(2);
         assertThat(runs("reads-a")).isEqualTo(1);
+    }
+
+    @Test
+    void a_guard_that_runs_again_scans_only_the_files_that_changed() throws Exception {
+        run();
+        Files.writeString(root.resolve("src/k/two.txt"), "define key\nbad\n");
+
+        Map<String, Object> after = run();
+
+        assertThat(runs("per-file")).isEqualTo(2);
+        assertThat(replayed(after, "per-file")).isFalse();
+        assertThat(scans("per-file", "src/k/one.txt"))
+                .as("an unedited file's findings come from the last run")
+                .isEqualTo(1);
+        assertThat(scans("per-file", "src/k/two.txt"))
+                .as("the edited file is scanned again")
+                .isEqualTo(2);
+        assertThat((List<?>) MiniJson.get(after.get("per-file"), "violations"))
+                .as("the verdict joins the kept findings with the new ones")
+                .hasSize(2);
+
+        run();
+        assertThat(scans("per-file", "src/k/one.txt")).isEqualTo(1);
+        assertThat(scans("per-file", "src/k/two.txt")).isEqualTo(2);
+    }
+
+    @Test
+    void a_verdict_on_an_unedited_file_moves_with_the_file_it_depends_on() throws Exception {
+        Map<String, Object> first = run();
+        assertThat((List<?>) MiniJson.get(first.get("closure"), "violations")).isEmpty();
+        Files.writeString(root.resolve("src/k/two.txt"), "fine\n");
+
+        Map<String, Object> after = run();
+
+        assertThat(runs("closure"))
+                .as("the guard read the edited file, so it runs")
+                .isEqualTo(2);
+        assertThat(scans("closure", "src/k/one.txt")).isEqualTo(1);
+        assertThat(String.valueOf(MiniJson.get(after.get("closure"), "violations")))
+                .as("the unedited file that uses the key is flagged once its definition is gone")
+                .contains("src/k/one.txt")
+                .contains("which nothing defines");
+    }
+
+    @Test
+    void a_file_added_to_a_per_file_scan_is_scanned_and_the_rest_are_not() throws Exception {
+        run();
+        Files.writeString(root.resolve("src/k/three.txt"), "use other\n");
+
+        Map<String, Object> after = run();
+
+        assertThat(scans("closure", "src/k/three.txt")).isEqualTo(1);
+        assertThat(scans("closure", "src/k/one.txt")).isEqualTo(1);
+        assertThat(String.valueOf(MiniJson.get(after.get("closure"), "violations")))
+                .contains("uses other");
+    }
+
+    @Test
+    void a_fixture_run_scans_every_file_every_time() throws Exception {
+        run(true);
+        run(true);
+
+        assertThat(scans("per-file", "src/k/one.txt")).isEqualTo(2);
     }
 
     @Test

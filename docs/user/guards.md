@@ -136,6 +136,12 @@ again. What it read is what it listed and read through `Text`, plus the model sn
 `Model`. A change to the suite, its class path or the JDK runs every guard again, and so does a
 guard that takes `Facts` or `Output`, or that threw or skipped last time. A guard that runs a tool
 over the tree reads that tool's input files through `Text` too, so an edit to one of them runs it.
+A guard that runs again need not read the whole tree again: what it finds in one file through
+`Text.perFile(path, salt, scan)` is kept with that file's text, and comes back without the scan
+while the file reads the same and the suite has not changed. So a guard that scans every source
+and judges each file on its own re-reads only the files an edit touched. `scan` must depend on the
+file alone; whatever the guard gathered from other files goes into `salt`, so a change there scans
+every file again.
 The run's `target/<module>/guard/junit.log` names each guard that ran again and the file that made
 it run. The fixture proofs are keyed the same way: the
 rules, the fixture files, the guard suites and the signatures of the classes the fixtures
