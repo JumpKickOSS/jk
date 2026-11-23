@@ -164,6 +164,21 @@ if submit stale; then fail "a tip committed after its Branch tier was submitted"
 grep -qx 'test --exclusive -m mod/a' "$JK_LOG" || fail "the Branch tier did not test mod/a alone: $(cat "$JK_LOG")"
 grep -qx 'test -s tree' "$JK_LOG" || fail "the Branch tier did not run the tree suite: $(cat "$JK_LOG")"
 
+# jk guard counts the shellcheck guard as clean when it skips it, so the Branch tier says plainly
+# when no shellcheck runs here: a binary that will not start, and no container daemon, is none.
+git -C "$dev" checkout -q -b linted origin/main
+mkdir -p "$dev/scripts" "$WORK/no-lint" "$WORK/lint"
+cp "$ROOT/scripts/shellcheck.sh" "$dev/scripts/"
+git -C "$dev" add scripts/shellcheck.sh && git -C "$dev" commit -qm "the shell lint"
+for tool in shellcheck podman docker; do printf '%s\n' '#!/usr/bin/env bash' 'exit 1' >"$WORK/no-lint/$tool"; done
+printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$WORK/lint/shellcheck"
+chmod +x "$WORK"/no-lint/* "$WORK"/lint/*
+out="$(cd "$dev" && PATH="$WORK/no-lint:$PATH" bash "$Q/branch-tier.sh" 2>&1)" || fail "the Branch tier refused a branch over a missing shellcheck: $out"
+grep -q 'warning: the shellcheck guard was skipped' <<<"$out" || fail "the Branch tier did not warn that shellcheck cannot run: $out"
+grep -q 'passed in .*(shellcheck skipped' <<<"$out" || fail "the Branch tier's pass does not say shellcheck was skipped: $out"
+out="$(cd "$dev" && PATH="$WORK/lint:$PATH" bash "$Q/branch-tier.sh" 2>&1)" || fail "the Branch tier refused a linted branch: $out"
+if grep -q 'skipped' <<<"$out"; then fail "the Branch tier says shellcheck was skipped where it runs: $out"; fi
+
 # --- a batch: two branches land once each, the conflicting one is ejected ---
 branch a origin/main base.txt from-a
 branch b a b.txt b

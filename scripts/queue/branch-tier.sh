@@ -6,7 +6,8 @@
 # modules they build on compile, main and test, but their suites do not run, and nothing is
 # packaged past the jars the tests read: no native client. Then the tree suite (`jk test -s tree`),
 # the tests that scan every module's sources, which no module's fast tier holds, and a warning when
-# those runs read a doc scripts/gate/test-reads.txt lacks. A pass is recorded
+# those runs read a doc scripts/gate/test-reads.txt lacks, and one when this machine has no runnable
+# shellcheck, since jk guard counts the shellcheck guard it then skips as clean. A pass is recorded
 # as a note on HEAD under refs/notes/branch-tier naming HEAD's tree, which scripts/queue/submit.sh
 # requires. The working tree must be clean, so what passed is what HEAD holds.
 #
@@ -28,6 +29,15 @@ started=$SECONDS
 jk guard || fail "jk guard is red"
 [[ -z "$(git status --porcelain)" ]] || fail "jk guard formatted files; commit them and run again"
 guard_s=$((SECONDS - started))
+
+# jk guard reports a guard that could not run as clean, so a shell script it never linted would
+# pass here and be ejected by the queue's gate. Say so where the submitter reads it.
+skipped=""
+if [[ -f "$root/scripts/shellcheck.sh" ]] && ! bash "$root/scripts/shellcheck.sh" --runner >/dev/null 2>&1; then
+  skipped=" (shellcheck skipped: no runnable binary or container daemon)"
+  echo "branch-tier: warning: the shellcheck guard was skipped: no runnable shellcheck binary or container daemon here," >&2
+  echo "branch-tier: so the shell scripts are not linted until the queue's gate; install ShellCheck to lint them here" >&2
+fi
 
 # One line per selected module, `<coordinates><TAB><jar path>`; the module is the jar's target/'s
 # parent, named relative to the checkout (Windows paths print with backslashes).
@@ -54,4 +64,4 @@ if [[ -n "$modules" ]] && ! bash "$root/scripts/gate/docs-only.sh" check; then
 fi
 
 git notes --ref=branch-tier add -f -m "passed $(git rev-parse 'HEAD^{tree}') on $(hostname) at $(date -u +%Y-%m-%dT%H:%M:%SZ)" HEAD
-echo "branch-tier: $(git rev-parse --short HEAD) passed in $((guard_s + test_s))s (guard ${guard_s}s, tests ${test_s}s); submit it with scripts/queue/submit.sh"
+echo "branch-tier: $(git rev-parse --short HEAD) passed in $((guard_s + test_s))s (guard ${guard_s}s, tests ${test_s}s)${skipped}; submit it with scripts/queue/submit.sh"

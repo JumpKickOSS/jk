@@ -7,6 +7,7 @@
 # Usage:
 #   scripts/shellcheck.sh               # the gate's command: the shellcheck guard, by hand
 #   scripts/shellcheck.sh --format=gcc  # further arguments go to shellcheck (the guard reads gcc-format findings)
+#   scripts/shellcheck.sh --runner      # name the runner the lint would use and lint nothing; exit 1 when there is none
 # Severity is `info`, because the defect class that matters most here — an unquoted `$var` in a
 # `[ ]` test (SC2086) — is an info-level finding. A finding that is intentional is silenced at
 # its site with `# shellcheck disable=SCnnnn` and a reason, never here.
@@ -16,8 +17,15 @@
 # a runner). With neither, the lint is skipped with a notice on a developer machine and fails
 # under CI (the CI variable), so a runner missing the tool cannot pass by omission. Windows is
 # skipped outright: Git Bash plus Docker is a false red (exit 125), and POSIX CI lints the scripts.
-# Every message names the script count, which the guard reports as its population.
+# Every message names the script count, which the guard reports as its population. `--runner`
+# exists for the Branch tier: jk guard counts a skipped guard as clean, so it asks here instead.
 set -euo pipefail
+
+probe=""
+if [[ "${1:-}" == --runner ]]; then
+  probe=1
+  shift
+fi
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
@@ -30,6 +38,7 @@ done
 case "$(uname -s 2>/dev/null || true)" in
   MINGW*|MSYS*|CYGWIN*|Windows_NT)
     echo "shellcheck: skipped on Windows — ${#TARGETS[@]} scripts" >&2
+    [[ -z "$probe" ]] || exit 1
     exit 0
     ;;
 esac
@@ -52,6 +61,11 @@ elif [[ -n "${CI:-}" ]]; then
 else
   echo "shellcheck: not installed — skipping ${#TARGETS[@]} scripts (dnf install ShellCheck, or put the static binary" >&2
   echo "shellcheck: from https://github.com/koalaman/shellcheck/releases on PATH; CI does not skip)" >&2
+  [[ -z "$probe" ]] || exit 1
+  exit 0
+fi
+if [[ -n "$probe" ]]; then
+  echo "${RUNNER[0]}"
   exit 0
 fi
 
