@@ -278,10 +278,17 @@ public final class ActionRecordText {
         return count != null && isSize(count) && Long.parseLong(count) == 0;
     }
 
-    /** A class-ledger value {@code tests,failed,skipped} whose failed count is zero. */
+    /**
+     * A class-ledger value {@code tests,failed,skipped,ranAt,millis}, as the engine's ledger writes
+     * each class, whose failed count is zero.
+     */
     private static boolean greenClass(String value) {
         String[] parts = value.split(",", -1);
-        return parts.length == 3 && zeroCount(parts[1]) && isSize(parts[0]) && isSize(parts[2]);
+        if (parts.length != 5 || !zeroCount(parts[1])) return false;
+        for (String part : parts) {
+            if (!isSize(part)) return false;
+        }
+        return true;
     }
 
     /**

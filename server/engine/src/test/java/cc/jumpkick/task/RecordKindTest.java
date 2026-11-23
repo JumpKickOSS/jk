@@ -41,7 +41,12 @@ class RecordKindTest {
         cache.storeMarkers(
                 Writes.TEST_MARKER, "run-tests@x", "marker", Map.of(), TestStamp.outcome(2, 2, 0, 0), List.of());
         cache.storeMarkers(
-                Writes.CLASS_LEDGER, "run-tests@x#classes", "ledger", Map.of(), Map.of("|a.A", "2,0,0"), List.of());
+                Writes.CLASS_LEDGER,
+                "run-tests@x#classes",
+                "ledger",
+                Map.of(),
+                Map.of("|a.A", "2,0,0,1700000000000,12"),
+                List.of());
 
         assertThat(kind(cache, "outputs")).isEqualTo(Writes.OUTPUTS);
         assertThat(kind(cache, "artifact")).isEqualTo(Writes.OUTPUTS);
@@ -63,12 +68,14 @@ class RecordKindTest {
     void red_markers_and_failing_or_cleared_ledgers_never_take_the_shared_form() {
         assertThat(shared(Writes.TEST_MARKER, TestStamp.outcome(3, 3, 0, 0))).contains("WRITES test-marker");
         assertThat(shared(Writes.TEST_MARKER, TestStamp.noTestsOutcome())).contains("tests.none");
-        assertThat(shared(Writes.CLASS_LEDGER, Map.of("|a.A", "2,0,0", "|a.B", "1,0,1")))
+        assertThat(shared(
+                        Writes.CLASS_LEDGER, Map.of("|a.A", "2,0,0,1700000000000,12", "|a.B", "1,0,1,1700000000000,3")))
                 .contains("WRITES class-ledger");
 
         assertThatThrownBy(() -> shared(Writes.TEST_MARKER, TestStamp.outcome(3, 2, 0, 1)))
                 .isInstanceOf(ActionRecordText.Refused.class);
-        assertThatThrownBy(() -> shared(Writes.CLASS_LEDGER, Map.of("|a.A", "2,0,0", "|a.B", "1,1,0")))
+        assertThatThrownBy(() -> shared(
+                        Writes.CLASS_LEDGER, Map.of("|a.A", "2,0,0,1700000000000,12", "|a.B", "1,1,0,1700000000000,4")))
                 .isInstanceOf(ActionRecordText.Refused.class);
         assertThatThrownBy(() -> shared(Writes.CLASS_LEDGER, Map.of())).isInstanceOf(ActionRecordText.Refused.class);
         assertThatThrownBy(() -> shared(null, Map.of("tests.total", "1")))

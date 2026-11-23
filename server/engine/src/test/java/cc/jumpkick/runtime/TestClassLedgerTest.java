@@ -4,6 +4,7 @@ package cc.jumpkick.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.tuple;
 
+import cc.jumpkick.cache.ActionRecordText;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.run.BuildPlanKey;
 import cc.jumpkick.run.TaskContext;
@@ -13,6 +14,7 @@ import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.TestStamp;
 import cc.jumpkick.test.SuiteFilter;
 import cc.jumpkick.test.TestProgressListener;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -88,6 +90,35 @@ class TestClassLedgerTest {
                         .settledClasses(ONE))
                 .as("another stamp vouches for nothing")
                 .isEmpty();
+    }
+
+    /**
+     * A ledger whose every class passed may leave the machine as the ledger stores it, the time each
+     * class ran and its wall included; one holding a red class may not.
+     */
+    @Test
+    void a_green_ledger_as_stored_takes_the_shared_form_and_a_red_one_does_not() throws Exception {
+        TestClassLedger green = load();
+        TestProgressListener l = green.recording(TestProgressListener.noop());
+        run(l, "demo.OkTest", "SUCCESSFUL", "SKIPPED");
+        run(l, "demo.OtherTest$Inner", "SUCCESSFUL");
+        green.store(cache, TASK, STAMP);
+        assertThat(ActionRecordText.shareable(stored(STAMP))).isTrue();
+
+        String redStamp = "b".repeat(64);
+        TestClassLedger red = TestClassLedger.load(cache, redStamp, "g:app", "integration");
+        TestProgressListener r = red.recording(TestProgressListener.noop());
+        run(r, "demo.OkTest", "SUCCESSFUL");
+        run(r, "demo.RedTest", "FAILED");
+        red.store(cache, TASK, redStamp);
+        assertThat(ActionRecordText.shareable(stored(redStamp))).isFalse();
+    }
+
+    /** The ledger record stored under {@code stamp}, as its text reads. */
+    private ActionRecordText.Parsed stored(String stamp) throws Exception {
+        String key = TestClassLedger.key(stamp);
+        return ActionRecordText.parse(
+                Files.readString(tmp.resolve("actions/keys").resolve(key)), key);
     }
 
     @Test
