@@ -327,10 +327,14 @@ is replayed only when every one of them held since before the class finished. Wh
 loads lay in its cone is decided when it runs and kept as its `fallback`. The suite's line holds
 counts, the bounded pool (up to 400 data files) and the suite's code files, never a class's
 content. It names the launches it stands for (`launches`): a launch runs its own test JVMs, so what
-no window held in them is no input of another launch's classes. A run writes its line first and
-keeps, after it, each earlier line for the launches it did not start, so a `jk test -g` whose
-integration JVMs started a program or reached the network outside every class leaves the default
-suite's classes on the pool of the run that ran them (`TestClassRecords.headers`). The code-file
+no window held in them is no input of another launch's classes. A run that starts several
+launches at once writes a line for each, its pool what that launch's JVMs did outside every window
+(a JVM's launch is the one its windows' classes ran in); when one JVM's launch cannot be told, its
+launches share one line on every JVM's pool. A run writes its lines first and keeps, after them,
+each earlier line for the launches it did not start, so a `jk test -g` whose integration JVMs
+started a program or reached the network outside every class leaves the default suite's classes on
+their own launch's pool, whether the integration suite ran beside them or in a later run
+(`TestClassRecords.headers`). The code-file
 list is the newest line's, merged across runs. The record file and the shadow log are written and read a row
 at a time; a row past 256 KiB (none this writes) is skipped as unreadable.
 

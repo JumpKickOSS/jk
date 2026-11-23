@@ -573,7 +573,8 @@ public final class ExplainCommand implements CliCommand {
                 if (changed >= 0) yield fmtCount(changed, "source changed", "sources changed");
                 yield m.sourceCount() > 0 ? fmtCount(m.sourceCount(), "source", "sources") : null;
             }
-            case TEST -> m.testCount() > 0 ? "~" + fmtCount(m.testCount(), "test", "tests") : null;
+            // The tests the run runs, as the Build Plan counts them: replayed classes are not run.
+            case TEST -> m.rerunTests() > 0 ? "~" + fmtCount(m.rerunTests(), "test", "tests") : null;
             default -> null;
         };
     }

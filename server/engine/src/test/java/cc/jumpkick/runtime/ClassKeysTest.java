@@ -4,6 +4,7 @@ package cc.jumpkick.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.jsonl.JsonFields;
+import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.orchestrator.ClassCones;
 import cc.jumpkick.task.TestStamp;
 import cc.jumpkick.test.ClassReads;
@@ -15,6 +16,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
@@ -596,6 +598,98 @@ class ClassKeysTest {
         assertThat(selected(module, classes, ws, "", "demo.T"))
                 .as("a launch's own pool still keys its classes")
                 .isEqualTo("module pooled process /usr/bin/setsid");
+    }
+
+    /**
+     * One run of the guard's suites starts the default launch and the integration launch at once,
+     * each in its own JVMs. What the integration JVMs did outside every window (started a program,
+     * reached Maven Central) is the integration launch's pool alone: the run writes a header for each
+     * launch it told apart, and the default suite's classes stand on their own.
+     */
+    @Test
+    void one_run_of_two_launches_keeps_each_launchs_pool_apart(@TempDir Path ws) throws Exception {
+        Path classes = Files.createDirectories(ws.resolve("classes"));
+        copy(classes, "demo/T", FIXTURE + "KeyFixtureUnrelated");
+        copy(classes, "demo/U", FIXTURE + "KeyFixtureUnrelated");
+        Path module = Files.createDirectories(ws.resolve("m"));
+        String integration = "test:integration";
+        ClassReads.Observation started = ClassReads.Observation.empty();
+        started.addProcess("/usr/bin/setsid");
+        started.addHost("repo.maven.apache.org");
+        ClassReads.Observation union = ClassReads.Observation.empty();
+        union.addProcess("/usr/bin/setsid");
+        union.addHost("repo.maven.apache.org");
+
+        Map<String, TestClassRecords.Outcome> outcomes = new HashMap<>();
+        outcomes.put(TestClassRecords.rowKey("", "demo.T"), new TestClassRecords.Outcome("", "demo.T", 1, 0, 0, 1, 1));
+        outcomes.put(
+                TestClassRecords.rowKey(integration, "demo.U"),
+                new TestClassRecords.Outcome(integration, "demo.U", 1, 0, 0, 1, 1));
+        assertThat(TestClassRecording.launchOf(outcomes).apply(List.of("demo.U")))
+                .as("a JVM that ran the integration class is the integration launch's")
+                .isEqualTo(integration);
+        assertThat(TestClassRecording.launchOf(outcomes).apply(List.of("demo.T", "demo.U")))
+                .as("a JVM that ran both is neither's")
+                .isNull();
+
+        Map<String, ClassReads.Observation> seenByClass =
+                Map.of("demo.T", ClassReads.Observation.empty(), "demo.U", ClassReads.Observation.empty());
+        ClassReads.Attributed seen = new ClassReads.Attributed(
+                seenByClass,
+                union,
+                ClassReads.SuiteCode.empty(),
+                true,
+                2,
+                2,
+                Map.of("", ClassReads.Observation.empty(), integration, started));
+        Set<String> launches = TestClassRecords.launches(outcomes);
+        List<String> leading = TestClassRecords.headers(
+                "g:m",
+                seen,
+                launches,
+                TestClassRecords.Lookups.none(),
+                ws,
+                null,
+                SuiteCodeFiles.listed(null, seen.code(), ws, Long.MAX_VALUE));
+        assertThat(leading).as("a header for each launch").hasSize(2);
+        ClassShadow shadow = new ClassShadow(
+                ClassCones.index(List.of(classes)),
+                "suite",
+                ws,
+                l -> ClassKeys.Observed.NONE,
+                l -> ClassShadow.observed(seen.pooled(l), ws),
+                Map.of(),
+                ClassKeys.SuiteReadSet.NONE,
+                ClassKeys.SuiteReadSet.NONE,
+                Long.MAX_VALUE,
+                false,
+                "stamp");
+        TestClassRecords.merge(
+                module,
+                leading,
+                launches,
+                outcomes,
+                (o, prev) -> {
+                    ClassReads.Observation obs = seen.classes().get(o.testClass());
+                    return TestClassRecords.row(o, obs, TestClassRecords.Lookups.none(), ws, shadow.of(o, obs, prev));
+                },
+                shadow::kept);
+
+        Map<String, String> headers = TestClassRecords.headers(TestClassRecords.file(module));
+        assertThat(Jsonl.strArray(Objects.requireNonNull(Jsonl.nested(headers.get(""), "pooled")), "network"))
+                .as("the default launch reached no host")
+                .isEmpty();
+        assertThat(Jsonl.strArray(Objects.requireNonNull(Jsonl.nested(headers.get(integration), "pooled")), "network"))
+                .containsExactly("repo.maven.apache.org");
+        assertThat(selected(module, classes, ws, "", "demo.T"))
+                .as("the integration launch's program is no input of the default suite's class")
+                .isNull();
+        assertThat(ClassShadow.pooledOf(headers.get(integration)).processes())
+                .as("its own launch's classes stand on its program")
+                .containsExactly("/usr/bin/setsid");
+        assertThat(ClassShadow.pooledOf(headers.get("")).processes())
+                .as("the default launch started none")
+                .isEmpty();
     }
 
     /** One run's records, as a suite's recording leaves them: the classes of {@code ran} ran, beside {@code pool}. */

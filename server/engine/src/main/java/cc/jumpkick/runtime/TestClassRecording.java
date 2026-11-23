@@ -30,6 +30,7 @@ import java.util.TreeMap;
 import java.util.concurrent.Semaphore;
 import java.util.function.Function;
 import java.util.function.Predicate;
+import java.util.function.UnaryOperator;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -120,6 +121,7 @@ final class TestClassRecording {
                 for (Path t : TestEnv.tempRoots(moduleDir)) {
                     if (!t.toAbsolutePath().normalize().startsWith(workspace)) temp.add(t);
                 }
+                Map<String, TestClassRecords.Outcome> ran = TestClassRecords.outcomes(ledger.recorded());
                 ClassReads.Attributed seen = ClassReads.attribute(
                         SuiteReads.recordingDir(target),
                         moduleDir,
@@ -131,18 +133,20 @@ final class TestClassRecording {
                                 javaHome,
                                 scratch,
                                 temp),
-                        TestTelemetry.carry());
+                        TestTelemetry.carry(),
+                        launchOf(ran));
                 long attributedMs = (Clock.SYSTEM.nanos() - started) / 1_000_000;
                 TestClassRecords.Lookups lookups = TestClassRecords.Lookups.read(EnvReadReport.recordDir(moduleDir));
-                Map<String, TestClassRecords.Outcome> ran = TestClassRecords.outcomes(ledger.recorded());
                 Path file = TestClassRecords.file(moduleDir);
                 String previous = TestClassRecords.header(file);
                 Map<String, String> headers = TestClassRecords.headers(file);
                 SuiteCodeFiles.Listed code =
                         SuiteCodeFiles.listed(previous, seen.code(), workspace, firstFinished(ran));
-                String header = TestClassRecords.header(
+                Set<String> launches = TestClassRecords.launches(ran);
+                List<String> leading = TestClassRecords.headers(
                         moduleLabel,
                         seen,
+                        launches,
                         lookups,
                         workspace,
                         javaHome == null ? null : JdkToolchain.token(javaHome),
@@ -150,21 +154,22 @@ final class TestClassRecording {
                 if (!TestTelemetry.shadow()) {
                     TestClassRecords.merge(
                             moduleDir,
-                            header,
+                            leading,
+                            launches,
                             ran,
-                            (o, prev) -> TestClassRecords.row(o, observation(seen, o), lookups, workspace, null));
+                            (o, prev) -> TestClassRecords.row(o, observation(seen, o), lookups, workspace, null),
+                            UnaryOperator.identity());
                     done(started, attributedMs, seen, null);
                     return;
                 }
                 List<String> extras = stampExtras.read();
                 String suitePart = ClassKeys.suitePart(extras, external, resourceDirs);
                 Function<String, ClassKeys.Observed> pooledBefore = pooledBy(headers);
-                ClassKeys.Observed pool = ClassShadow.observed(seen.pooled(), workspace);
-                Set<String> launches = new HashSet<>();
-                for (TestClassRecords.Outcome o : ran.values()) launches.add(o.launch());
+                Map<String, ClassKeys.Observed> pools = new HashMap<>();
                 // This run's pool is what its own launches' JVMs left; any other launch keeps its own.
-                Function<String, ClassKeys.Observed> pooledNow =
-                        launch -> launches.contains(launch) ? pool : pooledBefore.apply(launch);
+                Function<String, ClassKeys.Observed> pooledNow = launch -> launches.contains(launch)
+                        ? pools.computeIfAbsent(launch, l -> ClassShadow.observed(seen.pooled(l), workspace))
+                        : pooledBefore.apply(launch);
                 ClassShadow shadow;
                 // The index stands only while no recording is read anywhere in the engine.
                 try (RecordingReader.Permit permit = RecordingReader.Permit.acquire()) {
@@ -184,7 +189,8 @@ final class TestClassRecording {
                     ClassShadow s = shadow;
                     TestClassRecords.merge(
                             moduleDir,
-                            header,
+                            leading,
+                            launches,
                             ran,
                             (o, prev) -> {
                                 ClassReads.Observation obs = observation(seen, o);
@@ -667,6 +673,29 @@ final class TestClassRecording {
     /** Whether a record row, or the pool of its header, says the network was reached. */
     private static boolean reachedPastHost(@Nullable String row) {
         return row != null && !Jsonl.strArray(row, "network").isEmpty();
+    }
+
+    /**
+     * The launch of a recording that held the windows of {@code classes}, by the launch each ran in
+     * ({@code ran}): the one launch all of them ran in, null when they ran in more than one, or one of
+     * them in none of this run's, or there were none.
+     */
+    static Function<Collection<String>, @Nullable String> launchOf(Map<String, TestClassRecords.Outcome> ran) {
+        Map<String, Set<String>> byClass = new HashMap<>();
+        for (TestClassRecords.Outcome o : ran.values()) {
+            byClass.computeIfAbsent(o.testClass(), c -> new HashSet<>()).add(o.launch());
+        }
+        return classes -> {
+            String one = null;
+            for (String c : classes) {
+                Set<String> in = byClass.get(c);
+                if (in == null || in.size() != 1) return null;
+                String launch = in.iterator().next();
+                if (one == null) one = launch;
+                else if (!one.equals(launch)) return null;
+            }
+            return one;
+        };
     }
 
     /** The observation of the class {@code o} names, when its recording was read whole. */

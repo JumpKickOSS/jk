@@ -19,8 +19,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -212,15 +214,32 @@ final class TestClassRecords {
     static void merge(
             Path moduleDir, String header, Map<String, Outcome> ran, RowMaker maker, UnaryOperator<String> kept)
             throws IOException {
+        Set<String> launches = launches(ran);
+        merge(moduleDir, List.of(withLaunches(header, launches)), launches, ran, maker, kept);
+    }
+
+    /**
+     * As {@link #merge(Path, String, Map, RowMaker, UnaryOperator)}, this run's own headers ({@code
+     * leading}) written first as they are, each naming the launches it stands for, those of {@code
+     * launches} between them.
+     */
+    static void merge(
+            Path moduleDir,
+            List<String> leading,
+            Set<String> launches,
+            Map<String, Outcome> ran,
+            RowMaker maker,
+            UnaryOperator<String> kept)
+            throws IOException {
         Path file = file(moduleDir);
         Files.createDirectories(file.getParent());
         Set<String> done = new HashSet<>();
-        Set<String> launches = new TreeSet<>();
-        for (Outcome o : ran.values()) launches.add(o.launch());
         Path staging = AtomicWrites.staging(file);
         try (BufferedWriter out = Files.newBufferedWriter(staging, StandardCharsets.UTF_8)) {
-            out.write(withLaunches(header, launches));
-            out.write('\n');
+            for (String header : leading) {
+                out.write(header);
+                out.write('\n');
+            }
             if (Files.isRegularFile(file)) {
                 try (BufferedReader in = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
                     for (String line = bounded(in); line != null; line = bounded(in)) {
@@ -251,6 +270,41 @@ final class TestClassRecords {
             throw e;
         }
         AtomicWrites.moveInto(staging, file);
+    }
+
+    /** The launches {@code ran}'s classes ran in. */
+    static Set<String> launches(Map<String, Outcome> ran) {
+        Set<String> launches = new TreeSet<>();
+        for (Outcome o : ran.values()) launches.add(o.launch());
+        return launches;
+    }
+
+    /**
+     * This run's headers ({@link #header(String, ClassReads.Attributed, ClassReads.Observation, Lookups,
+     * Path, String, SuiteCodeFiles.Listed)}), one for each pool its {@code launches} stand on: a
+     * launch whose JVMs the recording told apart has a header of its own, the rest share one on every
+     * JVM's pool ({@link ClassReads.Attributed#pooled(String)}). Each names its launches.
+     */
+    static List<String> headers(
+            String module,
+            ClassReads.Attributed seen,
+            Set<String> launches,
+            Lookups lookups,
+            Path root,
+            @Nullable String toolchain,
+            SuiteCodeFiles.Listed code) {
+        Map<ClassReads.Observation, Set<String>> byPool = new IdentityHashMap<>();
+        for (String launch : new TreeSet<>(launches)) {
+            byPool.computeIfAbsent(seen.pooled(launch), p -> new TreeSet<>()).add(launch);
+        }
+        List<String> out = new ArrayList<>();
+        for (Map.Entry<ClassReads.Observation, Set<String>> e : byPool.entrySet()) {
+            String h = header(module, seen, e.getKey(), lookups, root, toolchain, code);
+            out.add(withLaunches(h, e.getValue()));
+        }
+        // The same run, so the order is only for a reader: by the launches each names.
+        out.sort(Comparator.comparing(h -> String.join(",", Jsonl.strArray(h, LAUNCHES))));
+        return out;
     }
 
     /** The record file's header line, or null when there is none or it is past a row's bound. */
@@ -486,7 +540,18 @@ final class TestClassRecords {
             Path root,
             @Nullable String toolchain,
             SuiteCodeFiles.Listed code) {
-        ClassReads.Observation pooled = seen.pooled();
+        return header(module, seen, seen.pooled(), lookups, root, toolchain, code);
+    }
+
+    /** As {@link #header(String, ClassReads.Attributed, Lookups, Path, String, SuiteCodeFiles.Listed)}, on {@code pooled}. */
+    static String header(
+            String module,
+            ClassReads.Attributed seen,
+            ClassReads.Observation pooled,
+            Lookups lookups,
+            Path root,
+            @Nullable String toolchain,
+            SuiteCodeFiles.Listed code) {
         boolean bound = pooled.platformBound();
         int boundClasses = 0;
         for (ClassReads.Observation o : seen.classes().values()) {

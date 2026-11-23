@@ -27,6 +27,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -641,6 +642,8 @@ public final class ClassReads {
      * @param complete false when a recording could not be read whole: no class of it is attributed
      * @param jvms how many recordings were read
      * @param events how many events were joined
+     * @param launches what no window held in each launch's JVMs, by launch, when every recording
+     *     told its launch; empty when one did not, or none was asked
      */
     public record Attributed(
             Map<String, Observation> classes,
@@ -648,14 +651,23 @@ public final class ClassReads {
             SuiteCode code,
             boolean complete,
             int jvms,
-            long events) {
+            long events,
+            Map<String, Observation> launches) {
         public static final Attributed NONE =
-                new Attributed(Map.of(), Observation.empty(), SuiteCode.empty(), false, 0, 0);
+                new Attributed(Map.of(), Observation.empty(), SuiteCode.empty(), false, 0, 0, Map.of());
 
         /** A run whose JVMs read no code file outside what the suite's key holds. */
         public Attributed(
                 Map<String, Observation> classes, Observation pooled, boolean complete, int jvms, long events) {
-            this(classes, pooled, SuiteCode.empty(), complete, jvms, events);
+            this(classes, pooled, SuiteCode.empty(), complete, jvms, events, Map.of());
+        }
+
+        /**
+         * What no window held in the JVMs of {@code launch}: its own pool where the run told the
+         * launches apart, else every JVM's.
+         */
+        public Observation pooled(String launch) {
+            return launches.getOrDefault(launch, pooled);
         }
     }
 
@@ -732,6 +744,22 @@ public final class ClassReads {
      * class sees of state an earlier class's code filled once for the JVM.
      */
     public static Attributed attribute(Path dir, Path cwd, Layout layout, boolean carryUses) {
+        return attribute(dir, cwd, layout, carryUses, classes -> null);
+    }
+
+    /**
+     * As {@link #attribute(Path, Path, Layout, boolean)}, each recording's pool also kept as the pool
+     * of its launch: the launch {@code launchOf} names for the classes its windows hold, null when it
+     * cannot tell one. A launch runs its own test JVMs, so what one launch's JVMs did outside every
+     * window is no input of another launch's classes. One recording whose launch is not told leaves
+     * no launch's pool: each stands on every JVM's ({@link Attributed#pooled(String)}).
+     */
+    public static Attributed attribute(
+            Path dir,
+            Path cwd,
+            Layout layout,
+            boolean carryUses,
+            Function<Collection<String>, @Nullable String> launchOf) {
         List<Path> recordings = new ArrayList<>();
         try {
             PathUtil.forEachChild(dir, (child, attrs) -> {
@@ -744,6 +772,8 @@ public final class ClassReads {
         Map<String, Observation> classes = new LinkedHashMap<>();
         int[] loadedLeft = {LOADED_KEPT};
         Observation pooled = Observation.pool();
+        Map<String, Observation> launches = new HashMap<>();
+        boolean launchesTold = true;
         UseNames useNames = new UseNames();
         SuiteCode code = SuiteCode.empty();
         boolean complete = true;
@@ -781,7 +811,13 @@ public final class ClassReads {
                         pass.run(FRAME, frame);
                     }
                 }
-                Join join = new Join(windows, written, cwd, layout, classes, pooled, code, loadedLeft, useNames);
+                String launch =
+                        launchOf.apply(windows.stream().map(Window::testClass).toList());
+                List<Observation> pools = new ArrayList<>(2);
+                pools.add(pooled);
+                if (launch == null) launchesTold = false;
+                else pools.add(launches.computeIfAbsent(launch, l -> Observation.pool()));
+                Join join = new Join(windows, written, cwd, layout, classes, pools, code, loadedLeft, useNames);
                 try (RecordingReader.Permit permit = RecordingReader.Permit.acquire()) {
                     pass.run(EVENTS, (name, start, end, v) -> read(name, start, v, join));
                 }
@@ -803,7 +839,8 @@ public final class ClassReads {
         }
         // A use outside every window (discovery, a static initialiser) leaves state any class may read.
         for (Observation o : classes.values()) o.addUses(pooled);
-        return new Attributed(classes, pooled, code, complete, recordings.size(), events);
+        return new Attributed(
+                classes, pooled, code, complete, recordings.size(), events, launchesTold ? launches : Map.of());
     }
 
     /** The second pass: one event, given to its classes as it is read. */
@@ -852,7 +889,9 @@ public final class ClassReads {
 
         private final Layout layout;
         private final Map<String, Observation> classes;
-        private final Observation pooled;
+        /** What no window holds goes to each: the suite's pool, and its launch's where told. */
+        private final List<Observation> pools;
+
         private final SuiteCode suiteCode;
         /** Whether each recently asked path is there, the last {@value #EXISTS_KEPT} asked. */
         private final Map<Path, Boolean> exists = new LinkedHashMap<>(256, 0.75f, true) {
@@ -884,7 +923,7 @@ public final class ClassReads {
                 Path cwd,
                 Layout layout,
                 Map<String, Observation> classes,
-                Observation pooled,
+                List<Observation> pools,
                 SuiteCode suiteCode,
                 int[] loadedLeft,
                 UseNames useNames) {
@@ -898,7 +937,7 @@ public final class ClassReads {
             this.gitTemp = GitRuns.unenclosed(layout.temp());
             this.layout = layout;
             this.classes = classes;
-            this.pooled = pooled;
+            this.pools = pools;
             int n = this.windows.size();
             starts = new long[n];
             reach = new long[n];
@@ -925,7 +964,7 @@ public final class ClassReads {
                 if (o != null) into.add(o);
             }
             if (inWindow && into.isEmpty()) return;
-            if (into.isEmpty()) into.add(pooled);
+            if (into.isEmpty()) into.addAll(pools);
             switch (kind) {
                 case PROCESS -> {
                     // The test JDK's own launcher (an agent attaching from a second JVM, as Mockito's
@@ -1010,7 +1049,7 @@ public final class ClassReads {
                     Observation o = classes.get(w.testClass());
                     if (o != null) o.codeMore = true;
                 }
-                pooled.codeMore = true;
+                for (Observation p : pools) p.codeMore = true;
                 suiteCode.more = true;
             }
             long lastEnd = Long.MIN_VALUE;
@@ -1031,7 +1070,7 @@ public final class ClassReads {
                     Observation o = classes.get(w.testClass());
                     if (first <= w.end() && o != null) o.addCode(c.getKey());
                 }
-                if (c.getValue()[1] > lastEnd) pooled.addCode(c.getKey());
+                if (c.getValue()[1] > lastEnd) pools.forEach(p -> p.addCode(c.getKey()));
             }
             codeReads.clear();
         }

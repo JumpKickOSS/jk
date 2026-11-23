@@ -117,6 +117,66 @@ class ClassReadsTest {
         assertThat(first.reads()).as("never a read after its window closed").doesNotContain(late, b);
     }
 
+    /**
+     * A launch runs its own test JVMs, so what no window held in one launch's JVMs is that launch's
+     * pool, not another's: a run of the guard's suites whose integration JVMs reached Maven Central
+     * outside every window ran every class of jk-engine's default suite too, after a body-only
+     * engine edit its cones did not reach. A recording whose launch is not told leaves every launch
+     * on every JVM's pool.
+     */
+    @Test
+    void what_no_window_held_is_the_pool_of_its_own_launch(@TempDir Path tmp) throws Exception {
+        Path ws = Files.createDirectories(tmp.resolve("ws"));
+        Path unit = write(ws, "unit.txt");
+        Path integration = write(ws, "integration.txt");
+        Path recordings = Files.createDirectories(tmp.resolve("rec"));
+        record(recordings.resolve("unit.jfr"), "demo.UnitTest", unit);
+        record(recordings.resolve("integration.jfr"), "demo.IntegrationTest", integration);
+        ClassReads.Layout layout = new ClassReads.Layout(
+                List.of(ws.resolve("m/target/test-classes")), List.of(ws.resolve("m/target")), Set.of(), ws, null);
+
+        ClassReads.Attributed seen = ClassReads.attribute(
+                recordings,
+                ws,
+                layout,
+                false,
+                classes -> classes.contains("demo.IntegrationTest") ? "test:integration" : "test:test");
+
+        assertThat(seen.pooled("test:test").reads())
+                .as("the default launch's JVM")
+                .containsExactly(unit);
+        assertThat(seen.pooled("test:integration").reads())
+                .as("the integration launch's JVM")
+                .containsExactly(integration);
+        assertThat(seen.pooled().reads())
+                .as("the suite's pool is every JVM's")
+                .containsExactlyInAnyOrder(unit, integration);
+
+        ClassReads.Attributed untold = ClassReads.attribute(
+                recordings,
+                ws,
+                layout,
+                false,
+                classes -> classes.contains("demo.IntegrationTest") ? null : "test:test");
+        assertThat(untold.launches()).as("one recording's launch unknown").isEmpty();
+        assertThat(untold.pooled("test:test").reads())
+                .as("so every launch stands on every JVM's pool")
+                .containsExactlyInAnyOrder(unit, integration);
+    }
+
+    /** A recording of one JVM at {@code file}: {@code pooled} read before the window of {@code testClass}. */
+    private static void record(Path file, String testClass, Path pooled) throws Exception {
+        try (Recording r = new Recording()) {
+            r.enable("jdk.FileRead").withThreshold(Duration.ZERO);
+            r.enable(ClassReads.WINDOW_EVENT).withThreshold(Duration.ZERO);
+            r.start();
+            Files.readString(pooled);
+            window(testClass).commit();
+            r.stop();
+            r.dump(file);
+        }
+    }
+
     /** The probe's use event, as the recording names it. */
     @Name(ClassReads.USE_EVENT)
     @StackTrace(false)
