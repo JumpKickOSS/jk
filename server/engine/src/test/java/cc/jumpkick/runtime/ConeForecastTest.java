@@ -3,8 +3,10 @@ package cc.jumpkick.runtime;
 
 import static java.lang.constant.ConstantDescs.CD_int;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.jsonl.JsonFields;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.layout.BuildLayout;
@@ -16,6 +18,7 @@ import java.lang.constant.ClassDesc;
 import java.lang.constant.MethodTypeDesc;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -32,6 +35,7 @@ import org.junit.jupiter.api.io.TempDir;
  * jar the suite is handed by path that is rebuilding runs only the classes that read it, and a
  * class that read more code files than its record names runs only when one its suite lists moves.
  * The affected-test ranking reads the same records: how each class's cone and reads meet a change.
+ * None of these reads waits for another suite's recording of its classes.
  */
 class ConeForecastTest {
 
@@ -366,6 +370,41 @@ class ConeForecastTest {
         assertThat(overlaps(layout, change))
                 .as("T reaches Dep but never ran it")
                 .containsEntry("demo.T", "cone:demo.Dep");
+    }
+
+    @Test
+    void a_read_of_the_records_never_waits_for_another_suites_recording(@TempDir Path ws) throws Exception {
+        BuildLayout layout = module(ws);
+        write(layout.testClassesDir(), "demo/T", plain("demo.T"));
+        write(layout.testClassesDir(), "demo/U", plain("demo.U"));
+        writeRows(layout.moduleRoot(), null, row("T", 3, null), row("U", 2, null));
+
+        // A suite recording its classes holds the observations' turn for seconds; it holds no index.
+        TestClassRecording.ONE.acquire();
+        try {
+            assertTimeoutPreemptively(Duration.ofSeconds(10), () -> {
+                assertThat(replayedWith(layout))
+                        .as("the forecast after an edit")
+                        .isEqualTo(5);
+                assertThat(overlaps(layout, List.of("src/main/java/demo/Dep.java")))
+                        .as("the ranking")
+                        .containsOnlyKeys("demo.T", "demo.U");
+                assertThat(TestClassRecording.unmoved(
+                                layout.moduleRoot(),
+                                layout,
+                                TestSelection.DEFAULT,
+                                layout.testClassesDir(),
+                                layout.classesDir(),
+                                List.of(),
+                                List.of(),
+                                List.of(),
+                                null))
+                        .as("the cone check before a run: rows with no key replay nothing")
+                        .isEmpty();
+            });
+        } finally {
+            TestClassRecording.ONE.release();
+        }
     }
 
     private static Map<String, String> overlaps(BuildLayout layout, List<String> changed) throws Exception {

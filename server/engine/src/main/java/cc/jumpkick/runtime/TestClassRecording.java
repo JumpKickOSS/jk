@@ -39,9 +39,12 @@ import org.jspecify.annotations.Nullable;
  * have done, in shadow ({@link ClassShadow}). Nothing here decides what runs.
  *
  * <p>Bounded: one suite at a time across the engine ({@link #ONE}) holds its classes' observations,
- * at most {@link ClassReads#PEAK_BYTES}, and walks its cones over an index of its workspace classes only while
- * it holds the recording reader's permit, so the index (at most {@link #INDEX_CLASSES} classes,
- * {@link ClassCones#BYTES_PER_CLASS} each) never stands beside a recording being read. Records are
+ * at most {@link ClassReads#PEAK_BYTES}. Every walk over the cones, a recording's or a read of the
+ * records before a run, builds its index of the workspace classes (at most {@link #INDEX_CLASSES}
+ * classes, {@link ClassCones#BYTES_PER_CLASS} each, within {@link RecordingReader#PEAK_BYTES}) only
+ * while it holds the recording reader's permit, so no index stands beside another or beside a
+ * recording being read. A read of the records holds no observations, so it never waits for {@link
+ * #ONE}: a suite whose classes all replay is not held up by another suite's recording. Records are
  * rewritten a row at a time.
  */
 final class TestClassRecording {
@@ -49,7 +52,7 @@ final class TestClassRecording {
     private TestClassRecording() {}
 
     /** One suite records its classes at a time. */
-    private static final Semaphore ONE = new Semaphore(1);
+    static final Semaphore ONE = new Semaphore(1);
 
     /**
      * The most workspace classes an index holds; past it no cone is trusted and every class is keyed
@@ -376,14 +379,8 @@ final class TestClassRecording {
         Map<String, Long> runs = new HashMap<>();
         // Whether a launch has no header, or its pool reached another host: none of its classes replays.
         Map<String, Boolean> poolReached = new HashMap<>();
-        // Another suite's records and recordings hold both permits: the wait is timed apart from the walk.
+        // Another suite's recording read or index holds the permit: the wait is timed apart from the walk.
         long started = Clock.SYSTEM.nanos();
-        try {
-            ONE.acquire();
-        } catch (InterruptedException stopped) {
-            Thread.currentThread().interrupt();
-            return Split.NONE;
-        }
         // The index stands only while no recording is read anywhere in the engine.
         try (RecordingReader.Permit permit = RecordingReader.Permit.acquire()) {
             long held = Clock.SYSTEM.nanos();
@@ -436,8 +433,6 @@ final class TestClassRecording {
                     out.size(),
                     "runs",
                     runs.size());
-        } finally {
-            ONE.release();
         }
         return new Split(out, replays, runs);
     }
@@ -491,12 +486,6 @@ final class TestClassRecording {
         Roots roots = Roots.of(workspace, testClasses, mainClasses, runtimeCp);
         Map<String, Long> replays = new HashMap<>();
         Map<String, Long> runs = new HashMap<>();
-        try {
-            ONE.acquire();
-        } catch (InterruptedException stopped) {
-            Thread.currentThread().interrupt();
-            return null;
-        }
         try (RecordingReader.Permit permit = RecordingReader.Permit.acquire()) {
             ClassCones.Index index = ClassCones.index(roots.cone(), INDEX_CLASSES);
             if (index.full()) return Replayed.NONE;
@@ -527,8 +516,6 @@ final class TestClassRecording {
                 }
                 replays.merge(cls, tests, Long::sum);
             });
-        } finally {
-            ONE.release();
         }
         return new Replayed(replays, runs);
     }
@@ -677,12 +664,6 @@ final class TestClassRecording {
         for (String c : changed) paths.add(c.replace('\\', '/'));
         Roots roots = Roots.of(workspace, testClasses, mainClasses, runtimeCp);
         Map<String, String> out = new TreeMap<>();
-        try {
-            ONE.acquire();
-        } catch (InterruptedException stopped) {
-            Thread.currentThread().interrupt();
-            return Map.of();
-        }
         try (RecordingReader.Permit permit = RecordingReader.Permit.acquire()) {
             ClassCones.Index index = ClassCones.index(roots.cone(), INDEX_CLASSES);
             if (index.full()) return Map.of();
@@ -696,8 +677,6 @@ final class TestClassRecording {
                 String why = overlap(row, cls, index, moved, paths);
                 out.merge(cls, why, (a, b) -> strength(b) > strength(a) ? b : a);
             });
-        } finally {
-            ONE.release();
         }
         return out;
     }
