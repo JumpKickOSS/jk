@@ -227,10 +227,10 @@ final class ZincWorkdir {
 
     /**
      * What a compile or processor path looks like right now, as one digest: each entry's path, then
-     * for a jar its size and mtime and for a classes directory the sorted (relative path, size,
-     * mtime) of every file in it; an absent entry digests as absent. Cheap against reading the
-     * bytes, and different whenever a compiler rewrote, added or deleted a class an entry holds or
-     * the lock moved a jar.
+     * for a jar its size and mtime and for a classes directory the sorted (relative path, content
+     * hash) of every file in it; an absent entry digests as absent. A sibling module rebuilt with
+     * the bytes it had keeps the digest, so its consumers stay incremental; the hashes are memoised
+     * by size and mtime ({@link ContentHashes}), so an untouched file is read once per worker.
      */
     private static String classpathDigest(List<Path> classpath) throws IOException {
         MessageDigest digest = Hashing.newSha256();
@@ -240,8 +240,10 @@ final class ZincWorkdir {
                 List<String> listing = new ArrayList<>();
                 PathUtil.forEachRegularFile(
                         entry,
-                        (file, attrs) -> listing.add(
-                                entry.relativize(file).toString().replace(File.separatorChar, '/') + shape(attrs)));
+                        (file, attrs) ->
+                                listing.add(entry.relativize(file).toString().replace(File.separatorChar, '/')
+                                        + "\t"
+                                        + ContentHashes.of(file, attrs)));
                 Collections.sort(listing);
                 for (String line : listing) digest.update((line + "\n").getBytes(StandardCharsets.UTF_8));
             } else if (Files.isRegularFile(entry)) {

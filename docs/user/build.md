@@ -132,7 +132,9 @@ An edit to a resource a processor read through the Filer, or the arrival of one 
 did not find, compiles every source of the module again, so the processors read it anew. An edit to
 a resource no processor reads (Lombok, Error Prone and NullAway read none) compiles only the sources
 the edit touches, and a checkout that rewrites a resource with the bytes it had keeps the next
-compile incremental.
+compile incremental. A processor from another module of the workspace counts the same way: a change
+to its classes compiles every source of the modules it runs on, and a rebuild that writes the bytes
+it had keeps their next compile incremental.
 A processor that reads a copied resource and writes that path back — Helidon's manifest merge —
 merges into the resource, not into the file the last build left, so the module keeps its
 incremental compiles; a full compile puts the resource back before the processors run. A classpath that registers no processor hands javac none, and the key hashes

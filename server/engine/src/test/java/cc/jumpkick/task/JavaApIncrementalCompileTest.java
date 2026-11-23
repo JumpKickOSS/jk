@@ -473,6 +473,43 @@ class JavaApIncrementalCompileTest {
         assertThat(p.classFile("app/WidgetGen.class")).isRegularFile();
     }
 
+    /**
+     * A processor on the path as a sibling module's {@code target/classes}, rebuilt with the bytes
+     * it had — every file a new mtime, nothing else — leaves a body edit an incremental compile of
+     * the edited source. A file added to the processor tree still compiles every source.
+     */
+    @Test
+    void a_processor_directory_rebuilt_with_the_same_bytes_keeps_a_body_edit_incremental(@TempDir Path dir)
+            throws Exception {
+        Path procDir = isolatingProcessor(dir);
+        Project p = new Project(dir, workerJar(), procDir);
+        p.write("app/Widget.java", widget("one"));
+        p.write("app/Plain.java", "package app; public class Plain {}");
+        p.build();
+
+        try (var files = Files.walk(procDir)) {
+            for (Path f : (Iterable<Path>) files.filter(Files::isRegularFile)::iterator) {
+                byte[] bytes = Files.readAllBytes(f);
+                FileTime before = Files.getLastModifiedTime(f);
+                Files.write(f, bytes);
+                Files.setLastModifiedTime(f, FileTime.fromMillis(before.toMillis() + 60_000));
+            }
+        }
+        p.write("app/Plain.java", "package app; public class Plain { int edited; }");
+        JavaCompile.Result touched = p.build();
+        assertThat(touched.compiledSources())
+                .as("a processor rebuilt with identical bytes is not a processor change")
+                .noneMatch(src -> src.endsWith("Widget.java"))
+                .anyMatch(src -> src.endsWith("Plain.java"));
+
+        Files.writeString(procDir.resolve("gen/notes.txt"), "added\n");
+        p.write("app/Plain.java", "package app; public class Plain { int again; }");
+        JavaCompile.Result changed = p.build();
+        assertThat(changed.compiledSources())
+                .as("a changed processor tree compiles every source again")
+                .anyMatch(src -> src.endsWith("Widget.java"));
+    }
+
     // ---- harness ----------------------------------------------------------
 
     private static Path workerJar() {

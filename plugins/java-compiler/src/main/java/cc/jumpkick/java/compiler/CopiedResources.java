@@ -9,7 +9,6 @@ import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
-import java.nio.file.attribute.BasicFileAttributes;
 import java.security.MessageDigest;
 import java.util.Collection;
 import java.util.HashMap;
@@ -18,8 +17,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.TimeUnit;
 
 /**
  * The main resources the engine copied into the class output before this compile, each with the
@@ -42,9 +39,6 @@ final class CopiedResources {
     static final String SOURCES = "copied-resource-sources.tsv";
 
     private static final CopiedResources NONE = new CopiedResources(Map.of());
-
-    /** Content hashes by resource path, kept for this worker's life: a forecast and a compile stamp alike. */
-    private static final Map<Path, Hashed> HASHED = new ConcurrentHashMap<>();
 
     /** Copy (absolute, under the class output) to the resource it was copied from. */
     private final Map<Path, Path> sources;
@@ -117,25 +111,11 @@ final class CopiedResources {
         MessageDigest digest = Hashing.newSha256();
         for (String rel : new TreeSet<>(read)) {
             Path source = sources.get(classes.resolve(rel).normalize());
-            String hash = source != null && Files.isRegularFile(source) ? contentHash(source) : "-";
+            String hash = source != null && Files.isRegularFile(source) ? ContentHashes.of(source) : "-";
             digest.update((rel + "\t" + hash + "\n").getBytes(StandardCharsets.UTF_8));
         }
         return "+resources:" + Hashing.hex(digest.digest());
     }
-
-    /** One resource's content hash; read again only when its size or mtime moved. */
-    private static String contentHash(Path source) throws IOException {
-        BasicFileAttributes attrs = Files.readAttributes(source, BasicFileAttributes.class);
-        long size = attrs.size();
-        long mtime = attrs.lastModifiedTime().to(TimeUnit.NANOSECONDS);
-        Hashed known = HASHED.get(source);
-        if (known != null && known.size == size && known.mtime == mtime) return known.sha;
-        String sha = Hashing.sha256Hex(source);
-        HASHED.put(source, new Hashed(size, mtime, sha));
-        return sha;
-    }
-
-    private record Hashed(long size, long mtime, String sha) {}
 
     /** Lay {@code source} over {@code copy} as the engine's copy does, or drop the copy when its resource is gone. */
     static void reset(Path copy, Path source) throws IOException {
