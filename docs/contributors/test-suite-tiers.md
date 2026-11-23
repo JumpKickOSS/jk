@@ -517,8 +517,8 @@ reaches every later resolve. The isolated home has its own store, cache, state a
 `config.toml` starts with `[m2] integration = false`, so a repository at Central's URL stores under
 the home rather than in the pooled Maven local repository, and Maven's `settings.xml` is pointed
 at a file that does not exist. Its `[templates] official` is a local bare repository built from
-the checkout's `templates/` (`LocalTemplateCatalog`, beside the sandbox slot's home and named by the
-content), so the home's engine clones its catalog without github.com; a test about the real
+the checkout's `templates/` (`LocalTemplateCatalog`, in the sandbox slot's temp root and named by the
+content, so per-class selection reads its git as git in a repository a test made), so the home's engine clones its catalog without github.com; a test about the real
 catalog's origin opts out with `@IsolatedHome(officialCatalogFromOrigin = true)`. A suite's shared
 home names the same repository: `SharedHomeTemplateCatalog` (core fixtures), a launcher listener
 that a suite starting engines lists in its `META-INF/services`, writes it into that home's

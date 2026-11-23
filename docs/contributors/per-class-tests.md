@@ -246,7 +246,10 @@ classes whose window contains its start time, in that JVM:
   keys every class of the suite by its module (`pooled process …`): what it reads is in no
   recording, and no record says which class it served. A tool started there (the header's pooled
   `tools`) keys every class by the identity the suite's stamp gives it, so an upgrade of it re-runs
-  them all.
+  them all. JumpKick's own suites build their template catalog before the first class
+  (`LocalTemplateCatalog`) in the sandbox slot's temp root for that reason: there its git is git in
+  a repository a test made, a tool, where beside the home it was a program that keyed every class of
+  jk-engine, jk-cli and jk-cli-e2e by its module.
 - **After a class finished**: never that class's. Its outcome was decided by then.
 - **Code files** (`.jar`, `.zip`, `.jmod`, a `.class` outside the workspace class trees): the class
   in whose window it was read and every class that ran later in that JVM.
