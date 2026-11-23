@@ -293,19 +293,23 @@ public final class FileLocks {
      * Retire every entry no thread holds, waits for or has a channel open on, and forget its
      * spellings. A thread that looked one up before it was retired finds it retired once it has the
      * JVM lock and looks again, so one file never has two live entries, nor this JVM two channels.
+     * Returns how many entries it retired.
      */
-    private static void dropIdle() {
+    static int dropIdle() {
+        int retired = 0;
         for (Entry e : ENTRIES.values()) {
             if (e.retired || !e.jvm.tryLock()) continue;
             try {
                 if (e.jvm.getHoldCount() == 1 && e.holders == 0 && e.channel == null && !e.jvm.hasQueuedThreads()) {
                     e.retired = true;
                     for (Path k : e.keys) ENTRIES.remove(k, e);
+                    retired++;
                 }
             } finally {
                 e.jvm.unlock();
             }
         }
+        return retired;
     }
 
     /** Spellings this JVM keeps an entry for right now. */

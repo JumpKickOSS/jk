@@ -21,6 +21,8 @@ import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Queue;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
@@ -52,12 +54,13 @@ class FileLocksTest {
     void files_nobody_holds_are_forgotten_and_a_held_one_is_not(@TempDir Path dir) throws Exception {
         Path kept = dir.resolve("kept.lock");
         FileLocks.Hold hold = (FileLocks.Hold) FileLocks.tryHold(kept);
-        for (int i = 0; i < 2 * FileLocks.ENTRIES_KEPT; i++) {
+        int locked = FileLocks.ENTRIES_KEPT + 16; // one pass over the bound drops the idle entries
+        for (int i = 0; i < locked; i++) {
             FileLocks.withLock(dir.resolve("ledger-" + i + ".lock"), () -> {});
         }
 
         assertThat(FileLocks.entries())
-                .as("the entries stay bounded however many files were locked")
+                .as("the entries stay bounded after " + locked + " files were locked")
                 .isLessThanOrEqualTo(FileLocks.ENTRIES_KEPT + 2);
         assertThat(FileLocks.tryHold(kept))
                 .as("the held file kept its entry: a second taker is refused")
@@ -65,32 +68,41 @@ class FileLocksTest {
         hold.close();
     }
 
+    /**
+     * Four threads take one file in turn while this thread drops idle entries as fast as it can, so
+     * the file's entry is retired and made again between takes. No two bodies ever overlap.
+     */
     @Test
     void a_file_stays_exclusive_while_entries_are_dropped_around_it(@TempDir Path dir) throws Exception {
         Path hot = dir.resolve("hot.lock");
         AtomicInteger inside = new AtomicInteger();
         AtomicInteger most = new AtomicInteger();
+        Queue<Throwable> failures = new ConcurrentLinkedQueue<>();
         List<Thread> takers = new ArrayList<>();
         for (int t = 0; t < 4; t++) {
             takers.add(Thread.ofPlatform().start(() -> {
-                for (int i = 0; i < 300; i++) {
-                    try {
+                try {
+                    for (int i = 0; i < 300; i++) {
                         FileLocks.withLock(hot, () -> {
                             most.accumulateAndGet(inside.incrementAndGet(), Math::max);
                             Thread.yield();
                             inside.decrementAndGet();
                         });
-                    } catch (IOException e) {
-                        throw new IllegalStateException(e);
                     }
+                } catch (IOException | RuntimeException e) {
+                    failures.add(e);
                 }
             }));
         }
-        for (int i = 0; i < 3 * FileLocks.ENTRIES_KEPT; i++) {
-            FileLocks.withLock(dir.resolve("churn-" + i + ".lock"), () -> {});
+        int retired = 0;
+        while (takers.stream().anyMatch(Thread::isAlive)) {
+            retired += FileLocks.dropIdle();
+            Thread.yield();
         }
-        for (Thread t : takers) assertThat(t.join(Duration.ofSeconds(60))).isTrue();
+        assertThat(retired).as("entries retired while the takers ran").isPositive();
+        for (Thread t : takers) assertThat(t.join(Duration.ofSeconds(10))).isTrue();
 
+        assertThat(failures).as("takers that failed").isEmpty();
         assertThat(most).as("never two bodies on one file at once").hasValue(1);
     }
 
