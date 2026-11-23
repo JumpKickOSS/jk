@@ -89,7 +89,8 @@ final class EngineConnection {
             String buildId,
             @Nullable String expectedToken,
             Supplier<StatusSnapshot> status,
-            EngineHttpFront http,
+            Supplier<@Nullable HttpEngineServer> httpServer,
+            Supplier<@Nullable String> httpError,
             BooleanSupplier draining,
             LongSupplier drainDeadline,
             DrainReporter drain,
@@ -229,13 +230,13 @@ final class EngineConnection {
             case EngineProtocol.PING -> WireWriter.send(writer, ProtoLifecycle.pong());
             case EngineProtocol.STATUS -> {
                 StatusSnapshot s = ctx.status().get();
-                HttpEngineServer hs = ctx.http().server();
+                HttpEngineServer hs = ctx.httpServer().get();
                 String ack = ProtoLifecycle.statusAck(
                         s.vitals(),
                         ctx.draining().getAsBoolean(),
                         ctx.drainDeadline().getAsLong(),
                         hs != null ? hs.url() : null,
-                        ctx.http().error(),
+                        ctx.httpError().get(),
                         hs != null && hs.mcpEnabled());
                 WireWriter.send(writer, WorkCounters.appendToStatusAck(InputTrees.appendToStatusAck(ack)));
             }

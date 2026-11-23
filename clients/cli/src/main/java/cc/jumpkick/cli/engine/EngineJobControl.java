@@ -6,6 +6,7 @@ import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.JobControlAckFrame;
 import cc.jumpkick.wire.protocol.JobControlFrame;
 import java.nio.file.Path;
+import java.util.Collection;
 
 /**
  * Suspend or resume the jobs this CLI process started: its Ctrl-Z and {@code fg}. Best-effort and
@@ -26,20 +27,25 @@ public final class EngineJobControl {
     }
 
     private static int send(boolean suspend) {
-        int applied = 0;
         try {
-            Path socket = EnginePaths.activeSocket(EnginePaths.current());
-            for (long jid : ActiveJobs.snapshot()) {
-                try {
-                    var ack = EngineCancel.requestOnce(
-                            socket, new JobControlFrame(jid, suspend).encode(), EngineProtocol.JOB_CONTROL_ACK);
-                    if (ack.isPresent() && JobControlAckFrame.decode(ack.get()).applied()) applied++;
-                } catch (Exception ignored) {
-                    // best-effort: the job may have finished
-                }
-            }
+            return send(EnginePaths.activeSocket(EnginePaths.current()), ActiveJobs.snapshot(), suspend);
         } catch (Throwable ignored) {
             // never throw into a signal handler
+            return 0;
+        }
+    }
+
+    /** Suspend or resume each of {@code jids} at the engine on {@code socket}; how many it applied. */
+    static int send(Path socket, Collection<Long> jids, boolean suspend) {
+        int applied = 0;
+        for (long jid : jids) {
+            try {
+                var ack = EngineCancel.requestOnce(
+                        socket, new JobControlFrame(jid, suspend).encode(), EngineProtocol.JOB_CONTROL_ACK);
+                if (ack.isPresent() && JobControlAckFrame.decode(ack.get()).applied()) applied++;
+            } catch (Exception ignored) {
+                // best-effort: the job may have finished
+            }
         }
         return applied;
     }

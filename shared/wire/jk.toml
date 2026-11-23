@@ -28,6 +28,11 @@ options = [
   "-XepOpt:NullAway:KnownInitializers=cc.jumpkick.model.command.CliCommand.run",
 ]
 
+[test]
+# The wire contract both sides run (src/fixtures/java): the engine's suite against its real
+# connection code, each client's against the stub that serves the same cases.
+fixtures = true
+
 [test-dependencies]
 jk-host = { workspace = true, fixtures = true }
 jk-plugin-sdk.workspace = true

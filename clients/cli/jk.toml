@@ -51,6 +51,7 @@ options = [
 ]
 
 [test-dependencies]
+jk-engine-api = { workspace = true, fixtures = true }
 jk-host = { workspace = true, fixtures = true }
 jk-core = { workspace = true, fixtures = true }
 jk-client-io = { workspace = true, fixtures = true }

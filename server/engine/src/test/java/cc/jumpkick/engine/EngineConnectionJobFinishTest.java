@@ -152,6 +152,7 @@ class EngineConnectionJobFinishTest {
                 null,
                 null,
                 null,
+                null,
                 () -> false,
                 () -> 0L,
                 null,

@@ -91,6 +91,15 @@ engine classes; its `jk-engine` test edge is what hands its JVMs the engine and 
 build made and isolates their `JK_HOME` and `JK_STATE_DIR`. The harness both share (output capture,
 the isolated roots, the engine extension e2e/cli registers) is `clients/cli`'s `src/fixtures`.
 
+**A wire contract keeps both sides honest without an engine in the CLI's suite.** `shared/wire`'s
+`src/fixtures` holds `WireContract`: exchanges written as literal JSON, each a request and the lines
+the engine answers it with, naming the fields whose value is the sender's own. `server/engine`'s
+`WireContractEngineTest` sends each request to the real `EngineConnection` and checks the answer
+conforms; `clients/cli`'s `WireContractClientTest` points the client code a command runs at
+`WireContractStub`, which serves the same answers, and checks what the client wrote and what it
+read. Both are fast-tier classes, so a wire change that breaks one side fails that side's suite. A
+case added to the contract fails the CLI's suite until the test drives it.
+
 **The integration tier is walled off from the release site.** `[test.suites.integration] env` hands
 its JVMs `JK_HTTP_DENY_HOSTS=jumpkick.build`: the version under test is never published while it
 is being tested, so a test that needs a published release (an engine download, a release
