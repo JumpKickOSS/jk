@@ -67,6 +67,20 @@ class OwnProgramsTest {
     }
 
     @Test
+    void a_backslash_outside_windows_is_the_shells_escape_not_a_directory() {
+        assumeFalse(Os.isWindows());
+        assertThat(tool("sh -c head -c 200000 /dev/zero | tr '\\0' x", null))
+                .as("an escape a filter reads")
+                .isEqualTo("sh");
+        assertThat(tool("sh -c cat \\README", null))
+                .as("a file of the module, escaped")
+                .isNull();
+        assertThat(tool("sh -c cat \\/etc/passwd", temp().resolve("1").toString()))
+                .as("a system file, escaped, from a temp root")
+                .isNull();
+    }
+
+    @Test
     void a_program_the_test_wrote_keys_by_its_class() {
         assertThat(tool(temp().resolve("1/fake-tool") + " an arg", null)).isEqualTo(ClassReads.WRITTEN_PROGRAM);
         assertThat(tool("./fake-tool --flag", temp().resolve("1").toString()))

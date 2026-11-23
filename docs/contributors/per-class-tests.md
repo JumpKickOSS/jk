@@ -404,7 +404,8 @@ What the shadow showed on real runs of jk-engine (940 classes) and what closed e
   POSIX ones `ToolIdentity` keys by OS family (`sleep`, `setsid`, `timeout`, `sh`, `bash`, `ps`,
   `env`, text filters), bare or in a system program directory, or a file under a temp root, which
   keys as `(written)`: the class's cone holds the code that wrote it. Every word of the command, cut
-  at the shell's quotes and operators, is held: a path lies under a temp root, `/dev`, `/proc` or a
+  at the shell's quotes and operators (outside Windows both as written and with its backslashes
+  dropped, as the shell may hand it on), is held: a path lies under a temp root, `/dev`, `/proc` or a
   system program directory (a program there a utility too); outside a temp root a bare word names
   no entry of the directory and holds no wildcard; a bare word that names a program on `PATH` names
   a utility (a shell runs its words, and a build tool reads its user's settings); no word expands a
