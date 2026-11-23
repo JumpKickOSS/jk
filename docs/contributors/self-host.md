@@ -111,7 +111,11 @@ replacing an earlier submission of the branch.
 Each batch, under the host's gate lock, the loop fetches `origin/main` and cherry-picks every
 waiting branch onto it, oldest first, skipping commits the batch already carries (a branch cut from
 another waiting branch lands its own commits only). A branch that conflicts, or that carries a
-merge commit, is ejected. It gates the result with the Queue tier of `scripts/gate/gate.sh`
+merge commit, is ejected, with one exception: two branches that each change the code of a key
+contract each record its digest on the same line of `KeyContract.java`, and when that file is the
+only conflict and its conflicts differ only in those digests, the queue records the digests
+`jk guard` prints for the merged code and goes on (the batch's line names the branch after
+`rerecorded:`). A commit left with nothing to apply once its digest is the merged one is dropped. It gates the result with the Queue tier of `scripts/gate/gate.sh`
 (`QUEUE_TIER=full` gates with the Full tier instead; a [docs-only](#docs-only-changes) batch gets
 the docs tier) and, on `GREEN`, pushes it to `origin/main` as a fast-forward. It never forces: when
 `origin/main` moved while the batch gated, the push is refused. When everything that moved it is

@@ -2,7 +2,8 @@
 # Fixtures for the merge queue under scripts/queue/, in scratch repositories with a stand-in `jk`
 # and a stand-in gate. Submitting refuses a branch whose tip has not passed the Branch tier; a
 # batch applies every waiting branch onto origin/main once (a branch cut from another one does not
-# carry its commits twice), ejects the branch that conflicts, gates the batch and fast-forwards
+# carry its commits twice), ejects the branch that conflicts, but for a conflict only in the
+# digests KeyContract.java records, where it records the merged code's digest, gates the batch and fast-forwards
 # origin/main to it; a red batch is split, apart from the branches that changed the module its failed
 # class is in when there is one and in halves when there is not, so the good branches land and the
 # bad one is ejected with the failing class, which its ticket is told along with the failure; a
@@ -27,7 +28,9 @@ fail() {
 }
 
 # The stand-in jk passes every Branch-tier step and logs each call; asked which modules a branch
-# changed, it names jk-a by its jar under mod/a. The stand-in gate is red for a tip carrying a
+# changed, it names jk-a by its jar under mod/a. Its guard is red, printing the digest to record,
+# when the SUITE digest KeyContract.java records is not that of the mod/a/Suite*.java files, and
+# then formats base.txt. The stand-in gate is red for a tip carrying a
 # red.txt, naming its failed class as in the module red.txt holds, and with the failure beside the
 # log; when MOVE_ORIGIN is set it pushes a commit of MOVE_FILE (default mod/a/moved.txt) to
 # origin/main itself before it says GREEN, and when DROP_REF is set it deletes that branch's
@@ -37,6 +40,16 @@ cat >"$WORK/bin/jk" <<'JK'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >>"$JK_LOG"
 [ "$1" != show ] || printf 'cc.example:jk-a\t%s/mod/a/target/jk-a.jar\n' "$(git rev-parse --show-toplevel)"
+if [ "$1" = guard ]; then
+  k=server/engine/src/main/java/cc/jumpkick/task/KeyContract.java
+  want="$(cat mod/a/Suite*.java 2>/dev/null | git hash-object --stdin | cut -c1-12)"
+  have="$(sed -n 's/.*SUITE("\([0-9a-f]*\)").*/\1/p' "$k")"
+  if [ "$want" != "$have" ]; then
+    echo "E $k:2 the code of SUITE changed: record \"$want\" for it (recorded \"$have\")"
+    echo "formatted by guard" >>base.txt
+    exit 1
+  fi
+fi
 JK
 chmod +x "$WORK/bin/jk"
 export JK_LOG="$WORK/jk.log"
@@ -101,6 +114,11 @@ echo 'name = "jk-a"' >"$WORK/seed/mod/a/jk.toml"
 echo 'name = "jk-b"' >"$WORK/seed/mod/b/jk.toml"
 cp "$ROOT/scripts/gate/changed-modules.sh" "$ROOT/scripts/gate/docs-only.sh" "$WORK/seed/scripts/gate/"
 printf '%s\n' '# docs a test reads' docs/read.md >"$WORK/seed/scripts/gate/test-reads.txt"
+K=server/engine/src/main/java/cc/jumpkick/task/KeyContract.java
+suite_digest() { cat "$1"/mod/a/Suite*.java 2>/dev/null | git hash-object --stdin | cut -c1-12; }
+mkdir -p "$WORK/seed/$(dirname "$K")"
+printf '%s\n' 'public enum KeyContract {' "    SUITE(\"$(suite_digest "$WORK/seed")\")," '    ARTIFACT("aaaaaaaaaaaa");' '}' \
+  >"$WORK/seed/$K"
 git -C "$WORK/seed" add -A
 commit "$WORK/seed" base.txt base
 git -C "$WORK/seed" push -q origin HEAD:main
@@ -264,6 +282,50 @@ holds mod/a/O.java || fail "o did not land over a docs-only move: $(status o)"
 git -C "$WORK/origin.git" merge-base --is-ancestor "$moved" main || fail "the landing dropped the docs-only commit"
 status_has o -q '^o: landed .* after docs-only commits moved origin/main' || fail "o's record does not say why it landed: $(status o)"
 [[ "$(git -C "$WORK/origin.git" rev-list --count "$moved..main")" -eq 1 ]] || fail "o landed other than once on the new main"
+
+# --- two branches that each change suite code and so each record its digest land in one batch: the
+# queue records the digest of the merged code; a conflict there in more than the digest ejects ---
+# suite_commit <file> <content> <digest> [<more>]: one commit of a suite file and the SUITE digest
+# recorded, <more> written after it on its line.
+suite_commit() {
+  echo "$2" >"$dev/mod/a/$1"
+  sed -i.bak "s/SUITE(\"[0-9a-f]*\")/SUITE(\"$3\")${4:-}/" "$dev/$K" && rm "$dev/$K.bak"
+  git -C "$dev" add "mod/a/$1" "$K"
+  when=$((when + 1))
+  GIT_COMMITTER_DATE="@$when +0000" GIT_AUTHOR_DATE="@$when +0000" git -C "$dev" commit -qm "$1: $2"
+}
+suite_branch() { # <name> <file> <content> [<more>]: a suite change with its digest, through the Branch tier
+  git -C "$dev" checkout -q -b "$1" origin/main
+  echo "$3" >"$dev/mod/a/$2"
+  suite_commit "$2" "$3" "$(suite_digest "$dev")" "${4:-}"
+  (cd "$dev" && bash "$Q/branch-tier.sh" >/dev/null) || fail "the Branch tier refused $1"
+}
+git -C "$dev" fetch -q
+suite_branch s1 SuiteOne.java one
+# s2 recorded a stale digest first and the right one after: that second commit merges to nothing.
+git -C "$dev" checkout -q -b s2 origin/main
+suite_commit SuiteTwo.java two 000000000000
+suite_commit SuiteTwo.java two "$(suite_digest "$dev")"
+(cd "$dev" && bash "$Q/branch-tier.sh" >/dev/null) || fail "the Branch tier refused s2"
+suite_branch s3 SuiteThree.java three ', and more'
+for x in s1 s2 s3; do submit "$x" || fail "submitting $x failed"; done
+batches="$(wc -l <"$WORK/queue.git/queue-batches.log")"
+queue || fail "the batch of suite changes did not run"
+{ holds mod/a/SuiteOne.java && holds mod/a/SuiteTwo.java; } || fail "the suite changes did not land: $(status s1) / $(status s2)"
+[[ "$(wc -l <"$WORK/queue.git/queue-batches.log")" -eq $((batches + 1)) ]] || fail "the suite changes took more than one batch"
+status_has s2 -q '^s2: landed ' || fail "s2 did not land: $(status s2)"
+git -C "$WORK/other" fetch -q origin && git -C "$WORK/other" reset -q --hard origin/main
+[[ "$(sed -n 's/.*SUITE("\([0-9a-f]*\)").*/\1/p' "$WORK/other/$K")" == "$(suite_digest "$WORK/other")" ]] ||
+  fail "origin/main does not record the digest of its suite code: $(cat "$WORK/other/$K")"
+if grep -q 'formatted by guard' "$WORK/other/base.txt"; then fail "what the guard formatted landed"; fi
+grep -q 'ARTIFACT("aaaaaaaaaaaa")' "$WORK/other/$K" || fail "the other digest moved: $(cat "$WORK/other/$K")"
+[[ "$(git -C "$WORK/other" log --format=%s -- mod/a/SuiteTwo.java)" == "SuiteTwo.java: two" ]] ||
+  fail "s2's commit that only recorded a digest was not left out: $(git -C "$WORK/other" log --oneline)"
+tail -1 "$WORK/queue.git/queue-batches.log" | grep -q ' rerecorded:s2@[0-9a-f]* ' ||
+  fail "the batch log does not say whose digest it recorded: $(tail -1 "$WORK/queue.git/queue-batches.log")"
+if holds mod/a/SuiteThree.java; then fail "a conflict in more than the digest landed"; fi
+status_has s3 -q "conflicts: $K" || fail "s3's ejection does not name KeyContract.java: $(status s3)"
+[[ -z "$(git -C "$WORK/co" status --porcelain)" ]] || fail "the batch left the checkout changed: $(git -C "$WORK/co" status --porcelain)"
 
 # --- nothing waits: no batch ---
 lines="$(wc -l <"$WORK/queue.git/queue-batches.log")"
