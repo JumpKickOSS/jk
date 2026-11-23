@@ -27,8 +27,9 @@ the tier `GATE_TIER` names ([tiers](test-suite-tiers.md#gate-tiers)). It takes t
 
 - **`GATE_TIER=queue`**, the push gate the [merge queue](#the-merge-queue) runs on every batch:
   `jk install -S` (the reinstall without tests), then under a freshly started engine
-  `jk install -c` (every module's fast tier, then the reinstall), the integration suite of each
-  module changed since `GATE_BASE` (`scripts/gate/changed-modules.sh`), the curated lane's
+  `jk install -c` (every module's fast tier, then the reinstall), the integration classes ranked
+  highest within a budget in each module changed since `GATE_BASE` (`scripts/gate/changed-modules.sh`,
+  [ranking](test-suite-tiers.md#the-queue-tier-runs-the-classes-a-batch-ranks-highest)), the curated lane's
   classes in the other modules, the docs suite (`jk test -s docs`), which holds the docs to
   the code, and the tree suite (`jk test -s tree`), the tests that scan every module's sources.
 - **`GATE_TIER=full`** (the default): `jk install -S` (the reinstall without tests), `jk install -g`

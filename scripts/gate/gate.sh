@@ -24,7 +24,10 @@
 # (scripts/gate/changed-modules.sh; every module when a root build file changed) and the curated
 # lane's classes (curated-integration.txt) in the other modules, as one `jk test`, then the docs suite (`jk test -s
 # docs`) and the tree suite (`jk test -s tree`, the tests that scan every module's sources). The
-# Full tier runs the tree suite inside `jk install -g`, as one of the guard suites. jk passes a run red only in the classes .jk/test/quarantine.toml holds; a run red in other
+# Full tier runs the tree suite inside `jk install -g`, as one of the guard suites. Each changed
+# suite runs only the classes scripts/gate/rank-integration.sh ranks highest for the batch, within
+# GATE_INTEG_BUDGET; the log names each class left for the Full tier on a `DEFERRED <module>
+# <class> (<why>)` line, and each changed module's count on an `INTEG_RANKED` line. jk passes a run red only in the classes .jk/test/quarantine.toml holds; a run red in other
 # classes runs them once more under the same inputs, and passes when they pass there. Each class
 # still red is a `FAILED <module> <class>` line of the log, its failure in g<n>-failures.txt.
 #
@@ -64,6 +67,10 @@
 #   GATE_BASE         the Queue tier's changed modules are those changed since this commit
 #                     (default origin/main), and the docs tier's range starts there; in the Full
 #                     tier, the slow tier runs when a plugin changed since it (default: no slow tier)
+#   GATE_INTEG_BUDGET the Queue tier's ranked integration classes hold at most this many seconds of
+#                     recorded class wall across the changed modules (default 900; 0 runs their
+#                     whole suites)
+#   GATE_INTEG_POLE   the longest class the ranking runs without having to (default 90 s)
 #   PRE_MODULES       modules whose whole suites run first; PRE_MODULE_SUITES their suites
 #   PRE_SCRIPTS       scripts that must pass before guard; POST_SCRIPTS after the fixtures
 #   PRE_REDO          non-empty: the pre-run ignores cached verdicts (`jk test -r`)
@@ -305,6 +312,24 @@
       lane="$(JK=jk bash scripts/curated-integration.sh --print ${with[@]+"${with[@]}"} 2>>"$L")" ||
         red "RED (curated lane: scripts/curated-integration.sh could not read its registry)"
       read -r -a cmd <<<"$lane"
+      # Within the budget, each changed suite runs only its classes ranked highest for the batch
+      # (scripts/gate/rank-integration.sh); the Full tier runs the classes it leaves.
+      if [ -n "$mods" ] && [ "${GATE_INTEG_BUDGET:-900}" -gt 0 ]; then
+        # shellcheck disable=SC2086 # one changed module per word
+        bash scripts/gate/rank-integration.sh --budget "${GATE_INTEG_BUDGET:-900}" \
+          --pole "${GATE_INTEG_POLE:-90}" "$base" HEAD $mods >"$D/g$n-ranking.txt" 2>>"$L" ||
+          red "RED (ranking: scripts/gate/rank-integration.sh failed)"
+        for mo in $mods; do
+          awk -v m="$mo" '$2 == m && $1 == "DEFER" { d = 1 } END { exit !d }' "$D/g$n-ranking.txt" || continue
+          while read -r c; do cmd+=(--class "$mo:$c"); done < <(awk -v m="$mo" '$2 == m && $1 == "RUN" { print $3 }' "$D/g$n-ranking.txt")
+        done
+        awk '
+          { n[$2]++; t = $4; sub(/^~/, "", t); if ($1 == "RUN") { r[$2]++; s[$2] += t } else d[$2]++ }
+          END { for (m in n) printf "INTEG_RANKED %s ran %d of %d classes (%.0fs recorded), deferred %d to the Full tier\n", m, r[m], n[m], s[m], d[m] }
+        ' "$D/g$n-ranking.txt" | sort >>"$L"
+        awk '$1 == "DEFER" { why = $5; for (i = 6; i <= NF; i++) why = why " " $i; print "DEFERRED " $2 " " $3 " (" why ")" }' \
+          "$D/g$n-ranking.txt" >>"$L"
+      fi
       integ integration "${cmd[@]:2}"
     fi
     # The docs suite checks the docs against the code, so a code change can break it too.

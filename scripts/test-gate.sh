@@ -491,6 +491,34 @@ gate 45 GATE_TIER=queue GATE_BASE="$qbase" NATIVE_LINKED=-S
 grep -qx 'NATIVE_LINKS reinstall=1 install=0' "$WORK/logs/integ-gate-45.log" || fail "the Queue tier logged: $(grep NATIVE "$WORK/logs/integ-gate-45.log")"
 if grep -q '^RELEASE_SUITE_EXIT' "$WORK/logs/integ-gate-5.log"; then fail "the Queue tier ran the release suite"; fi
 
+# A changed member's integration classes past the budget: the ones ranked first run, each named
+# with its member, and the log names the one left for the Full tier.
+mkdir -p "$q/mod/a/src/test/java/a"
+for c in NearTest FarTest; do printf 'package a;\n@Tag("integration")\nclass %s {}\n' "$c" >"$q/mod/a/src/test/java/a/$c.java"; done
+echo 'target/' >"$q/mod/a/.gitignore"
+qc ranked-classes
+qranked="$(git -C "$q" rev-parse HEAD)"
+echo 3 >"$q/mod/a/A.java" && qc ranked-change
+tip="$(git -C "$q" rev-parse HEAD)"
+mkdir -p "$q/mod/a/target/failsafe-reports"
+printf '<testsuite name="a.NearTest" tests="1" time="10">\n</testsuite>\n' >"$q/mod/a/target/failsafe-reports/TEST-a.NearTest.xml"
+printf '<testsuite name="a.FarTest" tests="1" time="50">\n</testsuite>\n' >"$q/mod/a/target/failsafe-reports/TEST-a.FarTest.xml"
+gate 47 GATE_TIER=queue GATE_BASE="$qranked" GATE_INTEG_BUDGET=20
+[[ "$(verdict 47)" == "GREEN $tip" ]] || fail "a ranked Queue tier was not green: $(cat "$WORK/logs/integ-gate-47.log")"
+got="$(grep -E '^test -s integration' "$WORK/calls-47")"
+[[ "$got" == 'test -s integration -c -X --no-ansi -m mod/a -m mod/b --class mod/b:b.CuratedBTest --class mod/a:a.NearTest' ]] ||
+  fail "the ranked Queue tier ran: $got"
+grep -qx 'DEFERRED mod/a a.FarTest (over budget)' "$WORK/logs/integ-gate-47.log" || fail "the deferred class is not named: $(cat "$WORK/logs/integ-gate-47.log")"
+grep -qx 'INTEG_RANKED mod/a ran 1 of 2 classes (10s recorded), deferred 1 to the Full tier' "$WORK/logs/integ-gate-47.log" ||
+  fail "the ranked count is not logged: $(cat "$WORK/logs/integ-gate-47.log")"
+gate 48 GATE_TIER=queue GATE_BASE="$qranked" GATE_INTEG_BUDGET=0
+got="$(grep -E '^test -s integration' "$WORK/calls-48")"
+[[ "$got" == 'test -s integration -c -X --no-ansi -m mod/a -m mod/b --class mod/b:b.CuratedBTest' ]] ||
+  fail "with no budget the Queue tier ran: $got"
+rm -rf "$q/mod/a/target"
+tip="$qtip"
+git -C "$q" checkout -q --detach "$qtip"
+
 # The reinstall red: the gate stops there, and no test ran under the previous engine.
 gate 22 GATE_TIER=queue GATE_BASE="$qbase" FAIL_REINSTALL=1
 [[ "$(verdict 22)" == "RED (reinstall)" ]] || fail "a failed reinstall did not stop the Queue tier: $(cat "$WORK/logs/integ-gate-22.log")"

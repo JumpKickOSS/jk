@@ -149,7 +149,7 @@ the last commit it passed.
 | Tier | Command | What runs | When | Blocks |
 |------|---------|-----------|------|--------|
 | Branch | `scripts/queue/branch-tier.sh` | `jk guard`, then `jk test --exclusive` over the modules `--affected-since <merge-base>` selects: the fast tier of the modules the branch changed and their dependents (every module when a file outside them changed). The modules they build on compile but their suites do not run, and no native client is built; the Queue tier runs both. Then `jk test -s tree`, and `scripts/gate/docs-only.sh check` as a warning | Before a branch is submitted to the merge queue | The submission |
-| Queue | `GATE_TIER=queue scripts/gate/run.sh <n> <sha>` | `jk guard`; `jk install -S` (the reinstall without tests, so every test runs under the batch's own engine); one `jk install -c` (every module's fast tier, then the reinstall); the integration suite of each module the batch changed (`scripts/gate/changed-modules.sh`); the [curated lane](#the-curated-integration-lane)'s classes in every other module; `jk test -s docs`; `jk test -s tree`; the shell fixtures | Every batch the merge queue gates | The push to `origin/main` |
+| Queue | `GATE_TIER=queue scripts/gate/run.sh <n> <sha>` | `jk guard`; `jk install -S` (the reinstall without tests, so every test runs under the batch's own engine); one `jk install -c` (every module's fast tier, then the reinstall); the integration classes ranked highest, within a budget, in each module the batch changed (`scripts/gate/changed-modules.sh`, [ranking](#the-queue-tier-runs-the-classes-a-batch-ranks-highest)); the [curated lane](#the-curated-integration-lane)'s classes in every other module; `jk test -s docs`; `jk test -s tree`; the shell fixtures | Every batch the merge queue gates | The push to `origin/main` |
 | Full | `scripts/gate/full-loop.sh`, each cycle `GATE_TIER=full scripts/gate/gate.sh <n> <sha>` | `jk guard`; `jk install -S`; `jk install -g -c` (the fast tier once, with every `integration`, `e2e` and `tree` class); `jk test -s docs`; `jk test -s release`; `jk test -s slow` when a plugin (a member under `plugins/`) or a root build file changed since `green` (`GATE_BASE`); the shell fixtures; the release notes | Back to back on the newest `main`, on a host of its own that shares no lock with the queue ([the Full tier loop](self-host.md#the-full-tier-loop)) | A release: it is cut from `green`. `main` may be red on it for a cycle or two: a confirmed culprit commit is reverted through the queue, and after two red cycles the queue lands only the fix |
 | Windows, macOS | `scripts/gate/platform-loop.sh windows` and `macos`, each run `scripts/gate/platform-run.sh` on the host | In a checkout and home of their own on Daybreak (Git Bash) and bocamacmini: `jk install -S`; every module's fast tier; each fast or integration test class with an OS condition; the product smoke | Each tip the Full loop takes, beside its Linux gate; a busy platform skips to the newest ([Windows and macOS](self-host.md#windows-and-macos)) | Nothing at first: a red run files a ticket. Once a platform has been green for a week, `green` moves only to tips it passed too |
 | Nightly | `ci-nightly.yml` | `integration`, `slow`, `network`, `bench`, the coverage ratchet, the examples | Its schedule, when the workflow is enabled | Nothing |
@@ -161,10 +161,44 @@ pack is not its parent). A file under `docs/`, `scripts/`, `.github/` or `bench/
 file at the root, selects no module: guard, the fast tier and the shell fixtures read those. Any
 other file outside every member (the root `jk.toml`, `jk-lock.toml`, `.jk/`, `templates/`)
 selects them all, and the Queue tier runs the whole `integration` suite. Otherwise its integration
-step is one `jk test -s integration -c --exclusive`: each changed module as a plain `-m`, so its
-whole suite runs, and each other module the curated lane names with its classes qualified
-(`-m server/engine -S server/engine:<class>`), so they run alone there. A module's dependents are
-not run, which is what the curated lane is for, and no class runs twice.
+step is one `jk test -s integration -c --exclusive`: each changed module as a plain `-m`, with the
+classes the [ranking](#the-queue-tier-runs-the-classes-a-batch-ranks-highest) picks qualified
+when it leaves any for the Full tier, and each other module the curated lane names with its classes
+qualified (`-m server/engine -S server/engine:<class>`), so they run alone there. A module's
+dependents are not run, which is what the curated lane is for, and no class runs twice.
+
+### The Queue tier runs the classes a batch ranks highest
+
+A batch that changes `server/engine` or `e2e/cli` would otherwise run a suite of some 2,000 to 2,500
+seconds of class wall, several minutes even across every core. `scripts/gate/rank-integration.sh`
+ranks the integration classes of each changed module by how likely the batch is to break them, and
+the Queue tier runs them from the top while they fit the budget:
+
+1. **Must run:** a class whose own source the batch changed, and a class the curated lane names.
+   These run whatever the budget says.
+2. **Uses a changed type:** its source names a type whose source file the batch changed.
+3. **Failed recently:** a failure or a pass only on a re-run in `jk flaky list -O jsonl` (the
+   class's last 20 runs on the gate host), or a `FAILED` or `FLAKY … passed on` line in the
+   newest 100 gate logs.
+4. **The rest**, cheapest first, so that as many classes as fit run.
+
+Within a rank the cheaper class comes first. A class's cost is its recorded wall, the `time` of its
+newest `target/failsafe-reports/TEST-<class>.xml` in the gate's checkout; a class with none counts
+as the median of the others. The suite's classes are the module's test sources tagged
+`integration` and no tag the integration suite excludes.
+
+**The budget** is 900 seconds of recorded class wall across every changed module
+(`GATE_INTEG_BUDGET`; `0` runs the changed modules' whole suites). A class that does not fit is
+deferred and the next one is tried. A class longer than 90 seconds (`GATE_INTEG_POLE`) is deferred
+unless it must run, since the step lasts at least as long as its longest class. A module none of
+whose classes was deferred runs its whole suite. A root build file change runs every module's whole
+suite, unranked.
+
+**Deferred, never dropped.** The gate log names each class left out on a `DEFERRED <module>
+<class> (<why>)` line and counts each changed module on an `INTEG_RANKED <module> ran <r> of <n>
+classes` line; the full ranking is `g<n>-ranking.txt` beside it. The Full tier runs every class
+(`jk install -g`), so a break in a deferred class turns the next Full cycle red, which blames the
+batch as for any other red ([the Full tier loop](self-host.md#the-full-tier-loop)).
 
 **The slowest end-to-ends wait for the Full tier.** The Queue tier's integration step runs the
 integration suites of up to three heavy modules side by side, and its wall is set by their total
