@@ -11,7 +11,8 @@
 # green only because a class passed on the gate's re-run are green cycles that name the class: green
 # moves, no ticket is told, and the queue is not held. While the pause file exists the loop starts no
 # cycle, even one it was waiting on the gate lock for, and says once in full-runs.log that it is
-# paused and why; removing the file resumes it.
+# paused and why; removing the file resumes it. A jk that cannot start its engine, before a gate or
+# when a gate is red at guard, is an infra failure: no verdict, no culprit, no red cycle, no hold.
 #
 # The loop runs as on a host of its own: it reaches the queue's state only over ssh (a stand-in that
 # runs the command here for the host queuehost), takes a gate lock that is not the queue's, and
@@ -19,7 +20,7 @@
 # nothing.
 set -euo pipefail
 
-unset "${!GATE_@}" "${!FULL_@}" "${!QUEUE_@}"
+unset "${!GATE_@}" "${!FULL_@}" "${!QUEUE_@}" JK_HOME
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/jk-full-loop.XXXXXX")"
@@ -31,13 +32,20 @@ fail() {
   exit 1
 }
 
-# The stand-in jk passes the Branch tier; ka logs each call and says every ticket is done. The
+# The stand-in jk passes the Branch tier, and cannot start its engine while jk-broken exists; ka logs each call and says every ticket is done. The
 # stand-in gate passes the Queue tier always and the Full tier unless the tip carries red.txt or
 # flaky.txt, when cc.example.RedTest fails, and logs each Full gate's tip and base; on a tip whose
 # own commit writes once.txt the class passes on the gate's re-run, and the gate is green naming it. The stand-in
 # re-run fails that class on a commit that carries red.txt, and logs each commit it runs on.
 mkdir -p "$WORK/bin"
-printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$WORK/bin/jk"
+cat >"$WORK/bin/jk" <<JK
+#!/usr/bin/env bash
+if [ "\$1 \$2" = "engine start" ] && [ -e "$WORK/jk-broken" ]; then
+  echo "jk: ! Engine > no build engine for JumpKick 9.9.9-SNAPSHOT"
+  exit 70
+fi
+exit 0
+JK
 cat >"$WORK/bin/ka" <<'KA'
 #!/usr/bin/env bash
 printf '%s|' "$@" >>"$KA_LOG"
@@ -68,6 +76,12 @@ cat >"$WORK/gate.sh" <<'GATE'
 n="$1" tip="$2"
 L="$GATE_LOG_DIR/integ-gate-$n.log"
 cd "$GATE_CHECKOUT" && git checkout -q --detach "$tip"
+# The install under the gate loses its engine: guard cannot start.
+if [ -n "${FIXTURE_GATE_BREAKS_JK:-}" ]; then
+  touch "$FIXTURE_GATE_BREAKS_JK"
+  { echo "GUARD_EXIT=70"; echo "RED (guard)"; echo "GATE$n DONE"; } >"$L"
+  exit 0
+fi
 [ "$GATE_TIER" = full ] && echo "$tip" >>"$GATE_LOG_DIR/full-gated" && echo "$GATE_BASE" >>"$GATE_LOG_DIR/full-bases"
 if [ "$GATE_TIER" = full ] && git ls-tree -r --name-only HEAD | grep -qxE '(red|flaky).txt'; then
   { echo "FAIL cc.example.RedTest"; echo "RED"; } >"$L"
@@ -333,5 +347,31 @@ remote="downhost:$QUEUE_REPO" full 2>"$WORK/down.err" || rc=$?
 [[ "$(gated)" -eq "$n" ]] || fail "a cycle with the queue's host down gated"
 grep -q 'cannot be reached' "$WORK/down.err" || fail "the loop did not say the queue's host is down: $(cat "$WORK/down.err")"
 [[ -z "$(find "$WORK" "$ROOT" -maxdepth 3 -name "*host:*" -print -quit)" ]] || fail "the loop wrote the queue's state to a local path named for the host"
+
+# --- jk cannot start: before the gate, and when the gate is red at guard; each is an infra failure,
+# with no verdict, no culprit, no red cycle and no hold, and the next cycle gates the tip ---
+: >"$KA_LOG"
+n="$(gated)" reds="$(cat "$QUEUE_REPO/full-reds")"
+touch "$WORK/jk-broken"
+rc=0
+FULL_HOLD_AFTER=1 full || rc=$?
+[[ "$rc" -eq 5 ]] || fail "a cycle whose jk cannot start exited $rc, want 5: $(runs)"
+[[ "$(gated)" -eq "$n" ]] || fail "a cycle whose jk cannot start gated"
+runs | tail -1 | grep -q "$(git -C "$dev" rev-parse --short=12 "$(origin main)") INFRA jk cannot start: ! Engine > no build engine for JumpKick 9.9.9-SNAPSHOT; no verdict" \
+  || fail "the infra failure was not logged: $(runs)"
+rm "$WORK/jk-broken"
+rc=0
+FIXTURE_GATE_BREAKS_JK="$WORK/jk-broken" FULL_HOLD_AFTER=1 full || rc=$?
+[[ "$rc" -eq 5 ]] || fail "a cycle red at guard with no engine exited $rc, want 5: $(runs)"
+[[ "$(gated)" -eq "$n" ]] || fail "a gate red at guard with no engine counted as gated"
+runs | tail -1 | grep -q "INFRA jk cannot start" || fail "a guard that could not start jk was not logged as infra: $(runs)"
+grep -q "^$(origin main) " "$QUEUE_REPO/full-verdicts" && fail "a cycle whose jk cannot start recorded a verdict"
+[[ "$(cat "$QUEUE_REPO/full-reds")" == "$reds" ]] || fail "a cycle whose jk cannot start counted as red"
+[[ -f "$QUEUE_REPO/full-hold" ]] && fail "a cycle whose jk cannot start held the queue: $(cat "$QUEUE_REPO/full-hold")"
+[[ -s "$KA_LOG" ]] && fail "a cycle whose jk cannot start told a ticket: $(cat "$KA_LOG")"
+rm "$WORK/jk-broken"
+full || fail "the cycle after jk started again failed: $(runs)"
+[[ "$(gated)" -eq $((n + 1)) ]] || fail "the cycle after jk started again did not gate the tip"
+[[ "$(origin green)" == "$(origin main)" ]] || fail "the tip did not pass once jk started: $(runs)"
 
 echo "test-full-loop: ok ($(gated) Full gates, $(reruns | wc -l | tr -d ' ') re-runs)"

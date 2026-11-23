@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Fixture test for scripts/ci-takeover.sh, network-free: a jk on PATH (the bootstrap's) and the
-# home's jk both log every command. The first install is always a snapshot, so an older jk's build
-# of the tree never holds a release's shelf slots: `jk snapshot` by a jk that has the verb, else a
-# `jk install` of the tree outside git when the checkout is a tagged clean one; the second, by the
-# home's jk, is `jk install`.
+# Fixture test for scripts/ci-takeover.sh, network-free: the home's jk and the jk of another home,
+# first on the caller's PATH, both log every command; only the home's may run. The first install is
+# always a snapshot, so an older jk's build of the tree never holds a release's shelf slots:
+# `jk snapshot` by a jk that has the verb, else a `jk install` of the tree outside git when the
+# checkout is a tagged clean one; the second is `jk install`.
 # With --release the checkout must be a clean one at its tag before anything runs, and the installed
 # jk must report the release.
 set -euo pipefail
@@ -46,15 +46,16 @@ takeover() {
 }
 
 takeover --install-only --yes FIXTURE_HAS_SNAPSHOT=1 || fail "the takeover failed"
-[[ "$(sed -n 1p "$WORK/jk.log")" == "path snapshot --skip-tests --yes --no-ansi" ]] \
+! grep -q '^path ' "$WORK/jk.log" || fail "the jk of another home, first on the caller's PATH, ran"
+[[ "$(sed -n 1p "$WORK/jk.log")" == "home snapshot --skip-tests --yes --no-ansi" ]] \
   || fail "a jk with the snapshot verb did not install a snapshot"
 [[ "$(sed -n 2p "$WORK/jk.log")" == "home install --skip-tests --yes --no-ansi" ]] \
   || fail "the second install was not jk install by the home's jk"
-echo "ok   a jk with the snapshot verb: jk snapshot, then jk install by the home's"
+echo "ok   a jk with the snapshot verb: jk snapshot, then jk install, both by the home's jk alone"
 
 # An untagged checkout: a jk without the verb installs, which is a snapshot already, in the checkout.
 takeover --install-only --yes || fail "the takeover failed"
-[[ "$(sed -n 1p "$WORK/jk.log")" == "path install --skip-tests --yes --no-ansi" ]] \
+[[ "$(sed -n 1p "$WORK/jk.log")" == "home install --skip-tests --yes --no-ansi" ]] \
   || fail "a jk without the snapshot verb did not install the untagged checkout"
 [[ "$(sed -n 1p "$WORK/jk.cwd")" == "$WORK/repo" ]] || fail "the untagged first install did not run in the checkout"
 echo "ok   a jk without the verb installs an untagged checkout as it is"
@@ -66,14 +67,14 @@ echo "ok   --release refuses an untagged checkout before anything installs"
 
 g tag -a v9.8.7 -m "jk 9.8.7"
 takeover --install-only --release || fail "the release takeover failed"
-[[ "$(sed -n 1p "$WORK/jk.log")" == "path install --skip-tests --no-ansi" ]] \
+[[ "$(sed -n 1p "$WORK/jk.log")" == "home install --skip-tests --no-ansi" ]] \
   || fail "the first install of a tagged tree was not a jk install"
 first_cwd="$(sed -n 1p "$WORK/jk.cwd")"
 [[ "$first_cwd" != "$WORK/repo" && ! -d "$first_cwd" ]] \
   || fail "a jk without the verb installed the tagged tree in place, where it would be the release"
 echo "ok   a jk without the verb installs a tagged tree from a copy outside git, removed after"
 takeover --install-only --release FIXTURE_HAS_SNAPSHOT=1 || fail "the release takeover with the verb failed"
-[[ "$(sed -n 1p "$WORK/jk.log")" == "path snapshot --skip-tests --no-ansi" ]] \
+[[ "$(sed -n 1p "$WORK/jk.log")" == "home snapshot --skip-tests --no-ansi" ]] \
   || fail "a jk with the verb did not snapshot the tagged tree"
 [[ "$(sed -n 2p "$WORK/jk.log")" == "home install --skip-tests --no-ansi" ]] \
   || fail "the release takeover's second install was not jk install by the home's jk"

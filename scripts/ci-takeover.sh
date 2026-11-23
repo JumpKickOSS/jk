@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# The checkout's own jk takes the job's home over: the jk the bootstrap left on PATH (the pinned
-# release, or the bridge it built) installs the tree, then the tree's own client — now at
+# The checkout's own jk takes the job's home over: the jk the bootstrap installed into $JK_HOME (the
+# pinned release, or the bridge it built) installs the tree, then the tree's own client — now at
 # $JK_HOME/bin/jk — installs it again. A client older than the tree hands that second, re-shelving
 # pass to the tree's client instead of running it; a client of the tree's version has already run
 # it, and the second install finds nothing to do. Then the home is proven to be the checkout's:
@@ -10,7 +10,7 @@
 #
 # The first install must be a snapshot, so an older jk's build of the tree never holds a release's
 # shelf slots, which the tree's own install then refuses to overwrite ("already installed … with
-# other contents"). Whichever jk is on PATH is probed for the retired `jk snapshot` verb:
+# other contents"). The home's jk is probed for the retired `jk snapshot` verb:
 #   - it has the verb (an older pin): `jk snapshot` in the checkout;
 #   - it has not, and the checkout is a clean one at its tag: `jk install` would build and install
 #     the release, so the first install runs in a copy of the tag's files without .git, which jk
@@ -32,6 +32,9 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 : "${JK_HOME:?JK_HOME must name the isolated home of this job}"
 # A runner's Windows JK_HOME (D:\a\_temp/jk-home) would turn the log globs below into escapes.
 case "$(uname -s)" in MINGW* | MSYS* | CYGWIN*) JK_HOME="$(cygpath -u "$JK_HOME")" && export JK_HOME ;; esac
+# Every jk below is the home's. A step run outside CI, where nothing carries the bootstrap's PATH
+# over, would otherwise find the jk of another home first, whose engine this home does not have.
+export PATH="$JK_HOME/bin:$PATH"
 
 checks=1
 yes=()

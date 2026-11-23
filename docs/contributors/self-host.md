@@ -227,6 +227,12 @@ that passed; before there is a `green`, it always does. Then:
   a fix, a branch with a commit for one of those tickets or one that reverts one of those commits;
   the others wait, and `scripts/queue/status.sh` shows them `held`. The next green cycle removes it.
   A hold that names nothing (no batch was found red) lands nothing until a person adds a line to it.
+- **A JumpKick that cannot start is an infra failure**, not a red: before each gate, and after a
+  gate red at guard (which runs on the install the tip has not replaced yet), the loop runs
+  `jk engine start` in its checkout. When that fails, `full-runs.log` says `INFRA` with the first
+  line JumpKick printed, and the loop records no verdict, names no culprit, counts no red cycle and
+  holds nothing.
+  It tries the tip again `FULL_POLL` seconds later; `--once` exits 5.
 
 It runs in a checkout and a JumpKick home of its own (`JK_HOME`), so its gates never replace the
 install other work on its host uses. The home is made once, the way CI makes one; then the loop

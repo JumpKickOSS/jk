@@ -30,6 +30,12 @@
 # it. A hold that names nothing (no batch was found) lands nothing until a person adds a
 # `ticket <id>` or `commit <sha>` line to it.
 #
+# A cycle whose jk cannot start its engine (`jk engine start` fails in FULL_CHECKOUT, before a gate,
+# or after a gate red at guard, which runs on the install the tip has not replaced yet) is an
+# infra failure, not a verdict: full-runs.log says INFRA with jk's first line, and the loop names no
+# culprit, counts no red cycle, holds nothing and records no verdict, so the tip is gated again on
+# the next cycle, FULL_POLL seconds later.
+#
 # While <QUEUE_REPO>/pause exists the loop starts no cycle: a cycle in flight finishes, the loop logs
 # once in full-runs.log that it is paused, with the file's first line as the reason, and looks again
 # every FULL_POLL seconds, however long the pause; removing the file resumes it, and full-runs.log
@@ -102,14 +108,14 @@
       # Paused while it waited for the lock: it gated nothing, and waits out the pause above.
       [ "$rc" -eq 4 ] && continue
       [ "$rc" -eq 1 ] && st_has pause && continue
-      [ "$rc" -eq 0 ] || [ "$rc" -eq 3 ] || exit "$rc"
-      [ "${1:-}" = --once ] && exit 0
-      if [ "$rc" -eq 3 ]; then sleep "${FULL_POLL:-300}"; else sleep "${FULL_YIELD:-10}"; fi
+      [ "$rc" -eq 0 ] || [ "$rc" -eq 3 ] || [ "$rc" -eq 5 ] || exit "$rc"
+      if [ "${1:-}" = --once ]; then [ "$rc" -eq 5 ] && exit 5; exit 0; fi
+      if [ "$rc" -eq 0 ]; then sleep "${FULL_YIELD:-10}"; else sleep "${FULL_POLL:-300}"; fi
     done
   fi
 
-  # --- one cycle; exit 0 when one ran, 3 when origin/main has not moved, 4 when paused, 2 when it
-  # could not gate ---
+  # --- one cycle; exit 0 when one ran, 3 when origin/main has not moved, 4 when paused, 5 when jk
+  # cannot start, 2 when it could not gate for another reason ---
   ! st_has pause || exit 4
   # The verdicts, read once a cycle: this loop is their only writer, so each new one goes here and
   # to the queue's repository.
@@ -119,8 +125,15 @@
   log() { st_add full-runs.log "$*"; }
   verdict() { echo "$1" >>"$V" && st_add full-verdicts "$1"; }
 
+  # jk_starts <sha>: succeed when jk starts its engine here; else log the infra failure and fail.
+  jk_starts() {
+    local out
+    out="$(jk engine start --no-ansi 2>&1 </dev/null)" && return 0
+    log "full $(date -u +%Y-%m-%dT%H:%M:%SZ) $(short "$1") INFRA jk cannot start: $(grep -m1 . <<<"$out" | sed 's/^jk: //'); no verdict ($(hostname):${JK_HOME:-$HOME/.jk})"
+    return 1
+  }
   # judge <sha>: print GREEN or RED for the commit, gating it with the Full tier unless it was
-  # judged before; fail when the gate reached no verdict.
+  # judged before; fail with 5 when jk cannot start, with 2 when the gate reached no verdict.
   judge() {
     local sha="$1" known n L verdict
     known="$(awk -v s="$sha" '$1 == s { print $2 }' "$V" 2>/dev/null | tail -1)"
@@ -128,19 +141,23 @@
       echo "$known"
       return 0
     fi
-    n="$(st_get full-n)" || return 1
+    jk_starts "$sha" || return 5
+    n="$(st_get full-n)" || return 2
     n="f$((${n:-0} + 1))"
-    echo "${n#f}" | st_put full-n || return 1
+    echo "${n#f}" | st_put full-n || return 2
     GATE_CHECKOUT="$co" GATE_LOG_DIR="$D" GATE_TIER=full GATE_BASE="${green:-$empty}" JK_QUEUE_REMOTE="$repo" \
       bash "${FULL_GATE:-$co/scripts/gate/gate.sh}" "$n" "$sha" </dev/null >/dev/null 2>&1
     L="$D/integ-gate-$n.log"
     verdict="$(grep -aE '^(GREEN |RED|CHECKOUT |NO CHECKOUT)' "$L" 2>/dev/null | tail -1)"
     case "$verdict" in
       "GREEN $sha") verdict "$sha GREEN $n" && echo GREEN ;;
-      RED*) verdict "$sha RED $n" && echo RED ;;
+      RED*)
+        if [ "$verdict" = "RED (guard)" ] && ! jk_starts "$sha"; then return 5; fi
+        verdict "$sha RED $n" && echo RED
+        ;;
       *)
         log "full $n $(date -u +%Y-%m-%dT%H:%M:%SZ) $(short "$sha") NOT-GATED (${verdict:-no verdict}; $(hostname):$L)"
-        return 1
+        return 2
         ;;
     esac
   }
@@ -159,10 +176,11 @@
   fi
   tip="$(git rev-parse refs/remotes/origin/main)"
   [ -z "$(awk -v s="$tip" '$1 == s' "$V" 2>/dev/null)" ] || exit 3
+  jk_starts "$tip" || exit 5
 
   taken="$(st_get full-taken)" || exit 2
   [ "$(tail -1 <<<"$taken")" = "$tip" ] || st_add full-taken "$tip" || exit 2
-  v="$(judge "$tip")" || exit 2
+  v="$(judge "$tip")" || exit
   n="$(gate_of "$tip")"
   stamp="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
@@ -204,7 +222,7 @@
     while [ $((hi - lo)) -gt 1 ]; do
       mid=$(((lo + hi) / 2))
       read -r _ _ bt <<<"${batches[$mid]}"
-      bv="$(judge "$bt")" || exit 2
+      bv="$(judge "$bt")" || exit
       if [ "$bv" = RED ]; then hi=$mid; else lo=$mid; fi
     done
     [ "$hi" -lt "${#batches[@]}" ] && culprit="${batches[$hi]}"
