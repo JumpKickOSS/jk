@@ -13,6 +13,7 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.guard.api.runtime.LedgerReads;
 import cc.jumpkick.guard.eval.EvalContext;
 import cc.jumpkick.guard.eval.GuardSuites;
+import cc.jumpkick.guard.eval.LaneRun;
 import cc.jumpkick.guard.eval.WorkspaceModel;
 import cc.jumpkick.guard.eval.WorkspaceModules;
 import cc.jumpkick.guard.extract.FactsIndexing;
@@ -173,9 +174,6 @@ final class GuardSteps {
     /** The module lane: this module's facts index, and its guard suite when it has one compiled. */
     private void runModuleLane(TaskContext ctx, boolean indexTests) throws Exception {
         Path moduleDir = in.dir();
-        // The lane hangs off the compile steps, ahead of copy-resources, and runs the
-        // guard suite on the test runtime classpath — sibling jars included.
-        SiblingWaits.awaitSiblingTestRuntime(ctx, in);
         String module = WorkspaceModel.rel(g.root(), moduleDir);
         Path buildDir = ctx.require(MODULE).layout().buildDir();
         FactsIndexing.Ensured main = FactsIndexing.ensure(mainClasses(ctx), FactsIndexing.indexPath(buildDir, "main"));
@@ -187,6 +185,7 @@ final class GuardSteps {
                 : null;
         // Before this lane waits on anyone: a workspace suite elsewhere may be waiting on it.
         in.siblings().indexed();
+        SiblingsFirst siblings = new SiblingsFirst(ctx, in);
         EvalContext ectx = new EvalContext(
                 Lane.MODULE,
                 g.root(),
@@ -290,7 +289,7 @@ final class GuardSteps {
         // clean verdict so the forecast stops entering the module for its lane.
         boolean noClasses = main.classes() == 0;
         if (withSuite == null || suiteRules.isEmpty()) {
-            executeLane(ctx, env, Lane.MODULE, ectx, () -> tokens, taskId, noClasses);
+            executeLane(ctx, env, Lane.MODULE, ectx, () -> tokens, taskId, noClasses, siblings);
         } else {
             executeModuleLane(
                     ctx,
@@ -302,9 +301,45 @@ final class GuardSteps {
                     taskId,
                     noClasses,
                     suiteRules,
-                    withSuite);
+                    withSuite,
+                    siblings);
         }
         ctx.progress(1);
+    }
+
+    /**
+     * The sibling outputs a module lane's run reads, awaited once and only by a lane that runs: the
+     * guard suite forks on the test runtime classpath, sibling jars and fixtures included, and the
+     * declared rules may read it. A replayed verdict reads none of it, so it never waits for a
+     * sibling to package.
+     */
+    private static final class SiblingsFirst implements Evaluation {
+        private final TaskContext ctx;
+        private final BuildPlanner.Inputs in;
+        private boolean awaited;
+
+        SiblingsFirst(TaskContext ctx, BuildPlanner.Inputs in) {
+            this.ctx = ctx;
+            this.in = in;
+        }
+
+        @Override
+        public LaneRun.Result run(EvalContext.IoSupplier<LaneRun.Result> evaluate) throws IOException {
+            if (!awaited) {
+                awaited = true;
+                try {
+                    SiblingWaits.awaitSiblingTestRuntime(ctx, in);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    throw new IOException("interrupted waiting for sibling modules", e);
+                } catch (IOException | RuntimeException e) {
+                    throw e;
+                } catch (Exception e) {
+                    throw new IOException(e);
+                }
+            }
+            return evaluate.get();
+        }
     }
 
     /** A suite's key tokens: looked up over its last ledger, stored over what its run read. */

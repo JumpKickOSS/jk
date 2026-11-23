@@ -278,7 +278,8 @@ final class PlannerGuards {
 
     /**
      * The lane's evaluation wrapped in what must surround it: the module's suite forks first and
-     * the report it leaves is read under the same turn on the tree.
+     * the report it leaves is read under the same turn on the tree; a module lane waits for the
+     * sibling outputs its run reads. A replayed verdict runs none of it.
      */
     interface Evaluation {
         LaneRun.Result run(EvalContext.IoSupplier<LaneRun.Result> evaluate) throws IOException;
@@ -302,9 +303,24 @@ final class PlannerGuards {
             String taskId,
             boolean noClasses)
             throws IOException {
+        executeLane(ctx, env, lane, ectx, tokenSupplier, taskId, noClasses, null);
+    }
+
+    /** As {@link #executeLane(TaskContext, LaneEnv, Lane, EvalContext, EvalContext.IoSupplier, String, boolean)}, its run inside {@code around}. */
+    static void executeLane(
+            TaskContext ctx,
+            LaneEnv env,
+            Lane lane,
+            EvalContext ectx,
+            EvalContext.IoSupplier<List<String>> tokenSupplier,
+            String taskId,
+            boolean noClasses,
+            @Nullable Evaluation around)
+            throws IOException {
         Judged judged = logged(
                 lane,
-                () -> evaluateLane(ctx, env, lane, ectx, tokenSupplier, tokenSupplier, taskId, noClasses, null, null));
+                () -> evaluateLane(
+                        ctx, env, lane, ectx, tokenSupplier, tokenSupplier, taskId, noClasses, null, around));
         ctx.label(judged.label());
         if (judged.cached()) ctx.cached();
     }
@@ -317,7 +333,7 @@ final class PlannerGuards {
      * manifest) re-runs the suite and leaves the declared rules cached. A run of the suite stores its
      * verdict under {@code suiteStoreTokens}, taken once it has run: what it read, which the next
      * build's {@code suiteTokens} name. Both run when either is red, so the step reports every red
-     * rule at once.
+     * rule at once. Either judgement's run, when it runs, is inside {@code around}.
      */
     static void executeModuleLane(
             TaskContext ctx,
@@ -329,7 +345,8 @@ final class PlannerGuards {
             String taskId,
             boolean noClasses,
             List<Rule> suiteRules,
-            Evaluation withSuite)
+            Evaluation withSuite,
+            Evaluation around)
             throws IOException {
         GuardsRed red = null;
         Judged suite = null;
@@ -347,14 +364,14 @@ final class PlannerGuards {
                             GuardVerdicts.suiteTaskId(taskId),
                             false,
                             suiteRules,
-                            withSuite));
+                            evaluate -> around.run(() -> withSuite.run(evaluate))));
         } catch (GuardsRed r) {
             red = r;
         }
         try {
             declared = logged(
                     Lane.MODULE,
-                    () -> evaluateLane(ctx, env, Lane.MODULE, ectx, tokens, tokens, taskId, noClasses, null, null));
+                    () -> evaluateLane(ctx, env, Lane.MODULE, ectx, tokens, tokens, taskId, noClasses, null, around));
         } catch (GuardsRed r) {
             red = red == null ? r : new GuardsRed(red.getMessage() + "; " + r.getMessage());
         }
@@ -384,7 +401,7 @@ final class PlannerGuards {
 
     /**
      * One judgement of a lane: the lane's declared rules, or, given {@code suiteRules}, those alone,
-     * run inside {@code withSuite}. The verdict is looked up under {@code tokenSupplier}'s tokens and
+     * their run inside {@code withSuite} when given. The verdict is looked up under {@code tokenSupplier}'s tokens and
      * a verdict the lane judges is stored under {@code storeSupplier}'s, taken once it has run. Red
      * labels the step and throws {@link GuardsRed}.
      */

@@ -128,12 +128,35 @@ class GuardModuleLaneSplitTest {
                 .isEqualTo(1);
     }
 
+    /**
+     * What a module lane must do before it runs, the wait for its siblings' jars among it, is done
+     * by a run alone: a replayed verdict reads no sibling output and waits for none.
+     */
+    @Test
+    void only_a_run_waits_for_what_it_reads(@TempDir Path tmp) throws Exception {
+        Path root = tree(tmp);
+        ModuleLane lane = new ModuleLane(root, tmp);
+
+        Run first = lane.run(List.of("facts:one"), "suite-reads:one");
+        assertThat(first.arounds()).as("the suite and the declared rules ran").isEqualTo(2);
+
+        Run unchanged = lane.run(List.of("facts:one"), "suite-reads:one");
+        assertThat(unchanged.ctx().cached).isTrue();
+        assertThat(unchanged.arounds()).as("both verdicts replayed").isZero();
+
+        Run suiteMoved = lane.run(List.of("facts:one"), "suite-reads:two");
+        assertThat(suiteMoved.suiteRuns()).isEqualTo(1);
+        assertThat(suiteMoved.arounds())
+                .as("the suite ran, the declared rules replayed")
+                .isEqualTo(1);
+    }
+
     /** The report line of a suite whose one guard ran clean. */
     private static final String OK_LINE =
             "{\"id\":\"reads-text\",\"outcome\":\"ok\",\"population\":1,\"violations\":[]}\n";
 
-    /** One run of a lane: its context and how often the suite ran. */
-    private record Run(Recording ctx, int suiteRuns) {}
+    /** One run of a lane: its context, how often the suite ran and how often a judgement ran at all. */
+    private record Run(Recording ctx, int suiteRuns, int arounds) {}
 
     /** The module lane at {@code root}, run as the step runs it with the tokens a test hands it. */
     private static final class ModuleLane {
@@ -197,6 +220,11 @@ class GuardModuleLaneSplitTest {
                 Files.writeString(report, reportLine);
                 return evaluate.get();
             };
+            AtomicInteger arounds = new AtomicInteger();
+            PlannerGuards.Evaluation around = evaluate -> {
+                arounds.incrementAndGet();
+                return evaluate.get();
+            };
             Recording ctx = new Recording();
             PlannerGuards.executeModuleLane(
                     ctx,
@@ -208,8 +236,9 @@ class GuardModuleLaneSplitTest {
                     ActionKey.qualifiedTaskId(TaskNames.GUARD, root),
                     false,
                     suiteRules,
-                    suite);
-            return new Run(ctx, runs.get());
+                    suite,
+                    around);
+            return new Run(ctx, runs.get(), arounds.get());
         }
     }
 
