@@ -289,6 +289,37 @@ class JUnitLauncherAggregatorTest {
         }
     }
 
+    /** A fork that dies inside a class fails that class; one that dies between classes names none. */
+    @Test
+    void a_fork_that_dies_mid_class_names_that_class_on_its_row() {
+        var agg = new ResultAggregator();
+        agg.accept(
+                "{\"event\":\"started\",\"type\":\"CONTAINER\",\"uniqueId\":\"[engine:junit-jupiter]/[class:demo.A]\"}");
+        agg.accept("{\"event\":\"finished\",\"type\":\"TEST\",\"status\":\"SUCCESSFUL\","
+                + "\"uniqueId\":\"[engine:junit-jupiter]/[class:demo.A]/[method:t()]\"}");
+        agg.accept("{\"event\":\"finished\",\"type\":\"CONTAINER\",\"status\":\"SUCCESSFUL\","
+                + "\"uniqueId\":\"[engine:junit-jupiter]/[class:demo.A]\"}");
+        assertThat(agg.death()).as("no fork has died yet").isNull();
+        agg.accept(
+                "{\"event\":\"started\",\"type\":\"CONTAINER\",\"uniqueId\":\"[engine:junit-jupiter]/[class:demo.B]\"}");
+
+        var result = agg.toResult(TestLauncherFailure.ending(WorkerExit.noWorker(3), List.of()));
+
+        assertThat(result.failures()).singleElement().satisfies(row -> {
+            assertThat(row.className()).isEqualTo("demo.B");
+            assertThat(row.method()).isEqualTo("(test run)");
+            assertThat(row.message()).isEqualTo("worker exited 3");
+            assertThat(agg.death()).isEqualTo(row);
+        });
+
+        var between = new ResultAggregator();
+        between.accept("{\"event\":\"finished\",\"id\":\"a\",\"type\":\"TEST\",\"status\":\"SUCCESSFUL\"}");
+        assertThat(between.toResult(TestLauncherFailure.ending(WorkerExit.noWorker(3), List.of()))
+                        .failures())
+                .singleElement()
+                .satisfies(row -> assertThat(row.className()).isEmpty());
+    }
+
     @Test
     void a_fork_that_exits_0_with_no_event_and_no_plan_is_a_launcher_failure() {
         var agg = new ResultAggregator();

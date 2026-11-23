@@ -95,6 +95,9 @@ public final class ResultAggregator {
      */
     private @Nullable String runningClass;
 
+    /** The {@code (test run)} row {@link #toResult} added for a fork that died; null while none did. */
+    private @Nullable TestFailureInfo death;
+
     /** Test-friendly ctor: no listener, no worker id, no reports. */
     public ResultAggregator() {
         this(TestProgressListener.noop(), 0);
@@ -318,7 +321,9 @@ public final class ResultAggregator {
      * crashOutput} (the worker's captured stdout/stderr): the launcher never ran a test, so the step
      * fails on that instead of counting one red test. After tests were reported it is one {@code (test run)} failure row carrying {@code
      * crashOutput}: the passes reported before the end are not the suite, and counting them green
-     * would stamp the run and skip it next build.
+     * would stamp the run and skip it next build. The row names the class the fork was running when
+     * it died, if any, so that class is the one that failed; no test event carried the row, so the
+     * caller tells its listener of it once no retry replaced it ({@link #death}).
      */
     public synchronized TestSummary toResult(WorkerEnd exit, String crashOutput) {
         long total = succeeded + failed + skipped;
@@ -330,7 +335,9 @@ public final class ResultAggregator {
             total++;
             // The fork's own output rides as the row's detail: what it died of — its heap, say —
             // is what decides whether a retry on a bigger heap is due.
-            failures.add(new TestFailureInfo(moduleLabel, "", "", "(test run)", "", why, crash, 0));
+            String cls = runningClass == null ? "" : runningClass;
+            death = new TestFailureInfo(moduleLabel, "", cls, RunShortfall.RUN, "", why, crash, 0);
+            failures.add(death);
         }
         return new TestSummary(
                 total,
@@ -372,6 +379,11 @@ public final class ResultAggregator {
     /** True when cancel arrived only after discovery's tests had all been reported. */
     private boolean cancelAfterEveryTest(long reported) {
         return SessionCancel.cancelled() && discoveredTests > 0 && reported >= discoveredTests;
+    }
+
+    /** The row {@link #toResult} added because the fork died before running its plan to the end, or null. */
+    public synchronized @Nullable TestFailureInfo death() {
+        return death;
     }
 
     /** Snapshot of just the counters — used by the parallel-merge path. */

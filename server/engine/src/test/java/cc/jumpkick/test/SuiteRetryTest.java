@@ -28,6 +28,27 @@ class SuiteRetryTest {
         assertThat(SuiteRetry.POLICY.killed(died.failures().getFirst())).isFalse();
     }
 
+    /**
+     * A one-JVM suite that died mid-class names that class, but the classes after it never ran: the
+     * retry still runs the whole selection, and the row is the suite's, which a merge drops.
+     */
+    @Test
+    void a_suite_that_dies_mid_class_is_still_retried_as_a_whole() {
+        TestFailureInfo died =
+                new TestFailureInfo("g:app", "", "com.acme.BigTest", "(test run)", "", "worker exited 3", "");
+        TestSummary summary = summary(died);
+        assertThat(SuiteRetry.POLICY.wholeSuite(summary, true)).isTrue();
+        assertThat(SuiteRetry.POLICY.classes(summary, List.of(), true)).isEmpty();
+        assertThat(SuiteRetry.POLICY.heapClasses(summary, true)).isEmpty();
+        TestSummary merged = SuiteRetry.POLICY.merge(
+                new TestSummary(2, 1, 1, 0, 1, List.of(died)),
+                List.of("com.acme.OtherTest"),
+                new RetryPolicy.Share(1, 0, 1),
+                new TestSummary(1, 1, 0, 0, 1, List.of()),
+                true);
+        assertThat(merged.failures()).isEmpty();
+    }
+
     @Test
     void a_named_class_is_the_item_and_an_assertion_is_not_a_heap_failure() {
         TestFailureInfo worker = new TestFailureInfo(

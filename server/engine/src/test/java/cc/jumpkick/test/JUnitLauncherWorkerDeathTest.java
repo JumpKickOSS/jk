@@ -23,13 +23,13 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * A pull worker that dies in the middle of a class fails that class: its row names the class and
- * the exit code, and the listener hears it as the class's failure, so the run's transcript names a
+ * A pull worker, or the one suite JVM of a single-worker run, that dies in the middle of a class
+ * fails that class: its row names the class and the exit code, and the listener hears it as the class's failure, so the run's transcript names a
  * class a gate can run again. A worker that dies after it finished its classes names none: the
  * class it last ran passed. The fake {@code java} here speaks the runner's protocol: it lists
  * {@code demo.A}, {@code demo.B} and {@code demo.C} and, as a pull worker, runs each class it is
  * sent green and asks for another, until the class or the moment {@code DIE} names, where it exits
- * 3.
+ * 3; as the single suite JVM it runs the three in turn, dying the same way.
  */
 @Tag("integration")
 class JUnitLauncherWorkerDeathTest {
@@ -66,6 +66,7 @@ class JUnitLauncherWorkerDeathTest {
 
     @Test
     void a_worker_that_dies_after_its_last_class_blames_no_class(@TempDir Path dir) throws Exception {
+        assumeTrue(TestWorkers.clampByHeap(2) == 2, "host heap allows two test workers");
         var heard = new CopyOnWriteArrayList<Heard>();
 
         TestSummary summary = run(dir, "after-done", heard);
@@ -80,9 +81,35 @@ class JUnitLauncherWorkerDeathTest {
                 .isEmpty());
     }
 
+    @Test
+    void a_single_fork_killed_mid_class_fails_that_class(@TempDir Path dir) throws Exception {
+        var heard = new CopyOnWriteArrayList<Heard>();
+
+        TestSummary summary = run(dir, "demo.B", heard, 1);
+
+        assertThat(summary.allPassed()).isFalse();
+        assertThat(summary.succeeded()).as("A ran before the fork died").isEqualTo(1);
+        assertThat(summary.failures()).singleElement().satisfies(row -> {
+            assertThat(row.className()).isEqualTo("demo.B");
+            assertThat(row.method()).isEqualTo("(test run)");
+            assertThat(row.message()).isEqualTo("worker exited 3");
+        });
+        assertThat(heard)
+                .as("the failure reaches the listener, which writes it to the run's transcript")
+                .singleElement()
+                .satisfies(failure -> {
+                    assertThat(failure.className()).isEqualTo("demo.B");
+                    assertThat(failure.message()).isEqualTo("worker exited 3");
+                });
+    }
+
     private record Heard(String className, String message) {}
 
     private static TestSummary run(Path dir, String die, List<Heard> heard) throws Exception {
+        return run(dir, die, heard, 2);
+    }
+
+    private static TestSummary run(Path dir, String die, List<Heard> heard, int workers) throws Exception {
         Path home = fakeJdk(dir, die);
         Path classes = Files.createDirectories(dir.resolve("classes"));
         Path cache = Files.createDirectories(dir.resolve("cache"));
@@ -102,7 +129,9 @@ class JUnitLauncherWorkerDeathTest {
                 heard.add(new Heard(className, message));
             }
         };
-        return new JUnitLauncher().withModuleLabel("g:app").run(home, classes, List.of(), cache, 2, Map.of(), listener);
+        return new JUnitLauncher()
+                .withModuleLabel("g:app")
+                .run(home, classes, List.of(), cache, workers, Map.of(), listener);
     }
 
     /**
@@ -144,6 +173,16 @@ class JUnitLauncherWorkerDeathTest {
                       t "$cls"
                       finished "$cls"
                     done ;;
+                  *" --scan-classpath="*)
+                    e '{"event":"discovery_total","classes":3,"tests":3}'
+                    for cls in demo.A demo.B demo.C; do
+                      started "$cls"
+                      [ "$cls" = "@DIE@" ] && exit 3
+                      t "$cls"
+                      finished "$cls"
+                    done
+                    e '{"event":"plan_finished"}'
+                    exit 0 ;;
                 esac
                 exit 2
                 """.replace("@CONNECT@", FakeWorkerShell.CONNECT).replace("@DIE@", die);

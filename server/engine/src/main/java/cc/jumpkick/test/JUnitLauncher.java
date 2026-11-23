@@ -32,6 +32,7 @@ import cc.jumpkick.orchestrator.RunShortfall;
 import cc.jumpkick.orchestrator.SuiteReport;
 import cc.jumpkick.orchestrator.TestProgressListener;
 import cc.jumpkick.run.SessionCancel;
+import cc.jumpkick.run.TestFailureInfo;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.runtime.base.RecentClassWalls;
 import java.io.IOException;
@@ -275,6 +276,13 @@ public final class JUnitLauncher {
 
     /** The Markdown report of the run in progress; a heap retry replaces its classes' entries. */
     private @Nullable MarkdownTestReport runMd;
+
+    /**
+     * The row of each suite JVM of the run in progress (the one fork, or a heap retry's) that died
+     * after reporting tests. No test event carried them, so the launcher reports those its final
+     * summary still holds.
+     */
+    private final List<TestFailureInfo> forkDeaths = new ArrayList<>();
 
     /** Non-null only while a heap retry is re-running an item at this {@code -Xmx}. */
     private @Nullable Long heapOverride;
@@ -734,6 +742,7 @@ public final class JUnitLauncher {
         runXml = xml;
         MarkdownTestReport md = new MarkdownTestReport(keepOutput);
         runMd = md;
+        forkDeaths.clear();
         var aggregator =
                 new ResultAggregator(listener, /* workerId */ 0, SuiteReport.all(xml, md), moduleLabel, secrets());
         // Capture the worker's non-protocol output so a hard crash (uncaught
@@ -753,6 +762,7 @@ public final class JUnitLauncher {
         if (heapOverride == null) {
             result = retrySuite(javaHome, classpath, HeapFlags.parseXmx(flags), listener, result, List.of());
         }
+        WorkerFailureRow.report(listener, forkDeaths, result);
         writeXml(xml, testResultsDir);
         publishTests(md, testClassesDir, testResultsDir);
         return result;
@@ -773,9 +783,12 @@ public final class JUnitLauncher {
             WorkerExit exit = key == null
                     ? launch(javaHome, classpath, flags, args, aggregator, crash)
                     : HeapScope.call(key, () -> launch(javaHome, classpath, flags, args, aggregator, crash));
-            return aggregator.toResult(
+            TestSummary result = aggregator.toResult(
                     TestLauncherFailure.ending(exit, PluginLoader.command(javaHome, classpath, flags, args)),
                     crash.text());
+            TestFailureInfo death = aggregator.death();
+            if (death != null) forkDeaths.add(death);
+            return result;
         } catch (PluginProcess.HandlerFailure e) {
             listener.onUserOutput(WorkerFailureRow.SINGLE_WORKER, Objects.requireNonNull(e.getMessage()));
             return WorkerFailureRow.singleFork(aggregator, moduleLabel, e.handler());
@@ -1032,6 +1045,7 @@ public final class JUnitLauncher {
         runXml = xml;
         MarkdownTestReport md = new MarkdownTestReport(keepOutput);
         runMd = md;
+        forkDeaths.clear();
 
         PullWorkerPool pool = new PullWorkerPool(this, javaHome, classpath, testClassesDir, listener);
         TestSummary summary;
@@ -1053,7 +1067,9 @@ public final class JUnitLauncher {
             TestSummary serial = pool.run(1, serialClasses, xml, md, Math.max(workers, pooled), null);
             summary = summary.plus(serial);
         }
-        WorkerFailureRow.report(listener, pool.deaths(), summary);
+        List<TestFailureInfo> deaths = new ArrayList<>(pool.deaths());
+        deaths.addAll(forkDeaths);
+        WorkerFailureRow.report(listener, deaths, summary);
         writeXml(xml, testResultsDir);
         publishTests(md, testClassesDir, testResultsDir);
         return summary;

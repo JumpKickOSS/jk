@@ -70,19 +70,19 @@ public record RetryPolicy(Predicate<String> retryableKill, Predicate<String> hea
         for (TestFailureInfo failure : summary.failures()) {
             if (!retryable(failure, ranOut)) continue;
             due = true;
-            if (!failure.className().isBlank()) out.add(failure.className());
+            if (!suiteRow(failure)) out.add(failure.className());
         }
         if (due) out.addAll(undispatched);
         return List.copyOf(out);
     }
 
     /**
-     * A retryable failure names no class: the suite JVM died after it had already reported tests, so
-     * the whole selection runs again.
+     * A retryable failure is the suite JVM's, not one class's ({@link #suiteRow}): it died after it
+     * had already reported tests, so the whole selection runs again.
      */
     public boolean wholeSuite(TestSummary summary, boolean ranOut) {
         for (TestFailureInfo failure : summary.failures()) {
-            if (retryable(failure, ranOut) && failure.className().isBlank()) return true;
+            if (retryable(failure, ranOut) && suiteRow(failure)) return true;
         }
         return false;
     }
@@ -101,7 +101,7 @@ public record RetryPolicy(Predicate<String> retryableKill, Predicate<String> hea
         Set<String> out = new LinkedHashSet<>();
         for (TestFailureInfo failure : summary.failures()) {
             if (!retryable(failure, ranOut) || killed(failure)) continue;
-            if (!failure.className().isBlank()) out.add(failure.className());
+            if (!suiteRow(failure)) out.add(failure.className());
         }
         return List.copyOf(out);
     }
@@ -117,7 +117,7 @@ public record RetryPolicy(Predicate<String> retryableKill, Predicate<String> hea
         List<TestFailureInfo> kept = new ArrayList<>();
         for (TestFailureInfo failure : first.failures()) {
             String cls = failure.className();
-            if (drop.contains(cls) || (cls.isBlank() && retryable(failure, ranOut)) || RunShortfall.isRow(failure))
+            if (drop.contains(cls) || (suiteRow(failure) && retryable(failure, ranOut)) || RunShortfall.isRow(failure))
                 continue;
             kept.add(failure);
         }
@@ -135,5 +135,14 @@ public record RetryPolicy(Predicate<String> retryableKill, Predicate<String> hea
                 kept,
                 walls,
                 Math.max(first.workers(), second.workers()));
+    }
+
+    /**
+     * A row that is the suite JVM's rather than one class's: it names no class, or it is the {@code
+     * (test run)} row of a one-JVM suite that died, whose class is only where it died. The classes
+     * that JVM had not reached yet never ran, so a retry runs the whole selection, not that class.
+     */
+    private static boolean suiteRow(TestFailureInfo failure) {
+        return failure.className().isBlank() || RunShortfall.RUN.equals(failure.method());
     }
 }
