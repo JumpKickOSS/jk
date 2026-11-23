@@ -712,7 +712,7 @@ public final class JavaCompile {
                 // A plan the worker cannot make (a sibling jar not built yet, say) is a full compile.
                 return new Prediction(Outcome.FULL, key, request.sources().size(), "no plan: " + e.getMessage());
             }
-            if (plan != null) return fromPlan(plan, key, request);
+            if (plan != null) return fromPlan(plan, key, request, actionCache.lastFor(taskId, stateDir));
         }
         Optional<ActionCache.ActionRecord> prior = actionCache.lastFor(taskId, stateDir);
         if (prior.isEmpty()) {
@@ -739,16 +739,65 @@ public final class JavaCompile {
         return new Prediction(Outcome.INCREMENTAL, key, n, reason, changed);
     }
 
-    private static Prediction fromPlan(ForkedJavac.Plan plan, String key, CompileRequest request) {
+    /**
+     * {@code onDisk} is the record of the tree the state's ledger names: after a hit under another
+     * key, the restored compile's, while the analysis is still the last compile's.
+     */
+    private static Prediction fromPlan(
+            ForkedJavac.Plan plan, String key, CompileRequest request, Optional<ActionCache.ActionRecord> onDisk)
+            throws IOException {
         List<Path> files = plan.sources();
         if (plan.full()) {
             return new Prediction(
                     Outcome.FULL, key, files.isEmpty() ? request.sources().size() : files.size(), plan.reason(), files);
         }
+        List<Path> unseen = onDisk.isPresent() ? unseenSince(plan, onDisk.get().inputs()) : List.of();
+        if (!unseen.isEmpty()) return behindRestore(plan, key, unseen);
         String reason = plan.reason();
         if (reason.isBlank()) {
             int n = files.size();
             reason = n == 1 ? "1 source" : n + " sources";
+        }
+        return new Prediction(Outcome.INCREMENTAL, key, files.size(), reason, files);
+    }
+
+    /** The why the compiler worker's plan gives a source whose bytes differ from its analysis. */
+    private static final String SOURCE_CHANGED = "source changed";
+
+    /**
+     * The sources the plan recompiles because they differ from the analysis, while their bytes are
+     * the ones the tree on disk was compiled from: the analysis is behind a restore, not the edit.
+     */
+    private static List<Path> unseenSince(ForkedJavac.Plan plan, Map<String, String> onDiskInputs) throws IOException {
+        List<Path> differ = new ArrayList<>();
+        for (ForkedJavac.Invalidation i : plan.invalidations()) {
+            if (SOURCE_CHANGED.equals(i.why())) differ.add(i.source());
+        }
+        if (differ.isEmpty()) return List.of();
+        Set<Path> edited = new HashSet<>(ActionKey.changedSources(differ, onDiskInputs));
+        return differ.stream().filter(s -> !edited.contains(s)).toList();
+    }
+
+    /**
+     * An incremental plan whose {@code unseen} sources come from a restore, listed after the rest:
+     * {@code 208 sources: 1 changed, 207 since a cache hit}.
+     */
+    private static Prediction behindRestore(ForkedJavac.Plan plan, String key, List<Path> unseen) {
+        Set<Path> behind = new HashSet<>(unseen);
+        List<ForkedJavac.Invalidation> rest = plan.invalidations().stream()
+                .filter(i -> !behind.contains(i.source()))
+                .toList();
+        List<Path> files = new ArrayList<>();
+        for (ForkedJavac.Invalidation i : rest) files.add(i.source());
+        files.addAll(unseen);
+        String since = unseen.size() + " since a cache hit";
+        String reason = (files.size() == 1 ? "1 source: " : files.size() + " sources: ");
+        if (rest.isEmpty()) {
+            reason += "all since a cache hit";
+        } else if (rest.stream().allMatch(i -> SOURCE_CHANGED.equals(i.why()))) {
+            reason += rest.size() + " changed, " + since;
+        } else {
+            reason += since;
         }
         return new Prediction(Outcome.INCREMENTAL, key, files.size(), reason, files);
     }

@@ -325,6 +325,36 @@ class JavaIncrementalCompileTest {
         assertThat(pred.reason()).isEqualTo("1 source changed");
     }
 
+    /**
+     * A hit under another key lays that compile's classes down and leaves the analysis of the last
+     * compile: the next edit recompiles what the two compiles differ in too. The forecast names
+     * those apart from the edit, and they are what the compile then recompiles.
+     */
+    @Test
+    void predict_after_a_restore_names_the_sources_the_compiler_has_not_seen(@TempDir Path dir) throws Exception {
+        Project p = new Project(dir);
+        String b = "package a; public class B { public int g() { return 2; } }";
+        String c = "package a; public class C { public int h() { return 3; } }";
+        p.write("a/A.java", "package a; public class A { public int f() { return 1; } }");
+        p.write("a/B.java", b);
+        p.write("a/C.java", c);
+        p.build();
+        p.write("a/B.java", "package a; public class B { public int g() { return 20; } }");
+        p.write("a/C.java", "package a; public class C { public int h() { return 30; } }");
+        p.build();
+        p.write("a/B.java", b);
+        p.write("a/C.java", c);
+        assertThat(p.build().outcome).startsWith("cache-hit");
+
+        p.write("a/A.java", "package a; public class A { public int f() { return 10; } }");
+        JavaCompile.Prediction pred = p.predict();
+
+        assertThat(pred.outcome()).isEqualTo(JavaCompile.Outcome.INCREMENTAL);
+        assertThat(pred.reason()).isEqualTo("3 sources: 1 changed, 2 since a cache hit");
+        assertThat(pred.sources().getFirst().getFileName()).hasToString("A.java");
+        assertThat(p.build().compiledSources()).containsExactlyInAnyOrder("a/A.java", "a/B.java", "a/C.java");
+    }
+
     @Test
     void predict_classpath_change_invalidates_users(@TempDir Path dir) throws Exception {
         JavacFixture.compile(
