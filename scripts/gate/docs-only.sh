@@ -7,12 +7,15 @@
 # collects those of every [workspace] member, leaving out what `jk test -s docs` alone read. A test
 # that scans a directory of docs reads every file in it, so it belongs in the docs suite.
 #
+# A host's cache holds only the suites it ran, so `write` adds what it finds to the list and drops
+# only a doc git no longer tracks; a doc no test reads any more leaves the list by hand.
+#
 # Usage: scripts/gate/docs-only.sh range <base> [<tip>]   exit 0 when base..tip is docs-only
 #        scripts/gate/docs-only.sh reads                  the docs the recordings show tests read
-#        scripts/gate/docs-only.sh write                  rewrite test-reads.txt from the recordings
+#        scripts/gate/docs-only.sh write                  add the recorded reads to test-reads.txt
 #        scripts/gate/docs-only.sh check                  exit 1 naming each read the list lacks
 #
-# Run `write` and `check` in the checkout, after a run of every suite (the Full tier). The
+# Run `write` and `check` in the checkout, after the suites whose reads they should see. The
 # recordings are jk's, under ${JK_CACHE_DIR:-${JK_HOME:-~/.jk}/cache}; a tree with no project-id in
 # its jk-lock.toml has none.
 set -euo pipefail
@@ -50,7 +53,7 @@ sha12() { { sha256sum 2>/dev/null || shasum -a 256; } | cut -c1-12; }
 # hex of sha256 of the selection's identity, "suites=docs;+tag=;-tag=" for `jk test -s docs`.
 reads() {
   local id cache m tag docs
-  id="$(sed -n 's/^project-id *= *"\([^"]*\)".*/\1/p' "$root/jk-lock.toml" 2>/dev/null | head -1)"
+  id="$(sed -n 's/^project-id *= *"\([^"]*\)".*/\1/p' "$root/jk-lock.toml" 2>/dev/null | head -1 || true)"
   [ -n "$id" ] || return 0
   cache="${JK_CACHE_DIR:-${JK_HOME:-$HOME/.jk}/cache}"
   docs="test-inputs-$(printf '%s' 'suites=docs;+tag=;-tag=' | sha12)"
@@ -88,7 +91,8 @@ case "${1:-}" in
     {
       echo "# The docs a test reads, so a change to one is not docs-only (scripts/gate/docs-only.sh)."
       echo "# Written by \`scripts/gate/docs-only.sh write\` from what the suites were seen reading."
-      reads
+      { grep -v '^#' "$root/$list" 2>/dev/null || true; reads; } | sort -u |
+        comm -12 - <(git -C "$root" ls-files | is_doc | sort)
     } >"$root/$list.tmp"
     mv "$root/$list.tmp" "$root/$list"
     ;;
