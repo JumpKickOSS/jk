@@ -63,6 +63,19 @@ final class TestGates {
         };
     }
 
+    /**
+     * The gate a run that starts {@code starts} takes, or null when it takes none: under {@code
+     * --parallel-tests}, or when it starts no test JVM, so a run whose classes all replay never waits
+     * behind another suite of its checkout.
+     */
+    static @Nullable Hold acquireFor(
+            SuiteResources.Starts starts,
+            boolean parallelTests,
+            @Nullable Path workspaceRoot,
+            BooleanSupplier cancelled) {
+        return parallelTests || starts.none() ? null : acquire(workspaceRoot, cancelled);
+    }
+
     /** Gates held or waited for right now. */
     static int live() {
         return GATES.size();

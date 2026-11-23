@@ -2,7 +2,6 @@
 package cc.jumpkick.runtime;
 
 import static cc.jumpkick.runtime.BuildPlanner.*;
-import static cc.jumpkick.runtime.PlannerTest.resolveBeforeGate;
 import static cc.jumpkick.runtime.PlannerTest.runTestsRequires;
 import static cc.jumpkick.runtime.PlannerTest.suiteFilter;
 import static cc.jumpkick.runtime.TestStampInputs.testStampWorkerJars;
@@ -166,7 +165,7 @@ final class TestSteps {
         List<Path> runtimeCp = TestLaunch.testRuntimeCpWithLanguageRuntimes(
                 ctx, shape.kotlin(), shape.groovy(), cas, testRtCp, testSrcs);
         // Discovery writes under target/ and reads sibling manifests, so it can throw: it runs
-        // before the gate too, never between the acquire and the try that releases it.
+        // before the gate, which is only ever taken inside the try that releases it.
         SuiteDiscovery.Run reads = recordReads(ctx, in, projectUnderTest, effectiveSel, testEnv, runtimeCp, affected);
         // Under the same stamp the classes that passed before still stand: a red or cut-short
         // suite runs only what has not passed yet. Under [test] cache = "cone" so does a class that
@@ -177,24 +176,18 @@ final class TestSteps {
         TestClassLedger ledger = beginLedger(ctx, reads, stamp, whole, testClasses, runtimeCp, stampKey, moduleLabel);
         TestLaunch.reweightForRealRun(ctx, in);
         if (suites.describe() != null) ctx.output(suites.describe());
-        // Test execution is serialized across the checkout's concurrently-built units
-        // unless the user opted into parallel tests — shared ports/locks/fixtures. The
-        // worker count is decided once the gate is held: a suite parked at the gate is
-        // not running, and the ones running when it starts are what it shares with.
-        boolean gated = !in.session().parallelTests();
-        TestGates.Hold[] gate = new TestGates.Hold[1];
         Path coverageExec = coverage ? TestLaunch.coverageExecFile(ctx) : null;
-        // The agent and the report tool come first: a coverage run that cannot fetch
-        // JaCoCo fails before any suite starts, not after the suite ran uninstrumented.
+        // The agent and the report tool come first, before the serial test gate: a coverage run that
+        // cannot fetch JaCoCo fails before any suite starts, and a fetch never parks the checkout's
+        // other suites behind it.
+        CoverageTools.Jacoco jacoco = coverage ? CoverageTools.resolve(projectUnderTest, cas) : null;
         // What the suite's JVMs read of the caller's environment is fetched and recorded as they run.
         SuiteEnvDelivery env = envDelivery(ctx, projectUnderTest, testEnv);
-        CoverageTools.Jacoco jacoco = resolveBeforeGate(
-                coverage ? () -> CoverageTools.resolve(projectUnderTest, cas) : null,
-                gated,
-                () -> gate[0] =
-                        TestGates.acquire(ctx.require(MODULE).layout().workspaceRoot(), SessionCancel::cancelled));
         // Started last before the launch, closed in its finally: nothing between can leave it listening.
         env.start();
+        // Test execution is serialized across the checkout's concurrently-built units unless the
+        // user opted into parallel tests (shared ports, locks, fixtures), once a JVM will start.
+        TestGates.Hold gate = null;
         // Null until the launch returns: a run stopped part way leaves it so.
         TestSummary result = null;
         boolean launcherFailed = false;
@@ -205,9 +198,6 @@ final class TestSteps {
             // class-wall rule once the selection is known. A debug run is one JVM.
             boolean debug = in.session().debugJvm() != null;
             boolean auto = !debug && TestLaunch.autoDispatch(in, projectUnderTest.build(), pluginDecls);
-            int testWorkers = debug ? 1 : TestLaunch.dispatchWorkers(in, projectUnderTest.build(), pluginDecls);
-            tagExcluded =
-                    listener(ctx, in, ledger, testWorkers, moduleLabel, snippets, suites, tier, affected, effectiveSel);
             // The module path is read off the runtime classpath, which the stamp already keys.
             List<String> forkJvmArgs = new ArrayList<>(stamp.jvmArgs());
             forkJvmArgs.addAll(JvmModulePath.args(projectUnderTest, in.dir(), runtimeCp));
@@ -218,22 +208,32 @@ final class TestSteps {
                     .withAutoShare(auto)
                     .withWidening(auto ? TestLaunch.liveWorkers(in, projectUnderTest.build(), pluginDecls) : null)
                     .withRecording(reads.flag()));
+            SuiteResources.Starts starts = ctx.get(COMPILED_TESTS)
+                    .map(c -> new SuiteResources(c.suiteRoots()))
+                    .orElse(SuiteResources.NONE)
+                    .starts(
+                            testClasses,
+                            suites,
+                            effectiveSel.classes(),
+                            projectUnderTest.build().testExcludeClasses(),
+                            affected,
+                            launcher,
+                            // A launch whose classes all passed earlier or hold no test starts no JVM.
+                            SuiteFilter.holdsTestsIn(testClasses, tagCp),
+                            runtimeCp);
+            gate = TestGates.acquireFor(
+                    starts,
+                    in.session().parallelTests(),
+                    ctx.require(MODULE).layout().workspaceRoot(),
+                    SessionCancel::cancelled);
+            // The worker count is decided once the gate is held: a suite parked at the gate is not
+            // running, and the ones running when it starts are what it shares with.
+            int testWorkers = debug ? 1 : TestLaunch.dispatchWorkers(in, projectUnderTest.build(), pluginDecls);
+            tagExcluded =
+                    listener(ctx, in, ledger, testWorkers, moduleLabel, snippets, suites, tier, affected, effectiveSel);
             try {
-                result = ctx.get(COMPILED_TESTS)
-                        .map(c -> new SuiteResources(c.suiteRoots()))
-                        .orElse(SuiteResources.NONE)
-                        .launch(
-                                testClasses,
-                                suites,
-                                effectiveSel.classes(),
-                                projectUnderTest.build().testExcludeClasses(),
-                                affected,
-                                launcher,
-                                // A launch whose classes all passed earlier or hold no test starts no JVM.
-                                SuiteFilter.holdsTestsIn(testClasses, tagCp),
-                                runtimeCp,
-                                (one, cp, l) -> TestLaunch.launch(
-                                        ctx, in, one, cp, testWorkers, workerJars, env.launchEnv(), l, tagExcluded));
+                result = starts.run((one, cp, l) ->
+                        TestLaunch.launch(ctx, in, one, cp, testWorkers, workerJars, env.launchEnv(), l, tagExcluded));
             } catch (TestLauncherFailure e) {
                 launcherFailed = true;
                 TestLaunch.reportLauncherFailure(ctx, in, projectUnderTest, actionCache, testTaskId, stampKey, e);
@@ -242,7 +242,7 @@ final class TestSteps {
         } finally {
             env.close();
             HeapNotes.flush(ctx);
-            if (gate[0] != null) gate[0].close();
+            if (gate != null) gate.close();
             if (result == null)
                 storeCutShort(ledger, launcherFailed, actionCache, suiteGuard, rekey, testTaskId, stampKey);
         }

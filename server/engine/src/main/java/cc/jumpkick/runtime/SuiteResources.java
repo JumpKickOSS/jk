@@ -156,8 +156,8 @@ record SuiteResources(Map<String, List<Path>> bySuite) {
     }
 
     /**
-     * The launcher of the launch named {@code launch}, whose JVMs get {@code settings}. Asked only
-     * for a launch that starts, right before it starts. The name is stable under one run-tests
+     * The launcher of the launch named {@code launch}, whose JVMs get {@code settings}. Asked for
+     * each launch the selection names, before any JVM starts. The name is stable under one run-tests
      * stamp: {@link #ONE_LAUNCH} for a run in one launch, else the directory suite and the set of
      * suites the launch runs, so what a launch left out is answered per launch.
      */
@@ -170,14 +170,15 @@ record SuiteResources(Map<String, List<Path>> bySuite) {
     static final String ONE_LAUNCH = "";
 
     /**
-     * Run the selection: in one launch over {@code runtimeCp} when the tree holds the resources and
-     * no selected suite has settings of its own, else one launch per directory suite, its roots
-     * first, its classes alone, and within it one per {@link SuiteFilter#launches} set of suites,
-     * the results as one summary. A launch the {@code --class} patterns or the affected classes
-     * name nothing in is not started, nor one whose suites claim no compiled class, nor one whose
-     * every class passed earlier or holds no test by {@code holdsTests} ({@link #runsAnything}).
+     * The launches the selection starts: one over {@code runtimeCp} when the tree holds the
+     * resources and no selected suite has settings of its own, else one per directory suite, its
+     * roots first, its classes alone, and within it one per {@link SuiteFilter#launches} set of
+     * suites. A launch the {@code --class} patterns or the affected classes name nothing in is left
+     * out, as is one whose suites claim no compiled class or whose every class passed earlier or
+     * holds no test by {@code holdsTests} ({@link #runsAnything}). Each launch is still entered
+     * through {@code launcher}, so the classes it leaves out count as replayed.
      */
-    TestSummary launch(
+    Starts starts(
             Path testClasses,
             SuiteFilter suites,
             List<String> classPatterns,
@@ -185,17 +186,16 @@ record SuiteResources(Map<String, List<Path>> bySuite) {
             AffectedTestRun.@Nullable Outcome affected,
             Launcher launcher,
             Predicate<String> holdsTests,
-            List<Path> runtimeCp,
-            Launch launch)
-            throws Exception {
+            List<Path> runtimeCp) {
         List<SuiteFilter.Launch> launches = suites.launches();
+        List<Start> out = new ArrayList<>();
         if (!split() && launches.size() == 1) {
             SuiteFilter.Launch only = launches.getFirst();
             JUnitLauncher one = launcher.of(ONE_LAUNCH, only.settings()).withSuites(suites);
-            if (!runsAnything(one, suites, testClasses, classPatterns, excludeClasses, holdsTests)) return NOTHING_RAN;
-            return launch.run(one, runtimeCp, only);
+            if (runsAnything(one, suites, testClasses, classPatterns, excludeClasses, holdsTests))
+                out.add(new Start(one, runtimeCp, only));
+            return new Starts(out);
         }
-        TestSummary total = null;
         for (Map.Entry<String, List<Path>> group : groups().entrySet()) {
             SuiteFilter part = split() ? suites.part(group.getKey()) : suites;
             if (part == null) continue;
@@ -220,11 +220,36 @@ record SuiteResources(Map<String, List<Path>> bySuite) {
                 if (names != null) one.withClassNames(names);
                 List<Path> classpath = new ArrayList<>(group.getValue());
                 classpath.addAll(runtimeCp);
-                TestSummary ran = launch.run(one, classpath, shared);
-                total = total == null ? ran : total.plus(ran);
+                out.add(new Start(one, classpath, shared));
             }
         }
-        return total != null ? total : NOTHING_RAN;
+        return new Starts(out);
+    }
+
+    /** One launch that starts test JVMs: its launcher, its classpath after the test classes, its suites. */
+    record Start(JUnitLauncher launcher, List<Path> classpath, SuiteFilter.Launch launch) {}
+
+    /** The launches a run starts, in order; none when every launch was left out. */
+    record Starts(List<Start> list) {
+
+        Starts {
+            list = List.copyOf(list);
+        }
+
+        /** Whether the run starts no test JVM. */
+        boolean none() {
+            return list.isEmpty();
+        }
+
+        /** Run each launch through {@code launch}, the results as one summary. */
+        TestSummary run(Launch launch) throws Exception {
+            TestSummary total = NOTHING_RAN;
+            for (Start s : list) {
+                TestSummary ran = launch.run(s.launcher(), s.classpath(), s.launch());
+                total = total == NOTHING_RAN ? ran : total.plus(ran);
+            }
+            return total;
+        }
     }
 
     /** The summary of a run that started no launch. */
@@ -253,7 +278,7 @@ record SuiteResources(Map<String, List<Path>> bySuite) {
     }
 
     /**
-     * The names {@link #launch} gives the launches a run of {@code suites} may start, before a
+     * The names {@link #starts} gives the launches a run of {@code suites} may start, before a
      * {@code --class} pattern or the affected classes leave one out: what a class's record names its
      * launch by, so the forecast reads only the records of the launches this selection starts.
      */

@@ -26,7 +26,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.TreeSet;
-import java.util.concurrent.Callable;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -176,24 +175,6 @@ public final class PlannerTest {
                 new ClasspathResolver(JkStores.storeCas()),
                 ModuleClasspaths.Contributions.NONE,
                 ModuleClasspaths.Mode.FORECAST);
-    }
-
-    /**
-     * Coverage tooling resolves before the serial test gate is taken, never inside it. The fetch
-     * can take seconds or fail outright, and the gate is the checkout's: a fetch behind it would park
-     * every other module's suite behind a download, and a failed fetch would leave the gate held
-     * for good. So a failing {@code resolve} throws with the gate untouched, and {@code gate} runs
-     * only once {@code resolve} has answered.
-     *
-     * @param resolve the coverage tooling to fetch, or null when the run measures no coverage
-     * @param gated whether the run takes the serial gate at all
-     * @param gate takes the gate; the caller releases it
-     */
-    static <T> @Nullable T resolveBeforeGate(@Nullable Callable<T> resolve, boolean gated, Runnable gate)
-            throws Exception {
-        T tools = resolve == null ? null : resolve.call();
-        if (gated) gate.run();
-        return tools;
     }
 
     /** What a finished run leaves for later builds under the same inputs. */

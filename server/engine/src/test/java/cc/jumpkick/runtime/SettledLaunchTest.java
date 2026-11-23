@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.model.DeclaredSuite;
@@ -15,6 +16,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CancellationException;
 import java.util.function.Predicate;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -22,7 +24,8 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * A launch whose every class passed earlier, is nested in one that did, or holds no test starts no
  * JVM: its JVMs would discover nothing. The launch is still entered, so the classes it leaves out
- * count as replayed. A class left to run, or a launch that leaves nothing out, starts as before.
+ * count as replayed, and the run takes no serial test gate. A class left to run, or a launch that
+ * leaves nothing out, starts as before.
  */
 class SettledLaunchTest {
 
@@ -79,7 +82,7 @@ class SettledLaunchTest {
         List<String> suites = List.of(TestSuites.DEFAULT, "integration");
         Run run = new Run();
         SuiteResources.of(m, false, TestSuites.compiled(m, false, suites, declared), List.of())
-                .launch(
+                .starts(
                         m.resolve("target/test-classes"),
                         SuiteFilter.of(m, false, suites, declared),
                         List.of(),
@@ -92,14 +95,49 @@ class SettledLaunchTest {
                                             name.equals("test:test") ? List.of("demo.ATest", "demo.BTest") : List.of());
                         },
                         name -> true,
-                        List.of(),
-                        (one, cp, launch) -> {
-                            run.started.add(String.join(",", launch.suites()));
-                            return new TestSummary(1, 1, 0, 0, List.of());
-                        });
+                        List.of())
+                .run((one, cp, launch) -> {
+                    run.started.add(String.join(",", launch.suites()));
+                    return new TestSummary(1, 1, 0, 0, List.of());
+                });
 
         assertThat(run.entered).contains("test:test", "test:integration");
         assertThat(run.started).as("only the launch with nothing settled").containsExactly("integration");
+    }
+
+    @Test
+    void a_run_whose_classes_all_replay_takes_no_gate_while_a_sibling_suite_holds_it(@TempDir Path m) throws Exception {
+        compiled(m, "ATest", "BTest");
+        SuiteResources.Starts starts = starts(m, List.of("demo.ATest", "demo.BTest"), name -> true, new ArrayList<>());
+
+        int live = TestGates.live();
+        try (TestGates.Hold sibling = TestGates.acquire(m, () -> false)) {
+            assertThat(TestGates.acquireFor(starts, false, m, () -> {
+                        throw new AssertionError("waited at the gate");
+                    }))
+                    .as("nothing starts, so no gate is taken or waited for")
+                    .isNull();
+            assertThat(TestGates.live()).isEqualTo(live + 1);
+        }
+        assertThat(TestGates.live()).isEqualTo(live);
+    }
+
+    @Test
+    void a_run_with_a_class_left_to_run_waits_for_the_gate(@TempDir Path m) throws Exception {
+        compiled(m, "ATest", "BTest");
+        SuiteResources.Starts starts = starts(m, List.of("demo.ATest"), name -> true, new ArrayList<>());
+
+        try (TestGates.Hold sibling = TestGates.acquire(m, () -> false)) {
+            assertThatThrownBy(() -> TestGates.acquireFor(starts, false, m, () -> true))
+                    .as("parked behind the sibling until cancelled")
+                    .isInstanceOf(CancellationException.class);
+        }
+        try (TestGates.Hold mine = TestGates.acquireFor(starts, false, m, () -> false)) {
+            assertThat(mine).as("a free gate is taken").isNotNull();
+        }
+        assertThat(TestGates.acquireFor(starts, true, m, () -> false))
+                .as("--parallel-tests takes no gate")
+                .isNull();
     }
 
     /** What one run of the default suite did: the launches it entered and those whose JVMs it started. */
@@ -110,25 +148,30 @@ class SettledLaunchTest {
     }
 
     private static Run run(Path m, List<String> settled, Predicate<String> holdsTests) throws Exception {
-        List<String> suites = List.of(TestSuites.DEFAULT);
         Run run = new Run();
-        run.summary = SuiteResources.NONE.launch(
+        run.summary = starts(m, settled, holdsTests, run.entered).run((one, cp, launch) -> {
+            run.started.add("");
+            return new TestSummary(3, 3, 0, 0, List.of());
+        });
+        return run;
+    }
+
+    /** The launches a run of the default suite starts when {@code settled} passed earlier. */
+    private static SuiteResources.Starts starts(
+            Path m, List<String> settled, Predicate<String> holdsTests, List<String> entered) {
+        List<String> suites = List.of(TestSuites.DEFAULT);
+        return SuiteResources.NONE.starts(
                 m.resolve("target/test-classes"),
                 SuiteFilter.of(m, false, suites, Map.of()),
                 List.of(),
                 List.of(),
                 null,
                 (name, settings) -> {
-                    run.entered.add(name);
+                    entered.add(name);
                     return new JUnitLauncher().withSettled(settled);
                 },
                 holdsTests,
-                List.of(),
-                (one, cp, launch) -> {
-                    run.started.add("");
-                    return new TestSummary(3, 3, 0, 0, List.of());
-                });
-        return run;
+                List.of());
     }
 
     /** {@code classes} as sources of the default suite in package demo, and as compiled class files. */

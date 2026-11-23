@@ -71,19 +71,20 @@ class SuiteLaunchNamesTest {
         SuiteResources resources = SuiteResources.of(m, false, compiled, List.of());
         SuiteFilter filter = SuiteFilter.of(m, false, suites, declared);
         Set<String> started = new TreeSet<>();
-        resources.launch(
-                m.resolve("target/test-classes"),
-                filter,
-                List.of(),
-                List.of(),
-                null,
-                (name, settings) -> {
-                    started.add(name);
-                    return new JUnitLauncher();
-                },
-                name -> true,
-                List.of(),
-                (one, cp, launch) -> new TestSummary(0, 0, 0, 0, List.of()));
+        resources
+                .starts(
+                        m.resolve("target/test-classes"),
+                        filter,
+                        List.of(),
+                        List.of(),
+                        null,
+                        (name, settings) -> {
+                            started.add(name);
+                            return new JUnitLauncher();
+                        },
+                        name -> true,
+                        List.of())
+                .run((one, cp, launch) -> new TestSummary(0, 0, 0, 0, List.of()));
         Set<String> named = resources.launchNames(filter);
         assertThat(named).as("the launches the run started").isEqualTo(started);
         return named;

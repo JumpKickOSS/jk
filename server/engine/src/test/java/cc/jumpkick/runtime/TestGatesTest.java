@@ -2,12 +2,16 @@
 package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.testing.Symlinks;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -54,6 +58,21 @@ class TestGatesTest {
             assertThat(TestGates.live()).isEqualTo(before + 1);
         }
         assertThat(TestGates.live()).isEqualTo(before);
+    }
+
+    @Test
+    void a_suite_parked_at_a_held_gate_gives_up_when_cancelled_and_holds_nothing() {
+        Semaphore gate = new Semaphore(1);
+        gate.acquireUninterruptibly(); // another workspace's suite holds it
+        AtomicInteger asked = new AtomicInteger();
+        assertThatThrownBy(() -> TestGates.await(gate, () -> asked.incrementAndGet() >= 2))
+                .isInstanceOf(CancellationException.class);
+        assertThat(gate.availablePermits()).isZero();
+        gate.release();
+        TestGates.await(gate, () -> true);
+        assertThat(gate.availablePermits())
+                .as("a free gate is taken even when cancelled is asked")
+                .isZero();
     }
 
     private static boolean takenWithin(Path root, long millis) throws InterruptedException {
