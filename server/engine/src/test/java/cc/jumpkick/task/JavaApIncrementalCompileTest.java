@@ -14,6 +14,7 @@ import java.net.URLClassLoader;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.attribute.FileTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -385,6 +386,38 @@ class JavaApIncrementalCompileTest {
         assertThat(p.registry())
                 .as("the processor's file goes back to the resource it merged into")
                 .containsExactly("static.Row");
+    }
+
+    /**
+     * A resource a checkout rewrote with the bytes it had — a new mtime, nothing else — leaves a
+     * body edit an incremental compile of the edited source. An edit of the resource's bytes still
+     * compiles every source, so the processors read the new resource.
+     */
+    @Test
+    void a_resource_rewritten_with_the_same_bytes_keeps_a_body_edit_incremental(@TempDir Path dir) throws Exception {
+        Project p = new Project(dir, workerJar(), isolatingProcessor(dir), dir.resolve("target/classes"));
+        p.copyResource("app/config.txt", "one\n");
+        p.write("app/Widget.java", widget("one"));
+        p.write("app/Plain.java", "package app; public class Plain {}");
+        p.build();
+
+        Path resource = dir.resolve("resources/app/config.txt");
+        FileTime before = Files.getLastModifiedTime(resource);
+        p.copyResource("app/config.txt", "one\n");
+        Files.setLastModifiedTime(resource, FileTime.fromMillis(before.toMillis() + 60_000));
+        p.write("app/Plain.java", "package app; public class Plain { int edited; }");
+        JavaCompile.Result touched = p.build();
+        assertThat(touched.compiledSources())
+                .as("a new mtime on unchanged bytes is not a resource edit")
+                .noneMatch(src -> src.endsWith("Widget.java"))
+                .anyMatch(src -> src.endsWith("Plain.java"));
+
+        p.copyResource("app/config.txt", "two\n");
+        p.write("app/Plain.java", "package app; public class Plain { int again; }");
+        JavaCompile.Result edited = p.build();
+        assertThat(edited.compiledSources())
+                .as("an edited resource compiles every source again")
+                .anyMatch(src -> src.endsWith("Widget.java"));
     }
 
     // ---- harness ----------------------------------------------------------

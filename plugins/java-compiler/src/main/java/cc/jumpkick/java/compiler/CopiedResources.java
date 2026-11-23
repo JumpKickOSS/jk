@@ -13,6 +13,7 @@ import java.security.MessageDigest;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.TreeMap;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -27,7 +28,7 @@ import java.util.concurrent.TimeUnit;
  * that is a copy is put back to its resource, never deleted, when last run's generated files are
  * cleared: the resource is still the module's and the processor's merge base. A read of a copy that
  * holds its resource's bytes is a read of the resource, not of last run's output, so it does not
- * make the module merging. And the resources' shapes join the processor digest, so a resource edit
+ * make the module merging. And the resources' contents join the processor digest, so a resource edit
  * compiles every source again and the processors re-merge.
  */
 final class CopiedResources {
@@ -35,6 +36,9 @@ final class CopiedResources {
     static final String SOURCES = "copied-resource-sources.tsv";
 
     private static final CopiedResources NONE = new CopiedResources(Map.of());
+
+    /** Content hashes by resource path, kept for this worker's life: a forecast and a compile stamp alike. */
+    private static final Map<Path, Hashed> HASHED = new ConcurrentHashMap<>();
 
     /** Copy (absolute, under the class output) to the resource it was copied from. */
     private final Map<Path, Path> sources;
@@ -75,25 +79,34 @@ final class CopiedResources {
     }
 
     /**
-     * The resources as they stand: each copy's resource path, size and mtime, digested; empty when
-     * there are none. Shapes rather than bytes, as the processor digest reads its own path.
+     * The resources as they stand: each copy's resource path and content hash, digested; empty when
+     * there are none. Bytes rather than shapes: a checkout or a reset rewrites a resource with the
+     * bytes it had and a new mtime, and that must not compile every source of the module again.
      */
     String stamp() throws IOException {
         if (sources.isEmpty()) return "";
         MessageDigest digest = Hashing.newSha256();
         for (Path source : sources.values()) {
             StringBuilder line = new StringBuilder(source.toString());
-            if (Files.isRegularFile(source)) {
-                BasicFileAttributes attrs = Files.readAttributes(source, BasicFileAttributes.class);
-                line.append('\t')
-                        .append(attrs.size())
-                        .append('\t')
-                        .append(attrs.lastModifiedTime().to(TimeUnit.NANOSECONDS));
-            }
+            if (Files.isRegularFile(source)) line.append('\t').append(contentHash(source));
             digest.update((line + "\n").getBytes(StandardCharsets.UTF_8));
         }
         return "+resources:" + Hashing.hex(digest.digest());
     }
+
+    /** One resource's content hash; read again only when its size or mtime moved. */
+    private static String contentHash(Path source) throws IOException {
+        BasicFileAttributes attrs = Files.readAttributes(source, BasicFileAttributes.class);
+        long size = attrs.size();
+        long mtime = attrs.lastModifiedTime().to(TimeUnit.NANOSECONDS);
+        Hashed known = HASHED.get(source);
+        if (known != null && known.size == size && known.mtime == mtime) return known.sha;
+        String sha = Hashing.sha256Hex(source);
+        HASHED.put(source, new Hashed(size, mtime, sha));
+        return sha;
+    }
+
+    private record Hashed(long size, long mtime, String sha) {}
 
     /** Lay {@code source} over {@code copy} as the engine's copy does, or drop the copy when its resource is gone. */
     static void reset(Path copy, Path source) throws IOException {

@@ -133,7 +133,7 @@ final class ZincWorkdir {
     }
 
     /**
-     * {@link #processorDigest(List)} with the shapes of the resources copied into {@code
+     * {@link #processorDigest(List)} with the contents of the resources copied into {@code
      * classOutput} beside it: a processor reads them, so an edited resource changes what every
      * processor run produces, and the analysis goes as for a changed processor.
      */
