@@ -1112,19 +1112,20 @@ reason = "the IDE model lists a module's sibling edges; it keys nothing"
 in     = "cc.jumpkick.runtime.IdeModels"
 reason = "the IDE model lists the provided jars; it keys nothing"
 
-# G146. Which suites a run runs is derived once. TestStampInputs.resolveSuites resolves the
-# selection against the module's suites, the built-in integration suite among them, for compile-test,
-# the suite filter, the run-tests stamp, the forecast and the test-count estimate; a raw
-# TestSuites.resolve is a second answer, and a run that stamps one set of suites and runs another
-# stores a green marker over tests that never ran.
+# G146. Which suites a run runs is derived once. SuiteChoice.resolve, in the test orchestrator,
+# resolves the selection against the module's suites, the built-in integration suite among them;
+# the engine reads it through TestStampInputs.resolveSuites for compile-test, the suite filter, the
+# run-tests stamp, the forecast and the test-count estimate. A raw TestSuites.resolve is a second
+# answer, and a run that stamps one set of suites and runs another stores a green marker over tests
+# that never ran.
 [guards.test-suites-resolve-owner]
 kind       = "forbid"
 signatures = ["cc.jumpkick.layout.TestSuites#resolve(**)", "cc.jumpkick.config.TestSelection#resolve(**)"]
-scope      = ["server/engine"]
+scope      = ["server/engine", "server/test-orchestrator"]
 source-set = "main"
-owner      = "cc.jumpkick.runtime.TestStampInputs"
+owner      = "cc.jumpkick.orchestrator.SuiteChoice"
 fixture    = "server/engine/guard-fixtures/test-suites-resolve-owner"
-instead    = "TestStampInputs.resolveSuites(selection, dir, profile, compact, declared), or the plan's PlannerTest.resolveSuites"
+instead    = "TestStampInputs.resolveSuites(selection, dir, compact, declared), or the plan's PlannerTest.resolveSuites"
 why        = "suites resolved apart from the stamp's derivation are suites a green marker vouches for without having run them"
 
 # G53. Every production package in a null-marked root carries package-level @NullMarked: NullAway

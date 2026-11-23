@@ -595,14 +595,17 @@ and exclusions stay GA-scoped.
    edit installed with `jk install -S` replays every action it does not reach. The engine code that
    produces or judges a result itself is a `KeyContract`, whose recorded digest folds into its
    actions' keys: `SUITE` (the package `cc.jumpkick.test` and the classes named for tests, suites
-   or JUnit, which pick a suite's classes and build its JVM) into run-tests stamps; `ARTIFACT` (the packagers and the zip they write through, the war, jlink, lib-dir and
+   or JUnit, which pick a suite's classes and build its JVM, but not `TestStampInputs`, which
+   writes the stamp and so moves it by what it writes) into run-tests stamps; `ARTIFACT` (the packagers and the zip they write through, the war, jlink, lib-dir and
    image steps, plugin staging, build-logic, Node.js steps and the guard runtime) into every
    `ActionKey.forArtifact` key; `NATIVE` (`NativeImageDriver`, which spells native-image's command
    line) into a native image's. The digest reads the contract's sources with comments and
    whitespace left out, and guard G167 (`key-contract-recorded`) is red until the recorded digest
    is theirs, printing the one to record; guard G164 (`suite-code-keyed`) keeps the selection and
    launch types inside `SUITE`. The code that judges a suite (counting the runner's events, a run
-   that ended short, an empty discovery, a `--class` that matched nothing, the failure text) is
+   that ended short, an empty discovery, a `--class` that matched nothing, the failure text) and
+   decides which suites run (`SuiteChoice`: the suites a selection resolves to, whether the
+   guard's green run covers it, whether its launch is the walled default tier) is
    its own module, `server/test-orchestrator`, in the one package `cc.jumpkick.orchestrator`; the
    engine bundles it, and a run-tests stamp names it as `orchestrator:<digest>`, the digest of
    that package's classes as the running jar holds them (`OrchestratorCode`: each entry's name,

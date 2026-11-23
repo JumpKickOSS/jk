@@ -144,6 +144,9 @@ final class EngineRules {
             in = "server/engine/src/main/java/cc/jumpkick/runtime/SharedStampKeys.java",
             reason = "derives the shared form of the stamp's key; it picks no class and reads no outcome")
     @Allow(
+            in = "server/engine/src/main/java/cc/jumpkick/runtime/TestStampInputs.java",
+            reason = "writes the stamp itself; what it changes reaches a suite only through the key it writes")
+    @Allow(
             in = "server/engine/src/main/java/cc/jumpkick/runtime/base/RecentClassWalls.java",
             reason = "the classes' last walls, which spread classes over workers; it picks none")
     @Allow(

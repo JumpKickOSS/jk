@@ -603,7 +603,7 @@ final class TestSteps {
             TestFailureSource.Cache snippets,
             List<String> said)
             throws Exception {
-        Judged judged = judgeClassSelection(ctx, in, sel, exactClassList, suites, tagExcluded, result);
+        TestClassMatch.Verdict judged = judgeClassSelection(ctx, in, sel, exactClassList, suites, tagExcluded, result);
         if (judged == null) return;
         TestSummary ran = judged.result();
         if (ran != null) {
@@ -618,13 +618,6 @@ final class TestSteps {
             TestLaunch.recordOutcome(ctx, in, actionCache, testTaskId, stampKey, ran, testSourcesExist, snippets, said);
         }
     }
-
-    /**
-     * What a {@code --class} selection left: the summary of the tests that ran, or {@code null} when
-     * none did, and the no-match message when the selection named something that did not run.
-     */
-    private record Judged(
-            @Nullable TestSummary result, @Nullable String noMatch) {}
 
     /** The run-tests stamp's inputs as this run reads them: what the classpath step published, the worker jars awaited. */
     private static TestStampInputs stampInputs(
@@ -738,14 +731,11 @@ final class TestSteps {
     }
 
     /**
-     * The verdict a {@code --class} selection leaves, or null when this workspace module skips: a
-     * workspace judges the patterns across its modules, a standalone project fails on the spot,
-     * naming the runner's {@code tagExcluded} warning, with the tier that runs the class, when the
-     * tag filter emptied the run. A class named without a wildcard that the tag filter dropped fails
-     * the module, whatever else ran. A {@code --class} naming a class another suite owns says which
-     * suite, matched or not.
+     * The verdict a {@code --class} selection leaves ({@link TestClassMatch#judge}), or null when
+     * this workspace module skips: then it leaves the runner's tag-excluded warning and the suite
+     * hint, when there are, for the run-wide verdict.
      */
-    private static @Nullable Judged judgeClassSelection(
+    private static TestClassMatch.@Nullable Verdict judgeClassSelection(
             TaskContext ctx,
             BuildPlanner.Inputs in,
             TestSelection sel,
@@ -758,21 +748,9 @@ final class TestSteps {
                 ? null
                 : suites.classHint(
                         ctx.require(PARSED_BUILD).testClassesDir(), PlannerTest.tagClasspath(ctx), sel.classes());
-        boolean nothing = TestClassMatch.nothingMatched(sel, exactClassList, result);
-        if (!exactClassList && tagExcluded != null && TestClassMatch.namesClasses(sel)) {
-            return nothing
-                    ? new Judged(null, TestClassMatch.noMatchMessage(sel, tagExcluded, suiteHint))
-                    : new Judged(result, tagExcluded);
-        }
-        if (!nothing) {
-            if (suiteHint != null) {
-                ctx.warn("class-in-other-suite", "--class " + String.join(", ", sel.classes()) + ": " + suiteHint);
-            }
-            return new Judged(result, null);
-        }
-        if (in.projectModules().size() > 1) {
-            // A workspace module the patterns matched nothing in skips, leaving the runner's
-            // tag-excluded warning and the suite hint, when there are, for the run-wide verdict.
+        TestClassMatch.Verdict verdict = TestClassMatch.judge(
+                sel, exactClassList, tagExcluded, suiteHint, in.projectModules().size() > 1, result);
+        if (verdict.skipped()) {
             if (tagExcluded != null || suiteHint != null) {
                 ctx.put(TEST_RUN, new TestRun(null, tagExcluded, suiteHint));
             }
@@ -780,7 +758,12 @@ final class TestSteps {
             ctx.cached();
             return null;
         }
-        return new Judged(null, TestClassMatch.noMatchMessage(sel, tagExcluded, suiteHint));
+        if (verdict.otherSuite() != null) {
+            ctx.warn(
+                    "class-in-other-suite",
+                    "--class " + String.join(", ", sel.classes()) + ": " + verdict.otherSuite());
+        }
+        return verdict;
     }
 
     /** The affected-test selection when the session asked for one; null otherwise. */

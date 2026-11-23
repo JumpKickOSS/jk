@@ -83,6 +83,49 @@ public final class TestClassMatch {
     }
 
     /**
+     * What one module's run leaves under {@code selection}.
+     *
+     * @param result the summary of the tests that ran; {@code null} when none did or the module skipped
+     * @param noMatch the failure line when the selection named something that did not run
+     * @param skipped a workspace module the patterns matched nothing in: the run-wide verdict judges it
+     * @param otherSuite the suite hint to warn with when tests ran but a named class belongs to
+     *     another suite
+     */
+    public record Verdict(
+            @Nullable TestSummary result,
+            @Nullable String noMatch,
+            boolean skipped,
+            @Nullable String otherSuite) {}
+
+    /**
+     * The verdict of a module's run of {@code selection}. A workspace module the patterns matched
+     * nothing in skips, so the run-wide verdict judges the patterns across modules; a standalone
+     * project fails on the spot, naming the runner's {@code tagExcluded} warning when the tag
+     * filter emptied the run. A class named without a wildcard that the tag filter dropped fails
+     * the module, whatever else ran. A {@code --class} naming a class another suite owns says which
+     * suite ({@code suiteHint}), matched or not.
+     *
+     * @param workspace whether the module is one of several the run covers
+     */
+    public static Verdict judge(
+            TestSelection selection,
+            boolean exactClassList,
+            @Nullable String tagExcluded,
+            @Nullable String suiteHint,
+            boolean workspace,
+            TestSummary result) {
+        boolean nothing = nothingMatched(selection, exactClassList, result);
+        if (!exactClassList && tagExcluded != null && namesClasses(selection)) {
+            return nothing
+                    ? new Verdict(null, noMatchMessage(selection, tagExcluded, suiteHint), false, null)
+                    : new Verdict(result, tagExcluded, false, null);
+        }
+        if (!nothing) return new Verdict(result, null, false, suiteHint);
+        if (workspace) return new Verdict(null, null, true, null);
+        return new Verdict(null, noMatchMessage(selection, tagExcluded, suiteHint), false, null);
+    }
+
+    /**
      * The workspace's verdict once every module has finished: the no-match message when the session
      * asked for classes, the run executed suites, and no module's suite ran a test — otherwise
      * {@code null}. {@code runs} holds what each module's test step left. A module that matched

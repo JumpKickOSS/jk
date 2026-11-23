@@ -21,13 +21,13 @@ import cc.jumpkick.http.Http;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.ModuleLayout;
-import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Profile;
 import cc.jumpkick.model.SuiteSettings;
 import cc.jumpkick.model.TestFailureMode;
 import cc.jumpkick.node.NodeHome;
+import cc.jumpkick.orchestrator.SuiteChoice;
 import cc.jumpkick.orchestrator.TestProgressListener;
 import cc.jumpkick.orchestrator.TestRun;
 import cc.jumpkick.resolver.ResolveObserver;
@@ -260,13 +260,7 @@ final class TestLaunch {
      * either variable in {@code [test] env} keeps its value.
      */
     static WorkerEnv withFastTierWalls(WorkerEnv testEnv, Set<String> suites, TestSelection sel, JkBuild project) {
-        boolean defaultTier = suites.contains(TestSuites.DEFAULT)
-                && suites.stream()
-                        .map(project.build().runSuites()::get)
-                        .allMatch(s -> s == null || s.tags().isEmpty());
-        if (!project.build().routesTiers() || !sel.includeTags().isEmpty() || !defaultTier) {
-            return testEnv;
-        }
+        if (!SuiteChoice.fastTier(suites, sel, project)) return testEnv;
         Map<String, String> walls = new LinkedHashMap<>();
         if (!testEnv.extras().containsKey(Http.DENY_HOSTS_ENV)) walls.put(Http.DENY_HOSTS_ENV, Http.ANY_REMOTE_HOST);
         if (!testEnv.extras().containsKey(EnginePaths.NO_SPAWN_ENV)) walls.put(EnginePaths.NO_SPAWN_ENV, "1");

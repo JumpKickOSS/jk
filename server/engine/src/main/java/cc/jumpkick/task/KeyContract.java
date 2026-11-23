@@ -29,12 +29,13 @@ public enum KeyContract {
      * The code that picks which test classes a suite runs and builds the JVM that runs them: the
      * package {@code cc.jumpkick.test} and every class of the engine whose own name carries {@code
      * Test}, {@code Suite} or {@code JUnit} ({@link #suiteCode}). A run-tests stamp keys by it. The
-     * code that judges a suite's outcome is not here: it lives in the package {@code
-     * cc.jumpkick.orchestrator}, which the stamp keys by its compiled classes ({@code
-     * OrchestratorCode}). The {@code suite-code-keyed} guard keeps the types that select and judge
-     * a suite inside the one or the other.
+     * code that judges a suite's outcome and decides which suites run is not here: it lives in the
+     * package {@code cc.jumpkick.orchestrator}, which the stamp keys by its compiled classes ({@code
+     * OrchestratorCode}). Nor is the code that writes the stamp itself ({@link #STAMP}): what it
+     * changes reaches a suite only through the key it writes. The {@code suite-code-keyed} guard
+     * keeps the types that select and judge a suite inside the one or the other.
      */
-    SUITE("2d589cb28018", List.of(Sources.SERVER, Sources.SHARED), KeyContract::suiteSource),
+    SUITE("933b729dc857", List.of(Sources.SERVER, Sources.SHARED), KeyContract::suiteSource),
 
     /**
      * The code that writes an artifact or a verdict the engine produces itself: the jar, assembly
@@ -90,6 +91,13 @@ public enum KeyContract {
     private static final String ORCHESTRATOR = ROOT + "orchestrator/";
 
     private static final String CLASS = ".class";
+
+    /**
+     * The classes that write a run-tests stamp: every input they read reaches the suite's JVM as a
+     * token of the key they write, so an edit to them moves the key by what it changes, or not at
+     * all.
+     */
+    private static final List<String> STAMP = List.of(ROOT + "runtime/TestStampInputs");
 
     /** The words a class's own name carries when it is suite code, wherever its package. */
     private static final List<String> WORDS = List.of("Test", "Suite", "JUnit");
@@ -152,13 +160,17 @@ public enum KeyContract {
     /**
      * Whether the archive entry {@code entry} is suite code: a jk class of the package {@code
      * cc.jumpkick.test}, or one whose top-level class name carries {@code Test}, {@code Suite} or
-     * {@code JUnit}, outside the package {@code cc.jumpkick.orchestrator}.
+     * {@code JUnit}, outside the package {@code cc.jumpkick.orchestrator} and the classes that
+     * write the stamp ({@link #STAMP}).
      */
     public static boolean suiteCode(String entry) {
         if (!entry.startsWith(ROOT) || !entry.endsWith(CLASS) || entry.startsWith(ORCHESTRATOR)) return false;
+        String name = entry.substring(0, entry.length() - CLASS.length());
+        int nested = name.indexOf('$');
+        if (STAMP.contains(nested < 0 ? name : name.substring(0, nested))) return false;
         if (entry.startsWith(PACKAGE)) return true;
         String simple = entry.substring(entry.lastIndexOf('/') + 1, entry.length() - CLASS.length());
-        int nested = simple.indexOf('$');
+        nested = simple.indexOf('$');
         String top = nested < 0 ? simple : simple.substring(0, nested);
         for (String word : WORDS) {
             if (top.contains(word)) return true;

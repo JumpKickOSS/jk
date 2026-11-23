@@ -51,6 +51,21 @@ class KeyContractTest {
                 .isFalse();
     }
 
+    /** The code that writes the stamp moves the key by what it writes, so the contract leaves it out. */
+    @Test
+    void the_code_that_writes_the_stamp_is_not_suite_code() {
+        assertThat(KeyContract.suiteCode("cc/jumpkick/runtime/TestStampInputs.class"))
+                .isFalse();
+        assertThat(KeyContract.suiteCode("cc/jumpkick/runtime/TestStampInputs$Facts.class"))
+                .as("a nested class is its top-level class's")
+                .isFalse();
+        assertThat(KeyContract.SUITE.keeps("server/engine/src/main/java/cc/jumpkick/runtime/TestStampInputs.java"))
+                .isFalse();
+        assertThat(KeyContract.suiteCode("cc/jumpkick/runtime/TestSteps.class"))
+                .as("the step that launches the suite stays keyed")
+                .isTrue();
+    }
+
     @Test
     void a_source_file_is_judged_by_the_class_it_compiles_to() {
         assertThat(KeyContract.entryOf("server/engine/src/main/java/cc/jumpkick/test/Discovery.java"))

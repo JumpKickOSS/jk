@@ -20,6 +20,7 @@ import cc.jumpkick.model.Profile;
 import cc.jumpkick.model.SuiteSettings;
 import cc.jumpkick.model.TestCache;
 import cc.jumpkick.orchestrator.OrchestratorCode;
+import cc.jumpkick.orchestrator.SuiteChoice;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.base.CompileSupport;
 import cc.jumpkick.runtime.base.FilteredResources;
@@ -157,7 +158,7 @@ public record TestStampInputs(
     }
 
     /**
-     * This stamp as the guard's run would take it ({@link #guardCovering}), or null when the guard's
+     * This stamp as the guard's run would take it ({@link SuiteChoice#guardCovering}), or null when the guard's
      * run does not cover this one. A green guard run ran every test of the run it covers, over the
      * same tree ({@link TestSuites#compiled} compiles every guard suite whatever the selection), so
      * {@code jk build} and {@code jk test} after {@code jk install -g} replay its marker instead of
@@ -165,33 +166,8 @@ public record TestStampInputs(
      */
     @Nullable
     TestStampInputs underGuard() throws IOException {
-        TestSelection guard = guardCovering(selection, facts.dir());
+        TestSelection guard = SuiteChoice.guardCovering(selection, facts.dir());
         return guard == null ? null : of(facts.withSelection(guard), identity);
-    }
-
-    /**
-     * The selection {@code jk test -g} runs in the workspace of {@code dir}, when its run covers
-     * {@code selection}'s: a plain selection (no tags, classes, scripts or {@code --all}) whose suites
-     * are all guard suites; null otherwise, and for the guard's own selection.
-     */
-    static @Nullable TestSelection guardCovering(TestSelection selection, Path dir) {
-        if (selection.guard()
-                || selection.allSuites()
-                || selection.scriptsOnly()
-                || !selection.includeTags().isEmpty()
-                || !selection.excludeTags().isEmpty()
-                || !selection.classes().isEmpty()) return null;
-        TestSelection guard;
-        try {
-            Path root = WorkspaceScan.owningRoot(dir).orElse(dir);
-            guard = TestSelection.of(TestSelection.guardSuites(root), false, List.of(), List.of(), true, false, false);
-        } catch (RuntimeException unreadable) {
-            return null;
-        }
-        if (guard.identityToken().equals(selection.identityToken())) return null;
-        return guard.wantedSuites().containsAll(selection.wantedSuites())
-                ? guard.withOnlyModules(selection.onlyModules())
-                : null;
     }
 
     /** The stamp inputs of {@code facts}, with the worker jars read through {@code identity}. */
@@ -403,19 +379,17 @@ public record TestStampInputs(
     }
 
     /**
-     * The suites a run of {@code moduleDir} runs under {@code selection}, resolved against the
-     * module's suites, the built-in {@code integration} suite always among them ({@link
-     * DeclaredSuite#withConvention}, so a caller handing the raw tables cannot lose it). The one
-     * derivation of it: the planner's compile-test and suite filter, the stamp, the forecast and the
-     * test-count estimate all read it here, so the suites a green marker is stored under are the
-     * suites that ran.
+     * The suites a run of {@code moduleDir} runs under {@code selection} ({@link SuiteChoice#resolve}).
+     * The one derivation of it: the planner's compile-test and suite filter, the stamp, the forecast
+     * and the test-count estimate all read it here, so the suites a green marker is stored under are
+     * the suites that ran.
      *
      * @param declared the module's {@link cc.jumpkick.model.BuildBlock#runSuites}
      */
     @KeyOwner(step = TaskNames.RUN_TESTS)
     public static TestSelection.Resolved resolveSuites(
             TestSelection selection, Path moduleDir, boolean compact, Map<String, DeclaredSuite> declared) {
-        return TestSuites.resolve(selection, moduleDir, compact, DeclaredSuite.withConvention(declared));
+        return SuiteChoice.resolve(selection, moduleDir, compact, declared);
     }
 
     /**
