@@ -40,7 +40,6 @@ import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.LocalInstallRows;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.ManifestPaths;
-import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.run.TaskForecast;
 import cc.jumpkick.run.TaskNames;
@@ -49,6 +48,7 @@ import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.ClasspathAbi;
 import cc.jumpkick.task.FileHashMemo;
 import cc.jumpkick.task.KeyAudit;
+import cc.jumpkick.task.KeyContract;
 import cc.jumpkick.task.KeyOwner;
 import cc.jumpkick.task.ToolchainPolicy;
 import cc.jumpkick.test.StampTokens;
@@ -83,7 +83,7 @@ final class GuardKeys {
     static String laneKey(String taskId, List<String> tokens, String baselineSlice) {
         List<String> all = new ArrayList<>(tokens);
         all.add("baseline:" + baselineSlice);
-        String key = ActionKey.forArtifact(taskId, BuildIdentity.cacheKeyVersion(), all);
+        String key = ActionKey.forArtifact(taskId, KeyContract.ARTIFACT.keyVersion(), all);
         return key;
     }
 

@@ -7,10 +7,10 @@ import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
-import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.ClasspathFingerprint;
+import cc.jumpkick.task.KeyContract;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -52,7 +52,7 @@ class RebuildPackageStoreParityTest {
         List<String> tokens =
                 List.of("classes:" + ClasspathFingerprint.entry(classes), "main:", "sbom:", "manifest:" + Map.of());
         String task = ActionKey.qualifiedTaskId("package-jar", jar);
-        String key = ActionKey.forArtifact(task, BuildIdentity.cacheKeyVersion(), tokens);
+        String key = ActionKey.forArtifact(task, KeyContract.ARTIFACT.keyVersion(), tokens);
 
         Session session = Session.defaults().withConfig(rebuildConfig()).withCacheDir(cache);
         SessionContext.where(session, () -> {
@@ -78,7 +78,7 @@ class RebuildPackageStoreParityTest {
         Files.writeString(jar, "jar-bytes");
         String task = ActionKey.qualifiedTaskId("package-jar", jar);
         List<String> tokens = List.of("classes:x", "main:", "sbom:", "manifest:" + Map.of());
-        String key = ActionKey.forArtifact(task, BuildIdentity.cacheKeyVersion(), tokens);
+        String key = ActionKey.forArtifact(task, KeyContract.ARTIFACT.keyVersion(), tokens);
 
         Session session = Session.defaults().withCacheDir(cache);
         SessionContext.where(session, () -> {

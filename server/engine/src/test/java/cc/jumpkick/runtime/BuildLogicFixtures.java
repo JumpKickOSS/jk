@@ -8,10 +8,10 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.layout.BuildLayout;
-import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.runtime.base.BuildLogicAnchor;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
+import cc.jumpkick.task.KeyContract;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -119,6 +119,8 @@ final class BuildLogicFixtures {
         tokens.add("task:" + stem);
         tokens.add("kind:script");
         return ActionKey.forArtifact(
-                ActionKey.qualifiedTaskId("build-logic-" + stem, projectDir), BuildIdentity.cacheKeyVersion(), tokens);
+                ActionKey.qualifiedTaskId("build-logic-" + stem, projectDir),
+                KeyContract.ARTIFACT.keyVersion(),
+                tokens);
     }
 }

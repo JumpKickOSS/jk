@@ -641,14 +641,16 @@ engine, `jk install` says so and asks for that one more run.
 `scripts/check-shelf-descriptors.sh "$JK_HOME"` then proves the shelf: every first-party worker
 jar's root `jk-plugin.toml` names its own module's `[plugin] table`.
 
-The first **build** under a freshly installed engine still re-runs every plugin step, guard lane,
-build-logic run and packaging step once: their action keys carry the installed engine's identity,
-so an artifact the previous engine produced is never restored under the new one. The preflight
-dirty memo stores that producer id beside `cacheKeyVersion`, so a memo certified under the
-displaced engine cannot make `jk build` report fully cached while packaging keys miss. Compile
-steps keep their keys and stay cached, and so do test suites unless the engine's suite code
-(`SuiteCode`) changed, so that one-time re-run is packaging and verdicts, not a
-full rebuild — and it is a later `jk build`, not the install's re-shelving pass. A later
+No action key carries the installed engine's identity. The first **build** under a freshly
+installed engine re-runs only the actions whose engine code changed: test suites when the suite
+code (`KeyContract.SUITE`) moved, plugin steps, guard lanes, build-logic runs and packaging when
+the artifact code (`KeyContract.ARTIFACT`) moved, native images when the native-image driver
+(`KeyContract.NATIVE`) moved. Guard G167 keeps each contract's recorded digest equal to its
+sources', so a change to that code always moves those keys. Compiles never re-run for the engine.
+The preflight dirty memo still stores the engine's code id beside `cacheKeyVersion`, so a memo
+certified under the displaced engine makes the build walk its keys again (cheap, and every
+unchanged key hits) rather than vouch for keys another engine may spell differently. Any such
+re-run happens in a later `jk build`, not in the install's re-shelving pass. A later
 `jk install` whose forecast finds only `cache-install` left (packaging already keyed under the
 live engine) uses the same thin parse + cache-install plan as re-shelving.
 

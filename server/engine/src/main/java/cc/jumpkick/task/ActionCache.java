@@ -1142,9 +1142,16 @@ public final class ActionCache {
         return sizes;
     }
 
-    /** The jk a record names as its producer: the cache-key version, which every key also hashes. */
+    /**
+     * The jk a record names as its producer: the cache-key version and every {@link KeyContract}'s
+     * digest, which between them are all a key hashes of jk itself. A record does not say which
+     * contract keyed it, so a miss under a moved contract reads as made by another jk for every
+     * family; only a miss consults it.
+     */
     static String producer() {
-        return "jk/" + BuildIdentity.cacheKeyVersion();
+        StringBuilder made = new StringBuilder("jk/").append(BuildIdentity.cacheKeyVersion());
+        for (KeyContract contract : KeyContract.values()) made.append('+').append(contract.digest());
+        return made.toString();
     }
 
     /**

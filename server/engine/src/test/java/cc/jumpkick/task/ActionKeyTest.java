@@ -577,24 +577,27 @@ class ActionKeyTest {
                 .build();
     }
 
-    /** The engine that packages an artifact is one of its inputs: another engine, another key. */
+    /**
+     * An artifact key names the engine only by the digest of the code that produces it: another
+     * engine with that code keeps the key, and a change to that code moves it.
+     */
     @Test
-    void an_artifact_key_moves_with_the_producing_engines_identity() {
+    void an_artifact_key_moves_with_its_contract_and_not_with_the_engine() {
         List<String> tokens = List.of("classes:dir:abc", "manifest:Main");
-        String derived = ActionKey.forArtifact("package-jar@1234", "0.1.0#3", tokens);
         try {
             BuildIdentity.overrideBuildIdForTests("000000000001");
-            String first = ActionKey.forArtifact("package-jar@1234", "0.1.0#3", tokens);
-            assertThat(first).isNotEqualTo(derived);
-            assertThat(ActionKey.forArtifact("package-jar@1234", "0.1.0#3", tokens))
-                    .as("the same engine keys the same artifact")
-                    .isEqualTo(first);
+            String first = ActionKey.forArtifact("package-jar@1234", KeyContract.ARTIFACT.keyVersion(), tokens);
             BuildIdentity.overrideBuildIdForTests("000000000002");
-            assertThat(ActionKey.forArtifact("package-jar@1234", "0.1.0#3", tokens))
-                    .as("a rebuilt engine under the same version is a different producer")
+            assertThat(ActionKey.forArtifact("package-jar@1234", KeyContract.ARTIFACT.keyVersion(), tokens))
+                    .as("a rebuilt engine with the same packaging code keys the same artifact")
+                    .isEqualTo(first);
+            KeyContract.ARTIFACT.overrideDigestForTests("packaging002");
+            assertThat(ActionKey.forArtifact("package-jar@1234", KeyContract.ARTIFACT.keyVersion(), tokens))
+                    .as("changed packaging code is another producer")
                     .isNotEqualTo(first);
         } finally {
             BuildIdentity.overrideBuildIdForTests(null);
+            KeyContract.ARTIFACT.overrideDigestForTests(null);
         }
     }
 

@@ -487,33 +487,22 @@ public final class ActionKey {
     /**
      * Action key for a packaging artifact (jar, fat-jar, native binary, OCI tarball, …) or any other
      * output the engine's own code produces from a token bag (a plugin step's staging, a guard
-     * lane's verdict, a build-logic run). A stable hash of the task id, jk version, the producing
-     * code's identity, and a set of pre-computed input tokens — typically {@link
-     * ClasspathFingerprint} hashes of the input classes/jars plus config strings (main-class,
-     * manifest, build args, toolchain version, …). The caller MUST include every input that affects
-     * the produced bytes; a missing token risks serving a stale artifact.
+     * lane's verdict, a build-logic run). A stable hash of the task id, the version string of the
+     * engine code that produces it ({@link KeyContract#keyVersion()}: {@link KeyContract#ARTIFACT},
+     * or {@link KeyContract#NATIVE} for an image), and a set of pre-computed input tokens —
+     * typically {@link ClasspathFingerprint} hashes of the input classes/jars plus config strings
+     * (main-class, manifest, build args, toolchain version, …). The caller MUST include every input
+     * that affects the produced bytes; a missing token risks serving a stale artifact.
      *
-     * <p>The producer's identity is {@link BuildIdentity#keyId()}, the running engine archive's code.
-     * The rules a packager applies — what it excludes, how it merges, what it writes at the root —
-     * are engine code, and a version string alone does not name them: two engines built from
-     * different sources under one version would otherwise share a key, and the second would
-     * restore the first's artifact, defect and all, until {@code --redo}. Compile keys do not
-     * carry it: their producers are the compiler workers, which those keys already hash.
+     * <p>The rules a packager applies — what it excludes, how it merges, what it writes at the root
+     * — are engine code, named by the contract's digest rather than the whole engine's identity: an
+     * engine rebuilt with a change elsewhere restores every artifact, and a change to that code
+     * moves the digest the guard records.
      */
     public static String forArtifact(String taskId, String jkVersion, List<String> inputTokens) {
-        return forArtifact(taskId, jkVersion, BuildIdentity.keyId(), inputTokens);
-    }
-
-    /**
-     * As {@link #forArtifact(String, String, List)} for an artifact an outside tool produces, whose
-     * {@code producer} is the identity of the engine code that runs it rather than the whole
-     * engine's: the tool and everything the engine hands it are keyed as tokens.
-     */
-    public static String forArtifact(String taskId, String jkVersion, String producer, List<String> inputTokens) {
         StringBuilder sb = new StringBuilder();
         sb.append("task:").append(taskId).append('\n');
         sb.append("jk:").append(jkVersion).append('\n');
-        sb.append("producer:").append(producer).append('\n');
         List<String> sorted = new ArrayList<>(inputTokens);
         sorted.sort(Comparator.naturalOrder());
         for (String t : sorted) sb.append("in:").append(t).append('\n');
@@ -541,7 +530,7 @@ public final class ActionKey {
         result.put("jdk", JdkToolchain.token(request.compilerHome()));
         // Every other line the key hashes, so the diff can name whatever moved it: jk's identity,
         // the compiler worker, the resources a processor reads, the [env] a processor sees.
-        result.put(JK_INPUT, BuildIdentity.compileKeyVersion());
+        result.put(JK_INPUT, BuildIdentity.cacheKeyVersion());
         result.put("worker", String.join(",", WorkerClosure.tokens(PluginJar.JAVA_COMPILER)));
         if (request.resourcesDigest() != null) result.put("resources", request.resourcesDigest());
         if (processorsMayRun(request.processorPath(), request.extraOptions())

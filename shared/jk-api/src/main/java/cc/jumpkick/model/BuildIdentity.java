@@ -15,7 +15,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
-import java.util.function.Predicate;
 import java.util.jar.Attributes;
 import java.util.jar.JarFile;
 import java.util.jar.Manifest;
@@ -24,20 +23,21 @@ import java.util.zip.ZipFile;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Running jk identity for cache keys and engine election. Releases key by {@link JkVersion#VERSION}
- * plus the cache-key salt; {@code -SNAPSHOT} builds also fold in the code's {@link #keyId()} (12
- * hex). Empty {@link #buildId()} means no jar identity.
+ * Running jk identity for cache keys and engine election. Action keys open with {@link
+ * JkVersion#VERSION} plus the cache-key salt ({@link #cacheKeyVersion()}), on a {@code -SNAPSHOT}
+ * build too; the running archive's identity ({@link #buildId()}, {@link #keyId()}) tells one
+ * installed engine from another and keys the engine's own preflight memo. Empty {@link #buildId()}
+ * means no jar identity.
  */
 public final class BuildIdentity {
 
     /**
-     * Cache-key salt: turn this in the same commit that changes what any action key hashes. It
-     * folds into {@link #cacheKeyVersion()} on the release branch too, where the jar id does not —
-     * a rebuilt release otherwise shares the official release's whole cache namespace, and a
-     * key-shape change would collide with records the old shape wrote. Not a second product
-     * version: never printed, never parsed, never compared on its own.
+     * Cache-key salt: turn this in the same commit that changes what any action key hashes, or what
+     * a result recorded under an unchanged key means. It folds into every key through {@link
+     * #cacheKeyVersion()}: a key-shape change would otherwise collide with records the old shape
+     * wrote. Not a second product version: never printed, never parsed, never compared on its own.
      */
-    static final int CACHE_KEY_SALT = 13;
+    static final int CACHE_KEY_SALT = 14;
 
     private static volatile @Nullable String cachedBuildId;
 
@@ -47,10 +47,8 @@ public final class BuildIdentity {
     private BuildIdentity() {}
 
     /**
-     * Content identity of the running code archive, or {@code ""} when none is derivable. Every
-     * artifact-shaped action key ({@code ActionKey.forArtifact}) folds this in as the identity of
-     * the code that produced the artifact, so an engine rebuilt from other sources under the same
-     * version never restores what the previous engine packaged.
+     * Content identity of the running code archive, or {@code ""} when none is derivable: how a
+     * client tells one installed engine from another. No action key folds it in.
      */
     public static String buildId() {
         String override = overrideBuildId;
@@ -65,8 +63,8 @@ public final class BuildIdentity {
 
     /**
      * Pretend the running code is the archive {@code id} names; {@code null} returns to the
-     * derived identity. A test uses it to be "another engine" for one build and watch a packaging
-     * key miss; unit tests otherwise run from a classes dir and have no identity to move. It stands
+     * derived identity. A test uses it to be "another engine" for one build and watch every action
+     * key hold; unit tests otherwise run from a classes dir and have no identity to move. It stands
      * in for {@link #keyId()} too.
      */
     public static void overrideBuildIdForTests(@Nullable String id) {
@@ -76,15 +74,13 @@ public final class BuildIdentity {
     private static volatile @Nullable String cachedKeyId;
 
     /**
-     * The running code's identity as action keys name their producer: {@link #buildId()} without
-     * the stamps the packaging writes into the archive's manifest ({@value #BUILD_COMMIT_ATTRIBUTE}
-     * and {@value #BUILD_TIME_ATTRIBUTE}), 12 hex, or {@code ""} when no archive is derivable. Those
-     * stamps name the checkout the jar was packaged from and move with every commit that repackages
-     * the engine, a test-only edit to its module included, while the code that keys, compiles and
-     * packages stays byte for byte what it was: keyed by the whole archive, every action key of the
-     * next build moved after each such install, and the push gate ran every suite again.
-     * {@link #buildId()} stays the whole archive's: a client tells one installed engine from another
-     * by it.
+     * The running code's identity: {@link #buildId()} without the stamps the packaging writes into
+     * the archive's manifest ({@value #BUILD_COMMIT_ATTRIBUTE} and {@value #BUILD_TIME_ATTRIBUTE}),
+     * 12 hex, or {@code ""} when no archive is derivable. Those stamps name the checkout the jar was
+     * packaged from and move with every commit that repackages the engine while its code stays byte
+     * for byte what it was. The preflight memo keys by it: the memo vouches that no key of the build
+     * moved, and any engine code may spell a key differently. {@link #buildId()} stays the whole
+     * archive's: a client tells one installed engine from another by it.
      */
     public static String keyId() {
         String override = overrideBuildId;
@@ -98,65 +94,38 @@ public final class BuildIdentity {
     }
 
     /**
-     * The version string to key caches by: {@link JkVersion#VERSION} plus {@link #CACHE_KEY_SALT}
-     * for releases; {@code -SNAPSHOT} builds also fold the code's {@link #keyId()} in so a rebuilt
-     * engine never restores an older engine's results under the same key.
+     * The version string every action key opens with: {@link JkVersion#VERSION} plus {@link
+     * #CACHE_KEY_SALT}, and nothing of the running code, even on a {@code -SNAPSHOT} build. A key
+     * names the program that executes its action by content (the compiler worker, the test runner, a
+     * plugin's jar, GraalVM) beside every input it reads, and the engine code that produces or judges
+     * a result itself is named by its contract's digest ({@code KeyContract}); so an engine rebuilt
+     * from other sources, installed with {@code jk install -S}, replays every compile, suite, package
+     * and lane its change does not reach.
      */
     public static String cacheKeyVersion() {
-        return keyVersion(keyId());
-    }
-
-    /**
-     * The version string to key by when {@code id} names the code that produces the result:
-     * {@link JkVersion#VERSION} plus {@link #CACHE_KEY_SALT}, and {@code id} on a {@code -SNAPSHOT}
-     * build. A run-tests stamp passes the identity of the engine code that picks and judges a suite
-     * ({@link #codeIdentity(Predicate)}), so an engine change elsewhere replays every green suite.
-     */
-    public static String keyVersion(String id) {
         String pinned = overrideKeyVersion;
         if (pinned != null) return pinned;
-        return compose(JkVersion.VERSION, id);
-    }
-
-    /**
-     * The version string a compile keys by: {@link JkVersion#VERSION} plus {@link #CACHE_KEY_SALT},
-     * without the code's {@link #keyId()} even on a {@code -SNAPSHOT} build. A compile's producer is
-     * the compiler worker, which its key already names by content (javac's wrapper, kotlinc's and
-     * groovyc's closures), with the compiler JDK, the options the engine derives and every source
-     * and classpath entry; the engine's own code reaches its output only through those. So an engine
-     * rebuilt from other sources, a one-line edit to jk-engine installed with {@code jk install -S},
-     * recompiles nothing: before, every compile of the next build missed. Engine code that
-     * changes what a compile records (which outputs it keeps, how it lays them out) turns the salt,
-     * as on a release build, where no key folds the code. Artifact keys keep the producer ({@link
-     * #cacheKeyVersion}, {@code producer:} in {@code ActionKey.forArtifact}); a run-tests stamp keeps
-     * the part of it that decides what a test JVM sees and how its outcome reads ({@link
-     * #keyVersion}).
-     */
-    public static String compileKeyVersion() {
-        return keyVersion("");
+        return compose(JkVersion.VERSION);
     }
 
     private static volatile @Nullable String overrideKeyVersion;
 
     /**
      * Pretend to be a jk whose action keys are all different: what an upgrade does, since keys hash
-     * the version and the compiler worker's bytes. {@code null} returns to the derived version. A
-     * release-version test classpath folds no build id into the key, so {@link
-     * #overrideBuildIdForTests} cannot move it.
+     * the version. {@code null} returns to the derived version.
      */
     public static void overrideCacheKeyVersionForTests(@Nullable String version) {
         overrideKeyVersion = version;
     }
 
     /** Pure composition rule, separated for tests. */
-    static String compose(String version, String id) {
-        return compose(version, id, CACHE_KEY_SALT);
+    static String compose(String version) {
+        return compose(version, CACHE_KEY_SALT);
     }
 
-    /** As {@link #compose(String, String)} with the salt explicit, so tests can turn it. */
-    static String compose(String version, String id, int salt) {
-        String salted = version + "#" + salt;
-        return version.endsWith("-SNAPSHOT") && !id.isEmpty() ? salted + "+" + id : salted;
+    /** As {@link #compose(String)} with the salt explicit, so tests can turn it. */
+    static String compose(String version, int salt) {
+        return version + "#" + salt;
     }
 
     private static String computeBuildId() {
@@ -311,33 +280,11 @@ public final class BuildIdentity {
      * engine start.
      */
     static String codeIdentity(Path jar) throws IOException {
-        return codeIdentity(jar, entry -> true);
-    }
-
-    /**
-     * The identity of the running code archive's entries that {@code entries} keeps, by archive
-     * entry name ({@code cc/jumpkick/test/Discovery.class}), as {@link #keyId()} hashes them: 12 hex,
-     * or {@code ""} when the code runs from no archive. Not cached: a caller keeps what it derives.
-     */
-    public static String codeIdentity(Predicate<String> entries) {
-        Path location = codeArchive();
-        if (location == null) return "";
-        try {
-            return codeIdentity(location, entries).substring(0, 12);
-        } catch (IOException | RuntimeException e) {
-            // Best-effort, as keyId is: the whole archive then names it.
-            return keyId();
-        }
-    }
-
-    /** As {@link #codeIdentity(Path)} over the entries {@code keep} names. */
-    static String codeIdentity(Path jar, Predicate<String> keep) throws IOException {
         MessageDigest md = Hashing.newSha256();
         try (ZipFile zip = new ZipFile(jar.toFile())) {
             List<ZipEntry> entries = new ArrayList<>(Collections.list(zip.entries()));
             entries.sort(Comparator.comparing(ZipEntry::getName));
             for (ZipEntry e : entries) {
-                if (!keep.test(e.getName())) continue;
                 String line;
                 if (e.getName().equalsIgnoreCase(JarFile.MANIFEST_NAME)) {
                     Manifest m;

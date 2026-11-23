@@ -246,7 +246,7 @@ public final class PlannerVersions {
             var pred = JavaCompile.predict(
                     ActionKey.qualifiedTaskId(TaskNames.COMPILE_VERSIONS, out),
                     req,
-                    BuildIdentity.compileKeyVersion(),
+                    BuildIdentity.cacheKeyVersion(),
                     env.actionCache(),
                     ActionKey.stateDir(
                             ActionTree.INCREMENTAL_JAVA.under(CacheTree.ACTIONS.under(env.cache())),
@@ -351,7 +351,7 @@ public final class PlannerVersions {
                 taskId,
                 PlannerCompile.compileLabel(ctx, TaskNames.COMPILE_VERSIONS),
                 request,
-                BuildIdentity.compileKeyVersion(),
+                BuildIdentity.cacheKeyVersion(),
                 !rerun,
                 !in.ephemeralActions(),
                 actionCache.cas(),

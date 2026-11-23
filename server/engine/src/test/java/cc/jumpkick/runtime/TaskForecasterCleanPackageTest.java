@@ -6,13 +6,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.layout.BuildLayout;
-import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Project;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.task.FreshnessStamp;
+import cc.jumpkick.task.KeyContract;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Comparator;
@@ -75,7 +75,7 @@ class TaskForecasterCleanPackageTest {
         Files.createDirectories(jar.getParent());
         List<String> tokensLive = List.of("classes:" + classesTokLive, "main:", "sbom:", "manifest:" + Map.of());
         String task = ActionKey.qualifiedTaskId("package-jar", jar);
-        String keyLive = ActionKey.forArtifact(task, BuildIdentity.cacheKeyVersion(), tokensLive);
+        String keyLive = ActionKey.forArtifact(task, KeyContract.ARTIFACT.keyVersion(), tokensLive);
 
         Path cache = Files.createDirectories(tmp.resolve("cache"));
         Cas cas = new Cas(cache.resolve("store"));
@@ -90,7 +90,7 @@ class TaskForecasterCleanPackageTest {
         Map<String, String> compileOut = ac.lookup("ck").orElseThrow().outputs();
         String classesTokClean = ClasspathFingerprint.entryFromCompileAndResources(compileOut, List.of());
         List<String> tokensClean = List.of("classes:" + classesTokClean, "main:", "sbom:", "manifest:" + Map.of());
-        String keyClean = ActionKey.forArtifact(task, BuildIdentity.cacheKeyVersion(), tokensClean);
+        String keyClean = ActionKey.forArtifact(task, KeyContract.ARTIFACT.keyVersion(), tokensClean);
         assertThat(keyClean).isEqualTo(keyLive);
     }
 

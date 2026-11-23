@@ -14,6 +14,7 @@ import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.TaskNames;
+import cc.jumpkick.task.KeyContract;
 import cc.jumpkick.testing.TestCaches;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -24,16 +25,16 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * The package step's key names the engine that packages: with nothing else changed, a second
- * build under the same engine restores the jar, and a build under another engine identity — a
- * rebuilt engine of the same version, whose packaging rules may differ — packages again instead
- * of restoring what the previous engine produced.
+ * The package step's key names the packaging code, not the engine: with nothing else changed, a
+ * build under another engine identity (a rebuilt engine whose change lies elsewhere) restores the
+ * jar, and a build whose packaging code changed packages again instead of restoring what the old
+ * code produced.
  */
 @Tag("integration")
 class PackagerIdentityKeyTest {
 
     @Test
-    void a_new_engine_identity_repackages_where_the_same_one_restores(@TempDir Path tmp) throws Exception {
+    void changed_packaging_code_repackages_where_another_engine_restores(@TempDir Path tmp) throws Exception {
         Path project = Files.createDirectories(tmp.resolve("lib"));
         Path cache = TestCaches.dir("packager-identity-cache");
         Files.writeString(project.resolve("jk.toml"), """
@@ -67,6 +68,9 @@ class PackagerIdentityKeyTest {
                         project, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
                 assertThat(lock.run().errors()).isEmpty();
 
+                // Fresh digests: the cache directory outlives the run, and another run's records stay in it.
+                String run = Long.toHexString(System.nanoTime());
+                KeyContract.ARTIFACT.overrideDigestForTests("packaging-one-" + run);
                 BuildIdentity.overrideBuildIdForTests("engine-one-0001");
                 assertThat(packageLabels(project, cache, session))
                         .as("first build under engine one packages")
@@ -77,12 +81,18 @@ class PackagerIdentityKeyTest {
 
                 BuildIdentity.overrideBuildIdForTests("engine-two-0002");
                 assertThat(packageLabels(project, cache, session))
-                        .as("another engine identity is another producer: the jar is packaged again")
+                        .as("another engine with the same packaging code: the jar is restored")
+                        .anyMatch(l -> l.equals(jarName + " up-to-date"));
+
+                KeyContract.ARTIFACT.overrideDigestForTests("packaging-two-" + run);
+                assertThat(packageLabels(project, cache, session))
+                        .as("changed packaging code is another producer: the jar is packaged again")
                         .anyMatch(l -> l.equals("package " + jarName));
             } catch (Exception e) {
                 throw new RuntimeException(e);
             } finally {
                 BuildIdentity.overrideBuildIdForTests(null);
+                KeyContract.ARTIFACT.overrideDigestForTests(null);
             }
         });
     }

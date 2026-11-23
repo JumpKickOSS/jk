@@ -28,10 +28,10 @@ public final class StampTokens {
 
     private StampTokens() {}
 
-    /** The reason for a key whose jk moved: its version, or the engine code that runs a suite ({@link SuiteCode}). */
+    /** The reason for a key whose jk moved: its version, or the engine code that runs a suite ({@link cc.jumpkick.task.KeyContract#SUITE}). */
     public static final String JK_CHANGED = "jk changed";
 
-    /** The extras token every stamp carries for the jk that took it ({@link SuiteCode#keyVersion}). */
+    /** The extras token every stamp carries for the jk that took it ({@link cc.jumpkick.task.KeyContract#keyVersion}). */
     private static final String JK_TOKEN = "x:jk:";
 
     /** Where the tokens of the module's last green run under {@code selection} are kept. */

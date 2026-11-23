@@ -19,7 +19,6 @@ import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.MainClassScanner;
 import cc.jumpkick.lock.Lockfile;
-import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PluginConfig;
 import cc.jumpkick.plugin.ProjectFacts;
@@ -46,6 +45,7 @@ import cc.jumpkick.task.CompileStamp;
 import cc.jumpkick.task.InputGuard;
 import cc.jumpkick.task.JdkToolchain;
 import cc.jumpkick.task.KeyAudit;
+import cc.jumpkick.task.KeyContract;
 import cc.jumpkick.task.KeyOwner;
 import cc.jumpkick.task.ModuleEnvKeys;
 import java.io.IOException;
@@ -700,7 +700,7 @@ public final class PlannerPlugin {
                         active.config().secrets())
                 .ifPresent(tokens::add);
         String taskId = ActionKey.qualifiedTaskId("plugin-" + step.name(), scratch);
-        String actionKey = ActionKey.forArtifact(taskId, BuildIdentity.cacheKeyVersion(), tokens);
+        String actionKey = ActionKey.forArtifact(taskId, KeyContract.ARTIFACT.keyVersion(), tokens);
         return new StepKey(taskId, actionKey, facts, sources, stepTools);
     }
 

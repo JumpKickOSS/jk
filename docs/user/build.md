@@ -104,11 +104,13 @@ cache — compile, package, tests, and the steps plugins contribute, a lint or a
 them — and stores each step's record again, so the build after it is served from the cache. Nothing
 is re-fetched; `--force` re-fetches too.
 
-The first build after `jk install` of a new engine runs every plugin step, guard lane,
-build-logic run and packaging step once more: their keys carry the identity of the engine that
-produced them, so nothing an older engine produced is restored under the new one. The preflight
-dirty memo names that engine too, so a clean memo from the previous engine does not skip the
-walk. Compile steps keep their keys and stay cached.
+The first build after `jk install` of a new engine re-runs only what the engine's change can
+alter: test suites when the code that picks and judges a suite changed, plugin steps, guard lanes,
+build-logic runs and packaging when the code that produces them changed, native images when the
+code that runs native-image changed. Keys name that code by digest and never the whole engine,
+so an engine change elsewhere replays every result, and compile steps always stay cached. The
+preflight dirty memo names the engine, so a clean memo from the previous engine does not skip the
+walk that checks those keys.
 
 ## Annotation processors
 

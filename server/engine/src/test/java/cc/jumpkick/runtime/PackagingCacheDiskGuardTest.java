@@ -12,7 +12,6 @@ import cc.jumpkick.config.JkCacheConfig;
 import cc.jumpkick.config.RunNotices;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
-import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.run.BuildPlanKey;
 import cc.jumpkick.run.TaskContext;
@@ -20,6 +19,7 @@ import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.InputGuard;
+import cc.jumpkick.task.KeyContract;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.file.Files;
@@ -191,7 +191,7 @@ class PackagingCacheDiskGuardTest {
                 heavy(Files.createDirectories(base.resolve("app-jri/lib")).resolve("modules"));
         String task = ActionKey.qualifiedTaskId(TaskNames.PACKAGE_JLINK, base.resolve("app-jri"));
         List<String> tokens = List.of("jdk:25");
-        String key = ActionKey.forArtifact(task, BuildIdentity.cacheKeyVersion(), tokens);
+        String key = ActionKey.forArtifact(task, KeyContract.ARTIFACT.keyVersion(), tokens);
         DiskGuard.Pin pin = DiskGuard.pinForTest(cache, space);
         try {
             SessionContext.where(Session.defaults().withCacheDir(cache), () -> {

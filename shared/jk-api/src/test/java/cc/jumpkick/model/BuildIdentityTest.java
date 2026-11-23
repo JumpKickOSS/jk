@@ -10,7 +10,6 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
-import java.util.function.Predicate;
 import java.util.jar.Attributes;
 import java.util.jar.JarEntry;
 import java.util.jar.JarOutputStream;
@@ -22,26 +21,29 @@ class BuildIdentityTest {
 
     private static final String SALTED = "#" + BuildIdentity.CACHE_KEY_SALT;
 
+    /**
+     * A key names the version and the salt and nothing of the running code, on a -SNAPSHOT too: an
+     * engine rebuilt from other sources replays every action its change does not reach.
+     */
     @Test
-    void snapshots_fold_the_build_id_in_releases_do_not() {
-        assertThat(BuildIdentity.compose("1.0.0", "abc123def456")).isEqualTo("1.0.0" + SALTED);
-        assertThat(BuildIdentity.compose("1.0.0-SNAPSHOT", "abc123def456"))
-                .isEqualTo("1.0.0-SNAPSHOT" + SALTED + "+abc123def456");
-        // No derivable identity -> the version-string rule stands (release behavior).
-        assertThat(BuildIdentity.compose("1.0.0-SNAPSHOT", "")).isEqualTo("1.0.0-SNAPSHOT" + SALTED);
+    void keys_fold_no_engine_identity_on_a_snapshot_either() {
+        assertThat(BuildIdentity.compose("1.0.0")).isEqualTo("1.0.0" + SALTED);
+        assertThat(BuildIdentity.compose("1.0.0-SNAPSHOT")).isEqualTo("1.0.0-SNAPSHOT" + SALTED);
+        try {
+            BuildIdentity.overrideBuildIdForTests("feedfacecafe");
+            String one = BuildIdentity.cacheKeyVersion();
+            BuildIdentity.overrideBuildIdForTests("0123456789ab");
+            assertThat(BuildIdentity.cacheKeyVersion()).isEqualTo(one).isEqualTo(JkVersion.VERSION + SALTED);
+        } finally {
+            BuildIdentity.overrideBuildIdForTests(null);
+        }
     }
 
     @Test
-    void turning_the_salt_turns_every_key_release_branch_included() {
-        // Release-shaped versions drop the jar id, so the salt is the only turnable input there.
-        assertThat(BuildIdentity.compose("1.0.0", "", BuildIdentity.CACHE_KEY_SALT))
-                .isNotEqualTo(BuildIdentity.compose("1.0.0", "", BuildIdentity.CACHE_KEY_SALT + 1));
-        assertThat(BuildIdentity.compose("1.0.0-SNAPSHOT", "abc123def456", BuildIdentity.CACHE_KEY_SALT))
-                .isNotEqualTo(
-                        BuildIdentity.compose("1.0.0-SNAPSHOT", "abc123def456", BuildIdentity.CACHE_KEY_SALT + 1));
-        // The salt reaches cacheKeyVersion() through the same composition rule.
-        assertThat(BuildIdentity.cacheKeyVersion())
-                .isEqualTo(BuildIdentity.compose(JkVersion.VERSION, BuildIdentity.keyId()));
+    void turning_the_salt_turns_every_key() {
+        assertThat(BuildIdentity.compose("1.0.0", BuildIdentity.CACHE_KEY_SALT))
+                .isNotEqualTo(BuildIdentity.compose("1.0.0", BuildIdentity.CACHE_KEY_SALT + 1));
+        assertThat(BuildIdentity.cacheKeyVersion()).isEqualTo(BuildIdentity.compose(JkVersion.VERSION));
     }
 
     @Test
@@ -49,26 +51,6 @@ class BuildIdentityTest {
         assertThat(BuildIdentity.buildId()).isEmpty();
         assertThat(BuildIdentity.keyId()).isEmpty();
         assertThat(BuildIdentity.cacheKeyVersion()).isEqualTo(JkVersion.VERSION + SALTED);
-    }
-
-    /**
-     * A compile keys by the version and salt alone: an engine rebuilt from other sources under one
-     * -SNAPSHOT version recompiles nothing, while its artifact keys (cacheKeyVersion) still move with
-     * it.
-     */
-    @Test
-    void a_compile_keys_no_engine_identity() {
-        try {
-            BuildIdentity.overrideBuildIdForTests("feedfacecafe");
-            String one = BuildIdentity.compileKeyVersion();
-            BuildIdentity.overrideBuildIdForTests("0123456789ab");
-            assertThat(BuildIdentity.compileKeyVersion()).isEqualTo(one).isEqualTo(JkVersion.VERSION + SALTED);
-            if (JkVersion.VERSION.endsWith("-SNAPSHOT")) {
-                assertThat(BuildIdentity.cacheKeyVersion()).isEqualTo(JkVersion.VERSION + SALTED + "+0123456789ab");
-            }
-        } finally {
-            BuildIdentity.overrideBuildIdForTests(null);
-        }
     }
 
     @Test
@@ -155,37 +137,6 @@ class BuildIdentityTest {
         m.getMainAttributes().put(Attributes.Name.MAIN_CLASS, "cc.jumpkick.engine.Other");
         write(main, m, "A");
         assertThat(BuildIdentity.codeIdentity(main)).isNotEqualTo(BuildIdentity.codeIdentity(one));
-    }
-
-    /**
-     * The identity of a part of the archive moves with an entry of that part and with nothing else,
-     * so a run-tests stamp keyed by the code that runs a suite holds over an engine change elsewhere.
-     */
-    @Test
-    void a_parts_identity_moves_with_its_entries_only(@TempDir Path dir) throws IOException {
-        Predicate<String> part = name -> name.startsWith("cc/jumpkick/test/");
-        Path one = archive(dir.resolve("one.jar"), "A", "A");
-        Path elsewhere = archive(dir.resolve("elsewhere.jar"), "A", "B");
-        Path inside = archive(dir.resolve("inside.jar"), "B", "A");
-        assertThat(BuildIdentity.codeIdentity(elsewhere)).isNotEqualTo(BuildIdentity.codeIdentity(one));
-        assertThat(BuildIdentity.codeIdentity(elsewhere, part)).isEqualTo(BuildIdentity.codeIdentity(one, part));
-        assertThat(BuildIdentity.codeIdentity(inside, part)).isNotEqualTo(BuildIdentity.codeIdentity(one, part));
-        assertThat(BuildIdentity.codeIdentity(part))
-                .as("a classes dir has no archive")
-                .isEmpty();
-    }
-
-    private static Path archive(Path at, String suiteBody, String engineBody) throws IOException {
-        try (OutputStream out = Files.newOutputStream(at);
-                JarOutputStream jar = new JarOutputStream(out, manifest("4ee07400a592", "2026-11-15T16:27:23Z"))) {
-            jar.putNextEntry(new JarEntry("cc/jumpkick/test/Discovery.class"));
-            jar.write(suiteBody.getBytes(StandardCharsets.UTF_8));
-            jar.closeEntry();
-            jar.putNextEntry(new JarEntry("cc/jumpkick/engine/EngineMain.class"));
-            jar.write(engineBody.getBytes(StandardCharsets.UTF_8));
-            jar.closeEntry();
-        }
-        return at;
     }
 
     private static Path jar(Path at, String commit, String time, String body) throws IOException {

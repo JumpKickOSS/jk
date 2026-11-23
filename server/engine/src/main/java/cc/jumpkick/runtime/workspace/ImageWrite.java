@@ -9,7 +9,6 @@ import cc.jumpkick.host.Log;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.image.ImageConfig;
 import cc.jumpkick.layout.BuildLayout;
-import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.LibDir;
 import cc.jumpkick.run.TaskContext;
@@ -21,6 +20,7 @@ import cc.jumpkick.runtime.base.ImageCredentials;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.ClasspathFingerprint;
+import cc.jumpkick.task.KeyContract;
 import cc.jumpkick.task.KeyOwner;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -155,7 +155,7 @@ final class ImageWrite {
         if (useCache) {
             String imgTask = ActionKey.qualifiedTaskId(
                     TaskNames.WRITE_IMAGE, tarballPath != null ? tarballPath : layout.ociImageTar());
-            String imgKey = ActionKey.forArtifact(imgTask, BuildIdentity.cacheKeyVersion(), tokens.of(base));
+            String imgKey = ActionKey.forArtifact(imgTask, KeyContract.ARTIFACT.keyVersion(), tokens.of(base));
             recorded = new ImageKey(imgTask, imgKey);
             var hit = ac.lookup(imgKey);
             if (hit.isPresent()

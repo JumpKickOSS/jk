@@ -33,6 +33,7 @@ import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.task.InputGuard;
 import cc.jumpkick.task.KeyAudit;
+import cc.jumpkick.task.KeyContract;
 import cc.jumpkick.task.KeyOwner;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -392,7 +393,7 @@ public final class PlannerTails {
                     String srcHash = String.join(";", rootTokens);
                     List<String> tokens = List.of("sources:" + srcHash);
                     String task = ActionKey.qualifiedTaskId(TaskNames.PACKAGE_SOURCES, sourcesJar);
-                    String key = ActionKey.forArtifact(task, BuildIdentity.cacheKeyVersion(), tokens);
+                    String key = ActionKey.forArtifact(task, KeyContract.ARTIFACT.keyVersion(), tokens);
                     if (restorePackaged(cache, key, sourcesJar.getParent())) {
                         ctx.label(sourcesJar.getFileName() + " up-to-date");
                         ctx.cached();

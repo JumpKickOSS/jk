@@ -853,8 +853,7 @@ public final class TestSupport {
         if (useCache) {
             try {
                 boolean restores = actionCache
-                        .lookup(JavaCompile.key(
-                                cacheTaskId, request, BuildIdentity.compileKeyVersion(), classpathTokens))
+                        .lookup(JavaCompile.key(cacheTaskId, request, BuildIdentity.cacheKeyVersion(), classpathTokens))
                         .isPresent();
                 ctx.reweight(restores ? EffortWeights.RESTORE : EffortWeights.compileWeight(sources.size()));
             } catch (Exception e) {
@@ -866,7 +865,7 @@ public final class TestSupport {
             Perf.note(
                     "live-compile-test " + outputDir,
                     "key",
-                    JavaCompile.key(cacheTaskId, request, BuildIdentity.compileKeyVersion(), classpathTokens),
+                    JavaCompile.key(cacheTaskId, request, BuildIdentity.cacheKeyVersion(), classpathTokens),
                     "cp",
                     request.classpath().size(),
                     "src",
@@ -894,7 +893,7 @@ public final class TestSupport {
                     cacheTaskId,
                     PlannerCompile.compileLabel(ctx, taskId),
                     request,
-                    BuildIdentity.compileKeyVersion(),
+                    BuildIdentity.cacheKeyVersion(),
                     useCache,
                     true,
                     actionCache.cas(),

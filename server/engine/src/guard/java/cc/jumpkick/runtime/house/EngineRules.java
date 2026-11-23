@@ -9,7 +9,7 @@ import cc.jumpkick.guard.api.Scope;
 import cc.jumpkick.guard.api.Text;
 import cc.jumpkick.guard.api.TextSite;
 import cc.jumpkick.guard.api.Violations;
-import cc.jumpkick.test.SuiteCode;
+import cc.jumpkick.task.KeyContract;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Matcher;
@@ -21,7 +21,7 @@ import java.util.regex.Pattern;
  * read out of the engine's source, never restated; a scan that comes back implausibly small
  * throws, so a blind arm is {@code scanner-failed}, never clean. The forecast-key rules are
  * {@link ForecastKeyRules}. Code that picks a suite's classes or reads its outcome lives where the
- * run-tests stamp keys it ({@link SuiteCode}).
+ * run-tests stamp keys it ({@link KeyContract#SUITE}).
  */
 @GuardSuite(scope = Scope.MODULE)
 final class EngineRules {
@@ -112,7 +112,7 @@ final class EngineRules {
     @Guard(
             id = "suite-code-keyed",
             why =
-                    "a run-tests stamp keys the engine by the code that picks, launches and judges a suite (SuiteCode); a class outside it that does so can change a suite's outcome while its green marker still replays",
+                    "a run-tests stamp keys the engine by the code that picks, launches and judges a suite (KeyContract.SUITE); a class outside it that does so can change a suite's outcome while its green marker still replays",
             instead =
                     "move the code into cc.jumpkick.test or a class named for tests or suites, or allow it here when it only builds the selection the stamp keys, plans, schedules or reports")
     @Allow(
@@ -132,10 +132,11 @@ final class EngineRules {
             reason = "the forecast: it says whether a suite runs and runs none")
     @Allow(
             in = "server/engine/src/main/java/cc/jumpkick/runtime/MemoInputs.java",
-            reason = "keys the preflight memo, which folds the whole engine's identity")
+            reason = "keys the preflight memo, which folds the whole engine's code identity")
     @Allow(
             in = "server/engine/src/main/java/cc/jumpkick/runtime/NodeArm.java",
-            reason = "Node.js test steps, keyed as artifacts by the whole engine's identity")
+            reason =
+                    "Node.js test steps, keyed as artifacts by the code KeyContract.ARTIFACT records, this file with it")
     @Allow(
             in = "server/engine/src/main/java/cc/jumpkick/runtime/PlannerResources.java",
             reason = "decides whether a suite step is planned at all; a step not planned stores no marker")
@@ -168,7 +169,7 @@ final class EngineRules {
             if (!m.find()) continue;
             naming++;
             String entry = rel.substring(ENGINE_SOURCES.length(), rel.length() - ".java".length()) + ".class";
-            if (SuiteCode.contains(entry)) continue;
+            if (KeyContract.suiteCode(entry)) continue;
             int line = (int) code.substring(0, m.start())
                             .chars()
                             .filter(c -> c == '\n')
@@ -176,7 +177,7 @@ final class EngineRules {
                     + 1;
             v.add(
                     new TextSite(rel, line, m.group()),
-                    "this class uses " + m.group() + " outside the code a run-tests stamp keys (SuiteCode)");
+                    "this class uses " + m.group() + " outside the code a run-tests stamp keys (KeyContract.SUITE)");
         }
         if (naming < 30)
             throw new IllegalStateException(

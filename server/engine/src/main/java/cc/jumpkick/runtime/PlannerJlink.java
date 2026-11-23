@@ -15,7 +15,6 @@ import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.BuildLayout;
-import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Jlink;
 import cc.jumpkick.model.LibDir;
@@ -29,6 +28,7 @@ import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.task.InputGuard;
 import cc.jumpkick.task.JdkToolchain;
+import cc.jumpkick.task.KeyContract;
 import cc.jumpkick.task.KeyOwner;
 import cc.jumpkick.task.ModuleEnvKeys;
 import cc.jumpkick.task.ParsedBuild;
@@ -174,7 +174,7 @@ final class PlannerJlink {
         if (cacheKind != JlinkImage.Cache.NONE) tokens.addAll(ModuleEnvKeys.worker(project, layout.moduleRoot()));
         String task = ActionKey.qualifiedTaskId(TaskNames.PACKAGE_JLINK, layout.jlinkImage());
         return new PackagingKeys.Keyed(
-                task, List.copyOf(tokens), ActionKey.forArtifact(task, BuildIdentity.cacheKeyVersion(), tokens));
+                task, List.copyOf(tokens), ActionKey.forArtifact(task, KeyContract.ARTIFACT.keyVersion(), tokens));
     }
 
     /**

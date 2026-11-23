@@ -25,6 +25,7 @@ import cc.jumpkick.runtime.workspace.WorkspaceExecute;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.FreshnessStamp;
+import cc.jumpkick.task.KeyContract;
 import cc.jumpkick.testing.TestCaches;
 import cc.jumpkick.wire.runtime.ModulePlan;
 import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
@@ -243,12 +244,12 @@ class JavaAbiCompileAvoidanceE2eTest {
     }
 
     /**
-     * A jar's key names the engine that packages it where a compile's does not: under a rebuilt
-     * engine with nothing else moved, the forecast keeps every compile and says why the jar is
-     * packaged again.
+     * Neither a compile's key nor a jar's names the engine: under a rebuilt engine with nothing else
+     * moved, the forecast keeps both. A jar's key names the packaging code's digest, so a change to
+     * that code keeps every compile and says why the jar is packaged again.
      */
     @Test
-    void a_jar_another_engine_packaged_forecasts_jk_changed(@TempDir Path tmp) throws Exception {
+    void a_jar_changed_packaging_code_packaged_forecasts_jk_changed(@TempDir Path tmp) throws Exception {
         Path cache = TestCaches.dir("abi-upgrade-cache");
         Path ws = workspace(tmp);
         lock(ws, cache);
@@ -261,6 +262,13 @@ class JavaAbiCompileAvoidanceE2eTest {
                     .isEqualTo(TaskForecast.Status.CACHED);
 
             BuildIdentity.overrideBuildIdForTests("engine-two-" + run);
+            assertThat(forecast(ws, cache, "lib", TaskNames.COMPILE_JAVA).status())
+                    .isEqualTo(TaskForecast.Status.CACHED);
+            assertThat(forecast(ws, cache, "lib", TaskNames.PACKAGE_JAR).status())
+                    .as("another engine with the same packaging code restores the jar")
+                    .isEqualTo(TaskForecast.Status.CACHED);
+
+            KeyContract.ARTIFACT.overrideDigestForTests("packaging-" + run);
             TaskForecast.Task compile = forecast(ws, cache, "lib", TaskNames.COMPILE_JAVA);
             TaskForecast.Task jar = forecast(ws, cache, "lib", TaskNames.PACKAGE_JAR);
 
@@ -269,6 +277,7 @@ class JavaAbiCompileAvoidanceE2eTest {
             assertThat(jar.text()).isEqualTo("repackage · jk changed");
         } finally {
             BuildIdentity.overrideBuildIdForTests(null);
+            KeyContract.ARTIFACT.overrideDigestForTests(null);
         }
     }
 

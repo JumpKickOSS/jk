@@ -25,13 +25,13 @@ import cc.jumpkick.runtime.base.Perf;
 import cc.jumpkick.task.BuildInfoKeys;
 import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.task.EnvKeyText;
+import cc.jumpkick.task.KeyContract;
 import cc.jumpkick.task.KeyOwner;
 import cc.jumpkick.task.ModuleEnvKeys;
 import cc.jumpkick.task.PortablePath;
 import cc.jumpkick.task.TestStamp;
 import cc.jumpkick.task.ToolIdentity;
 import cc.jumpkick.task.ToolchainPolicy;
-import cc.jumpkick.test.SuiteCode;
 import cc.jumpkick.test.SuiteEnvReads;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -485,7 +485,7 @@ public record TestStampInputs(
             ClasspathFingerprint.EntryIdentity identity) {
         BuildBlock build = project.build();
         List<String> extras = new ArrayList<>();
-        extras.add("jk:" + SuiteCode.keyVersion());
+        extras.add("jk:" + KeyContract.SUITE.keyVersion());
         // Suite + tag filters are part of the outcome.
         if (selection != null) extras.add("sel:" + selection.identityToken());
         // Whether the suite JVM ran with -ea decides what an `assert` did.

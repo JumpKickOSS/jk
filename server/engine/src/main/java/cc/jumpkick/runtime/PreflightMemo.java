@@ -1027,8 +1027,9 @@ public final class PreflightMemo {
     /**
      * True when the memo's header says it was certified for another build than this one — another
      * cache-key version, producing engine, skip-tests setting, fingerprint mode, profile or module
-     * selection — and notes the miss. Packaging, plugin and guard action keys name the producing
-     * engine, so a memo certified under another engine must not skip the walk that re-keys them.
+     * selection — and notes the miss. The memo vouches that no action key of the build moved, and
+     * any engine code may spell a key differently, so a memo certified under another engine must
+     * not skip the walk that re-keys them; the walk is cheap next to the actions it replays.
      */
     private static boolean headerMisses(
             MemoFile memo, boolean skipTests, @Nullable String profile, @Nullable String wantJdk) {

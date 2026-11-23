@@ -526,7 +526,7 @@ public final class PlannerLang {
         if (!rerun) {
             try {
                 boolean restores = actionCache
-                        .lookup(LangCompile.kotlinKey(taskId, req, BuildIdentity.compileKeyVersion(), snapshotter))
+                        .lookup(LangCompile.kotlinKey(taskId, req, BuildIdentity.cacheKeyVersion(), snapshotter))
                         .isPresent();
                 ctx.reweight(
                         restores
@@ -544,7 +544,7 @@ public final class PlannerLang {
                 () -> LangCompile.run(
                         taskId,
                         req,
-                        BuildIdentity.compileKeyVersion(),
+                        BuildIdentity.cacheKeyVersion(),
                         !rerun,
                         !in.ephemeralActions(), // verify-scratch: no persistent residue
                         actionCache.cas(),
@@ -661,7 +661,7 @@ public final class PlannerLang {
         if (!rerun) {
             try {
                 boolean restores = actionCache
-                        .lookup(LangCompile.groovyKey(taskId, req, BuildIdentity.compileKeyVersion()))
+                        .lookup(LangCompile.groovyKey(taskId, req, BuildIdentity.cacheKeyVersion()))
                         .isPresent();
                 ctx.reweight(
                         restores
@@ -679,7 +679,7 @@ public final class PlannerLang {
                 () -> LangCompile.run(
                         taskId,
                         req,
-                        BuildIdentity.compileKeyVersion(),
+                        BuildIdentity.cacheKeyVersion(),
                         !rerun,
                         !in.ephemeralActions(), // verify-scratch: no persistent residue
                         actionCache.cas(),

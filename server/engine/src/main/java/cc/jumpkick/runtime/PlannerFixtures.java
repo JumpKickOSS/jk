@@ -169,7 +169,7 @@ public final class PlannerFixtures {
         var fxPred = JavaCompile.predict(
                 fxTaskId,
                 fxReq,
-                BuildIdentity.compileKeyVersion(),
+                BuildIdentity.cacheKeyVersion(),
                 actionCache,
                 fxState,
                 workerJar,
@@ -261,7 +261,7 @@ public final class PlannerFixtures {
                         try {
                             boolean restores = actionCache
                                     .lookup(JavaCompile.key(
-                                            taskId, request, BuildIdentity.compileKeyVersion(), classpathTokens))
+                                            taskId, request, BuildIdentity.cacheKeyVersion(), classpathTokens))
                                     .isPresent();
                             ctx.reweight(
                                     restores ? EffortWeights.RESTORE : EffortWeights.compileWeight(sources.size()));
@@ -278,7 +278,7 @@ public final class PlannerFixtures {
                             taskId,
                             PlannerCompile.compileLabel(ctx, TaskNames.COMPILE_TEST_FIXTURES),
                             request,
-                            BuildIdentity.compileKeyVersion(),
+                            BuildIdentity.cacheKeyVersion(),
                             !rerun,
                             true,
                             actionCache.cas(),

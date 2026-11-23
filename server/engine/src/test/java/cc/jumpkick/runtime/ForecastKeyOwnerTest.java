@@ -11,7 +11,6 @@ import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.Lockfile;
-import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.DebugInfo;
 import cc.jumpkick.model.JavacConfig;
 import cc.jumpkick.model.JkBuild;
@@ -21,6 +20,7 @@ import cc.jumpkick.runtime.base.CompileSupport;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.ClasspathFingerprint;
+import cc.jumpkick.task.KeyContract;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -425,7 +425,7 @@ class ForecastKeyOwnerTest {
                 "relocate:" + PackagingKeys.relocate(project),
                 "packaging:fat");
         String expectedTask = ActionKey.qualifiedTaskId(TaskNames.PACKAGE_ASSEMBLY, layout.assemblyJar());
-        String expectedKey = ActionKey.forArtifact(expectedTask, BuildIdentity.cacheKeyVersion(), expectedTokens);
+        String expectedKey = ActionKey.forArtifact(expectedTask, KeyContract.ARTIFACT.keyVersion(), expectedTokens);
 
         // Build side — PlannerTails.assemblyStep calls exactly this.
         PackagingKeys.Keyed keyed = PackagingKeys.assembly(

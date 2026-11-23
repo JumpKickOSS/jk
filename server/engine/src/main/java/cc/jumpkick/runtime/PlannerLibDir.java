@@ -8,7 +8,6 @@ import static cc.jumpkick.runtime.PackagingCache.storePackaged;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.compile.LibDirLayout;
 import cc.jumpkick.layout.BuildLayout;
-import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.LibDir;
 import cc.jumpkick.run.BuildStage;
@@ -19,6 +18,7 @@ import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.task.InputGuard;
+import cc.jumpkick.task.KeyContract;
 import cc.jumpkick.task.KeyOwner;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -78,7 +78,7 @@ final class PlannerLibDir {
                             "names:" + String.join(",", LibDirLayout.classPath(config.dir(), libs)),
                             "main:" + mainClass);
                     String task = ActionKey.qualifiedTaskId(TaskNames.PACKAGE_LIB_DIR, appJar);
-                    String key = ActionKey.forArtifact(task, BuildIdentity.cacheKeyVersion(), tokens);
+                    String key = ActionKey.forArtifact(task, KeyContract.ARTIFACT.keyVersion(), tokens);
                     Path base = layout.artifactDir();
                     HashSet<String> names = new HashSet<>();
                     libs.forEach(lib -> names.add(lib.name()));

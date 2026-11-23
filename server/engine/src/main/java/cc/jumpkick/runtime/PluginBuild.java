@@ -22,7 +22,6 @@ import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.MemberRows;
 import cc.jumpkick.lock.ToolEntry;
-import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PluginConfig;
@@ -43,6 +42,7 @@ import cc.jumpkick.runtime.base.PluginLaunch;
 import cc.jumpkick.runtime.base.SdkComponents;
 import cc.jumpkick.runtime.schema.SchemaFiles;
 import cc.jumpkick.task.ClasspathFingerprint;
+import cc.jumpkick.task.KeyContract;
 import cc.jumpkick.task.TransferBoard;
 import cc.jumpkick.tool.TrustedPlugins;
 import java.io.IOException;
@@ -161,7 +161,7 @@ public final class PluginBuild {
     }
 
     /**
-     * What a describe reply depends on: the engine, the plugin's own version and config, the
+     * What a describe reply depends on: the engine code that reads it ({@link KeyContract#ARTIFACT}), the plugin's own version and config, the
      * content of the worker jar that answers, and the project facts — through the same {@link
      * ProjectFacts#token()} the action keys use, so this cache and the step/packager keys cannot
      * disagree about which facts matter. The jar's content is what the manifest version stands
@@ -170,7 +170,7 @@ public final class PluginBuild {
      * visible so tests can pre-seed the describe cache without forking a worker.
      */
     static String describeKey(ActivePlugin active, JkBuild project, @Nullable Path workerJar) throws IOException {
-        String key = BuildIdentity.cacheKeyVersion()
+        String key = KeyContract.ARTIFACT.keyVersion()
                 + '|'
                 + active.manifest().version()
                 + '|'

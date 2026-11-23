@@ -74,7 +74,7 @@ final class ForecastLangArms {
         KotlincRequest request;
         try {
             request = CompileInputs.kotlinWorker(module, inputs).request();
-            key = LangCompile.kotlinKey(taskId, request, BuildIdentity.compileKeyVersion(), snapshotter);
+            key = LangCompile.kotlinKey(taskId, request, BuildIdentity.cacheKeyVersion(), snapshotter);
         } catch (Exception e) {
             Log.debug("kotlinStep: the Kotlin toolchain could not be resolved read-only", e);
             return new LangStep(
@@ -161,7 +161,7 @@ final class ForecastLangArms {
                     new TaskForecast.Task(TaskNames.COMPILE_GROOVY, TaskForecast.Status.CACHED, "", null), null);
         }
         String taskId = CompileInputs.groovyTaskId(module);
-        String key = LangCompile.groovyKey(taskId, req, BuildIdentity.compileKeyVersion(), classpathToken);
+        String key = LangCompile.groovyKey(taskId, req, BuildIdentity.cacheKeyVersion(), classpathToken);
         boolean hit = ForecastSteps.present(actionCache, key);
         // groovyc keeps no incremental state, so the pointer is the only prior record.
         String why = hit ? "" : ForecastSteps.langMissReason(actionCache, taskId, null, ActionKey.snapshotInputs(req));
@@ -207,7 +207,7 @@ final class ForecastLangArms {
             return LangCompile.kotlinKey(
                     ActionKey.qualifiedTaskId(TaskNames.COMPILE_TEST_KOTLIN, testClasses),
                     worker.request(),
-                    BuildIdentity.compileKeyVersion(),
+                    BuildIdentity.cacheKeyVersion(),
                     snapshotter);
         } catch (Exception e) {
             Log.debug("kotlinTestKey: the Kotlin toolchain could not be resolved read-only", e);
@@ -244,7 +244,7 @@ final class ForecastLangArms {
             return LangCompile.groovyKey(
                     ActionKey.qualifiedTaskId(TaskNames.COMPILE_TEST_GROOVY, testClasses),
                     req,
-                    BuildIdentity.compileKeyVersion(),
+                    BuildIdentity.cacheKeyVersion(),
                     classpathToken);
         } catch (Exception e) {
             Log.debug("groovyTestKey: the Groovy toolchain could not be resolved read-only", e);

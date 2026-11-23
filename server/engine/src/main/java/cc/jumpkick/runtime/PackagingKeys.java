@@ -36,6 +36,7 @@ import cc.jumpkick.task.EnvKeyText;
 import cc.jumpkick.task.FileHashMemo;
 import cc.jumpkick.task.FreshnessStamp;
 import cc.jumpkick.task.JdkToolchain;
+import cc.jumpkick.task.KeyContract;
 import cc.jumpkick.task.KeyOwner;
 import cc.jumpkick.task.ModuleEnvKeys;
 import cc.jumpkick.task.PortablePath;
@@ -102,7 +103,7 @@ public final class PackagingKeys {
                 "sbom:" + (sbom == null ? "" : Hashing.sha256Hex(sbom)),
                 "manifest:" + project.manifest());
         String taskId = ActionKey.qualifiedTaskId(TaskNames.PACKAGE_JAR, jar);
-        String jarKey = ActionKey.forArtifact(taskId, BuildIdentity.cacheKeyVersion(), tokens);
+        String jarKey = ActionKey.forArtifact(taskId, KeyContract.ARTIFACT.keyVersion(), tokens);
         return new Keyed(taskId, tokens, jarKey);
     }
 
@@ -199,7 +200,7 @@ public final class PackagingKeys {
                 "relocate:" + relocate(project),
                 "packaging:fat"); // distinct from shrink / thin package-jar
         String taskId = ActionKey.qualifiedTaskId(TaskNames.PACKAGE_ASSEMBLY, assemblyJar);
-        String asmKey = ActionKey.forArtifact(taskId, BuildIdentity.cacheKeyVersion(), tokens);
+        String asmKey = ActionKey.forArtifact(taskId, KeyContract.ARTIFACT.keyVersion(), tokens);
         return new Keyed(taskId, tokens, asmKey);
     }
 
@@ -454,7 +455,7 @@ public final class PackagingKeys {
         // A packager that writes beside the main artifact is the minified tail, a heavy output.
         String step = ActivePlugins.packagesMainArtifact(active) ? TaskNames.PACKAGE_JAR : TaskNames.PACKAGE_MINIFIED;
         String taskId = ActionKey.qualifiedTaskId(step, p.artifact());
-        String pkgKey = ActionKey.forArtifact(taskId, BuildIdentity.cacheKeyVersion(), tokens);
+        String pkgKey = ActionKey.forArtifact(taskId, KeyContract.ARTIFACT.keyVersion(), tokens);
         return new PackagerKey(new Keyed(taskId, tokens, pkgKey), facts, entries, extras, repositories);
     }
 
@@ -757,7 +758,7 @@ public final class PackagingKeys {
                 "jdk:" + (readme ? "" : JdkToolchain.token(javaHome)),
                 "packaging:" + (readme ? "javadoc-readme" : "javadoc"));
         String taskId = ActionKey.qualifiedTaskId(TaskNames.PACKAGE_JAVADOC, javadocJar);
-        String jdKey = ActionKey.forArtifact(taskId, BuildIdentity.cacheKeyVersion(), tokens);
+        String jdKey = ActionKey.forArtifact(taskId, KeyContract.ARTIFACT.keyVersion(), tokens);
         return new Keyed(taskId, tokens, jdKey);
     }
 

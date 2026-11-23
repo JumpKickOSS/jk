@@ -161,7 +161,7 @@ public final class PlannerGuardSuite {
         var pred = JavaCompile.predict(
                 taskId,
                 req,
-                BuildIdentity.compileKeyVersion(),
+                BuildIdentity.cacheKeyVersion(),
                 actionCache,
                 state,
                 workerJar,
@@ -253,7 +253,7 @@ public final class PlannerGuardSuite {
                         try {
                             boolean restores = actionCache
                                     .lookup(JavaCompile.key(
-                                            taskId, request, BuildIdentity.compileKeyVersion(), classpathTokens))
+                                            taskId, request, BuildIdentity.cacheKeyVersion(), classpathTokens))
                                     .isPresent();
                             ctx.reweight(
                                     restores ? EffortWeights.RESTORE : EffortWeights.compileWeight(sources.size()));
@@ -271,7 +271,7 @@ public final class PlannerGuardSuite {
                             taskId,
                             PlannerCompile.compileLabel(ctx, TaskNames.COMPILE_GUARD),
                             request,
-                            BuildIdentity.compileKeyVersion(),
+                            BuildIdentity.cacheKeyVersion(),
                             !rerun,
                             true,
                             actionCache.cas(),

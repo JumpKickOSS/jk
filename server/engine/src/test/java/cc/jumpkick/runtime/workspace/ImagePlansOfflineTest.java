@@ -11,13 +11,13 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.image.ImageConfig;
 import cc.jumpkick.layout.BuildLayout;
-import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
+import cc.jumpkick.task.KeyContract;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
@@ -193,7 +193,7 @@ class ImagePlansOfflineTest {
                                 fx.project().project().version()),
                 "",
                 fx.workerJar());
-        String key = ActionKey.forArtifact(task, BuildIdentity.cacheKeyVersion(), tokens);
+        String key = ActionKey.forArtifact(task, KeyContract.ARTIFACT.keyVersion(), tokens);
         new ActionCache(JkStores.cacheCas(fx.cache()), CacheTree.ACTIONS.under(fx.cache()), JkStores.storeCas())
                 .storeWithOutputs(task, key, sidecar, Map.of());
     }

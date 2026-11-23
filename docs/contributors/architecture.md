@@ -586,26 +586,23 @@ and exclusions stay GA-scoped.
    lines as they are read, so no jar's size decides whether a build fits the engine's heap. **Package, test, native and image** keys hash full bytes
    (`ClasspathFingerprint`; a classpath that is run, a test JVM's, a native image's or a plugin
    input's, and a fat jar's dependencies, whose first copy of a duplicate entry wins, in its order), so the same change re-packages the producer and re-runs every suite
-   whose runtime classpath carries it. Artifact keys also carry the producing engine's identity
-   (`BuildIdentity.keyId()`), so a reinstalled engine re-runs plugin steps, guard lanes,
-   build-logic and packaging once and never restores what the previous engine produced. That
-   identity is the engine's code, not its jar file: the commit and build time the packaging stamps
-   into the jar's manifest are left out, so an engine repackaged for a new commit with the same
-   code (a test-only edit to its module) keeps every key, and the next build of an unchanged tree
-   is a no-op. Compile keys carry no engine identity at all, even on a `-SNAPSHOT`
-   (`BuildIdentity.compileKeyVersion`, version and salt): their producer is the compiler worker,
-   keyed by content beside the compiler JDK, the options and every input, so an engine edit installed
-   with `jk install -S` recompiles nothing. Engine code that changes what a compile records turns
-   `CACHE_KEY_SALT`. A run-tests stamp keeps only the part of it that decides what a test JVM sees
-   and how its outcome reads (`jk:` is `SuiteCode.keyVersion`): the identity of the package
-   `cc.jumpkick.test` and of the classes named for tests, suites or JUnit. The runner, JDK,
-   classpath, flags, environment and selection are keyed by content, so an engine edit elsewhere
-   replays every green suite; guard G164 (`suite-code-keyed`) keeps the selection and launch types
-   inside that code. A native image's key names only the code that runs native-image
-   (`NativeLinkCode`: `NativeImageDriver`, which spells the command line around the args) as its
-   producer: GraalVM, the classpath, the args, the main class and the metadata are keyed by content,
-   so the client a reinstall linked under the previous engine restores under the engine it just
-   installed instead of linking again.
+   whose runtime classpath carries it. No key carries the engine's identity, even on a
+   `-SNAPSHOT`: every key opens with `BuildIdentity.cacheKeyVersion`, the version and
+   `CACHE_KEY_SALT`, and names the program that executes its action by content (the compiler
+   worker, the test runner, a plugin's jar, GraalVM) beside every input it reads, so an engine
+   edit installed with `jk install -S` replays every action it does not reach. The engine code that
+   produces or judges a result itself is a `KeyContract`, whose recorded digest folds into its
+   actions' keys: `SUITE` (the package `cc.jumpkick.test` and the classes named for tests, suites
+   or JUnit, which pick a suite's classes, build its JVM and read its outcome) into run-tests
+   stamps; `ARTIFACT` (the packagers and the zip they write through, the war, jlink, lib-dir and
+   image steps, plugin staging, build-logic, Node.js steps and the guard runtime) into every
+   `ActionKey.forArtifact` key; `NATIVE` (`NativeImageDriver`, which spells native-image's command
+   line) into a native image's. The digest reads the contract's sources with comments and
+   whitespace left out, and guard G167 (`key-contract-recorded`) is red until the recorded digest
+   is theirs, printing the one to record; guard G164 (`suite-code-keyed`) keeps the selection and
+   launch types inside `SUITE`. The risk the narrower key takes is engine code outside every
+   contract that shapes a result no key names: such code belongs in a contract's sources, or turns
+   `CACHE_KEY_SALT` when it changes what a recorded result means.
    A compile key and the freshness stamp's instant are both taken before the compiler reads its
    first source. A source whose bytes move while the compiler runs is re-read afterwards: the
    compile is reported and not recorded, its incremental analysis is dropped, and the stamp reads

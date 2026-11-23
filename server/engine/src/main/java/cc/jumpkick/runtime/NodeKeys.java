@@ -7,7 +7,6 @@ import cc.jumpkick.host.OutputDirs;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.NodeProject;
-import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.NodeTable;
 import cc.jumpkick.node.NodePlatform;
@@ -15,6 +14,7 @@ import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.EnvKeyText;
 import cc.jumpkick.task.FileHashMemo;
+import cc.jumpkick.task.KeyContract;
 import cc.jumpkick.task.KeyOwner;
 import java.io.File;
 import java.io.IOException;
@@ -400,7 +400,7 @@ final class NodeKeys {
         String taskId = ActionKey.qualifiedTaskId(task, nodeDir);
         List<String> tokens = new ArrayList<>(inputs.size());
         for (Map.Entry<String, String> e : inputs.entrySet()) tokens.add(e.getKey() + "=" + e.getValue());
-        return new Keyed(taskId, ActionKey.forArtifact(taskId, BuildIdentity.cacheKeyVersion(), tokens), inputs);
+        return new Keyed(taskId, ActionKey.forArtifact(taskId, KeyContract.ARTIFACT.keyVersion(), tokens), inputs);
     }
 
     /** What changed between a step's last record and {@code now}, for {@code jk explain}; empty for nothing. */

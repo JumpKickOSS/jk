@@ -14,7 +14,6 @@ import cc.jumpkick.compile.PackagedTree;
 import cc.jumpkick.compile.WarPackager;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.BuildBlock;
-import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.run.BuildStage;
 import cc.jumpkick.run.StepForecast;
@@ -24,6 +23,7 @@ import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.task.InputGuard;
+import cc.jumpkick.task.KeyContract;
 import cc.jumpkick.task.KeyOwner;
 import java.io.File;
 import java.io.IOException;
@@ -94,7 +94,7 @@ final class PlannerWar {
                             "web:" + webTokens(webContent),
                             "manifest:" + new TreeMap<>(manifest));
                     String task = ActionKey.qualifiedTaskId(TaskNames.PACKAGE_WAR, warFile);
-                    String key = ActionKey.forArtifact(task, BuildIdentity.cacheKeyVersion(), tokens);
+                    String key = ActionKey.forArtifact(task, KeyContract.ARTIFACT.keyVersion(), tokens);
                     Path base = layout.artifactDir();
                     if (restorePackaged(cache, key, base)) {
                         pruneExploded(warFile, exploded);

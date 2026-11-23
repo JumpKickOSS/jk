@@ -523,7 +523,7 @@ final class TestCompileSteps {
             var pred = JavaCompile.predict(
                     taskId,
                     req,
-                    BuildIdentity.compileKeyVersion(),
+                    BuildIdentity.cacheKeyVersion(),
                     s.actionCache,
                     stateDir,
                     s.workerJar,
