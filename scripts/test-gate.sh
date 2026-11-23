@@ -466,8 +466,13 @@ command -v flock >/dev/null 2>&1 || launcher="$repo/scripts/gate/gate.sh"
 tip="$qtip"
 gate 5 GATE_TIER=queue GATE_BASE="$qbase"
 [[ "$(verdict 5)" == "GREEN $tip" ]] || fail "a green Queue tier was not green: $(cat "$WORK/logs/integ-gate-5.log")"
+# Before the integration run, rank-integration asks jk to rank each changed member against the
+# base; the stand-in prints nothing, so it ranks by source text, but the calls stay expected so
+# a Queue tier that stops asking jk is caught.
 got="$(sed -n '/^install /,$p' "$WORK/calls-5" | grep -E '^(install|engine stop|test)')"
 want="$(printf '%s\n' 'install -S' 'engine stop' 'install -c' 'engine stop' \
+  "test -e $qbase -m mod/a -s integration -O jsonl --no-ansi" \
+  "test -e $qbase -m mod/a/packs/p -s integration -O jsonl --no-ansi" \
   'test -s integration -c -X --no-ansi -m mod/a -m mod/a/packs/p -m mod/b --class mod/b:b.CuratedBTest' \
   'test -s docs -c --no-ansi' \
   'test -s tree -c --no-ansi')"
