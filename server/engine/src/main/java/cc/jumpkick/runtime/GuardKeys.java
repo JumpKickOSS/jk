@@ -35,6 +35,7 @@ import cc.jumpkick.guard.rules.RuleSet;
 import cc.jumpkick.guard.schema.Kind;
 import cc.jumpkick.guard.schema.Lane;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.LocalInstallRows;
@@ -189,8 +190,8 @@ final class GuardKeys {
                 }
                 return Optional.of(run("guards · lane evidence to restore"));
             }
-            return Optional.of(
-                    run(missed(actionCache, taskId, load.rules().rules().size() + " rules to evaluate")));
+            return Optional.of(run(
+                    missReason(actionCache, taskId, probe, load.rules().rules().size())));
         } catch (IOException e) {
             return Optional.of(run("guards · " + e.getMessage()));
         }
@@ -199,8 +200,16 @@ final class GuardKeys {
     /** The module-lane key token of a run that compiled no tests, and so ran no rule over them. */
     private static final String TESTS_NOT_COMPILED = "tests:not-compiled";
 
-    /** A module lane's forecast key, or why the lane runs with none (an index to extract first). */
-    record LaneProbe(@Nullable String key, String runReason) {}
+    /**
+     * A module lane's forecast key, with the tokens and baseline slice it was taken over, or why the
+     * lane runs with none (an index to extract first).
+     */
+    record LaneProbe(@Nullable String key, String runReason, List<String> tokens, String slice) {
+
+        LaneProbe(String runReason) {
+            this(null, runReason, List.of(), "");
+        }
+    }
 
     /**
      * The key the module lane at {@code dir} would run under, read-only: its tokens come from
@@ -208,16 +217,16 @@ final class GuardKeys {
      */
     static LaneProbe probeModuleLane(Path root, Path dir, BuildLayout layout, LoadResult load, boolean testsIndexed)
             throws IOException {
-        if (load.hasErrors()) return new LaneProbe(null, "guards · jk-guards.toml does not load");
+        if (load.hasErrors()) return new LaneProbe("guards · jk-guards.toml does not load");
         Optional<String> main =
                 FactsIndexing.freshDigest(layout.classesDir(), FactsIndexing.indexPath(layout.buildDir(), "main"));
-        if (main.isEmpty()) return new LaneProbe(null, "guards · facts index stale");
+        if (main.isEmpty()) return new LaneProbe("guards · facts index stale");
         Path testClasses = layout.testClassesDir();
         String testFacts = null;
         if (testsIndexed && Files.isDirectory(testClasses)) {
             Optional<String> test =
                     FactsIndexing.freshDigest(testClasses, FactsIndexing.indexPath(layout.buildDir(), "test"));
-            if (test.isEmpty()) return new LaneProbe(null, "guards · test facts index stale");
+            if (test.isEmpty()) return new LaneProbe("guards · test facts index stale");
             testFacts = test.get();
         }
         List<String> suiteTokens = List.of();
@@ -225,19 +234,16 @@ final class GuardKeys {
         if (Files.isDirectory(guardClasses) && PlannerGuardSuite.declared(dir, PlannerGuards.compact(dir))) {
             Path suiteIndex = FactsIndexing.indexPath(layout.buildDir(), "guard");
             Optional<String> suite = FactsIndexing.freshDigest(guardClasses, suiteIndex);
-            if (suite.isEmpty()) return new LaneProbe(null, "guards · guard suite index stale");
+            if (suite.isEmpty()) return new LaneProbe("guards · guard suite index stale");
             List<GuardSuites.Declared> declared = GuardSuites.declared(FactsFormat.read(suiteIndex));
             suiteTokens = suiteTokens(suite.get(), declared, root, PlannerGuards.workspaceModuleDirs(root, null));
         }
         List<String> tokens =
                 moduleLaneTokens(WorkspaceModel.rel(root, dir), main.get(), dir, testsIndexed, testFacts, suiteTokens);
         addRuleTokens(tokens, load);
+        String slice = baselineSlice(root, Lane.MODULE, WorkspaceModel.rel(root, dir), load.rules());
         return new LaneProbe(
-                laneKey(
-                        ActionKey.qualifiedTaskId(TaskNames.GUARD, dir),
-                        tokens,
-                        baselineSlice(root, Lane.MODULE, WorkspaceModel.rel(root, dir), load.rules())),
-                "");
+                laneKey(ActionKey.qualifiedTaskId(TaskNames.GUARD, dir), tokens, slice), "", tokens, slice);
     }
 
     /**
@@ -307,19 +313,55 @@ final class GuardKeys {
         List<String> tokens = new ArrayList<>();
         tokens.add("guard-suite:" + suiteDigest);
         tokens.add("os:" + Os.name());
+        List<String> reads = new ArrayList<>();
         if (GuardSuites.anyWorkspace(declared)) {
-            tokens.addAll(workspaceTokens(root, workspaceModules));
-            tokens.addAll(workspaceTestTokens(root, workspaceModules));
+            reads.addAll(workspaceTokens(root, workspaceModules));
+            reads.addAll(workspaceTestTokens(root, workspaceModules));
         }
-        if (GuardSuites.anyReadsText(declared)) tokens.addAll(BuildLogicSupport.workspaceInputTokens(root));
+        if (GuardSuites.anyReadsText(declared)) reads.addAll(BuildLogicSupport.workspaceInputTokens(root));
         if (GuardSuites.anyReadsModel(declared)) {
-            tokens.add(fileToken("manifest", ManifestPaths.manifestIn(root)));
+            reads.add(fileToken("manifest", ManifestPaths.manifestIn(root)));
             for (Path m : workspaceModules) {
-                tokens.add(fileToken("manifest:" + root.relativize(m), ManifestPaths.manifestIn(m)));
+                reads.add(fileToken("manifest:" + root.relativize(m), ManifestPaths.manifestIn(m)));
             }
-            tokens.add(fileToken("lock", root.resolve(ManifestPaths.LOCK)));
+            reads.add(fileToken("lock", root.resolve(ManifestPaths.LOCK)));
         }
+        if (!reads.isEmpty()) tokens.add(SUITE_READS + ":" + Hashing.sha256Hex(String.join("\n", reads)));
         return tokens;
+    }
+
+    /**
+     * The token holding the digest of what a guard suite reads beyond its own module. One token, so
+     * the verdict record keeps it whole and the forecast can tell a miss it alone caused.
+     */
+    static final String SUITE_READS = "suite-reads";
+
+    /**
+     * Why a module lane whose key missed runs. When the last verdict differs from {@code probe} only
+     * in {@link #SUITE_READS}, the module's own inputs held and its guard suite's workspace input
+     * moved, and the reason says so.
+     */
+    static String missReason(ActionCache actionCache, String taskId, LaneProbe probe, int rules) {
+        String otherwise = rules + " rules to evaluate";
+        if (actionCache.madeByAnotherJk(taskId)) return missed(actionCache, taskId, otherwise);
+        String prefix = SUITE_READS + ":";
+        int at = -1;
+        for (int i = 0; i < probe.tokens().size(); i++)
+            if (probe.tokens().get(i).startsWith(prefix)) at = i;
+        if (at < 0) return "guards · " + otherwise;
+        try {
+            Optional<ActionCache.ActionRecord> last = actionCache.lastFor(taskId);
+            String before = last.map(r -> r.inputs().get(SUITE_READS)).orElse(null);
+            if (before == null || probe.tokens().get(at).equals(prefix + before)) return "guards · " + otherwise;
+            List<String> then = new ArrayList<>(probe.tokens());
+            then.set(at, prefix + before);
+            if (laneKey(taskId, then, probe.slice()).equals(last.get().actionKey())) {
+                return "guards · " + rules + " rules · src/guard reads the workspace and it changed";
+            }
+        } catch (IOException e) {
+            Log.debug("guard forecast: the last verdict of " + taskId + " is unreadable", e);
+        }
+        return "guards · " + otherwise;
     }
 
     /**

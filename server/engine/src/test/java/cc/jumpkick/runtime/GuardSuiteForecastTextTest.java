@@ -15,6 +15,8 @@ import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import javax.tools.JavaCompiler;
@@ -24,8 +26,8 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * A module whose {@code src/guard} suite reads the tree's text forecasts its lane on that text, as
- * the lane runs on it: an edit to root text alone re-runs the suite without {@code --redo}, and a
- * verdict another jk judged forecasts as {@code jk changed}.
+ * the lane runs on it: an edit to root text alone re-runs the suite without {@code --redo}, says that
+ * the suite's workspace input is why, and a verdict another jk judged forecasts as {@code jk changed}.
  */
 class GuardSuiteForecastTextTest {
 
@@ -65,6 +67,48 @@ class GuardSuiteForecastTextTest {
         TaskForecast.Task after = lane(root, layout, cache);
         assertThat(after.status()).isEqualTo(TaskForecast.Status.RUN);
         assertThat(after.text()).contains("rules to evaluate");
+    }
+
+    @Test
+    void a_run_caused_by_the_suites_workspace_input_alone_says_so(@TempDir Path tmp) throws Exception {
+        Path root = tree(tmp);
+        BuildLayout layout = BuildLayout.of(root, JkBuildParser.parse(root.resolve("jk.toml")));
+        ActionCache cache = new ActionCache(new Cas(tmp.resolve("cache/cas")), tmp.resolve("cache/actions"));
+        var load = PlannerGuards.rules(PlannerGuards.detectAt(root));
+        GuardKeys.LaneProbe before = GuardKeys.probeModuleLane(root, root, layout, load, true);
+        cache.storeVerdict(
+                ActionKey.qualifiedTaskId(TaskNames.GUARD, root),
+                Objects.requireNonNull(before.key(), "the lane's key"),
+                PlannerGuards.inputsOf(before.tokens(), before.slice()));
+
+        Files.writeString(root.resolve(".jk/notes.txt"), "two\n");
+
+        TaskForecast.Task after = lane(root, layout, cache);
+        assertThat(after.status()).isEqualTo(TaskForecast.Status.RUN);
+        assertThat(after.text()).endsWith("rules · src/guard reads the workspace and it changed");
+    }
+
+    @Test
+    void a_run_the_modules_own_inputs_also_moved_names_no_workspace_cause(@TempDir Path tmp) throws Exception {
+        Path root = tree(tmp);
+        BuildLayout layout = BuildLayout.of(root, JkBuildParser.parse(root.resolve("jk.toml")));
+        ActionCache cache = new ActionCache(new Cas(tmp.resolve("cache/cas")), tmp.resolve("cache/actions"));
+        var load = PlannerGuards.rules(PlannerGuards.detectAt(root));
+        GuardKeys.LaneProbe before = GuardKeys.probeModuleLane(root, root, layout, load, true);
+        // The last verdict was judged over other facts of the module than the ones it has now.
+        List<String> otherFacts = new ArrayList<>(before.tokens());
+        otherFacts.replaceAll(t -> t.startsWith("facts:") ? "facts:another-build" : t);
+        String taskId = ActionKey.qualifiedTaskId(TaskNames.GUARD, root);
+        cache.storeVerdict(
+                taskId,
+                GuardKeys.laneKey(taskId, otherFacts, before.slice()),
+                PlannerGuards.inputsOf(otherFacts, before.slice()));
+
+        Files.writeString(root.resolve(".jk/notes.txt"), "two\n");
+
+        TaskForecast.Task after = lane(root, layout, cache);
+        assertThat(after.status()).isEqualTo(TaskForecast.Status.RUN);
+        assertThat(after.text()).endsWith("rules to evaluate");
     }
 
     /** Every lane key names the jk that judged it: a lane whose last verdict was another jk's says so. */

@@ -336,30 +336,20 @@ public final class PlannerTails {
 
     /**
      * The assembly's manifest attributes: the {@code [manifest]} table, plus {@link
-     * BuildIdentity#BUILD_TIME_ATTRIBUTE} and {@link BuildIdentity#BUILD_COMMIT_ATTRIBUTE} when the
-     * module is one jk installs as its own product (the engine lib or the client) and {@code
-     * worktree} describes its checkout. The time is the checkout's commit time, so two engines of one
-     * version are ordered by the commit they were built from rather than by when a jar was copied
-     * into place; the commit says which one. The attributes are the assembly's {@code manifest:} key
-     * token ({@link PackagingKeys#assembly}), so the same commit packages the same bytes on every
-     * host whatever its action cache holds. Any other assembly, and one built outside a checkout,
-     * carries what the table says and nothing more.
+     * BuildIdentity#BUILD_TIME_ATTRIBUTE} and {@link BuildIdentity#BUILD_COMMIT_ATTRIBUTE} of {@code
+     * stamp}, the checkout to name, empty for none ({@link PackagingKeys#assemblyAttributes} decides).
+     * The time is the checkout's commit time, so two engines of one version are ordered by the commit
+     * they were built from rather than by when a jar was copied into place; the commit says which one.
      */
-    static Map<String, String> assemblyAttributes(JkBuild project, Optional<GitFetcher.Worktree> worktree) {
+    static Map<String, String> assemblyAttributes(JkBuild project, Optional<GitFetcher.Worktree> stamp) {
         Map<String, String> attrs = new LinkedHashMap<>(project.manifest());
         if (PlannerVersions.declared(project)) attrs.putIfAbsent(PlannerVersions.MULTI_RELEASE, "true");
-        if (isProduct(project) && worktree.isPresent()) {
-            GitFetcher.Worktree w = worktree.get();
+        if (stamp.isPresent()) {
+            GitFetcher.Worktree w = stamp.get();
             attrs.put(BuildIdentity.BUILD_TIME_ATTRIBUTE, w.commitTime().toString());
             attrs.put(BuildIdentity.BUILD_COMMIT_ATTRIBUTE, BuildIdentity.commitStamp(w.sha(), w.dirty()));
         }
         return attrs;
-    }
-
-    /** Whether jk installs this module as its own product: the engine lib or the client binary. */
-    static boolean isProduct(JkBuild project) {
-        JkBuild.Install install = project.install();
-        return install != null && (install.productLib() != null || install.productBin() != null);
     }
 
     /** Sources-jar packaging — writes {@code <artifact>-<version>-sources.jar} to the artifact dir. */

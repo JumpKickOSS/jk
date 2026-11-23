@@ -41,8 +41,8 @@ the checkout had uncommitted changes, `unknown` for a build outside a git checko
 with the same for the `jk` you ran, marked `(not the engine's build)` when the two commits differ (`commit`,
 `clientVersion`, `clientCommit`, `clientCommitRecorded` in `-O jsonl`; `jk --version -v` prints the pair
 without starting an engine, `engine  not running` when none is up, and `jk doctor`'s `engine` row
-turns WARN with `not the client's build`). A side with no commit is never called a mismatch. A released native client carries its commit; a snapshot's native
-client does not, so `jk install` records the checkout's commit beside it in `jk-engine.toml` and
+turns WARN with `not the client's build`). A side with no commit is never called a mismatch. A released client carries its commit; a snapshot's client does
+not, so an edit the client does not contain neither relinks nor repackages it. For a native client, `jk install` records the checkout's commit beside it in `jk-engine.toml` and
 the row says `(recorded at install)`, shown only while the client on disk is the one that install
 wrote. And, when the engine was installed from a checkout (`jk install`), a `Source` row naming that checkout — the one whose workers this
 engine forks (`installSource` in `-O jsonl` and `GET /api/status`; see

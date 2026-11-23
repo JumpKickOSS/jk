@@ -6,6 +6,8 @@ import static cc.jumpkick.runtime.BuildPlanner.*;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.Session;
+import cc.jumpkick.config.SnapshotQualifier;
+import cc.jumpkick.git.GitFetcher;
 import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.layout.BuildLayout;
@@ -48,6 +50,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.function.Function;
@@ -155,27 +158,50 @@ public final class PackagingKeys {
      * token in its key. A fresh mutable map; see {@link PlannerTails#assemblyAttributes}.
      */
     public static Map<String, String> assemblyAttributes(Path moduleDir, JkBuild project) throws IOException {
-        return PlannerTails.assemblyAttributes(project, PlannerBuildInfo.worktree(moduleDir));
+        return assemblyAttributes(project, PlannerBuildInfo.worktree(moduleDir));
     }
 
     /**
-     * The client jk installs as its own binary is linked with its checkout's commit only for a
-     * release build: a version without {@code -SNAPSHOT} from a clean checkout. The arg is part of
-     * the image key, so a snapshot's image, which carries no commit, is not relinked when the commit
-     * moves; its install records the commit beside the client instead. Any other image, and one
-     * built outside a git checkout, gets nothing.
+     * {@link #assemblyAttributes(Path, JkBuild)} for the checkout {@code worktree} describes, empty
+     * outside one: stamped with its commit when {@link #stampsCommit} says so. The attributes are the
+     * assembly's key token, so the same commit packages the same bytes on every host whatever its
+     * action cache holds.
+     */
+    static Map<String, String> assemblyAttributes(JkBuild project, Optional<GitFetcher.Worktree> worktree) {
+        return PlannerTails.assemblyAttributes(project, worktree.filter(w -> stampsCommit(project, w)));
+    }
+
+    /**
+     * The client jk installs as its own binary is linked with its checkout's commit when {@link
+     * #stampsCommit} says so: only in a release build of a clean checkout. The arg is part
+     * of the image key, so a snapshot's image, which carries no commit, is not relinked when the
+     * commit moves. Any other image, and one built outside a git checkout, gets nothing.
      */
     static List<String> nativeCommitArgs(JkBuild project, Path dir) throws IOException {
         JkBuild.Install install = project.install();
         if (install == null || install.productBin() == null) return List.of();
-        if (project.project().version().endsWith(SNAPSHOT)) return List.of();
+        if (project.project().version().endsWith(SnapshotQualifier.SUFFIX)) return List.of();
         return PlannerBuildInfo.worktree(dir)
-                .filter(w -> !w.dirty())
+                .filter(w -> stampsCommit(project, w))
                 .map(w -> List.of("-D" + BuildIdentity.COMMIT_PROPERTY + "=" + w.sha()))
                 .orElse(List.of());
     }
 
-    private static final String SNAPSHOT = "-SNAPSHOT";
+    /**
+     * Whether a module jk installs as its own product carries the commit of {@code worktree}: the
+     * engine lib always, the client only in a release build (no {@code -SNAPSHOT}) of a clean
+     * checkout. The stamp is part of the key, so a stamped archive is rebuilt by every edit anywhere
+     * in the checkout; a snapshot client's jar and image key on no commit and are not rebuilt by an
+     * edit they do not contain. The native client's install records the commit beside it instead.
+     */
+    static boolean stampsCommit(JkBuild project, GitFetcher.Worktree worktree) {
+        JkBuild.Install install = project.install();
+        if (install == null) return false;
+        if (install.productLib() != null) return true;
+        return install.productBin() != null
+                && !project.project().version().endsWith(SnapshotQualifier.SUFFIX)
+                && !worktree.dirty();
+    }
 
     @KeyOwner(step = TaskNames.PACKAGE_ASSEMBLY)
     static Keyed assembly(
