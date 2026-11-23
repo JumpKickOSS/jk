@@ -704,6 +704,14 @@ final class TestClassRecording {
     record Replayed(Map<String, Long> replays, Map<String, Long> runs) {
         static final Replayed NONE = new Replayed(Map.of(), Map.of());
 
+        /** The classes a ledger under one stamp holds ({@link TestClassLedger#recordedIn}): its settled ones replay. */
+        static Replayed of(Map<String, TestClassLedger.Settled> recorded) {
+            Map<String, Long> replays = new HashMap<>();
+            Map<String, Long> runs = new HashMap<>();
+            recorded.forEach((cls, s) -> (s.settled() ? replays : runs).put(cls, s.tests()));
+            return new Replayed(replays, runs);
+        }
+
         /** How many classes replay. */
         int classes() {
             return replays.size();
@@ -724,6 +732,24 @@ final class TestClassRecording {
             Set<String> out = new HashSet<>(replays.keySet());
             out.addAll(runs.keySet());
             return out;
+        }
+
+        /**
+         * These classes as they stand, and the others of {@code under}, as a run lays its earlier
+         * stamps' unmoved classes under what its own stamp's ledger recorded ({@link
+         * TestClassLedger#begin}).
+         */
+        Replayed over(Replayed under) {
+            Set<String> own = recorded();
+            Map<String, Long> keptReplays = new HashMap<>(replays);
+            Map<String, Long> keptRuns = new HashMap<>(runs);
+            under.replays.forEach((cls, n) -> {
+                if (!own.contains(cls)) keptReplays.put(cls, n);
+            });
+            under.runs.forEach((cls, n) -> {
+                if (!own.contains(cls)) keptRuns.put(cls, n);
+            });
+            return new Replayed(keptReplays, keptRuns);
         }
 
         /**

@@ -56,6 +56,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
@@ -1040,10 +1041,12 @@ final class TestSteps {
                                 SessionContext.selectionFor(s.dir),
                                 () -> stamp.forecastKey(compact, layout.classesDir(), finalMainFp));
         // A suite that reached another host stores no marker, yet the run still replays each class
-        // whose cone stands; the classes that reached it run again (TestClassRecording#unmoved).
-        String priced = red || unread != null || stampKey == null
+        // whose cone stands; the classes that reached it run again (TestClassRecording#unmoved). A
+        // red or cut-short run under this same stamp settled the classes it got through, which the
+        // run leaves out first (TestClassLedger#begin); a red one's ledger names every class it held.
+        String priced = unread != null || stampKey == null
                 ? tests
-                : pricedByCone(s, stamp, layout, compact, stampKey, bySource, tests);
+                : coneTests(s, sameStampFirst(s, stamp, layout, compact, stampKey, red), bySource, tests);
         return new TaskForecast.Task(
                 TaskNames.RUN_TESTS,
                 TaskForecast.Status.RUN,
@@ -1055,25 +1058,18 @@ final class TestSteps {
     }
 
     /**
-     * The tests a missed suite runs, as the run decides it under {@code [test] cache = "cone"}: a
-     * class whose key has not moved since it passed is replayed, so only the rest are priced, and
-     * {@code s} says how many ({@link ForecastScope#rerunTests}). Every input is current where this
-     * is asked, so the keys are the ones the run takes. {@code tests} when nothing is replayed.
+     * What a missed suite replays by its classes' cones, as the run decides it under {@code [test]
+     * cache = "cone"}: each class whose key has not moved since it passed. Every input is current
+     * where this is asked, so the keys are the ones the run takes. None off {@code "cone"}.
      */
-    private static String pricedByCone(
-            ForecastScope s,
-            TestStampInputs stamp,
-            BuildLayout layout,
-            boolean compact,
-            String stampKey,
-            Map<String, Integer> bySource,
-            String tests)
+    private static TestClassRecording.Replayed replayedByConeNow(
+            ForecastScope s, TestStampInputs stamp, BuildLayout layout, boolean compact, String stampKey)
             throws IOException {
-        if (!stamp.cachesByCone()) return tests;
+        if (!stamp.cachesByCone()) return TestClassRecording.Replayed.NONE;
         List<Path> resources = stamp.forecastResources(compact);
-        if (resources == null) return tests;
+        if (resources == null) return TestClassRecording.Replayed.NONE;
         TestSelection selection = SessionContext.selectionFor(s.dir);
-        TestClassRecording.Replayed replayed = SuiteDiscovery.replayedByCone(
+        return SuiteDiscovery.replayedByCone(
                 s.dir,
                 layout,
                 selection,
@@ -1083,6 +1079,29 @@ final class TestSteps {
                 stampKey,
                 SuiteResources.launchNames(
                         s.dir, compact, selection, s.project.build().runSuites()));
-        return coneTests(s, replayed, bySource, tests);
+    }
+
+    /**
+     * What a run under {@code stampKey} leaves out: first what the classes ledger under it settled,
+     * the classes a red or cut-short run under the same stamp passed ({@link
+     * TestClassLedger#recordedIn}), then, for the classes it never recorded, what their cones
+     * replay. A {@code red} run's ledger holds every class it ran, so no cone is walked for it.
+     */
+    private static TestClassRecording.Replayed sameStampFirst(
+            ForecastScope s, TestStampInputs stamp, BuildLayout layout, boolean compact, String stampKey, boolean red)
+            throws IOException {
+        Set<String> launches = SuiteResources.launchNames(
+                s.dir,
+                compact,
+                SessionContext.selectionFor(s.dir),
+                s.project.build().runSuites());
+        TestClassRecording.Replayed ledger = TestClassRecording.Replayed.of(TestClassLedger.load(
+                        s.actionCache,
+                        stampKey,
+                        coordinate(s.project),
+                        stamp.tier().name())
+                .recordedIn(launches));
+        if (red) return ledger;
+        return ledger.over(replayedByConeNow(s, stamp, layout, compact, stampKey));
     }
 }

@@ -528,7 +528,8 @@ all. A
 class counts as passed only when it and every class nested in it passed. The run says so with a
 `tests-not-rerun` warning (`6 test classes passed earlier under these same inputs and are not run
 again`), its counts and `jk results` include the classes not re-run, and once every class has
-passed the suite's marker is green and the next run skips it whole. A class that failed and then
+passed the suite's marker is green and the next run skips it whole. `jk explain` prices such a
+suite the same way: `run tests · ~3 tests · 290 classes replayed · last run failed`. A class that failed and then
 passes with nothing changed is flaky or depends on what ran before it, and the run warns
 `test-passed-on-rerun` naming it, and its `class-finish` row in `jk results -O jsonl` carries
 `"passedOnRerun":true` ([Machine output](machine-output.md#event-vocabulary)); past a threshold it is quarantined

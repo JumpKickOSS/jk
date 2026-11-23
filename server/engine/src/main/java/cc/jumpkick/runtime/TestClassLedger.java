@@ -15,6 +15,7 @@ import cc.jumpkick.test.JUnitLauncher;
 import cc.jumpkick.test.SuiteEnvReads;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -284,6 +285,35 @@ final class TestClassLedger {
             // A nested class alone says nothing about its outer class's own tests.
             if (e.getValue() && own.contains(e.getKey())) out.add(e.getKey());
         }
+        return out;
+    }
+
+    /**
+     * One top-level class as the ledger holds it for the forecast: the tests its outcomes and its
+     * nested classes' hold, and whether a run leaves it out.
+     */
+    record Settled(long tests, boolean settled) {}
+
+    /**
+     * For the forecast, each top-level class recorded in the launches named {@code launches}, as a
+     * run under this stamp of those launches decides it ({@link #enter}): settled when every one of
+     * them that recorded it settled it ({@link #settledClasses}).
+     */
+    Map<String, Settled> recordedIn(Set<String> launches) {
+        Map<String, Long> tests = new HashMap<>();
+        Set<String> runs = new HashSet<>();
+        for (String launch : launches) {
+            Set<String> settled = new HashSet<>(settledClasses(launch));
+            for (Map.Entry<String, Entry> e : previous.entrySet()) {
+                String[] key = splitKey(e.getKey());
+                if (!key[0].equals(launch)) continue;
+                String cls = topLevel(key[1]);
+                tests.merge(cls, e.getValue().tests(), Long::sum);
+                if (!settled.contains(cls)) runs.add(cls);
+            }
+        }
+        Map<String, Settled> out = new HashMap<>();
+        tests.forEach((cls, n) -> out.put(cls, new Settled(n, !runs.contains(cls))));
         return out;
     }
 

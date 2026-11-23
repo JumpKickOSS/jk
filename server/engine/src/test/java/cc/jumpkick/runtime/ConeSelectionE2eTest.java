@@ -39,7 +39,8 @@ import org.junit.jupiter.api.io.TempDir;
  * Per-class selection on, over a real suite of three classes: after a body edit of one main class
  * the forecast prices the class whose cone holds it and the run runs that class alone, replaying
  * the others; an edit that breaks the class still fails the run. A file a replayed class read keys
- * the suite still, and a suite that reached another host replays the classes that did not.
+ * the suite still, and a suite that reached another host replays the classes that did not. A red
+ * suite under an unmoved stamp is priced by the classes it did not pass.
  */
 @Tag("integration")
 class ConeSelectionE2eTest {
@@ -280,6 +281,57 @@ class ConeSelectionE2eTest {
         assertThat(buildAsTheEngine(m, cache)).isEqualTo(TaskStatus.SUCCESS);
         assertThat(Jsonl.longValue(last(m), "ran", 0))
                 .as("TalksTest runs again; QuietTest replays")
+                .isEqualTo(1);
+    }
+
+    /**
+     * A suite that went red under a stamp that has not moved is priced by the classes it did not
+     * pass, which are all the run runs again: the classes that passed stand.
+     */
+    @Test
+    void a_red_suite_under_the_same_stamp_is_priced_by_the_classes_it_did_not_pass(@TempDir Path tmp) throws Exception {
+        Path cache = TestCaches.dir("cone-selection-cache");
+        Path m = Files.createDirectories(tmp.resolve("ws/m"));
+        Files.writeString(m.resolve("jk.toml"), """
+                group   = "com.example"
+                name    = "m"
+                version = "1.0.0"
+                java    = 25
+
+                [test-dependencies]
+                junit-jupiter = "6.1.3"
+
+                [repositories]
+                central = "https://repo.maven.apache.org/maven2/"
+
+                [test]
+                cache = "cone"
+                """);
+        Files.createDirectories(m.resolve("src/main/java/demo"));
+        Files.writeString(m.resolve("src/main/java/demo/M.java"), "package demo; public class M {}\n");
+        Path tests = Files.createDirectories(m.resolve("src/test/java/demo"));
+        test(tests, "PassTest", "assertEquals(2, 1 + 1);");
+        test(tests, "OtherPassTest", "assertEquals(3, 1 + 2);");
+        test(tests, "FailTest", "assertEquals(1, 2);");
+        BuildPlan lock = LockPlans.lockBuildPlan(m, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
+        assertThat(lock.run().success()).as("lock").isTrue();
+
+        assertThat(build(m, cache)).isEqualTo(TaskStatus.FAIL);
+        assertThat(Jsonl.longValue(last(m), "ran", 0)).isEqualTo(3);
+
+        TaskForecast.Module forecast = forecast(m, cache);
+        assertThat(forecast.rerunTests())
+                .as("FailTest alone, as the run selects it")
+                .isEqualTo(1);
+        assertThat(forecast.steps())
+                .filteredOn(t -> t.name().equals(TaskNames.RUN_TESTS))
+                .singleElement()
+                .satisfies(t -> assertThat(t.text())
+                        .contains("~1 test · 2 classes replayed")
+                        .endsWith(TaskForecast.LAST_RUN_FAILED));
+        assertThat(build(m, cache)).isEqualTo(TaskStatus.FAIL);
+        assertThat(Jsonl.longValue(last(m), "ran", 0))
+                .as("FailTest runs again; PassTest and OtherPassTest stand")
                 .isEqualTo(1);
     }
 

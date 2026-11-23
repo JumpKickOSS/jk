@@ -390,7 +390,10 @@ When nothing the suite reads is still to be built (its compile and every sibling
 current), `jk explain` takes each class's key as the run will (`TestClassRecording.replayedNow`, through
 `SuiteDiscovery.replayedByCone`) and prices only the classes whose key moved: `run tests · <the stamp
 input that moved> · ~12 tests · 281 classes replayed`, and the module's `rerunTests` (the Tests
-row's Rebuild column) counts those tests alone. When a compile is pending the new bytes do not exist
+row's Rebuild column) counts those tests alone. A red or cut-short run under the same stamp is read
+first (`TestClassLedger.recordedIn`): the classes it passed stand, as the run leaves them out, and the
+cones decide only the classes that ledger never recorded (`Replayed.over`); a red suite's ledger
+holds every class, so its cones are not walked. When a compile is pending the new bytes do not exist
 yet, so the forecast reads the edit instead (`TestClassRecording.replayedAfter`): each dirty module's
 API hint names the sources whose content moved (`SourceApiIndex.Hint.changed`), the classes on disk
 compiled from them are the classes that move, and a class that passed replays unless one of them lies
