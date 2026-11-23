@@ -38,7 +38,7 @@ if [[ "${1:-}" == --stats ]]; then
     printf '%-28s %6s  %15s  %9s  %9s\n' "$b" "$n" "$(dur "$t")" "$(dur "$w")" "$(dur "$g")"
   done <<<"$rows"
   col() { awk -v c="$1" '$c != "-" { print $c }' <<<"$rows" | median; }
-  printf '%-28s %6s  %15s  %9s  %9s\n' "median of $(wc -l <<<"$rows")" "" "$(dur "$(col 3)")" "$(dur "$(col 4)")" "$(dur "$(col 5)")"
+  printf '%-28s %6s  %15s  %9s  %9s\n' "median of $(($(wc -l <<<"$rows")))" "" "$(dur "$(col 3)")" "$(dur "$(col 4)")" "$(dur "$(col 5)")"
   echo "slowest:"
   awk '$3 != "-"' <<<"$rows" | sort -k3,3nr | head -3 | while read -r b n t _; do
     echo "  $b (batch $n) $(dur "$t")"

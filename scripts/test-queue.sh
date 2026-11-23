@@ -118,6 +118,13 @@ branch() {
 }
 submit() { (cd "$dev" && bash "$Q/submit.sh" "$1" >/dev/null 2>"$WORK/submit.err"); }
 status() { (cd "$dev" && bash "$Q/status.sh" "$1"); }
+# Greps a branch's status from a captured copy: piped into grep -q, status would die of SIGPIPE
+# writing a line after the match, and pipefail would fail the check.
+status_has() {
+  local out
+  out="$(status "$1")" || return 1
+  grep "${@:2}" <<<"$out"
+}
 queue() {
   env QUEUE_REPO="$WORK/queue.git" QUEUE_CHECKOUT="$WORK/co" QUEUE_GATE="$WORK/gate.sh" \
     QUEUE_LOG_DIR="$WORK/logs" GATE_LOCK="$WORK/gate.lock" DROP_IN="$WORK/queue.git" "$@" bash "$Q/loop.sh" --once
@@ -152,9 +159,9 @@ holds b.txt || fail "b did not land: $(git -C "$WORK/origin.git" log --oneline m
 [[ "$(git -C "$WORK/origin.git" rev-list --count main)" -eq 3 ]] || fail "a's commit landed twice: $(git -C "$WORK/origin.git" log --oneline main)"
 git -C "$WORK/origin.git" merge-base --is-ancestor "$first_main" main || fail "origin/main was not fast-forwarded"
 [[ "$(status a)" == "a: landed "* && "$(status b)" == "b: landed "* ]] || fail "a and b do not show as landed: $(status a) / $(status b)"
-status c | grep -q '^c: ejected .*conflicts' || fail "c does not show as ejected: $(status c)"
-status c | grep -q 'conflicts: base.txt' || fail "c's ejection does not name the file: $(status c)"
-status c | grep -q 'tickets told: none' || fail "c's ejection does not say no ticket was told: $(status c)"
+status_has c -q '^c: ejected .*conflicts' || fail "c does not show as ejected: $(status c)"
+status_has c -q 'conflicts: base.txt' || fail "c's ejection does not name the file: $(status c)"
+status_has c -q 'tickets told: none' || fail "c's ejection does not say no ticket was told: $(status c)"
 # Every landing and ejection records when it was ready, when its batch took the lock and gated,
 # and when it ended; the batch's line ends with its wait and gate seconds.
 T="$WORK/queue.git/queue-timings.log"
@@ -174,11 +181,11 @@ branch d origin/main docs/d.txt d
 branch e origin/main docs/red.txt nomodule
 for x in d e; do submit "$x" || fail "submitting $x failed"; done
 queue || fail "the red batch did not run"
-status d | grep -q '^d: waiting .* group [0-9.]*: .* split in halves' || fail "d was not split out of the red batch: $(status d)"
+status_has d -q '^d: waiting .* group [0-9.]*: .* split in halves' || fail "d was not split out of the red batch: $(status d)"
 for _ in 1 2; do queue || fail "the split batches did not run"; done
 holds docs/d.txt || fail "d did not land after the split"
 if holds docs/red.txt; then fail "the red branch landed"; fi
-status e | grep -q 'FAIL cc.example.RedTest' || fail "e's ejection does not name the failing class: $(status e)"
+status_has e -q 'FAIL cc.example.RedTest' || fail "e's ejection does not name the failing class: $(status e)"
 grep -q 'RED-SPLIT in halves' "$WORK/queue.git/queue-batches.log" || fail "the batch log does not record the split"
 
 # --- one bad branch of three: the rest lands, the bad one alone is ejected and its ticket told ---
@@ -189,7 +196,7 @@ branch i origin/main docs/i.txt i
 for x in g w/QA-BAD01 i; do submit "$x" || fail "submitting $x failed"; done
 batches="$(wc -l <"$WORK/queue.git/queue-batches.log")"
 queue || fail "the red batch of three did not run"
-status w/QA-BAD01 | grep -q 'waiting .* group [0-9.]*: .* split by the modules' ||
+status_has w/QA-BAD01 -q 'waiting .* group [0-9.]*: .* split by the modules' ||
   fail "the branch that changed the failing module was not split out: $(status w/QA-BAD01)"
 # j, submitted after the split, waits for the groups; its submission is lost while it waits, and
 # the queue records that rather than forget it.
@@ -199,14 +206,14 @@ queue DROP_REF=j || fail "the rest of the red batch did not run"
 holds mod/a/A.java || fail "g did not land with the rest: $(status g)"
 holds docs/i.txt || fail "i did not land with the rest: $(status i)"
 if holds docs/j.txt; then fail "a branch submitted after the split was gated with the rest"; fi
-status j | grep -q '^j: dropped ' || fail "a lost branch is not recorded as dropped: $(status j || true)"
+status_has j -q '^j: dropped ' || fail "a lost branch is not recorded as dropped: $(status j || true)"
 grep -q 'DROPPED j@' "$WORK/queue.git/queue-batches.log" || fail "the batch log does not record the drop"
 queue || fail "the suspect alone did not run"
 if holds mod/b/red.txt; then fail "the bad branch landed"; fi
 [[ "$(grep -c '^batch [0-9]* [0-9T:-]*Z ' <(tail -n +$((batches + 1)) "$WORK/queue.git/queue-batches.log"))" -eq 3 ]] ||
   fail "one bad branch of three took other than three batches: $(tail -4 "$WORK/queue.git/queue-batches.log")"
-status w/QA-BAD01 | grep -q '^w/QA-BAD01: ejected ' || fail "the bad branch was not ejected: $(status w/QA-BAD01)"
-status w/QA-BAD01 | grep -qx 'tickets told: QA-BAD01' || fail "the ticket was not told: $(status w/QA-BAD01)"
+status_has w/QA-BAD01 -q '^w/QA-BAD01: ejected ' || fail "the bad branch was not ejected: $(status w/QA-BAD01)"
+status_has w/QA-BAD01 -qx 'tickets told: QA-BAD01' || fail "the ticket was not told: $(status w/QA-BAD01)"
 grep -q '^comment QA-BAD01 -m The merge queue ejected .w/QA-BAD01.' "$KA_LOG" || fail "no comment on the ticket: $(cat "$KA_LOG")"
 grep -qx '    FAILED cc.example:jk-b cc.example.RedTest' "$KA_LOG" || fail "the ticket was not told the failing class: $(cat "$KA_LOG")"
 grep -q 'at cc.example.RedTest.fails(RedTest.java:7)' "$KA_LOG" || fail "the ticket was not told the failure: $(cat "$KA_LOG")"
@@ -218,7 +225,7 @@ submit f || fail "submitting f failed"
 queue MOVE_ORIGIN="$WORK/other" 2>/dev/null || fail "the batch with a moving origin did not run"
 moved="$(git -C "$WORK/other" rev-parse HEAD)"
 [[ "$(origin_main)" == "$moved" ]] || fail "the queue overwrote a commit it did not gate"
-status f | grep -q '^f: waiting .*moved' || fail "f is not waiting again: $(status f)"
+status_has f -q '^f: waiting .*moved' || fail "f is not waiting again: $(status f)"
 grep -q ' MOVED f@' "$WORK/queue.git/queue-batches.log" || fail "the batch log does not record the move"
 queue || fail "the batch after the move did not run"
 holds docs/f.txt || fail "f did not land after origin/main moved"
@@ -255,7 +262,7 @@ queue MOVE_ORIGIN="$WORK/other" MOVE_FILE=docs/moved.md 2>/dev/null || fail "the
 moved="$(git -C "$WORK/other" rev-parse HEAD)"
 holds mod/a/O.java || fail "o did not land over a docs-only move: $(status o)"
 git -C "$WORK/origin.git" merge-base --is-ancestor "$moved" main || fail "the landing dropped the docs-only commit"
-status o | grep -q '^o: landed .* after docs-only commits moved origin/main' || fail "o's record does not say why it landed: $(status o)"
+status_has o -q '^o: landed .* after docs-only commits moved origin/main' || fail "o's record does not say why it landed: $(status o)"
 [[ "$(git -C "$WORK/origin.git" rev-list --count "$moved..main")" -eq 1 ]] || fail "o landed other than once on the new main"
 
 # --- nothing waits: no batch ---
@@ -294,8 +301,8 @@ kill -0 "$looping" 2>/dev/null || fail "the paused loop ended: $(cat "$WORK/paus
 [[ "$(wc -l <"$WORK/logs/tiers.log")" -eq "$gates" ]] || fail "a paused loop started a gate"
 [[ "$(grep -c '^queue: paused .*: a bench night (' "$WORK/paused.out")" -eq 1 ]] ||
   fail "the loop does not say once that it is paused and why: $(cat "$WORK/paused.out")"
-status p | grep -q '^p: waiting ' || fail "p does not wait through the pause: $(status p)"
-status p | grep -qx 'the queue is paused: a bench night; it starts no batch until the pause file is removed' ||
+status_has p -q '^p: waiting ' || fail "p does not wait through the pause: $(status p)"
+status_has p -qx 'the queue is paused: a bench night; it starts no batch until the pause file is removed' ||
   fail "status does not say the queue is paused: $(status p)"
 rm "$WORK/queue.git/pause"
 for _ in $(seq 200); do kill -0 "$looping" 2>/dev/null || break; sleep 0.1; done
@@ -303,7 +310,7 @@ if kill -0 "$looping" 2>/dev/null; then kill "$looping"; fail "the loop did not 
 wait "$looping" || fail "the resumed loop failed: $(cat "$WORK/paused.out")"
 grep -q '^queue: resumed' "$WORK/paused.out" || fail "the loop does not say it resumed: $(cat "$WORK/paused.out")"
 holds docs/p.md || fail "p did not land after the pause: $(status p)"
-status p | grep -q 'paused' && fail "status still says paused: $(status p)"
+status_has p -q 'paused' && fail "status still says paused: $(status p)"
 
 # --- --stats: the last 20 landings, ready to landed, lock wait and gate, their medians and the
 # slowest three; an ejection is not a landing, and a time the queue does not know is left out ---
@@ -330,4 +337,4 @@ if ! grep -q '^old6 ' <<<"$stats" || grep -q '^old5 ' <<<"$stats"; then fail "--
 stats="$(cd "$dev" && JK_QUEUE_REMOTE="$WORK/queue.git" bash "$Q/status.sh" --stats)" || fail "--stats failed on the queue: $stats"
 grep -qE '^a +1 +[0-9]+m[0-9]{2}s ' <<<"$stats" || fail "--stats does not show the queue's own landings: $stats"
 
-echo "test-queue: ok ($(wc -l <"$WORK/queue.git/queue-batches.log") batches)"
+echo "test-queue: ok ($(($(wc -l <"$WORK/queue.git/queue-batches.log"))) batches)"
