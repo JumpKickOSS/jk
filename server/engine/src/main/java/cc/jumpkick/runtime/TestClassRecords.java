@@ -516,7 +516,7 @@ final class TestClassRecords {
                 moduleDir,
                 header(module, seen, lookups, root, toolchain),
                 outcomes(recorded),
-                (o, prev) -> row(o, seen.complete() ? seen.classes().get(o.testClass()) : null, lookups, root, null));
+                (o, prev) -> row(o, seen.complete() ? seen.of(o.launch(), o.testClass()) : null, lookups, root, null));
     }
 
     /**

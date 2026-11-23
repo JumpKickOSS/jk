@@ -631,6 +631,17 @@ class ClassKeysTest {
         assertThat(TestClassRecording.launchOf(outcomes).apply(List.of("demo.T", "demo.U")))
                 .as("a JVM that ran both is neither's")
                 .isNull();
+        Map<String, TestClassRecords.Outcome> mixed = new HashMap<>(outcomes);
+        mixed.put(TestClassRecords.rowKey("", "demo.M"), new TestClassRecords.Outcome("", "demo.M", 1, 0, 0, 1, 1));
+        mixed.put(
+                TestClassRecords.rowKey(integration, "demo.M"),
+                new TestClassRecords.Outcome(integration, "demo.M", 1, 0, 0, 1, 1));
+        assertThat(TestClassRecording.launchOf(mixed).apply(List.of("demo.T", "demo.M")))
+                .as("a class both launches ran leaves a JVM the launch its other classes ran in")
+                .isEqualTo("");
+        assertThat(TestClassRecording.launchOf(mixed).apply(List.of("demo.M")))
+                .as("a JVM that ran only that class is neither's")
+                .isNull();
 
         Map<String, ClassReads.Observation> seenByClass =
                 Map.of("demo.T", ClassReads.Observation.empty(), "demo.U", ClassReads.Observation.empty());

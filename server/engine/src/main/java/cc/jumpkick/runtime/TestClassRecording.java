@@ -758,9 +758,11 @@ final class TestClassRecording {
     }
 
     /**
-     * The launch of a recording that held the windows of {@code classes}, by the launch each ran in
-     * ({@code ran}): the one launch all of them ran in, null when they ran in more than one, or one of
-     * them in none of this run's, or there were none.
+     * The launch of a recording that held the windows of {@code classes}, by the launches each ran in
+     * ({@code ran}): the one launch every one of them ran in, so a class two launches run (a class
+     * with one integration method among unit tests) does not hide the JVM it shared with the others.
+     * Null when no launch or more than one holds them all, one of them ran in none of this run's, or
+     * there were none.
      */
     static Function<Collection<String>, @Nullable String> launchOf(Map<String, TestClassRecords.Outcome> ran) {
         Map<String, Set<String>> byClass = new HashMap<>();
@@ -768,21 +770,21 @@ final class TestClassRecording {
             byClass.computeIfAbsent(o.testClass(), c -> new HashSet<>()).add(o.launch());
         }
         return classes -> {
-            String one = null;
+            Set<String> common = null;
             for (String c : classes) {
                 Set<String> in = byClass.get(c);
-                if (in == null || in.size() != 1) return null;
-                String launch = in.iterator().next();
-                if (one == null) one = launch;
-                else if (!one.equals(launch)) return null;
+                if (in == null) return null;
+                if (common == null) common = new HashSet<>(in);
+                else common.retainAll(in);
+                if (common.isEmpty()) return null;
             }
-            return one;
+            return common != null && common.size() == 1 ? common.iterator().next() : null;
         };
     }
 
-    /** The observation of the class {@code o} names, when its recording was read whole. */
+    /** The observation of the class {@code o} names in its launch, when its recording was read whole. */
     private static ClassReads.@Nullable Observation observation(
             ClassReads.Attributed seen, TestClassRecords.Outcome o) {
-        return seen.complete() ? seen.classes().get(o.testClass()) : null;
+        return seen.complete() ? seen.of(o.launch(), o.testClass()) : null;
     }
 }

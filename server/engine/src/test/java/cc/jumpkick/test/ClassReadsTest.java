@@ -164,6 +164,73 @@ class ClassReadsTest {
                 .containsExactlyInAnyOrder(unit, integration);
     }
 
+    /**
+     * A class with an integration method among its unit tests runs in the default launch's JVMs and
+     * the integration launch's. What its integration window read (an engine it started) is that
+     * launch's row alone: its default row stands on what its unit tests read there.
+     */
+    @Test
+    void a_class_two_launches_run_keeps_each_launchs_window_apart(@TempDir Path tmp) throws Exception {
+        Path ws = Files.createDirectories(tmp.resolve("ws"));
+        Path unitRead = write(ws, "unit.txt");
+        Path engineRead = write(ws, "engine.txt");
+        Path recordings = Files.createDirectories(tmp.resolve("rec"));
+        recordWindows(recordings.resolve("unit.jfr"), "demo.UnitTest", write(ws, "u.txt"), "demo.MixedTest", unitRead);
+        recordWindows(
+                recordings.resolve("integration.jfr"),
+                "demo.MixedTest",
+                engineRead,
+                "demo.IntegrationTest",
+                write(ws, "i.txt"));
+        ClassReads.Layout layout = new ClassReads.Layout(
+                List.of(ws.resolve("m/target/test-classes")), List.of(ws.resolve("m/target")), Set.of(), ws, null);
+
+        ClassReads.Attributed seen = ClassReads.attribute(
+                recordings,
+                ws,
+                layout,
+                false,
+                classes -> classes.contains("demo.IntegrationTest") ? "test:integration" : "test:test");
+
+        assertThat(Objects.requireNonNull(seen.of("test:test", "demo.MixedTest"))
+                        .reads())
+                .as("the default launch's window")
+                .containsExactly(unitRead);
+        assertThat(Objects.requireNonNull(seen.of("test:integration", "demo.MixedTest"))
+                        .reads())
+                .as("the integration launch's window")
+                .containsExactly(engineRead);
+
+        ClassReads.Attributed untold = ClassReads.attribute(
+                recordings,
+                ws,
+                layout,
+                false,
+                classes -> classes.contains("demo.IntegrationTest") ? null : "test:test");
+        assertThat(Objects.requireNonNull(untold.of("test:test", "demo.MixedTest"))
+                        .reads())
+                .as("one recording's launch unknown: every window of the class is its row's")
+                .containsExactlyInAnyOrder(unitRead, engineRead);
+    }
+
+    /** A recording of one JVM at {@code file}: {@code firstRead} in the window of {@code first}, then the same of the second. */
+    private static void recordWindows(Path file, String first, Path firstRead, String second, Path secondRead)
+            throws Exception {
+        try (Recording r = new Recording()) {
+            r.enable("jdk.FileRead").withThreshold(Duration.ZERO);
+            r.enable(ClassReads.WINDOW_EVENT).withThreshold(Duration.ZERO);
+            r.start();
+            Window w = window(first);
+            Files.readString(firstRead);
+            w.commit();
+            w = window(second);
+            Files.readString(secondRead);
+            w.commit();
+            r.stop();
+            r.dump(file);
+        }
+    }
+
     /** A recording of one JVM at {@code file}: {@code pooled} read before the window of {@code testClass}. */
     private static void record(Path file, String testClass, Path pooled) throws Exception {
         try (Recording r = new Recording()) {

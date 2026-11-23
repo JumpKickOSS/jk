@@ -329,8 +329,11 @@ counts, the bounded pool (up to 400 data files) and the suite's code files, neve
 content. It names the launches it stands for (`launches`): a launch runs its own test JVMs, so what
 no window held in them is no input of another launch's classes. A run that starts several
 launches at once writes a line for each, its pool what that launch's JVMs did outside every window
-(a JVM's launch is the one its windows' classes ran in); when one JVM's launch cannot be told, its
-launches share one line on every JVM's pool. A run writes its lines first and keeps, after them,
+(a JVM's launch is the one launch all its windows' classes ran in, so a class with one integration
+method among unit tests leaves its unit JVM the default launch's). A class two launches run has a
+row for each, and each row holds only what that launch's windows of it did: the integration
+method's engine is no input of its unit row. When one JVM's launch cannot be told, its launches
+share one line on every JVM's pool, and each class's rows hold every window of it. A run writes its lines first and keeps, after them,
 each earlier line for the launches it did not start, so a `jk test -g` whose integration JVMs
 started a program or reached the network outside every class leaves the default suite's classes on
 their own launch's pool, whether the integration suite ran beside them or in a later run

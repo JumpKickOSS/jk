@@ -642,7 +642,8 @@ public final class ClassReads {
     /**
      * A suite's run, split by class.
      *
-     * @param classes each top-level class that ran in a window, by binary name
+     * @param classes each top-level class that ran in a window, by binary name, or by {@link
+     *     #launchKey} when every recording told its launch
      * @param pooled what no window held: every class's
      * @param code every code file the suite's JVMs read, which holds each class's and the pool's
      * @param complete false when a recording could not be read whole: no class of it is attributed
@@ -675,6 +676,24 @@ public final class ClassReads {
         public Observation pooled(String launch) {
             return launches.getOrDefault(launch, pooled);
         }
+
+        /**
+         * What the windows of {@code testClass} held in the JVMs of {@code launch}, where the run told
+         * its launches apart ({@link #launchKey}), else in every JVM; null when no window held it.
+         */
+        public @Nullable Observation of(String launch, String testClass) {
+            Observation own = classes.get(launchKey(launch, testClass));
+            return own != null ? own : classes.get(testClass);
+        }
+    }
+
+    /**
+     * The key of {@code testClass}'s observation in the JVMs of {@code launch}, in a run whose
+     * recordings each told their launch: a class two launches run is two classes there, so what one
+     * launch's windows did (start an engine) is no input of the other's row.
+     */
+    public static String launchKey(String launch, String testClass) {
+        return launch + '|' + testClass;
     }
 
     /** One window: a class from its start to its finish, in epoch nanos. */
@@ -691,7 +710,7 @@ public final class ClassReads {
     }
 
     /** The first pass's events and fields: the class windows and the files the JVM wrote. */
-    private static final Map<String, List<String>> FRAME =
+    static final Map<String, List<String>> FRAME =
             Map.of(WINDOW_EVENT, List.of("testClass"), "jdk.FileWrite", List.of("path"));
 
     /**
@@ -714,7 +733,7 @@ public final class ClassReads {
             USE_EVENT,
             List.of("className"));
 
-    private static final Map<String, List<String>> ALL;
+    static final Map<String, List<String>> ALL;
 
     static {
         Map<String, List<String>> all = new LinkedHashMap<>(EVENTS);
@@ -724,7 +743,7 @@ public final class ClassReads {
 
     /** One pass over a recording: its events of {@code wanted}, in file order. */
     @FunctionalInterface
-    private interface Pass {
+    interface Pass {
         void run(Map<String, List<String>> wanted, RecordingReader.Sink sink) throws IOException;
     }
 
@@ -757,8 +776,10 @@ public final class ClassReads {
      * As {@link #attribute(Path, Path, Layout, boolean)}, each recording's pool also kept as the pool
      * of its launch: the launch {@code launchOf} names for the classes its windows hold, null when it
      * cannot tell one. A launch runs its own test JVMs, so what one launch's JVMs did outside every
-     * window is no input of another launch's classes. One recording whose launch is not told leaves
-     * no launch's pool: each stands on every JVM's ({@link Attributed#pooled(String)}).
+     * window is no input of another launch's classes, nor what a class's window did there an input of
+     * the same class's window in another launch ({@link #launchKey}). One recording whose launch is
+     * not told leaves no launch's pool and keys no class by launch: each stands on every JVM's
+     * ({@link Attributed#pooled(String)}).
      */
     public static Attributed attribute(
             Path dir,
@@ -779,75 +800,57 @@ public final class ClassReads {
         int[] loadedLeft = {LOADED_KEPT};
         Observation pooled = Observation.pool();
         Map<String, Observation> launches = new HashMap<>();
-        boolean launchesTold = true;
         UseNames useNames = new UseNames();
         PathVerdicts verdicts = new PathVerdicts(cwd, layout);
         SuiteCode code = SuiteCode.empty();
         boolean complete = true;
         long events = 0;
-        for (Path jfr : recordings) {
-            Path lines = null;
-            try {
-                List<Window> windows = new ArrayList<>();
-                Set<Path> written = new HashSet<>();
-                RecordingReader.Sink frame = (name, start, end, v) -> {
-                    if (name.equals(WINDOW_EVENT)) {
-                        if (v[0] != null && !v[0].isBlank()) windows.add(new Window(v[0], start, end));
-                    } else if (v[0] != null && !v[0].isBlank() && written.size() < WRITTEN_KEPT) {
-                        // Only a file that could be a class's input needs telling from the run's own.
-                        PathVerdicts.Verdict w = verdicts.of(v[0]);
-                        if (w != null && w.where() == Where.DATA) written.add(w.path());
-                    }
-                };
-                Pass pass;
-                try (RecordingReader.Permit permit = RecordingReader.Permit.acquire()) {
-                    RecordingReader.read(jfr, FRAME, frame);
-                    pass = (wanted, sink) -> RecordingReader.read(jfr, wanted, sink);
-                } catch (IOException declined) {
-                    // A file that does not even begin as a recording is no recording at all.
-                    if (!RecordingReader.framed(jfr)) throw new IOException("not a recording", declined);
-                    Log.info("class reads: " + jfr.getFileName() + " read through the JDK's parser in a child JVM: "
-                            + declined.getMessage());
-                    windows.clear();
-                    written.clear();
-                    Path dumped = RecordingDump.dump(jfr, ALL);
-                    lines = dumped;
-                    pass = (wanted, sink) -> RecordingDump.stream(dumped, wanted, sink);
-                    try (RecordingReader.Permit permit = RecordingReader.Permit.acquire()) {
-                        pass.run(FRAME, frame);
-                    }
-                }
-                String launch =
-                        launchOf.apply(windows.stream().map(Window::testClass).toList());
-                List<Observation> pools = new ArrayList<>(2);
-                pools.add(pooled);
-                if (launch == null) launchesTold = false;
-                else pools.add(launches.computeIfAbsent(launch, l -> Observation.pool()));
-                Join join =
-                        new Join(windows, written, cwd, layout, verdicts, classes, pools, code, loadedLeft, useNames);
-                try (RecordingReader.Permit permit = RecordingReader.Permit.acquire()) {
-                    pass.run(EVENTS, (name, start, end, v) -> read(name, start, v, join));
-                }
-                join.finish();
-                if (carryUses) join.carryUses();
-                events += join.events;
-            } catch (IOException | RuntimeException unreadable) {
-                Log.debug("class reads: recording unreadable at " + jfr, unreadable);
-                complete = false;
-            } finally {
-                if (lines != null) {
-                    try {
-                        Files.deleteIfExists(lines);
-                    } catch (IOException kept) {
-                        Log.debug("class reads: " + lines + " not removed", kept);
-                    }
+        List<FramedRecording> framed = new ArrayList<>();
+        try {
+            // Every recording's windows first: whether each tells its launch decides every class's key.
+            for (Path jfr : recordings) {
+                try {
+                    FramedRecording f = FramedRecording.read(jfr, verdicts);
+                    framed.add(f.told(launchOf.apply(
+                            f.windows().stream().map(Window::testClass).toList())));
+                } catch (IOException | RuntimeException unreadable) {
+                    Log.debug("class reads: recording unreadable at " + jfr, unreadable);
+                    complete = false;
                 }
             }
+            boolean launchesTold = framed.stream().allMatch(f -> f.launch() != null);
+            for (FramedRecording f : framed) {
+                try {
+                    List<Observation> pools = new ArrayList<>(2);
+                    pools.add(pooled);
+                    List<Window> windows = f.windows();
+                    String launch = f.launch();
+                    if (launchesTold && launch != null) {
+                        pools.add(launches.computeIfAbsent(launch, l -> Observation.pool()));
+                        windows = windows.stream()
+                                .map(w -> new Window(launchKey(launch, w.testClass()), w.start(), w.end()))
+                                .toList();
+                    }
+                    Join join = new Join(
+                            windows, f.written(), cwd, layout, verdicts, classes, pools, code, loadedLeft, useNames);
+                    try (RecordingReader.Permit permit = RecordingReader.Permit.acquire()) {
+                        f.pass().run(EVENTS, (name, start, end, v) -> read(name, start, v, join));
+                    }
+                    join.finish();
+                    if (carryUses) join.carryUses();
+                    events += join.events;
+                } catch (IOException | RuntimeException unreadable) {
+                    Log.debug("class reads: recording unreadable at " + f.jfr(), unreadable);
+                    complete = false;
+                }
+            }
+            // A use outside every window (discovery, a static initialiser) leaves state any class may read.
+            for (Observation o : classes.values()) o.addUses(pooled);
+            return new Attributed(
+                    classes, pooled, code, complete, recordings.size(), events, launchesTold ? launches : Map.of());
+        } finally {
+            for (FramedRecording f : framed) f.removeDump();
         }
-        // A use outside every window (discovery, a static initialiser) leaves state any class may read.
-        for (Observation o : classes.values()) o.addUses(pooled);
-        return new Attributed(
-                classes, pooled, code, complete, recordings.size(), events, launchesTold ? launches : Map.of());
     }
 
     /** The second pass: one event, given to its classes as it is read. */
