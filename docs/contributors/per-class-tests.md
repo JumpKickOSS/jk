@@ -45,6 +45,9 @@ class ledger already keys it), is a hash of three parts.
   the request's), `-ea`, the suite settings of this launch, the suite definitions, the excluded
   classes, network allowed or not, `[test] tools` identities, the plugin worker jars the stamp keys;
 - the declared environment values (`[env]`, `[test] env`, profile env) and the shell's locale;
+- what the suite read of the caller's environment (`env-read:`, `env-names=`, `env-all=`): a row
+  names at most 8 variables, and a program a class starts takes the whole environment unseen, so
+  no class's record says all it read, and a changed value re-runs every class of the suite;
 - every **external** runtime classpath entry by content: every entry that is not a workspace
   module's output (dependency jars, the JUnit platform and engines, language runtimes);
 - the suite resource roots by tree content;
@@ -82,7 +85,9 @@ asserts a stack trace. Whether to strip is measured in shadow mode before it is 
   discovered inputs are keyed today;
 - each code file it loaded by path outside everything the suite's key holds (a jar a test opens
   through its own class loader), by content;
-- the programs it started, by identity.
+- the programs it started, by identity: a tool by the identity the suite's stamp gives it, and a
+  class keyed by its module by every program the stamp keys (`proc:`), so an upgrade of `node` re-runs
+  a class that started it.
 
 A class's first run has no record: it runs. The run records what it read, and the record is stored
 under the key that folds those reads in, once they are proved to have held still while it ran

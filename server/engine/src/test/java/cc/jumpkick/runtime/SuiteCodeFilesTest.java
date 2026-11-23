@@ -79,6 +79,7 @@ class SuiteCodeFilesTest {
                         cone,
                         "suite",
                         seen,
+                        Map.of(),
                         ClassKeys.Observed.NONE,
                         index.digest(),
                         "reads",

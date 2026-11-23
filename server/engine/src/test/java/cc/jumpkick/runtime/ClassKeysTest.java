@@ -11,6 +11,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -122,14 +123,25 @@ class ClassKeysTest {
         ClassKeys.Observed seen = observed(List.of("data/a.txt"), false, List.of());
         Map<Path, String> pass = new HashMap<>();
         String first = ClassKeys.key(
-                        "", cone, "suite", seen, ClassKeys.Observed.NONE, "module", "reads", ws, null, pass)
+                        "", cone, "suite", seen, Map.of(), ClassKeys.Observed.NONE, "module", "reads", ws, null, pass)
                 .key();
         assertThat(pass)
                 .as("the listing the pass took")
                 .containsOnlyKeys(data.toAbsolutePath().normalize());
 
         Files.writeString(data.resolve("b.txt"), "b");
-        assertThat(ClassKeys.key("", cone, "suite", seen, ClassKeys.Observed.NONE, "module", "reads", ws, null, pass)
+        assertThat(ClassKeys.key(
+                                "",
+                                cone,
+                                "suite",
+                                seen,
+                                Map.of(),
+                                ClassKeys.Observed.NONE,
+                                "module",
+                                "reads",
+                                ws,
+                                null,
+                                pass)
                         .key())
                 .as("another class of the same pass reuses the listing")
                 .isEqualTo(first);
@@ -152,12 +164,89 @@ class ClassKeysTest {
                 .isEqualTo(fast);
     }
 
+    /**
+     * A class keyed by its module because it started a program stands on that program's identity as
+     * the suite's stamp names it: an upgrade of node reruns it. A class keyed by its cone that started
+     * nothing does not move.
+     */
+    @Test
+    void a_module_keyed_class_reruns_when_a_program_its_suite_started_changes(@TempDir Path ws) throws Exception {
+        ClassCones.Cone cone = ClassCones.index(List.of(Files.createDirectories(ws.resolve("classes"))))
+                .cone("demo.T");
+        List<String> v24 = List.of("sel:fast", "proc:node=v24.1.0", "proc:sh=posix");
+        List<String> v25 = List.of("sel:fast", "proc:node=v25.0.0", "proc:sh=posix");
+        ClassKeys.Observed node = observed(List.of(), false, List.of("/usr/bin/node"));
+        String fallback = ClassKeys.fallback(cone, node, List.of(), false, false, "demo.T", c -> true);
+        assertThat(fallback).isEqualTo("process /usr/bin/node");
+
+        assertThat(stampKey(cone, node, v25, fallback, ws))
+                .as("node upgraded under a class that started it")
+                .isNotEqualTo(stampKey(cone, node, v24, fallback, ws));
+        ClassKeys.Observed nothing = observed(List.of(), false, List.of());
+        assertThat(stampKey(cone, nothing, v25, null, ws))
+                .as("a class keyed by its cone started no program")
+                .isEqualTo(stampKey(cone, nothing, v24, null, ws));
+    }
+
+    /**
+     * No class's record says which variables of the caller's it read, so what the suite read of the
+     * caller's environment keys every class: a value that changed reruns them all, and so does the
+     * whole environment a suite that started a program (git among them) took.
+     */
+    @Test
+    void what_the_suite_read_of_the_callers_environment_keys_every_class() throws Exception {
+        String foo1 = ClassKeys.suitePart(List.of("sel:fast", "env-read:FOO=aaa"), List.of(), List.of());
+        assertThat(ClassKeys.suitePart(List.of("sel:fast", "env-read:FOO=bbb"), List.of(), List.of()))
+                .as("FOO changed in the caller's shell")
+                .isNotEqualTo(foo1);
+        assertThat(ClassKeys.suitePart(List.of("sel:fast", "env-read:FOO=unset"), List.of(), List.of()))
+                .as("FOO unset since")
+                .isNotEqualTo(foo1);
+        String all1 = ClassKeys.suitePart(List.of("sel:fast", "env-all=aaa"), List.of(), List.of());
+        assertThat(ClassKeys.suitePart(List.of("sel:fast", "env-all=bbb"), List.of(), List.of()))
+                .as("a GIT_ variable a started program reads changed")
+                .isNotEqualTo(all1);
+        assertThat(ClassKeys.suitePart(List.of("sel:fast", "env-names=bbb"), List.of(), List.of()))
+                .as("the names a listing saw changed")
+                .isNotEqualTo(ClassKeys.suitePart(List.of("sel:fast", "env-names=aaa"), List.of(), List.of()));
+    }
+
+    /** A class's key as the shadow takes it from a stamp of {@code extras}. */
+    private static String stampKey(
+            ClassCones.Cone cone, ClassKeys.Observed seen, List<String> extras, @Nullable String fallback, Path ws)
+            throws Exception {
+        Map<String, String> programs = ClassKeys.programs(extras);
+        return ClassKeys.key(
+                        "",
+                        cone,
+                        ClassKeys.suitePart(extras, List.of(), List.of()),
+                        ClassKeys.identified(seen, programs),
+                        programs,
+                        ClassKeys.Observed.NONE,
+                        "module",
+                        "reads",
+                        ws,
+                        fallback,
+                        new HashMap<>())
+                .key();
+    }
+
     private static ClassKeys.Observed observed(List<String> reads, boolean more, List<String> processes) {
         return new ClassKeys.Observed(true, reads, more, List.of(), false, processes);
     }
 
     private static ClassKeys.Key key(ClassCones.Cone cone, ClassKeys.Observed seen, String suiteReads, Path ws) {
         return ClassKeys.key(
-                "", cone, "suite", seen, ClassKeys.Observed.NONE, "module", suiteReads, ws, null, new HashMap<>());
+                "",
+                cone,
+                "suite",
+                seen,
+                Map.of(),
+                ClassKeys.Observed.NONE,
+                "module",
+                suiteReads,
+                ws,
+                null,
+                new HashMap<>());
     }
 }

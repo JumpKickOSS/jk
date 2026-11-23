@@ -9,6 +9,7 @@ import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.task.FileHashMemo;
 import cc.jumpkick.task.TestStamp;
 import cc.jumpkick.test.ClassCones;
+import cc.jumpkick.test.SuiteEnvReads;
 import cc.jumpkick.test.SuiteReads;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -32,7 +33,8 @@ import org.jspecify.annotations.Nullable;
  *
  * <ul>
  *   <li>the suite part, what every class of the suite sees: the stamp's tokens less those a finer
- *       part replaces, every classpath entry outside the workspace by content, the resource roots;
+ *       part replaces (what the suite read of the caller's environment among those kept), every
+ *       classpath entry outside the workspace by content, the resource roots;
  *   <li>the class part, its static cone ({@link ClassCones});
  *   <li>the observed part, what its last run read: data files by content (with the listing of a
  *       workspace directory it read in), code files loaded by path by content, the identity of each
@@ -41,10 +43,11 @@ import org.jspecify.annotations.Nullable;
  * </ul>
  *
  * <p>A class whose cone cannot be trusted is keyed by its whole module, every workspace class on
- * its classpath in place of its cone: one that started a program, loaded a workspace class its cone
- * does not name, names a classpath-scanning entry point, or has no attributed record. A class that
- * read more code files than its record names stands on every code file its suite read instead
- * (the suite code files of its record file's header), and on its module only when the suite read more than that list holds.
+ * its classpath in place of its cone, and by every program the suite's stamp keys: one that started
+ * a program, loaded a workspace class its cone does not name, names a classpath-scanning entry
+ * point, or has no attributed record. A class that read more code files than its record names
+ * stands on every code file its suite read instead (the suite code files of its record file's
+ * header), and on its module only when the suite read more than that list holds.
  */
 final class ClassKeys {
 
@@ -128,15 +131,18 @@ final class ClassKeys {
     record Key(String key, @Nullable String fallback) {}
 
     /**
-     * The stamp tokens a finer part replaces: the test compiles, discovered reads. The selection stays:
-     * which suites and tags run decides which of a class's methods run, so a class that passed in a
-     * run of the fast tier says nothing of its methods a wider run selects.
+     * The stamp tokens a finer part replaces: the test compiles (the cone), the files and listings the
+     * suite read and its use of the network (the observed part), each program's identity (which {@link
+     * #key} keys a class by as a tool, or when it is its module's). The selection stays: which suites
+     * and tags run decides which of a class's methods run, so a class that passed in a run of the fast
+     * tier says nothing of its methods a wider run selects. What the suite read of the caller's
+     * environment stays too: no record says which class read it.
      */
     static boolean replacedToken(String token) {
         return token.startsWith(TestStamp.COMPILE_TEST)
                 || token.startsWith(TestStamp.COMPILE_TEST_KOTLIN)
                 || token.startsWith(TestStamp.COMPILE_TEST_GROOVY)
-                || SuiteReads.isReadsToken(token);
+                || (SuiteReads.isReadsToken(token) && !SuiteEnvReads.isToken(token));
     }
 
     /** The suite part: the kept stamp tokens, the external classpath and the resource roots, as one digest. */
@@ -160,14 +166,17 @@ final class ClassKeys {
      * fallback} every workspace class ({@code module}, the digest of them all), and what it and the
      * pool ({@code pooled}) were seen to read. A read set past its record's bound is keyed as every
      * file the suite was found to read ({@code suiteReads}, the suite's discovered inputs as one
-     * digest), which holds the class's own. {@code listings} holds each directory's listing once it
-     * is taken, for the caller to share across the classes of one pass.
+     * digest), which holds the class's own. A class keyed by its module stands on every program the
+     * suite's stamp keys ({@code programs}, from {@link #programs}): no record says what a program it
+     * started read, nor which. {@code listings} holds each directory's listing once it is taken, for
+     * the caller to share across the classes of one pass.
      */
     static Key key(
             String launch,
             ClassCones.Cone cone,
             String suitePart,
             Observed seen,
+            Map<String, String> programs,
             Observed pooled,
             String module,
             String suiteReads,
@@ -178,6 +187,7 @@ final class ClassKeys {
         feed(md, "suite:" + suitePart);
         feed(md, "launch:" + launch);
         feed(md, fallback == null ? "cone:" + cone.digest() : "module:" + module);
+        if (fallback != null) for (String program : programs.values()) feed(md, "program:" + program);
         if (seen.readsMore() || pooled.readsMore()) feed(md, "suite-reads:" + suiteReads);
         if (!seen.readsMore()) feedFiles(md, "read", seen.reads(), workspace, listings);
         feedFiles(md, "code", seen.code(), workspace, null);
