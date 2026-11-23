@@ -1,12 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.command.pipeline;
+package cc.jumpkick.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.config.JkBuildParser;
-import cc.jumpkick.config.ModuleOrder;
 import cc.jumpkick.model.JkBuild;
-import cc.jumpkick.runtime.BuildGraph;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -16,10 +13,10 @@ import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 /**
- * {@link BuildGraph#orderModules} ordering, with focus on the {@code [build].order-after}
+ * {@link ModuleOrder#orderModules} ordering, with focus on the {@code [build].order-after}
  * build-order-only edges: they must affect order without being dependencies.
  */
-class BuildCommandTopoSortTest {
+class ModuleOrderTest {
 
     private static JkBuild module(String name, String orderAfterToml) {
         return JkBuildParser.parse("""
@@ -38,7 +35,7 @@ class BuildCommandTopoSortTest {
         modules.put(Path.of("b"), module("b", "[build]\norder-after = [\"a\"]"));
         modules.put(Path.of("a"), module("a", ""));
 
-        List<Path> sorted = BuildGraph.orderModules(modules);
+        List<Path> sorted = ModuleOrder.orderModules(modules);
 
         assertThat(sorted.indexOf(Path.of("a"))).as("a builds before b").isLessThan(sorted.indexOf(Path.of("b")));
         assertThat(sorted).containsExactlyInAnyOrder(Path.of("a"), Path.of("b"));
@@ -50,7 +47,7 @@ class BuildCommandTopoSortTest {
         modules.put(Path.of("b"), module("b", "[build]\norder-after = [\"g:a\"]"));
         modules.put(Path.of("a"), module("a", ""));
 
-        List<Path> sorted = BuildGraph.orderModules(modules);
+        List<Path> sorted = ModuleOrder.orderModules(modules);
 
         assertThat(sorted.indexOf(Path.of("a"))).isLessThan(sorted.indexOf(Path.of("b")));
     }
@@ -63,7 +60,7 @@ class BuildCommandTopoSortTest {
         modules.put(Path.of("engine"), module("engine", "[build]\ntest-plugin-jars = [\"a\"]"));
         modules.put(Path.of("a"), module("a", ""));
 
-        List<Path> sorted = BuildGraph.orderModules(modules);
+        List<Path> sorted = ModuleOrder.orderModules(modules);
 
         assertThat(sorted.indexOf(Path.of("a")))
                 .as("a builds before the module that consumes its worker jar")
@@ -129,7 +126,7 @@ class BuildCommandTopoSortTest {
         Map<Path, JkBuild> modules = new LinkedHashMap<>();
         modules.put(Path.of("a"), module("a", "[build]\norder-after = [\"nope\"]"));
 
-        List<Path> sorted = BuildGraph.orderModules(modules);
+        List<Path> sorted = ModuleOrder.orderModules(modules);
 
         assertThat(sorted).containsExactly(Path.of("a"));
     }
@@ -140,7 +137,7 @@ class BuildCommandTopoSortTest {
         modules.put(Path.of("a"), module("a", "[build]\norder-after = [\"b\"]"));
         modules.put(Path.of("b"), module("b", "[build]\norder-after = [\"a\"]"));
 
-        List<Path> sorted = BuildGraph.orderModules(modules);
+        List<Path> sorted = ModuleOrder.orderModules(modules);
 
         // Cycle → no valid order, but every module still appears (build still tries).
         assertThat(sorted).containsExactlyInAnyOrder(Path.of("a"), Path.of("b"));
