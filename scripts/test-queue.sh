@@ -3,8 +3,9 @@
 # and a stand-in gate. Submitting refuses a branch whose tip has not passed the Branch tier; a
 # batch applies every waiting branch onto origin/main once (a branch cut from another one does not
 # carry its commits twice), ejects the branch that conflicts, but for a conflict only in the
-# digests KeyContract.java records, where it records the merged code's digest, gates the batch and fast-forwards
-# origin/main to it; a red batch is split, apart from the branches that changed the module its failed
+# digests KeyContract.java records, where it records the merged code's digest (in one batch or in
+# two back to back), gates the batch and fast-forwards origin/main to it; each batch runs the loop
+# origin/main holds, unless bash cannot parse it; a red batch is split, apart from the branches that changed the module its failed
 # class is in when there is one and in halves when there is not, so the good branches land and the
 # bad one is ejected with the failing class, which its ticket is told along with the failure; a
 # branch that leaves the queue any other way is recorded as dropped; when origin/main moves during a
@@ -327,6 +328,23 @@ if holds mod/a/SuiteThree.java; then fail "a conflict in more than the digest la
 status_has s3 -q "conflicts: $K" || fail "s3's ejection does not name KeyContract.java: $(status s3)"
 [[ -z "$(git -C "$WORK/co" status --porcelain)" ]] || fail "the batch left the checkout changed: $(git -C "$WORK/co" status --porcelain)"
 
+# --- two suite changes cut from one origin/main land in back-to-back batches: the second's digest
+# conflicts with what the first landed, and is recorded for the merged code ---
+git -C "$dev" fetch -q
+suite_branch t1 SuiteFour.java four
+suite_branch t2 SuiteFive.java five
+submit t1 || fail "submitting t1 failed"
+queue || fail "t1's batch did not run"
+status_has t1 -q '^t1: landed ' || fail "t1 did not land: $(status t1)"
+submit t2 || fail "submitting t2 failed"
+queue || fail "t2's batch did not run"
+status_has t2 -q '^t2: landed ' || fail "t2 was not landed in the batch after t1's: $(status t2)"
+tail -1 "$WORK/queue.git/queue-batches.log" | grep -q ' rerecorded:t2@[0-9a-f]*' ||
+  fail "the batch log does not say it recorded t2's digest: $(tail -1 "$WORK/queue.git/queue-batches.log")"
+git -C "$WORK/other" fetch -q origin && git -C "$WORK/other" reset -q --hard origin/main
+[[ "$(sed -n 's/.*SUITE("\([0-9a-f]*\)").*/\1/p' "$WORK/other/$K")" == "$(suite_digest "$WORK/other")" ]] ||
+  fail "origin/main does not record the digest of both suite changes: $(cat "$WORK/other/$K")"
+
 # --- nothing waits: no batch ---
 lines="$(wc -l <"$WORK/queue.git/queue-batches.log")"
 queue || fail "an empty queue failed"
@@ -398,5 +416,32 @@ grep -q '^median of 20 ' <<<"$stats" || fail "--stats does not take the last 20 
 if ! grep -q '^old6 ' <<<"$stats" || grep -q '^old5 ' <<<"$stats"; then fail "--stats does not take the latest 20: $stats"; fi
 stats="$(cd "$dev" && JK_QUEUE_REMOTE="$WORK/queue.git" bash "$Q/status.sh" --stats)" || fail "--stats failed on the queue: $stats"
 grep -qE '^a +1 +[0-9]+m[0-9]{2}s ' <<<"$stats" || fail "--stats does not show the queue's own landings: $stats"
+
+# --- each batch runs the loop origin/main has: a change to the batch lands with the next batch, and
+# a copy bash cannot parse leaves the last one running ---
+git -C "$WORK/other" fetch -q origin && git -C "$WORK/other" reset -q --hard origin/main
+mkdir -p "$WORK/other/scripts/queue"
+# shellcheck disable=SC2016 # the marker line is written into the loop, to expand there
+sed 's|^  \[ ! -f "\$repo/pause" \] \|\| exit 4$|&\n  echo "from origin/main" >>"$D/fresh.log"|' "$Q/loop.sh" \
+  >"$WORK/other/scripts/queue/loop.sh"
+grep -q 'from origin/main' "$WORK/other/scripts/queue/loop.sh" || fail "the marked loop has no marker"
+git -C "$WORK/other" add scripts/queue/loop.sh && git -C "$WORK/other" commit -qm "a marked loop"
+git -C "$WORK/other" push -q origin HEAD:main
+git -C "$dev" fetch -q
+branch fresh origin/main docs/f.md f
+submit fresh || fail "submitting fresh failed"
+queue || fail "the batch under origin/main's loop did not run"
+[[ "$(cat "$WORK/logs/fresh.log" 2>/dev/null)" == "from origin/main" ]] || fail "the batch did not run origin/main's loop"
+holds docs/f.md || fail "f did not land under origin/main's loop: $(status fresh)"
+git -C "$WORK/other" fetch -q origin && git -C "$WORK/other" reset -q --hard origin/main
+echo 'if then' >>"$WORK/other/scripts/queue/loop.sh"
+git -C "$WORK/other" add scripts/queue/loop.sh && git -C "$WORK/other" commit -qm "a broken loop"
+git -C "$WORK/other" push -q origin HEAD:main
+git -C "$dev" fetch -q
+branch broken origin/main docs/g.md g
+submit broken || fail "submitting broken failed"
+queue || fail "a broken loop on origin/main stopped the queue"
+holds docs/g.md || fail "g did not land with origin/main's loop broken: $(status broken)"
+[[ "$(wc -l <"$WORK/logs/fresh.log")" -eq 1 ]] || fail "a loop bash cannot parse ran: $(cat "$WORK/logs/fresh.log")"
 
 echo "test-queue: ok ($(($(wc -l <"$WORK/queue.git/queue-batches.log"))) batches)"

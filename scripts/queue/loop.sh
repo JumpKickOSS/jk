@@ -66,7 +66,10 @@
   if [ "${1:-}" != --batch ]; then
     [ -d "$repo" ] || git init -q --bare "$repo" || exit 2
     mkdir -p "$S" "$D" || exit 2
-    # Run a copy, so a batch that changes this script changes the loop only when it is restarted.
+    # Each batch runs a copy, so a checkout that changes this file mid-batch leaves it alone. The
+    # copy is this file at first, then before each batch origin/main's: a change to the batch lands
+    # with the batch after it, not when someone restarts the loop. A change to this outer loop still
+    # waits for a restart.
     cp "$0" "$D/loop-running.sh" || exit 2
     paused=""
     while :; do
@@ -80,6 +83,15 @@
       fi
       [ -z "$paused" ] || echo "queue: resumed $(date -u +%Y-%m-%dT%H:%M:%SZ)"
       paused=""
+      # origin/main's copy, unless it has none or bash cannot parse it: then the last one stays.
+      fresh="$D/loop-fresh.sh"
+      if git -C "$co" fetch -q origin main 2>/dev/null &&
+        git -C "$co" show refs/remotes/origin/main:scripts/queue/loop.sh >"$fresh" 2>/dev/null &&
+        bash -n "$fresh" 2>/dev/null; then
+        mv "$fresh" "$D/loop-running.sh"
+      else
+        rm -f "$fresh"
+      fi
       flock -w 7200 "${GATE_LOCK:-/var/tmp/fleet-gate.lock}" bash "$D/loop-running.sh" --batch
       rc=$?
       # Paused while it waited for the lock: it gated nothing, and waits out the pause above.
