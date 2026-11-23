@@ -164,6 +164,18 @@ public final class JUnitLauncher {
         return this;
     }
 
+    /** Whether the module under test is the engine, whose tests run engines in the test JVM itself. */
+    private boolean runsEngines;
+
+    /**
+     * Mark the suite as the engine's own: outside the fast tier its test JVMs run engines in-process,
+     * whose compilers and test JVMs are forks of the test JVM, so it is leased at its process tree.
+     */
+    public JUnitLauncher withRunsEngines(boolean runs) {
+        this.runsEngines = runs;
+        return this;
+    }
+
     /** Workers the run's sharded pool started, the ones it widened to included. */
     private int pooled;
 
@@ -442,13 +454,20 @@ public final class JUnitLauncher {
     /**
      * How a pooled test JVM is forked and leased: with no JVM slot when it {@linkplain
      * ForkSpec#drivesEngines drives engines}, so the slot stays free for the forks of the engine it
-     * waits on; otherwise as every worker is.
+     * waits on; at its process tree, slot kept, when it {@linkplain #withRunsEngines runs engines}
+     * in-process outside the fast tier; otherwise as every worker is.
      */
     PluginProcess.Starter poolStarter() {
         LearnedHeaps heaps = heaps();
-        return fork.drivesEngines()
-                ? (pb, heap) -> JobWorkers.startWithoutSlot(pb, heap, heaps)
-                : PluginProcess.starter(heaps);
+        JobWorkers.Lease lease = poolLease();
+        return (pb, heap) -> JobWorkers.start(pb, heap, heaps, lease);
+    }
+
+    /** How {@link #poolStarter} leases a pooled test JVM. */
+    JobWorkers.Lease poolLease() {
+        if (fork.drivesEngines()) return JobWorkers.Lease.DRIVES_ENGINES;
+        if (runsEngines && !fork.walled()) return JobWorkers.Lease.RUNS_ENGINES;
+        return JobWorkers.Lease.SLOT;
     }
 
     /** The runner arguments of pull-mode shard worker {@code workerId}: the pull protocol plus this run's filters. */

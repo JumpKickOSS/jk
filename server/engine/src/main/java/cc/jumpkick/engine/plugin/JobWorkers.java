@@ -98,7 +98,7 @@ public final class JobWorkers {
 
     /** As {@link #start(ProcessBuilder, WorkerLeases.Ledger)}, recording peaks on {@code heaps}. */
     public static Process start(ProcessBuilder pb, WorkerLeases.Ledger leases, LearnedHeaps heaps) throws IOException {
-        return launch(pb, true, null, leases, JvmOptions.HeapChoice.inspect(pb.command()), heaps, true);
+        return launch(pb, true, null, leases, JvmOptions.HeapChoice.inspect(pb.command()), heaps, Lease.SLOT);
     }
 
     /**
@@ -112,17 +112,36 @@ public final class JobWorkers {
     /** As {@link #start(ProcessBuilder, JvmOptions.HeapChoice)}, recording peaks on {@code heaps}. */
     public static Process start(ProcessBuilder pb, JvmOptions.HeapChoice choice, LearnedHeaps heaps)
             throws IOException {
-        return launch(pb, true, null, WorkerLeases.engine(), choice, heaps, true);
+        return launch(pb, true, null, WorkerLeases.engine(), choice, heaps, Lease.SLOT);
     }
 
     /**
-     * As {@link #start(ProcessBuilder, JvmOptions.HeapChoice, LearnedHeaps)} for a JVM that takes no
-     * CPU slot ({@link WorkerLeases.Ledger#acquireWithoutSlot}): its memory is leased, and the work
-     * it starts leases its own slots.
+     * As {@link #start(ProcessBuilder, JvmOptions.HeapChoice, LearnedHeaps)}, leased as {@code lease}
+     * says.
      */
-    public static Process startWithoutSlot(ProcessBuilder pb, JvmOptions.HeapChoice choice, LearnedHeaps heaps)
+    public static Process start(ProcessBuilder pb, JvmOptions.HeapChoice choice, LearnedHeaps heaps, Lease lease)
             throws IOException {
-        return launch(pb, true, null, WorkerLeases.engine(), choice, heaps, false);
+        return launch(pb, true, null, WorkerLeases.engine(), choice, heaps, lease);
+    }
+
+    /** How a fork is leased, and whether its learned peak counts its whole process tree. */
+    public enum Lease {
+        /** A JVM slot and the fork's own price. */
+        SLOT,
+        /**
+         * No JVM slot, priced at its process tree ({@link WorkerLeases.Ledger#acquireWithoutSlot}):
+         * its work runs in engines it started as children, whose forks lease their own slots.
+         */
+        DRIVES_ENGINES,
+        /**
+         * A JVM slot, priced at its process tree ({@link WorkerLeases.Ledger#acquireRunningEngines}):
+         * it runs engines in its own process and does their work itself.
+         */
+        RUNS_ENGINES;
+
+        boolean tree() {
+            return this != SLOT;
+        }
     }
 
     /**
@@ -137,7 +156,7 @@ public final class JobWorkers {
                 WorkerLeases.engine(),
                 JvmOptions.HeapChoice.inspect(pb.command()),
                 LearnedHeaps.engine(),
-                true);
+                Lease.SLOT);
     }
 
     /**
@@ -153,7 +172,7 @@ public final class JobWorkers {
                 WorkerLeases.engine(),
                 JvmOptions.HeapChoice.inspect(pb.command()),
                 LearnedHeaps.engine(),
-                true);
+                Lease.SLOT);
     }
 
     /**
@@ -219,7 +238,7 @@ public final class JobWorkers {
             WorkerLeases.Ledger leases,
             JvmOptions.HeapChoice choice,
             LearnedHeaps heaps,
-            boolean slot)
+            Lease lease)
             throws IOException {
         Long request = track ? currentRequestId() : null;
         WorkerScope scope = track ? WorkerScope.current() : null;
@@ -229,9 +248,11 @@ public final class JobWorkers {
         try {
             grant = resident != null
                     ? leases.acquireResident(pb.command(), priced, resident)
-                    : slot
-                            ? leases.acquire(pb.command(), request, priced)
-                            : leases.acquireWithoutSlot(pb.command(), request, priced);
+                    : switch (lease) {
+                        case SLOT -> leases.acquire(pb.command(), request, priced);
+                        case DRIVES_ENGINES -> leases.acquireWithoutSlot(pb.command(), request, priced);
+                        case RUNS_ENGINES -> leases.acquireRunningEngines(pb.command(), request, priced);
+                    };
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new InterruptedIOException("cancelled while waiting for memory");
@@ -248,7 +269,7 @@ public final class JobWorkers {
             Log.info("jk engine: leaving pinned " + pin + " unchanged; leasing the whole "
                     + WorkerLeases.format(leases.capacityBytes()) + " budget");
         }
-        WorkerGc.Watch gc = WorkerGc.watch(sized, choice, heaps, !slot && resident == null);
+        WorkerGc.Watch gc = WorkerGc.watch(sized, choice, heaps, lease.tree() && resident == null);
         List<String> command = gc.command();
         if (command != pb.command()) pb.command(command);
         // Listed before it starts, so no startup-cache sweep sees the cache mapped and unlisted.

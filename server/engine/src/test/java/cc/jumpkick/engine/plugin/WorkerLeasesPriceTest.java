@@ -100,6 +100,27 @@ class WorkerLeasesPriceTest {
     }
 
     /**
+     * A test JVM of the engine's own suite runs its engines in-process: it does their work itself, so
+     * it takes a JVM slot, and their forks are still its own, so it leases its whole tree's price.
+     */
+    @Test
+    void a_jvm_that_runs_engines_in_process_leases_its_price_and_a_slot() throws Exception {
+        WorkerLeases.Ledger ledger = new WorkerLeases.Ledger(() -> 8 * GIB, () -> 8, id -> false);
+        try (WorkerLeases.Grant grant = ledger.acquireRunningEngines(COMMAND, null, priced(3 * GIB))) {
+            assertThat(grant.bytes()).isEqualTo(3 * GIB).isGreaterThan(WorkerLeases.jvmLease(2 * GIB));
+            assertThat(grant.xmxBytes()).as("its heap is its own").isEqualTo(2 * GIB);
+            assertThat(ledger.snapshot().runningJvms()).as("a slot").isEqualTo(1);
+        }
+        try (WorkerLeases.Grant grant = ledger.acquireRunningEngines(COMMAND, null, priced(320 * MIB))) {
+            assertThat(grant.bytes()).as("below its heap's lease").isEqualTo(320 * MIB);
+            assertThat(ledger.snapshot().runningJvms()).as("a slot").isEqualTo(1);
+        }
+        try (WorkerLeases.Grant grant = ledger.acquireRunningEngines(COMMAND, null, priced(16 * GIB))) {
+            assertThat(grant.bytes()).as("at most the budget").isEqualTo(8 * GIB);
+        }
+    }
+
+    /**
      * Idle warm compilers whose -Xmx leases fill the heap ceiling, while their prices leave most of
      * the budget free, exit for a fork that fits the budget: the head of the line is not left to give
      * up after ten minutes with memory free.

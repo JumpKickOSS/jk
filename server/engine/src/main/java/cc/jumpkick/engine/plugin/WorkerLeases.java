@@ -553,9 +553,23 @@ public final class WorkerLeases {
          */
         public Grant acquireWithoutSlot(List<String> command, @Nullable Long requestId, JvmOptions.HeapChoice choice)
                 throws InterruptedException {
+            return acquire(drivingEngines(command, choice).withoutSlot(), requestId);
+        }
+
+        /**
+         * As {@link #acquire(List, Long, JvmOptions.HeapChoice)} for a JVM that runs engines in its
+         * own process and does their work itself, such as a test JVM of the engine's own suite: it
+         * takes a CPU slot, and, as {@link #acquireWithoutSlot}, leases {@code choice}'s price,
+         * learned from its whole process tree, even past its own {@code -Xmx} lease.
+         */
+        public Grant acquireRunningEngines(List<String> command, @Nullable Long requestId, JvmOptions.HeapChoice choice)
+                throws InterruptedException {
+            return acquire(drivingEngines(command, choice), requestId);
+        }
+
+        private LeaseDemand drivingEngines(List<String> command, JvmOptions.HeapChoice choice) {
             long capacity = capacityBytes();
-            return acquire(
-                    LeaseDemand.of(command, choice, capacity).drivingEngines(choice.priceBytes(), capacity), requestId);
+            return LeaseDemand.of(command, choice, capacity).drivingEngines(choice.priceBytes(), capacity);
         }
 
         /**

@@ -377,6 +377,7 @@ final class TestLaunch {
                 .withModuleLabel(moduleLabel)
                 .withJvmArgs(jvmArgs)
                 .withSettled(settled)
+                .withRunsEngines(SelfHostEngine.isEngineModule(projectUnderTest))
                 .withDebug(in.session().debugJvm())
                 .withKeepOutput(in.verbose());
         if (jacoco != null && coverageExec != null) {

@@ -3,6 +3,7 @@ package cc.jumpkick.test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.engine.plugin.JobWorkers;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -70,6 +71,25 @@ class ForkSpecTest {
                 .as("the fast tier starts no engine")
                 .isFalse();
         assertThat(homes(false, false).drivesEngines()).isFalse();
+    }
+
+    /**
+     * A pooled JVM that starts engines as children leases no slot; one of the engine's own suite,
+     * which runs them in-process, keeps its slot; both are priced at their process tree, except in
+     * the fast tier, which starts no engine.
+     */
+    @Test
+    void a_pooled_jvm_is_leased_by_where_its_engines_run() {
+        assertThat(lease(homes(true, false), false)).isEqualTo(JobWorkers.Lease.DRIVES_ENGINES);
+        assertThat(lease(homes(false, false), true)).isEqualTo(JobWorkers.Lease.RUNS_ENGINES);
+        assertThat(lease(homes(false, true), true))
+                .as("the fast tier starts no engine")
+                .isEqualTo(JobWorkers.Lease.SLOT);
+        assertThat(lease(homes(false, false), false)).isEqualTo(JobWorkers.Lease.SLOT);
+    }
+
+    private static JobWorkers.Lease lease(ForkSpec fork, boolean runsEngines) {
+        return new JUnitLauncher().withFork(fork).withRunsEngines(runsEngines).poolLease();
     }
 
     private static ForkSpec homes(boolean workerHomes, boolean walled) {
