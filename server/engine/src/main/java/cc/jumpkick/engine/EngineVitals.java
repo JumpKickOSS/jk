@@ -45,14 +45,15 @@ public final class EngineVitals {
     private final Supplier<List<Map<String, Object>>> jobs;
     private final Supplier<MemoryAdmission.Counts> admission;
 
-    /** Which engine this is, read once: its inputs do not change while the process lives. */
+    /** Which engine this is, as its dashboard names it, read once: its inputs do not change while the process lives. */
     private volatile @Nullable Map<String, Object> identity;
 
     private Map<String, Object> identity() {
         Map<String, Object> id = identity;
         if (id == null) {
             HttpEngineServer http = httpServer.get();
-            id = EngineIdentity.current(version).toMap(http == null ? -1 : http.port());
+            EngineIdentity served = http == null ? null : http.identity();
+            id = (served != null ? served : EngineIdentity.current(version)).toMap(http == null ? -1 : http.port());
             if (http != null) identity = id;
         }
         return id;

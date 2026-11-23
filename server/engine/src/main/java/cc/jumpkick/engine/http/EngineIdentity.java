@@ -14,6 +14,8 @@ import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.function.Function;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Which engine this is, as every surface names it and as a front door discovers it: the OS, whether
@@ -29,11 +31,11 @@ public record EngineIdentity(String id, String os, Guest guest, String hostname,
 
     /** This process's identity. */
     public static EngineIdentity current(String version) {
-        return current(version, Guest.detect());
+        return current(version, Guest.detect(), ProcessEnv::get);
     }
 
-    /** This process's identity as guest {@code guest}. */
-    public static EngineIdentity current(String version, Guest guest) {
+    /** This process's identity as guest {@code guest}, its hostname first from {@code env}. */
+    public static EngineIdentity current(String version, Guest guest, Function<String, @Nullable String> env) {
         String os = Os.isWindows() ? "windows" : Os.isDarwin() ? "macos" : "linux";
         Path home = JkDirs.home();
         String jkHome;
@@ -42,7 +44,7 @@ public record EngineIdentity(String id, String os, Guest guest, String hostname,
         } catch (IOException | RuntimeException missing) {
             jkHome = home.toAbsolutePath().normalize().toString();
         }
-        String hostname = localHostname();
+        String hostname = localHostname(env);
         return new EngineIdentity(idOf(os, guest, hostname, jkHome), os, guest, hostname, jkHome, version);
     }
 
@@ -98,8 +100,8 @@ public record EngineIdentity(String id, String os, Guest guest, String hostname,
     }
 
     /** The hostname without a DNS lookup where the OS names it: {@code COMPUTERNAME}, {@code /etc/hostname}. */
-    private static String localHostname() {
-        String name = Os.isWindows() ? ProcessEnv.get("COMPUTERNAME") : ProcessEnv.get("HOSTNAME");
+    private static String localHostname(Function<String, @Nullable String> env) {
+        String name = env.apply(Os.isWindows() ? "COMPUTERNAME" : "HOSTNAME");
         if (name != null && !name.isBlank()) return name.strip();
         try {
             Path etc = Path.of("/etc/hostname");

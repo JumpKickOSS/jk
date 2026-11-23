@@ -63,6 +63,16 @@ class JGitEnvironmentTest {
         assertThat(reader.openSystemConfig(null, FS.DETECTED).getFile()).isNull();
     }
 
+    @Test
+    void under_it_jgit_keeps_its_own_settings_in_that_directory_not_the_users(@TempDir Path tmp) {
+        Path file = tmp.resolve("gitconfig");
+
+        FileBasedConfig jgit =
+                reader(Map.of("GIT_CONFIG_GLOBAL", file.toString())).openJGitConfig(null, FS.DETECTED);
+
+        assertThat(jgit.getFile().toPath()).isEqualTo(tmp.resolve("jgit").resolve("config"));
+    }
+
     private static SystemReader reader(Map<String, String> vars) {
         return new JGitEnvironment.Reader(env(vars));
     }

@@ -100,7 +100,7 @@ public final class EngineHttpFront {
     /** Whether this engine takes part in the front door ({@link FrontDoorScope}); read at {@link #start}. */
     private volatile boolean frontDoor;
 
-    /** Test seams: which guest this is, the environment the scope reads, and the guest's pairing. */
+    /** Test seams: which guest this is, the environment the scope and the hostname read, and the guest's pairing. */
     private Supplier<Guest> guest = Guest::detect;
 
     private Function<String, @Nullable String> env = ProcessEnv::get;
@@ -157,7 +157,7 @@ public final class EngineHttpFront {
         // The hub and the config are created together: no [http] table, neither of them.
         HttpEvents hub = events;
         if (config == null || hub == null) return;
-        EngineIdentity id = EngineIdentity.current(version, guest.get());
+        EngineIdentity id = EngineIdentity.current(version, guest.get(), env);
         frontDoor = FrontDoorScope.active(env, JkDirs.home());
         if (!frontDoor) log.accept("jk engine: a test sandbox, private home or CI: no front-door duty");
         boolean leaveFrontDoor = config.port() == frontDoorPort && !ownHome.getAsBoolean();

@@ -64,8 +64,11 @@ outside its module stays where it is.
 the checkout's `.git` (in a linked worktree, a file naming that worktree) or of `/etc/passwd`
 keys the suite on which checkout or host ran it, so no other worktree, box or queue runner reuses
 its result. `HermeticReads` tells the checkout's git directories from a stat and the common
-directory's `worktrees` list, never by reading `.git`; a test that must compare against the host's
-own files is tagged `integration`.
+directory's `worktrees` list, never by reading `.git`; it points JGit's user configuration and its
+own settings (`jgit/config`) into the sandbox, so neither `~/.gitconfig` nor `~/.config/jgit` is
+read. A test that starts an engine's HTTP front hands it a hostname through the front's environment
+seam rather than let it read the host's `HOSTNAME` or `/etc/hostname`. A test that must compare
+against the host's own files is tagged `integration`.
 
 **No blocking tier waits on a clock.** A test in the fast or integration tier never sleeps,
 polls or waits out a timeout for a second or more: it moves a `FakeClock`, waits on a latch, or

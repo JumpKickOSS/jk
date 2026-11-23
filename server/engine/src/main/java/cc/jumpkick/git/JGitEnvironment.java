@@ -64,6 +64,21 @@ public final class JGitEnvironment {
         }
 
         /**
+         * JGit's own settings ({@code jgit/config}, where it keeps what it measured of each file
+         * system's timestamps) under {@link #getXdgConfigDirectory}. The delegate would look in its
+         * own configuration home, the user's, whatever this reader says.
+         */
+        @Override
+        public FileBasedConfig openJGitConfig(@Nullable Config parent, FS fs) {
+            Path named = named();
+            Path dir = named == null ? null : named.toAbsolutePath().getParent();
+            return dir == null
+                    ? super.openJGitConfig(parent, fs)
+                    : new FileBasedConfig(
+                            parent, dir.resolve("jgit").resolve("config").toFile(), fs);
+        }
+
+        /**
          * Under {@code GIT_CONFIG_GLOBAL}, the directory holding that file stands for the user's
          * configuration home ({@code ~/.config}): JGit reads its default excludes ({@code
          * git/ignore}) and its own settings ({@code jgit/config}) there, never from the user's.

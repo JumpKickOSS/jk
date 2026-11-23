@@ -10,6 +10,7 @@ import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.wire.EnginePaths;
 import java.nio.file.Files;
 import java.time.Duration;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -29,6 +30,12 @@ class FrontDoorSandboxE2eTest extends EngineServerHarness {
 
     private static final Guest WSL = new Guest(Guest.Kind.WSL, "Ubuntu-26.10", true, "distro=Ubuntu-26.10");
 
+    /**
+     * The hostname the engine names itself by, so it reads neither the host's variable nor its
+     * {@code /etc/hostname}: either would key this suite on the machine it ran on.
+     */
+    private static final Map<String, String> SANDBOX_HOST = Map.of("HOSTNAME", "sandbox", "COMPUTERNAME", "sandbox");
+
     private List<HttpEngineServer> runEngine(Function<String, @Nullable String> env) throws Exception {
         List<HttpEngineServer> paired = new CopyOnWriteArrayList<>();
         EnginePaths.Paths p = paths(shortTempDir());
@@ -41,6 +48,7 @@ class FrontDoorSandboxE2eTest extends EngineServerHarness {
             HttpEngineServer http =
                     Objects.requireNonNull(server.httpFront().server(), "the engine serves its dashboard");
             assertThat(Objects.requireNonNull(http.identity()).guest()).isEqualTo(WSL);
+            assertThat(Objects.requireNonNull(http.identity()).hostname()).isEqualTo("sandbox");
             assertThat(http.frontDoor()).as("no engine list or proxy").isNull();
             return paired;
         } finally {
@@ -52,13 +60,15 @@ class FrontDoorSandboxE2eTest extends EngineServerHarness {
     @Test
     void a_sandbox_engine_on_a_wsl_host_never_pairs_with_windows() throws Exception {
         // Nothing in the environment says so: the engine's home, the test JVM's sandbox, is enough.
-        assertThat(runEngine(Map.<String, String>of()::get))
+        assertThat(runEngine(SANDBOX_HOST::get))
                 .as("pairing, the Windows engine's start and the 8910 role")
                 .isEmpty();
     }
 
     @Test
     void a_sandbox_engine_that_opts_in_pairs() throws Exception {
-        assertThat(runEngine(Map.of("JK_FRONT_DOOR", "true")::get)).hasSize(1);
+        Map<String, String> optIn = new HashMap<>(SANDBOX_HOST);
+        optIn.put("JK_FRONT_DOOR", "true");
+        assertThat(runEngine(optIn::get)).hasSize(1);
     }
 }
