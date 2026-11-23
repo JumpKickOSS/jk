@@ -30,6 +30,7 @@ import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.GuardsConfig;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.runtime.base.GuardSuiteLibrary;
+import cc.jumpkick.task.ClasspathAbi;
 import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.task.FileHashMemo;
 import java.io.IOException;
@@ -131,8 +132,8 @@ public final class GuardFixtures {
 
     /**
      * Everything a verdict reads, as lane-key tokens: the rules, every fixture file, each guard
-     * suite's compiled index, the suite library, the lock, and the classes a compiled fixture is
-     * built against. The engine build rides every lane key already. Null when the rules do not
+     * suite's compiled index, the suite library, the lock, and the ABI of the classes a compiled
+     * fixture is built against. The engine build rides every lane key already. Null when the rules do not
      * load, so the run reports the errors instead of keying them.
      */
     static @Nullable List<String> keyTokens(Path root, Cas cas) throws IOException {
@@ -149,7 +150,10 @@ public final class GuardFixtures {
         for (Path m : owners) {
             Path idx = FactsIndexing.indexPath(BuildLayout.moduleTargetDir(m), "guard");
             tokens.add(GuardKeys.fileToken("guard-suite:" + root.relativize(m), idx));
-            for (Path p : compileClasspath(root, m, cas)) tokens.add("cp:" + ClasspathFingerprint.entry(p));
+            // By ABI, not bytes: the owning module is often a large one (the engine owns guard
+            // fixtures), and a fixture compiles against its signatures and constants alone, so
+            // keying its bytes re-proved every rule on each method body edited in it.
+            for (Path p : compileClasspath(root, m, cas)) tokens.add("cp:" + ClasspathAbi.token(p));
         }
         // Only a guard suite forks against the suite library; rules alone never read it.
         if (!guards.isEmpty()) {

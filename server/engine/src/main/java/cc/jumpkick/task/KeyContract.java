@@ -50,7 +50,7 @@ public enum KeyContract {
      * but a native image's keys by it.
      */
     ARTIFACT(
-            "6df35071ef37",
+            "136427bdb0b8",
             List.of(
                     Sources.ENGINE + "compile/*Packager.java",
                     Sources.ENGINE + "runtime/PlannerJlink.java",

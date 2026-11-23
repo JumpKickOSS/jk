@@ -170,6 +170,37 @@ class GuardFixturesTest {
     }
 
     /**
+     * The owning module's classes key the proof by their ABI: a method body edited in the module
+     * leaves the key where it was, a signature added moves it.
+     */
+    @Test
+    void the_key_holds_across_a_body_edit_in_the_owning_module(@TempDir Path root, @TempDir Path store)
+            throws Exception {
+        project(root);
+        Cas cas = new Cas(store);
+        compileDep(root, "public class Dep { public int f() { return 1; } }");
+        List<String> first = GuardFixtures.keyTokens(root, cas);
+        compileDep(root, "public class Dep { public int f() { return 2 + Integer.parseInt(\"3\"); } }");
+        assertThat(GuardFixtures.keyTokens(root, cas))
+                .as("a body edit leaves the key")
+                .isEqualTo(first);
+        compileDep(root, "public class Dep { public int f() { return 1; } public int g() { return 0; } }");
+        assertThat(GuardFixtures.keyTokens(root, cas))
+                .as("a new signature moves the key")
+                .isNotEqualTo(first);
+    }
+
+    private static void compileDep(Path root, String source) throws IOException {
+        Path src = Files.createDirectories(root.resolve("dep-src"));
+        Path file = Files.writeString(src.resolve("Dep.java"), source);
+        Path classes = BuildLayout.classesDir(root);
+        Files.createDirectories(classes);
+        int exit = Objects.requireNonNull(ToolProvider.getSystemJavaCompiler())
+                .run(null, null, null, "-d", classes.toString(), file.toString());
+        assertThat(exit).isZero();
+    }
+
+    /**
      * The compile key names classpath entries by content. The owning module's classes dir keeps
      * its path across builds, so a path-keyed entry would reuse fixtures compiled against the
      * previous build's bytecode after the module changed under them.

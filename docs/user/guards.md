@@ -132,8 +132,9 @@ verdicts: one for the declared rules, keyed on the module, and one for the suite
 what the suite reads beyond the module (other modules, the tree's text, the manifests). An edit
 elsewhere in the tree re-runs the suite alone, and `jk explain` says `src/guard to run · N rules
 cached`. The fixture proofs are keyed the same way: the
-rules, the fixture files, the guard suites and the classes the fixtures compile against. A
-proof only reruns when one of those changes, and its cases run side by side.
+rules, the fixture files, the guard suites and the signatures of the classes the fixtures
+compile against. A proof only reruns when one of those changes, so a method body edited in the
+module that owns the fixtures leaves it cached, and its cases run side by side.
 
 **Variants.** A guard run needs no `--variant`. Every module builds one variant: the values you
 select, else each dimension's `default`, else its first declared value — so in a workspace with
