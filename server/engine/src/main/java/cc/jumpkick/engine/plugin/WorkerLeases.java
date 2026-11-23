@@ -245,8 +245,8 @@ public final class WorkerLeases {
         private long excess;
         /** Held workers {@linkplain WorkerRss#farOverLease far over their lease}. */
         private int overLeaseCount;
-        /** What was granted since the signals sample an overbooked grant was last judged on. */
-        private final OverbookSignals.Spent spent = new OverbookSignals.Spent();
+        /** The grants made since the signals sample a series of overbooked grants started on. */
+        final OverbookSignals.Spent spent = new OverbookSignals.Spent();
 
         private int jvmRunning;
         private Duration waitAtMost = WAIT_AT_MOST;
@@ -999,7 +999,7 @@ public final class WorkerLeases {
         private void take(LeaseWaiter waiter) {
             held.add(waiter);
             leased += waiter.demand.bytes();
-            spent.add(waiter.demand.worstBytes());
+            spent.count(waiter);
             lastGrant = Clock.SYSTEM.nanos();
             if (waiter.demand.cpuSlot()) jvmRunning++;
             waiter.granted = true;
@@ -1009,7 +1009,7 @@ public final class WorkerLeases {
         private void untake(LeaseWaiter waiter) {
             held.remove(waiter);
             leased = Math.max(0, leased - waiter.demand.bytes());
-            spent.add(-waiter.demand.worstBytes());
+            spent.uncount(waiter);
             if (waiter.demand.cpuSlot()) jvmRunning = Math.max(0, jvmRunning - 1);
             waiter.granted = false;
         }
@@ -1023,7 +1023,7 @@ public final class WorkerLeases {
         private void release(LeaseWaiter waiter) {
             if (waiter.released) return;
             waiter.released = true;
-            held.remove(waiter);
+            if (held.remove(waiter)) spent.uncount(waiter);
             leased = Math.max(0, leased - waiter.demand.bytes());
             excess = Math.max(0, excess - waiter.excess());
             if (waiter.overLease) overLeaseCount = Math.max(0, overLeaseCount - 1);

@@ -230,6 +230,7 @@ class WorkerLeasesOverbookTest {
         raw.freeBytes = 8 * GIB;
         OverbookSignals.Source cached = OverbookSignals.caching(raw, clock::get, OverbookSignals.CACHE_NANOS);
         WorkerLeases.Ledger ledger = ledger(budget, 8, cached);
+        ledger.spent.clock(clock::get);
         List<WorkerLeases.Grant> held = new ArrayList<>();
         try {
             held.add(ledger.acquireBytes(budget, false, null));
@@ -242,11 +243,53 @@ class WorkerLeasesOverbookTest {
                     .as("the burst spends no more than the sample had free past the headroom")
                     .isLessThanOrEqualTo(raw.freeBytes - headroom);
 
-            clock.addAndGet(OverbookSignals.CACHE_NANOS);
+            clock.addAndGet(OverbookSignals.SETTLE_NANOS);
             held.add(ledger.acquireBytes(3 * GIB, false, null));
             assertThat(held.getLast().overbooked())
-                    .as("a fresh sample is judged on its own")
+                    .as("once the forks have had time to grow, a fresh sample is judged on its own")
                     .isTrue();
+        } finally {
+            for (WorkerLeases.Grant grant : held) grant.close();
+        }
+    }
+
+    @Test
+    void bursts_on_fresh_samples_spend_one_free_figure_while_their_forks_grow() throws Exception {
+        AtomicLong clock = new AtomicLong(1_000);
+        FakeSignals raw = healthy();
+        long budget = 10 * GIB;
+        long headroom = OverbookSignals.headroom(budget, false);
+        long free = 8 * GIB;
+        raw.freeBytes = free;
+        OverbookSignals.Source cached = OverbookSignals.caching(raw, clock::get, OverbookSignals.CACHE_NANOS);
+        WorkerLeases.Ledger ledger = ledger(budget, 16, cached).underCi(false);
+        ledger.spent.clock(clock::get);
+        List<WorkerLeases.Grant> held = new ArrayList<>();
+        try {
+            held.add(ledger.acquireBytes(budget, false, null));
+            held.add(ledger.acquireBytes(3 * GIB, false, null));
+            held.add(ledger.acquireBytes(3 * GIB, false, null));
+            assertThat(held).extracting(WorkerLeases.Grant::overbooked).containsExactly(false, true, true);
+
+            // Each burst lands on a sample the previous one's cache window no longer covers, while
+            // the two overbooked forks have each grown another 256 MiB toward their 3 GiB.
+            for (int burst = 1; burst <= 6; burst++) {
+                clock.addAndGet(OverbookSignals.CACHE_NANOS + 50_000_000L);
+                raw.freeBytes = free - 2 * burst * (256L << 20);
+                int reads = raw.reads;
+                assertStaysQueued(ledger, 3 * GIB);
+                assertThat(raw.reads).as("burst %d read a fresh sample", burst).isGreaterThan(reads);
+                assertThat(ledger.snapshot().overbookedBytes())
+                        .as("burst %d keeps the series within the first sample's free figure past the headroom", burst)
+                        .isLessThanOrEqualTo(free - headroom);
+            }
+
+            held.remove(2).close();
+            held.add(ledger.acquireBytes(3 * GIB, false, null));
+            assertThat(held.getLast().overbooked())
+                    .as("a fork of the series that exits gives back what it was counted at")
+                    .isTrue();
+            assertThat(ledger.snapshot().overbookedBytes()).isLessThanOrEqualTo(free - headroom);
         } finally {
             for (WorkerLeases.Grant grant : held) grant.close();
         }

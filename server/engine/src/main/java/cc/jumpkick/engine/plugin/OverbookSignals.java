@@ -34,8 +34,9 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>Readings are reused for {@link #CACHE_NANOS}. A grant checks the cached sample under the ledger
  * lock; the cache is what keeps that check from reading {@code /proc} on every fork. The ledger
- * charges each grant against the sample it was judged on, so a burst of grants on one sample
- * spends its free figure once, not once per grant.
+ * charges a series of grants against the first sample it was judged on until the forks have had
+ * time to grow ({@link Spent}), so a series of bursts spends that sample's free figure once, not
+ * once per grant or once per sample.
  */
 public final class OverbookSignals {
 
@@ -50,6 +51,13 @@ public final class OverbookSignals {
 
     /** How long one sample of free memory and pressure is reused. */
     public static final long CACHE_NANOS = 250_000_000L;
+
+    /**
+     * How long after its last grant a series of grants is still charged against the sample it
+     * started on: time for the forks it admitted to start and reach most of their resident set,
+     * which later samples then see.
+     */
+    public static final long SETTLE_NANOS = 5_000_000_000L;
 
     /**
      * {@code some avg10} must be strictly below this. The number is the kernel's percentage, the
@@ -398,26 +406,69 @@ public final class OverbookSignals {
     }
 
     /**
-     * What a ledger has granted since the sample it last judged an overbooked grant on, at worst
-     * bytes: that sample cannot see forks that have not started yet. Used under the ledger's lock.
+     * A series of grants a ledger makes before the forks they admitted have grown, charged at worst
+     * bytes against the first sample of the series it judged an overbooked grant on. A fork admitted
+     * a moment ago has not reached its resident size, so a later sample still shows most of what it
+     * will use as free: each judgement takes the lower of that sample's free bytes and the first
+     * sample's less what the series still holds. Until a grant is counted, the latest sample is the
+     * first. The series ends once {@link #SETTLE_NANOS} pass without a grant counted; the next
+     * judgement starts another. Used under the ledger's lock.
      */
     static final class Spent {
-        private @Nullable Reading judgedOn;
+        private LongSupplier clock = Clock.SYSTEM::nanos;
+        private @Nullable Reading first;
         private long bytes;
+        /** When the last grant was counted, or the sample judged while none is. */
+        private long lastNanos;
+        /** Numbers the series, so a grant of an ended one is not uncounted from the next; {@code 0} is none. */
+        private long series;
 
-        /** {@code reading} less what was granted since it was first judged on; a new sample starts over. */
-        Reading left(Reading reading) {
-            if (reading != judgedOn) {
-                judgedOn = reading;
-                bytes = 0;
-            }
-            return reading.less(bytes);
+        /** Time the series with {@code nanos}, not the system clock. */
+        void clock(LongSupplier nanos) {
+            this.clock = nanos;
         }
 
-        /** Count a grant's {@code delta} bytes, negative for one undone; saturating, never below zero. */
-        void add(long delta) {
-            long next = bytes + delta;
-            bytes = delta > 0 && next < 0 ? Long.MAX_VALUE : Math.max(0, next);
+        /** {@code reading} less what the series it starts or continues will use and cannot see yet. */
+        Reading left(Reading reading) {
+            settle();
+            if (first == null || bytes == 0) {
+                if (reading.freeBytes() < 0) return reading;
+                if (first == null) series++;
+                first = reading;
+                bytes = 0;
+                lastNanos = clock.getAsLong();
+            }
+            long free = first.less(bytes).freeBytes();
+            if (reading.freeBytes() < 0 || reading.freeBytes() <= free) return reading;
+            return new Reading(reading.enabled(), free, reading.someAvg10(), reading.fullAvg10());
+        }
+
+        /** Count {@code grant} in the running series, if one runs, at its worst bytes. */
+        void count(LeaseWaiter grant) {
+            settle();
+            grant.spentSeries = first == null ? 0 : series;
+            if (first == null) return;
+            grant.spentBytes = grant.demand.worstBytes();
+            long sum = bytes + grant.spentBytes;
+            bytes = sum < 0 ? Long.MAX_VALUE : sum;
+            lastNanos = clock.getAsLong();
+        }
+
+        /** Undo {@link #count} of {@code grant}, undone or released; nothing once its series has ended. */
+        void uncount(LeaseWaiter grant) {
+            if (grant.spentSeries != 0 && grant.spentSeries == series && first != null)
+                bytes = Math.max(0, bytes - grant.spentBytes);
+            grant.spentSeries = 0;
+        }
+
+        /**
+         * End the series once its forks have had {@link #SETTLE_NANOS} since its last grant to grow,
+         * or, while it counts nothing, once its sample is older than {@link #CACHE_NANOS}.
+         */
+        private void settle() {
+            if (first == null) return;
+            long age = clock.getAsLong() - lastNanos;
+            if (age >= (bytes > 0 ? SETTLE_NANOS : CACHE_NANOS)) first = null;
         }
     }
 
