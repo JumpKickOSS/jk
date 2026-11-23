@@ -54,20 +54,21 @@ final class SuiteDiscovery {
     }
 
     /**
-     * The classes a run of the suite at {@code moduleDir} under {@code selection} replays under {@code
-     * [test] cache = "cone"}, for the forecast: those whose key, taken now, has not moved since they
-     * passed ({@link TestClassRecording#unmoved}).
+     * What a run of the suite at {@code moduleDir} under {@code selection}, in the launches named
+     * {@code launches}, replays under {@code [test] cache = "cone"}, for the forecast: the classes
+     * whose key, taken now, has not moved since they passed ({@link TestClassRecording#replayedNow}).
      */
-    static Map<String, TestClassLedger.Entry> replayedByCone(
+    static TestClassRecording.Replayed replayedByCone(
             Path moduleDir,
             BuildLayout layout,
             TestSelection selection,
             List<Path> runtimeCp,
             List<String> stampExtras,
             List<Path> resourceDirs,
-            @Nullable String stampKey)
+            @Nullable String stampKey,
+            Set<String> launches)
             throws IOException {
-        return TestClassRecording.unmoved(
+        return TestClassRecording.replayedNow(
                 moduleDir,
                 layout,
                 selection,
@@ -76,7 +77,8 @@ final class SuiteDiscovery {
                 runtimeCp,
                 stampExtras,
                 resourceDirs,
-                stampKey);
+                stampKey,
+                launches);
     }
 
     /**

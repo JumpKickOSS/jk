@@ -276,20 +276,86 @@ final class TestClassRecording {
             List<Path> resourceDirs,
             @Nullable String stampKey)
             throws IOException {
-        if (!TestTelemetry.shadow()) return Map.of();
+        return split(
+                        moduleDir,
+                        layout,
+                        selection,
+                        testClasses,
+                        mainClasses,
+                        runtimeCp,
+                        stampExtras,
+                        resourceDirs,
+                        stampKey,
+                        null)
+                .unmoved();
+    }
+
+    /**
+     * For the forecast, what a run of the launches named {@code launches} replays, as {@link #unmoved}
+     * decides it, and the tests of the classes recorded under those launches it runs. The record
+     * keeps every launch's rows, an earlier selection's included, so only these launches' count.
+     */
+    static Replayed replayedNow(
+            Path moduleDir,
+            BuildLayout layout,
+            TestSelection selection,
+            Path testClasses,
+            Path mainClasses,
+            List<Path> runtimeCp,
+            List<String> stampExtras,
+            List<Path> resourceDirs,
+            @Nullable String stampKey,
+            Set<String> launches)
+            throws IOException {
+        Split split = split(
+                moduleDir,
+                layout,
+                selection,
+                testClasses,
+                mainClasses,
+                runtimeCp,
+                stampExtras,
+                resourceDirs,
+                stampKey,
+                launches);
+        long tests = 0;
+        for (TestClassLedger.Entry e : split.unmoved().values()) tests += e.tests();
+        return new Replayed(split.unmoved().size(), tests, split.ran());
+    }
+
+    /** The classes {@link #unmoved} replays, and the tests of the recorded classes it runs. */
+    private record Split(Map<String, TestClassLedger.Entry> unmoved, long ran) {
+        static final Split NONE = new Split(Map.of(), 0);
+    }
+
+    /** {@link #unmoved} over the rows of {@code launches}, every launch's when null. */
+    private static Split split(
+            Path moduleDir,
+            BuildLayout layout,
+            TestSelection selection,
+            Path testClasses,
+            Path mainClasses,
+            List<Path> runtimeCp,
+            List<String> stampExtras,
+            List<Path> resourceDirs,
+            @Nullable String stampKey,
+            @Nullable Set<String> launches)
+            throws IOException {
+        if (!TestTelemetry.shadow()) return Split.NONE;
         Path file = TestClassRecords.file(moduleDir);
         String header = TestClassRecords.header(file);
-        if (header == null || reachedPastHost(Jsonl.nested(header, "pooled"))) return Map.of();
+        if (header == null || reachedPastHost(Jsonl.nested(header, "pooled"))) return Split.NONE;
         Path workspace = layout.workspaceRoot().toAbsolutePath().normalize();
         Roots roots = Roots.of(workspace, testClasses, mainClasses, runtimeCp);
         String suitePart = ClassKeys.suitePart(stampExtras, roots.external(), resourceDirs);
         ClassKeys.SuiteReadSet reads = readSet(moduleDir, selection, layout.workspaceRoot());
         Map<String, TestClassLedger.Entry> out = new TreeMap<>();
+        long[] ran = {0};
         try {
             ONE.acquire();
         } catch (InterruptedException stopped) {
             Thread.currentThread().interrupt();
-            return Map.of();
+            return Split.NONE;
         }
         // The index stands only while no recording is read anywhere in the engine.
         try (RecordingReader.Permit permit = RecordingReader.Permit.acquire()) {
@@ -309,8 +375,11 @@ final class TestClassRecording {
             TestClassRecords.forEachRow(file, (key, row) -> {
                 String launch = Jsonl.str(row, "launch");
                 String cls = TestClassRecords.className(Jsonl.strArray(row, "container"));
-                if (launch == null || reachedPastHost(row) || !index.contains(cls)) return;
-                if (keys.whyRun(row, launch, cls) != null) return;
+                if (launch == null || (launches != null && !launches.contains(launch)) || !index.contains(cls)) return;
+                if (reachedPastHost(row) || keys.whyRun(row, launch, cls) != null) {
+                    ran[0] += Jsonl.longValue(row, "tests", 0);
+                    return;
+                }
                 out.put(
                         key,
                         new TestClassLedger.Entry(
@@ -323,7 +392,7 @@ final class TestClassRecording {
         } finally {
             ONE.release();
         }
-        return out;
+        return new Split(out, ran[0]);
     }
 
     /** What the suite at {@code moduleDir} was found to read under {@code selection}, as {@link SuiteReads#digest} reads it. */
@@ -333,8 +402,8 @@ final class TestClassRecording {
 
     /**
      * Before a compile an edit is waiting on, under {@code [test] cache = "cone"}: which of the
-     * suite's classes that passed last time will replay, and how many tests they hold, once {@code edits} are built, for the
-     * forecast to count only the rest. Each edit names the sources whose content moved in one
+     * suite's classes that passed last time in the launches named {@code launches} will replay, and
+     * how many tests they hold, once {@code edits} are built, for the forecast to count only the rest. Each edit names the sources whose content moved in one
      * module (this one or a sibling on the suite's classpath) and whether their declarations kept.
      * A class replays when its last record passed, kept its key, reached no other host, fell back
      * to no module key, and no class compiled from a moved source lies in its cone, or, where the
@@ -352,7 +421,8 @@ final class TestClassRecording {
             Path mainClasses,
             List<Path> runtimeCp,
             List<SourceApiIndex.Hint> edits,
-            Collection<Path> rebuildingJars)
+            Collection<Path> rebuildingJars,
+            Set<String> launches)
             throws IOException {
         if (!TestTelemetry.shadow()) return null;
         for (SourceApiIndex.Hint e : edits) {
@@ -368,7 +438,7 @@ final class TestClassRecording {
         if (readsAny(Jsonl.nested(header, "pooled"), jars, workspace)) return Replayed.NONE;
         boolean pooledProcess = ClassKeys.pooledFallback(ClassShadow.pooledOf(header)) != null;
         Roots roots = Roots.of(workspace, testClasses, mainClasses, runtimeCp);
-        long[] replayed = {0, 0};
+        long[] replayed = {0, 0, 0};
         try {
             ONE.acquire();
         } catch (InterruptedException stopped) {
@@ -389,26 +459,47 @@ final class TestClassRecording {
             }
             TestClassRecords.forEachRow(file, (key, row) -> {
                 String cls = TestClassRecords.className(Jsonl.strArray(row, "container"));
-                if (Jsonl.str(row, "classKey") == null
-                        || !"passed".equals(Jsonl.str(row, "outcome"))
-                        || reachedPastHost(row)
-                        || !index.contains(cls)
-                        || ((Jsonl.str(row, "fallback") != null || pooledProcess)
-                                && !(moved.isEmpty() && jars.isEmpty()))
-                        || readsAny(row, jars, workspace)) return;
-                ClassCones.Cone cone = index.cone(cls, Jsonl.strArray(row, "reflective"));
-                String used = Jsonl.str(row, "coneUsed");
-                Predicate<String> ran = used == null ? c -> true : cone.ranBy(used);
-                for (String c : moved) {
-                    if (cone.contains(c) && (!bodiesOnly.contains(c) || ran.test(c))) return;
+                if (!launches.contains(String.valueOf(Jsonl.str(row, "launch"))) || !index.contains(cls)) return;
+                long tests = Jsonl.longValue(row, "tests", 0);
+                if (runsAfter(row, cls, index, moved, bodiesOnly, jars, pooledProcess, workspace)) {
+                    replayed[2] += tests;
+                    return;
                 }
                 replayed[0]++;
-                replayed[1] += Jsonl.longValue(row, "tests", 0);
+                replayed[1] += tests;
             });
         } finally {
             ONE.release();
         }
-        return new Replayed((int) replayed[0], replayed[1]);
+        return new Replayed((int) replayed[0], replayed[1], replayed[2]);
+    }
+
+    /**
+     * Whether the class {@code cls} of a record {@code row} runs once the {@code moved} classes (of
+     * which {@code bodiesOnly} kept their declarations) and the rebuilding {@code jars} are built, as
+     * {@link #replayedAfter} says.
+     */
+    private static boolean runsAfter(
+            String row,
+            String cls,
+            ClassCones.Index index,
+            Set<String> moved,
+            Set<String> bodiesOnly,
+            Set<Path> jars,
+            boolean pooledProcess,
+            Path workspace) {
+        if (Jsonl.str(row, "classKey") == null
+                || !"passed".equals(Jsonl.str(row, "outcome"))
+                || reachedPastHost(row)
+                || ((Jsonl.str(row, "fallback") != null || pooledProcess) && !(moved.isEmpty() && jars.isEmpty()))
+                || readsAny(row, jars, workspace)) return true;
+        ClassCones.Cone cone = index.cone(cls, Jsonl.strArray(row, "reflective"));
+        String used = Jsonl.str(row, "coneUsed");
+        Predicate<String> ran = used == null ? c -> true : cone.ranBy(used);
+        for (String c : moved) {
+            if (cone.contains(c) && (!bodiesOnly.contains(c) || ran.test(c))) return true;
+        }
+        return false;
     }
 
     /**
@@ -425,9 +516,22 @@ final class TestClassRecording {
         return false;
     }
 
-    /** How many classes a suite replays, and the tests they hold. */
-    record Replayed(int classes, long tests) {
-        static final Replayed NONE = new Replayed(0, 0);
+    /**
+     * How many classes a suite replays and the tests they hold, and the tests of the recorded
+     * classes it runs ({@code ran}).
+     */
+    record Replayed(int classes, long tests, long ran) {
+        static final Replayed NONE = new Replayed(0, 0, 0);
+
+        /**
+         * The tests the run re-runs, for a selection whose sources count {@code estimated}: each
+         * recorded class that runs by its record, and what no record covers by the sources' count.
+         * Records count what ran, a parameterized test's every case among it, so the sources' count
+         * less the replayed tests can fall to nothing while classes still run.
+         */
+        long rerun(int estimated) {
+            return ran + Math.max(0, estimated - tests - ran);
+        }
     }
 
     /** When the first of {@code ran} finished: the start of the run, as its records date it. */

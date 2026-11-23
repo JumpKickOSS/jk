@@ -17,6 +17,7 @@ import java.lang.constant.MethodTypeDesc;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
@@ -130,6 +131,44 @@ class ConeForecastTest {
     }
 
     @Test
+    void only_the_launches_the_selection_starts_count_and_a_class_that_runs_is_priced_by_its_record(@TempDir Path ws)
+            throws Exception {
+        BuildLayout layout = module(ws);
+        write(layout.classesDir(), "demo/Dep", dep());
+        write(layout.testClassesDir(), "demo/T", caller("demo.T"));
+        write(layout.testClassesDir(), "demo/U", plain("demo.U"));
+        String gate = "test:test,tree";
+        writeRows(
+                layout.moduleRoot(),
+                null,
+                row("", "T", 3, null),
+                row("", "U", 2, null),
+                row(gate, "T", 7, null),
+                row(gate, "U", 40, null));
+
+        TestClassRecording.Replayed replayed = Objects.requireNonNull(TestClassRecording.replayedAfter(
+                layout.moduleRoot(),
+                layout,
+                layout.testClassesDir(),
+                layout.classesDir(),
+                List.of(),
+                List.of(edit(SourceApiIndex.Kind.BODY_ONLY)),
+                List.of(),
+                Set.of(gate)));
+        assertThat(replayed.classes()).as("U, in the gate's launch alone").isEqualTo(1);
+        assertThat(replayed.tests()).isEqualTo(40);
+        assertThat(replayed.ran())
+                .as("T, which ran Dep, by its record in the gate's launch")
+                .isEqualTo(7);
+        assertThat(replayed.rerun(10))
+                .as("the sources count fewer tests than the records: what runs is still priced")
+                .isEqualTo(7);
+        assertThat(replayed.rerun(60))
+                .as("what no record covers is priced by the sources")
+                .isEqualTo(20);
+    }
+
+    @Test
     void a_source_names_its_class_and_the_classes_nested_in_it(@TempDir Path ws) throws Exception {
         Path classes = ws.resolve("classes");
         write(classes, "demo/Dep", dep());
@@ -147,7 +186,8 @@ class ConeForecastTest {
                 layout.classesDir(),
                 List.of(),
                 List.of(edit),
-                List.of());
+                List.of(),
+                Set.of(""));
         return replayed == null ? null : replayed.tests();
     }
 
@@ -160,7 +200,8 @@ class ConeForecastTest {
                 layout.classesDir(),
                 List.of(),
                 List.of(),
-                List.of(rebuilding));
+                List.of(rebuilding),
+                Set.of(""));
         return replayed == null ? null : replayed.tests();
     }
 
@@ -211,8 +252,12 @@ class ConeForecastTest {
     }
 
     private static String row(String cls, int tests, @Nullable String used) {
+        return row("", cls, tests, used);
+    }
+
+    private static String row(String launch, String cls, int tests, @Nullable String used) {
         return JsonFields.object()
-                .string("launch", "")
+                .string("launch", launch)
                 .array("container", List.of("demo", cls))
                 .string("outcome", "passed")
                 .number("tests", tests)

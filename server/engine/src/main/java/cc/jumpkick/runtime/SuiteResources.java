@@ -3,8 +3,10 @@ package cc.jumpkick.runtime;
 
 import static cc.jumpkick.runtime.BuildPlanner.MODULE;
 
+import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.layout.TestSuites;
+import cc.jumpkick.model.DeclaredSuite;
 import cc.jumpkick.model.SuiteSettings;
 import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TestSummary;
@@ -188,9 +190,8 @@ record SuiteResources(Map<String, List<Path>> bySuite) {
             SuiteFilter.Launch only = launches.getFirst();
             return launch.run(launcher.of(ONE_LAUNCH, only.settings()).withSuites(suites), runtimeCp, only);
         }
-        Map<String, List<Path>> groups = split() ? bySuite : Collections.singletonMap(TestSuites.DEFAULT, List.of());
         TestSummary total = null;
-        for (Map.Entry<String, List<Path>> group : groups.entrySet()) {
+        for (Map.Entry<String, List<Path>> group : groups().entrySet()) {
             SuiteFilter part = split() ? suites.part(group.getKey()) : suites;
             if (part == null) continue;
             for (SuiteFilter.Launch shared : launches) {
@@ -206,7 +207,7 @@ record SuiteResources(Map<String, List<Path>> bySuite) {
                         && !unit.namesCompiledClass(testClasses, classPatterns, excludeClasses)) {
                     continue;
                 }
-                String name = group.getKey() + ":" + String.join(",", new TreeSet<>(shared.suites()));
+                String name = launchName(group.getKey(), shared);
                 JUnitLauncher one = launcher.of(name, shared.settings()).withSuites(unit);
                 if (names != null) one.withClassNames(names);
                 List<Path> classpath = new ArrayList<>(group.getValue());
@@ -216,5 +217,47 @@ record SuiteResources(Map<String, List<Path>> bySuite) {
             }
         }
         return total != null ? total : new TestSummary(0, 0, 0, 0, List.of());
+    }
+
+    /**
+     * The names {@link #launch} gives the launches a run of {@code suites} may start, before a
+     * {@code --class} pattern or the affected classes leave one out: what a class's record names its
+     * launch by, so the forecast reads only the records of the launches this selection starts.
+     */
+    Set<String> launchNames(SuiteFilter suites) {
+        List<SuiteFilter.Launch> launches = suites.launches();
+        if (!split() && launches.size() == 1) return Set.of(ONE_LAUNCH);
+        Set<String> out = new TreeSet<>();
+        for (String group : groups().keySet()) {
+            SuiteFilter part = split() ? suites.part(group) : suites;
+            if (part == null) continue;
+            for (SuiteFilter.Launch shared : launches) {
+                if (launches.size() == 1 || part.only(shared.suites()) != null) out.add(launchName(group, shared));
+            }
+        }
+        return out;
+    }
+
+    /**
+     * {@link #launchNames} of a run of {@code selection} in the module at {@code moduleDir}, whose
+     * {@code [test.suites]} declare {@code declared}, as the run resolves and compiles its suites.
+     */
+    static Set<String> launchNames(
+            Path moduleDir, boolean compact, TestSelection selection, Map<String, DeclaredSuite> declared) {
+        var resolved = TestStampInputs.resolveSuites(selection, moduleDir, compact, declared);
+        List<String> suites = resolved.ok() ? resolved.suites() : List.of(TestSuites.DEFAULT);
+        List<String> compiled = TestSuites.compiled(moduleDir, compact, suites, declared);
+        return of(moduleDir, compact, compiled, List.of())
+                .launchNames(SuiteFilter.of(moduleDir, compact, suites, declared));
+    }
+
+    /** The directory suites a run launches apart, by name: one group of every class when it does not split. */
+    private Map<String, List<Path>> groups() {
+        return split() ? bySuite : Collections.singletonMap(TestSuites.DEFAULT, List.of());
+    }
+
+    /** A launch's name, stable under one run-tests stamp: its directory suite and the suites it runs. */
+    private static String launchName(String group, SuiteFilter.Launch shared) {
+        return group + ":" + String.join(",", new TreeSet<>(shared.suites()));
     }
 }

@@ -843,14 +843,14 @@ final class TestSteps {
 
     /**
      * The tests a dirty suite runs, as the forecast says them: {@code all} of the {@code estimated},
-     * or, where the classes' cones replay some once the pending builds are done ({@code replayed},
-     * from {@link #replayedByCones}), the rest of them, which {@code s} then counts ({@link
+     * or, where the classes' cones replay some ({@code replayed}), the rest of them ({@link
+     * TestClassRecording.Replayed#rerun}), which {@code s} then counts ({@link
      * ForecastScope#rerunTests}).
      */
     private static String coneTests(
             ForecastScope s, TestClassRecording.@Nullable Replayed replayed, int estimated, String all) {
         if (replayed == null || replayed.classes() == 0) return all;
-        s.rerunTests = (int) Math.max(0, estimated - replayed.tests());
+        s.rerunTests = (int) replayed.rerun(estimated);
         return "~" + ForecastSteps.count(s.rerunTests, "test") + " · " + replayed.classes()
                 + (replayed.classes() == 1 ? " class" : " classes") + " replayed";
     }
@@ -882,7 +882,12 @@ final class TestSteps {
                 layout.classesDir(),
                 prepared.classpaths().testRuntime(),
                 edits,
-                TestStampInputs.rebuildingWorkers(s.dir, s.project, s.orderDeps).values());
+                TestStampInputs.rebuildingWorkers(s.dir, s.project, s.orderDeps).values(),
+                SuiteResources.launchNames(
+                        s.dir,
+                        prepared.parsed().compact(),
+                        SessionContext.selectionFor(s.dir),
+                        s.project.build().runSuites()));
     }
 
     /**
@@ -1055,19 +1060,17 @@ final class TestSteps {
         if (!stamp.cachesByCone()) return tests;
         List<Path> resources = stamp.forecastResources(compact);
         if (resources == null) return tests;
-        Map<String, TestClassLedger.Entry> replayed = SuiteDiscovery.replayedByCone(
+        TestSelection selection = SessionContext.selectionFor(s.dir);
+        TestClassRecording.Replayed replayed = SuiteDiscovery.replayedByCone(
                 s.dir,
                 layout,
-                SessionContext.selectionFor(s.dir),
+                selection,
                 stamp.runtimeClasspath(),
                 stamp.extras(),
                 resources,
-                stampKey);
-        if (replayed.isEmpty()) return tests;
-        long replayedTests = 0;
-        for (TestClassLedger.Entry e : replayed.values()) replayedTests += e.tests();
-        s.rerunTests = (int) Math.max(0, estimated - replayedTests);
-        return "~" + ForecastSteps.count(s.rerunTests, "test") + " · " + replayed.size()
-                + (replayed.size() == 1 ? " class" : " classes") + " replayed";
+                stampKey,
+                SuiteResources.launchNames(
+                        s.dir, compact, selection, s.project.build().runSuites()));
+        return coneTests(s, replayed, estimated, tests);
     }
 }

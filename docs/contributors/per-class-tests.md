@@ -326,7 +326,7 @@ passed and skipped as recorded, as the class ledger's left-out classes are count
 line says how many ran: `OK test jk-cli · 1,958 tests (1,901 replayed) · 41.2s`.
 
 When nothing the suite reads is still to be built (its compile and every sibling it reads are
-current), `jk explain` takes each class's key as the run will (`TestClassRecording.unmoved`, through
+current), `jk explain` takes each class's key as the run will (`TestClassRecording.replayedNow`, through
 `SuiteDiscovery.replayedByCone`) and prices only the classes whose key moved: `run tests · <the stamp
 input that moved> · ~12 tests · 281 classes replayed`, and the module's `rerunTests` (the Tests
 row's Rebuild column) counts those tests alone. When a compile is pending the new bytes do not exist
@@ -338,7 +338,12 @@ runs. A worker jar the stamp keys whose sibling is rebuilding runs the classes i
 ([above](#nested-engines-and-worker-jars)): those whose record names it as a code file or says more
 code files than it names, those whose record says `(started)`, and the module-keyed ones; nothing
 replays when the record file's pool read it. The step says the same `~12 tests · 281 classes
-replayed`. It is an estimate where the run's answer is exact: the cones are walked over the classes
+replayed`. Both read only the records of the launches the selection starts
+(`SuiteResources.launchNames`, the names `SuiteResources.launch` gives them): the record file keeps
+every launch's rows, so after `jk test -g` it also holds the default selection's. A class that runs
+is priced by the tests its record counts, and only what no record covers by the sources' count:
+records count every case of a parameterized or property test, so the sources' count less the
+replayed tests can be nothing while classes still run. It is an estimate where the run's answer is exact: the cones are walked over the classes
 on disk, and a hint reads a private signature edit as body-only, where the class's bodyless digest
 moves. An edit the forecast cannot read (a sibling with no hint, a source that is not Java, a moved
 test source, a KSP round) prices the whole selection.
