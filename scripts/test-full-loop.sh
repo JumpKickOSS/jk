@@ -12,6 +12,11 @@
 # moves, no ticket is told, and the queue is not held. While the pause file exists the loop starts no
 # cycle, even one it was waiting on the gate lock for, and says once in full-runs.log that it is
 # paused and why; removing the file resumes it.
+#
+# The loop runs as on a host of its own: it reaches the queue's state only over ssh (a stand-in that
+# runs the command here for the host queuehost), takes a gate lock that is not the queue's, and
+# neither waits for the queue's lock nor holds it; when the queue's host cannot be reached it gates
+# nothing.
 set -euo pipefail
 
 unset "${!GATE_@}" "${!FULL_@}" "${!QUEUE_@}"
@@ -39,8 +44,18 @@ printf '%s|' "$@" >>"$KA_LOG"
 echo >>"$KA_LOG"
 [ "$1" != show ] || echo '{"status":"done"}'
 KA
-chmod +x "$WORK/bin/jk" "$WORK/bin/ka"
-export PATH="$WORK/bin:$PATH" KA_LOG="$WORK/ka.log"
+# The stand-in ssh knows one host, queuehost, and runs the command it is given here, as git and
+# scripts/queue/common.sh give it: the options first, then the host and the command.
+cat >"$WORK/bin/ssh" <<'SSH'
+#!/usr/bin/env bash
+while [ "${1#-}" != "$1" ]; do case "$1" in -[opliF]) shift 2 ;; *) shift ;; esac; done
+echo "$1" >>"$SSH_LOG"
+[ "$1" = queuehost ] || { echo "ssh: Could not resolve hostname $1" >&2; exit 255; }
+shift
+exec bash -c "$*"
+SSH
+chmod +x "$WORK/bin/jk" "$WORK/bin/ka" "$WORK/bin/ssh"
+export PATH="$WORK/bin:$PATH" KA_LOG="$WORK/ka.log" SSH_LOG="$WORK/ssh.log"
 : >"$KA_LOG"
 fake_flock=""
 if ! command -v flock >/dev/null 2>&1; then
@@ -113,19 +128,33 @@ status() { (cd "$dev" && bash "$Q/status.sh" "$1"); }
 queue() {
   QUEUE_CHECKOUT="$WORK/qco" QUEUE_GATE="$WORK/gate.sh" QUEUE_LOG_DIR="$logs" bash "$Q/loop.sh" --once
 }
+# The Full loop's host reaches the queue's repository over ssh and has a gate lock of its own.
+remote="queuehost:$QUEUE_REPO" full_lock="$WORK/full-host.lock"
 full() {
-  FULL_CHECKOUT="$WORK/fco" FULL_GATE="$WORK/gate.sh" FULL_LOG_DIR="$logs" FULL_KA=ka \
-    FULL_RERUN="$WORK/rerun.sh" GATE_LOG_DIR="$logs" \
+  QUEUE_REPO="$remote" GATE_LOCK="$full_lock" FULL_CHECKOUT="$WORK/fco" FULL_GATE="$WORK/gate.sh" \
+    FULL_LOG_DIR="$logs" FULL_KA=ka FULL_RERUN="$WORK/rerun.sh" GATE_LOG_DIR="$logs" \
     bash "$ROOT/scripts/gate/full-loop.sh" --once
 }
 origin() { git -C "$WORK/origin.git" rev-parse -q --verify "$1"; }
 gated() { wc -l <"$logs/full-gated" | tr -d ' '; }
 runs() { cat "$QUEUE_REPO/full-runs.log"; }
 reruns() { cat "$logs/reruns" 2>/dev/null; }
+bounded() { # <command...>: run it, but fail it when it has not ended within a minute
+  local pid
+  "$@" &
+  pid=$!
+  for _ in $(seq 600); do kill -0 "$pid" 2>/dev/null || break; sleep 0.1; done
+  if kill -0 "$pid" 2>/dev/null; then
+    kill "$pid"
+    return 124
+  fi
+  wait "$pid"
+}
 
 # --- green: the tip passes and green names it; the same tip is not gated twice ---
 land a a.txt "TK-AAAA1: a"
 full || fail "the first cycle failed: $(runs)"
+grep -qx queuehost "$SSH_LOG" || fail "the loop did not reach the queue's repository over ssh"
 [[ "$(origin green)" == "$(origin main)" ]] || fail "green does not name the tip that passed: $(runs)"
 full || fail "a cycle with nothing new failed"
 [[ "$(gated)" -eq 1 ]] || fail "a judged tip was gated again"
@@ -243,12 +272,12 @@ land z z.txt "TK-ZZZZ1: z"
 n="$(gated)"
 echo "a bench night" >"$QUEUE_REPO/pause"
 rc=0
-FULL_CHECKOUT="$WORK/fco" FULL_LOG_DIR="$logs" bash "$ROOT/scripts/gate/full-loop.sh" --cycle || rc=$?
+QUEUE_REPO="$remote" FULL_CHECKOUT="$WORK/fco" FULL_LOG_DIR="$logs" bash "$ROOT/scripts/gate/full-loop.sh" --cycle || rc=$?
 [[ "$rc" -eq 4 ]] || fail "a cycle started while paused exited $rc, want 4"
 # Where flock is real, the loop is already waiting on the gate lock when the pause starts.
 if [[ -z "$fake_flock" ]]; then
   rm "$QUEUE_REPO/pause"
-  exec 8>>"$GATE_LOCK"
+  exec 8>>"$full_lock"
   flock 8
 fi
 FULL_POLL=1 full >"$WORK/paused.out" 2>&1 8>&- &
@@ -270,5 +299,39 @@ if kill -0 "$looping" 2>/dev/null; then kill "$looping"; fail "the loop did not 
 wait "$looping" || fail "the resumed loop failed: $(cat "$WORK/paused.out")"
 runs | grep -q '^full resumed ' || fail "the log does not say the loop resumed: $(runs)"
 [[ "$(gated)" -eq $((n + 1)) ]] || fail "the resumed loop did not gate the new tip: $(runs)"
+
+# --- no lock is shared with the queue: a cycle runs while the queue's host holds its gate lock, and
+# a batch lands while the Full loop's host holds its own ---
+# The fix of the red batch above lands first, so the cycle is green and the queue is not held.
+git -C "$dev" fetch -q && git -C "$dev" checkout -q -b unred origin/main
+tick && git -C "$dev" rm -q red.txt && git -C "$dev" commit -qm "TK-XXXX1: no longer breaks the Full tier"
+submit unred
+queue || fail "the queue did not run for the fix"
+[[ "$(status unred)" == "unred: landed "* ]] || fail "the fix did not land: $(status unred)"
+if [[ -z "$fake_flock" ]]; then
+  exec 8>>"$GATE_LOCK"
+  flock 8
+  n="$(gated)"
+  bounded full 8>&- || fail "a cycle did not run while the queue's lock was held: $(runs)"
+  [[ "$(gated)" -eq $((n + 1)) ]] || fail "the cycle beside the queue's lock gated nothing: $(runs)"
+  [[ "$(origin green)" == "$(origin main)" ]] || fail "the fixed tip did not pass: $(runs)"
+  flock -u 8
+  exec 8>&-
+  exec 8>>"$full_lock"
+  flock 8
+  bounded land v v.txt "TK-VVVV1: v" 8>&- || fail "a batch did not land while the Full loop's lock was held"
+  flock -u 8
+  exec 8>&-
+fi
+
+# --- the queue's host cannot be reached: the cycle gates nothing and says so ---
+land w w.txt "TK-WWWW1: w"
+n="$(gated)"
+rc=0
+remote="downhost:$QUEUE_REPO" full 2>"$WORK/down.err" || rc=$?
+[[ "$rc" -eq 2 ]] || fail "a cycle with the queue's host down exited $rc, want 2"
+[[ "$(gated)" -eq "$n" ]] || fail "a cycle with the queue's host down gated"
+grep -q 'cannot be reached' "$WORK/down.err" || fail "the loop did not say the queue's host is down: $(cat "$WORK/down.err")"
+[[ -z "$(find "$WORK" "$ROOT" -maxdepth 3 -name "*host:*" -print -quit)" ]] || fail "the loop wrote the queue's state to a local path named for the host"
 
 echo "test-full-loop: ok ($(gated) Full gates, $(reruns | wc -l | tr -d ' ') re-runs)"

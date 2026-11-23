@@ -10,6 +10,7 @@
 #   <classes>      a file of `<module> <class>` lines, as `scripts/gate/flaky.sh failed` prints them;
 #                  the module is its directory or the `name` its jk.toml declares
 #   GATE_CHECKOUT  the clean checkout to run in (required)
+#   JK_HOME        the JumpKick home the commit is installed into and run from (default ~/.jk)
 #
 # Exits 0 when every class passes, 1 when one fails, and 2 when they could not run there: a dirty
 # checkout, an unknown commit or module, a red reinstall, or a run red for anything but a test.
@@ -17,7 +18,7 @@
 # The whole body is one brace group, so bash has read all of it before the checkout changes this file.
 {
   set -uo pipefail
-  export PATH="$HOME/.jk/bin:$PATH"
+  export PATH="${JK_HOME:-$HOME/.jk}/bin:$PATH"
   sha="${1:?usage: rerun-classes.sh <sha> <classes>}"
   list="${2:?usage: rerun-classes.sh <sha> <classes>}"
   here="$(cd "$(dirname "$0")" && pwd)"

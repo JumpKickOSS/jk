@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
-# The Full tier, back to back on the newest origin/main. Each cycle, under the host's gate lock
-# (the merge queue's batches take it between cycles), gates the tip of origin/main with the Full
-# tier of scripts/gate/gate.sh, unless that commit was judged already. The gate's base is `green`,
+# The Full tier, back to back on the newest origin/main. Each cycle, under this host's gate lock,
+# gates the tip of origin/main with the Full tier of scripts/gate/gate.sh, unless that commit was
+# judged already. It runs on a host of its own, beside the merge queue's: it reads the queue's
+# state and writes its own beside it over ssh (QUEUE_REPO `host:path`, as scripts/queue/common.sh
+# reaches the queue), so the queue host's gate lock is the queue's alone. The gate's base is `green`,
 # so it runs the slow tier when a plugin changed since the last commit that passed.
 #
 # Each tip it takes is appended to full-taken before it is gated, so the Windows and macOS loops
@@ -35,55 +37,71 @@
 #
 # Usage: scripts/gate/full-loop.sh [--once]     (--once runs one cycle, after the pause if there is one)
 #
-#   QUEUE_REPO       the merge queue's repository (default ~/src/jk-queue.git): its queue-batches.log
-#                    is read, and this loop's state is written beside it: full-runs.log (one line per
+#   QUEUE_REPO       the merge queue's repository, `host:path` over ssh or a local path (default
+#                    $JK_QUEUE_REMOTE, else bocabox:src/jk-queue.git): its queue-batches.log and pause
+#                    are read, and this loop's state is written beside it: full-runs.log (one line per
 #                    cycle), full-taken (each tip it took), full-verdicts (`<sha> GREEN|RED <gate>`),
-#                    full-reds, full-filed, full-hold;
-#                    the re-runs and the revert's Branch tier log to full-<batch>.log beside the gate logs
+#                    full-n, full-reds, full-filed, full-hold. A revert is submitted to it and green is
+#                    moved from FULL_CHECKOUT's origin, with this host's credentials.
+#                    The re-runs and the revert's Branch tier log to full-<batch>.log beside the gate logs
 #   FULL_CHECKOUT    the clean checkout the Full tier runs in; its origin holds main and green
 #                    (required; not the queue's checkout)
+#   JK_HOME          the JumpKick home the gates install the tip into and run; give the loop one of its
+#                    own, so a gate never replaces the install other work on this host uses
 #   FULL_GATE        the gate, run as <gate> <n> <sha> (default scripts/gate/gate.sh of the checkout)
-#   FULL_LOG_DIR     the gate logs, integ-gate-f<n>.log (default the queue's, so one ledger of
-#                    quarantine tickets serves both: ${QUEUE_LOG_DIR:-/var/tmp/jk-queue})
+#   FULL_LOG_DIR     the gate logs, integ-gate-f<n>.log (default ${QUEUE_LOG_DIR:-/var/tmp/jk-queue})
 #   FULL_HOLD_AFTER  red cycles in a row after which the queue lands only the fix (default 2)
 #   FULL_KA          the ka command that comments on tickets and reopens them (default ka)
 #   FULL_RERUN       re-runs failed classes, as <rerun> <sha> <classes> (default scripts/gate/rerun-classes.sh)
 #   FULL_POLL        seconds between looks when origin/main has not moved (default 300)
-#   FULL_YIELD       seconds to wait after a cycle, so a waiting queue batch takes the lock (default 10)
-#   GATE_LOCK        the lock every gate on this host takes (default /var/tmp/fleet-gate.lock)
+#   FULL_YIELD       seconds to wait after a cycle, so another gate waiting on this host takes the lock
+#                    (default 10)
+#   GATE_LOCK        the lock every gate on this host takes (default /var/tmp/fleet-gate.lock); never
+#                    the queue host's
 #
 # The whole body is one brace group, so bash has read all of it before a checkout changes this file.
 {
   set -uo pipefail
-  repo="${QUEUE_REPO:-$HOME/src/jk-queue.git}"
+  repo="${QUEUE_REPO:-${JK_QUEUE_REMOTE:-bocabox:src/jk-queue.git}}"
   co="${FULL_CHECKOUT:?FULL_CHECKOUT: the checkout the Full tier runs in}"
   D="${FULL_LOG_DIR:-${QUEUE_LOG_DIR:-/var/tmp/jk-queue}}"
+  [ -z "${JK_HOME:-}" ] || export PATH="$JK_HOME/bin:$PATH"
 
-  H="$(cd "$(dirname "$0")" && pwd)" # this script's directory, which holds the scripts it runs
+  H="$(cd "$(dirname "$0")" && pwd)" # this script's directory; its scripts are in ../gate and ../queue
+  # shellcheck source=scripts/queue/common.sh
+  JK_QUEUE_REMOTE="$repo" . "$H/../queue/common.sh"
+  # The queue's state files, by name, in its repository: read, test, append a line, replace from
+  # stdin, remove. A read fails when the repository cannot be reached.
+  st_get() { queue_sh "if [ -e $1 ]; then cat $1; fi" </dev/null; }
+  st_has() { queue_sh "test -f $1" </dev/null; }
+  st_add() { printf '%s\n' "$2" | queue_sh "cat >>$1"; }
+  st_put() { queue_sh "cat >$1.tmp && mv $1.tmp $1"; }
+  st_rm() { queue_sh "rm -f $1" </dev/null; }
 
   if [ "${1:-}" != --cycle ]; then
-    mkdir -p "$repo" "$D/full-loop/queue" || exit 2
+    [[ "$repo" =~ ^[^/:]+: ]] || mkdir -p "$repo" || exit 2
+    mkdir -p "$D/full-loop/gate" "$D/full-loop/queue" || exit 2
     # Run a copy, so a commit that changes these scripts changes the loop only when it is restarted.
-    cp "$0" "$D/full-loop/full-loop.sh" || exit 2
-    cp "$H/rerun-classes.sh" "$H/flaky.sh" "$H/green.sh" "$D/full-loop/" || exit 2
+    cp "$0" "$D/full-loop/gate/full-loop.sh" || exit 2
+    cp "$H/rerun-classes.sh" "$H/flaky.sh" "$H/green.sh" "$D/full-loop/gate/" || exit 2
     cp "$H/../queue/branch-tier.sh" "$H/../queue/submit.sh" "$H/../queue/common.sh" "$D/full-loop/queue/" || exit 2
     paused=""
     while :; do
-      if [ -f "$repo/pause" ]; then
+      if st_has pause; then
         if [ -z "$paused" ]; then
           paused=1
-          echo "full paused $(date -u +%Y-%m-%dT%H:%M:%SZ): $(head -1 "$repo/pause" 2>/dev/null | grep . || echo 'no reason given') ($repo/pause)" >>"$repo/full-runs.log"
+          st_add full-runs.log "full paused $(date -u +%Y-%m-%dT%H:%M:%SZ): $(st_get pause | head -1 | grep . || echo 'no reason given') ($repo/pause)"
         fi
         sleep "${FULL_POLL:-300}"
         continue
       fi
-      [ -z "$paused" ] || echo "full resumed $(date -u +%Y-%m-%dT%H:%M:%SZ)" >>"$repo/full-runs.log"
+      [ -z "$paused" ] || st_add full-runs.log "full resumed $(date -u +%Y-%m-%dT%H:%M:%SZ)"
       paused=""
-      flock -w 7200 "${GATE_LOCK:-/var/tmp/fleet-gate.lock}" bash "$D/full-loop/full-loop.sh" --cycle
+      QUEUE_REPO="$repo" flock -w 7200 "${GATE_LOCK:-/var/tmp/fleet-gate.lock}" bash "$D/full-loop/gate/full-loop.sh" --cycle
       rc=$?
       # Paused while it waited for the lock: it gated nothing, and waits out the pause above.
       [ "$rc" -eq 4 ] && continue
-      [ "$rc" -eq 1 ] && [ -f "$repo/pause" ] && continue
+      [ "$rc" -eq 1 ] && st_has pause && continue
       [ "$rc" -eq 0 ] || [ "$rc" -eq 3 ] || exit "$rc"
       [ "${1:-}" = --once ] && exit 0
       if [ "$rc" -eq 3 ]; then sleep "${FULL_POLL:-300}"; else sleep "${FULL_YIELD:-10}"; fi
@@ -92,10 +110,14 @@
 
   # --- one cycle; exit 0 when one ran, 3 when origin/main has not moved, 4 when paused, 2 when it
   # could not gate ---
-  [ ! -f "$repo/pause" ] || exit 4
-  V="$repo/full-verdicts"
+  ! st_has pause || exit 4
+  # The verdicts, read once a cycle: this loop is their only writer, so each new one goes here and
+  # to the queue's repository.
+  V="$D/full-loop/full-verdicts"
+  st_get full-verdicts >"$V" || { echo "full-loop: $repo cannot be reached" >&2; exit 2; }
   short() { git rev-parse --short=12 "$1"; }
-  log() { echo "$*" >>"$repo/full-runs.log"; }
+  log() { st_add full-runs.log "$*"; }
+  verdict() { echo "$1" >>"$V" && st_add full-verdicts "$1"; }
 
   # judge <sha>: print GREEN or RED for the commit, gating it with the Full tier unless it was
   # judged before; fail when the gate reached no verdict.
@@ -106,17 +128,18 @@
       echo "$known"
       return 0
     fi
-    n="f$(($(cat "$repo/full-n" 2>/dev/null || echo 0) + 1))"
-    echo "${n#f}" >"$repo/full-n"
+    n="$(st_get full-n)" || return 1
+    n="f$((${n:-0} + 1))"
+    echo "${n#f}" | st_put full-n || return 1
     GATE_CHECKOUT="$co" GATE_LOG_DIR="$D" GATE_TIER=full GATE_BASE="${green:-$empty}" JK_QUEUE_REMOTE="$repo" \
       bash "${FULL_GATE:-$co/scripts/gate/gate.sh}" "$n" "$sha" </dev/null >/dev/null 2>&1
     L="$D/integ-gate-$n.log"
     verdict="$(grep -aE '^(GREEN |RED|CHECKOUT |NO CHECKOUT)' "$L" 2>/dev/null | tail -1)"
     case "$verdict" in
-      "GREEN $sha") echo "$sha GREEN $n" >>"$V" && echo GREEN ;;
-      RED*) echo "$sha RED $n" >>"$V" && echo RED ;;
+      "GREEN $sha") verdict "$sha GREEN $n" && echo GREEN ;;
+      RED*) verdict "$sha RED $n" && echo RED ;;
       *)
-        log "full $n $(date -u +%Y-%m-%dT%H:%M:%SZ) $(short "$sha") NOT-GATED (${verdict:-no verdict}; $L)"
+        log "full $n $(date -u +%Y-%m-%dT%H:%M:%SZ) $(short "$sha") NOT-GATED (${verdict:-no verdict}; $(hostname):$L)"
         return 1
         ;;
     esac
@@ -137,23 +160,27 @@
   tip="$(git rev-parse refs/remotes/origin/main)"
   [ -z "$(awk -v s="$tip" '$1 == s' "$V" 2>/dev/null)" ] || exit 3
 
-  [ "$(tail -1 "$repo/full-taken" 2>/dev/null)" = "$tip" ] || echo "$tip" >>"$repo/full-taken"
+  taken="$(st_get full-taken)" || exit 2
+  [ "$(tail -1 <<<"$taken")" = "$tip" ] || st_add full-taken "$tip" || exit 2
   v="$(judge "$tip")" || exit 2
   n="$(gate_of "$tip")"
   stamp="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
   if [ "$v" = GREEN ]; then
     pushed="$(QUEUE_REPO="$repo" GREEN_CHECKOUT="$co" bash "$H/green.sh")" || pushed="NOT pushed to green (green.sh failed)"
-    echo 0 >"$repo/full-reds"
+    echo 0 | st_put full-reds
     held=""
-    [ -f "$repo/full-hold" ] && held="; the queue's hold is lifted" && rm -f "$repo/full-hold"
+    st_has full-hold && st_rm full-hold && held="; the queue's hold is lifted"
     flaky="$(sed -n 's/^FLAKY \(.*\) passed on the re-run$/\1/p' "$D/integ-gate-$n.log" 2>/dev/null | paste -sd, - | sed 's/,/, /g')"
     log "full $n $stamp $(short "$tip") GREEN $pushed$held${flaky:+; passed on the re-run: $flaky}"
     exit 0
   fi
 
-  reds=$(($(cat "$repo/full-reds" 2>/dev/null || echo 0) + 1))
-  echo "$reds" >"$repo/full-reds"
+  reds="$(st_get full-reds)" || exit 2
+  reds=$((${reds:-0} + 1))
+  echo "$reds" | st_put full-reds
+  batchlog="$(st_get queue-batches.log)" || exit 2
+  filed="$(st_get full-filed)" || exit 2
 
   # The batches landed since green, oldest first: `<n> <base> <tip>` of each LANDED line whose tip
   # is on origin/main past green. A batch that gated a group of a red split says `group <g>` before
@@ -165,7 +192,7 @@
       git merge-base --is-ancestor "$bt" "$tip" || continue
       git merge-base --is-ancestor "$bt" "$green" && continue
       batches+=("$(git rev-list --count "$bt") $bn $bbase $bt")
-    done < <(awk '$1 == "batch" && ($8 == "LANDED" || $10 == "LANDED") { print $2, $5, $7 }' "$repo/queue-batches.log" 2>/dev/null)
+    done < <(awk '$1 == "batch" && ($8 == "LANDED" || $10 == "LANDED") { print $2, $5, $7 }' <<<"$batchlog")
   fi
   culprit=""
   if [ "${#batches[@]}" -gt 0 ]; then
@@ -238,11 +265,11 @@
       -m "$(sed 's/^/    /' "$classes")" || { git reset -q --hard "$tip"; why="the revert could not be committed"; return 1; }
     git checkout -q -B "$rb" || { git reset -q --hard "$tip"; why="no branch $rb could be made"; return 1; }
     echo "== branch tier and submit of $rb" >>"$D/full-$cn.log"
-    (bash "$H/queue/branch-tier.sh" && JK_QUEUE_REMOTE="$repo" bash "$H/queue/submit.sh" "$rb") \
+    (bash "$H/../queue/branch-tier.sh" && JK_QUEUE_REMOTE="$repo" bash "$H/../queue/submit.sh" "$rb") \
       >>"$D/full-$cn.log" 2>&1 </dev/null
     t=$?
     git reset -q --hard && git checkout -q --detach "$tip" && git branch -q -D "$rb"
-    [ "$t" -eq 0 ] || { why="its revert of $(short "$bad") did not pass the Branch tier or was not submitted (see $D/full-$cn.log)"; return 1; }
+    [ "$t" -eq 0 ] || { why="its revert of $(short "$bad") did not pass the Branch tier or was not submitted (see $(hostname):$D/full-$cn.log)"; return 1; }
   }
 
   if [ -z "$culprit" ]; then
@@ -254,12 +281,12 @@
   else
     read -r cn cbase ctip <<<"$culprit"
     cbase="$(git rev-parse "$cbase^{commit}")" || exit 2
-    members="$(awk -v b="$cn" '$1 == "batch" && $2 == b { for (i = 8; i <= 10; i++) if ($i == "LANDED") { for (j = i + 1; j <= NF && $j != "wait"; j++) printf " %s", $j; exit } }' "$repo/queue-batches.log")"
+    members="$(awk -v b="$cn" '$1 == "batch" && $2 == b { for (i = 8; i <= 10; i++) if ($i == "LANDED") { for (j = i + 1; j <= NF && $j != "wait"; j++) printf " %s", $j; exit } }' <<<"$batchlog")"
     commits="$(git rev-list --reverse "$cbase..$ctip")"
     tickets="$(git log --format=%s "$cbase..$ctip" | sed -nE 's/^([A-Z][A-Z0-9]*-[A-Z0-9]+): .*/\1/p' | sort -u)"
     cl="$D/integ-gate-$(gate_of "$ctip").log"
-    log "full $n $stamp $(short "$tip") RED culprit batch $cn ($(short "$ctip"):$members) tickets $(tr '\n' ' ' <<<"${tickets:-<none>}" | sed 's/ $//'); red cycles $reds; log $cl"
-    if ! grep -qx "$cn" "$repo/full-filed" 2>/dev/null; then
+    log "full $n $stamp $(short "$tip") RED culprit batch $cn ($(short "$ctip"):$members) tickets $(tr '\n' ' ' <<<"${tickets:-<none>}" | sed 's/ $//'); red cycles $reds; log $(hostname):$cl"
+    if ! grep -qx "$cn" <<<"$filed"; then
       fails="$(grep -aE '^(FAIL|E |T )|FAILED |^GUARD_EXIT=[1-9]|^RED|^FIXTURE FAIL|^ENGINE NOT' "$cl" 2>/dev/null | head -8 | tr '\n' ';' | sed 's/;$//')"
       if confirm && revert; then
         subject="$(git log -1 --format=%s "$bad")"
@@ -285,7 +312,7 @@
             || log "full $n could not comment on $t"
         done
       fi
-      echo "$cn" >>"$repo/full-filed"
+      st_add full-filed "$cn"
     fi
     hold_lines=("# The Full tier is red since batch $cn ($(short "$ctip")): only a fix of it lands.")
     for t in $tickets; do hold_lines+=("ticket $t"); done
@@ -293,7 +320,7 @@
   fi
 
   if [ "$reds" -ge "${FULL_HOLD_AFTER:-2}" ]; then
-    printf '%s\n' "${hold_lines[@]}" >"$repo/full-hold.tmp" && mv "$repo/full-hold.tmp" "$repo/full-hold"
+    printf '%s\n' "${hold_lines[@]}" | st_put full-hold
     log "full $n the queue lands only the fix ($repo/full-hold)"
   fi
   exit 0

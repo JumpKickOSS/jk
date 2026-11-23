@@ -191,8 +191,11 @@ guard, G100, under `jk guard`; skipped on Windows) and `actionlint .github/workf
 ## The Full tier loop
 
 The Queue tier leaves most integration classes out, so the Full tier runs behind it, back to back
-on the newest `origin/main`: `scripts/gate/full-loop.sh` on the queue's gate host, under the same
-gate lock, so a queue batch and a Full cycle take turns. Each cycle gates the tip of `origin/main`
+on the newest `origin/main`: `scripts/gate/full-loop.sh` on a host of its own, so the queue never
+waits behind a Full cycle. It reaches the queue's repository over ssh (`QUEUE_REPO`, `host:path`,
+default `bocabox:src/jk-queue.git`, as the [queue's scripts](#the-merge-queue) do): it reads
+`queue-batches.log` and `pause` there and writes its own state beside them, and it takes only its
+own host's gate lock, never the queue's. Each cycle gates the tip of `origin/main`
 with `GATE_TIER=full`, unless that commit was judged already. Its base is `green` (`GATE_BASE`), so
 the gate also runs the slow tier when a plugin, or a root build file, changed since the last commit
 that passed; before there is a `green`, it always does. Then:
@@ -224,14 +227,23 @@ that passed; before there is a `green`, it always does. Then:
   the others wait, and `scripts/queue/status.sh` shows them `held`. The next green cycle removes it.
   A hold that names nothing (no batch was found red) lands nothing until a person adds a line to it.
 
-On bocabox it runs beside the queue, in a checkout of its own:
+It runs in a checkout and a JumpKick home of its own (`JK_HOME`), so its gates never replace the
+install other work on its host uses. The home is made once, the way CI makes one; then the loop
+starts from the checkout (it runs a copy of itself, so later checkouts do not change it):
 
 ```bash
-FULL_CHECKOUT=~/src/jk-full-checkout scripts/gate/full-loop.sh
+git clone git@github.com:JumpKickOSS/jk ~/src/jk-full-checkout && cd ~/src/jk-full-checkout
+export JK_HOME=$HOME/jk-full/home
+bash scripts/ci-bootstrap.sh && bash scripts/ci-takeover.sh --install-only && git clean -qfd
+mkdir -p /var/tmp/jk-full
+FULL_CHECKOUT=~/src/jk-full-checkout FULL_LOG_DIR=/var/tmp/jk-full \
+  nohup scripts/gate/full-loop.sh >>/var/tmp/jk-full/full-loop.out 2>&1 &
 ```
 
-Its gate logs are `integ-gate-f<n>.log` beside the queue's, so the two share one ledger of
-quarantine tickets.
+It pushes `green` from its checkout's origin with its host's GitHub credentials, and submits a
+revert to the queue and comments on tickets (`ka`) from its host. Its gate logs are
+`integ-gate-f<n>.log` in `FULL_LOG_DIR` on its host, and `full-runs.log` names each log as
+`<host>:<path>`.
 The re-runs of a culprit and its revert's Branch tier log to `full-<batch>.log` beside them. The
 header of `scripts/gate/full-loop.sh` lists its settings; `scripts/test-full-loop.sh` holds it and
 the queue's hold to the rules above in scratch repositories, and `scripts/test-rerun-classes.sh`

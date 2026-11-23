@@ -63,12 +63,13 @@
 #   FLAKY_*           the quarantine review's settings (scripts/gate/flaky.sh); its ledger of
 #                     tickets defaults to $GATE_LOG_DIR/quarantine-tickets.tsv
 #   JK_QUEUE_REMOTE   the merge queue the quarantine change is submitted to (scripts/queue/common.sh)
+#   JK_HOME           the JumpKick home the tip is installed into and run from (default ~/.jk)
 #
 # The whole body is one brace group, so bash has read all of it before the checkout below can
 # change this file under it.
 {
   set -uo pipefail
-  export PATH="$HOME/.jk/bin:$PATH"
+  export PATH="${JK_HOME:-$HOME/.jk}/bin:$PATH"
 
   n="${1:?usage: gate.sh <n> <tip-sha>}"
   tip="${2:?usage: gate.sh <n> <tip-sha>}"
