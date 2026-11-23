@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.JkBuildParser;
@@ -13,6 +14,7 @@ import cc.jumpkick.runtime.base.DokkaResolver;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -132,17 +134,45 @@ class BuildForksTest {
     @Test
     void a_fork_that_cannot_be_staged_stops_none_of_the_others_and_is_named() throws Exception {
         AtomicBoolean staged = new AtomicBoolean();
-        List<String> failed = BuildForks.stage(List.of(
-                new BuildForks.Fork("worker:jk-java-compiler", () -> {
-                    Thread.sleep(50);
-                    staged.set(true);
-                    return "ok";
-                }),
-                new BuildForks.Fork("dokka:javadoc:2.2.0", () -> {
-                    throw new IOException("offline");
-                })));
+        List<String> failed = BuildForks.stage(
+                List.of(
+                        new BuildForks.Fork("worker:jk-java-compiler", () -> {
+                            Thread.sleep(50);
+                            staged.set(true);
+                            return "ok";
+                        }),
+                        new BuildForks.Fork("dokka:javadoc:2.2.0", () -> {
+                            throw new IOException("offline");
+                        })),
+                () -> false);
 
         assertThat(failed).containsExactly("dokka:javadoc:2.2.0: offline");
         assertThat(staged).as("the other fork was staged all the same").isTrue();
+    }
+
+    @Test
+    void a_cancel_stops_the_staging_before_it_returns() {
+        AtomicBoolean cancelled = new AtomicBoolean();
+        AtomicBoolean stillWriting = new AtomicBoolean();
+        long start = System.nanoTime();
+        assertThatThrownBy(() -> BuildForks.stage(
+                        List.of(new BuildForks.Fork("worker:jk-java-compiler", () -> {
+                            stillWriting.set(true);
+                            try {
+                                cancelled.set(true); // a sibling step fails while this fork copies
+                                Thread.sleep(Duration.ofSeconds(30));
+                                return "ok";
+                            } finally {
+                                stillWriting.set(false);
+                            }
+                        })),
+                        cancelled::get))
+                .isInstanceOf(InterruptedException.class);
+
+        assertThat(stillWriting).as("nothing of the staging outlives the call").isFalse();
+        assertThat(Duration.ofNanos(System.nanoTime() - start)).isLessThan(Duration.ofSeconds(10));
+        assertThat(Thread.interrupted())
+                .as("the caller is not left interrupted")
+                .isFalse();
     }
 }

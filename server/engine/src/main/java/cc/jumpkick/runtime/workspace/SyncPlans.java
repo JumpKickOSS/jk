@@ -359,7 +359,7 @@ public final class SyncPlans {
                     ctx.label("sync workers and toolchains");
                     List<String> failed;
                     try {
-                        failed = BuildForks.stage(forks);
+                        failed = BuildForks.stage(forks, ctx::cancelled);
                     } catch (InterruptedException e) {
                         Thread.currentThread().interrupt();
                         throw new RuntimeException("interrupted staging workers", e);

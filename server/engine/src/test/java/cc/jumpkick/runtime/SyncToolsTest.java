@@ -16,6 +16,7 @@ import cc.jumpkick.runtime.workspace.SyncPlans;
 import cc.jumpkick.testing.FakeJdk;
 import cc.jumpkick.testing.LoopbackHttp;
 import cc.jumpkick.testing.MavenStub;
+import cc.jumpkick.testing.SysProps;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -26,6 +27,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -34,6 +36,7 @@ import org.junit.jupiter.api.io.TempDir;
  * its runtime closure and its file at a URL — into the store, verified against the rows, so the
  * next build downloads nothing. A row the repository's bytes disagree with fails the sync.
  */
+@ExtendWith(SysProps.class)
 class SyncToolsTest {
 
     private static final String GROUP = "com.example.kit";
