@@ -3,6 +3,7 @@ package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.jsonl.JsonFields;
 import cc.jumpkick.task.TestStamp;
 import cc.jumpkick.test.ClassCones;
 import cc.jumpkick.test.ClassReads;
@@ -403,6 +404,80 @@ class ClassKeysTest {
                         "list:plugins/a=l",
                         "list:server/engine/src=l"),
                 ws);
+    }
+
+    /**
+     * A program started outside every class's window, in discovery or a static initialiser, reads
+     * what no recording holds for no class in particular: the record file's header keeps it, and
+     * every class is keyed by its module, one recorded on its cone beside such a pool included.
+     */
+    @Test
+    void a_program_started_outside_every_window_keys_every_class_by_its_module(@TempDir Path ws) throws Exception {
+        ClassCones.Index index = ClassCones.index(List.of(Files.createDirectories(ws.resolve("classes"))));
+        String header = JsonFields.object()
+                .string("kind", "suite")
+                .token(
+                        "pooled",
+                        JsonFields.object()
+                                .array("reads", List.of())
+                                .array("processes", List.of("/usr/bin/node"))
+                                .finish())
+                .finish();
+        ClassKeys.Observed pooled = ClassShadow.pooledOf(header);
+        assertThat(pooled.processes()).containsExactly("/usr/bin/node");
+        assertThat(ClassKeys.pooledFallback(pooled)).isEqualTo("pooled process /usr/bin/node");
+        assertThat(ClassKeys.pooledFallback(ClassShadow.pooledOf("{\"kind\":\"suite\",\"pooled\":{}}")))
+                .as("a pool that started nothing")
+                .isNull();
+
+        ClassShadow beside = shadow(index, ws, pooled);
+        TestClassRecords.Shadowed now = beside.of(
+                new TestClassRecords.Outcome("", "demo.T", 1, 0, 0, 1_000, 1), ClassReads.Observation.empty(), null);
+        assertThat(now.fallback()).isEqualTo("pooled process /usr/bin/node");
+        assertThat(now.key()).startsWith("module:");
+
+        String onCone = ClassKeys.key(
+                        "",
+                        index.cone("demo.T"),
+                        null,
+                        "suite",
+                        ClassKeys.Observed.NONE,
+                        Map.of(),
+                        ClassKeys.Observed.NONE,
+                        index.digest(),
+                        ClassKeys.SuiteReadSet.NONE,
+                        ws,
+                        null,
+                        new HashMap<>())
+                .key();
+        String row = JsonFields.object()
+                .string("launch", "")
+                .string("outcome", "passed")
+                .number("ranAt", 1_000)
+                .bool("attributed", true)
+                .string("classKey", onCone)
+                .finish();
+        assertThat(shadow(index, ws, ClassKeys.Observed.NONE).whyRun(row, "", "demo.T"))
+                .as("nothing started outside a window: its cone holds")
+                .isNull();
+        assertThat(beside.whyRun(row, "", "demo.T"))
+                .as("kept on its cone beside a pool that started a program")
+                .isEqualTo("module pooled process /usr/bin/node");
+    }
+
+    private static ClassShadow shadow(ClassCones.Index index, Path ws, ClassKeys.Observed pooled) {
+        return new ClassShadow(
+                index,
+                "suite",
+                ws,
+                pooled,
+                pooled,
+                Map.of(),
+                ClassKeys.SuiteReadSet.NONE,
+                ClassKeys.SuiteReadSet.NONE,
+                Long.MAX_VALUE,
+                false,
+                "stamp");
     }
 
     /** A class's key as the shadow takes it from a stamp of {@code extras}. */

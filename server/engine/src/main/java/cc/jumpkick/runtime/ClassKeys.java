@@ -49,7 +49,8 @@ import org.jspecify.annotations.Nullable;
  * JUnit extension a properties file names) joins its cone with what it reaches, up to {@link
  * #REFLECTIVE_KEPT} of them. A class whose cone cannot be trusted is keyed by its whole module,
  * every workspace class on its classpath in place of its cone, and by every program the suite's
- * stamp keys: one that started a program that could read what no recording sees, loaded more
+ * stamp keys: one that started a program that could read what no recording sees, or whose suite
+ * started one outside every class's window ({@link #pooledFallback}), loaded more
  * workspace classes outside its cone than are kept, names a classpath-scanning entry point, or has
  * no attributed record. A class that read more code files than its record names stands on every
  * code file its suite read instead (the suite code files of its record file's header), and on its
@@ -355,6 +356,18 @@ final class ClassKeys {
         if (reflectiveMore) return "reflective loads past the record's bound";
         if (cone.scanner() != null) return "scanner " + cone.scanner();
         return null;
+    }
+
+    /**
+     * Why every class of a suite is keyed by its module for what no class's window held, or null: a
+     * program started outside every window ({@code pooled}'s processes), in discovery or a static
+     * initialiser before the first class, reads what no recording holds, and no record says which
+     * class it served. A record that kept its cone over such a pool runs once more.
+     */
+    static @Nullable String pooledFallback(Observed pooled) {
+        return pooled.processes().isEmpty()
+                ? null
+                : "pooled process " + pooled.processes().getFirst();
     }
 
     /**

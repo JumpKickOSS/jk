@@ -330,8 +330,8 @@ final class TestClassRecording {
      * module's edit kept every declaration, none it ran ({@code coneUsed}). A worker jar the stamp
      * keys that is rebuilding ({@code rebuildingJars}) runs the classes that read it, those that read
      * more code files than their record names, those in whose JVM a program was started ({@link
-     * ClassKeys#startedProgram}), and those keyed by their module; nothing replays when the pool read
-     * it. The cones are walked over the classes on disk, the edit's own not yet
+     * ClassKeys#startedProgram}), and those keyed by their module, every class when the pool started
+     * a program ({@link ClassKeys#pooledFallback}); nothing replays when the pool read it. The cones are walked over the classes on disk, the edit's own not yet
      * compiled. Null when the records cannot tell: none, an edit of unknown shape, the shadow off.
      */
     static @Nullable Replayed replayedAfter(
@@ -355,6 +355,7 @@ final class TestClassRecording {
         Set<Path> jars = new HashSet<>();
         for (Path j : rebuildingJars) jars.add(j.toAbsolutePath().normalize());
         if (readsAny(Jsonl.nested(header, "pooled"), jars, workspace)) return Replayed.NONE;
+        boolean pooledProcess = ClassKeys.pooledFallback(ClassShadow.pooledOf(header)) != null;
         Roots roots = Roots.of(workspace, testClasses, mainClasses, runtimeCp);
         long[] replayed = {0, 0};
         try {
@@ -381,7 +382,8 @@ final class TestClassRecording {
                         || !"passed".equals(Jsonl.str(row, "outcome"))
                         || reachedPastHost(row)
                         || !index.contains(cls)
-                        || (Jsonl.str(row, "fallback") != null && !(moved.isEmpty() && jars.isEmpty()))
+                        || ((Jsonl.str(row, "fallback") != null || pooledProcess)
+                                && !(moved.isEmpty() && jars.isEmpty()))
                         || readsAny(row, jars, workspace)) return;
                 ClassCones.Cone cone = index.cone(cls, Jsonl.strArray(row, "reflective"));
                 String used = Jsonl.str(row, "coneUsed");

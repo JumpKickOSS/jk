@@ -120,6 +120,7 @@ final class ClassShadow {
                 obs == null || loadedMore ? List.of() : ClassKeys.reflective(index, o.testClass(), obs.loaded());
         ClassCones.Cone cone = index.cone(o.testClass(), reflective == null ? List.of() : reflective);
         String fallback = ClassKeys.fallback(cone, now, loadedMore, reflective == null, codePastBound);
+        if (fallback == null) fallback = ClassKeys.pooledFallback(pooledNow);
         if (index.full()) fallback = "index past its bound";
         String used = fallback == null ? used(cone, obs, o.testClass()) : null;
         ClassKeys.Key key = ClassKeys.key(
@@ -169,6 +170,8 @@ final class ClassShadow {
     /**
      * Why per-class selection runs the class whose record was {@code prev}, or null to replay it: the
      * one answer both this shadow and the selection ({@link TestClassRecording#unmoved}) give. A class
+     * whose record kept its cone beside a pool that started a program is keyed by its module now
+     * ({@link ClassKeys#pooledFallback}), so it runs once more. A class
      * that read more code files than its record names, or ran beside a pool that did, runs when one
      * of its suite's code files changed after it finished. Its cone is {@code testClass}'s as it is
      * now, with the classes its record says it loaded outside it ({@code reflective}).
@@ -181,6 +184,7 @@ final class ClassShadow {
         if (!"passed".equals(Jsonl.str(prev, "outcome"))) return "red";
         ClassCones.Cone cone = index.cone(testClass, Jsonl.strArray(prev, "reflective"));
         String fallback = Jsonl.str(prev, "fallback");
+        if (fallback == null) fallback = ClassKeys.pooledFallback(pooledBefore);
         ClassKeys.Key now = ClassKeys.key(
                 launch,
                 cone,
@@ -233,7 +237,7 @@ final class ClassShadow {
                 Jsonl.bool(pooled, "readsMore", false),
                 Jsonl.strArray(pooled, "code"),
                 Jsonl.bool(pooled, "codeMore", false),
-                List.of());
+                Jsonl.strArray(pooled, "processes"));
     }
 
     static ClassKeys.Observed observed(ClassReads.Observation o, Path workspace) {

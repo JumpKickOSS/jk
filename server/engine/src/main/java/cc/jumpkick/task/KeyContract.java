@@ -37,7 +37,7 @@ public enum KeyContract {
      * suite's JVMs ({@link #LAUNCH}), whose stamp keys what they start with by value. The {@code suite-code-keyed} guard
      * keeps the types that select and judge a suite inside the one or the other.
      */
-    SUITE("3810d476e3d7", List.of(Sources.SERVER, Sources.SHARED), KeyContract::suiteSource),
+    SUITE("3c6125c4053e", List.of(Sources.SERVER, Sources.SHARED), KeyContract::suiteSource),
 
     /**
      * The code that writes an artifact or a verdict the engine produces itself: the jar, assembly

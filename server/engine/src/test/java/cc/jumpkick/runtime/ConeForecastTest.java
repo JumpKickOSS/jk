@@ -112,6 +112,21 @@ class ConeForecastTest {
 
         writeRows(moduleDir, spelled, row("T", 3, null), row("U", 2, null));
         assertThat(replayedWith(layout, engineJar)).as("the pool read the jar").isZero();
+
+        Path file = TestClassRecords.file(moduleDir);
+        String pooledProcess = JsonFields.object()
+                .string("kind", "suite")
+                .token(
+                        "pooled",
+                        JsonFields.object()
+                                .array("processes", List.of("/usr/bin/node"))
+                                .finish())
+                .finish();
+        Files.writeString(file, pooledProcess + "\n" + row("T", 3, null) + "\n" + row("U", 2, null) + "\n");
+        assertThat(replayedWith(layout, engineJar))
+                .as("a program started outside every window keys every class by its module")
+                .isZero();
+        assertThat(replayedWith(layout)).as("with nothing moving").isEqualTo(5);
     }
 
     @Test

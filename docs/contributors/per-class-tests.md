@@ -191,7 +191,7 @@ result would differ, must run. Each known hole:
 | **Parameterized and dynamic tests** (`@ParameterizedTest`, `@TestFactory`, data from files) | The unit is the class: every invocation runs or none does. Data files read while generating cases are read in the class's window and keyed |
 | **Test fixtures** (`src/fixtures`, a sibling's fixtures) | They are workspace classes on the runtime classpath; the cone walks them |
 | **Tests that scan the repository** | Their reads land in their own window and key only them. A new file in a directory one of them read changes that directory's listing, keyed. A directory listed where nothing was read is unseen, as today |
-| **Programs started** (a test that execs a built jar, `git`, a nested `jk`) | What a child process reads is not recorded. A class that started a program is unattributable and falls back to the module key, unless the command can read nothing its key does not hold (`git` in a repository the test made, a utility or a program the test wrote naming no file outside its temp roots, below). A checkout file a JumpKick test names through `RepoRoot.file`, a script it hands to `bash` say, is read once in the test JVM, so the suite's reads key it |
+| **Programs started** (a test that execs a built jar, `git`, a nested `jk`) | What a child process reads is not recorded. A class that started a program, or ran in a suite that started one outside every class's window, is unattributable and falls back to the module key, unless the command can read nothing its key does not hold (`git` in a repository the test made, a utility or a program the test wrote naming no file outside its temp roots, below). A checkout file a JumpKick test names through `RepoRoot.file`, a script it hands to `bash` say, is read once in the test JVM, so the suite's reads key it |
 | **Nested engines and worker jars** (jk-cli and jk-engine tests drive a real engine that loads plugin jars by path) | A worker jar keys a class that read it, as a code file, from then on in its JVM, so a class loader cached across classes keys every class after the first; a class in whose JVM a program was started (below); and a class keyed by its module. A class that did none of these never touched the jar's bytes ([below](#nested-engines-and-worker-jars)) |
 | **Line numbers and source file names** (a test asserting a stack trace) | Bytes are hashed whole, debug attributes included |
 | **The network** | A suite that reached past the host stores no marker, as today, and none of its classes replay |
@@ -230,7 +230,10 @@ classes whose window contains its start time, in that JVM:
   windows overlap (Jupiter's in-process parallelism) the read goes to every overlapping class:
   over-attribution, never under.
 - **Outside every window** (static initialisers run during discovery, before the first class, a
-  shutdown hook, a background thread between classes): pooled to every class the JVM ran.
+  shutdown hook, a background thread between classes): pooled to every class the JVM ran. A
+  program started there (other than the test JDK's own launcher, or a tool keyed by its identity)
+  keys every class of the suite by its module (`pooled process …`): what it reads is in no
+  recording, and no record says which class it served.
 - **After a class finished**: never that class's. Its outcome was decided by then.
 - **Code files** (`.jar`, `.zip`, `.jmod`, a `.class` outside the workspace class trees): the class
   in whose window it was read and every class that ran later in that JVM.
