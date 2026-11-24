@@ -146,6 +146,7 @@ class ConfigShapeTest {
                         List.of("testSelection")),
                 new Wither("withDebugJvm", new Object[] {DebugJvm.parse("0")}, List.of("debugJvm")),
                 new Wither("withCoverage", new Object[] {true}, List.of("coverage")),
+                new Wither("withRerunTests", new Object[] {true}, List.of("rerunTests")),
                 new Wither("withTestFailures", new Object[] {TestFailureMode.REPORT}, List.of("testFailures")),
                 new Wither("withSkipNode", new Object[] {true}, List.of("skipNode")),
                 new Wither("withVerifyCache", new Object[] {true}, List.of("verifyCache")),

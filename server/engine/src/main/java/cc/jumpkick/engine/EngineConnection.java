@@ -296,10 +296,18 @@ final class EngineConnection {
             case VerbShape.SyncRead() -> {
                 // A read is no job: its request carries the caller's shell and keychain, no job id.
                 // Its remote cache tier, when the shell names one, is bound as a job's is, so jk
-                // explain forecasts the hits the build would take.
-                JobEnvelope.requestOf(0, new IoLedger(), null, line)
-                        .run(() -> RemoteCacheBinding.around(
-                                () -> verb.run(line, Session.defaults().cancel(), writer)));
+                // explain forecasts the hits the build would take. It heartbeats as a job does: a
+                // first forecast calibrates the host and writes the lock, which on a loaded host
+                // outlasts the idle bound its client reads the wire under.
+                ReadHeartbeat beat =
+                        ReadHeartbeat.start(writer, ctx.jobs().limits().heartbeatMs());
+                try {
+                    JobEnvelope.requestOf(0, new IoLedger(), null, line)
+                            .run(() -> RemoteCacheBinding.around(
+                                    () -> verb.run(line, Session.defaults().cancel(), writer)));
+                } finally {
+                    beat.stop();
+                }
                 yield false;
             }
         };

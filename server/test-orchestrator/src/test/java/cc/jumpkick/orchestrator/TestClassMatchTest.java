@@ -113,6 +113,22 @@ class TestClassMatchTest {
     }
 
     @Test
+    void a_module_qualified_pattern_is_judged_in_its_module_not_by_the_run() {
+        Session qualified = Session.defaults()
+                .withTestSelection(TestSelection.DEFAULT.withClasses(List.of("server/engine:EngineIT")));
+        assertThat(TestClassMatch.runWideVerdict(qualified, false, List.of()))
+                .as("its module failed on its own when nothing matched there")
+                .isNull();
+        Session mixed = Session.defaults()
+                .withTestSelection(TestSelection.DEFAULT.withClasses(List.of("server/engine:EngineIT", "OrdersTest")));
+        assertThat(TestClassMatch.runWideVerdict(mixed, false, List.of()))
+                .as("the run-wide line names the unqualified patterns alone")
+                .isEqualTo("no test classes matched --class OrdersTest");
+        assertThat(TestClassMatch.inModule("server/engine", "no test classes matched --class EngineIT"))
+                .isEqualTo("server/engine: no test classes matched --class EngineIT");
+    }
+
+    @Test
     void a_replayed_green_stamp_counts_as_a_match() {
         Session session = Session.defaults().withTestSelection(ORDERS);
         // The stamp carries the class filter, so a green marker for these patterns once matched.
@@ -138,5 +154,45 @@ class TestClassMatchTest {
         assertThat(TestClassMatch.runWideVerdict(scripts, false, List.of()))
                 .as("--scripts-only runs guard scripts, no JUnit")
                 .isNull();
+    }
+
+    @Test
+    void a_workspace_module_the_patterns_missed_skips_and_a_standalone_project_fails() {
+        TestClassMatch.Verdict member = TestClassMatch.judge(ORDERS, false, null, null, true, EMPTY);
+        assertThat(member.skipped()).isTrue();
+        assertThat(member.noMatch()).isNull();
+
+        TestClassMatch.Verdict alone = TestClassMatch.judge(ORDERS, false, null, null, false, EMPTY);
+        assertThat(alone.skipped()).isFalse();
+        assertThat(alone.result()).isNull();
+        assertThat(alone.noMatch()).isEqualTo("no test classes matched --class OrdersTest");
+    }
+
+    @Test
+    void a_run_that_matched_keeps_its_summary_and_warns_of_another_suites_class() {
+        TestSummary ran = new TestSummary(3, 3, 0, 0, List.of());
+        TestClassMatch.Verdict verdict =
+                TestClassMatch.judge(ORDERS, false, null, "suite e2e owns OrdersTest", false, ran);
+        assertThat(verdict.result()).isSameAs(ran);
+        assertThat(verdict.noMatch()).isNull();
+        assertThat(verdict.otherSuite()).isEqualTo("suite e2e owns OrdersTest");
+    }
+
+    @Test
+    void a_named_class_the_tag_filter_dropped_fails_the_module_whatever_else_ran() {
+        TestSelection named = TestSelection.of(List.of(), true, List.of(), List.of("bench"))
+                .withClasses(List.of("FormatThreadsBenchTest"));
+        TestSummary ran = new TestSummary(2, 2, 0, 0, List.of());
+
+        TestClassMatch.Verdict some = TestClassMatch.judge(named, false, TAG_EXCLUDED, null, true, ran);
+        assertThat(some.result()).isSameAs(ran);
+        assertThat(some.noMatch()).isEqualTo(TAG_EXCLUDED);
+        assertThat(some.skipped())
+                .as("a dropped named class is judged here, not run-wide")
+                .isFalse();
+
+        TestClassMatch.Verdict none = TestClassMatch.judge(named, false, TAG_EXCLUDED, null, true, EMPTY);
+        assertThat(none.result()).isNull();
+        assertThat(none.noMatch()).isEqualTo(TAG_EXCLUDED);
     }
 }

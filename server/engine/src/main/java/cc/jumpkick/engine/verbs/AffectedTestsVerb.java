@@ -77,7 +77,7 @@ public final class AffectedTestsVerb implements HostedVerb {
                     for (Path m : sel.moduleDirs()) only.add(m.toAbsolutePath().normalize());
                 }
                 AffectedTests ranked = AffectedTestsCompute.fromDisk(dir, req.selection(), only, since);
-                JkTestsAffectedMarkdown.write(JkTestsAffectedMarkdown.latestPath(dir), ranked);
+                JkTestsAffectedMarkdown.write(JkTestsAffectedMarkdown.latestPath(dir), ranked.capped());
                 report = toReport(ranked);
             } catch (Exception e) {
                 report = AffectedTestsReport.error("internal", Errors.text(e));

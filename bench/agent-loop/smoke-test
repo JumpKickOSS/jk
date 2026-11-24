@@ -44,21 +44,7 @@ def load_change_tasks():
 
 ct = load_change_tasks()
 
-# What jk would write for Cursor, under test here before it graduates to change-tasks' arms.
-CURSOR_RULES = """---
-description: JumpKick (jk) code graph
-alwaysApply: true
----
-This project's Java code is indexed by jk's code graph, on the `jk` MCP server. For a question about
-or a change to a Java method, use it, not Grep or file reads:
-
-- Rename `T.m`: call `rename` first, before any search or read. It edits the method, its overrides
-  and every caller in one call, then runs the edited tests and guard: when its answer says the task
-  is done, it is. Do not grep for the old name afterwards.
-- Who calls `T.m`: `usages` once. Its list is complete, from the compiled classes.
-"""
-
-# A leaner Cursor rule under test: the generic wording plus exact call shapes and what a TIMEOUT means.
+# A leaner Cursor rule under test, before it graduates to change-tasks' arms: the generic wording plus exact call shapes and what a TIMEOUT means.
 CURSOR_RULES2 = """---
 description: JumpKick (jk) code graph
 alwaysApply: true
@@ -100,12 +86,10 @@ ct.ARMS.update({
     "jk-usagesfirst": dict(tool="jk", extra=[], hide_graph=False, hooks=None, prompt="",
                            section_edit=[(USAGES_BULLET, USAGES_FIRST)]),
     "jk-museskill": dict(tool="jk", extra=[], hide_graph=False, hooks=None, prompt="", files=skill_files()),
-    "jk-cursorrules": dict(tool="jk", extra=[], hide_graph=False, hooks=None, prompt="", files={
-        ".cursor/rules/jk.mdc": CURSOR_RULES}),
     "jk-cursorrules2": dict(tool="jk", extra=[], hide_graph=False, hooks=None, prompt="", files={
         ".cursor/rules/jk.mdc": CURSOR_RULES2}),
     "jk-cursordeny": dict(tool="jk", extra=[], hide_graph=False, hooks=None, prompt="", files={
-        ".cursor/rules/jk.mdc": CURSOR_RULES, ".cursor/cli.json": CURSOR_DENY_READ}),
+        ".cursor/rules/jk.mdc": ct.CURSOR_RULES, ".cursor/cli.json": CURSOR_DENY_READ}),
 })
 
 
@@ -167,22 +151,36 @@ def diagnose(summary: list[dict], sandbox: Path | None = None) -> dict:
             "text_after_graph": after_graph, "diagnosis": why}
 
 
-def main() -> int:
+def smoke_tasks() -> dict:
+    out = tomllib.loads(SMOKE_TASKS.read_text())["tasks"]
+    for name, t in out.items():
+        t["name"] = name
+    return out
+
+
+def parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--driver", action="append", choices=sorted(ct.DRIVERS))
     ap.add_argument("--arm", action="append", choices=sorted(ct.ARMS))
-    ap.add_argument("--task", action="append")
+    ap.add_argument("--task", action="append", choices=sorted(smoke_tasks()))
     ap.add_argument("--runs", type=int, default=1)
     ap.add_argument("--model", help="default per driver")
     ap.add_argument("--effort", help="default per driver")
     ap.add_argument("--context", type=int, help="context window in tokens, for a CLI that takes one (grok); recorded")
     ap.add_argument("--max-turns", type=int, default=20)
     ap.add_argument("--max-minutes", type=int, default=4)
-    ns = ap.parse_args()
+    ap.add_argument("--check", action="store_true",
+                    help="read one invocation's arguments per line on stdin, tab-separated; print each this "
+                         "parser refuses, run nothing, and exit 1 when any is refused")
+    return ap
 
-    smoke_tasks = tomllib.loads(SMOKE_TASKS.read_text())["tasks"]
-    for name, t in smoke_tasks.items():
-        t["name"] = name
+
+def main() -> int:
+    ns = parser().parse_args()
+    if ns.check:
+        return ct.check_cells(parser(), sys.stdin)
+
+    tasks = smoke_tasks()
     ct.materialise = materialise
     ct.TASK_FILES = HERE / "smoke" / "tasks"
 
@@ -198,7 +196,7 @@ def main() -> int:
         print("waiting for another smoke-test run on this host", flush=True)
         fcntl.flock(lock, fcntl.LOCK_EX)
     # Opt-in tasks (the renames beyond a method) run when named, so the default stays the two-task baseline.
-    names = ns.task or [n for n, t in smoke_tasks.items() if not t.get("opt-in")]
+    names = ns.task or [n for n, t in tasks.items() if not t.get("opt-in")]
     all_ok = True
     with rows_path.open("a") as rows:
         for driver in ns.driver or ["claude-code"]:
@@ -224,7 +222,7 @@ def main() -> int:
                         for arm in ns.arm or ["jk"]:
                             captured.clear()
                             # Per model: two models of one driver on one day would share a run directory.
-                            row = ct.run_one(name, smoke_tasks[name], arm, run_no, run_ns, run_root / run_ns.model)
+                            row = ct.run_one(name, tasks[name], arm, run_no, run_ns, run_root / run_ns.model)
                             row["tier"] = "smoke"
                             row.update(diagnose(captured[0] if captured else [], Path(row["sandbox"])))
                             ok = row["outcome"] == "green" and row["graph_first"]

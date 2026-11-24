@@ -201,6 +201,23 @@ class BuildPlanTest {
     }
 
     @Test
+    void the_plan_sums_what_its_steps_reported_blocked() {
+        var plan = BuildPlan.builder("queued")
+                .addTask(Task.builder("compile-java")
+                        .ticks(1)
+                        .execute(ctx -> ctx.waited(Duration.ofMillis(30)))
+                        .build())
+                .addTask(Task.builder("run-tests")
+                        .ticks(1)
+                        .execute(ctx -> ctx.waited(Duration.ofMillis(12)))
+                        .build())
+                .build();
+
+        assertThat(plan.run().success()).isTrue();
+        assertThat(plan.waited()).isEqualTo(Duration.ofMillis(42));
+    }
+
+    @Test
     void scope_sums_across_phases() {
         var plan = BuildPlan.builder("multi")
                 .addTask(Task.builder("a").ticks(3).execute(ctx -> {}).build())

@@ -19,8 +19,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -28,6 +30,7 @@ import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.function.BiConsumer;
+import java.util.function.UnaryOperator;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -36,11 +39,14 @@ import org.jspecify.annotations.Nullable;
  * files, hosts, environment variables and system properties by name), attributed to it by its window
  * in the recording ({@link ClassReads}). Kept in jk's cache for the project, one file per module,
  * beside the suite's discovered inputs; a class that ran replaces its row, a class that did not keeps
- * the row of the run it last ran in.
+ * the row of the run it last ran in. The headers lead the file: a run's header (what no class's
+ * window held, the suite's code files, counts) stands for the launches it started, and an earlier
+ * one stays for each launch it did not ({@link #headers}).
  *
  * <p>Every row is bounded, whatever the class did: at most {@link ClassReads#READS_KEPT} files read,
- * with {@code readsMore} when it read more (it is then keyed on every file its suite was found to
- * read, which the suite's discovered inputs hold exactly), a few of each kind of evidence, and the
+ * with {@code readsMore} when it read more (it is then keyed on the files its suite was found to
+ * read under its {@code readRoots} with its {@code readNames}, which the suite's discovered inputs
+ * hold exactly), a few of each kind of evidence, and the
  * count of workspace classes it loaded, never their names. The file is never held whole: it is
  * written and read a row at a time, and a row past {@link #MAX_ROW_CHARS} (none this writes) is
  * skipped as unreadable.
@@ -194,26 +200,61 @@ final class TestClassRecords {
     }
 
     /**
-     * Rewrite the record file of {@code moduleDir} a row at a time: {@code header} first, then every
-     * earlier row, a class of {@code ran} replaced by what {@code maker} makes of it, then the classes
-     * of {@code ran} that had no row. Nothing but the row in hand is held. Best-effort: a file that
-     * cannot be written leaves the old one.
+     * Rewrite the record file of {@code moduleDir} a row at a time: {@code header} first, naming the
+     * launches of {@code ran} as the ones it stands for, then each earlier header for the launches
+     * this run did not start, then every earlier row, a class of {@code ran} replaced by what {@code
+     * maker} makes of it, then the classes of {@code ran} that had no row. Nothing but the row in hand
+     * is held. Best-effort: a file that cannot be written leaves the old one.
      */
     static void merge(Path moduleDir, String header, Map<String, Outcome> ran, RowMaker maker) throws IOException {
+        merge(moduleDir, header, ran, maker, UnaryOperator.identity());
+    }
+
+    /** As {@link #merge(Path, String, Map, RowMaker)}, each earlier row of a class that did not run as {@code kept} keeps it. */
+    static void merge(
+            Path moduleDir, String header, Map<String, Outcome> ran, RowMaker maker, UnaryOperator<String> kept)
+            throws IOException {
+        Set<String> launches = launches(ran);
+        merge(moduleDir, List.of(withLaunches(header, launches)), launches, ran, maker, kept);
+    }
+
+    /**
+     * As {@link #merge(Path, String, Map, RowMaker, UnaryOperator)}, this run's own headers ({@code
+     * leading}) written first as they are, each naming the launches it stands for, those of {@code
+     * launches} between them.
+     */
+    static void merge(
+            Path moduleDir,
+            List<String> leading,
+            Set<String> launches,
+            Map<String, Outcome> ran,
+            RowMaker maker,
+            UnaryOperator<String> kept)
+            throws IOException {
         Path file = file(moduleDir);
         Files.createDirectories(file.getParent());
         Set<String> done = new HashSet<>();
         Path staging = AtomicWrites.staging(file);
         try (BufferedWriter out = Files.newBufferedWriter(staging, StandardCharsets.UTF_8)) {
-            out.write(header);
-            out.write('\n');
+            for (String header : leading) {
+                out.write(header);
+                out.write('\n');
+            }
             if (Files.isRegularFile(file)) {
                 try (BufferedReader in = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
                     for (String line = bounded(in); line != null; line = bounded(in)) {
+                        String carried = carried(line, launches);
+                        if (carried != null) {
+                            if (!carried.isEmpty()) {
+                                out.write(carried);
+                                out.write('\n');
+                            }
+                            continue;
+                        }
                         String key = rowKeyOf(line);
                         if (key == null || done.contains(key)) continue;
                         Outcome o = ran.get(key);
-                        out.write(o == null ? line : maker.row(o, line));
+                        out.write(o == null ? kept.apply(line) : maker.row(o, line));
                         out.write('\n');
                         done.add(key);
                     }
@@ -231,6 +272,41 @@ final class TestClassRecords {
         AtomicWrites.moveInto(staging, file);
     }
 
+    /** The launches {@code ran}'s classes ran in. */
+    static Set<String> launches(Map<String, Outcome> ran) {
+        Set<String> launches = new TreeSet<>();
+        for (Outcome o : ran.values()) launches.add(o.launch());
+        return launches;
+    }
+
+    /**
+     * This run's headers ({@link #header(String, ClassReads.Attributed, ClassReads.Observation, Lookups,
+     * Path, String, SuiteCodeFiles.Listed)}), one for each pool its {@code launches} stand on: a
+     * launch whose JVMs the recording told apart has a header of its own, the rest share one on every
+     * JVM's pool ({@link ClassReads.Attributed#pooled(String)}). Each names its launches.
+     */
+    static List<String> headers(
+            String module,
+            ClassReads.Attributed seen,
+            Set<String> launches,
+            Lookups lookups,
+            Path root,
+            @Nullable String toolchain,
+            SuiteCodeFiles.Listed code) {
+        Map<ClassReads.Observation, Set<String>> byPool = new IdentityHashMap<>();
+        for (String launch : new TreeSet<>(launches)) {
+            byPool.computeIfAbsent(seen.pooled(launch), p -> new TreeSet<>()).add(launch);
+        }
+        List<String> out = new ArrayList<>();
+        for (Map.Entry<ClassReads.Observation, Set<String>> e : byPool.entrySet()) {
+            String h = header(module, seen, e.getKey(), lookups, root, toolchain, code);
+            out.add(withLaunches(h, e.getValue()));
+        }
+        // The same run, so the order is only for a reader: by the launches each names.
+        out.sort(Comparator.comparing(h -> String.join(",", Jsonl.strArray(h, LAUNCHES))));
+        return out;
+    }
+
     /** The record file's header line, or null when there is none or it is past a row's bound. */
     static @Nullable String header(Path file) {
         if (!Files.isRegularFile(file)) return null;
@@ -240,6 +316,55 @@ final class TestClassRecords {
         } catch (IOException | RuntimeException unreadable) {
             return null;
         }
+    }
+
+    /**
+     * The header each launch's rows stand on, by launch: the newest header naming it. A launch runs
+     * its own test JVMs, so what no class's window held in one launch's JVMs (its pool) is no input of
+     * another launch's classes: a run of the integration suite whose pool reached the network leaves
+     * the default suite's classes standing on the pool of the run that ran them. Headers lead the
+     * file, one per run that still stands for a launch, so only those lines are read.
+     */
+    static Map<String, String> headers(Path file) {
+        Map<String, String> out = new HashMap<>();
+        if (!Files.isRegularFile(file)) return out;
+        try (BufferedReader in = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
+            for (String line = bounded(in); line != null; line = bounded(in)) {
+                if (line.isEmpty()) continue;
+                if (!"suite".equals(Jsonl.str(line, "kind"))) break;
+                for (String launch : Jsonl.strArray(line, LAUNCHES)) out.putIfAbsent(launch, line);
+            }
+        } catch (IOException | RuntimeException unreadable) {
+            // what cannot be read is no record
+        }
+        return out;
+    }
+
+    /** The header field naming the launches whose rows stand on that header. */
+    static final String LAUNCHES = "launches";
+
+    /** The header object {@code header} standing for {@code launches}, in place of whatever it named. */
+    static String withLaunches(String header, Collection<String> launches) {
+        List<String> named = List.copyOf(new TreeSet<>(launches));
+        if (!Jsonl.has(header, LAUNCHES))
+            return Jsonl.append(
+                    header, JsonFields.fields().array(LAUNCHES, named).body());
+        String was = Jsonl.quote(LAUNCHES) + ":" + Jsonl.array(Jsonl.strArray(header, LAUNCHES));
+        return header.replace(was, Jsonl.quote(LAUNCHES) + ":" + Jsonl.array(named));
+    }
+
+    /**
+     * An earlier header {@code line} as it carries over a run that started {@code launches}: standing
+     * for the launches it named that this run did not start, or empty when none is left. Null when
+     * the line is not a header.
+     */
+    private static @Nullable String carried(String line, Set<String> launches) {
+        if (line.isEmpty() || !"suite".equals(Jsonl.str(line, "kind"))) return null;
+        List<String> left = new ArrayList<>();
+        for (String launch : Jsonl.strArray(line, LAUNCHES)) {
+            if (!launches.contains(launch)) left.add(launch);
+        }
+        return left.isEmpty() ? "" : withLaunches(line, left);
     }
 
     /** {@code consumer} given each row of the record file by launch and class, one at a time. */
@@ -326,14 +451,16 @@ final class TestClassRecords {
                 .bool("attributed", obs != null);
         if (shadow != null) {
             f.string("classKey", shadow.key())
+                    .optionalString("coneUsed", shadow.used())
                     .optionalString("fallback", shadow.fallback())
                     .optionalString("wouldRun", shadow.why());
             if (!shadow.reflective().isEmpty()) f.array("reflective", shadow.reflective());
         }
         if (obs != null) {
-            f.array("reads", spelled(obs.reads(), root))
-                    .optionalTrue("readsMore", obs.readsMore())
-                    .array("code", spelled(obs.code(), root))
+            f.array("reads", spelled(obs.reads(), root)).optionalTrue("readsMore", obs.readsMore());
+            if (obs.readsMore() && !obs.readRoots().isEmpty()) f.array("readRoots", roots(obs.readRoots(), root));
+            if (obs.readsMore() && !obs.readNames().isEmpty()) f.array("readNames", List.copyOf(obs.readNames()));
+            f.array("code", spelled(obs.code(), root))
                     .optionalTrue("codeMore", obs.codeMore())
                     .array("processes", List.copyOf(obs.processes()))
                     .array("tools", List.copyOf(obs.tools()))
@@ -354,12 +481,14 @@ final class TestClassRecords {
     }
 
     /**
-     * What the shadow says of one class: its key over this run, why it is keyed by its module, its
-     * cone ({@code <digest> <size>}), why per-class selection would have run it (null: replayed), and
-     * the workspace classes it loaded outside its static cone, which its cone holds too.
+     * What the shadow says of one class: its key over this run, which of its cone's classes ran in
+     * its window ({@link ClassCones.Cone#used}, null when that is not known), why it is keyed by its
+     * module, its cone ({@code <digest> <size>}), why per-class selection would have run it (null:
+     * replayed), and the workspace classes it loaded outside its static cone, which its cone holds too.
      */
     record Shadowed(
             String key,
+            @Nullable String used,
             @Nullable String fallback,
             @Nullable String cone,
             @Nullable String why,
@@ -380,7 +509,7 @@ final class TestClassRecords {
                 moduleDir,
                 header(module, seen, lookups, root, toolchain),
                 outcomes(recorded),
-                (o, prev) -> row(o, seen.complete() ? seen.classes().get(o.testClass()) : null, lookups, root, null));
+                (o, prev) -> row(o, seen.complete() ? seen.of(o.launch(), o.testClass()) : null, lookups, root, null));
     }
 
     /**
@@ -404,7 +533,18 @@ final class TestClassRecords {
             Path root,
             @Nullable String toolchain,
             SuiteCodeFiles.Listed code) {
-        ClassReads.Observation pooled = seen.pooled();
+        return header(module, seen, seen.pooled(), lookups, root, toolchain, code);
+    }
+
+    /** As {@link #header(String, ClassReads.Attributed, Lookups, Path, String, SuiteCodeFiles.Listed)}, on {@code pooled}. */
+    static String header(
+            String module,
+            ClassReads.Attributed seen,
+            ClassReads.Observation pooled,
+            Lookups lookups,
+            Path root,
+            @Nullable String toolchain,
+            SuiteCodeFiles.Listed code) {
         boolean bound = pooled.platformBound();
         int boundClasses = 0;
         for (ClassReads.Observation o : seen.classes().values()) {
@@ -431,6 +571,7 @@ final class TestClassRecords {
                 .array("code", spelled(pooled.code(), root))
                 .optionalTrue("codeMore", pooled.codeMore())
                 .array("processes", List.copyOf(pooled.processes()))
+                .array("tools", List.copyOf(pooled.tools()))
                 .array("nativeCode", List.copyOf(pooled.nativeCode()))
                 .array("osPaths", spelled(pooled.osPaths(), root))
                 .array("network", List.copyOf(pooled.hosts()))
@@ -444,6 +585,20 @@ final class TestClassRecords {
     }
 
     /** Paths in the workspace relative to it, with forward slashes; others as they are. */
+    /**
+     * Read roots as a row spells them: a directory as {@link #spelled} spells it, then {@code /*} for
+     * the files directly in it or {@code /**} for everything under it ({@code *} and {@code **} for
+     * the workspace itself).
+     */
+    static List<String> roots(Collection<ClassReads.ReadRoot> roots, Path root) {
+        List<String> out = new ArrayList<>();
+        for (ClassReads.ReadRoot r : roots) {
+            String dir = spelled(List.of(r.dir()), root).getFirst();
+            out.add((dir.isEmpty() ? "" : dir + "/") + (r.deep() ? "**" : "*"));
+        }
+        return out;
+    }
+
     static List<String> spelled(Collection<Path> paths, Path root) {
         List<String> out = new ArrayList<>();
         for (Path p : paths) {

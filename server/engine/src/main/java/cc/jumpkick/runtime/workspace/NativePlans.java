@@ -9,6 +9,8 @@ import cc.jumpkick.orchestrator.TestClassMatch;
 import cc.jumpkick.orchestrator.TestRun;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.run.TaskNames;
+import cc.jumpkick.run.TaskStatus;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.runtime.BuildPlanner;
 import cc.jumpkick.runtime.PlannerNative;
@@ -107,12 +109,15 @@ public final class NativePlans {
     }
 
     /**
-     * The tests of the suite {@code plan} ran, or replayed from its green stamp; {@code null} when it
-     * left no counts. The shortfall row of a stopped run is no test and is left out, as the journal does.
+     * The tests of the suite {@code plan} ran, or replayed from its green stamp (its run-tests step
+     * ended {@code SKIPPED} in {@code result}); {@code null} when it left no counts. The shortfall row
+     * of a stopped run is no test and is left out, as the journal does.
      */
-    public static ModuleOutcome.@Nullable Tests testsOf(BuildPlan plan) {
+    public static ModuleOutcome.@Nullable Tests testsOf(BuildPlan plan, BuildPlanResult result) {
         TestSummary t = plan.get(BuildPlanner.TEST_RUN).map(TestRun::result).orElse(null);
         if (t == null) return null;
-        return new ModuleOutcome.Tests(t.total() - RunShortfall.rows(t.failures()), t.skipped());
+        boolean replayed = result.steps().stream()
+                .anyMatch(s -> TaskNames.RUN_TESTS.equals(s.name()) && s.status() == TaskStatus.SKIPPED);
+        return new ModuleOutcome.Tests(t.total() - RunShortfall.rows(t.failures()), t.skipped(), replayed);
     }
 }

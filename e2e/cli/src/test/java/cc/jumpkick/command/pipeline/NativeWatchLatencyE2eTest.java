@@ -43,8 +43,8 @@ import org.junit.jupiter.api.io.TempDir;
  * seeded with the sandbox's, as {@link VerbMatrixNoopE2eTest} does, since only a JVM client hands
  * the engine the test run's worker jars; the native client then runs against that engine.
  */
-// Forked JVM client and engine; the native client.
-@Tag("integration")
+// Slow tier: a quiet wait of 300 ms before each of five saves, beside a forked engine.
+@Tag("slow")
 class NativeWatchLatencyE2eTest {
 
     private static final int SAVES = 5;

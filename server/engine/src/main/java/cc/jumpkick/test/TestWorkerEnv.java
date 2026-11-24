@@ -13,7 +13,7 @@ import java.util.Map;
 import org.jspecify.annotations.Nullable;
 
 /** What a pull-mode test worker runs under: its private env and how long it may stay silent. */
-final class TestWorkerEnv {
+public final class TestWorkerEnv {
 
     private TestWorkerEnv() {}
 
@@ -58,6 +58,21 @@ final class TestWorkerEnv {
             }
         }
         return base.with(env);
+    }
+
+    /**
+     * What {@link #forWorker} changes of a run's environment {@code base} for the first worker of a
+     * pool whose temp root is {@code tmp}: each variable it sets to a value {@code base} does not
+     * hold. The stamp keys these with stand-ins for the directories, so a change to what a worker
+     * gets moves the key.
+     */
+    public static Map<String, String> overrides(WorkerEnv base, Path tmp, boolean ownHome) {
+        Map<String, String> before = base.extras();
+        Map<String, String> out = new LinkedHashMap<>();
+        forWorker(base, 1, tmp, ownHome).extras().forEach((name, value) -> {
+            if (!value.equals(before.get(name))) out.put(name, value);
+        });
+        return out;
     }
 
     /** The variables naming a file or directory inside the test home that a worker home re-roots. */

@@ -99,7 +99,7 @@ public final class EngineMain {
         try {
             JkDirs.current().secureRoots();
             EnginePaths.Paths paths = EnginePaths.current();
-            // One worker budget for every engine of this state dir, a draining one included.
+            // One worker budget for every engine of this memory budget, a draining one and other homes included.
             WorkerLeases.shareHost(paths.dir());
             JkEngineConfig config = JkEngineConfig.resolve();
             EngineLogSink logSink = installLogSink(paths.log(), config);

@@ -4,6 +4,7 @@ package cc.jumpkick.engine.journal;
 import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.run.StepWait;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
 import java.nio.file.Path;
 import java.util.List;
@@ -79,6 +80,27 @@ class BuildAccumulatorCancelledStepTest {
             assertThat(d.stack()).isNull();
         });
         assertThat(JkResultsMarkdown.render(r)).doesNotContain("javac chatter");
+    }
+
+    @Test
+    void a_step_waiting_at_the_cancel_names_what_it_waited_for() {
+        BuildAccumulator a = new BuildAccumulator("test", "/proj", "g:a", "cli");
+        a.noteTaskStart("", "guard", "test", STARTED);
+        a.noteWaiting("", "guard", StepWait.THREAD);
+        a.noteTaskStart("", "run-tests", "test", STARTED);
+        a.noteWaiting("", "run-tests", StepWait.SLOT);
+        a.noteWaiting("", "run-tests", null);
+        a.markUserCancelled(true, "cancelled by the user");
+
+        BuildRecord r = a.toRecord(STARTED + RAN, true, RAN, "9.9", null);
+
+        assertThat(r.diagnostics().stream()
+                        .filter(x -> "error".equals(x.severity()))
+                        .map(BuildRecord.Diag::message))
+                .containsExactlyInAnyOrder(
+                        "`guard` was in flight for 20m 43s, waiting for a free engine thread, when the run was"
+                                + " cancelled",
+                        "`run-tests` was in flight for 20m 43s when the run was cancelled; its fork printed nothing");
     }
 
     @Test

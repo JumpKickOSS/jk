@@ -31,6 +31,7 @@ import org.jspecify.annotations.Nullable;
  * @param testSelection suite/tag selection for {@code jk test}+)
  * @param debugJvm JDWP listener for the JVM under test/run, or {@code null}
  * @param coverage the suite JVMs run under the JaCoCo agent and the test step writes a report
+ * @param rerunTests the selected suites run even where a green marker would replay them
  * @param testFailures the run's failure mode over each module's, or {@code null}
  * @param skipNode {@code --skip-node} / {@code JK_SKIP_NODE}: no node step runs
  * @param verifyCache {@code --verify-cache}: steps run for real and are held against the cache
@@ -98,6 +99,11 @@ public record Session(
          * writes {@code reports/jacoco.xml}. A coverage run never replays a green marker.
          */
         @With boolean coverage,
+        /**
+         * {@code jk test --rerun}: every selected suite runs whatever its last green marker says,
+         * while compiles, packages and every key stay as they are.
+         */
+        @With boolean rerunTests,
         /** {@code --test-failures} / {@code JK_TEST_FAILURES}: overrides every module's {@code [test] failures}; null for none. */
         @With @Nullable TestFailureMode testFailures,
         /** {@code --skip-node} / {@code JK_SKIP_NODE}: no module's node steps run, as if each said {@code [node] skip}. */
@@ -191,6 +197,7 @@ public record Session(
                 testSelection,
                 debugJvm,
                 coverage,
+                rerunTests,
                 testFailures,
                 skipNode,
                 verifyCache,
@@ -315,6 +322,7 @@ public record Session(
                 TestSelection.DEFAULT,
                 null,
                 false,
+                false,
                 null,
                 false,
                 false,
@@ -358,6 +366,7 @@ public record Session(
                 testSelection,
                 debugJvm,
                 coverage,
+                rerunTests,
                 testFailures,
                 skipNode,
                 verifyCache,
@@ -396,6 +405,7 @@ public record Session(
                 testSelection,
                 debugJvm,
                 coverage,
+                rerunTests,
                 testFailures,
                 skipNode,
                 verifyCache,
@@ -439,6 +449,7 @@ public record Session(
                 testSelection,
                 debugJvm,
                 coverage,
+                rerunTests,
                 testFailures,
                 skipNode,
                 verifyCache,

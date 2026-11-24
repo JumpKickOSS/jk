@@ -127,9 +127,29 @@ them: no javadoc or sources jar, fat jar, war or native image. `--guard`
 is one flag on every verb that builds through the test stage — `jk build`, `jk test`,
 `jk assemble`, `jk image`, `jk native`, `jk install`, `jk explain` — and it means the same
 thing on each: the guard lanes, the integration suite and the root's guard scripts. A lane is keyed to what it reads, so an unchanged input skips it and
-an edit re-runs only the lanes it can affect. The fixture proofs are keyed the same way: the
-rules, the fixture files, the guard suites and the classes the fixtures compile against. A
-proof only reruns when one of those changes, and its cases run side by side.
+an edit re-runs only the lanes it can affect. A module lane that runs a `src/guard` suite keeps two
+verdicts: one for the declared rules, keyed on the module, and one for the suite, keyed also on
+what the suite reads beyond the module. Once the suite has run, that is what its guards read
+last time, as below, plus the code the suite runs on (the module's and its siblings' sources and
+manifests, the lock): an edit to a file no guard read keeps the suite's verdict, and the suite
+does not start. Before the first run, or while a guard last threw, skipped or took `Facts` or
+`Output`, it is every module's facts and the tree's text. An edit the suite reads re-runs the
+suite alone, and `jk explain` says `src/guard to run · N rules cached`. Inside that run, a guard
+whose reads all hold is not invoked: its last line is reported again. What it read is what it listed and read through `Text`, plus the model snapshot when it takes
+`Model`. A change to the suite, its class path or the JDK runs every guard again, and so does a
+guard that takes `Facts` or `Output`, or that threw or skipped last time. A guard that runs a tool
+over the tree reads that tool's input files through `Text` too, so an edit to one of them runs it.
+A guard that runs again need not read the whole tree again: what it finds in one file through
+`Text.perFile(path, salt, scan)` is kept with that file's text, and comes back without the scan
+while the file reads the same and the suite has not changed. So a guard that scans every source
+and judges each file on its own re-reads only the files an edit touched. `scan` must depend on the
+file alone; whatever the guard gathered from other files goes into `salt`, so a change there scans
+every file again.
+The run's `target/<module>/guard/junit.log` names each guard that ran again and the file that made
+it run. The fixture proofs are keyed the same way: the
+rules, the fixture files, the guard suites and the signatures of the classes the fixtures
+compile against. A proof only reruns when one of those changes, so a method body edited in the
+module that owns the fixtures leaves it cached, and its cases run side by side.
 
 **Variants.** A guard run needs no `--variant`. Every module builds one variant: the values you
 select, else each dimension's `default`, else its first declared value — so in a workspace with
@@ -306,7 +326,10 @@ classes alone needs no `@NullMarked` package-info, and a package with one Java c
 
 `jk guard` ends with the guards' own verdict on the terminal, beside the build's wedge:
 `Guards: clean · 4 checks (1 cached)` names the checks that ran and how many replayed a cached
-verdict; `Guards: 2 rules broken (5 sites)` counts what `target/jk-results.md` then details.
+verdict; `Guards: 2 rules broken (5 sites)` counts what `target/jk-results.md` then details. A
+guard that could not run on this machine, such as `shellcheck` with no ShellCheck installed, ends
+the line by name (`Guards: clean · 4 checks · 1 skipped: shellcheck`), and `target/jk-results.md`
+lists each skipped guard with its reason. A replayed verdict names the skip again.
 `target/jk-results.md` lists every broken rule with its sites:
 
 ```

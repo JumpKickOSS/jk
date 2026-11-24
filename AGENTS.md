@@ -216,8 +216,9 @@ work on something else and read answers with `ka inbox`. Stopping without finish
   branches under the host's gate lock; nobody else pushes `main` (see
   [Landing on `origin/main`](#landing-on-originmain)). The Queue tier: `jk guard`, `jk install -S` (the
   reinstall without tests, so the tests run under the batch's own engine), one `jk install` (every
-  module's fast tier, then the reinstall), the integration suite of each module the batch
-  changed and the [curated lane](docs/contributors/test-suite-tiers.md#the-curated-integration-lane)
+  module's fast tier, then the reinstall), the integration classes each module the batch changed
+  ranks highest within a budget ([ranking](docs/contributors/test-suite-tiers.md#the-queue-tier-runs-the-classes-a-batch-ranks-highest);
+  the Full tier runs the classes it defers) and the [curated lane](docs/contributors/test-suite-tiers.md#the-curated-integration-lane)
   in the others, and the shell fixtures; a failure only in a quarantined class does not block it.
 - **Full tier** — `scripts/gate/gate.sh` with `GATE_TIER=full`: `jk guard`, `jk install -S` (the
   reinstall without tests), `jk install -g` (the fast tier once, with every integration and e2e
@@ -229,13 +230,15 @@ work on something else and read answers with `ka inbox`. Stopping without finish
   to back on the newest `main` and moves origin's `green` branch to each commit that passes;
   releases are cut from `green`. A red cycle names the batch that caused it on its tickets; when
   the failing classes fail with one of its commits and pass without it, the loop submits that
-  commit's revert to the queue and reopens its ticket, and after two red cycles the queue lands only
-  the fix
+  commit's revert to the queue and reopens its ticket, and after two red cycles alike the queue lands
+  only the fix
   ([Full tier loop](docs/contributors/self-host.md#the-full-tier-loop)).
 - **Branch tier** — before a branch is submitted to the queue: `scripts/queue/branch-tier.sh`,
   which runs `jk guard` and the fast tier of the modules the branch changed and of their
   dependents (no native client, no suites of the modules they build on), and records the pass
-  that `scripts/queue/submit.sh` requires.
+  that `scripts/queue/submit.sh` requires. `jk guard` stays green when it has to skip a guard (its
+  verdict line names the skip), so the Branch tier warns when this machine has no runnable shellcheck: the shell scripts are then
+  linted first by the queue's gate.
 - **Prove it cheaply first** — before any run that takes more than a few minutes, however it is
   spelled (a gate, a whole suite, an integration or slow tier, an uncached build of this tree),
   run the tests that can fail it, one module and one class at a time: every class an earlier run
@@ -254,7 +257,7 @@ work on something else and read answers with `ka inbox`. Stopping without finish
 | `jk test -s tree` | The tests that scan every module's production sources (`@Tag("tree")`), kept out of each module's fast tier so an edit re-runs only them | The Branch, Queue and Full tiers |
 | `jk install` | Exactly what `jk build` runs (every module compiled and packaged, its fast tier, the model/module/workspace/output lanes), then the reinstall | Every local merge |
 | `scripts/queue/branch-tier.sh` | `jk guard`, then the fast tier of the modules the branch changed and their dependents, then the tree suite | Before submitting a branch to the merge queue |
-| `GATE_TIER=queue scripts/gate/run.sh <n> <sha>` | The Queue tier: guard, the reinstall without tests, one install, the changed modules' integration suites, the curated lane, the docs suite, the tree suite, the shell fixtures | Every batch the merge queue lands (the push gate) |
+| `GATE_TIER=queue scripts/gate/run.sh <n> <sha>` | The Queue tier: guard, the reinstall without tests, one install, the changed modules' integration classes ranked highest within a budget, the curated lane, the docs suite, the tree suite, the shell fixtures | Every batch the merge queue lands (the push gate) |
 | `jk install -g` | Engine/CLI e2e, workers, install, lock: every integration class | The Full tier, back to back behind the queue (`scripts/gate/full-loop.sh`) |
 | `jk test -s slow` | Framework and language e2e (Android, Grails, Scala, KSP, Protobuf) | Before submitting a plugin or toolchain change; the Full tier when a plugin changed since `green`; nightly |
 
@@ -296,8 +299,8 @@ everything that came in is docs-only, and applies and gates it again otherwise. 
 root) that no test reads but those of the docs suite (`jk test -s docs`, the tests that scan the
 doc tree). The docs tests read are `scripts/gate/test-reads.txt`, written by
 `scripts/gate/docs-only.sh write` from what the suites were seen reading; the Full tier is red while
-a read is missing from it. Tests read `docs/user/skill.md`, `machine-output.md`, `why.md` and the
-examples under `docs/user/examples/`, so a change to one is not docs-only. A docs-only batch skips
+a read is missing from it. It counts only the suites a gate runs whole, never a `--class` or `-I`
+run, so a scratch test that reads the whole checkout does not land in it. A docs-only batch skips
 the Queue tier and runs the docs checks alone (`GATE_TIER=docs`: `jk guard`, which holds the link
 check, `bench/scoreboard --render --check` and the docs suite); every code batch runs the docs suite
 too, and the Full tier still runs everything. A new test that walks a directory of docs is tagged

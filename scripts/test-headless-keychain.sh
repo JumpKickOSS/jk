@@ -13,6 +13,8 @@
 # read-only, so a developer machine needs no network beyond the container image.
 # JK_HEADLESS_IMAGE overrides the image (default docker.io/library/ubuntu:24.04).
 # JK_HEADLESS_REQUIRE_RUNTIME=1 (CI) turns the no-runtime skip into a failure.
+# A gate starts it once its installs have written target/dist/jk (scripts/gate/gate.sh):
+# gate-fixture: after-install
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"

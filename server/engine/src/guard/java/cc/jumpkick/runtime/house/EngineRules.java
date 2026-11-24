@@ -107,7 +107,7 @@ final class EngineRules {
 
     /** The types that pick a suite's classes, launch its JVM or read its outcome. */
     private static final Pattern SUITE_TYPES = Pattern.compile(
-            "\\b(?:TestSelection|SuiteSelection|SuiteFilter|JUnitClassFilter|ClassTags|TestClassMatch|TestLaunch|ResultAggregator)\\b");
+            "\\b(?:TestSelection|SuiteSelection|SuiteFilter|JUnitClassFilter|ClassTags|TestClassMatch|ResultAggregator)\\b");
 
     @Guard(
             id = "suite-code-keyed",
@@ -134,15 +134,14 @@ final class EngineRules {
             in = "server/engine/src/main/java/cc/jumpkick/runtime/MemoInputs.java",
             reason = "keys the preflight memo, which folds the whole engine's code identity")
     @Allow(
-            in = "server/engine/src/main/java/cc/jumpkick/runtime/NodeArm.java",
-            reason =
-                    "Node.js test steps, keyed as artifacts by the code KeyContract.ARTIFACT records, this file with it")
-    @Allow(
             in = "server/engine/src/main/java/cc/jumpkick/runtime/PlannerResources.java",
             reason = "decides whether a suite step is planned at all; a step not planned stores no marker")
     @Allow(
             in = "server/engine/src/main/java/cc/jumpkick/runtime/SharedStampKeys.java",
             reason = "derives the shared form of the stamp's key; it picks no class and reads no outcome")
+    @Allow(
+            in = "server/engine/src/main/java/cc/jumpkick/runtime/TestStampInputs.java",
+            reason = "writes the stamp itself; what it changes reaches a suite only through the key it writes")
     @Allow(
             in = "server/engine/src/main/java/cc/jumpkick/runtime/base/RecentClassWalls.java",
             reason = "the classes' last walls, which spread classes over workers; it picks none")
@@ -161,6 +160,21 @@ final class EngineRules {
     @Allow(
             in = "server/engine/src/main/java/cc/jumpkick/runtime/workspace/WorkspaceResourcePhase.java",
             reason = "names the step and tier a suite's history is kept under, to size the run")
+    @Allow(
+            in = "server/engine/src/main/java/cc/jumpkick/runtime/TestLaunch.java",
+            reason =
+                    "forks a suite's JVMs from the fork spec, which the stamp keys by value; the rest is each host's plumbing")
+    @Allow(
+            in = "server/engine/src/main/java/cc/jumpkick/test/ForkSpec.java",
+            reason = "the fork spec itself: the stamp keys it by value, so what it spells moves the key")
+    @Allow(
+            in = "server/engine/src/main/java/cc/jumpkick/test/JUnitLauncher.java",
+            reason =
+                    "forks a suite's JVMs from the fork spec, which the stamp keys by value; the retry rules are the orchestrator's")
+    @Allow(
+            in = "server/engine/src/main/java/cc/jumpkick/test/SuiteReads.java",
+            reason =
+                    "keeps and reads back what a suite was found to read, as tokens of the stamp; the rules that decide which reads count are the orchestrator's")
     void suiteCodeKeyed(Text text, Violations v) {
         int naming = 0;
         for (String rel : text.files(ENGINE_MAIN)) {

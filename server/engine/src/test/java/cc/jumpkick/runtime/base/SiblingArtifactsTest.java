@@ -4,6 +4,7 @@ package cc.jumpkick.runtime.base;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.testing.Await;
+import cc.jumpkick.testing.FakeClock;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
@@ -276,6 +277,30 @@ class SiblingArtifactsTest {
         siblings.completed(LIB);
         waiting.get(10, TimeUnit.SECONDS);
         assertThat(released).isTrue();
+    }
+
+    @Test
+    void the_time_a_module_spent_blocked_on_a_sibling_is_kept_for_it() throws Exception {
+        FakeClock clock = new FakeClock();
+        SiblingArtifacts siblings =
+                new SiblingArtifacts(EDGES, SiblingArtifacts.TestReads.NONE, List.of(CORE, LIB, APP), clock);
+        AtomicBoolean released = new AtomicBoolean();
+        CompletableFuture<Void> waiting =
+                waitOn(() -> siblings.gateFor(APP).awaitPublished(List.of(LIB), () -> false), released);
+
+        Await.until(Duration.ofSeconds(10), () -> siblings.parked() == 1);
+        clock.advance(Duration.ofSeconds(14));
+        assertThat(siblings.waitedMillis(APP)).as("still waiting").isEqualTo(14_000);
+
+        siblings.published(LIB);
+        waiting.get(10, TimeUnit.SECONDS);
+        clock.advance(Duration.ofSeconds(3));
+        assertThat(siblings.waitedMillis(APP)).isEqualTo(14_000);
+        assertThat(siblings.waitedMillis(LIB)).isZero();
+
+        // Nothing pending: the wait returns at once and adds nothing.
+        siblings.gateFor(APP).awaitPublished(List.of(LIB), () -> false);
+        assertThat(siblings.waitedMillis(APP)).isEqualTo(14_000);
     }
 
     @Test

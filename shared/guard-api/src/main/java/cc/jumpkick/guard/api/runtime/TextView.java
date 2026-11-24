@@ -3,8 +3,8 @@ package cc.jumpkick.guard.api.runtime;
 
 import cc.jumpkick.guard.api.Blank;
 import cc.jumpkick.guard.api.Text;
+import cc.jumpkick.host.ManifestNames;
 import cc.jumpkick.host.OutputDirs;
-import cc.jumpkick.host.PathUtil;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
@@ -12,8 +12,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 
@@ -24,12 +25,25 @@ public final class TextView implements Text {
     private final List<Path> sources;
     private final boolean fixture;
     private final @Nullable String outputDir;
+    private final boolean keepWalk;
     // One instance serves every guard of a run, and every guard walks and reads the same tree: the walk
     // happens once, a file is read once, and a blanked view is computed once per mode.
     private final ConcurrentHashMap<String, String> texts = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, String> views = new ConcurrentHashMap<>();
-    private final ConcurrentHashMap<String, List<String>> matches = new ConcurrentHashMap<>();
-    private volatile @Nullable List<String> walked;
+    private volatile TreeWalks.@Nullable Listing listing;
+    private volatile @Nullable Recorder recorder;
+
+    /**
+     * Hears every glob a guard lists and every file whose text it takes, before any cache answers, and
+     * answers a per-file scan from the last run when it can.
+     */
+    interface Recorder {
+        void glob(String glob);
+
+        void file(String path);
+
+        List<String> perFile(String path, String salt, Function<String, List<String>> scan);
+    }
 
     public TextView(Path root, List<Path> sources) {
         this(root, sources, false, null);
@@ -41,18 +55,45 @@ public final class TextView implements Text {
      * under (where the run's report lives), which a walk from the root never enters.
      */
     public TextView(Path root, List<Path> sources, boolean fixture, @Nullable String outputDir) {
+        this(root, sources, fixture, outputDir, false);
+    }
+
+    private TextView(Path root, List<Path> sources, boolean fixture, @Nullable String outputDir, boolean keepWalk) {
         this.root = root.toAbsolutePath().normalize();
         this.sources = List.copyOf(sources);
         this.fixture = fixture;
         this.outputDir = outputDir;
+        this.keepWalk = keepWalk;
+    }
+
+    /**
+     * A view whose walk and glob matches are the process's last over the same tree while no directory
+     * they listed has changed ({@link TreeWalks}): for a caller that asks again and again whether the
+     * tree still lists as it did.
+     */
+    static TextView keepingWalk(Path root, List<Path> sources, @Nullable String outputDir) {
+        return new TextView(root, sources, false, outputDir, true);
+    }
+
+    /** Report every read to {@code r} from now on. */
+    void recordTo(Recorder r) {
+        recorder = r;
     }
 
     @Override
     public List<String> files(String glob) {
-        return matches.computeIfAbsent(glob, g -> {
+        Recorder r = recorder;
+        if (r != null) r.glob(glob);
+        return unrecordedFiles(glob);
+    }
+
+    /** {@link #files} without telling the recorder: the ledger's own checks. */
+    List<String> unrecordedFiles(String glob) {
+        TreeWalks.Listing l = listing();
+        return l.matches.computeIfAbsent(glob, g -> {
             Pattern p = globPattern(fixture ? g.substring(g.lastIndexOf('/') + 1) : g);
             List<String> out = new ArrayList<>();
-            for (String rel : walk()) {
+            for (String rel : l.files) {
                 if (p.matcher(fixture ? rel.substring(rel.lastIndexOf('/') + 1) : rel)
                         .matches()) out.add(rel);
             }
@@ -61,28 +102,23 @@ public final class TextView implements Text {
     }
 
     /** Every regular file under the sources, sorted, walked once per instance. */
-    private List<String> walk() {
-        List<String> w = walked;
-        if (w != null) return w;
+    private TreeWalks.Listing listing() {
+        TreeWalks.Listing l = listing;
+        if (l != null) return l;
         synchronized (this) {
-            if (walked != null) return walked;
-            TreeSet<String> out = new TreeSet<>();
-            for (Path src : sources) {
-                Path dir = src.isAbsolute() ? src : root.resolve(src);
-                if (!Files.isDirectory(dir)) continue;
-                try {
-                    PathUtil.forEachRegularFile(dir, d -> skipped(rel(d)), (f, attrs) -> out.add(rel(f)));
-                } catch (IOException e) {
-                    throw new UncheckedIOException(e);
-                }
-            }
-            walked = List.copyOf(out);
-            return walked;
+            if (listing != null) return listing;
+            List<Path> dirs = sources.stream()
+                    .map(src -> (src.isAbsolute() ? src : root.resolve(src))
+                            .toAbsolutePath()
+                            .normalize())
+                    .toList();
+            Predicate<Path> skip = d -> skipped(TreeWalks.rel(root, d));
+            l = keepWalk
+                    ? TreeWalks.listing(root, dirs, outputDir, skip, this::pruneProbe)
+                    : TreeWalks.walk(root, dirs, skip);
+            listing = l;
+            return l;
         }
-    }
-
-    private String rel(Path f) {
-        return root.relativize(f.toAbsolutePath().normalize()).toString().replace('\\', '/');
     }
 
     @Override
@@ -109,7 +145,29 @@ public final class TextView implements Text {
         return read(path).lines().toList();
     }
 
+    @Override
+    public List<String> perFile(String path, String salt, Function<String, List<String>> scan) {
+        Recorder r = recorder;
+        return r == null ? scan.apply(path) : r.perFile(path, salt, scan);
+    }
+
     private String read(String path) {
+        Recorder r = recorder;
+        if (r != null) r.file(path);
+        return text(path);
+    }
+
+    /** The file's text without telling the recorder, or {@code null} when it does not read. */
+    @Nullable
+    String unrecordedText(String path) {
+        try {
+            return text(path);
+        } catch (UncheckedIOException unreadable) {
+            return null;
+        }
+    }
+
+    private String text(String path) {
         String cached = texts.get(path);
         if (cached != null) return cached;
         Path p = root.resolve(path);
@@ -139,6 +197,17 @@ public final class TextView implements Text {
             if (seg.startsWith(".") && seg.length() > 1 && !seg.equals(".github") && !seg.equals(".jk")) return true;
         }
         return false;
+    }
+
+    /**
+     * For a directory {@link #skipped} prunes, the file whose appearance would read it again: the
+     * manifest that makes a {@code build/} or {@code target/} a module of its own. The rest are pruned
+     * by name or position alone.
+     */
+    private @Nullable Path pruneProbe(Path dir) {
+        String rel = TreeWalks.rel(root, dir);
+        if (outputDir != null && (rel.equals(outputDir) || rel.startsWith(outputDir + "/"))) return null;
+        return OutputDirs.isBuildOutputDir(dir) ? dir.resolve(ManifestNames.MANIFEST) : null;
     }
 
     /** {@code **} across segments, {@code *} within one, {@code ?} one character. */

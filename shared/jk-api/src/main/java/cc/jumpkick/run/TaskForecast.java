@@ -87,7 +87,9 @@ public final class TaskForecast {
     /**
      * One module's forecast: identity plus ordered steps. {@code reason} is set when the preflight
      * scheduled the module on its own account — an input it could not read — and reads as a
-     * sentence ({@code rebuilt because …}); such a module is dirty whatever its steps say.
+     * sentence ({@code rebuilt because …}); such a module is dirty whatever its steps say. {@code
+     * rerunTests} is how many of its {@code testCount} tests a run of its suite runs: all of them,
+     * unless classes whose key has not moved are replayed ({@code [test] cache = "cone"}).
      */
     public record Module(
             Path dir,
@@ -97,7 +99,21 @@ public final class TaskForecast {
             int testCount,
             boolean producesJar,
             boolean producesImage,
-            @Nullable String reason) {
+            @Nullable String reason,
+            int rerunTests) {
+
+        /** A module whose suite, when it runs, runs every test. */
+        public Module(
+                Path dir,
+                String coord,
+                List<Task> steps,
+                int sourceCount,
+                int testCount,
+                boolean producesJar,
+                boolean producesImage,
+                @Nullable String reason) {
+            this(dir, coord, steps, sourceCount, testCount, producesJar, producesImage, reason, testCount);
+        }
 
         /** A module the preflight had no reason of its own to schedule. */
         public Module(
@@ -113,7 +129,8 @@ public final class TaskForecast {
 
         /** This module with the preflight's reason for scheduling it. */
         public Module withReason(String reason) {
-            return new Module(dir, coord, steps, sourceCount, testCount, producesJar, producesImage, reason);
+            return new Module(
+                    dir, coord, steps, sourceCount, testCount, producesJar, producesImage, reason, rerunTests);
         }
 
         /** Reconstruct a forecast module client-side from wire-level data. */
@@ -125,7 +142,8 @@ public final class TaskForecast {
                 int testCount,
                 boolean producesJar,
                 boolean producesImage,
-                @Nullable String reason) {
+                @Nullable String reason,
+                int rerunTests) {
             return new Module(
                     dir,
                     coord == null ? "" : coord,
@@ -134,7 +152,21 @@ public final class TaskForecast {
                     testCount,
                     producesJar,
                     producesImage,
-                    reason);
+                    reason,
+                    rerunTests);
+        }
+
+        /** As above for a module whose suite, when it runs, runs every test. */
+        public static Module fromWire(
+                Path dir,
+                @Nullable String coord,
+                @Nullable List<Task> steps,
+                int sourceCount,
+                int testCount,
+                boolean producesJar,
+                boolean producesImage,
+                @Nullable String reason) {
+            return fromWire(dir, coord, steps, sourceCount, testCount, producesJar, producesImage, reason, testCount);
         }
 
         /** As above for a module the wire carried no reason for. */

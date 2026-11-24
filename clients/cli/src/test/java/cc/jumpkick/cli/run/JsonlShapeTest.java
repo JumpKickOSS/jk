@@ -230,7 +230,7 @@ class JsonlShapeTest {
         assertThat(start).contains("\"dir\":\"/w/core\"");
         assertThat(start).contains("\"coord\":\"com.example:core\"");
         String finish = JsonlShape.moduleFinish(new ModuleOutcome(
-                "com.example:core", Path.of("/w/core"), true, 0, 42, true, false, false, null, null, null, null));
+                "com.example:core", Path.of("/w/core"), true, 0, 42, 0, true, false, false, null, null, null, null));
         assertThat(finish).contains("\"type\":\"module-finish\"");
         assertThat(finish).contains("\"success\":true");
         assertThat(finish).contains("\"millis\":42");

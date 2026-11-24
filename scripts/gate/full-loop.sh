@@ -8,33 +8,44 @@
 #
 # Each tip it takes is appended to full-taken before it is gated, so the Windows and macOS loops
 # (scripts/gate/platform-loop.sh) run it beside the Linux gate.
+# After each gate it ships the class records its checkout holds (scripts/gate/class-records.sh
+# export) to <QUEUE_REPO>/full-records, replacing what it shipped before, so the Queue tier ranks a
+# class it deferred by what that class did here. A failed shipment is said on stderr and changes
+# nothing else.
 # GREEN moves origin's `green` branch to the tip as a fast-forward (scripts/gate/green.sh): releases
 # are cut from it. While a platform holds green, green waits there for that platform's verdict on the
 # tip, and its loop moves green once it passes. A gate green only because its failed classes passed
 # on the re-run is GREEN, and its line in full-runs.log names those classes; it neither counts as red
 # nor holds the queue.
-# RED looks for the batch of the merge queue that made it red among those landed since `green`
-# (queue-batches.log): it bisects them, gating batch tips with the Full tier until the first red one
-# is known (each commit is gated once; full-verdicts keeps every verdict), and names it in
-# full-runs.log. Once per batch it then tries to confirm one commit of it: the classes that failed
-# its red gate fail again at its tip and pass at its base, and a bisect of its commits with those
-# classes finds the one they fail with and pass without (scripts/gate/rerun-classes.sh). It reverts
-# that commit on top of the red tip, puts the revert through the Branch tier and submits it to the
-# merge queue as full-revert/<ticket>-<sha>, which gates it like any branch; and it comments on the
-# commit's ticket and reopens it, so its worker fixes forward and submits again. When no commit is
+# RED reads what its own gate failed, from that gate's log: its red set, the test classes the
+# re-run still failed, the fixtures and guard checks that failed and the steps that ended red. It
+# looks for the batch of the merge queue that made it red among those landed since `green`
+# (queue-batches.log): it bisects them, gating batch tips with the Full tier (each commit is gated once; full-verdicts keeps
+# every verdict) until it knows the first whose own gate fails one of the classes, fixtures or guard
+# checks this gate fails, and names it in full-runs.log. A batch whose gate was red for something
+# else is not the culprit, and a red in no class, fixture or guard check (a step alone, such as a
+# reinstall that failed) names no batch. Once per batch it then tries to
+# confirm one commit of it: the classes that failed both gates fail
+# again at its tip and pass at its base, and a bisect of its commits with those classes finds the
+# one they fail with and pass without (scripts/gate/rerun-classes.sh). It reverts that commit on top
+# of the red tip, puts the revert through the Branch tier and submits it to the merge queue as
+# full-revert/<ticket>-<sha>, which gates it like any branch; and it comments on the commit's ticket
+# and reopens it, so its worker fixes forward and submits again. When no commit is
 # confirmed, or its revert conflicts with later work, it reverts nothing and comments on each
 # ticket the batch's commits name (a subject `<ticket>: ...`), saying why.
-# After FULL_HOLD_AFTER red cycles in a row it writes <QUEUE_REPO>/full-hold, which names the
-# batch's tickets and commits; while that file exists the queue lands only a fix: a branch with a
-# commit for one of those tickets, or one that reverts one of those commits. The next GREEN removes
-# it. A hold that names nothing (no batch was found) lands nothing until a person adds a
-# `ticket <id>` or `commit <sha>` line to it.
+# After FULL_HOLD_AFTER red cycles in a row with the same red set it writes <QUEUE_REPO>/full-hold,
+# which names the culprit batch's tickets and commits; while that file exists the queue lands only a
+# fix: a branch with a commit for one of those tickets, or one that reverts one of those commits. A
+# red set unlike the last red cycle's counts as the first red cycle again. A red cycle that does not
+# hold the queue removes a hold an earlier one wrote, so a red that names no batch never holds it;
+# the next GREEN removes it too.
 #
 # A cycle whose jk cannot start its engine (`jk engine start` fails in FULL_CHECKOUT, before a gate,
 # or after a gate red at guard, which runs on the install the tip has not replaced yet) is an
 # infra failure, not a verdict: full-runs.log says INFRA with jk's first line, and the loop names no
 # culprit, counts no red cycle, holds nothing and records no verdict, so the tip is gated again on
-# the next cycle, FULL_POLL seconds later.
+# the next cycle, FULL_POLL seconds later. So is a gate red at guard because jk failed inside it
+# (exit 70, JumpKick's internal error, as when its engine dies mid-guard) with no check failed.
 #
 # While <QUEUE_REPO>/pause exists the loop starts no cycle: a cycle in flight finishes, the loop logs
 # once in full-runs.log that it is paused, with the file's first line as the reason, and looks again
@@ -47,8 +58,10 @@
 #                    $JK_QUEUE_REMOTE, else bocabox:src/jk-queue.git): its queue-batches.log and pause
 #                    are read, and this loop's state is written beside it: full-runs.log (one line per
 #                    cycle), full-taken (each tip it took), full-verdicts (`<sha> GREEN|RED <gate>`),
-#                    full-n, full-reds, full-filed, full-hold. A revert is submitted to it and green is
-#                    moved from FULL_CHECKOUT's origin, with this host's credentials.
+#                    full-n, full-reds, full-red-set (the last red cycle's), full-filed, full-hold,
+#                    full-records/ (the class records, one directory per member). A
+#                    revert is submitted to it and green is moved from FULL_CHECKOUT's origin, with
+#                    this host's credentials.
 #                    The re-runs and the revert's Branch tier log to full-<batch>.log beside the gate logs
 #   FULL_CHECKOUT    the clean checkout the Full tier runs in; its origin holds main and green
 #                    (required; not the queue's checkout)
@@ -89,7 +102,7 @@
     mkdir -p "$D/full-loop/gate" "$D/full-loop/queue" || exit 2
     # Run a copy, so a commit that changes these scripts changes the loop only when it is restarted.
     cp "$0" "$D/full-loop/gate/full-loop.sh" || exit 2
-    cp "$H/rerun-classes.sh" "$H/flaky.sh" "$H/green.sh" "$D/full-loop/gate/" || exit 2
+    cp "$H/rerun-classes.sh" "$H/flaky.sh" "$H/green.sh" "$H/class-records.sh" "$D/full-loop/gate/" || exit 2
     cp "$H/../queue/branch-tier.sh" "$H/../queue/submit.sh" "$H/../queue/common.sh" "$D/full-loop/queue/" || exit 2
     paused=""
     while :; do
@@ -132,8 +145,19 @@
     log "full $(date -u +%Y-%m-%dT%H:%M:%SZ) $(short "$1") INFRA jk cannot start: $(grep -m1 . <<<"$out" | sed 's/^jk: //'); no verdict ($(hostname):${JK_HOME:-$HOME/.jk})"
     return 1
   }
+  # ship_records: the class records the checkout's gates wrote, to <QUEUE_REPO>/full-records, swapped
+  # in whole so the queue never reads half of them.
+  ship_records() {
+    local out="$D/full-loop/records"
+    rm -rf "$out" && mkdir -p "$out" && bash "$H/class-records.sh" export "$out" &&
+      tar -C "$out" -czf - . | queue_sh 'rm -rf full-records.new full-records.old && mkdir full-records.new &&
+        tar -xzf - -C full-records.new && { [ ! -d full-records ] || mv full-records full-records.old; } &&
+        mv full-records.new full-records && rm -rf full-records.old'
+  }
   # judge <sha>: print GREEN or RED for the commit, gating it with the Full tier unless it was
-  # judged before; fail with 5 when jk cannot start, with 2 when the gate reached no verdict.
+  # judged before; fail with 5 when jk cannot start or failed inside a guard that failed no check
+  # (exit 70, JumpKick's internal error, as when its engine dies mid-guard), with 2 when the gate
+  # reached no verdict.
   judge() {
     local sha="$1" known n L verdict
     known="$(awk -v s="$sha" '$1 == s { print $2 }' "$V" 2>/dev/null | tail -1)"
@@ -147,12 +171,17 @@
     echo "${n#f}" | st_put full-n || return 2
     GATE_CHECKOUT="$co" GATE_LOG_DIR="$D" GATE_TIER=full GATE_BASE="${green:-$empty}" JK_QUEUE_REMOTE="$repo" \
       bash "${FULL_GATE:-$co/scripts/gate/gate.sh}" "$n" "$sha" </dev/null >/dev/null 2>&1
+    ship_records </dev/null >/dev/null 2>&1 || echo "full-loop: the class records of gate $n were not shipped to $repo" >&2
     L="$D/integ-gate-$n.log"
     verdict="$(grep -aE '^(GREEN |RED|CHECKOUT |NO CHECKOUT)' "$L" 2>/dev/null | tail -1)"
     case "$verdict" in
       "GREEN $sha") verdict "$sha GREEN $n" && echo GREEN ;;
       RED*)
         if [ "$verdict" = "RED (guard)" ] && ! jk_starts "$sha"; then return 5; fi
+        if [ "$verdict" = "RED (guard)" ] && grep -aqE '^GUARD_EXIT=70( |$)' "$L" && ! grep -aq '^GUARD FAIL ' "$L"; then
+          log "full $n $(date -u +%Y-%m-%dT%H:%M:%SZ) $(short "$sha") INFRA jk failed inside guard (exit 70, its internal error) and guard failed no check; no verdict ($(hostname):$L)"
+          return 5
+        fi
         verdict "$sha RED $n" && echo RED
         ;;
       *)
@@ -164,6 +193,26 @@
   # The slow tier runs when a plugin changed since green; before there is a green, every plugin did.
   empty="$(git hash-object -t tree /dev/null)"
   gate_of() { awk -v s="$1" '$1 == s { g = $3 } END { print g }' "$V"; }
+  # red_set <gate>: what the gate failed, one sorted line each, read from its own log and re-run
+  # transcript: `class <module> <class>`, `fixture <script>`, `guard <check>` for each `GUARD FAIL
+  # <check>` line, `step <step>` for a `RED (<step>)` line and for an engine not at the tip, and
+  # `exit <STEP>` for each step that exited non-zero.
+  # The push gate's own exit is left out: the classes its re-run still failed stand for it.
+  red_set() {
+    local g="$1" L="$D/integ-gate-$1.log"
+    [ -n "$g" ] && [ -f "$L" ] || return 0
+    {
+      bash "$H/flaky.sh" failed "$D/g$g-rerun.jsonl" 2>/dev/null | sed 's/^/class /'
+      sed -n 's/^FIXTURE FAIL \(.*\)$/fixture \1/p' "$L"
+      sed -n 's/^GUARD FAIL \(.*\)$/guard \1/p' "$L"
+      sed -n 's/^RED (\(.*\))$/step \1/p' "$L"
+      grep -aq '^ENGINE NOT AT TIP' "$L" && echo "step engine not at tip"
+      sed -nE 's/^([A-Z_]+)_EXIT=[1-9][0-9]*( .*)?$/exit \1/p' "$L" | grep -vx 'exit PUSHGATE'
+    } | sort -u
+  }
+  # The entries of a red set a batch's change can be blamed for: its classes, fixtures and guard
+  # checks.
+  blamable() { grep -E '^(class|fixture|guard) ' || true; }
 
   cd "$co" || exit 2
   [ -z "$(git status --porcelain)" ] || { echo "full-loop: $co is not clean" >&2; exit 2; }
@@ -189,6 +238,7 @@
   if [ "$v" = GREEN ]; then
     pushed="$(QUEUE_REPO="$repo" GREEN_CHECKOUT="$co" bash "$H/green.sh")" || pushed="NOT pushed to green (green.sh failed)"
     echo 0 | st_put full-reds
+    st_rm full-red-set
     held=""
     st_has full-hold && st_rm full-hold && held="; the queue's hold is lifted"
     flaky="$(sed -n 's/^FLAKY \(.*\) passed on the re-run$/\1/p' "$D/integ-gate-$n.log" 2>/dev/null | paste -sd, - | sed 's/,/, /g')"
@@ -196,9 +246,14 @@
     exit 0
   fi
 
+  # This cycle's red set; one unlike the last red cycle's starts the count of red cycles again.
+  redset="$(red_set "$n")"
+  blame="$(blamable <<<"$redset")"
   reds="$(st_get full-reds)" || exit 2
-  reds=$((${reds:-0} + 1))
+  lastset="$(st_get full-red-set)" || exit 2
+  if [ "$lastset" = "$redset" ]; then reds=$((${reds:-0} + 1)); else reds=1; fi
   echo "$reds" | st_put full-reds
+  printf '%s\n' "$redset" | st_put full-red-set
   batchlog="$(st_get queue-batches.log)" || exit 2
   filed="$(st_get full-filed)" || exit 2
 
@@ -214,30 +269,35 @@
       batches+=("$(git rev-list --count "$bt") $bn $bbase $bt")
     done < <(awk '$1 == "batch" && ($8 == "LANDED" || $10 == "LANDED") { print $2, $5, $7 }' <<<"$batchlog")
   fi
+  # shares <sha>: succeed when the commit's gate is red in a class, fixture or guard check this
+  # cycle's is.
+  shares() {
+    [ -n "$(comm -12 <(printf '%s\n' "$blame") <(red_set "$(gate_of "$1")" | blamable))" ]
+  }
   culprit=""
-  if [ "${#batches[@]}" -gt 0 ]; then
+  if [ "${#batches[@]}" -gt 0 ] && [ -n "$blame" ]; then
     sorted=()
     while read -r line; do sorted+=("$line"); done < <(printf '%s\n' "${batches[@]}" | sort -n | cut -d' ' -f2-)
     batches=("${sorted[@]}")
-    # Bisect: before the first batch is green, past the last is the red tip; find the first red.
+    # Bisect: before the first batch is green; find the first whose gate fails what this one fails.
     lo=-1 hi="${#batches[@]}"
     while [ $((hi - lo)) -gt 1 ]; do
       mid=$(((lo + hi) / 2))
       read -r _ _ bt <<<"${batches[$mid]}"
       bv="$(judge "$bt")" || exit
-      if [ "$bv" = RED ]; then hi=$mid; else lo=$mid; fi
+      if [ "$bv" = RED ] && shares "$bt"; then hi=$mid; else lo=$mid; fi
     done
     [ "$hi" -lt "${#batches[@]}" ] && culprit="${batches[$hi]}"
   fi
 
-  # confirm: narrow the culprit batch to one commit, $bad, by re-running the classes its red gate
-  # failed (in $classes): they must fail at its tip and pass at its base, and a bisect of its
-  # commits finds the first they fail with. Else $why says what stopped it.
+  # confirm: narrow the culprit batch to one commit, $bad, by re-running the classes both its red
+  # gate and this cycle's failed (in $classes): they must fail at its tip and pass at its base, and a
+  # bisect of its commits finds the first they fail with. Else $why says what stopped it.
   confirm() {
     local lo hi mid list=() c
     classes="$D/full-$cn-classes"
-    bash "$H/flaky.sh" failed "$D/g$(gate_of "$ctip")-rerun.jsonl" >"$classes" 2>/dev/null && [ -s "$classes" ] \
-      || { why="its red gate failed outside a test class, or names none to run again"; return 1; }
+    comm -12 <(printf '%s\n' "$blame") <(red_set "$(gate_of "$ctip")") | sed -n 's/^class //p' >"$classes"
+    [ -s "$classes" ] || { why="the red it shares with this cycle is in a fixture or guard check, not a test class to run again"; return 1; }
     rerun "$ctip"
     case $? in
       1) ;;
@@ -294,10 +354,10 @@
 
   if [ -z "$culprit" ]; then
     why="the queue landed no batch since green"
-    [ "${#batches[@]}" -eq 0 ] || why="every batch landed since green passes at its own tip"
+    [ "${#batches[@]}" -eq 0 ] || why="no batch landed since green fails at its own tip a class, fixture or guard check this gate fails"
+    [ -n "$blame" ] || why="this gate failed in no test class, fixture or guard check ($(grep . <<<"$redset" | tr '\n' ',' | sed 's/,$//; s/,/, /g'))"
     [ -n "$green" ] || why="origin has no green branch yet"
-    log "full $n $stamp $(short "$tip") RED culprit unknown: $why; red cycles $reds"
-    hold_lines=("# The Full tier is red on $(short "$tip") and no batch was named: add a" "# \`ticket <id>\` or \`commit <sha>\` line to let a fix through.")
+    log "full $n $stamp $(short "$tip") RED culprit unknown: $why; red cycles $reds; log $(hostname):$D/integ-gate-$n.log"
   else
     read -r cn cbase ctip <<<"$culprit"
     cbase="$(git rev-parse "$cbase^{commit}")" || exit 2
@@ -305,9 +365,10 @@
     commits="$(git rev-list --reverse "$cbase..$ctip")"
     tickets="$(git log --format=%s "$cbase..$ctip" | sed -nE 's/^([A-Z][A-Z0-9]*-[A-Z0-9]+): .*/\1/p' | sort -u)"
     cl="$D/integ-gate-$(gate_of "$ctip").log"
-    log "full $n $stamp $(short "$tip") RED culprit batch $cn ($(short "$ctip"):$members) tickets $(tr '\n' ' ' <<<"${tickets:-<none>}" | sed 's/ $//'); red cycles $reds; log $(hostname):$cl"
+    shared="$(comm -12 <(printf '%s\n' "$blame") <(red_set "$(gate_of "$ctip")") | cut -d' ' -f2- | tr '\n' ',' | sed 's/,$//; s/,/, /g')"
+    log "full $n $stamp $(short "$tip") RED culprit batch $cn ($(short "$ctip"):$members) tickets $(tr '\n' ' ' <<<"${tickets:-<none>}" | sed 's/ $//'); its gate fails $shared too; red cycles $reds; log $(hostname):$D/integ-gate-$n.log, the batch's $(hostname):$cl"
     if ! grep -qx "$cn" <<<"$filed"; then
-      fails="$(grep -aE '^(FAIL|E |T )|FAILED |^GUARD_EXIT=[1-9]|^RED|^FIXTURE FAIL|^ENGINE NOT' "$cl" 2>/dev/null | head -8 | tr '\n' ';' | sed 's/;$//')"
+      fails="$(grep -aE '^(FAIL|E |T )|FAILED |^GUARD_EXIT=[1-9]|^GUARD FAIL|^RED|^FIXTURE FAIL|^ENGINE NOT' "$D/integ-gate-$n.log" 2>/dev/null | head -8 | tr '\n' ';' | sed 's/;$//')"
       if confirm && revert; then
         subject="$(git log -1 --format=%s "$bad")"
         told="$(sed -nE 's/^([A-Z][A-Z0-9]*-[A-Z0-9]+): .*/\1/p' <<<"$subject")"
@@ -328,7 +389,7 @@
       else
         log "full $n reverts nothing: $why"
         for t in $tickets; do
-          "${FULL_KA:-ka}" comment "$t" --type progress -m "The Full tier is red on origin/main from batch $cn of the merge queue, which landed this ticket's commits as $(short "$ctip"):$members. The first red gate: ${fails:-see the log}. Log: $cl on $(hostname). The Full loop reverts nothing, because $why. Revert them or fix forward through the queue; after ${FULL_HOLD_AFTER:-2} red cycles the queue lands only the fix." </dev/null >/dev/null 2>&1 \
+          "${FULL_KA:-ka}" comment "$t" --type progress -m "The Full tier is red on origin/main from batch $cn of the merge queue, which landed this ticket's commits as $(short "$ctip"):$members. Its gate and this one both fail $shared. This red gate: ${fails:-see the log}. Log: $D/integ-gate-$n.log on $(hostname) (the batch's own: $cl). The Full loop reverts nothing, because $why. Revert them or fix forward through the queue; after ${FULL_HOLD_AFTER:-2} red cycles alike the queue lands only the fix." </dev/null >/dev/null 2>&1 \
             || log "full $n could not comment on $t"
         done
       fi
@@ -339,9 +400,13 @@
     for c in $commits; do hold_lines+=("commit $c"); done
   fi
 
-  if [ "$reds" -ge "${FULL_HOLD_AFTER:-2}" ]; then
+  if [ -n "$culprit" ] && [ "$reds" -ge "${FULL_HOLD_AFTER:-2}" ]; then
     printf '%s\n' "${hold_lines[@]}" | st_put full-hold
     log "full $n the queue lands only the fix ($repo/full-hold)"
+  elif st_has full-hold; then
+    # A hold for an earlier red would keep this one's fix out while the tip cannot move.
+    if [ -z "$culprit" ]; then why="this red names no batch"; else why="this red is unlike the one it held for"; fi
+    st_rm full-hold && log "full $n the queue's hold is lifted: $why"
   fi
   exit 0
 }

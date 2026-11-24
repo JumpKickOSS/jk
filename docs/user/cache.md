@@ -80,7 +80,7 @@ images and native binaries keep the exact build in their keys, and a jlink image
 are for one platform: their keys and records also name it (`TARGET linux-x86_64-gnu`). A guard
 lane's verdict names what the lane read (facts, text, manifests, rules, baseline) and, for a module
 lane, the Java major of the JDK the engine runs on, so a verdict made on macOS with JDK 25.0.2 serves
-Linux on 25.0.5 under the default `jdk-match`; only a module lane that runs a `src/guard` suite, code
+Linux on 25.0.5 under the default `jdk-match`; only the verdict of a module's `src/guard` suite, code
 that may skip itself on one operating system, also names the OS. A remote
 cache keeps one record per key, JDK and target, written once. A test JVM runs in a fixed locale and time zone (`en-US` and `UTC`
 unless the module's `[test] locale` or `[test] timezone` says otherwise,
@@ -146,8 +146,9 @@ by name only), so a suite that runs again says which of those moved, like any ot
 on this machine another build of JumpKick made forecasts as `repackage · jk changed` or `guards · jk
 changed`, since their keys name the JumpKick code that made them. A suite whose last green run another
 build of JumpKick keyed says which part of it moved: `run tests · jk changed (version)`, `(key
-format)` when the release changed how keys are formed, `(suite code)` when the code that picks
-and runs tests changed, or `(test orchestrator)` when the code that judges their outcome changed; a
+format)` when the release changed how keys are formed, `(suite code)` when the code that
+launches tests changed, or `(test orchestrator)` when the code that picks which suites run or
+judges their outcome changed; a
 release can move several at once.
 
 The run's byte totals keep traffic with a remote build cache (`cacheUp`, `cacheDown`) apart from
@@ -484,7 +485,9 @@ every checkout's list goes at once, and the rest take their turn by last use.
 `[cache] auto-prune` and `prune-interval-days` (default **7**) drive the engine’s
 idle-boundary pass, and a low-priority background collector asks every hour whether a pass is
 due, running it when no build is live (a build that arrives makes it yield at its next safe
-point). The interval tightens to **hourly** when the previous prune finished with the action
+point: between files and trees, never part-way through one). A build that has to wait for a pass,
+or for a `jk cache clean` someone started, prints `waiting for the cache prune to let go of the
+cache` and starts as soon as it does. The interval tightens to **hourly** when the previous prune finished with the action
 tier still at 90% or more of its budget, so a tier over its budget is back under it within the
 hour. Pressure tightens the cadence rather than bypassing it — bypassing would re-fire on every
 idle boundary, since a prune that ends under pressure ends under pressure however often it

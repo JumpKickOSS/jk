@@ -94,9 +94,17 @@ final class WireKeyRules {
                 .filter(rel -> !rel.startsWith(OWN_FIXTURES))
                 .toList();
         for (String rel : files) {
-            String body = text.blanked(rel, Blank.NONE);
-            readKeys(rel, body, reads);
-            writtenKeys(body, writes);
+            // Per file "r TAB line TAB key" for each key read and "w TAB key" for each key written, so
+            // an unedited file is not scanned again.
+            for (String found : text.perFile(rel, "keys", r -> keysIn(text.blanked(r, Blank.NONE)))) {
+                if (found.startsWith("w\t")) {
+                    writes.add(found.substring(2));
+                    continue;
+                }
+                String[] f = found.split("\t", 3);
+                reads.computeIfAbsent(f[2], k -> new ArrayList<>())
+                        .add(new TextSite(rel, Integer.parseInt(f[1]), "\"" + f[2] + "\""));
+            }
         }
         reads.forEach((key, sites) -> {
             String exempt = EXEMPT.get(key);
@@ -155,8 +163,18 @@ final class WireKeyRules {
     /** The first argument of a request field call, a string literal followed by a comma. */
     private static final Pattern REQUEST_FIELD_KEY = Pattern.compile("\\s*\"([^\"]+)\"\\s*,");
 
+    /** What one file reads and writes: "r TAB line TAB key" per key read, "w TAB key" per key written. */
+    private static List<String> keysIn(String body) {
+        List<String> out = new ArrayList<>();
+        readKeys(body, out);
+        Set<String> written = new LinkedHashSet<>();
+        writtenKeys(body, written);
+        for (String key : written) out.add("w\t" + key);
+        return out;
+    }
+
     /** Every key read as a string literal: the second argument of a {@code Jsonl} reader call. */
-    private static void readKeys(String rel, String body, Map<String, List<TextSite>> reads) {
+    private static void readKeys(String body, List<String> out) {
         if (!body.contains("Jsonl.")) return;
         Matcher m = READER.matcher(body);
         Set<String> seen = new LinkedHashSet<>();
@@ -165,8 +183,7 @@ final class WireKeyRules {
             if (args.size() < 2) continue;
             String key = stringLiteral(args.get(1).strip());
             if (key == null || !seen.add(key)) continue;
-            reads.computeIfAbsent(key, k -> new ArrayList<>())
-                    .add(new TextSite(rel, lineOf(body, m.start()), "\"" + key + "\""));
+            out.add("r\t" + lineOf(body, m.start()) + "\t" + key);
         }
     }
 

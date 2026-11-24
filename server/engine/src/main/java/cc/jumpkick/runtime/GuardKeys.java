@@ -10,6 +10,8 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.StampedMemo;
 import cc.jumpkick.config.WorkspaceClasspath;
 import cc.jumpkick.config.WorkspaceScan;
+import cc.jumpkick.guard.api.runtime.GuardConfig;
+import cc.jumpkick.guard.api.runtime.LedgerReads;
 import cc.jumpkick.guard.baseline.Baseline;
 import cc.jumpkick.guard.baseline.BaselineFile;
 import cc.jumpkick.guard.baseline.Entry;
@@ -35,7 +37,6 @@ import cc.jumpkick.guard.rules.RuleSet;
 import cc.jumpkick.guard.schema.Kind;
 import cc.jumpkick.guard.schema.Lane;
 import cc.jumpkick.host.Hashing;
-import cc.jumpkick.host.Log;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.LocalInstallRows;
@@ -66,6 +67,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.TreeSet;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -162,7 +164,8 @@ final class GuardKeys {
      * The forecast's {@code guard} step for one module, or empty when the workspace has no guards.
      * {@code testsIndexed} is whether the plan's lane indexes the test classes ({@link
      * PlannerGuards#indexesTestClasses}). CACHED only when the facts index is current and the lane's
-     * verdict is in the cache; RUN otherwise, which is what makes the module dirty.
+     * verdicts are in the cache, its declared rules' and, with a {@code src/guard} suite, the suite's;
+     * RUN otherwise, which is what makes the module dirty.
      */
     static Optional<TaskForecast.Task> forecastModuleLane(
             Path dir, BuildLayout layout, ActionCache actionCache, boolean upstreamDirty, boolean testsIndexed) {
@@ -179,41 +182,64 @@ final class GuardKeys {
             if (key == null) return Optional.of(run(probe.runReason()));
             String taskId = ActionKey.qualifiedTaskId(TaskNames.GUARD, dir);
             ToolchainPolicy.expectOnEngineMajor(key, dir);
-            Optional<ActionCache.ActionRecord> verdict = GuardVerdicts.lookup(actionCache, key, root);
-            if (verdict.isPresent()) {
-                // A verdict that carries the lane's evidence is cached only where that evidence is
-                // on disk: a fresh checkout runs the lane once so the hit restores it for the tree
-                // lane's no-bite judgement.
-                if (verdict.get().outputs().isEmpty() || Files.isRegularFile(RuleSummaries.file(root, taskId))) {
-                    return Optional.of(new TaskForecast.Task(
-                            TaskNames.GUARD, TaskForecast.Status.CACHED, "", key.substring(0, 8)));
-                }
-                return Optional.of(run("guards · lane evidence to restore"));
+            int rules = load.rules().rules().size();
+            Optional<String> unheld = unheld(actionCache, key, root, taskId, rules + " rules to evaluate");
+            String suiteKey = probe.suiteKey();
+            if (unheld.isEmpty() && suiteKey != null) {
+                // The declared rules' verdict holds: only what the suite reads can have moved.
+                String suiteTaskId = GuardVerdicts.suiteTaskId(taskId);
+                unheld = unheld(
+                        actionCache, suiteKey, root, suiteTaskId, "src/guard to run · " + rules + " rules cached");
             }
-            return Optional.of(run(
-                    missReason(actionCache, taskId, probe, load.rules().rules().size(), dir)));
+            if (unheld.isPresent()) return Optional.of(run(unheld.get()));
+            return Optional.of(
+                    new TaskForecast.Task(TaskNames.GUARD, TaskForecast.Status.CACHED, "", key.substring(0, 8)));
         } catch (IOException e) {
             return Optional.of(run("guards · " + e.getMessage()));
         }
+    }
+
+    /**
+     * Why the verdict of task {@code taskId} under {@code key} does not hold, or empty when it does:
+     * none found ({@code otherwise}, or that another jk judged the last one), or one found whose
+     * evidence is not on disk. A verdict that carries the lane's evidence holds only where that
+     * evidence is: a fresh checkout runs the lane once so the hit restores it for the tree lane's
+     * no-bite judgement.
+     */
+    private static Optional<String> unheld(
+            ActionCache actionCache, String key, Path root, String taskId, String otherwise) throws IOException {
+        Optional<ActionCache.ActionRecord> verdict = GuardVerdicts.lookup(actionCache, key, root);
+        if (verdict.isEmpty()) return Optional.of(missed(actionCache, taskId, otherwise));
+        if (verdict.get().outputs().isEmpty() || Files.isRegularFile(RuleSummaries.file(root, taskId)))
+            return Optional.empty();
+        return Optional.of("guards · lane evidence to restore");
     }
 
     /** The module-lane key token of a run that compiled no tests, and so ran no rule over them. */
     private static final String TESTS_NOT_COMPILED = "tests:not-compiled";
 
     /**
-     * A module lane's forecast key, with the tokens and baseline slice it was taken over, or why the
-     * lane runs with none (an index to extract first).
+     * A module lane's forecast key, of its declared rules, with the tokens and baseline slice it was
+     * taken over, and the key of its {@code src/guard} suite's verdict ({@link
+     * GuardVerdicts#suiteTaskId}) over {@code suiteTokens}, null without a suite that declares a
+     * guard; or why the lane runs with none (an index to extract first).
      */
-    record LaneProbe(@Nullable String key, String runReason, List<String> tokens, String slice) {
+    record LaneProbe(
+            @Nullable String key,
+            String runReason,
+            List<String> tokens,
+            String slice,
+            @Nullable String suiteKey,
+            List<String> suiteTokens) {
 
         LaneProbe(String runReason) {
-            this(null, runReason, List.of(), "");
+            this(null, runReason, List.of(), "", null, List.of());
         }
     }
 
     /**
-     * The key the module lane at {@code dir} would run under, read-only: its tokens come from
-     * {@link #moduleLaneTokens}, as the run's do.
+     * The keys the module lane at {@code dir} would run under, read-only: its tokens come from
+     * {@link #moduleLaneTokens}, as the run's do, the suite's with its {@link #suiteTokens} after.
      */
     static LaneProbe probeModuleLane(Path root, Path dir, BuildLayout layout, LoadResult load, boolean testsIndexed)
             throws IOException {
@@ -230,20 +256,39 @@ final class GuardKeys {
             testFacts = test.get();
         }
         List<String> suiteTokens = List.of();
+        boolean guards = false;
         Path guardClasses = layout.guardClassesDir();
         if (Files.isDirectory(guardClasses) && PlannerGuardSuite.declared(dir, PlannerGuards.compact(dir))) {
             Path suiteIndex = FactsIndexing.indexPath(layout.buildDir(), "guard");
             Optional<String> suite = FactsIndexing.freshDigest(guardClasses, suiteIndex);
             if (suite.isEmpty()) return new LaneProbe("guards · guard suite index stale");
             List<GuardSuites.Declared> declared = GuardSuites.declared(FactsFormat.read(suiteIndex));
-            suiteTokens = suiteTokens(suite.get(), declared, root, PlannerGuards.workspaceModuleDirs(root, null));
+            suiteTokens = suiteTokens(
+                    suite.get(),
+                    declared,
+                    root,
+                    PlannerGuards.workspaceModuleDirs(root, null),
+                    dir,
+                    ledgerReads(root, dir, declared, LedgerReads.Mode.NOW));
+            guards = !declared.isEmpty();
         }
-        List<String> tokens =
-                moduleLaneTokens(WorkspaceModel.rel(root, dir), main.get(), dir, testsIndexed, testFacts, suiteTokens);
+        List<String> head =
+                moduleLaneTokens(WorkspaceModel.rel(root, dir), main.get(), dir, testsIndexed, testFacts, List.of());
+        List<String> tokens = new ArrayList<>(head);
         addRuleTokens(tokens, load);
         String slice = baselineSlice(root, Lane.MODULE, WorkspaceModel.rel(root, dir), load.rules());
+        String taskId = ActionKey.qualifiedTaskId(TaskNames.GUARD, dir);
+        if (!guards) return new LaneProbe(laneKey(taskId, tokens, slice), "", tokens, slice, null, List.of());
+        List<String> withSuite = new ArrayList<>(head);
+        withSuite.addAll(suiteTokens);
+        addRuleTokens(withSuite, load);
         return new LaneProbe(
-                laneKey(ActionKey.qualifiedTaskId(TaskNames.GUARD, dir), tokens, slice), "", tokens, slice);
+                laneKey(taskId, tokens, slice),
+                "",
+                tokens,
+                slice,
+                laneKey(GuardVerdicts.suiteTaskId(taskId), withSuite, slice),
+                withSuite);
     }
 
     /**
@@ -301,24 +346,45 @@ final class GuardKeys {
 
     /**
      * What a module's {@code src/guard} suite adds to its lane's key, for the run and the forecast
-     * alike: the suite's index digest, every module's facts when a guard reads the workspace, the
-     * tree's text when a guard reads {@code Text}, so an edit to root text re-runs that suite, and
-     * every manifest and the lock when a guard reads {@code Model}. A suite is code that may branch
-     * on the operating system ({@code Skipped.onThisPlatform}), so only a lane that runs one keys
-     * the OS: the declarative rules read facts, text and manifests, the same bytes on every host.
+     * alike: the suite's index digest and the operating system, then what the suite reads.
+     *
+     * <p>With {@code ledgerReads}, the digest of what every guard of the suite read in its last run
+     * ({@link #ledgerReads}), that digest stands for the tree's text and the modules' facts: an edit
+     * outside every guard's reads keeps the verdict, an edit to one re-runs the suite. What the
+     * ledger's stamp covers and the key must still name: the workspace's modules, the sources and
+     * manifests of the modules on the suite's class path ({@code moduleDir} and its siblings), and
+     * the lock. Without it (no run yet, or a guard the ledger cannot replay), every module's facts
+     * when a guard reads the workspace, the tree's text when a guard reads {@code Text}.
+     *
+     * <p>Either way, every manifest and the lock when a guard reads {@code Model}. A suite is code
+     * that may branch on the operating system ({@code Skipped.onThisPlatform}), so only a lane that
+     * runs one keys the OS: the declarative rules read facts, text and manifests, the same bytes on
+     * every host.
      */
     static List<String> suiteTokens(
-            String suiteDigest, List<GuardSuites.Declared> declared, Path root, List<Path> workspaceModules)
+            String suiteDigest,
+            List<GuardSuites.Declared> declared,
+            Path root,
+            List<Path> workspaceModules,
+            Path moduleDir,
+            @Nullable String ledgerReads)
             throws IOException {
         List<String> tokens = new ArrayList<>();
         tokens.add("guard-suite:" + suiteDigest);
         tokens.add("os:" + Os.name());
         List<String> reads = new ArrayList<>();
-        if (GuardSuites.anyWorkspace(declared)) {
-            reads.addAll(workspaceTokens(root, workspaceModules));
-            reads.addAll(workspaceTestTokens(root, workspaceModules));
+        if (ledgerReads != null) {
+            reads.add("ledger-reads:" + ledgerReads);
+            for (Path m : workspaceModules) reads.add("member:" + WorkspaceModel.rel(root, m));
+            reads.addAll(classpathSourceTokens(root, moduleDir, workspaceModules));
+            reads.add(fileToken("lock", root.resolve(ManifestPaths.LOCK)));
+        } else {
+            if (GuardSuites.anyWorkspace(declared)) {
+                reads.addAll(workspaceTokens(root, workspaceModules));
+                reads.addAll(workspaceTestTokens(root, workspaceModules));
+            }
+            if (GuardSuites.anyReadsText(declared)) reads.addAll(BuildLogicSupport.workspaceInputTokens(root));
         }
-        if (GuardSuites.anyReadsText(declared)) reads.addAll(BuildLogicSupport.workspaceInputTokens(root));
         if (GuardSuites.anyReadsModel(declared)) {
             reads.add(fileToken("manifest", ManifestPaths.manifestIn(root)));
             for (Path m : workspaceModules) {
@@ -326,30 +392,100 @@ final class GuardKeys {
             }
             reads.add(fileToken("lock", root.resolve(ManifestPaths.LOCK)));
         }
-        if (!reads.isEmpty()) tokens.add(GuardVerdicts.SUITE_READS + ":" + Hashing.sha256Hex(String.join("\n", reads)));
+        if (!reads.isEmpty()) tokens.add("suite-reads:" + Hashing.sha256Hex(String.join("\n", reads)));
         return tokens;
     }
 
     /**
-     * Why a module lane whose key ({@code probe}'s) missed runs. When a verdict was reached over its
-     * {@link GuardVerdicts#heldTokens} and no record under the key itself waits on a tool, the
-     * module's own inputs held and its guard suite's workspace input moved, and the reason says so.
+     * {@link #suiteTokens} for the run: taken when asked, over the suite's last ledger read as
+     * {@code mode} says, so a lookup sees the ledger before the run and a store the one it left.
+     *
+     * <p>{@code beforeIndexes} runs first only when no ledger stands for the suite, since only then
+     * does the key read the modules' facts indexes. A ledger that stands for every guard holds no
+     * guard that takes {@code Facts}, so its key reads no index and need not wait for one.
      */
-    static String missReason(ActionCache actionCache, String taskId, LaneProbe probe, int rules, Path dir) {
-        List<String> held = GuardVerdicts.heldTokens(probe.tokens());
-        if (held != null && probe.key() != null) {
-            try {
-                if (actionCache.lookup(probe.key()).isEmpty()
-                        && actionCache
-                                .lookup(laneKey(Lane.MODULE, taskId, held, probe.slice(), dir))
-                                .isPresent()) {
-                    return "guards · " + rules + " rules · src/guard reads the workspace and it changed";
+    static EvalContext.IoSupplier<List<String>> suiteTokenSource(
+            String suiteDigest,
+            List<GuardSuites.Declared> declared,
+            Path root,
+            List<Path> workspaceModules,
+            Path moduleDir,
+            LedgerReads.Mode mode,
+            EvalContext.IoRunnable beforeIndexes) {
+        return () -> {
+            String reads = ledgerReads(root, moduleDir, declared, mode);
+            if (reads == null) beforeIndexes.run();
+            return suiteTokens(suiteDigest, declared, root, workspaceModules, moduleDir, reads);
+        };
+    }
+
+    /** The file beside the report a suite's run is configured by ({@link GuardSuiteRunner}). */
+    static final String RUN_PROPERTIES = "run.properties";
+
+    /**
+     * The digest of what the guards {@code declared} read in the last run of the suite at {@code
+     * moduleDir}, the tree's digests taken as {@code mode} says ({@link LedgerReads}); {@code null}
+     * when that run's ledger cannot stand for the suite (none, another root's, or a guard it cannot
+     * replay).
+     */
+    static @Nullable String ledgerReads(
+            Path root, Path moduleDir, List<GuardSuites.Declared> declared, LedgerReads.Mode mode) {
+        Path props = GuardSuites.report(BuildLayout.moduleTargetDir(moduleDir)).resolveSibling(RUN_PROPERTIES);
+        if (!Files.isRegularFile(props)) return null;
+        try {
+            GuardConfig config = GuardConfig.read(props);
+            Path at = config.root().toAbsolutePath().normalize();
+            if (!at.equals(root.toAbsolutePath().normalize())) return null;
+            return LedgerReads.digest(config, GuardSuites.ids(declared), mode, FileHashMemo::contentHash);
+        } catch (IOException | RuntimeException unreadable) {
+            return null; // a run cut short, or another jk's files: the key falls back to the whole tree
+        }
+    }
+
+    /**
+     * The text of every file under the {@code src} directory and the manifest of {@code moduleDir}
+     * and of each workspace module on its test class path: the code a suite runs besides its own
+     * classes, which its ledger's stamp covers and its reads need not.
+     */
+    private static List<String> classpathSourceTokens(Path root, Path moduleDir, List<Path> workspaceModules)
+            throws IOException {
+        Set<String> prefixes = new TreeSet<>();
+        Path module = moduleDir.toAbsolutePath().normalize();
+        prefixes.add(srcPrefix(root, module));
+        JkBuild project = JkBuildParser.parse(ManifestPaths.manifestIn(module));
+        for (Path classes : WorkspaceClasspath.resolve(module, project, WorkspaceClasspath.TEST_SCOPES)
+                .siblingClosureClasses()) {
+            Path owner = owningModule(classes, workspaceModules);
+            if (owner != null) prefixes.add(srcPrefix(root, owner));
+        }
+        List<String> tokens = new ArrayList<>();
+        for (String t : BuildLogicSupport.workspaceInputTokens(root)) {
+            String rel = t.substring("ws:".length(), t.lastIndexOf(':'));
+            for (String p : prefixes) {
+                String moduleRel = p.substring(0, p.length() - "src/".length());
+                if (rel.startsWith(p) || rel.equals(moduleRel + ManifestPaths.MANIFEST)) {
+                    tokens.add(t);
+                    break;
                 }
-            } catch (IOException e) {
-                Log.debug("guard forecast: the held verdict of " + taskId + " is unreadable", e);
             }
         }
-        return missed(actionCache, taskId, rules + " rules to evaluate");
+        return tokens;
+    }
+
+    private static String srcPrefix(Path root, Path module) {
+        String rel = WorkspaceModel.rel(root, module);
+        return rel.isEmpty() ? "src/" : rel + "/src/";
+    }
+
+    /** The workspace module whose directory holds {@code path} most closely, or {@code null}. */
+    private static @Nullable Path owningModule(Path path, List<Path> workspaceModules) {
+        Path abs = path.toAbsolutePath().normalize();
+        Path best = null;
+        for (Path m : workspaceModules) {
+            Path dir = m.toAbsolutePath().normalize();
+            if (abs.startsWith(dir) && (best == null || dir.getNameCount() > best.getNameCount())) best = dir;
+        }
+        return best;
     }
 
     /**

@@ -386,8 +386,8 @@ public final class WorkerContainment {
     /**
      * {@link #capPhrase} when the worker {@code pid} was killed at its own cap; {@link
      * #KILLED_FOR_MEMORY} when {@code exit} is SIGKILL and this workers group has seen a new {@code
-     * oom_kill} or is at {@code memory.max}; otherwise {@code otherwise}. One observation consumes
-     * one kill.
+     * oom_kill} or is at {@code memory.max}, or, score-only, the engine's {@code oom_kill} count rose;
+     * otherwise {@code otherwise}. One observation consumes one kill.
      */
     public static String failure(long pid, int exit, String otherwise) {
         MemoryKill kill = memoryKill(pid, exit);
@@ -401,7 +401,7 @@ public final class WorkerContainment {
         return KILLED_AT_CAP + size + OUTSIDE_HEAP;
     }
 
-    /** True when {@code exit} is a cgroup memory kill of the worker {@code pid}. Score-only mode has no signal. */
+    /** True when {@code exit} is a memory kill of the worker {@code pid}, as {@link #memoryKill} reads it. */
     public static boolean killedForMemory(long pid, int exit) {
         return memoryKill(pid, exit).killed();
     }
@@ -423,11 +423,13 @@ public final class WorkerContainment {
      * Classify a SIGKILL of the worker {@code pid}. Its own group having counted an {@code
      * oom_kill} is a kill at its cap; otherwise a new {@code oom_kill} on {@code workers}, or {@code
      * workers} at its {@code memory.max}, is a group kill. Another worker's cap kill is never this
-     * one's. Score-only mode has no signal.
+     * one's. In score-only mode, where workers share the engine's group, a new {@code oom_kill} on
+     * {@link #oomCounter} is a kill of this worker: its raised score makes it the kernel's victim.
      */
     public static MemoryKill memoryKill(long pid, int exit) {
         if (exit != SIGKILL_EXIT) return MemoryKill.NONE;
         State s = state;
+        if (s != null && s.mode == Mode.SCORE_ONLY) return scoreOnlyKill(s);
         Path workers = s == null ? null : s.workers;
         if (s == null || s.mode != Mode.CGROUP || workers == null) return MemoryKill.NONE;
         synchronized (s) {
@@ -438,6 +440,17 @@ public final class WorkerContainment {
             boolean increased = now >= 0 && now > s.oomKills;
             if (increased) s.oomKills = now;
             return increased || atMax(workers) ? new MemoryKill(true, -1L) : MemoryKill.NONE;
+        }
+    }
+
+    private static MemoryKill scoreOnlyKill(State s) {
+        Path counter = s.oomCounter;
+        if (counter == null) return MemoryKill.NONE;
+        synchronized (s) {
+            long now = readCounter(counter, "oom_kill");
+            if (now < 0 || now <= s.oomKills) return MemoryKill.NONE;
+            s.oomKills = now;
+            return new MemoryKill(true, -1L);
         }
     }
 
@@ -550,6 +563,13 @@ public final class WorkerContainment {
         }
     }
 
+    /** Score-only containment counting OOM kills in {@code counter}, from its current count. */
+    static void armScoreOnlyForTest(@Nullable Path counter) {
+        synchronized (WorkerContainment.class) {
+            state = State.scoreOnly("test", counter);
+        }
+    }
+
     /** Forget {@link #install} / {@link #armForTest}. Does not move the process back. */
     static void resetForTest() {
         synchronized (WorkerContainment.class) {
@@ -562,7 +582,7 @@ public final class WorkerContainment {
         String note = scopeNote();
         if (plan.mode() != Mode.CGROUP) {
             if (plan.mode() == Mode.SCORE_ONLY)
-                return State.scoreOnly(withScopeNote(Mode.SCORE_ONLY, plan.reason(), note));
+                return State.scoreOnly(withScopeNote(Mode.SCORE_ONLY, plan.reason(), note), oomCounter(root));
             return State.of(plan);
         }
         Path own = Objects.requireNonNull(plan.own(), "own");
@@ -578,7 +598,7 @@ public final class WorkerContainment {
                     moved = true;
                 } catch (IOException e) {
                     Log.debug("worker containment move: " + e.getMessage());
-                    return notedScore(note, "could not move the engine into its cgroup");
+                    return notedScore(root, note, "could not move the engine into its cgroup");
                 }
             }
             if (plan.enableMemory()) {
@@ -587,7 +607,7 @@ public final class WorkerContainment {
                 } catch (IOException e) {
                     Log.debug("worker containment subtree_control: " + e.getMessage());
                     if (moved) moveBack(own, pid);
-                    return notedScore(note, "could not enable the memory controller");
+                    return notedScore(root, note, "could not enable the memory controller");
                 }
             }
             try {
@@ -596,7 +616,7 @@ public final class WorkerContainment {
             } catch (IOException e) {
                 Log.debug("worker containment limits: " + e.getMessage());
                 if (moved) moveBack(own, pid);
-                return notedScore(note, "could not set the worker memory limit");
+                return notedScore(root, note, "could not set the worker memory limit");
             }
             long seen = readCounter(workers.resolve("memory.events"), "oom_kill");
             long memTotal = MemoryProbe.current().totalBytes();
@@ -607,7 +627,7 @@ public final class WorkerContainment {
         } catch (IOException e) {
             Log.debug("worker containment setup: " + e.getMessage());
             if (moved) moveBack(own, pid);
-            return notedScore(note, "cannot create a child cgroup");
+            return notedScore(root, note, "cannot create a child cgroup");
         }
     }
 
@@ -641,8 +661,24 @@ public final class WorkerContainment {
         }
     }
 
-    private static State notedScore(String note, String reason) {
-        return State.scoreOnly(withScopeNote(Mode.SCORE_ONLY, reason, note));
+    private static State notedScore(Path root, String note, String reason) {
+        return State.scoreOnly(withScopeNote(Mode.SCORE_ONLY, reason, note), oomCounter(root));
+    }
+
+    /**
+     * Where a score-only engine counts the kernel's OOM kills: its own group's {@code memory.events},
+     * which counts kills of the workers that stay in it, or, where that has no {@code oom_kill}
+     * (cgroup v1, the root group of a container), the host's {@code proc/vmstat}. Null when neither
+     * can be read.
+     */
+    static @Nullable Path oomCounter(Path root) {
+        Path own = OwnCgroup.own(root);
+        if (own != null) {
+            Path events = own.resolve("memory.events");
+            if (readCounter(events, "oom_kill") >= 0) return events;
+        }
+        Path vmstat = root.resolve("proc/vmstat");
+        return readCounter(vmstat, "oom_kill") >= 0 ? vmstat : null;
     }
 
     /** The client's scope note, one line, capped. Empty when the scope was used or nothing was said. */
@@ -783,6 +819,10 @@ public final class WorkerContainment {
         final long max;
         final @Nullable Path workers;
         final BudgetSource budgetSource;
+        /** Score-only: the file whose {@code oom_kill} count {@link #oomKills} tracks; null when none. */
+        @Nullable
+        Path oomCounter;
+
         long oomKills;
         /** Each worker runs in its own capped group under {@link #workers}. */
         boolean perWorker;
@@ -812,6 +852,16 @@ public final class WorkerContainment {
 
         static State scoreOnly(String reason) {
             return new State(Mode.SCORE_ONLY, reason, -1L, null, 0L, BudgetSource.HOST);
+        }
+
+        /** Score-only, counting OOM kills in {@code counter} from the count it holds now. */
+        static State scoreOnly(String reason, @Nullable Path counter) {
+            State s = scoreOnly(reason);
+            if (counter != null) {
+                s.oomCounter = counter;
+                s.oomKills = Math.max(0L, readCounter(counter, "oom_kill"));
+            }
+            return s;
         }
 
         static State of(Plan plan) {

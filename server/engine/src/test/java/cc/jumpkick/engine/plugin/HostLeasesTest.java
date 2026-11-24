@@ -278,6 +278,29 @@ class HostLeasesTest {
     }
 
     @Test
+    void jvms_leased_without_a_slot_leave_every_slot_to_the_engines_they_drive() throws Exception {
+        WorkerLeases.Ledger outer = engine(1001, BUDGET, 2, owner -> true);
+        WorkerLeases.Ledger nested = engine(1002, BUDGET, 2, owner -> true);
+        List<String> testJvm = List.of("java", "-Xmx128m", "-cp", "runner.jar", "Main");
+        List<WorkerLeases.Grant> testJvms = new ArrayList<>();
+        for (int i = 0; i < 3; i++)
+            testJvms.add(outer.acquireWithoutSlot(testJvm, 3L, JvmOptions.HeapChoice.inspect(testJvm)));
+        assertThat(outer.snapshot().runningJvms()).isZero();
+        awaitRecorded(outer);
+
+        try (WorkerLeases.Grant first = acquire(nested, 64 * MIB, 7L).get(5, TimeUnit.SECONDS);
+                WorkerLeases.Grant second = acquire(nested, 64 * MIB, 7L).get(5, TimeUnit.SECONDS)) {
+            assertThat(first.jvm()).isTrue();
+            assertThat(second.jvm()).isTrue();
+            assertThat(nested.snapshot().runningJvms()).isEqualTo(2);
+        }
+        assertThat(nested.otherEnginesBytes())
+                .isEqualTo(
+                        testJvms.stream().mapToLong(WorkerLeases.Grant::bytes).sum());
+        testJvms.forEach(WorkerLeases.Grant::close);
+    }
+
+    @Test
     void the_budget_the_first_engine_recorded_is_the_one_every_engine_leases_against() throws Exception {
         Set<Long> live = ConcurrentHashMap.newKeySet();
         live.add(1001L);

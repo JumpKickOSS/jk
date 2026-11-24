@@ -6,6 +6,7 @@ import cc.jumpkick.host.ChildEnv;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.host.time.Suspensions;
 import cc.jumpkick.jsonl.BoundedLineReader;
+import cc.jumpkick.run.JkThreads;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -210,7 +211,7 @@ public final class PluginProcess {
                 onProtocol,
                 onPassthrough,
                 0L,
-                LearnedHeaps.engine(),
+                starter(LearnedHeaps.engine()),
                 ORPHAN_DRAIN_GRACE_MS);
     }
 
@@ -245,9 +246,28 @@ public final class PluginProcess {
             long idleTimeoutMs,
             LearnedHeaps heaps)
             throws IOException, InterruptedException {
+        return converse(command, env, workDir, prefix, onProtocol, onPassthrough, idleTimeoutMs, starter(heaps));
+    }
+
+    /** As {@link #converse(List, WorkerEnv, Path, String, BiConsumer, Consumer, long)}, forked and leased by {@code starter}. */
+    public static WorkerExit converse(
+            List<String> command,
+            WorkerEnv env,
+            @Nullable Path workDir,
+            String prefix,
+            BiConsumer<String, Conversation> onProtocol,
+            @Nullable Consumer<String> onPassthrough,
+            long idleTimeoutMs,
+            Starter starter)
+            throws IOException, InterruptedException {
         ProcessBuilder pb = builder(command, env);
         if (workDir != null && Files.isDirectory(workDir)) pb.directory(workDir.toFile());
-        return converse(pb, prefix, onProtocol, onPassthrough, idleTimeoutMs, heaps, ORPHAN_DRAIN_GRACE_MS);
+        return converse(pb, prefix, onProtocol, onPassthrough, idleTimeoutMs, starter, ORPHAN_DRAIN_GRACE_MS);
+    }
+
+    /** The production {@link Starter}: a JVM slot and a memory lease, learned peaks recorded on {@code heaps}. */
+    public static Starter starter(LearnedHeaps heaps) {
+        return (p, heap) -> JobWorkers.start(p, heap, heaps);
     }
 
     /** As the watchdog overload with the orphan drain grace given in millis (tests). */
@@ -265,7 +285,7 @@ public final class PluginProcess {
                 onProtocol,
                 null,
                 idleTimeoutMs,
-                LearnedHeaps.engine(),
+                starter(LearnedHeaps.engine()),
                 orphanDrainGraceMs);
     }
 
@@ -376,7 +396,7 @@ public final class PluginProcess {
             BiConsumer<String, Conversation> onProtocol,
             @Nullable Consumer<String> onPassthrough,
             long idleTimeoutMs,
-            LearnedHeaps heaps,
+            Starter starter,
             long orphanDrainGraceMs)
             throws IOException, InterruptedException {
         WorkerCommands commands = WorkerCommands.open();
@@ -389,7 +409,7 @@ public final class PluginProcess {
                     onPassthrough,
                     commands,
                     idleTimeoutMs,
-                    (p, heap) -> JobWorkers.start(p, heap, heaps),
+                    starter,
                     orphanDrainGraceMs,
                     process -> null);
         } finally {
@@ -502,29 +522,10 @@ public final class PluginProcess {
                     }
                 }
             });
-            while (true) {
-                if (pumpDone.await(100, TimeUnit.MILLISECONDS)) break;
-                if (!process.isAlive()) {
-                    // Root is gone; let the pump drain buffered output and see EOF. If the grace
-                    // elapses the write end is held by a reparented orphan we can neither
-                    // enumerate nor wake — abandon the pump rather than wedge the job thread:
-                    // the stragglers still visible are killed, the pump gets the same grace again
-                    // to deliver the lines the fork wrote before it died, and only then is the
-                    // parent's read end closed (best effort; a pump parked on the orphan's pipe
-                    // stays parked until the orphan exits, and reads nothing more for the job).
-                    if (!pumpDone.await(orphanDrainGraceMs, TimeUnit.MILLISECONDS)) {
-                        abandoned.set(true);
-                        JobWorkers.destroyTree(process);
-                        pumpDone.await(orphanDrainGraceMs, TimeUnit.MILLISECONDS);
-                        forceStop(process);
-                    }
-                    break;
-                }
-            }
-            // A worker that answers on its channel wrote its last frames there before it exited; the
-            // channel closes when this block ends, so its reader finishes first. The worker's end of
-            // the socket closed with the process, so the reader is at end of input already.
-            if (sideReader != null) sideReader.join(orphanDrainGraceMs);
+            // A step on the engine's CPU pool waits here for as long as its worker runs; a managed
+            // block lets the pool run the other builds' steps meanwhile.
+            Thread frames = sideReader;
+            JkThreads.blockManaged(() -> awaitOutput(process, pumpDone, abandoned, frames, orphanDrainGraceMs));
             RuntimeException handler = handlerError.get();
             if (handler != null) {
                 // The finally below stops the worker; the exit code of a kill we asked for says
@@ -576,6 +577,43 @@ public final class PluginProcess {
             }
         }
         return new WorkerExit(process.pid(), process.waitFor());
+    }
+
+    /**
+     * Wait until the pump of {@code process} has read its output to the end, abandoning it when the
+     * root has exited and an orphan holds the pipe, then give {@code frames}, the channel reader if
+     * any, the same grace to finish.
+     */
+    private static void awaitOutput(
+            Process process,
+            CountDownLatch pumpDone,
+            AtomicBoolean abandoned,
+            @Nullable Thread frames,
+            long orphanDrainGraceMs)
+            throws InterruptedException {
+        while (true) {
+            if (pumpDone.await(100, TimeUnit.MILLISECONDS)) break;
+            if (!process.isAlive()) {
+                // Root is gone; let the pump drain buffered output and see EOF. If the grace
+                // elapses the write end is held by a reparented orphan we can neither
+                // enumerate nor wake — abandon the pump rather than wedge the job thread:
+                // the stragglers still visible are killed, the pump gets the same grace again
+                // to deliver the lines the fork wrote before it died, and only then is the
+                // parent's read end closed (best effort; a pump parked on the orphan's pipe
+                // stays parked until the orphan exits, and reads nothing more for the job).
+                if (!pumpDone.await(orphanDrainGraceMs, TimeUnit.MILLISECONDS)) {
+                    abandoned.set(true);
+                    JobWorkers.destroyTree(process);
+                    pumpDone.await(orphanDrainGraceMs, TimeUnit.MILLISECONDS);
+                    forceStop(process);
+                }
+                break;
+            }
+        }
+        // A worker that answers on its channel wrote its last frames there before it exited; the
+        // channel closes when this block ends, so its reader finishes first. The worker's end of
+        // the socket closed with the process, so the reader is at end of input already.
+        if (frames != null) frames.join(orphanDrainGraceMs);
     }
 
     /** Give {@code process} end-of-input on its stdin; commands never travel there. */

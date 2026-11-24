@@ -182,7 +182,7 @@ open_ticket() {
     -t "Flaky test ${class##*.}: it fails and passes on re-run with nothing changed"
     -accept "${class##*.} passes 20 runs in a row under jk test -r" -m "$body")
   [[ -n "${FLAKY_PARENT:-}" ]] && args+=(-parent "$FLAKY_PARENT")
-  "$KA" "${args[@]}" </dev/null 2>/dev/null | jq -r '.id // empty' 2>/dev/null || true
+  "$KA" "${args[@]}" </dev/null 2>/dev/null | jq -r '.created[0].id // empty' 2>/dev/null || true
 }
 
 review() {

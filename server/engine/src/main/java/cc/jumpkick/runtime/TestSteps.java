@@ -2,12 +2,12 @@
 package cc.jumpkick.runtime;
 
 import static cc.jumpkick.runtime.BuildPlanner.*;
-import static cc.jumpkick.runtime.PlannerTest.resolveBeforeGate;
 import static cc.jumpkick.runtime.PlannerTest.runTestsRequires;
 import static cc.jumpkick.runtime.PlannerTest.suiteFilter;
 import static cc.jumpkick.runtime.TestStampInputs.testStampWorkerJars;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.StampedMemo;
 import cc.jumpkick.config.TestSelection;
@@ -17,6 +17,7 @@ import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.TestCache;
 import cc.jumpkick.orchestrator.OrchestratorCode;
 import cc.jumpkick.orchestrator.TestClassMatch;
 import cc.jumpkick.orchestrator.TestRun;
@@ -38,6 +39,7 @@ import cc.jumpkick.task.CompiledTests;
 import cc.jumpkick.task.InputGuard;
 import cc.jumpkick.task.KeyAudit;
 import cc.jumpkick.task.KeyContract;
+import cc.jumpkick.task.SourceApiIndex;
 import cc.jumpkick.task.TestStamp;
 import cc.jumpkick.task.ToolchainPolicy;
 import cc.jumpkick.task.WorkerClosure;
@@ -46,6 +48,7 @@ import cc.jumpkick.test.SuiteEnvDelivery;
 import cc.jumpkick.test.SuiteFilter;
 import cc.jumpkick.test.SuiteReads;
 import cc.jumpkick.test.TestLauncherFailure;
+import cc.jumpkick.test.TestTelemetry;
 import cc.jumpkick.util.TestHomes;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -53,6 +56,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
@@ -133,20 +137,20 @@ final class TestSteps {
             settleUnmatched(ctx, in, effectiveSel, suites, actionCache, testTaskId, !testSrcs.isEmpty(), snippets);
             return;
         }
+        // Each phase up to the launch as one perf line, the cone check's own in its cone-check line.
+        Perf.Laps laps = Perf.laps();
         // The test runtime classpath is the siblings' jars: wait for them to be written.
         SiblingWaits.awaitSiblingTestRuntime(ctx, in);
         // Worker jars feed both the forked JVM and the TestStamp: nested-engine CLI modules
         // enrich with the engine, every PluginJar and the native client, so the stamp matches what
         // the suite actually loads and starts — the same set the forecast uses.
-        Map<String, String> workerJars =
-                SiblingWaits.awaitWorkerSiblings(ctx, in, testStampWorkerJars(in.dir(), projectUnderTest));
+        Map<String, String> workerJars = laps.lap(
+                "siblings", SiblingWaits.awaitWorkerSiblings(ctx, in, testStampWorkerJars(in.dir(), projectUnderTest)));
         TestStampInputs stamp = stampInputs(ctx, in, projectUnderTest, pluginDecls, workerJars);
-        List<Path> testRtCp = stamp.runtimeClasspath();
-        WorkerEnv testEnv = TestLaunch.suiteEnvironment(ctx, in, projectUnderTest);
-        TestTier tier = stamp.tier();
-        InputGuard suiteGuard = suiteGuard(ctx, testClasses, testRtCp);
+        WorkerEnv testEnv = suiteEnvironment(ctx, in, projectUnderTest);
+        InputGuard suiteGuard = suiteGuard(ctx, testClasses, stamp.runtimeClasspath());
         SuiteDiscovery.Rekey rekey = () -> namedStampKey(ctx, in, stamp, affected, testSrcs);
-        String stampKey = stampKey(rekey, affected, projectUnderTest, effectiveSel);
+        String stampKey = laps.lap("stamp", stampKey(rekey, affected, projectUnderTest, effectiveSel));
         KeyAudit.used(in.dir(), TaskNames.RUN_TESTS, stampKey, rekey::key);
         // --force forces a real test run, matching the compile/package
         // freshness checks above (which all guard on !rerun). Without
@@ -157,12 +161,12 @@ final class TestSteps {
         // A coverage run is a request for a report; a replayed green marker has none.
         boolean coverage = in.session().coverage() || projectUnderTest.build().testCoverage();
         boolean rerun = SuiteRunRules.forcedRunReason(in.session(), projectUnderTest) != null;
-        if (replayedGreenRun(ctx, rerun, stampKey, projectUnderTest, testEnv, tier)
+        if (replayedGreenRun(ctx, rerun, stampKey, projectUnderTest, testEnv, stamp.tier())
                 || replayedGuardRun(ctx, rerun, affected, stamp, testSrcs, projectUnderTest, testEnv, suites)) return;
         List<Path> runtimeCp = TestLaunch.testRuntimeCpWithLanguageRuntimes(
-                ctx, shape.kotlin(), shape.groovy(), cas, testRtCp, testSrcs);
+                ctx, shape.kotlin(), shape.groovy(), cas, stamp.runtimeClasspath(), testSrcs);
         // Discovery writes under target/ and reads sibling manifests, so it can throw: it runs
-        // before the gate too, never between the acquire and the try that releases it.
+        // before the gate, which is only ever taken inside the try that releases it.
         SuiteDiscovery.Run reads = recordReads(ctx, in, projectUnderTest, effectiveSel, testEnv, runtimeCp, affected);
         // Under the same stamp the classes that passed before still stand: a red or cut-short
         // suite runs only what has not passed yet. Under [test] cache = "cone" so does a class that
@@ -171,26 +175,21 @@ final class TestSteps {
         // whole selection.
         boolean whole = rerun || affected != null || stamp.cachesModule();
         TestClassLedger ledger = beginLedger(ctx, reads, stamp, whole, testClasses, runtimeCp, stampKey, moduleLabel);
+        laps.end("after-stamp", "run-tests.before " + in.dir());
         TestLaunch.reweightForRealRun(ctx, in);
         if (suites.describe() != null) ctx.output(suites.describe());
-        // Test execution is serialized across the checkout's concurrently-built units
-        // unless the user opted into parallel tests — shared ports/locks/fixtures. The
-        // worker count is decided once the gate is held: a suite parked at the gate is
-        // not running, and the ones running when it starts are what it shares with.
-        boolean gated = !in.session().parallelTests();
-        TestGates.Hold[] gate = new TestGates.Hold[1];
         Path coverageExec = coverage ? TestLaunch.coverageExecFile(ctx) : null;
-        // The agent and the report tool come first: a coverage run that cannot fetch
-        // JaCoCo fails before any suite starts, not after the suite ran uninstrumented.
+        // The agent and the report tool come first, before the serial test gate: a coverage run that
+        // cannot fetch JaCoCo fails before any suite starts, and a fetch never parks the checkout's
+        // other suites behind it.
+        CoverageTools.Jacoco jacoco = coverage ? CoverageTools.resolve(projectUnderTest, cas) : null;
         // What the suite's JVMs read of the caller's environment is fetched and recorded as they run.
         SuiteEnvDelivery env = envDelivery(ctx, projectUnderTest, testEnv);
-        CoverageTools.Jacoco jacoco = resolveBeforeGate(
-                coverage ? () -> CoverageTools.resolve(projectUnderTest, cas) : null,
-                gated,
-                () -> gate[0] =
-                        TestGates.acquire(ctx.require(MODULE).layout().workspaceRoot(), SessionCancel::cancelled));
         // Started last before the launch, closed in its finally: nothing between can leave it listening.
         env.start();
+        // Test execution is serialized across the checkout's concurrently-built units unless the
+        // user opted into parallel tests (shared ports, locks, fixtures), once a JVM will start.
+        TestGates.Hold gate = null;
         // Null until the launch returns: a run stopped part way leaves it so.
         TestSummary result = null;
         boolean launcherFailed = false;
@@ -201,35 +200,42 @@ final class TestSteps {
             // class-wall rule once the selection is known. A debug run is one JVM.
             boolean debug = in.session().debugJvm() != null;
             boolean auto = !debug && TestLaunch.autoDispatch(in, projectUnderTest.build(), pluginDecls);
-            int testWorkers = debug ? 1 : TestLaunch.dispatchWorkers(in, projectUnderTest.build(), pluginDecls);
-            tagExcluded =
-                    listener(ctx, in, ledger, testWorkers, moduleLabel, snippets, suites, tier, affected, effectiveSel);
             // The module path is read off the runtime classpath, which the stamp already keys.
             List<String> forkJvmArgs = new ArrayList<>(stamp.jvmArgs());
             forkJvmArgs.addAll(JvmModulePath.args(projectUnderTest, in.dir(), runtimeCp));
             SuiteResources.Launcher launcher = ledger.launching((settled, s) -> TestLaunch.launcher(
-                            in, projectUnderTest, effectiveSel, forkJvmArgs, s, affected, jacoco, coverageExec, settled)
+                            in, projectUnderTest, forkJvmArgs, s, affected, jacoco, coverageExec, settled)
                     .withRecording(env.probe())
                     .withIntegrationResults(ctx.require(MODULE).layout().integrationResultsDir())
                     .withAutoShare(auto)
                     .withWidening(auto ? TestLaunch.liveWorkers(in, projectUnderTest.build(), pluginDecls) : null)
                     .withRecording(reads.flag()));
+            SuiteResources.Starts starts = ctx.get(COMPILED_TESTS)
+                    .map(c -> new SuiteResources(c.suiteRoots()))
+                    .orElse(SuiteResources.NONE)
+                    .starts(
+                            testClasses,
+                            suites,
+                            effectiveSel.classes(),
+                            projectUnderTest.build().testExcludeClasses(),
+                            affected,
+                            launcher,
+                            // A launch whose classes all passed earlier or hold no test starts no JVM.
+                            SuiteFilter.holdsTestsIn(testClasses, tagCp),
+                            runtimeCp);
+            gate = TestGates.acquireFor(
+                    starts,
+                    in.session().parallelTests(),
+                    ctx.require(MODULE).layout().workspaceRoot(),
+                    SessionCancel::cancelled);
+            // The worker count is decided once the gate is held: a suite parked at the gate is not
+            // running, and the ones running when it starts are what it shares with.
+            int testWorkers = debug ? 1 : TestLaunch.dispatchWorkers(in, projectUnderTest.build(), pluginDecls);
+            tagExcluded = listener(
+                    ctx, in, ledger, testWorkers, moduleLabel, snippets, suites, stamp.tier(), affected, effectiveSel);
             try {
-                result = ctx.get(COMPILED_TESTS)
-                        .map(c -> new SuiteResources(c.suiteRoots()))
-                        .orElse(SuiteResources.NONE)
-                        .launch(
-                                testClasses,
-                                suites,
-                                effectiveSel.classes(),
-                                // The settled classes are left out by the launcher alone: a launch
-                                // whose only matches passed earlier still starts, and runs nothing.
-                                projectUnderTest.build().testExcludeClasses(),
-                                affected,
-                                launcher,
-                                runtimeCp,
-                                (one, cp, l) -> TestLaunch.launch(
-                                        ctx, in, one, cp, testWorkers, workerJars, env.launchEnv(), l, tagExcluded));
+                result = starts.run((one, cp, l) ->
+                        TestLaunch.launch(ctx, in, one, cp, testWorkers, workerJars, env.launchEnv(), l, tagExcluded));
             } catch (TestLauncherFailure e) {
                 launcherFailed = true;
                 TestLaunch.reportLauncherFailure(ctx, in, projectUnderTest, actionCache, testTaskId, stampKey, e);
@@ -238,7 +244,7 @@ final class TestSteps {
         } finally {
             env.close();
             HeapNotes.flush(ctx);
-            if (gate[0] != null) gate[0].close();
+            if (gate != null) gate.close();
             if (result == null)
                 storeCutShort(ledger, launcherFailed, actionCache, suiteGuard, rekey, testTaskId, stampKey);
         }
@@ -314,17 +320,26 @@ final class TestSteps {
 
     /**
      * How the run's test JVMs reach the caller's environment ({@link SuiteEnvDelivery}), said once
-     * per JDK when that JDK keeps the probe from the programs a test starts.
+     * per JDK when that JDK keeps the probe from the programs a test starts. A suite replayed by its
+     * classes' cones has the probe mark the workspace's classes, its own and its siblings' jars, so
+     * its records say which classes each one ran; a coverage run does not, since the coverage agent
+     * must see the classes as compiled.
      */
-    private SuiteEnvDelivery envDelivery(TaskContext ctx, JkBuild project, WorkerEnv testEnv) {
+    private SuiteEnvDelivery envDelivery(TaskContext ctx, JkBuild project, WorkerEnv testEnv) throws IOException {
         Path javaHome = ctx.require(JAVA_HOME);
+        BuildLayout layout = ctx.require(MODULE).layout();
+        boolean uses = TestTelemetry.shadow()
+                && !in.session().coverage()
+                && !project.build().testCoverage()
+                && TestStampInputs.testCache(project, in.dir()) == TestCache.CONE;
         SuiteEnvDelivery env = SuiteEnvDelivery.prepare(
                 in.cache(),
                 EnvReadReport.recordDir(in.dir()),
-                ctx.require(MODULE).layout().classesDir(),
+                layout.classesDir(),
                 javaHome,
                 project,
-                testEnv);
+                testEnv,
+                uses ? layout.workspaceRoot() : null);
         String unhooked = env.unhooked();
         if (unhooked == null) return env;
         boolean[] first = {false};
@@ -412,7 +427,7 @@ final class TestSteps {
                 mainClasses(ctx),
                 runtimeCp,
                 ctx.get(JAVA_HOME).orElse(null),
-                stamp.extras(),
+                stamp::extras,
                 ctx.get(COMPILED_TESTS).map(CompiledTests::resourceDirs).orElse(List.of()),
                 stampKey);
     }
@@ -494,18 +509,22 @@ final class TestSteps {
             List<Path> runtimeCp,
             AffectedTestRun.@Nullable Outcome affected)
             throws IOException {
+        Map<String, String> workerJars = testStampWorkerJars(in.dir(), project);
         List<Path> keyed = keyedRoots(
                 ctx,
                 in,
                 testEnv,
                 ctx.get(COMPILED_TESTS).map(CompiledTests::sources).orElse(List.of()),
                 runtimeCp,
-                testStampWorkerJars(in.dir(), project));
+                workerJars);
+        List<Path> workers = new ArrayList<>();
+        for (String jar : workerJars.values()) workers.add(Path.of(jar));
         return SuiteDiscovery.start(
                 ctx.require(MODULE).layout(),
                 in.dir(),
                 selection,
                 keyed,
+                workers,
                 project.build().testNetworkAllowed(),
                 affected == null,
                 project);
@@ -603,7 +622,7 @@ final class TestSteps {
             TestFailureSource.Cache snippets,
             List<String> said)
             throws Exception {
-        Judged judged = judgeClassSelection(ctx, in, sel, exactClassList, suites, tagExcluded, result);
+        TestClassMatch.Verdict judged = judgeClassSelection(ctx, in, sel, exactClassList, suites, tagExcluded, result);
         if (judged == null) return;
         TestSummary ran = judged.result();
         if (ran != null) {
@@ -619,12 +638,16 @@ final class TestSteps {
         }
     }
 
-    /**
-     * What a {@code --class} selection left: the summary of the tests that ran, or {@code null} when
-     * none did, and the no-match message when the selection named something that did not run.
-     */
-    private record Judged(
-            @Nullable TestSummary result, @Nullable String noMatch) {}
+    /** The environment this module's suite JVMs get ({@link SuiteEnvironment#of}), with the Node.js the plan locked. */
+    private static WorkerEnv suiteEnvironment(TaskContext ctx, BuildPlanner.Inputs in, JkBuild project)
+            throws Exception {
+        return SuiteEnvironment.of(
+                in.dir(),
+                project,
+                ctx.require(MODULE).layout(),
+                ctx.get(BuildPlanner.NODE_HOME).orElse(null),
+                in.profileName());
+    }
 
     /** The run-tests stamp's inputs as this run reads them: what the classpath step published, the worker jars awaited. */
     private static TestStampInputs stampInputs(
@@ -738,14 +761,12 @@ final class TestSteps {
     }
 
     /**
-     * The verdict a {@code --class} selection leaves, or null when this workspace module skips: a
-     * workspace judges the patterns across its modules, a standalone project fails on the spot,
-     * naming the runner's {@code tagExcluded} warning, with the tier that runs the class, when the
-     * tag filter emptied the run. A class named without a wildcard that the tag filter dropped fails
-     * the module, whatever else ran. A {@code --class} naming a class another suite owns says which
-     * suite, matched or not.
+     * The verdict a {@code --class} selection leaves ({@link TestClassMatch#judge}), or null when
+     * this workspace module skips: then it leaves the runner's tag-excluded warning and the suite
+     * hint, when there are, for the run-wide verdict. A module a qualified pattern names never
+     * skips: matching nothing fails it, and the failure names it.
      */
-    private static @Nullable Judged judgeClassSelection(
+    private static TestClassMatch.@Nullable Verdict judgeClassSelection(
             TaskContext ctx,
             BuildPlanner.Inputs in,
             TestSelection sel,
@@ -758,21 +779,15 @@ final class TestSteps {
                 ? null
                 : suites.classHint(
                         ctx.require(PARSED_BUILD).testClassesDir(), PlannerTest.tagClasspath(ctx), sel.classes());
-        boolean nothing = TestClassMatch.nothingMatched(sel, exactClassList, result);
-        if (!exactClassList && tagExcluded != null && TestClassMatch.namesClasses(sel)) {
-            return nothing
-                    ? new Judged(null, TestClassMatch.noMatchMessage(sel, tagExcluded, suiteHint))
-                    : new Judged(result, tagExcluded);
+        Session run = SessionContext.current();
+        boolean named = run.testSelection().namesModule(in.dir(), run.workingDir());
+        TestClassMatch.Verdict verdict = TestClassMatch.judge(
+                sel, exactClassList, tagExcluded, suiteHint, in.projectModules().size() > 1 && !named, result);
+        if (named && verdict.noMatch() != null && verdict.result() == null) {
+            String module = moduleLabel(run.workingDir(), in.dir());
+            verdict = new TestClassMatch.Verdict(null, TestClassMatch.inModule(module, verdict.noMatch()), false, null);
         }
-        if (!nothing) {
-            if (suiteHint != null) {
-                ctx.warn("class-in-other-suite", "--class " + String.join(", ", sel.classes()) + ": " + suiteHint);
-            }
-            return new Judged(result, null);
-        }
-        if (in.projectModules().size() > 1) {
-            // A workspace module the patterns matched nothing in skips, leaving the runner's
-            // tag-excluded warning and the suite hint, when there are, for the run-wide verdict.
+        if (verdict.skipped()) {
             if (tagExcluded != null || suiteHint != null) {
                 ctx.put(TEST_RUN, new TestRun(null, tagExcluded, suiteHint));
             }
@@ -780,7 +795,27 @@ final class TestSteps {
             ctx.cached();
             return null;
         }
-        return new Judged(null, TestClassMatch.noMatchMessage(sel, tagExcluded, suiteHint));
+        if (verdict.otherSuite() != null) {
+            ctx.warn(
+                    "class-in-other-suite",
+                    "--class " + String.join(", ", sel.classes()) + ": " + verdict.otherSuite());
+        }
+        return verdict;
+    }
+
+    /** {@code dir} as the user names the module: relative to the directory jk ran in when under it. */
+    private static String moduleLabel(Path workingDir, Path dir) {
+        Path base = workingDir.toAbsolutePath().normalize();
+        Path module = dir.toAbsolutePath().normalize();
+        try {
+            base = base.toRealPath();
+            module = module.toRealPath();
+        } catch (IOException e) {
+            // the lexical paths are the next best label
+        }
+        return module.startsWith(base) && !module.equals(base)
+                ? base.relativize(module).toString().replace('\\', '/')
+                : module.toString();
     }
 
     /** The affected-test selection when the session asked for one; null otherwise. */
@@ -809,6 +844,61 @@ final class TestSteps {
     }
 
     /**
+     * The tests a dirty suite runs, as the forecast says them: {@code all} of the tests the sources
+     * count ({@code bySource}, by class), or, where the classes' cones replay some ({@code
+     * replayed}), the rest of them ({@link TestClassRecording.Replayed#rerun}), which {@code s} then
+     * counts ({@link ForecastScope#rerunTests}). Only the classes the sources name count ({@link
+     * TestClassRecording.Replayed#within}).
+     */
+    private static String coneTests(
+            ForecastScope s,
+            TestClassRecording.@Nullable Replayed recorded,
+            Map<String, Integer> bySource,
+            String all) {
+        TestClassRecording.Replayed replayed = recorded == null ? null : recorded.within(bySource.keySet());
+        if (replayed == null || replayed.classes() == 0) return all;
+        s.rerunTests = (int) replayed.rerun(bySource);
+        return "~" + ForecastSteps.count(s.rerunTests, "test") + " · " + replayed.classes()
+                + (replayed.classes() == 1 ? " class" : " classes") + " replayed";
+    }
+
+    /**
+     * Which of the suite's classes replay once the pending compiles are built, by their cones ({@link
+     * TestClassRecording#replayedAfter}), with each worker jar its stamp hashes that is rebuilding run
+     * by the classes that read it, or null when the forecast counts them all: a module not under
+     * {@code [test] cache = "cone"}, a test source or KSP round that moves, or a dirty sibling whose
+     * edit the forecast cannot read.
+     */
+    private static TestClassRecording.@Nullable Replayed replayedByCones(
+            ForecastScope s, ForecastScope.Prepared prepared, boolean kspRuns) throws Exception {
+        if (s.testDirty || kspRuns) return null;
+        var edits = s.pendingEdits();
+        if (edits == null) return null;
+        return replayedByCones(s, prepared, edits);
+    }
+
+    /** {@link #replayedByCones} over {@code edits}, with the worker jars rebuilding; null off {@code "cone"}. */
+    private static TestClassRecording.@Nullable Replayed replayedByCones(
+            ForecastScope s, ForecastScope.Prepared prepared, List<SourceApiIndex.Hint> edits) throws Exception {
+        if (TestStampInputs.testCache(s.project, s.dir) != TestCache.CONE) return null;
+        BuildLayout layout = prepared.parsed().layout();
+        return TestClassRecording.replayedAfter(
+                s.dir,
+                layout,
+                layout.testClassesDir(),
+                layout.classesDir(),
+                prepared.classpaths().testRuntime(),
+                edits,
+                TestStampInputs.rebuildingWorkers(s.dir, s.project, s.dirtySiblings())
+                        .values(),
+                TestSupport.launchClasses(
+                        s.dir,
+                        prepared.parsed().compact(),
+                        SessionContext.selectionFor(s.dir),
+                        s.project.build().runSuites()));
+    }
+
+    /**
      * run-tests' price: dirty when a compile it reads runs or a test-scope sibling is rebuilding,
      * else the green marker under the same stamp key the live step stores — the runtime classpath
      * as the run hashes it, a wiped tree read as the bytes the build restores.
@@ -817,7 +907,7 @@ final class TestSteps {
         ForecastScope s = ForecastScope.of(scope);
         if (s.skipTests || !s.haveTests()) return null;
         // As the run decides it first: a module --exclusive left out runs no suite.
-        if (!SuiteRunRules.selectedForTests(SessionContext.current().testSelection(), s.dir)) {
+        if (!SuiteRunRules.selectedForTests(SessionContext.selectionFor(s.dir), s.dir)) {
             return new TaskForecast.Task(
                     TaskNames.RUN_TESTS, TaskForecast.Status.CACHED, TaskNames.TESTS_NOT_SELECTED, null);
         }
@@ -827,12 +917,14 @@ final class TestSteps {
         BuildLayout layout = prepared.parsed().layout();
         // The tests this run selects: an integration run is priced by its integration tests, not
         // every unit test beside them.
-        int estimated = TestSupport.estimateSelectedSuiteTestCount(
-                s.dir, compact, SessionContext.current().testSelection());
+        Map<String, Integer> bySource =
+                TestSupport.estimateSelectedSuiteTests(s.dir, compact, SessionContext.selectionFor(s.dir));
+        int estimated = 0;
+        for (int n : bySource.values()) estimated += n;
         s.testCount = estimated;
         String tests = estimated > 0 ? "~" + ForecastSteps.count(estimated, "test") : "tests";
-        // The run's own rule (SuiteRunRules.forcedRunReason): a rebuild, debug or coverage run never
-        // replays a green marker, so neither does its forecast.
+        // The run's own rule (SuiteRunRules.forcedRunReason): a rebuild, re-run, debug or coverage
+        // run never replays a green marker, so neither does its forecast.
         String forced = SuiteRunRules.forcedRunReason(SessionContext.current(), s.project);
         if (forced != null) {
             return new TaskForecast.Task(
@@ -854,9 +946,10 @@ final class TestSteps {
         if (kept == null && (s.compileDirty || s.compileDepDirty || s.testDirty || s.testDepDirty || kspRuns)) {
             String jk = StampTokens.jkMoved(
                     s.dir,
-                    SessionContext.current().testSelection(),
+                    SessionContext.selectionFor(s.dir),
                     KeyContract.SUITE.keyVersion(),
                     OrchestratorCode.digest());
+            if (jk == null) tests = coneTests(s, replayedByCones(s, prepared, kspRuns), bySource, tests);
             String why = jk != null
                     ? "run tests · " + jk + " · " + tests
                     : jarOnly
@@ -868,6 +961,8 @@ final class TestSteps {
         // sibling is rebuilding: the run hashes the rebuilt jar, the jar on disk is the old one.
         String worker = TestStampInputs.rebuildingWorker(s.dir, s.project, s.orderDeps);
         if (worker != null) {
+            // Nothing on the suite's classpath moves: under cones only the classes that read the jar run.
+            tests = coneTests(s, replayedByCones(s, prepared, List.of()), bySource, tests);
             return new TaskForecast.Task(
                     TaskNames.RUN_TESTS,
                     TaskForecast.Status.RUN,
@@ -915,8 +1010,7 @@ final class TestSteps {
         boolean network = !hit
                 && !red
                 && !s.project.build().testNetworkAllowed()
-                && SuiteReads.load(s.dir, SessionContext.current().testSelection())
-                        .network();
+                && SuiteReads.load(s.dir, SessionContext.selectionFor(s.dir)).network();
         Perf.note("forecast-test-stamp " + s.dir, "key", stampKey, "hit", hit, "red", red);
         if (hit)
             return new TaskForecast.Task(
@@ -944,15 +1038,70 @@ final class TestSteps {
                         ? null
                         : StampTokens.reason(
                                 s.dir,
-                                SessionContext.current().testSelection(),
+                                SessionContext.selectionFor(s.dir),
                                 () -> stamp.forecastKey(compact, layout.classesDir(), finalMainFp));
+        // A suite that reached another host stores no marker, yet the run still replays each class
+        // whose cone stands; the classes that reached it run again (TestClassRecording#unmoved). A
+        // red or cut-short run under this same stamp settled the classes it got through, which the
+        // run leaves out first (TestClassLedger#begin); a red one's ledger names every class it held.
+        String priced = unread != null || stampKey == null
+                ? tests
+                : coneTests(s, sameStampFirst(s, stamp, layout, compact, stampKey, red), bySource, tests);
         return new TaskForecast.Task(
                 TaskNames.RUN_TESTS,
                 TaskForecast.Status.RUN,
                 "run tests · " + (network ? TaskForecast.TESTS_USE_NETWORK + " · " : "")
                         + (unread != null ? SuiteReads.unreadMessage(unread) + " · " : "")
-                        + (moved != null ? moved + " · " : "") + tests
+                        + (moved != null ? moved + " · " : "") + priced
                         + (red ? " · " + TaskForecast.LAST_RUN_FAILED : ""),
                 null);
+    }
+
+    /**
+     * What a missed suite replays by its classes' cones, as the run decides it under {@code [test]
+     * cache = "cone"}: each class whose key has not moved since it passed. Every input is current
+     * where this is asked, so the keys are the ones the run takes. None off {@code "cone"}.
+     */
+    private static TestClassRecording.Replayed replayedByConeNow(
+            ForecastScope s, TestStampInputs stamp, BuildLayout layout, boolean compact, String stampKey)
+            throws IOException {
+        if (!stamp.cachesByCone()) return TestClassRecording.Replayed.NONE;
+        List<Path> resources = stamp.forecastResources(compact);
+        if (resources == null) return TestClassRecording.Replayed.NONE;
+        TestSelection selection = SessionContext.selectionFor(s.dir);
+        return SuiteDiscovery.replayedByCone(
+                s.dir,
+                layout,
+                selection,
+                stamp.runtimeClasspath(),
+                stamp.extras(),
+                resources,
+                stampKey,
+                TestSupport.launchClasses(
+                        s.dir, compact, selection, s.project.build().runSuites()));
+    }
+
+    /**
+     * What a run under {@code stampKey} leaves out: first what the classes ledger under it settled,
+     * the classes a red or cut-short run under the same stamp passed ({@link
+     * TestClassLedger#recordedIn}), then, for the classes it never recorded, what their cones
+     * replay. A {@code red} run's ledger holds every class it ran, so no cone is walked for it.
+     */
+    private static TestClassRecording.Replayed sameStampFirst(
+            ForecastScope s, TestStampInputs stamp, BuildLayout layout, boolean compact, String stampKey, boolean red)
+            throws IOException {
+        Set<String> launches = SuiteResources.launchNames(
+                s.dir,
+                compact,
+                SessionContext.selectionFor(s.dir),
+                s.project.build().runSuites());
+        TestClassRecording.Replayed ledger = TestClassRecording.Replayed.of(TestClassLedger.load(
+                        s.actionCache,
+                        stampKey,
+                        coordinate(s.project),
+                        stamp.tier().name())
+                .recordedIn(launches));
+        if (red) return ledger;
+        return ledger.over(replayedByConeNow(s, stamp, layout, compact, stampKey));
     }
 }

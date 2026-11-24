@@ -208,6 +208,47 @@ class WorkerContainmentTest {
     }
 
     @Test
+    void score_only_sigkill_is_killed_for_memory_when_the_oom_kill_count_rose() throws Exception {
+        Path events = root.resolve("memory.events");
+        Files.writeString(events, "low 0\nhigh 0\nmax 0\noom 3\noom_kill 3\n");
+        try {
+            WorkerContainment.armScoreOnlyForTest(events);
+            assertThat(WorkerContainment.failure(NOT_A_WORKER, 137, "exited 137"))
+                    .isEqualTo("exited 137");
+            Files.writeString(events, "oom 4\noom_kill 4\n");
+            assertThat(WorkerContainment.failure(NOT_A_WORKER, 1, "exited 1")).isEqualTo("exited 1");
+            assertThat(WorkerContainment.failure(NOT_A_WORKER, 137, "exited 137"))
+                    .isEqualTo("killed for memory");
+            assertThat(WorkerContainment.memoryKill(NOT_A_WORKER, 137).atCap()).isFalse();
+            assertThat(WorkerContainment.killedForMemory(NOT_A_WORKER, 137))
+                    .as("one kill is reported once")
+                    .isFalse();
+
+            WorkerContainment.armScoreOnlyForTest(null);
+            Files.writeString(events, "oom_kill 9\n");
+            assertThat(WorkerContainment.killedForMemory(NOT_A_WORKER, 137)).isFalse();
+        } finally {
+            WorkerContainment.resetForTest();
+        }
+    }
+
+    @Test
+    void score_only_counts_oom_kills_in_its_own_group_else_the_host() throws Exception {
+        Files.createDirectories(root.resolve("proc/self"));
+        Files.writeString(root.resolve("proc/self/cgroup"), "0::/user.slice/jk\n");
+        Path own = root.resolve("sys/fs/cgroup/user.slice/jk");
+        Files.createDirectories(own);
+        assertThat(WorkerContainment.oomCounter(root)).isNull();
+
+        Path vmstat = root.resolve("proc/vmstat");
+        Files.writeString(vmstat, "pgfault 10\noom_kill 0\n");
+        assertThat(WorkerContainment.oomCounter(root)).isEqualTo(vmstat);
+
+        Files.writeString(own.resolve("memory.events"), "oom 0\noom_kill 0\n");
+        assertThat(WorkerContainment.oomCounter(root)).isEqualTo(own.resolve("memory.events"));
+    }
+
+    @Test
     void the_engine_budget_is_read_again_when_the_containment_changes() throws Exception {
         Assumptions.assumeTrue(WorkerContainment.envBudgetBytes() <= 0, "the budget is overridden");
         Path workers = root.resolve("workers");

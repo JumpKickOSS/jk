@@ -24,7 +24,7 @@ public final class HeapLadder {
      */
     public static long doubled(long heapBytes, long budgetBytes, long ceilingBytes) {
         long twice = Math.max(0, heapBytes) * 2L;
-        if (budgetBytes > 0) twice = WorkerLeases.clampXmx(twice, budgetBytes);
+        if (budgetBytes > 0) twice = LeaseDemand.clampXmx(twice, budgetBytes);
         if (ceilingBytes > 0) twice = Math.min(twice, ceilingBytes / WorkerLeases.MIB * WorkerLeases.MIB);
         return twice;
     }

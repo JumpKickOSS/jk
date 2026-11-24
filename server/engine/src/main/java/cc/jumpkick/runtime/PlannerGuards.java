@@ -77,6 +77,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.Semaphore;
@@ -267,9 +268,7 @@ final class PlannerGuards {
                             ectx,
                             tokens,
                             ActionKey.qualifiedTaskId(TaskNames.GUARD_OUTPUT, g.root()),
-                            false,
-                            List.of(),
-                            null);
+                            false);
                     ctx.progress(1);
                 })
                 .build();
@@ -279,11 +278,15 @@ final class PlannerGuards {
 
     /**
      * The lane's evaluation wrapped in what must surround it: the module's suite forks first and
-     * the report it leaves is read under the same turn on the tree.
+     * the report it leaves is read under the same turn on the tree; a module lane waits for the
+     * sibling outputs its run reads. A replayed verdict runs none of it.
      */
     interface Evaluation {
         LaneRun.Result run(EvalContext.IoSupplier<LaneRun.Result> evaluate) throws IOException;
     }
+
+    /** What one judgement of a lane's rules came to short of red: the label it leaves, and whether its verdict was cached. */
+    private record Judged(String label, boolean cached) {}
 
     /**
      * One lane, with its failure on record. The step's diagnostic carries a throwable's message
@@ -298,12 +301,91 @@ final class PlannerGuards {
             EvalContext ectx,
             EvalContext.IoSupplier<List<String>> tokenSupplier,
             String taskId,
-            boolean noClasses,
-            List<Rule> extraRules,
-            @Nullable Evaluation withSuite)
+            boolean noClasses)
             throws IOException {
+        executeLane(ctx, env, lane, ectx, tokenSupplier, taskId, noClasses, null);
+    }
+
+    /** As {@link #executeLane(TaskContext, LaneEnv, Lane, EvalContext, EvalContext.IoSupplier, String, boolean)}, its run inside {@code around}. */
+    static void executeLane(
+            TaskContext ctx,
+            LaneEnv env,
+            Lane lane,
+            EvalContext ectx,
+            EvalContext.IoSupplier<List<String>> tokenSupplier,
+            String taskId,
+            boolean noClasses,
+            @Nullable Evaluation around)
+            throws IOException {
+        Judged judged = logged(
+                lane,
+                () -> evaluateLane(
+                        ctx, env, lane, ectx, tokenSupplier, tokenSupplier, taskId, noClasses, null, around));
+        ctx.label(judged.label());
+        if (judged.cached()) ctx.cached();
+    }
+
+    /**
+     * A module lane whose {@code src/guard} suite declares guards: two judgements, each with its own
+     * verdict. The suite's ({@link GuardVerdicts#suiteTaskId}) is keyed on {@code suiteTokens}, what
+     * the module's declared rules read and what the suite reads beyond them; the declared rules' on
+     * {@code tokens} alone. An edit only the suite reads (another module, the tree's text, a
+     * manifest) re-runs the suite and leaves the declared rules cached. A run of the suite stores its
+     * verdict under {@code suiteStoreTokens}, taken once it has run: what it read, which the next
+     * build's {@code suiteTokens} name. Both run when either is red, so the step reports every red
+     * rule at once. Either judgement's run, when it runs, is inside {@code around}.
+     */
+    static void executeModuleLane(
+            TaskContext ctx,
+            LaneEnv env,
+            EvalContext ectx,
+            EvalContext.IoSupplier<List<String>> tokens,
+            EvalContext.IoSupplier<List<String>> suiteTokens,
+            EvalContext.IoSupplier<List<String>> suiteStoreTokens,
+            String taskId,
+            boolean noClasses,
+            List<Rule> suiteRules,
+            Evaluation withSuite,
+            Evaluation around)
+            throws IOException {
+        GuardsRed red = null;
+        Judged suite = null;
+        Judged declared = null;
         try {
-            evaluateLane(ctx, env, lane, ectx, tokenSupplier, taskId, noClasses, extraRules, withSuite);
+            suite = logged(
+                    Lane.MODULE,
+                    () -> evaluateLane(
+                            ctx,
+                            env,
+                            Lane.MODULE,
+                            ectx,
+                            suiteTokens,
+                            suiteStoreTokens,
+                            GuardVerdicts.suiteTaskId(taskId),
+                            false,
+                            suiteRules,
+                            evaluate -> around.run(() -> withSuite.run(evaluate))));
+        } catch (GuardsRed r) {
+            red = r;
+        }
+        try {
+            declared = logged(
+                    Lane.MODULE,
+                    () -> evaluateLane(ctx, env, Lane.MODULE, ectx, tokens, tokens, taskId, noClasses, null, around));
+        } catch (GuardsRed r) {
+            red = red == null ? r : new GuardsRed(red.getMessage() + "; " + r.getMessage());
+        }
+        if (red != null) throw red;
+        Judged d = Objects.requireNonNull(declared, "the declared rules' judgement");
+        Judged s = Objects.requireNonNull(suite, "the suite's judgement");
+        ctx.label(d.label() + " · src/guard " + s.label());
+        if (d.cached() && s.cached()) ctx.cached();
+    }
+
+    /** A lane's judgement, its throw logged with the trace unless it is the red verdict. */
+    private static Judged logged(Lane lane, EvalContext.IoSupplier<Judged> judge) throws IOException {
+        try {
+            return judge.get();
         } catch (GuardsRed red) {
             throw red;
         } catch (IOException | RuntimeException e) {
@@ -317,15 +399,22 @@ final class PlannerGuards {
         return GuardKeys.laneKey(lane, taskId, tokens, slice, env.in().dir());
     }
 
-    private static void evaluateLane(
+    /**
+     * One judgement of a lane: the lane's declared rules, or, given {@code suiteRules}, those alone,
+     * their run inside {@code withSuite} when given. The verdict is looked up under {@code tokenSupplier}'s tokens and
+     * a verdict the lane judges is stored under {@code storeSupplier}'s, taken once it has run. Red
+     * labels the step and throws {@link GuardsRed}.
+     */
+    private static Judged evaluateLane(
             TaskContext ctx,
             LaneEnv env,
             Lane lane,
             EvalContext ectx,
             EvalContext.IoSupplier<List<String>> tokenSupplier,
+            EvalContext.IoSupplier<List<String>> storeSupplier,
             String taskId,
             boolean noClasses,
-            List<Rule> extraRules,
+            @Nullable List<Rule> suiteRules,
             @Nullable Evaluation withSuite)
             throws IOException {
         GuardsPlan g = env.guards();
@@ -341,25 +430,23 @@ final class PlannerGuards {
                 ctx.error("guards", sb.toString().stripTrailing());
                 throw new GuardsRed(load.errors().size() + " load errors in jk-guards.toml");
             }
-            ctx.label("rules did not load");
-            return;
+            return new Judged("rules did not load", false);
         }
-        List<Rule> rules = new ArrayList<>(LaneRun.rulesFor(lane, load.rules(), ectx.module()));
+        List<Rule> rules = suiteRules != null
+                ? new ArrayList<>(suiteRules)
+                : new ArrayList<>(LaneRun.rulesFor(lane, load.rules(), ectx.module()));
         if (lane == Lane.OUTPUT && !coverageAsked(env, ectx)) rules.removeIf(PlannerGuards::readsCoverage);
         // jk guard compiles no tests: a rule over them waits for a build that does, rather than
         // recording a population over no test classes and drifting the baseline between the two.
-        if (lane == Lane.MODULE && !indexesTestClasses(env.in())) rules.removeIf(Evaluators::readsTestClasses);
-        rules.addAll(extraRules);
+        if (lane == Lane.MODULE && suiteRules == null && !indexesTestClasses(env.in()))
+            rules.removeIf(Evaluators::readsTestClasses);
         ectx = ectx.withRules(load.rules());
         Path baselineFile = GuardsPresence.baselineFile(g.root());
         Baseline baseline = BaselineFile.read(baselineFile);
         if (lane == Lane.MODEL && reportOrphans(ctx, g, load, baseline)) {
             throw new GuardsRed("baseline names retired rules");
         }
-        if (!LaneRun.judges(lane, rules)) {
-            ctx.label("no rules for this lane");
-            return;
-        }
+        if (!LaneRun.judges(lane, rules)) return new Judged("no rules for this lane", false);
         // The key's inputs are gathered only once there is a rule to key: a lane with nothing to
         // evaluate costs no stat, no walk.
         List<String> tokens = new ArrayList<>(tokenSupplier.get());
@@ -385,25 +472,21 @@ final class PlannerGuards {
             // that fails is a miss: the key would otherwise stay a permanent green with no evidence.
             boolean restored = verdict.get().outputs().isEmpty()
                     || cache.restoreArtifacts(verdict.get(), RuleSummaries.dir(g.root()));
-            if (restored) {
-                ctx.label(rules.size() + (rules.size() == 1 ? " rule" : " rules") + " · clean (cached)");
-                ctx.cached();
-                return;
-            }
+            if (restored) return replayed(ctx, rules, verdict.get().said());
             Log.debug("guard lane: " + taskId + " verdict found, its evidence did not restore");
         }
         if (noClasses) {
-            ctx.label("no classes · nothing to examine");
             cache.storeVerdict(taskId, key, inputsOf(tokens, baselineSha));
-            return;
+            return new Judged("no classes · nothing to examine", false);
         }
         EvalContext laneCtx = ectx;
         LaneRun.Result result = withSuite == null
                 ? runLane(lane, rules, laneCtx, baseline)
                 : withSuite.run(() -> runLane(lane, rules, laneCtx, baseline));
         // Engine validations ride the lane: invariants of the build model, not rules, so they
-        // have no table and no baseline, and a workspace without guards runs none.
-        List<Fault> faults = engineValidations(lane, g.root(), ectx);
+        // have no table and no baseline, and a workspace without guards runs none. A module's
+        // suite is judged apart from its declared rules, which carry them.
+        List<Fault> faults = suiteRules == null ? engineValidations(lane, g.root(), ectx) : List.of();
         for (Fault f : faults) ctx.error(f.code(), EngineValidations.render(f));
         boolean ci = Baselines.ciMode();
         String storedSlice = tightenBaseline(ctx, g, result, ci) ? GuardKeys.slice(g, lane, ectx, load) : baselineSha;
@@ -429,7 +512,8 @@ final class PlannerGuards {
                 ctx.error(m.rule().id(), GuardMessages.noBite(m.rule(), m.note()));
             }
         }
-        ctx.label(GuardMessages.summary(result, rules.size()));
+        String label = GuardMessages.summary(result, rules.size());
+        ctx.label(label);
         if (noBite > 0 && !result.red()) {
             ctx.output(GuardMessages.TRAILER);
             throw new GuardsRed(noBite + (noBite == 1 ? " guard has" : " guards have") + " no bite evidence");
@@ -447,7 +531,12 @@ final class PlannerGuards {
         Optional<Set<String>> tools = result.verdictTools();
         // Nor is a view missing modules: the run that builds them tightens the baseline, and until
         // then every run over the partial view says it left the baseline alone.
-        if (tools.isEmpty() || !result.unseen().isEmpty()) return;
+        Judged judged = new Judged(label, false);
+        if (tools.isEmpty() || !result.unseen().isEmpty()) return judged;
+        if (storeSupplier != tokenSupplier) {
+            tokens = new ArrayList<>(storeSupplier.get());
+            GuardKeys.addRuleTokens(tokens, load);
+        }
         String storeKey = laneKey(lane, taskId, tokens, storedSlice, env);
         // Stored under the baseline the lane tightened: the key the next build takes.
         KeyAudit.used(env.in().dir(), KeyAudit.stepOf(taskId), storeKey, laneKey);
@@ -459,15 +548,48 @@ final class PlannerGuards {
         for (Path f : List.of(RuleSummaries.file(g.root(), taskId), observationsFile(g.root(), taskId))) {
             if (Files.isRegularFile(f)) evidence.add(f);
         }
+        List<String> skips = skipNotices(result);
         if (evidence.isEmpty()) {
-            cache.storeVerdict(taskId, storeKey, inputsOf(tokens, storedSlice));
+            cache.storeVerdict(taskId, storeKey, inputsOf(tokens, storedSlice), skips);
         } else {
             cache.storeArtifacts(
-                    taskId, storeKey, inputsOf(tokens, storedSlice), RuleSummaries.dir(g.root()), evidence);
+                    taskId, storeKey, inputsOf(tokens, storedSlice), RuleSummaries.dir(g.root()), evidence, skips);
         }
-        // After the verdict, so the step's miss note is the verdict's.
-        List<String> held = GuardVerdicts.heldTokens(tokens);
-        if (held != null) GuardVerdicts.storeHeld(cache, taskId, laneKey(lane, taskId, held, storedSlice, env));
+        return judged;
+    }
+
+    /**
+     * The skipped guards of a judged lane as the verdict keeps them, one {@code <outcome> <rule id>
+     * <note>} line each, so a hit names what its run could not check.
+     */
+    static List<String> skipNotices(LaneRun.Result result) {
+        List<String> out = new ArrayList<>();
+        for (RuleReport r : result.skippedReports())
+            out.add(r.outcome().id() + " " + r.id() + " " + r.note().replace('\n', ' '));
+        return out;
+    }
+
+    /** A lane whose verdict replayed: the skips its run kept are said again and counted on its label. */
+    private static Judged replayed(TaskContext ctx, List<Rule> rules, List<String> said) {
+        int skipped = replaySkips(ctx, rules, said);
+        String label = rules.size() + (rules.size() == 1 ? " rule" : " rules") + " · clean (cached)";
+        return new Judged(skipped > 0 ? label + " · " + skipped + " skipped" : label, true);
+    }
+
+    /** Says again, as notices, the {@link #skipNotices} a cached verdict kept; returns how many. */
+    static int replaySkips(TaskContext ctx, List<Rule> rules, List<String> said) {
+        int n = 0;
+        for (String line : said) {
+            String[] parts = line.split(" ", 3);
+            if (parts.length < 2) continue;
+            for (Rule rule : rules) {
+                if (!rule.id().equals(parts[1])) continue;
+                ctx.warn(rule.id(), GuardMessages.outcome(rule, parts[0], parts.length > 2 ? parts[2] : ""));
+                n++;
+                break;
+            }
+        }
+        return n;
     }
 
     /**

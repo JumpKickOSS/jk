@@ -69,7 +69,7 @@ class DebugJvmAttachTest {
             int port = Integer.parseInt(announced.group(2));
             assertThat(port).isNotZero();
 
-            try (Socket socket = connectWhenListening(host, port, jk)) {
+            try (Socket socket = connectWhenListening(host, port, jk, err)) {
                 socket.setSoTimeout((int) PATIENCE.toMillis());
                 DataOutputStream out = new DataOutputStream(socket.getOutputStream());
                 DataInputStream in = new DataInputStream(socket.getInputStream());
@@ -131,8 +131,11 @@ class DebugJvmAttachTest {
         throw new AssertionError("no debug announcement on stderr:\n" + err.toString(StandardCharsets.UTF_8));
     }
 
-    /** The announcement precedes the fork by a compile, so the first connects are refused. */
-    private static Socket connectWhenListening(String host, int port, Thread jk)
+    /**
+     * The announcement precedes the fork by a compile, so the first connects are refused. A listener
+     * that never comes up fails with what jk printed: the build or the fork it was waiting on.
+     */
+    private static Socket connectWhenListening(String host, int port, Thread jk, ByteArrayOutputStream err)
             throws IOException, InterruptedException {
         long deadline = System.nanoTime() + PATIENCE.toNanos();
         IOException last = null;
@@ -150,6 +153,9 @@ class DebugJvmAttachTest {
                 throw e;
             }
         }
-        throw new AssertionError("no JDWP listener came up on " + host + ":" + port, last);
+        throw new AssertionError(
+                "no JDWP listener came up on " + host + ":" + port + (jk.isAlive() ? "" : " (jk exited)")
+                        + "; stderr:\n" + err.toString(StandardCharsets.UTF_8),
+                last);
     }
 }

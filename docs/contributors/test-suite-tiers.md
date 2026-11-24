@@ -46,7 +46,7 @@ Tag new heavy tests at class level:
 @Tag("integration") // engine/e2e / Jk.execute / workers
 @Tag("slow")        // Android / multi-minute / large downloads / waits out a real clock for 1s or more
 @Tag("network")     // talks to a real remote (Maven Central, a forge)
-@Tag("release")     // worth running once per release: a real browser (CI on the release tag)
+@Tag("release")     // too slow for every queue batch, run before each release: a real browser, a multi-minute end-to-end (the Full tier, CI on the release tag)
 @Tag("live")        // writes to this machine's own services (the OS keychain); desktop, on demand
 @Tag("bench")       // microbench only (never PR)
 @Tag("docs")        // walks the doc tree (docs/, the root Markdown); every gate tier runs it alone
@@ -100,6 +100,16 @@ engine classes; its `jk-engine` test edge is what hands its JVMs the engine and 
 build made and isolates their `JK_HOME` and `JK_STATE_DIR`. The harness both share (output capture,
 the isolated roots, the engine extension e2e/cli registers) is `clients/cli`'s `src/fixtures`.
 
+**A fast class in `e2e/cli` reads no engine and starts no program.** Its JVMs are handed the
+engine assembly, so a class that read it, or ran in a JVM where a program was started, is keyed by
+the engine's bytes, and so is every class after it in that JVM
+([per-class tests](per-class-tests.md#nested-engines-and-worker-jars)): an edit anywhere in the
+engine would run them again. The engine extension materializes the engine only in a JVM that may
+start one, never in the fast tier. A class that starts a program (Node, `git` outside its temp
+roots, an engine, a JVM of its own) is `integration` (guard `cli-e2e-fast-starts-nothing` holds the
+classes that start one themselves), and one that needs neither the engine's classes nor a real
+engine lives in `clients/cli`.
+
 **A wire contract keeps both sides honest without an engine in the CLI's suite.** `shared/wire`'s
 `src/fixtures` holds `WireContract`: exchanges written as literal JSON, each a request and the lines
 the engine answers it with, naming the fields whose value is the sender's own. `server/engine`'s
@@ -116,8 +126,11 @@ checksum) is a `network` test. Maven Central stays reachable for now: `jk new` l
 newest stable version of what it scaffolds there, and about twenty integration tests start with
 `jk new`.
 
-**The fast tier is walled off from the network.** The launcher hands every JVM of a run of the
-default suite alone (no `-s`, `-g`, `--all` or `-I`) in a module that routes tiers `JK_HTTP_DENY_HOSTS=*`: `Http` refuses a request to any
+**The fast tier is walled off from the network.** The launcher hands every JVM that runs the
+default suite in a module that routes tiers, in a run with no `-I`, `JK_HTTP_DENY_HOSTS=*`. The
+default suite and the suites that claim no tag share JVMs apart from every tag suite
+(`SuiteFilter.launches`), so under `-g` or `--all` they keep the wall, and an engine a `tree` or
+`slow` class starts cannot key the default suite's classes by the engine's bytes: `Http` refuses a request to any
 host but this one (loopback names and addresses) before it leaves the process, redirects and the
 Central failover included, with a `DeniedHostException` that names the host. Loopback stubs
 (`LoopbackHttp`, `MockMavenServer`) still answer. A unit test that needs a real repository or
@@ -136,8 +149,8 @@ the last commit it passed.
 
 | Tier | Command | What runs | When | Blocks |
 |------|---------|-----------|------|--------|
-| Branch | `scripts/queue/branch-tier.sh` | `jk guard`, then `jk test --exclusive` over the modules `--affected-since <merge-base>` selects: the fast tier of the modules the branch changed and their dependents (every module when a file outside them changed). The modules they build on compile but their suites do not run, and no native client is built; the Queue tier runs both. Then `jk test -s tree` | Before a branch is submitted to the merge queue | The submission |
-| Queue | `GATE_TIER=queue scripts/gate/run.sh <n> <sha>` | `jk guard`; `jk install -S` (the reinstall without tests, so every test runs under the batch's own engine); one `jk install -c` (every module's fast tier, then the reinstall); the integration suite of each module the batch changed (`scripts/gate/changed-modules.sh`); the [curated lane](#the-curated-integration-lane)'s classes in every other module; `jk test -s docs`; `jk test -s tree`; the shell fixtures | Every batch the merge queue gates | The push to `origin/main` |
+| Branch | `scripts/queue/branch-tier.sh` | `jk guard`, then `jk test --exclusive` over the modules `--affected-since <merge-base>` selects: the fast tier of the modules the branch changed and their dependents (every module when a file outside them changed). The modules they build on compile but their suites do not run, and no native client is built; the Queue tier runs both. Then `jk test -s tree`, and `scripts/gate/docs-only.sh check` as a warning. It also warns, and its pass line says so, when no shellcheck runs on the machine (`scripts/shellcheck.sh --runner`), since `jk guard` stays green when it skips the shellcheck guard and only names the skip | Before a branch is submitted to the merge queue | The submission |
+| Queue | `GATE_TIER=queue scripts/gate/run.sh <n> <sha>` | `jk guard`; `jk install -S` (the reinstall without tests, so every test runs under the batch's own engine); one `jk install -c` (every module's fast tier, then the reinstall); the integration classes ranked highest, within a budget, in each module the batch changed (`scripts/gate/changed-modules.sh`, [ranking](#the-queue-tier-runs-the-classes-a-batch-ranks-highest)); the [curated lane](#the-curated-integration-lane)'s classes in every other module; `jk test -s docs`; `jk test -s tree`; the shell fixtures | Every batch the merge queue gates | The push to `origin/main` |
 | Full | `scripts/gate/full-loop.sh`, each cycle `GATE_TIER=full scripts/gate/gate.sh <n> <sha>` | `jk guard`; `jk install -S`; `jk install -g -c` (the fast tier once, with every `integration`, `e2e` and `tree` class); `jk test -s docs`; `jk test -s release`; `jk test -s slow` when a plugin (a member under `plugins/`) or a root build file changed since `green` (`GATE_BASE`); the shell fixtures; the release notes | Back to back on the newest `main`, on a host of its own that shares no lock with the queue ([the Full tier loop](self-host.md#the-full-tier-loop)) | A release: it is cut from `green`. `main` may be red on it for a cycle or two: a confirmed culprit commit is reverted through the queue, and after two red cycles the queue lands only the fix |
 | Windows, macOS | `scripts/gate/platform-loop.sh windows` and `macos`, each run `scripts/gate/platform-run.sh` on the host | In a checkout and home of their own on Daybreak (Git Bash) and bocamacmini: `jk install -S`; every module's fast tier; each fast or integration test class with an OS condition; the product smoke | Each tip the Full loop takes, beside its Linux gate; a busy platform skips to the newest ([Windows and macOS](self-host.md#windows-and-macos)) | Nothing at first: a red run files a ticket. Once a platform has been green for a week, `green` moves only to tips it passed too |
 | Nightly | `ci-nightly.yml` | `integration`, `slow`, `network`, `bench`, the coverage ratchet, the examples | Its schedule, when the workflow is enabled | Nothing |
@@ -148,9 +161,74 @@ changed since `origin/main` onto the workspace member that holds it (the deepest
 pack is not its parent). A file under `docs/`, `scripts/`, `.github/` or `bench/`, or a Markdown
 file at the root, selects no module: guard, the fast tier and the shell fixtures read those. Any
 other file outside every member (the root `jk.toml`, `jk-lock.toml`, `.jk/`, `templates/`)
-selects them all, and the Queue tier runs the whole `integration` suite. The changed modules'
-suites run with `--exclusive`: a module's dependents are not run, which is what the curated lane is
-for. In the other modules a curated class runs alone, so no class runs twice.
+selects them all, and the Queue tier runs the whole `integration` suite. Otherwise its integration
+step is one `jk test -s integration -c --exclusive`: each changed module as a plain `-m`, with the
+classes the [ranking](#the-queue-tier-runs-the-classes-a-batch-ranks-highest) picks qualified
+when it leaves any for the Full tier, and each other module the curated lane names with its classes
+qualified (`-m server/engine -S server/engine:<class>`), so they run alone there. A module's
+dependents are not run, which is what the curated lane is for, and no class runs twice.
+
+### The Queue tier runs the classes a batch ranks highest
+
+A batch that changes `server/engine` or `e2e/cli` would otherwise run a suite of some 2,000 to 2,500
+seconds of class wall, several minutes even across every core. `scripts/gate/rank-integration.sh`
+ranks the integration classes of each changed module by how likely the batch is to break them, and
+the Queue tier runs them from the top while they fit the budget:
+
+1. **Must run:** a class whose own source the batch changed, and a class the curated lane names.
+   These run whatever the budget says.
+2. **Met the change when it last ran:** `jk test -e <base> -s integration -O jsonl` ranks the
+   module's classes from the record JumpKick kept of each one's last run on the gate host: its code ran
+   a class compiled from a changed source (`cone-ran:<class>`), or it read a changed file
+   (`reads:<path>`). A class with no record ranks here when its bytecode uses a changed type
+   (`abi-import:<type>` and the like). A class with a record that met nothing is not near the
+   change, whatever its source names.
+3. **Near the change, or failed recently:** a class whose recorded cone only reaches a changed
+   class (`cone:<class>`); a failure or a pass only on a re-run in `jk flaky list -O jsonl` (the
+   class's last 20 runs on the gate host), or a `FAILED` or `FLAKY … passed on` line in the
+   newest 100 gate logs.
+4. **The rest**, cheapest first, so that as many classes as fit run.
+
+Where JumpKick cannot rank a module (it refuses: a `jk.toml` changed, too many types or modules), rank 2
+is the classes whose source names a type whose source file the batch changed, and the gate log
+says so. JumpKick keeps the records of each checkout apart, so the Queue tier also reads those of
+the [Full tier](self-host.md#the-full-tier-loop), which runs every class: after each gate the Full
+loop ships its checkout's records to `full-records/` in the queue's repository, and before ranking
+`scripts/gate/class-records.sh import` adds to the queue checkout's records the rows of each class
+it has none of. A shipped row loses its key, so JumpKick ranks by it but never replays the class on
+it, and a row JumpKick wrote in the queue checkout always wins. The gate log says, for each changed
+module, how many of its classes have a record and how many of those have only rows the Full tier
+shipped
+(`rank-integration: <module>: <n> of <m> classes have a record, <k> of them from the Full tier`). A
+class neither checkout has run has no record and ranks by its bytecode.
+
+Within a rank the cheaper class comes first. A class's cost is its recorded wall, the `time` of its
+newest `target/failsafe-reports/TEST-<class>.xml` in the gate's checkout; a class with none counts
+as the median of the others. The suite's classes are the module's test sources tagged
+`integration` and no tag the integration suite excludes.
+
+**The budget** is 900 seconds of recorded class wall across every changed module
+(`GATE_INTEG_BUDGET`; `0` runs the changed modules' whole suites). A class that does not fit is
+deferred and the next one is tried. A class longer than 90 seconds (`GATE_INTEG_POLE`) is deferred
+unless it must run, since the step lasts at least as long as its longest class. A module none of
+whose classes was deferred runs its whole suite. A root build file change runs every module's whole
+suite, unranked.
+
+**Deferred, never dropped.** The gate log names each class left out on a `DEFERRED <module>
+<class> (<why>)` line and counts each changed module on an `INTEG_RANKED <module> ran <r> of <n>
+classes` line; the full ranking is `g<n>-ranking.txt` beside it. The Full tier runs every class
+(`jk install -g`), so a break in a deferred class turns the next Full cycle red, which blames the
+batch as for any other red ([the Full tier loop](self-host.md#the-full-tier-loop)).
+
+**The slowest end-to-ends wait for the Full tier.** The Queue tier's integration step runs the
+integration suites of up to three heavy modules side by side, and its wall is set by their total
+CPU. A class of a minute or more that a release must pass, but that a batch rarely breaks, carries
+`@Tag("release")` instead: the Helidon scaffolds served end to end (`HelidonTemplatesE2eTest`,
+`HelidonQuickstartE2eTest`), publish and release against a local repository (`PublishCommandTest`,
+`ReleaseCommandTest`), the cross-host key proof (`CrossHostKeyEqualityTest`), the forecast-against-run
+matrix (`ForecastRunParityMatrixTest`), the mirror and group-root walks (`UserConfigMirrorTest`,
+`GroupRootE2eTest`). The Full tier runs them on every cycle, so a break blocks the next release, not
+the batch.
 
 **A docs-only batch skips the Queue tier.** When every file a batch changed is a doc that no test
 reads but those of the docs suite ([docs-only](self-host.md#docs-only-changes)), the queue gates
@@ -187,10 +265,12 @@ spawn, worker, workspace, install or lock regression could merge with a determin
 test — sitting in the nightly suite run — that would have caught it.
 
 `scripts/curated-integration.sh` closes that gap. It reads `curated-integration.txt` at the
-checkout root and runs one `jk test -s integration -m <module> -S …` per module the
-registry names, as a step of the self-host job on every run of `ci.yml`. The Queue tier runs the
-same commands (`--print`) in every module the batch did not change. JumpKick fails a run in
-which no class matched, so a renamed or deleted entry fails the lane instead of shrinking it.
+checkout root and runs one `jk test -s integration -c -X -m <module> -S <module>:<class> …` over
+every module the registry names, as a step of the self-host job on every run of `ci.yml`; a module
+none of whose classes matched fails the run. The Queue tier runs the same command (`--print`), with
+`--with <module>` adding each module the batch changed as a plain `-m`, so that module's whole
+integration suite runs in the same call and its curated classes are not named. Guard G63 fails on
+an entry whose class is renamed or deleted, so the lane does not quietly shrink.
 
 **Curated membership is a duplicate execution policy, not a tag.** Every listed class is
 `@Tag("integration")` and still runs in the nightly suite run; nothing is reclassified to make the
@@ -202,9 +282,9 @@ The registry has one line per class:
 module | class | surface | outcomes | why it is merge-critical
 ```
 
-One `jk test` per module, so a module's classes run in that module's isolated sandbox under the
-same workers, engine and home the fast tier used, and a red module does not stop the next one; the
-lane is red when any module is.
+One `jk test` for all the modules, so their classes run side by side, each module's in its own
+isolated sandbox under the same workers, engine and home the fast tier used. `-c` keeps a red
+module from stopping the next one, and the lane is red when any module is.
 
 Six surfaces have to stay covered — `wire`, `spawn`, `workers`, `workspace`, `install`, `lock` —
 each with at least one `success` and one `failure` entry. Guard **G63** (`curated-integration`)
@@ -323,8 +403,9 @@ test cannot show a green CI run. Nothing runs the integration or slow tier on Wi
   then the curated integration lane and `jk audit -s HIGH` over the lock), the shell fixtures, the
   workflow lint and the commit-authorship scan. No coverage, no benches. After the curated lane, the
   self-host job runs `jk test -s release`: the tests a release must pass that are too slow or too
-  heavy for any other run, such as the dashboard's new-project wizard in Playwright's Chromium
-  (`NewProjectWizardE2eTest`). The tier may fetch (the browser, the dashboard's CDN). Beside it the
+  heavy for a queue batch, such as the dashboard's new-project wizard in Playwright's Chromium
+  (`NewProjectWizardE2eTest`); the Full tier runs them every cycle. The tier may fetch (the browser,
+  the dashboard's CDN, Maven Central). Beside it the
   `integration` job runs `jk test -s integration --continue`, and the Windows and macOS jobs wait
   for it. A red job stops the release.
 - **Nightly (`ci-nightly.yml`):** `jk test -s integration`, `-s slow`,
@@ -502,8 +583,8 @@ reaches every later resolve. The isolated home has its own store, cache, state a
 `config.toml` starts with `[m2] integration = false`, so a repository at Central's URL stores under
 the home rather than in the pooled Maven local repository, and Maven's `settings.xml` is pointed
 at a file that does not exist. Its `[templates] official` is a local bare repository built from
-the checkout's `templates/` (`LocalTemplateCatalog`, beside the sandbox slot's home and named by the
-content), so the home's engine clones its catalog without github.com; a test about the real
+the checkout's `templates/` (`LocalTemplateCatalog`, in the sandbox slot's temp root and named by the
+content, so per-class selection reads its git as git in a repository a test made), so the home's engine clones its catalog without github.com; a test about the real
 catalog's origin opts out with `@IsolatedHome(officialCatalogFromOrigin = true)`. A suite's shared
 home names the same repository: `SharedHomeTemplateCatalog` (core fixtures), a launcher listener
 that a suite starting engines lists in its `META-INF/services`, writes it into that home's

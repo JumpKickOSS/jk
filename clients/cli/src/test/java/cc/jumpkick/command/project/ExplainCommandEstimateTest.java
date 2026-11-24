@@ -296,6 +296,30 @@ class ExplainCommandEstimateTest {
     }
 
     @Test
+    void dirty_test_shows_the_tests_the_run_runs_not_the_module_total() {
+        // A suite under cone selection replays the classes nothing moved under: the tree says the
+        // tests the run runs, as the Build Plan's Tests row counts them, not the module's 454.
+        var module = TaskForecast.Module.fromWire(
+                Path.of("/tmp/host"),
+                "cc.jumpkick:jk-host",
+                List.of(
+                        new TaskForecast.Task("compile-java", TaskForecast.Status.CACHED, "", "abcd1234"),
+                        new TaskForecast.Task(
+                                "run-tests",
+                                TaskForecast.Status.RUN,
+                                "run tests · ~7 tests · 66 classes replayed",
+                                null)),
+                120,
+                454,
+                true,
+                false,
+                null,
+                7);
+        String chain = TestAnsi.strip(ExplainCommand.renderStageChain(module, Theme.active(), false));
+        assertThat(chain).isEqualTo("+ Compile > [ ] Test ~7 tests");
+    }
+
+    @Test
     void single_changed_source_and_single_test_are_singular() {
         // "1 source changed", "~1 test" — never "~1 tests".
         var module = TaskForecast.Module.fromWire(

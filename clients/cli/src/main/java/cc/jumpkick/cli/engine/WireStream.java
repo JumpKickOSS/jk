@@ -246,9 +246,11 @@ public final class WireStream {
      * The line a queued job prints. On joining the queue: {@code waiting for engine memory (2 jobs
      * ahead); live: test /home/me/app since 22:36}. On every later report: {@code queued behind 2
      * jobs for 5m, live: test /home/me/app since 22:36}. The live suffix is dropped when the engine
-     * named no live job.
+     * named no live job. A job held by cache maintenance prints {@code waiting for the cache prune
+     * to let go of the cache}.
      */
     static String waitingLine(JobQueuedFrame queued) {
+        if (JobQueuedFrame.CACHE.equals(queued.reason())) return "waiting for the cache prune to let go of the cache";
         int ahead = queued.ahead();
         String live = liveSuffix(queued.live());
         if (queued.waitedMs() <= 0) {

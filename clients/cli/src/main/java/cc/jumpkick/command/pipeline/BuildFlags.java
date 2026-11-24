@@ -324,6 +324,13 @@ public record BuildFlags(
                 throw new IllegalArgumentException("--class " + pattern.trim()
                         + " names no method after '#'; write Class#method or the class alone");
             }
+            String module = TestSelection.moduleOf(pattern.trim());
+            if (module != null
+                    && (module.isBlank()
+                            || TestSelection.classOf(pattern.trim()).isBlank())) {
+                throw new IllegalArgumentException(
+                        "--class " + pattern.trim() + " needs a module and a class around ':'; write module:Class");
+            }
         }
         if (in.isSet("quarantined")) classes = quarantinedClasses(root, classes);
         return TestSelection.of(suites, all, include, exclude, applyGuard, scriptsOnly, noScripts, classes);

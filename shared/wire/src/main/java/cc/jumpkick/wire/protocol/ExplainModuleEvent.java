@@ -6,7 +6,8 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * One module of a {@code jk explain} burst: its counts, what it produces, and the preflight's own
- * reason for scheduling it when it had one (see {@link EngineProtocol#EXPLAIN_MODULE}).
+ * reason for scheduling it when it had one (see {@link EngineProtocol#EXPLAIN_MODULE}). {@code
+ * rerunTests} is how many of its tests a run of its suite runs, the rest replayed.
  */
 public record ExplainModuleEvent(
         String dir,
@@ -15,7 +16,8 @@ public record ExplainModuleEvent(
         int testCount,
         boolean producesJar,
         boolean producesImage,
-        @Nullable String reason) {
+        @Nullable String reason,
+        int rerunTests) {
     public String encode() {
         return RequestJson.request(EngineProtocol.EXPLAIN_MODULE)
                 .string("dir", dir)
@@ -25,17 +27,20 @@ public record ExplainModuleEvent(
                 .bool("producesJar", producesJar)
                 .bool("producesImage", producesImage)
                 .string("reason", reason)
+                .number("rerunTests", rerunTests)
                 .finish();
     }
 
     public static ExplainModuleEvent decode(String json) {
+        int testCount = Jsonl.intValue(json, "testCount", 0);
         return new ExplainModuleEvent(
                 Jsonl.requiredStr(json, "dir"),
                 Jsonl.requiredStr(json, "coord"),
                 Jsonl.intValue(json, "sourceCount", 0),
-                Jsonl.intValue(json, "testCount", 0),
+                testCount,
                 Jsonl.bool(json, "producesJar", false),
                 Jsonl.bool(json, "producesImage", false),
-                Jsonl.str(json, "reason"));
+                Jsonl.str(json, "reason"),
+                Jsonl.intValue(json, "rerunTests", testCount));
     }
 }

@@ -197,6 +197,33 @@ class JkManagerPlainProgressTest {
     }
 
     @Test
+    void a_plain_heartbeat_says_what_a_waiting_step_waits_for() {
+        var noAnsi = JkConfig.empty().withNoAnsi(true);
+        SessionContext.runWhere(Session.defaults().withConfig(noAnsi), () -> {
+            var buf = new ByteArrayOutputStream();
+            var cm = JkManager.plan(stream(buf), "Test", true);
+            try {
+                cm.setPlanCoord("cc.jumpkick:jk");
+                cm.setRemainingWorkEstimate(90_000);
+                cm.progress(0, 100);
+                cm.addTask("cc.jumpkick:jk-cli-e2e", "guard");
+                cm.stepRunning("cc.jumpkick:jk-cli-e2e", "guard", "test");
+                cm.progress(9, 100);
+                cm.stepWaiting("cc.jumpkick:jk-cli-e2e", "guard", "thread");
+
+                cm.plain.lastPrintedNanos = System.nanoTime() - JkManagerPlainView.HEARTBEAT_MS * 1_000_000L - 1;
+                cm.maybeEmitPlainHeartbeat();
+
+                assertThat(buf.toString(StandardCharsets.UTF_8))
+                        .contains("cc.jumpkick:jk-cli-e2e ::")
+                        .contains("- running tests = Waiting for a free engine thread");
+            } finally {
+                cm.finishBuildPlanSuccess("Tests passed - took 1s", List.of());
+            }
+        });
+    }
+
+    @Test
     void plain_native_detail_is_verbose_only() {
         var noAnsi = JkConfig.empty().withNoAnsi(true);
         SessionContext.runWhere(Session.defaults().withConfig(noAnsi), () -> {

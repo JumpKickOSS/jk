@@ -31,12 +31,12 @@ class JobEnvelopeQueueTest {
         }
     }
 
-    /** A heap whose committed size never moves: the gate's ledger alone decides. */
-    private static MemoryAdmission gateFor(long maxMib, long idleMib, long perJobMib) {
+    /** A heap {@code roomMib} past the reserve whose committed size never moves: the ledger alone decides. */
+    private static MemoryAdmission gateFor(long roomMib, long idleMib, long perJobMib) {
         MemoryAdmission.Heap heap = new MemoryAdmission.Heap() {
             @Override
             public long maxBytes() {
-                return maxMib << 20;
+                return (roomMib << 20) + MemoryAdmission.RESERVE_BYTES;
             }
 
             @Override
@@ -56,7 +56,7 @@ class JobEnvelopeQueueTest {
 
     /** As {@link #gateFor} on the test's own clock and timing, so a wait can be advanced by hand. */
     private static MemoryAdmission gateFor(
-            long maxMib,
+            long roomMib,
             long idleMib,
             long perJobMib,
             MemoryAdmission.Timing timing,
@@ -64,7 +64,7 @@ class JobEnvelopeQueueTest {
         MemoryAdmission.Heap heap = new MemoryAdmission.Heap() {
             @Override
             public long maxBytes() {
-                return maxMib << 20;
+                return (roomMib << 20) + MemoryAdmission.RESERVE_BYTES;
             }
 
             @Override
@@ -92,8 +92,8 @@ class JobEnvelopeQueueTest {
         Path a = dir.resolve("a");
         Path b = dir.resolve("b");
         FakeEnvelopeHost host = new FakeEnvelopeHost();
-        // 200 MiB heap, 40 idle, 32 reserved: one 100 MiB job fits, the next waits for it.
-        JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS, gateFor(200, 40, 100));
+        // 100 MiB of heap past the reserve, 40 idle: one 100 MiB job fits, the next waits for it.
+        JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS, gateFor(100, 40, 100));
         CountDownLatch firstMayFinish = new CountDownLatch(1);
         long first = env.submit(
                 request("build-request", a),
@@ -136,6 +136,66 @@ class JobEnvelopeQueueTest {
     }
 
     /**
+     * A plan job that finds cache maintenance holding the cache (the idle prune between builds)
+     * says so on its own connection and in the log as soon as it waits, rather than sitting silent
+     * until the prune lets go; then it runs.
+     */
+    @Test
+    void a_plan_job_held_by_cache_maintenance_says_why_it_waits_then_runs(@TempDir Path dir) throws Exception {
+        FakeEnvelopeHost host = new FakeEnvelopeHost();
+        JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS, gateFor(1_900, 40, 100));
+        AtomicBoolean ran = new AtomicBoolean();
+        StringWriter out = new StringWriter();
+        // What the idle prune holds for its pass.
+        host.gate.writeLock().lock();
+        Thread client;
+        try {
+            client = Thread.ofVirtual()
+                    .start(() -> ConnectedClient.submit(
+                            env,
+                            request("build-request", dir),
+                            JobRequest.plan("build", "jk-test-", (line, tok, w) -> {
+                                ran.set(true);
+                                return JobOutcome.declined();
+                            }),
+                            out));
+            Await.until(Duration.ofSeconds(5), () -> out.toString().contains("\"reason\":\"cache\""));
+            JobQueuedFrame waits = JobQueuedFrame.decode(firstLine(out, "job-queued"));
+            assertThat(waits.reason()).isEqualTo(JobQueuedFrame.CACHE);
+            assertThat(out.toString().indexOf("\"type\":\"job-start\""))
+                    .as("the job has its jid before it waits")
+                    .isNotNegative()
+                    .isLessThan(out.toString().indexOf("\"type\":\"job-queued\""));
+            // The log line follows the wire frame, so it is waited for in its own right.
+            Await.until(Duration.ofSeconds(5), () -> List.copyOf(host.logs).stream()
+                    .anyMatch(l -> l.contains("waits for cache maintenance to let go of the cache")));
+            assertThat(ran).isFalse();
+        } finally {
+            host.gate.writeLock().unlock();
+        }
+        client.join(Duration.ofSeconds(10));
+
+        assertThat(ran).isTrue();
+        assertThat(host.logs).anyMatch(l -> l.contains("has the cache after"));
+        host.awaitSettled();
+    }
+
+    @Test
+    void a_plan_job_with_the_cache_free_sends_no_wait_line(@TempDir Path dir) throws Exception {
+        FakeEnvelopeHost host = new FakeEnvelopeHost();
+        JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS, gateFor(1_900, 40, 100));
+        StringWriter out = new StringWriter();
+        ConnectedClient.submit(
+                env,
+                request("build-request", dir),
+                JobRequest.plan("build", "jk-test-", (line, tok, w) -> JobOutcome.declined()),
+                out);
+        host.awaitSettled();
+        assertThat(out.toString()).contains("\"type\":\"job-start\"").doesNotContain("job-queued");
+        assertThat(host.logs).noneMatch(l -> l.contains("cache maintenance"));
+    }
+
+    /**
      * A detached build (an HTTP or MCP build) short of memory gets its jid while it waits, so its
      * request returns and frees its permit, and that jid cancels it in the queue.
      */
@@ -143,7 +203,7 @@ class JobEnvelopeQueueTest {
     void a_detached_job_short_of_memory_returns_its_jid_while_queued_and_cancels_by_it(@TempDir Path dir)
             throws Exception {
         FakeEnvelopeHost host = new FakeEnvelopeHost();
-        JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS, gateFor(200, 40, 100));
+        JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS, gateFor(100, 40, 100));
         CountDownLatch firstMayFinish = new CountDownLatch(1);
         env.submit(
                 request("build-request", dir.resolve("a")),
@@ -178,7 +238,7 @@ class JobEnvelopeQueueTest {
         Path a = dir.resolve("a");
         Path b = dir.resolve("b");
         FakeEnvelopeHost host = new FakeEnvelopeHost();
-        JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS, gateFor(200, 40, 100));
+        JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS, gateFor(100, 40, 100));
         CountDownLatch firstMayFinish = new CountDownLatch(1);
         env.submit(
                 request("build-request", a),
@@ -232,7 +292,7 @@ class JobEnvelopeQueueTest {
         Path lib = dir.resolve("lib");
         FakeEnvelopeHost host = new FakeEnvelopeHost();
         host.lastEventAt = 1_500L;
-        JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS, gateFor(200, 40, 100));
+        JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS, gateFor(100, 40, 100));
         CountDownLatch firstMayFinish = new CountDownLatch(1);
         long first = env.submit(
                 request("test-request", suite),
@@ -284,7 +344,7 @@ class JobEnvelopeQueueTest {
         FakeEnvelopeHost host = new FakeEnvelopeHost();
         MemoryAdmissionTest.FakeClock clock = new MemoryAdmissionTest.FakeClock();
         MemoryAdmission.Timing timing = new MemoryAdmission.Timing(Long.MAX_VALUE / 4, 120_000L, Long.MAX_VALUE / 4);
-        JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS, gateFor(200, 40, 100, timing, clock));
+        JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS, gateFor(100, 40, 100, timing, clock));
         CountDownLatch firstMayFinish = new CountDownLatch(1);
         long first = env.submit(
                 request("test-request", suite),

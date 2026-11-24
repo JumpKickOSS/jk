@@ -62,7 +62,7 @@ import org.junit.jupiter.api.io.TempDir;
  * test caches so repeat runs are warm.
  */
 // Out of the unit tier: network resolve of the Helidon BOM, JDK 27 forks.
-@Tag("integration")
+@Tag("release")
 class HelidonQuickstartE2eTest {
 
     private static final Path ROOT = RepoRoot.find(HelidonQuickstartE2eTest.class);

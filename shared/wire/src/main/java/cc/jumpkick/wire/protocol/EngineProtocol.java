@@ -136,7 +136,8 @@ public final class EngineProtocol {
      * carries {@code jid} (already the cancel handle), {@code ahead}, {@code reason}, {@code
      * waitedMs} and the {@code live} jobs holding the heap. Sent when the job first queues and
      * again every report interval while it waits, all before {@link #JOB_START}; a job that fits
-     * at once never sends it.
+     * at once never sends it. With {@code reason} {@code cache} it is sent once after {@link
+     * #JOB_START}: cache maintenance holds the cache and the job waits for it to let go.
      */
     public static final String JOB_QUEUED = "job-queued";
 
@@ -235,7 +236,7 @@ public final class EngineProtocol {
     /** Server → client: {@code BuildPlanListener.label}. */
     public static final String LABEL = "label";
 
-    /** Server → client: {@code BuildPlanListener.waiting}, a step's wait for a worker lease. */
+    /** Server → client: {@code BuildPlanListener.waiting}, what a step waits for (a lease, a thread, a lock). */
     public static final String TASK_WAIT = "task-wait";
 
     /** Server → client: {@code BuildPlanListener.output}. */
@@ -314,9 +315,9 @@ public final class EngineProtocol {
     public static final String ERR_ALREADY_RUNNING = "already-running";
 
     /**
-     * Server → client keep-alive while a long job runs. Resets client stream idle
-     * ({@code JK_STREAM_IDLE_MS}); clients ignore the payload. Interval: {@code JK_ENGINE_HEARTBEAT_MS}
-     * (default 30s; {@code 0} disables).
+     * Server → client keep-alive while a job, or a read served inline, runs. Resets client stream
+     * idle ({@code JK_STREAM_IDLE_MS}); the client's protocol reader drops the line. Interval:
+     * {@code JK_ENGINE_HEARTBEAT_MS} (default 30s; {@code 0} disables).
      */
     public static final String HEARTBEAT = "heartbeat";
 

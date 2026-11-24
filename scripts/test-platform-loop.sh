@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 # Fixtures for the Windows and macOS runs beside the Full tier, in scratch repositories with a
 # stand-in `jk` and `ka`. scripts/gate/platform-run.sh makes its own checkout and home, runs the fast
-# tier, each test class with an OS condition by module, and the product smoke, and says which steps
-# were red; a second run on the same directory is refused while the first holds it.
+# tier, each test class with an OS condition by module (a JUnit 3 one through the class that hosts
+# it), and the product smoke, and says which steps were red; a second run on the same directory is
+# refused while the first holds it. The product smoke's verdict is its build's, never its cleanup's.
 # scripts/gate/platform-loop.sh runs the newest tip the Full loop took, once; a red run files one
-# ticket, comments on it when the failures change and when the platform is green again. A trailing
+# ticket (or logs why ka would not), comments on it when the failures change and when the platform
+# is green again; no line of a red run says green. A trailing
 # platform does not hold green; one green for a week holds it, so green waits for its verdict and
 # moves when it passes (scripts/gate/green.sh).
 set -euo pipefail
@@ -68,6 +70,14 @@ commit "$dev" core/src/test/java/cc/example/PlainTest.java 'class PlainTest {}'
 commit "$dev" clients/cli/src/test/java/cc/example/MacWatchTest.java 'boolean mac = System.getProperty("os.name").contains("Mac");'
 commit "$dev" core/src/test/java/cc/example/OsSupport.java 'boolean windows = isWindows();'
 commit "$dev" core/src/test/java/cc/example/MacNetworkTest.java '@Tag("network") @EnabledOnOs(OS.MAC) class MacNetworkTest {}'
+# A JUnit 3 class the JUnit Platform cannot select runs through the module's test class that names
+# it; one whose only host is of the network tier is left to that tier, and one no class names stays.
+commit "$dev" clients/ide/src/test/java/cc/example/IdeImportTest.java 'public class IdeImportTest extends HeavyPlatformTestCase { boolean w = SystemInfo.isWindows; }'
+commit "$dev" clients/ide/src/test/java/cc/example/IdeHostedTest.java '@Tag("integration") class IdeHostedTest { List<Class<? extends TestCase>> s = List.of(IdeImportTest.class); }'
+commit "$dev" clients/ide/src/test/java/cc/example/IdeHostedNetTest.java '@Tag("network") class IdeHostedNetTest { Object o = IdeImportTest.class; }'
+commit "$dev" clients/ide/src/test/java/cc/example/IdeNetOnlyTest.java 'class IdeNetOnlyTest extends HeavyPlatformTestCase { boolean m = SystemInfo.isMac; }'
+commit "$dev" clients/ide/src/test/java/cc/example/IdeNetOnlyHostTest.java '@Tag("network") class IdeNetOnlyHostTest { Object o = IdeNetOnlyTest.class; }'
+commit "$dev" shared/kt/src/test/kotlin/cc/example/LoneTest.kt 'class LoneTest : UsefulTestCase() { val w = SystemInfo.isWindows }'
 git -C "$dev" add scripts && git -C "$dev" commit -qm "scripts"
 git -C "$dev" push -q origin HEAD:main
 tip="$(git -C "$dev" rev-parse HEAD)"
@@ -80,8 +90,13 @@ grep -qx 'test -c --no-ansi' "$pd/jk.log" || fail "the fast tier did not run: $(
 grep -qx 'test -A -c --no-ansi -m core --class cc.example.WinPathTest' "$pd/jk.log" || fail "core's OS class did not run alone: $(cat "$pd/jk.log")"
 grep -qx 'test -A -c --no-ansi -m clients/cli --class cc.example.MacWatchTest' "$pd/jk.log" || fail "clients/cli's OS class did not run: $(cat "$pd/jk.log")"
 grep -q 'PlainTest\|OsSupport\|MacNetworkTest' "$pd/jk.log" && fail "a class with no OS condition, no test, or of the network tier ran: $(cat "$pd/jk.log")"
+grep -qx 'test -A -c --no-ansi -m clients/ide --class cc.example.IdeHostedTest' "$pd/jk.log" ||
+  fail "a JUnit 3 OS class did not run through the class that hosts it: $(cat "$pd/jk.log")"
+grep -qx 'test -A -c --no-ansi -m shared/kt --class cc.example.LoneTest' "$pd/jk.log" ||
+  fail "a JUnit 3 OS class no class hosts was dropped: $(cat "$pd/jk.log")"
+grep -q 'IdeImportTest\|IdeHostedNetTest\|IdeNetOnly' "$pd/jk.log" && fail "a JUnit 3 class or a network-tier host ran: $(cat "$pd/jk.log")"
 grep -qx 'new smoke-app' "$pd/jk.log" || fail "the product smoke did not run: $(cat "$pd/jk.log")"
-grep -q '^OS_CLASSES 2 in 2 modules$' <<<"$out" || fail "the run did not count the OS classes: $out"
+grep -q '^OS_CLASSES 4 in 4 modules$' <<<"$out" || fail "the run did not count the OS classes: $out"
 
 # A home that exists installs the commit, without a new bootstrap; the red steps are named.
 commit "$dev" fail-clients-cli.txt "breaks clients/cli's OS class"
@@ -100,6 +115,32 @@ mkdir "$pd/run.lock" && echo $$ >"$pd/run.lock/pid"
 out="$(PLATFORM_DIR="$pd" bash "$ROOT/scripts/gate/platform-run.sh" macos "$tip" "$WORK/origin.git" 2>&1)"
 [[ "$out" == "PLATFORM BUSY: run $$ holds $pd" ]] || fail "a second run was not refused: $out"
 rm -rf "$pd/run.lock"
+
+# --- ci-product-smoke.sh: the verdict is the build's, not its cleanup's. The stand-in jk's build
+# leaves target/graph unremovable for SMOKE_HOLD seconds, as an engine still writing it does. ---
+mkdir -p "$WORK/smoke-bin" "$WORK/smoke-tmp"
+cat >"$WORK/smoke-bin/jk" <<'JK'
+#!/usr/bin/env bash
+case "$1" in
+  new) mkdir -p "$2" ;;
+  build)
+    [ -z "${SMOKE_RED:-}" ] || exit 1
+    mkdir -p target/graph && touch target/graph/index && chmod 555 target/graph
+    echo "$PWD/target/graph" >"$SMOKE_HELD"
+    (sleep "$SMOKE_HOLD" && chmod 755 target/graph) >/dev/null 2>&1 &
+    echo "Build successful"
+    ;;
+esac
+exit 0
+JK
+chmod +x "$WORK/smoke-bin/jk"
+smoke() { TMPDIR="$WORK/smoke-tmp" JK_BIN="$WORK/smoke-bin/jk" SMOKE_HELD="$WORK/smoke-held" bash "$ROOT/scripts/ci-product-smoke.sh" 2>&1; }
+out="$(SMOKE_HOLD=2 smoke)" || fail "a passing smoke was red while the engine still wrote its project: $out"
+[[ -z "$(ls "$WORK/smoke-tmp")" ]] || fail "the smoke did not remove its project once the engine let go: $(ls "$WORK/smoke-tmp")"
+out="$(SMOKE_HOLD=5 SMOKE_CLEANUP_WAIT=1 smoke)" || fail "a cleanup that could not finish decided the verdict: $out"
+grep -q '^warning: could not remove ' <<<"$out" || fail "a project left behind was not warned about: $out"
+chmod 755 "$(cat "$WORK/smoke-held")" && rm -rf "$WORK/smoke-tmp"/*
+SMOKE_RED=1 SMOKE_HOLD=0 smoke >/dev/null && fail "a red build made a green smoke"
 
 # --- platform-loop.sh: the stand-in run is green unless the commit carries win-red.txt ---
 cat >"$WORK/run.sh" <<'RUN'
@@ -120,7 +161,10 @@ cat >"$WORK/bin/ka" <<'KA'
 printf '%s|' "$@" | tr '\n' ' ' >>"$KA_LOG"
 echo >>"$KA_LOG"
 case "$1" in
-  new) echo '{"id":"TK-PLAT1"}' ;;
+  new)
+    [ -z "${KA_FAIL:-}" ] || { echo "error: $KA_FAIL" >&2; exit 1; }
+    echo '{"created":[{"id":"TK-PLAT1","ref":"TK-PLAT1-windows-run-red","status":"backlog"}],"pushed":true}'
+    ;;
   show) echo "{\"status\":\"$(cat "$KA_STATUS" 2>/dev/null || echo ready)\"}" ;;
 esac
 KA
@@ -150,6 +194,10 @@ grep -q "^$a windows RED " "$QUEUE_REPO/platform-verdicts" || fail "the red run 
 [[ "$(origin green)" == "$a" ]] || fail "a trailing platform's red held green: $(cat "$QUEUE_REPO/platform-runs.log")"
 [[ "$(grep -c '^new|' "$KA_LOG")" -eq 1 ]] || fail "the red run filed no ticket: $(cat "$KA_LOG")"
 grep -q '^new|.*-label|platform-windows|.*FAIL cc.example.WinPathTest' "$KA_LOG" || fail "the ticket does not say what failed: $(cat "$KA_LOG")"
+[[ "$(cat "$QUEUE_REPO/platform-windows-ticket")" == TK-PLAT1 ]] || fail "the filed ticket's id was not kept: $(cat "$QUEUE_REPO/platform-runs.log")"
+grep -q " run 1 filed TK-PLAT1$" "$QUEUE_REPO/platform-runs.log" || fail "the run did not log the ticket it filed: $(cat "$QUEUE_REPO/platform-runs.log")"
+[[ "$(tail -1 "$QUEUE_REPO/platform-runs.log")" == *" run 1 RED; branch green at "* ]] ||
+  fail "a red run's last line does not say it was red: $(cat "$QUEUE_REPO/platform-runs.log")"
 loop
 [[ "$(wc -l <"$RUNS")" -eq 1 ]] || fail "a tip with a verdict ran again"
 
@@ -171,7 +219,9 @@ grep -q '^comment|TK-PLAT1|.*is green on daybreak' "$KA_LOG" || fail "the ticket
 [[ -f "$QUEUE_REPO/platform-windows-blocking" ]] && fail "a platform green for minutes holds green"
 
 # Green for a week: it holds green from then on.
-sed -i -E "s/^($g1 windows GREEN) [0-9]+/\1 $(($(date +%s) - 8 * 86400))/" "$QUEUE_REPO/platform-verdicts"
+# awk, not `sed -i`: BSD sed on macOS reads `-i -E` as a backup suffix.
+awk -v s="$g1" -v t="$(($(date +%s) - 8 * 86400))" '$1 == s && $2 == "windows" && $3 == "GREEN" { $4 = t } { print }' \
+  "$QUEUE_REPO/platform-verdicts" >"$QUEUE_REPO/platform-verdicts.tmp" && mv "$QUEUE_REPO/platform-verdicts.tmp" "$QUEUE_REPO/platform-verdicts"
 take "$(land week.txt week)" GREEN
 loop
 [[ -f "$QUEUE_REPO/platform-windows-blocking" ]] || fail "a week green did not make the platform hold green: $(cat "$QUEUE_REPO/platform-runs.log")"
@@ -199,5 +249,12 @@ echo "done" >"$KA_STATUS"
 take "$(land win-red.txt WinPathTest)" GREEN
 loop
 [[ "$(grep -c '^new|' "$KA_LOG")" -eq 2 ]] || fail "a red run after the ticket closed filed none: $(cat "$KA_LOG")"
+
+# A ticket ka refuses to file is logged with ka's reason.
+take "$(land win-red.txt MacWatchTest)" GREEN
+KA_FAIL="push refused" loop
+grep -q ' could not file a ticket: error: push refused$' "$QUEUE_REPO/platform-runs.log" ||
+  fail "a failed filing did not say why: $(cat "$QUEUE_REPO/platform-runs.log")"
+grep -qE ' run [0-9]+: green$' "$QUEUE_REPO/platform-runs.log" && fail "a run logged a bare green: $(cat "$QUEUE_REPO/platform-runs.log")"
 
 echo "test-platform-loop: ok ($(wc -l <"$RUNS" | tr -d ' ') platform runs)"

@@ -109,6 +109,54 @@ class JkResultsGuardsTest {
         assertThat(none).doesNotContain("## Guards");
     }
 
+    private static BuildRecord.Diag notice(String step, String rule, String outcome, String note) {
+        return new BuildRecord.Diag(
+                "warning",
+                "/ws",
+                step,
+                rule,
+                "GUARD " + rule + "  " + outcome + "\n  Observed: " + note
+                        + "\n  Why:      lint the shell\n  Explain:  jk guard explain " + rule,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                "",
+                0,
+                0,
+                0,
+                List.of(),
+                0);
+    }
+
+    /** A guard that could not run on this machine is named on the verdict line, never hidden under clean. */
+    @Test
+    void a_skipped_guard_is_named_on_the_verdict_line_with_its_note() {
+        List<BuildRecord.Task> lanes = List.of(
+                new BuildRecord.Task(TaskNames.GUARD, "compile", "SUCCESS", 1, 0),
+                new BuildRecord.Task(TaskNames.GUARD_TREE, "verify", "SKIPPED", 1, 0));
+        List<BuildRecord.Diag> diags = List.of(
+                notice(TaskNames.GUARD_TREE, "shellcheck", "skipped", "shellcheck: not installed"),
+                notice(TaskNames.GUARD, "shellcheck", "skipped", "shellcheck: not installed"),
+                notice(TaskNames.GUARD, "msvc-only", "not-here", "skipped on Linux"));
+        String md = JkResultsMarkdown.render(record(true, diags, lanes));
+        assertThat(md)
+                .contains("## Guards\n\nGuards: clean · 2 checks (1 cached) · 2 skipped: msvc-only, shellcheck\n\n"
+                        + "- `msvc-only` skipped: skipped on Linux\n"
+                        + "- `shellcheck` skipped: shellcheck: not installed\n\n");
+
+        String red = JkResultsMarkdown.render(record(
+                false,
+                List.of(
+                        site("one-digest-surface", "server/engine/src/main/java/cc/jumpkick/engine/Cas.java", 88, SITE),
+                        diags.get(0)),
+                lanes));
+        assertThat(red).contains("**1 rule broken** (1 site) · 1 skipped: shellcheck\n\n- `shellcheck` skipped");
+    }
+
     /** A workspace run's lanes are its modules' steps; the root has none of its own. */
     @Test
     void a_workspace_runs_lanes_are_counted_across_its_modules() {

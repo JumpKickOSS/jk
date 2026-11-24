@@ -26,7 +26,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.TreeSet;
-import java.util.concurrent.Callable;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -150,11 +149,25 @@ public final class PlannerTest {
      * are left out; an entry not on disk holds no tag.
      */
     public static List<Path> tagClasspath(Path dir, JkBuild project, BuildLayout layout) throws IOException {
+        return TestOutputs.baseClasspath(
+                layout.classesDir(),
+                project,
+                layout,
+                forecastClasspaths(dir, project).testCompile(),
+                null);
+    }
+
+    /** The test JVM's classpath as the forecast names it, with no build: siblings by their jars. */
+    static List<Path> testRuntimeClasspath(Path dir, JkBuild project) throws IOException {
+        return forecastClasspaths(dir, project).testRuntime();
+    }
+
+    private static ModuleClasspaths forecastClasspaths(Path dir, JkBuild project) throws IOException {
         Path lockFile = LockPaths.lockFile(dir);
         Lockfile lock = Files.isRegularFile(lockFile)
                 ? MemberRows.view(LockfileReader.read(lockFile), lockFile, dir)
                 : Lockfile.empty("offline");
-        ModuleClasspaths classpaths = ModuleClasspaths.derive(
+        return ModuleClasspaths.derive(
                 dir,
                 project,
                 ModuleShape.of(project, dir, null),
@@ -162,25 +175,6 @@ public final class PlannerTest {
                 new ClasspathResolver(JkStores.storeCas()),
                 ModuleClasspaths.Contributions.NONE,
                 ModuleClasspaths.Mode.FORECAST);
-        return TestOutputs.baseClasspath(layout.classesDir(), project, layout, classpaths.testCompile(), null);
-    }
-
-    /**
-     * Coverage tooling resolves before the serial test gate is taken, never inside it. The fetch
-     * can take seconds or fail outright, and the gate is the checkout's: a fetch behind it would park
-     * every other module's suite behind a download, and a failed fetch would leave the gate held
-     * for good. So a failing {@code resolve} throws with the gate untouched, and {@code gate} runs
-     * only once {@code resolve} has answered.
-     *
-     * @param resolve the coverage tooling to fetch, or null when the run measures no coverage
-     * @param gated whether the run takes the serial gate at all
-     * @param gate takes the gate; the caller releases it
-     */
-    static <T> @Nullable T resolveBeforeGate(@Nullable Callable<T> resolve, boolean gated, Runnable gate)
-            throws Exception {
-        T tools = resolve == null ? null : resolve.call();
-        if (gated) gate.run();
-        return tools;
     }
 
     /** What a finished run leaves for later builds under the same inputs. */

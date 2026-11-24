@@ -205,8 +205,8 @@ public final class PluginLoader {
     }
 
     /**
-     * As {@link #converse} with an inactivity watchdog (see {@link PluginProcess#converse}),
-     * recording learned peaks on {@code heaps}.
+     * As {@link #converse} with an inactivity watchdog (see {@link PluginProcess#converse}), forked
+     * and leased by {@code starter}.
      */
     public static WorkerExit converse(
             Path javaHome,
@@ -219,7 +219,7 @@ public final class PluginLoader {
             BiConsumer<String, PluginProcess.Conversation> onProtocol,
             @Nullable Consumer<String> onPassthrough,
             long idleTimeoutMs,
-            LearnedHeaps heaps)
+            PluginProcess.Starter starter)
             throws IOException, InterruptedException {
         return PluginProcess.converse(
                 command(javaHome, classpath, jvmFlags, args),
@@ -229,7 +229,7 @@ public final class PluginLoader {
                 onProtocol,
                 onPassthrough,
                 idleTimeoutMs,
-                heaps);
+                starter);
     }
 
     /**

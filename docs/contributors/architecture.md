@@ -60,8 +60,13 @@ How JumpKick is structured today. For day-to-day usage see [user documentation](
   overbook free memory (host `MemAvailable`, capped by the container's and this engine's workers
   group's `memory.max` less their working set, inactive file cache excluded; under `CI` a
   cautious overbook: more headroom, a 1.5x cap, pressure required): an engine
-  process joins `HostLeases`, one `<state>/engine/worker-leases` file under a file lock in which
-  every engine of the state dir records its budget, JVM cap, charged bytes, running JVMs,
+  process joins `HostLeases`, one `worker-leases` file per user and memory budget (`LeaseScope`:
+  `jk-<user>-leases/host` or `cgroup-<id>` under `HostTemp.dir()`) under a file lock in which
+  every engine of that budget, whatever its home, except one started inside another recorded engine's
+  worker (that engine charges the worker's whole tree; every such inner engine of the budget shares
+  `nested/worker-leases` below it instead, so the inner engines of several workers lease from one
+  total, and its line may stand still two minutes rather than ten, so a starved test engine fails
+  naming who holds the memory before its test's 5m timeout), records its budget, JVM cap, charged bytes, running JVMs,
   queued leases and worker pids, each grant is decided against the sums (made under the ledger's
   lock on the last reading, it stands only once a fresh reading taken under the file lock still
   admits it, its line written before that lock is let go; any other change to the line is written
@@ -70,7 +75,14 @@ How JumpKick is structured today. For day-to-day usage see [user documentation](
   budget and JVM cap are every engine's, and a reader drops the line of an engine whose pid is gone or was reused and kills the
   workers it names that still run (pid and start instant both match), so a draining engine and
   its successor share one set of limits and a crashed one blocks nobody; a test JVM's ledger
-  joins nothing — and which asks a resident helper such
+  joins nothing, and a pooled test JVM of a suite that starts engines of its own
+  (`ForkSpec.drivesEngines`) leases its memory but no JVM slot, so it never holds a slot that the
+  forks of the engine it waits on need, and is priced at its process tree's resident peak, past
+  its own `-Xmx` lease when that is larger, since those forks lease from the inner engines' own `nested` file, not the host's (an
+  auto-sized pool of them runs at half the suite's share, so the engines they wait on keep cores
+  and memory of their own); a
+  pooled test JVM of the engine's own suite outside the fast tier runs its engines in-process and
+  takes a slot, but is priced at its process tree the same way — and which asks a resident helper such
   as the build-script host to exit when the head of the queue would fit without its lease, so
   the head waits only on forks doing work; a planned worker is leased at its expected resident
   set (`LearnedHeaps#price`, from the resident peaks `WorkerGc` records per module and per kind
@@ -146,7 +158,7 @@ How JumpKick is structured today. For day-to-day usage see [user documentation](
 | **Stream** (build / test / sync) | Protocol lines keep flowing | `JK_STREAM_IDLE_MS` (default 60 minutes between lines; `0` disables) |
 | **Engine-side reader** | A connection sends its first line, then keeps sending between requests; the engine closes one that does not and counts it as `idleDropped` in status | **10 s** for the first line; `JK_STREAM_IDLE_MS` between requests afterwards; off while a job owns the connection (a quiet client mid-build is normal — the job watchdogs bound it) |
 | **Engine-side writer** | Each connection is served on a platform thread of its own and its lines go out through one queue and one writer thread per stream, so hello, ping and status are answered whatever the CPU pool and the virtual-thread scheduler are doing. A plan's worker threads hand their events over without waiting for the socket: past 8 MiB of lines in memory they go to the stream's spill file (`WireWriter`, `SpillFile`), read back in order, so a slow or stalled reader never holds its job, the test gate or its memory; only past 1 GiB on disk do they wait for the client to drain. A CPU-pool worker waits as a managed block, so the pool runs a spare thread and other jobs keep their parallelism. Cancel, deadline and heartbeat lines never wait. A client that stops reading is dropped: its socket is closed and its job ends as on a disconnect; the engine log says so | Dropped when no byte has reached a busy client's socket for `JK_STREAM_IDLE_MS` while a job owns the connection (`0` never drops), **10 s** for a request/reply connection; a client still draining is never dropped for its backlog |
-| **Job heartbeat** | Engine emits `heartbeat` while async wire jobs run; detached (HTTP/MCP) jobs have no stream to keep alive, so only the wall-deadline watchdog runs | `JK_ENGINE_HEARTBEAT_MS` (default **30s**; `0` disables) — resets client stream idle |
+| **Job heartbeat** | Engine emits `heartbeat` while async wire jobs run, and while a read it serves inline on the connection (`jk explain`, `jk tree`, …) runs; detached (HTTP/MCP) jobs have no stream to keep alive, so only the wall-deadline watchdog runs. The client's protocol reader drops each one once it has reset the idle bound, so no decoder sees it | `JK_ENGINE_HEARTBEAT_MS` (default **30s**; `0` disables) — resets client stream idle |
 | **Job wall deadline** | Cancel token + worker shutdown + interrupt runner; connection join bounded. A socket job's EOF is its real bound, so its cap is off unless set; a detached job has no connection to end it, so it always runs under a cap — the submission's own (`deadline_s` on `POST /api/build` and MCP `build`; `0` = none) or the engine's detached default. Time the engine was not running (a suspend, a stop) does not count against it, and a user cancel of a job under a deadline takes the user cancel's bounded join rather than waiting out the deadline. The cancel reason names the knob | Socket: `JK_ENGINE_JOB_DEADLINE_MS` (default **0** = off). Detached: `[engine] detached-deadline-ms` / `JK_ENGINE_DETACHED_DEADLINE_MS` (default **1 hour**). Join grace `JK_ENGINE_JOB_DEADLINE_GRACE_MS` (default **30s**, last-chance wait capped ~1s) |
 | **User cancel / EOF** | Cancel token + **grace→force** worker kill; join bounded by cancel grace + 500 ms. Public cancel handle is **jid**. Entry points: Ctrl-C, `jk cancel` / `jk cancel <jid>`, `POST /api/cancel` (`jid` or `dir`), MCP `cancel`. | `JK_CANCEL_GRACE_MS` (default **500**; max 5000). **Never hangs.** |
 | **Ensure** | Handshake must succeed | Silent peer (connect works, no reply) → re-probed; a holder that shows life without a reply (younger than 2 min, worker children, CPU advancing) is waited out — 30 s + 15 s per worker, 3 min at most — then left alone with a refusal naming it; one that shows none across two readings is hard-killed once + respawned |
@@ -192,6 +204,17 @@ code (the CLI owns the terminal and is out of scope).
 - **Perf probes.** `cc.jumpkick.runtime.base.Perf` writes `perf <label> ms=<n>` and
   `perf <label> key=value …` at debug; there is no separate switch. Reading them:
   `JK_LOG_LEVEL=debug`, restart the engine, then `grep ' perf ' ~/.jk/state/engine/*.log`.
+  `Perf.laps()` writes one stage's phases as one line. A suite that reaches its launch writes
+  `perf run-tests.before <module> ms=… siblings=… stamp=… after-stamp=…`: the sibling and worker
+  jar waits, the stamp key, then the replay check, discovery and cone check together. The cone
+  check also writes `perf cone-check <module> ms=… waited=…`, where `waited` is the time it queued
+  for the recording reader's permit: a suite reading its recordings holds all of it, and a walk
+  over a suite's cones takes only what its class index costs (512 bytes a class, counted from the
+  class names before the walk), so cone checks whose indexes fit the reader's peak together
+  never wait for each other, and none waits for the whole of another suite's recording. One build
+  walks a suite's cones once for one stamp key and records file: the run and every re-pricing of
+  the estimate read that walk's verdicts, so the line appears once per suite unless the key or
+  the records moved in between.
 - **Swallowed exceptions.** A catch of `Exception`, `Throwable` or `RuntimeException` whose body
   would otherwise be a comment logs `Log.debug("<method>: <why it is tolerated>", e)`; the
   `swallowed-broad-catch-ratchet` guard holds the count of comment-only ones at zero. What the
@@ -595,14 +618,46 @@ and exclusions stay GA-scoped.
    edit installed with `jk install -S` replays every action it does not reach. The engine code that
    produces or judges a result itself is a `KeyContract`, whose recorded digest folds into its
    actions' keys: `SUITE` (the package `cc.jumpkick.test` and the classes named for tests, suites
-   or JUnit, which pick a suite's classes and build its JVM) into run-tests stamps; `ARTIFACT` (the packagers and the zip they write through, the war, jlink, lib-dir and
+   or JUnit, which pick a suite's classes and build its JVM, but not `TestStampInputs`, which
+   writes the stamp, nor `SuiteReads`, which keeps and reads back a suite's discovered reads as the
+   stamp's tokens, so both move it by what they write, nor `SuiteRetry`, which sizes a suite JVM's
+   heap, which no key names, nor `TestLaunch`, `JUnitLauncher` and `ForkSpec`, which fork a
+   suite's JVMs, nor `AffectedTests`, which hands an affected run its classes and spells their
+   digest as the stamp's token, and `TestClassStamps`, which writes compile-test's freshness
+   stamps, both keyed by value) into run-tests stamps. What those JVMs start with on every host is a value
+   instead, the fork spec: the flags JumpKick adds around the module's own, the runner's tag and class
+   filters, the excluded classes, the serial tags, the idle timeout, and the environment defaults
+   with the fast tier's walls, but no heap, temp directory, port, worker count or jar path.
+   `TestLaunch.forkSpec` derives it once per launch; the stamp keys each launch's spec as a
+   `fork:` token and the launch runs from the same value, so a change to what it spells moves the
+   key of exactly the suites it spells it for, and a change to the plumbing around it moves none.
+   What every suite JVM gets from JumpKick in its environment on every host is keyed by value as
+   well, as a `suite-env:` token (`SuiteEnvKeys.environment`): the names and constant values of
+   the sandbox (`TestEnv.constants`, the function the launch builds it with), the nested-engine
+   isolation, what a pooled worker's environment changes (`TestWorkerEnv.overrides`) and which
+   trees warm the sandbox store (`TestEnv.seeds`), with each host's directories spelled as
+   stand-ins (`@home`, `@tmp`), so the token holds no path. The agents and the recording a JVM that
+   runs tests may start with are keyed by value too, as one `jvm-agents:` token
+   (`TestStampInputs.agentsToken`): the environment probe's flag under each telemetry setting and
+   the manifest its jar is cut under (`EnvProbeJar.token`; its classes are the test runner's, keyed
+   by content), the read recording's flag (`SuiteReads.recordingToken`) and the coverage agent's
+   (`CoverageAgent.token`), each spelled by the function the launch spells it with over stand-ins; `ARTIFACT` (the packagers and the zip they write through, the war, jlink, lib-dir and
    image steps, plugin staging, build-logic, Node.js steps and the guard runtime) into every
    `ActionKey.forArtifact` key; `NATIVE` (`NativeImageDriver`, which spells native-image's command
    line) into a native image's. The digest reads the contract's sources with comments and
    whitespace left out, and guard G167 (`key-contract-recorded`) is red until the recorded digest
    is theirs, printing the one to record; guard G164 (`suite-code-keyed`) keeps the selection and
    launch types inside `SUITE`. The code that judges a suite (counting the runner's events, a run
-   that ended short, an empty discovery, a `--class` that matched nothing, the failure text) is
+   that ended short, an empty discovery, a `--class` that matched nothing, the failure text, which
+   failures a retry answers and how its run replaces them, `RetryPolicy`, and when a retry climbs to
+   the next heap and when it stops, `RetryLoop`), decides which of a
+   suite's recorded reads count as its inputs (`DiscoveryRules`: the events recorded, a file read
+   before the run wrote it, one outside every keyed root, a program started, a socket that left the
+   host), decides which suites run (`SuiteChoice`: the suites a selection resolves to, whether the
+   guard's green run covers it, whether its launch is the walled default tier) and decides which of
+   a suite's classes run or replay (`DiscoveryListing`: the classes a discovery fork named and
+   whether a suite may run off the list; `ClassTags`: the tags a test class carries, which place it
+   in a tag suite; `ClassCones`: each test class's static cone, which keys its replay) is
    its own module, `server/test-orchestrator`, in the one package `cc.jumpkick.orchestrator`; the
    engine bundles it, and a run-tests stamp names it as `orchestrator:<digest>`, the digest of
    that package's classes as the running jar holds them (`OrchestratorCode`: each entry's name,
@@ -619,8 +674,13 @@ and exclusions stay GA-scoped.
    Every key opens with its task id, `<base>@<tag>`, and the tag names the output within the
    project — the lock's `project-id` plus the output's workspace-relative path, hashed — never
    the checkout. Two worktrees of one project therefore compute one key set and share every
-   hit; the incremental compiler state, whose Zinc analysis holds absolute paths, is the one
-   thing keyed by the checkout's real path (`ActionKey.stateDir`). A record spells its inputs
+   hit; the incremental compiler state is the one thing keyed by the checkout's real path
+   (`ActionKey.stateDir`). The engine names the project root in it (`root`), and the compiler
+   worker spells every path under that root from the root (`PortableAnalysis`), so a javac
+   compile caches its state beside its classes (`JavaCompile.storeState`: the analysis, the
+   processor marker, the generated-file and warnings ledgers) and a hit in any checkout lays it
+   back (`restoreState`): the next edit compiles what it changed, not every source the restored
+   classes and the checkout's last compile differ in. A record spells its inputs
    the same way (`PortablePath.key`: module-relative under a project — a `jk.toml` or a `pom.xml`
    dir — relative to the root under JumpKick's own store, cache or home (`store:repos/central/…`), and
    the whole path only elsewhere, so two inputs never share an entry), so `jk explain`
@@ -793,10 +853,10 @@ keys** when adding a read-only remote later — only add an optional remote look
 | Target | `target:` is `JdkToolchain.target`, `<os>-<arch>[-<libc>]` from the `release` file. Only steps whose outputs are for one platform: jlink and native-image (trained caches included). The record names it as `TARGET` | Compile, resources, packaging and code generation are platform-free and carry none. A test result's platform is its record's `HOST`, recorded and not keyed |
 | Test locale and zone | A run-tests stamp names `test-locale:<tag>` (`[test] locale`, default `en-US`) and `test-timezone:<id>` (`[test] timezone`, default `UTC`); the test JVM gets the `-Duser.*` and `-Duser.timezone` flags, a fixed `LC_ALL`/`LANG` and `TZ` (`TestEnv.localeEnv`, `timeZoneEnv`). Only `inherit` keys the shell's `LANG`/`LANGUAGE`/`LC_*` (`machine-env:`) or `TZ` (`test-timezone:inherit=<id>`) | Hosts on different shell locales and zones share suites. `ToolIdentity` asks `--version` under `LC_ALL=C`, so a translated version line moves no key |
 | JDK of compile and test steps | Compile keys (javac with processors, kotlinc, groovyc, a KSP round) and the run-tests stamp carry `java:<level>` (`ToolchainPolicy.level`: the module's `java`, else the JDK's major), never the JDK build; the JDK that ran is the record's `TOOLCHAIN`, a lookup dimension. `ToolchainPolicy.expect` states per key what the reader accepts (`[cache] jdk-match`: `major` default, `level`, `build`; never below the level; `--enable-preview` holds `major`; a `jdk = { …, required = true }` table admits only what it names) and `ToolchainChoice` takes the closest acceptable record among `keys/<key>` and its variants `keys/<key>~<toolchain digest>`. A caller off a job's request (the forecast) passes the expectation to `ActionCache.restorable(key, expectation)` itself. An unpinned module builds on an installed JDK of its level's major, else the nearest newer (`JdkResolution` tier `LEVEL`); one is installed only when none satisfies | Hosts on different JDKs share keys and take each other's records as the policy allows; a hit made on another JDK says which, and a declined one says once why with the two ways out (`jk explain` gives it as the step's reason). A javac step's local stamp, AOT caches, jlink and native-image keys keep the exact build |
-| Guard lanes | A lane key is its read set (facts digests, tree text, manifests and lock, the rules' sources, the baseline slice). A module lane adds `java:<engine major>` (the engine JDK's platform classes answer its `java.*` supertypes; `ToolchainPolicy.expectOnEngineMajor` states it, held to the major) where it named the JDK build; only a module lane that runs a `src/guard` suite adds `os:<os.name>`, since suite code may throw `Skipped.onThisPlatform` | Verdicts are shared across operating systems, architectures and patches of one major |
+| Guard lanes | A lane key is its read set (facts digests, tree text, manifests and lock, the rules' sources, the baseline slice). A `src/guard` suite's verdict, once the suite has run, keys on its read ledger (`LedgerReads`: each guard's stamp, globs and files with their digests; the stamp counts only the class-path code the suite JVM may load, `ClasspathCode`: no class an earlier entry defines, and of a jar that vendors such classes, as the test runner does, only the classes its `Main-Class` and service providers reach) instead of the tree's text and the modules' facts, plus the sources and manifests of the modules on its class path and the lock; it is looked up over the last ledger as the tree reads now and stored over the ledger its run left. A module lane adds `java:<engine major>` (the engine JDK's platform classes answer its `java.*` supertypes; `ToolchainPolicy.expectOnEngineMajor` states it, held to the major) where it named the JDK build; only a module lane that runs a `src/guard` suite adds `os:<os.name>`, since suite code may throw `Skipped.onThisPlatform` | Verdicts are shared across operating systems, architectures and patches of one major |
 | Build info | `[build-info]`'s `git.properties` and Boot's `META-INF/build-info.properties` by their stable entries (`BuildInfoKeys.stableDigest`: the commit, branch, dirty state and times left out) in the run-tests `main:` token and a compile's `res:` token; a suite whose sources name a volatile value keys the files whole (`BuildInfoKeys.namedBy`) | The rule `BuildIdentity.keyId` applies to the engine's `Build-Commit`/`Build-Time` |
 
-`CrossHostKeyEqualityTest` (e2e/cli, integration tier) is the guard for this table: one project
+`CrossHostKeyEqualityTest` (e2e/cli, release tier) is the guard for this table: one project
 built by two client processes with cleared environments against two engines in fresh homes, at two
 checkout paths, under two users, `$HOME`s, temp roots, locales (`en_US.UTF-8` and `de_DE.UTF-8` with
 `LC_ALL`) and time zones, must key every step alike; a key that differs fails naming each input whose

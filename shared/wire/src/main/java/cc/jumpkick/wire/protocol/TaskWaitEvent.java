@@ -5,9 +5,10 @@ import cc.jumpkick.jsonl.Jsonl;
 import java.util.Objects;
 
 /**
- * A step's wait for a worker lease (see {@link EngineProtocol#TASK_WAIT}): {@code reason} is {@code
- * slot} or {@code memory} while none of its forks runs and the next one waits, {@code ""} once a
- * fork runs again.
+ * A step's wait (see {@link EngineProtocol#TASK_WAIT}): {@code reason} is {@code slot} or {@code
+ * memory} while none of its forks runs and the next one waits for a lease, {@code thread} while its
+ * body waits for an engine thread, or a phrase naming a lock another run holds; {@code ""} once it
+ * works again.
  */
 public record TaskWaitEvent(String dir, String task, String reason) {
     public String encode() {

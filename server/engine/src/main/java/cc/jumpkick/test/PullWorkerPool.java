@@ -4,12 +4,16 @@ package cc.jumpkick.test;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.plugin.HeapFlags;
 import cc.jumpkick.engine.plugin.HeapScope;
+import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.engine.plugin.PluginLoader;
 import cc.jumpkick.engine.plugin.PluginProcess;
 import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.engine.plugin.WorkerExit;
 import cc.jumpkick.engine.plugin.WorkerLeases;
+import cc.jumpkick.host.HostLoad;
+import cc.jumpkick.host.HostProcessors;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.orchestrator.ResultAggregator;
 import cc.jumpkick.orchestrator.RunShortfall;
@@ -43,8 +47,9 @@ import org.jspecify.annotations.Nullable;
  * (XML, Markdown) stays with the launcher; this class only forks, dispatches and merges.
  *
  * <p>A worker is complete only when it exited 0 after the parent told it {@code DONE}: a JVM that
- * ends earlier, on any exit, left its in-flight class unreported and is a failure row, and classes
- * still queued once every worker has ended are a shortfall row. Neither is ever scored green.
+ * ends earlier, on any exit, left its in-flight class unreported and is a failure row naming that
+ * class, and classes still queued once every worker has ended are a shortfall row. Neither is ever
+ * scored green.
  */
 final class PullWorkerPool {
 
@@ -63,6 +68,9 @@ final class PullWorkerPool {
 
     /** Workers the last {@link #run} started. */
     private int started;
+
+    /** The rows of every worker that ended before {@code DONE}, across this pool's runs. */
+    private final List<TestFailureInfo> deaths = new ArrayList<>();
 
     /** The largest {@code -Xmx} a worker of the last {@link #run} was started with; {@code -1} when none was. */
     private final AtomicLong heap = new AtomicLong(-1);
@@ -88,8 +96,8 @@ final class PullWorkerPool {
      * One pull-queue pool over {@code classes}; report accumulation stays with the caller. A {@code
      * widen} of non-null is the count the suite would start at now: while classes are still queued
      * the pool re-reads it every {@link #WIDEN_EVERY_MS} and starts more workers up to it, one at a
-     * time and only while the lease ledger has a free JVM slot and the memory for one more
-     * ({@link #roomFor}). It never stops a worker it started.
+     * time and only while the lease ledger would grant one more at once ({@link #roomFor}). It never
+     * stops a worker it started.
      */
     TestSummary run(
             int workers,
@@ -149,6 +157,9 @@ final class PullWorkerPool {
         undispatched = List.copyOf(queue);
         boolean handlerFailed = shards.stream().anyMatch(s -> s.handlerFailure.get() != null);
         if (total == 0 && anyIncomplete && !handlerFailed) {
+            // No worker ran because none got its lease: the lease's own refusal is the whole story.
+            String unstarted = neverStarted(shards);
+            if (unstarted != null) throw new IOException(unstarted);
             // No test events but a worker died — the launcher failed before any test ran; what
             // the crashed worker(s) printed (the dropped stderr) is the evidence, and how the
             // first of them was started is the evidence when they printed nothing.
@@ -166,8 +177,8 @@ final class PullWorkerPool {
         }
         // A worker that dies mid-suite while its siblings keep going must not vanish silently:
         // its in-flight class is neither run nor reported, and the suite would go green with a
-        // shortfall. Surface every worker that ended before DONE as a failure naming its last
-        // class (idle-watchdog kills and a clean exit 0 land here too), and a conversation the
+        // shortfall. Surface every worker that ended before DONE as a failure naming the class it
+        // held (idle-watchdog kills and a clean exit 0 land here too), and a conversation the
         // parent's own handler ended as the parent-side bug it is. Skipped on user cancel: those
         // exits are the kill we asked for, and the shortfall row below says so.
         if (anyIncomplete && !SessionCancel.cancelled()) {
@@ -175,13 +186,16 @@ final class PullWorkerPool {
                 if (!shard.incomplete()) continue;
                 total += 1;
                 failed += 1;
-                allFailures.add(WorkerFailureRow.of(
+                TestFailureInfo row = WorkerFailureRow.of(
                         moduleLabel,
                         shard.workerId,
                         shard.exit,
-                        shard.lastClass.get(),
+                        shard.held.get(),
+                        shard.unstarted.get(),
                         shard.crash.text(),
-                        shard.handlerFailure.get()));
+                        shard.handlerFailure.get());
+                allFailures.add(row);
+                deaths.add(row);
             }
         }
         TestFailureInfo shortfall =
@@ -192,6 +206,17 @@ final class PullWorkerPool {
             allFailures.add(shortfall);
         }
         return new TestSummary(total, succeeded, failed, skipped, classCount, allFailures, walls, shards.size());
+    }
+
+    /** Why the pool's workers never started, when every one that ended early was refused its lease; else null. */
+    private static @Nullable String neverStarted(List<Shard> shards) {
+        String why = null;
+        for (Shard shard : shards) {
+            if (!shard.incomplete()) continue;
+            if (shard.unstarted.get().isEmpty()) return null;
+            if (why == null) why = shard.unstarted.get();
+        }
+        return why;
     }
 
     /**
@@ -222,31 +247,37 @@ final class PullWorkerPool {
             if (queue.isEmpty() || SessionCancel.cancelled()) return;
             int want = Math.min(Math.min(widen.getAsInt(), classCount), shards.size() + queue.size());
             if (want <= shards.size()) continue;
-            long lease = leaseOf(shards);
-            if (lease < 0 || !roomFor(WorkerLeases.engine().snapshot(), lease)) continue;
+            List<String> command = shards.getFirst().command.get();
+            int processors = HostProcessors.count();
+            double load1 = HostLoad.loadAverage();
+            double sizedBy = launcher.poolLoad(load1, processors);
+            if (!launcher.coresForAnother(sizedBy, processors)) continue;
+            if (command.isEmpty() || !roomFor(command)) continue;
             start(shards, queue, workerIdBase, want, true, xml, md);
+            String event = "widens to " + shards.size() + " runners";
+            Log.info(JUnitLauncher.poolLine(moduleLabel, event, want, load1, sizedBy, processors));
             if (announce) listener.onWorkers(shards.size());
         }
     }
 
     /**
-     * Whether the ledger can take one more test JVM leased at {@code leaseBytes} without anyone
-     * waiting: nothing is queued for a lease, a JVM slot is free and the bytes fit the budget.
+     * Whether the lease ledger would grant one more worker forked as {@code command} now, leased and
+     * priced as the pool's workers are: the rule a waiting lease is granted by, overbooking
+     * included, with nobody waiting ahead of it.
      */
-    static boolean roomFor(WorkerLeases.Snapshot ledger, long leaseBytes) {
-        if (ledger.queued() > 0 || ledger.runningJvms() >= ledger.cpuCap()) return false;
-        return ledger.budgetBytes() - ledger.leasedBytes() >= leaseBytes;
+    private boolean roomFor(List<String> command) {
+        HeapScope.Key key = heapKey();
+        JobWorkers.Lease lease = launcher.poolLease();
+        if (key == null) return JobWorkers.admitsNow(command, launcher.heaps(), lease);
+        return HeapScope.call(key, () -> {
+            return JobWorkers.admitsNow(command, launcher.heaps(), lease);
+        });
     }
 
-    /**
-     * The lease the pool's first worker's heap asks for, what one more worker would take; {@code -1}
-     * before that worker has built its command.
-     */
-    private static long leaseOf(List<Shard> shards) {
-        List<String> command = shards.getFirst().command.get();
-        if (command.isEmpty()) return -1;
-        return WorkerLeases.jvmLease(
-                Math.max(0, JvmOptions.HeapChoice.inspect(command).xmxBytes()));
+    /** The learned-heap key the pool's workers are forked under, or null when the module has none. */
+    private HeapScope.@Nullable Key heapKey() {
+        return SuiteRetry.key(
+                SuiteRetry.project(launcher.inferredModuleDir()), moduleLabel, JvmOptions.hostFeature(javaHome));
     }
 
     /** Start worker {@code shards.size() + 1} of the pool, its JVM sized for {@code concurrency}. */
@@ -286,6 +317,14 @@ final class PullWorkerPool {
         return heap.get();
     }
 
+    /**
+     * The row of each worker that ended before {@code DONE}, in every run of this pool. No test
+     * event carried them, so the launcher reports those still in its final summary as failures.
+     */
+    List<TestFailureInfo> deaths() {
+        return List.copyOf(deaths);
+    }
+
     /** The classes the last {@link #run} never dispatched; a heap retry runs them with the worker's own class. */
     List<String> undispatched() {
         return undispatched;
@@ -295,19 +334,21 @@ final class PullWorkerPool {
      * The pull protocol's parent side: each {@code ready} pulls the next class from the shared
      * queue onto the worker's command channel ({@code DONE} once the queue is empty, which also sets {@code
      * done}: the worker owes nothing more); every other event is the aggregator's. A throw from
-     * here ends the conversation as a {@link PluginProcess.HandlerFailure}.
+     * here ends the conversation as a {@link PluginProcess.HandlerFailure}. {@code held} is the
+     * class the worker is running: a worker asks for another only once it has reported the one it
+     * held, so each {@code ready} replaces it, with nothing after {@code DONE}.
      */
     static BiConsumer<String, PluginProcess.Conversation> pullHandler(
             ConcurrentLinkedDeque<String> queue,
             ResultAggregator aggregator,
             AtomicBoolean done,
-            AtomicReference<String> lastClass) {
+            AtomicReference<String> held) {
         return (json, convo) -> {
             String event = Jsonl.str(json, "event");
             if ("ready".equals(event)) {
                 String next = queue.pollFirst();
+                held.set(next == null ? "" : next);
                 if (next != null) {
-                    lastClass.set(next);
                     convo.send("RUN " + next);
                 } else {
                     done.set(true);
@@ -333,8 +374,7 @@ final class PullWorkerPool {
         int workerId = shard.workerId;
         CaptureBuffer crash = shard.crash;
         ResultAggregator aggregator = shard.aggregator;
-        BiConsumer<String, PluginProcess.Conversation> handler =
-                pullHandler(queue, aggregator, shard.done, shard.lastClass);
+        BiConsumer<String, PluginProcess.Conversation> handler = pullHandler(queue, aggregator, shard.done, shard.held);
         Consumer<String> passthrough = line -> {
             crash.add(aggregator.userOutput(line));
         };
@@ -348,8 +388,8 @@ final class PullWorkerPool {
             List<String> flags = launcher.jvmFlags(JvmRole.PULL_WORKER, concurrency, tmp);
             heap.accumulateAndGet(HeapFlags.parseXmx(flags), Math::max);
             shard.command.set(PluginLoader.command(javaHome, classpath, flags, args));
-            HeapScope.Key key = SuiteRetry.key(
-                    SuiteRetry.project(launcher.inferredModuleDir()), moduleLabel, JvmOptions.hostFeature(javaHome));
+            PluginProcess.Starter starter = launcher.poolStarter();
+            HeapScope.Key key = heapKey();
             if (key == null) {
                 return PluginLoader.converse(
                         javaHome,
@@ -362,8 +402,8 @@ final class PullWorkerPool {
                         launcher.workDir(),
                         handler,
                         passthrough,
-                        TestWorkerEnv.poolIdleTimeoutMs(launcher.idleTimeoutMs),
-                        launcher.heaps());
+                        TestWorkerEnv.poolIdleTimeoutMs(launcher.idleTimeoutMs()),
+                        starter);
             }
             try {
                 return HeapScope.call(
@@ -378,8 +418,8 @@ final class PullWorkerPool {
                                 launcher.workDir(),
                                 handler,
                                 passthrough,
-                                TestWorkerEnv.poolIdleTimeoutMs(launcher.idleTimeoutMs),
-                                launcher.heaps()));
+                                TestWorkerEnv.poolIdleTimeoutMs(launcher.idleTimeoutMs()),
+                                starter));
             } catch (IOException | InterruptedException | RuntimeException e) {
                 throw e;
             } catch (Exception e) {
@@ -390,7 +430,14 @@ final class PullWorkerPool {
             listener.onUserOutput(workerId, Objects.requireNonNull(e.getMessage()));
             return WorkerExit.noWorker(-1);
         } catch (IOException e) {
-            listener.onUserOutput(workerId, "reader error: " + e.getMessage());
+            String why = Objects.requireNonNullElse(e.getMessage(), e.getClass().getSimpleName());
+            if (leaseRefused(e)) {
+                shard.unstarted.set(why);
+                listener.onUserOutput(workerId, why);
+            } else {
+                crash.add("reader error: " + why);
+                listener.onUserOutput(workerId, "reader error: " + why);
+            }
             return WorkerExit.noWorker(-1);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -405,6 +452,11 @@ final class PullWorkerPool {
         }
     }
 
+    /** Whether {@code e} is the starter's word that the worker's lease gave up, so no process ever started. */
+    static boolean leaseRefused(IOException e) {
+        return e.getCause() instanceof WorkerLeases.LeaseRefused;
+    }
+
     /** One worker JVM of a pool and what its driver thread leaves behind. */
     private static final class Shard {
         final int workerId;
@@ -413,7 +465,11 @@ final class PullWorkerPool {
         /** Set once the parent told the worker {@code DONE}: it owes nothing more. */
         final AtomicBoolean done = new AtomicBoolean();
 
-        final AtomicReference<String> lastClass = new AtomicReference<>("");
+        /** The class it was sent and has not finished: what a death mid-class leaves unrun. */
+        final AtomicReference<String> held = new AtomicReference<>("");
+        /** Why its process never started: the lease it waited for gave up; empty once it started. */
+        final AtomicReference<String> unstarted = new AtomicReference<>("");
+
         final AtomicReference<@Nullable RuntimeException> handlerFailure = new AtomicReference<>();
         final AtomicReference<List<String>> command = new AtomicReference<>(List.of());
         /** A worker whose thread never stored an exit (its body threw) is a death, not a clean 0. */

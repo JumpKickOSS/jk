@@ -94,4 +94,59 @@ class JavaCompileReferencesTest {
         JavaCompile.keepGeneratedLedger(state, "key-1", out);
         assertThat(state.resolve(JavaCompile.GENERATED_LEDGER)).doesNotExist();
     }
+
+    @Test
+    void a_hit_lays_back_the_state_another_checkout_cached_naming_this_checkouts_files(@TempDir Path dir)
+            throws Exception {
+        ActionCache cache = new ActionCache(new Cas(dir.resolve("cache/cas")), dir.resolve("cache/actions"));
+        Path one = checkout(dir.resolve("one"));
+        Path two = checkout(dir.resolve("two"));
+        Path outOne = Files.createDirectories(one.resolve("target/classes"));
+        Path outTwo = Files.createDirectories(two.resolve("target/classes"));
+        Path stateOne = Files.createDirectories(dir.resolve("state-one"));
+        Path stateTwo = Files.createDirectories(dir.resolve("state-two"));
+        Path ledgerOne = JavaCompile.generatedLedger(outOne);
+        Files.createDirectories(ledgerOne.getParent());
+        Files.writeString(ledgerOne, one.resolve("gen/a/AGen.java") + "\t" + one.resolve("src/a/A.java") + "\n");
+        Files.writeString(stateOne.resolve("zinc"), "analysis of key-1");
+        Files.writeString(stateOne.resolve(CompileWarnings.LEDGER), "");
+        JavaCompile.nameRoot(stateOne, outOne);
+        JavaCompile.keepGeneratedLedger(stateOne, "key-1", outOne);
+        JavaCompile.storeState(cache, cache.cas(), "compile-main@m", "key-1", stateOne);
+
+        Files.writeString(stateTwo.resolve("zinc"), "this checkout's last analysis");
+        Files.writeString(stateTwo.resolve("analysis-off"), "digest\nsome.Type\n");
+        JavaCompile.restoreState(cache, "key-1", stateTwo, outTwo);
+        JavaCompile.restoreGeneratedLedger(stateTwo, "key-1", outTwo);
+
+        assertThat(stateTwo.resolve("zinc")).hasContent("analysis of key-1");
+        assertThat(stateTwo.resolve(CompileWarnings.LEDGER)).exists();
+        assertThat(stateTwo.resolve("analysis-off"))
+                .as("the marker of this checkout's last compile")
+                .doesNotExist();
+        assertThat(stateTwo.resolve(JavaCompile.ROOT_FILE)).hasContent(two + "\n");
+        assertThat(JavaCompile.generatedLedger(outTwo))
+                .hasContent(two.resolve("gen/a/AGen.java") + "\t" + two.resolve("src/a/A.java") + "\n");
+    }
+
+    @Test
+    void a_hit_whose_compile_cached_no_state_leaves_the_state_alone(@TempDir Path dir) throws Exception {
+        ActionCache cache = new ActionCache(new Cas(dir.resolve("cache/cas")), dir.resolve("cache/actions"));
+        Path out = Files.createDirectories(checkout(dir.resolve("app")).resolve("target/classes"));
+        Path state = Files.createDirectories(dir.resolve("state"));
+        Files.writeString(state.resolve("zinc"), "analysis with absolute paths");
+        JavaCompile.storeState(cache, cache.cas(), "compile-main@m", "key-1", state);
+
+        Files.writeString(state.resolve("zinc"), "this checkout's last analysis");
+        JavaCompile.restoreState(cache, "key-1", state, out);
+
+        assertThat(state.resolve("zinc")).hasContent("this checkout's last analysis");
+    }
+
+    /** A project checked out at {@code root}. */
+    private static Path checkout(Path root) throws Exception {
+        Files.createDirectories(root);
+        Files.writeString(root.resolve("jk.toml"), "name = \"app\"\n");
+        return root.toAbsolutePath().normalize();
+    }
 }

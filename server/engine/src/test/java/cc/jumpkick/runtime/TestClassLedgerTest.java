@@ -21,6 +21,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -139,6 +140,38 @@ class TestClassLedgerTest {
         assertThat(load().settledClasses(ONE))
                 .as("a failing nested class unsettles its outer class; a nested class alone settles nothing")
                 .containsExactly("demo.OtherTest");
+    }
+
+    @Test
+    void the_forecast_prices_only_the_classes_a_rerun_under_the_same_stamp_runs() {
+        TestClassLedger first = load();
+        TestProgressListener l = first.recording(TestProgressListener.noop());
+        run(l, "demo.OkTest", "SUCCESSFUL", "SUCCESSFUL");
+        run(l, "demo.OuterTest$Inner", "FAILED");
+        run(l, "demo.OuterTest", "SUCCESSFUL");
+        first.store(cache, TASK, STAMP);
+
+        TestClassRecording.Replayed settled = TestClassRecording.Replayed.of(load().recordedIn(Set.of(ONE)));
+        assertThat(settled.replays()).containsOnlyKeys("demo.OkTest");
+        assertThat(settled.runs())
+                .as("a failing nested class runs its outer class, with the tests of both")
+                .containsExactlyEntriesOf(Map.of("demo.OuterTest", 2L));
+        assertThat(settled.rerun(Map.of("demo.OkTest", 2, "demo.OuterTest", 2, "demo.NewTest", 4)))
+                .as("the outer class's two tests, and a class no run recorded by its source")
+                .isEqualTo(6);
+        assertThat(load().recordedIn(Set.of("test:integration")))
+                .as("a launch that recorded nothing holds nothing")
+                .isEmpty();
+    }
+
+    @Test
+    void the_ledger_decides_the_classes_it_recorded_and_the_cones_the_rest() {
+        var ledger = new TestClassRecording.Replayed(Map.of("demo.A", 1L), Map.of("demo.B", 2L));
+        var cones =
+                new TestClassRecording.Replayed(Map.of("demo.B", 2L, "demo.C", 3L), Map.of("demo.A", 1L, "demo.D", 4L));
+        TestClassRecording.Replayed both = ledger.over(cones);
+        assertThat(both.replays()).containsOnlyKeys("demo.A", "demo.C");
+        assertThat(both.runs()).containsOnlyKeys("demo.B", "demo.D");
     }
 
     @Test

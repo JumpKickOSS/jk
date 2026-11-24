@@ -25,11 +25,16 @@ import org.jspecify.annotations.Nullable;
  * shared sandbox home, or a per-test home of its own) clones its catalog without reaching
  * github.com.
  *
- * <p>Under a sandbox slot ({@link TestHomes}) the repository sits beside the slot's home, named by
- * the content of {@code templates/}: every test JVM of the suite shares it, a green run discards
- * it with the slot, and an edit to a template is a new name. Elsewhere it is built in a temp
- * directory deleted when the JVM exits. The location is fixed by the first call, which {@link
+ * <p>Under a sandbox slot ({@link TestHomes}) the repository sits in the slot's temp root, named by
+ * the content of {@code templates/}: every test JVM of the suite shares it, the next launch empties
+ * it, and an edit to a template is a new name. Elsewhere it is built in a temp directory deleted
+ * when the JVM exits. The location is fixed by the first call, which {@link
  * SharedHomeTemplateCatalog} makes before any test runs and any overlay moves {@code JK_HOME}.
+ *
+ * <p>The temp root, not beside the home: that git runs before the first test class, and a suite's
+ * per-class selection takes git run in a repository under its temp roots for git in a repository a
+ * test made. Anywhere else it is a program no recording follows, which keys every class of the
+ * suite by its module, so nothing would replay.
  */
 public final class LocalTemplateCatalog {
 
@@ -68,7 +73,9 @@ public final class LocalTemplateCatalog {
                                 new Thread(() -> PathUtil.deleteRecursively(root), "jk-template-catalog-cleanup"));
                 return buildAt(templates, root, root.resolve("catalog.git"));
             }
-            Path catalogs = Files.createDirectories(slot.get().resolve("template-catalog"));
+            // The launch hands the temp root out in its real spelling: so is the repository's path.
+            Path catalogs = Files.createDirectories(
+                    slot.get().toRealPath().resolve(TestHomes.TMP).resolve("template-catalog"));
             Path bare = catalogs.resolve(contentKey(templates) + ".git");
             if (Files.isRegularFile(bare.resolve("HEAD"))) return bare;
             // Several test JVMs of the suite may build at once: each builds aside and the first

@@ -466,7 +466,7 @@ final class CompileSteps {
             s.compileMainKey = fresh.map(FreshnessStamp.Stamp::actionKey)
                     .filter(k -> !k.isBlank())
                     .orElse(null);
-            s.ownHint = new SourceApiIndex.Hint(SourceApiIndex.Kind.BODY_ONLY, List.of());
+            s.ownHint = new SourceApiIndex.Hint(SourceApiIndex.Kind.BODY_ONLY, List.of(), false, List.of());
             return new TaskForecast.Task(TaskNames.COMPILE_JAVA, TaskForecast.Status.CACHED, "", null);
         }
         String taskId = ActionKey.qualifiedTaskId(TaskNames.COMPILE_MAIN, out);

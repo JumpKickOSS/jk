@@ -125,6 +125,7 @@ public final class WireEventSink implements EventSink {
                         e.success(),
                         e.exitCode(),
                         e.millis(),
+                        e.waitedMillis(),
                         e.didWork(),
                         e.cancelled(),
                         e.stopped(),

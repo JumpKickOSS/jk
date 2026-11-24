@@ -4,6 +4,7 @@ package cc.jumpkick.task;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.model.BuildIdentity;
+import java.util.List;
 import java.util.TreeMap;
 import org.junit.jupiter.api.Test;
 
@@ -11,11 +12,10 @@ class KeyContractTest {
 
     @Test
     void suite_code_is_the_test_package_and_the_classes_named_for_tests_suites_and_junit() {
-        assertThat(KeyContract.suiteCode("cc/jumpkick/test/JUnitLauncher.class"))
-                .isTrue();
+        assertThat(KeyContract.suiteCode("cc/jumpkick/test/Discovery.class")).isTrue();
         assertThat(KeyContract.suiteCode("cc/jumpkick/test/PullWorkerPool$Lease.class"))
                 .isTrue();
-        assertThat(KeyContract.suiteCode("cc/jumpkick/runtime/TestLaunch.class"))
+        assertThat(KeyContract.suiteCode("cc/jumpkick/runtime/SuiteEnvironment.class"))
                 .isTrue();
         assertThat(KeyContract.suiteCode("cc/jumpkick/runtime/TagExcludedSuite.class"))
                 .isTrue();
@@ -49,6 +49,101 @@ class KeyContractTest {
         assertThat(KeyContract.SUITE.keeps(
                         "server/test-orchestrator/src/main/java/cc/jumpkick/orchestrator/TestClassMatch.java"))
                 .isFalse();
+    }
+
+    /** The code that writes the stamp moves the key by what it writes, so the contract leaves it out. */
+    @Test
+    void the_code_that_writes_the_stamp_is_not_suite_code() {
+        assertThat(KeyContract.suiteCode("cc/jumpkick/runtime/TestStampInputs.class"))
+                .isFalse();
+        assertThat(KeyContract.suiteCode("cc/jumpkick/runtime/TestStampInputs$Facts.class"))
+                .as("a nested class is its top-level class's")
+                .isFalse();
+        assertThat(KeyContract.SUITE.keeps("server/engine/src/main/java/cc/jumpkick/runtime/TestStampInputs.java"))
+                .isFalse();
+        assertThat(KeyContract.suiteCode("cc/jumpkick/runtime/TestSteps.class"))
+                .as("the step that launches the suite stays keyed")
+                .isTrue();
+    }
+
+    /**
+     * What a suite was found to read keys it as tokens, so the code that keeps and reads them back
+     * moves the key by what it writes; the rules that decide which reads count are the orchestrator's.
+     */
+    @Test
+    void the_code_that_keeps_a_suites_discovered_reads_is_not_suite_code() {
+        assertThat(KeyContract.suiteCode("cc/jumpkick/test/SuiteReads.class")).isFalse();
+        assertThat(KeyContract.suiteCode("cc/jumpkick/test/SuiteReads$Discovered.class"))
+                .isFalse();
+        assertThat(KeyContract.SUITE.keeps("server/engine/src/main/java/cc/jumpkick/test/SuiteReads.java"))
+                .isFalse();
+        assertThat(KeyContract.suiteCode("cc/jumpkick/orchestrator/DiscoveryRules.class"))
+                .as("keyed by the orchestrator's classes")
+                .isFalse();
+        assertThat(KeyContract.suiteCode("cc/jumpkick/test/SuiteReadLists.class"))
+                .as("the rest of the suite package stays keyed")
+                .isTrue();
+    }
+
+    /** No key names the heap a suite JVM runs at, so the code that sizes it is not suite code either. */
+    @Test
+    void the_code_that_sizes_a_suites_heap_is_not_suite_code() {
+        assertThat(KeyContract.suiteCode("cc/jumpkick/test/SuiteRetry.class")).isFalse();
+        assertThat(KeyContract.SUITE.keeps("server/engine/src/main/java/cc/jumpkick/test/SuiteRetry.java"))
+                .isFalse();
+        assertThat(KeyContract.suiteCode("cc/jumpkick/orchestrator/RetryPolicy.class"))
+                .as("which failures a retry answers is keyed by the orchestrator's classes")
+                .isFalse();
+        assertThat(KeyContract.suiteCode("cc/jumpkick/orchestrator/RetryLoop.class"))
+                .as("when the retries stop is keyed by the orchestrator's classes")
+                .isFalse();
+    }
+
+    /**
+     * What a suite's JVMs start with is keyed by value, the fork spec in the stamp, so the code that
+     * forks them is not suite code: an edit to it that leaves the spec as it was moves no key.
+     */
+    @Test
+    void the_code_that_forks_a_suites_jvms_is_not_suite_code() {
+        for (String source : List.of(
+                "server/engine/src/main/java/cc/jumpkick/test/JUnitLauncher.java",
+                "server/engine/src/main/java/cc/jumpkick/runtime/TestLaunch.java",
+                "server/engine/src/main/java/cc/jumpkick/test/ForkSpec.java")) {
+            assertThat(KeyContract.SUITE.keeps(source)).as(source).isFalse();
+            assertThat(KeyContract.suiteCode(KeyContract.entryOf(source)))
+                    .as(source)
+                    .isFalse();
+        }
+        assertThat(KeyContract.suiteCode("cc/jumpkick/test/JUnitLauncher$Held.class"))
+                .as("a nested class is its top-level class's")
+                .isFalse();
+        assertThat(KeyContract.suiteCode("cc/jumpkick/test/JUnitLauncher$1.class"))
+                .isFalse();
+        assertThat(KeyContract.suiteCode("cc/jumpkick/test/PullWorkerPool.class"))
+                .as("the rest of the suite package stays keyed")
+                .isTrue();
+    }
+
+    /**
+     * Which classes a suite runs or replays is decided by code the stamp keys by its classes (the
+     * orchestrator's) or by a value the stamp names, never by the hand-recorded digest.
+     */
+    @Test
+    void the_code_that_selects_a_suites_classes_is_not_keyed_by_the_contract() {
+        for (String source : List.of(
+                "server/test-orchestrator/src/main/java/cc/jumpkick/orchestrator/ClassCones.java",
+                "server/test-orchestrator/src/main/java/cc/jumpkick/orchestrator/ClassTags.java",
+                "server/test-orchestrator/src/main/java/cc/jumpkick/orchestrator/DiscoveryListing.java",
+                "server/engine/src/main/java/cc/jumpkick/test/AffectedTests.java",
+                "server/engine/src/main/java/cc/jumpkick/runtime/TestClassStamps.java")) {
+            assertThat(KeyContract.SUITE.keeps(source)).as(source).isFalse();
+        }
+        assertThat(KeyContract.suiteCode("cc/jumpkick/test/AffectedTests$Row.class"))
+                .as("a nested class is its top-level class's")
+                .isFalse();
+        assertThat(KeyContract.suiteCode("cc/jumpkick/test/AffectedTestRanker.class"))
+                .as("only the classes named stand outside")
+                .isTrue();
     }
 
     @Test

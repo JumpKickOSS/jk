@@ -32,9 +32,10 @@ if [[ ! -d "$DIR" ]]; then
   exit 2
 fi
 command -v openssl >/dev/null 2>&1 || { echo "assemble: openssl is required" >&2; exit 2; }
-# The first python3 on PATH may predate tomllib (macOS ships 3.9); take the first one that has it.
+# The first python3 on PATH may predate tomllib (macOS ships 3.9); take the first one that has it,
+# then the versioned interpreters on PATH, newest first.
 PYTHON=
-for candidate in python3 python3.14 python3.13 python3.12 python3.11; do
+for candidate in python3 $(compgen -c python3. | grep -E '^python3\.[0-9]+$' | sort -t. -k2,2nr -u); do
   if "$candidate" -c 'import tomllib' >/dev/null 2>&1; then
     PYTHON="$candidate"
     break

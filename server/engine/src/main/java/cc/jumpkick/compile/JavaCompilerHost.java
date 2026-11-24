@@ -127,7 +127,8 @@ public final class JavaCompilerHost {
     /** The pool {@code item} goes on, made with a worker that forks the JVM {@code req} needs. */
     private static CompilerPool poolFor(long job, ForkedJavac.Request req, CompileWork item) {
         boolean resident = resident(req);
-        String key = resident ? residentKey(req) : jobKey(job, req);
+        PluginTuning tuning = JvmOptions.currentTuning();
+        String key = resident ? residentKey(req, tuning) : jobKey(job, req);
         Path home = ForkedJavac.workerJavaHome(req);
         Long owner = resident ? null : job;
         CompilerPool pool = CompilerPool.forKey(
@@ -138,7 +139,6 @@ public final class JavaCompilerHost {
                     // own, which carries no request.
                     WorkerEnv env =
                             WorkerEnv.strict().with(req.env().withJavaHome(home).compilerEnvironment());
-                    PluginTuning tuning = JvmOptions.currentTuning();
                     return new CompilerPool(
                             key,
                             owner,
@@ -153,15 +153,23 @@ public final class JavaCompilerHost {
         return pool;
     }
 
+    /** As {@link #residentKey(ForkedJavac.Request, PluginTuning)} under the bound request's tuning. */
+    static String residentKey(ForkedJavac.Request req) {
+        return residentKey(req, JvmOptions.currentTuning());
+    }
+
     /**
      * What a resident worker for {@code req} cannot be given once it runs: its JDK, its jar, the
      * whole environment it starts with — a resident worker sees every later request's variables,
-     * not one request's fingerprint — and the module's own JVM flags.
+     * not one request's fingerprint — the module's own JVM flags, and the flags {@code tuning}
+     * starts it with, so one request's {@code -Q} flags never reach a compile that did not ask
+     * for them.
      */
-    static String residentKey(ForkedJavac.Request req) {
+    static String residentKey(ForkedJavac.Request req, PluginTuning tuning) {
         String env = Hashing.sha256Hex(new TreeMap<>(req.env().environment()).toString());
         return "resident|" + ForkedJavac.workerJavaHome(req) + "|" + req.workerJar() + "|" + env + "|"
-                + String.join(" ", req.jvmArgs());
+                + String.join(" ", req.jvmArgs()) + "|"
+                + String.join(" ", JvmOptions.compilerWorkerFlags(tuning, null));
     }
 
     /** A job-scoped pool's key: the job first, then as {@link #residentKey} plus the compiler classpath. */

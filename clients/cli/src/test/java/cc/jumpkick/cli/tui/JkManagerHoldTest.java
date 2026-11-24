@@ -69,6 +69,15 @@ class JkManagerHoldTest {
         body = TestAnsi.strip(String.join("\n", cm.renderBuildPlanLines(120, cm.elapsedMillis())));
         assertThat(body).contains("g:a › Test › Waiting for a free slot" + Glyphs.ELLIPSIS);
 
+        cm.stepWaiting("g:a", "run-tests", "thread");
+        body = TestAnsi.strip(String.join("\n", cm.renderBuildPlanLines(120, cm.elapsedMillis())));
+        assertThat(body).contains(Glyphs.WAITING + " g:a › Test › Waiting for a free engine thread" + Glyphs.ELLIPSIS);
+
+        cm.stepWaiting("g:a", "run-tests", "another jk's guard suite run on this tree");
+        body = TestAnsi.strip(String.join("\n", cm.renderBuildPlanLines(120, cm.elapsedMillis())));
+        assertThat(body)
+                .contains("g:a › Test › Waiting for another jk's guard suite run on this tree" + Glyphs.ELLIPSIS);
+
         cm.stepWaiting("g:a", "run-tests", null);
         body = TestAnsi.strip(String.join("\n", cm.renderBuildPlanLines(120, cm.elapsedMillis())));
         assertThat(body).contains("g:a › Test › FooTest").doesNotContain("Waiting for");

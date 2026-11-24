@@ -22,6 +22,7 @@ import cc.jumpkick.engine.listen.SseFrame;
 import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.engine.plugin.WorkerScope;
 import cc.jumpkick.engine.power.Awake;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.host.time.Suspensions;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.layout.InputTrees;
@@ -125,6 +126,11 @@ public final class JobEnvelope {
                 host.workers(), limits, host::nowMillis, host::accumulatorOf, host::lastEventAt, host::log);
         this.live = new LiveJobRegistry(host.workers(), host::accumulatorOf, host::log, limits.cancelGraceMs());
         this.settlement = new JobSettlement(host, host, host, host);
+    }
+
+    /** The heartbeat, deadline and grace bounds this envelope holds its jobs to. */
+    public JobLimits limits() {
+        return limits;
     }
 
     /** Detached admission refusal: a same-fingerprint job is already in flight. */
@@ -657,7 +663,7 @@ public final class JobEnvelope {
         // succeeds again for the engine's life — and would strand the in-flight fingerprint
         // and the done latch. The teardown calls are all remove-style and safe to run even
         // when their open never happened.
-        if (a.plan()) host.cacheGate().readLock().lock();
+        if (a.plan()) enterCacheGate(a);
         try {
             // While any job runs the host's load is sampled, the clocks are watched for a suspend
             // and the machine is kept from idle sleep.
@@ -703,6 +709,33 @@ public final class JobEnvelope {
             host.inFlight().release(eventRequestId);
             admission.release(eventRequestId);
             a.done().countDown();
+        }
+    }
+
+    /**
+     * Take the cache gate's read lock for the plan job's run. Held by cache maintenance (the idle
+     * prune, which stops at its next safe point, or a clean someone asked for), the job says so on
+     * the wire and in the log before it waits, so a run that shows nothing for a while still names
+     * why. Throws nothing once the lock is held.
+     */
+    private void enterCacheGate(Admitted a) {
+        var gate = host.cacheGate().readLock();
+        if (gate.tryLock()) return;
+        long jid = a.eventRequestId();
+        long since = host.nowMillis();
+        BufferedWriter writer = a.writer();
+        try {
+            if (writer != null) WireWriter.sendQuiet(writer, ProtoLifecycle.jobWaitsForCache(jid));
+            host.log("jk engine: job " + jid + " (" + a.eventKind() + " " + a.eventDir()
+                    + ") waits for cache maintenance to let go of the cache");
+        } catch (RuntimeException e) {
+            Log.debug("enterCacheGate: wait notice lost", e);
+        }
+        gate.lock();
+        try {
+            host.log("jk engine: job " + jid + " has the cache after " + (host.nowMillis() - since) + " ms");
+        } catch (RuntimeException e) {
+            Log.debug("enterCacheGate: log line lost", e);
         }
     }
 

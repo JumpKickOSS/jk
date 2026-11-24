@@ -386,8 +386,8 @@ public final class InstallLock {
 
         /**
          * Take the OS lock, shared or exclusive. A holder in another process makes this a wait,
-         * announced once with who holds the lock; an interrupt propagates; a filesystem that refuses
-         * locks leaves the caller unlocked.
+         * announced once with who holds the lock; an interrupt or any other failure propagates with
+         * the channel closed; a filesystem that refuses locks leaves the caller unlocked.
          */
         void acquire(boolean shared, String purpose) throws IOException {
             FileChannel c;
@@ -408,9 +408,11 @@ public final class InstallLock {
             try {
                 if (shared) acquireShared(c, wait);
                 else acquireExclusive(c, wait);
-            } catch (FileLockInterruptionException | AsynchronousCloseException interrupted) {
+            } catch (FileLockInterruptionException | AsynchronousCloseException | RuntimeException e) {
+                // A channel left open would be closed by its cleaner whenever a collection finds it,
+                // and that close drops every lock this process holds on the file, a later run's too.
                 closeChannel();
-                throw interrupted;
+                throw e;
             } catch (IOException noLock) {
                 closeChannel(); // e.g. NFS without lockd
             } finally {

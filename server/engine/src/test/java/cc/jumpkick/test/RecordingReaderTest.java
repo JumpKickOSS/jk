@@ -4,6 +4,7 @@ package cc.jumpkick.test;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.data.Offset.offset;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -15,6 +16,9 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import jdk.jfr.Event;
 import jdk.jfr.Name;
 import jdk.jfr.Recording;
@@ -28,7 +32,8 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * The streaming reader takes from a recording what the JDK's own parser takes: every field of every
  * wanted event, in file order, across chunks, whatever the string's encoding (inline Latin-1, UTF-8,
- * the chunk's string pool, empty, null), and the JDK's own file events by path.
+ * the chunk's string pool, empty, null), and the JDK's own file events by path. Its turn is shared
+ * by size: shares that fit together stand together, and a whole turn waits for them.
  */
 class RecordingReaderTest {
 
@@ -189,6 +194,33 @@ class RecordingReaderTest {
                 Files.writeString(tmp.resolve("junk.jfr"), "not a recording at all, but long enough to hold a header?");
         assertThatThrownBy(() -> RecordingReader.read(junk, Map.of(), (n, a, e, v) -> {}))
                 .isInstanceOf(IOException.class);
+    }
+
+    @Test
+    void shares_that_fit_together_stand_together_and_a_whole_turn_waits_for_them() throws Exception {
+        long third = RecordingReader.PEAK_BYTES / 3;
+        RecordingReader.Permit first =
+                assertTimeoutPreemptively(Duration.ofSeconds(10), () -> RecordingReader.Permit.acquire(third));
+        CompletableFuture<RecordingReader.Permit> whole;
+        try {
+            try (RecordingReader.Permit second =
+                    assertTimeoutPreemptively(Duration.ofSeconds(10), () -> RecordingReader.Permit.acquire(third))) {
+                assertThat(second).as("a second share beside the first").isNotNull();
+            }
+            whole = CompletableFuture.supplyAsync(() -> {
+                try {
+                    return RecordingReader.Permit.acquire();
+                } catch (IOException e) {
+                    throw new IllegalStateException(e);
+                }
+            });
+            assertThatThrownBy(() -> whole.get(300, TimeUnit.MILLISECONDS))
+                    .as("a recording read waits while a share stands")
+                    .isInstanceOf(TimeoutException.class);
+        } finally {
+            first.close();
+        }
+        whole.get(10, TimeUnit.SECONDS).close();
     }
 
     private static List<String> stringsOf(@Nullable String[] values) {

@@ -45,7 +45,16 @@ final class WorkspaceFinalPhase {
     static WorkspaceResult complete(WorkspaceRunPhase.Run run) {
         Decision decision = aggregate(run.outcomes(), run.scheduleFailure(), run.cancelled());
         if (!decision.learn()) {
-            PreflightMemo.markDirty(run.prepared().resources().request().entryDir(), unfinished(run));
+            WorkspaceRequest request = run.prepared().resources().request();
+            PreflightMemo.markDirty(request.entryDir(), unfinished(run));
+            // A red test run still left the outputs of the modules it finished green: without their
+            // record the next forecast calls every module "built from other inputs".
+            if (request.testOnly() && !run.cancelled()) {
+                certifyTestRun(
+                        run.prepared().resources().preflight(),
+                        run.outcomes(),
+                        ModuleInputProvenance.RunTrees.transforms(request.cache()));
+            }
             return decision.result();
         }
         WorkspaceResult noMatch = noClassMatched(run);

@@ -61,9 +61,9 @@ public interface TaskContext {
     default void waited(Duration blocked) {}
 
     /**
-     * The step has no fork running and its next fork waits for a worker lease: {@code "slot"} when
-     * every JVM slot is taken, {@code "memory"} when its bytes do not fit; {@code null} once a fork
-     * runs again. Its row shows the wait in place of its work.
+     * The step does no work of its own while it waits for {@code reason} ({@link StepWait}): a worker
+     * lease ({@code "slot"}, {@code "memory"}), an engine thread, or a lock another run holds;
+     * {@code null} once it works again. Its row shows the wait in place of its work.
      */
     default void waiting(@Nullable String reason) {}
 

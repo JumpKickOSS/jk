@@ -1,22 +1,27 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.test;
+package cc.jumpkick.orchestrator;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Objects;
 import java.util.ServiceLoader;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
  * A test class's static cone follows every workspace class its class files name, through a field's
- * type, a call, a nested class and a literal class name, stops at the workspace's edge, takes in a
- * service file's providers when it names the service loader, and changes with any class in it.
+ * type, a call, a nested class and a class name it loads by name, but not one it only passes on as
+ * data, stops at the workspace's edge, takes in a
+ * service file's providers when it names the service loader, and changes with any class in it. The
+ * count of an index's classes, read from names alone, never falls short of the index.
  */
 class ClassConesTest {
 
@@ -75,12 +80,48 @@ class ClassConesTest {
     }
 
     @Test
+    void a_class_name_passed_on_as_data_reaches_nothing(@TempDir Path tmp) throws Exception {
+        Path root = tree(tmp.resolve("classes"), ConeSpawns.class, ConeNamed.class);
+        ClassCones.Cone cone = ClassCones.index(List.of(root)).cone(ConeSpawns.class.getName());
+        assertThat(cone.classes()).containsExactly(ConeSpawns.class.getName());
+    }
+
+    @Test
     void a_cone_naming_the_service_loader_takes_in_the_providers(@TempDir Path tmp) throws Exception {
         Path root = tree(tmp.resolve("classes"), ConeLoads.class, ConeProvider.class);
         Path services = Files.createDirectories(root.resolve("META-INF/services"));
         Files.writeString(services.resolve("java.lang.Runnable"), "# provider\n" + ConeProvider.class.getName() + "\n");
         ClassCones.Cone cone = ClassCones.index(List.of(root)).cone(ConeLoads.class.getName());
         assertThat(cone.classes()).contains(ConeProvider.class.getName());
+    }
+
+    @Test
+    void the_count_from_names_never_falls_short_of_the_index(@TempDir Path tmp) throws Exception {
+        Path tree = tree(tmp.resolve("classes"), ConeRoot.class, ConeDep.class, ConeFar.class);
+        Files.write(tree.resolve("module-info.class"), bytes(ConeDep.class));
+        Files.createDirectories(tree.resolve("META-INF/services"));
+        Files.writeString(tree.resolve("META-INF/services/java.lang.Runnable"), ConeProvider.class.getName());
+        Path jar = tmp.resolve("sibling.jar");
+        try (OutputStream out = Files.newOutputStream(jar);
+                ZipOutputStream zip = new ZipOutputStream(out)) {
+            for (Class<?> c : List.of(ConeDep.class, ConeNamed.class, ConeUnrelated.class)) {
+                zip.putNextEntry(new ZipEntry(path(c)));
+                zip.write(bytes(c));
+            }
+            zip.putNextEntry(new ZipEntry("META-INF/versions/21/" + path(ConeFar.class)));
+            zip.write(bytes(ConeFar.class));
+            zip.putNextEntry(new ZipEntry("module-info.class"));
+            zip.write(bytes(ConeFar.class));
+        }
+        List<Path> roots = List.of(tree, jar, tmp.resolve("gone"));
+
+        assertThat(ClassCones.index(roots).size())
+                .as("the class the jar shadows is defined once")
+                .isEqualTo(5);
+        assertThat(ClassCones.count(roots, Integer.MAX_VALUE))
+                .as("it counts twice, so the count is never short")
+                .isEqualTo(6);
+        assertThat(ClassCones.count(roots, 4)).as("capped as the index is").isEqualTo(4);
     }
 
     private static Path tree(Path root, Class<?>... classes) throws Exception {
@@ -114,7 +155,7 @@ class ConeRoot {
     }
 
     Object named() throws Exception {
-        return Class.forName("cc.jumpkick.test.ConeNamed");
+        return Class.forName("cc.jumpkick.orchestrator.ConeNamed");
     }
 }
 
@@ -131,6 +172,12 @@ class ConeFar {
 }
 
 class ConeNamed {}
+
+class ConeSpawns {
+    ProcessBuilder engine() {
+        return new ProcessBuilder("java", "-cp", "engine.jar", "cc.jumpkick.orchestrator.ConeNamed");
+    }
+}
 
 class ConeUnrelated {}
 

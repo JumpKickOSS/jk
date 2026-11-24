@@ -4,7 +4,7 @@ package cc.jumpkick.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.jsonl.JsonFields;
-import cc.jumpkick.test.ClassCones;
+import cc.jumpkick.orchestrator.ClassCones;
 import cc.jumpkick.test.ClassReads;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -77,12 +77,13 @@ class SuiteCodeFilesTest {
         String key = ClassKeys.key(
                         "",
                         cone,
+                        null,
                         "suite",
                         seen,
                         Map.of(),
                         ClassKeys.Observed.NONE,
                         index.digest(),
-                        "reads",
+                        ClassKeys.SuiteReadSet.NONE,
                         ws,
                         null,
                         new HashMap<>())
@@ -110,11 +111,11 @@ class SuiteCodeFilesTest {
                 index,
                 "suite",
                 ws,
-                ClassKeys.Observed.NONE,
-                ClassKeys.Observed.NONE,
+                launch -> ClassKeys.Observed.NONE,
+                launch -> ClassKeys.Observed.NONE,
                 Map.of(),
-                "reads",
-                "reads",
+                ClassKeys.SuiteReadSet.NONE,
+                ClassKeys.SuiteReadSet.NONE,
                 codeSince,
                 false,
                 "stamp");

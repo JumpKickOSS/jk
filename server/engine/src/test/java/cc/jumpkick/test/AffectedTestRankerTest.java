@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.test;
 
-import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.tuple;
 
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.task.ClassAbi;
@@ -85,22 +85,84 @@ class AffectedTestRankerTest {
         assertThat(r.ranked()).isEmpty();
     }
 
+    /** A batch that edits a fast-tier test still ranks the integration classes against its other edits. */
     @Test
-    void dirty_integration_suite_refuses_outside_selection() {
+    void a_dirty_test_outside_the_selection_leaves_the_rest_ranked() {
+        var prev = new ClassAbi.Fingerprint("api1");
+        var now = new ClassAbi.Fingerprint("api2");
+        TestClassIndex.Entry it = new TestClassIndex.Entry(
+                "com.acme.FooIT", Set.of("com.acme.Foo"), Set.of("integration"), Set.of("integration"), "FooI", true);
+        AffectedTests r = AffectedTestRanker.rank(new AffectedTestRanker.Inputs(
+                Path.of("/ws/api"),
+                "com.acme:api",
+                Path.of("/ws"),
+                TestSelection.of(List.of("integration"), false, List.of(), List.of()),
+                List.of("api/src/test/java/com/acme/FooTest.java", "api/src/main/java/com/acme/Foo.java"),
+                Map.of("com.acme.Foo", prev),
+                Map.of("com.acme.Foo", now),
+                List.of(),
+                List.of(it),
+                Set.of("com.acme.Foo"),
+                List.of()));
+        assertThat(r.refused()).isFalse();
+        assertThat(r.classNames()).containsExactly("com.acme.FooIT");
+    }
+
+    @Test
+    void a_class_with_a_record_ranks_by_it_and_one_without_by_its_imports() {
+        var prev = new ClassAbi.Fingerprint("api1");
+        var now = new ClassAbi.Fingerprint("api2");
+        List<TestClassIndex.Entry> tests = List.of(
+                new TestClassIndex.Entry(
+                        "com.acme.ImportsButNeverRanIt", Set.of("com.acme.Foo"), Set.of(), Set.of(), "", true),
+                new TestClassIndex.Entry("com.acme.RanIt", Set.of(), Set.of(), Set.of(), "", true),
+                new TestClassIndex.Entry("com.acme.NoRecord", Set.of("com.acme.Foo"), Set.of(), Set.of(), "", true),
+                new TestClassIndex.Entry("com.acme.ReachesIt", Set.of(), Set.of(), Set.of(), "", true));
         AffectedTests r = AffectedTestRanker.rank(new AffectedTestRanker.Inputs(
                 Path.of("/ws/api"),
                 "com.acme:api",
                 Path.of("/ws"),
                 TestSelection.DEFAULT,
-                List.of("api/src/integration/java/com/acme/FooIT.java"),
+                List.of("api/src/main/java/com/acme/Foo.java"),
+                Map.of("com.acme.Foo", prev),
+                Map.of("com.acme.Foo", now),
+                List.of(),
+                tests,
+                Set.of("com.acme.Foo"),
+                List.of(),
+                Map.of(),
+                Map.of(
+                        "com.acme.ImportsButNeverRanIt", "",
+                        "com.acme.RanIt", "cone-ran:com.acme.Foo",
+                        "com.acme.ReachesIt", "cone:com.acme.Foo")));
+        assertThat(r.ranked())
+                .extracting(AffectedTests.Row::className, AffectedTests.Row::reason)
+                .containsExactly(
+                        tuple("com.acme.RanIt", "cone-ran:com.acme.Foo"),
+                        tuple("com.acme.NoRecord", "abi-import:com.acme.Foo"),
+                        tuple("com.acme.ReachesIt", "cone:com.acme.Foo"));
+    }
+
+    @Test
+    void a_recorded_read_of_a_changed_resource_ranks_instead_of_refusing() {
+        TestClassIndex.Entry reader =
+                new TestClassIndex.Entry("com.acme.ReadsIt", Set.of(), Set.of(), Set.of(), "", true);
+        AffectedTests r = AffectedTestRanker.rank(new AffectedTestRanker.Inputs(
+                Path.of("/ws/api"),
+                "com.acme:api",
+                Path.of("/ws"),
+                TestSelection.DEFAULT,
+                List.of("api/src/test/resources/orders.json"),
                 Map.of(),
                 Map.of(),
                 List.of(),
-                List.of(),
+                List.of(reader),
                 Set.of(),
-                List.of()));
-        assertThat(r.refused()).isTrue();
-        assertThat(requireNonNull(r.refuse()).code()).isEqualTo("outside-selection");
+                List.of(),
+                Map.of(),
+                Map.of("com.acme.ReadsIt", "reads:api/src/test/resources/orders.json")));
+        assertThat(r.refused()).isFalse();
+        assertThat(r.classNames()).containsExactly("com.acme.ReadsIt");
     }
 
     @Test
@@ -334,7 +396,7 @@ class AffectedTestRankerTest {
     }
 
     @Test
-    void compact_layout_dirty_integration_test_refuses_outside_selection(@TempDir Path ws) throws Exception {
+    void compact_layout_dirty_integration_test_outside_the_selection_is_not_ranked(@TempDir Path ws) throws Exception {
         Path module = ws.resolve("api");
         Files.writeString(
                 Files.createDirectories(module).resolve("jk.toml"),
@@ -353,12 +415,12 @@ class AffectedTestRankerTest {
                 List.of(),
                 Set.of(),
                 List.of()));
-        assertThat(r.refused()).isTrue();
-        assertThat(requireNonNull(r.refuse()).code()).isEqualTo("outside-selection");
+        assertThat(r.refused()).isFalse();
+        assertThat(r.ranked()).isEmpty();
     }
 
     @Test
-    void cap_is_twenty() {
+    void every_candidate_is_ranked_and_the_capped_view_keeps_twenty() {
         var prev = new ClassAbi.Fingerprint("a");
         var now = new ClassAbi.Fingerprint("a");
         List<TestClassIndex.Entry> tests = new ArrayList<>();
@@ -378,7 +440,8 @@ class AffectedTestRankerTest {
                 tests,
                 Set.of("com.acme.Foo"),
                 List.of()));
-        assertThat(r.ranked()).hasSize(20);
-        assertThat(r.candidateCount()).isEqualTo(25);
+        assertThat(r.ranked()).hasSize(25);
+        assertThat(r.capped().ranked()).hasSize(20);
+        assertThat(r.capped().candidateCount()).isEqualTo(25);
     }
 }

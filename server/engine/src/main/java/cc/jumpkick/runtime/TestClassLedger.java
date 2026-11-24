@@ -15,6 +15,7 @@ import cc.jumpkick.test.JUnitLauncher;
 import cc.jumpkick.test.SuiteEnvReads;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -152,8 +153,8 @@ final class TestClassLedger {
     }
 
     /**
-     * {@code launch} starts: the classes it records from here on are its own, and the answer is the
-     * classes it leaves out, those that passed in it under this stamp ({@link #settledClasses}).
+     * {@code launch} is entered: the classes it records from here on are its own, and the answer is
+     * the classes it leaves out, those that passed in it under this stamp ({@link #settledClasses}).
      */
     List<String> enter(String launch) {
         this.launch = launch;
@@ -162,12 +163,27 @@ final class TestClassLedger {
         return settled;
     }
 
+    /** Whether a launch left out a class that passed before: the run ran only part of its selection. */
+    boolean leftClassesOut() {
+        return !leftOut.isEmpty();
+    }
+
     /**
-     * {@code launcher}, handed for each launch as it starts the classes that launch leaves out
-     * ({@link #enter}), so each launch records its classes as its own.
+     * {@code launcher}, handed for each launch the classes that launch leaves out ({@link #enter}).
+     * A launch that starts is entered again as it starts, so it records its classes as its own.
      */
     SuiteResources.Launcher launching(BiFunction<List<String>, SuiteSettings, JUnitLauncher> launcher) {
-        return (launch, settings) -> launcher.apply(enter(launch), settings);
+        return new SuiteResources.Launcher() {
+            @Override
+            public JUnitLauncher of(String launch, SuiteSettings settings) {
+                return launcher.apply(enter(launch), settings);
+            }
+
+            @Override
+            public void starting(String launch) {
+                enter(launch);
+            }
+        };
     }
 
     /**
@@ -269,6 +285,35 @@ final class TestClassLedger {
             // A nested class alone says nothing about its outer class's own tests.
             if (e.getValue() && own.contains(e.getKey())) out.add(e.getKey());
         }
+        return out;
+    }
+
+    /**
+     * One top-level class as the ledger holds it for the forecast: the tests its outcomes and its
+     * nested classes' hold, and whether a run leaves it out.
+     */
+    record Settled(long tests, boolean settled) {}
+
+    /**
+     * For the forecast, each top-level class recorded in the launches named {@code launches}, as a
+     * run under this stamp of those launches decides it ({@link #enter}): settled when every one of
+     * them that recorded it settled it ({@link #settledClasses}).
+     */
+    Map<String, Settled> recordedIn(Set<String> launches) {
+        Map<String, Long> tests = new HashMap<>();
+        Set<String> runs = new HashSet<>();
+        for (String launch : launches) {
+            Set<String> settled = new HashSet<>(settledClasses(launch));
+            for (Map.Entry<String, Entry> e : previous.entrySet()) {
+                String[] key = splitKey(e.getKey());
+                if (!key[0].equals(launch)) continue;
+                String cls = topLevel(key[1]);
+                tests.merge(cls, e.getValue().tests(), Long::sum);
+                if (!settled.contains(cls)) runs.add(cls);
+            }
+        }
+        Map<String, Settled> out = new HashMap<>();
+        tests.forEach((cls, n) -> out.put(cls, new Settled(n, !runs.contains(cls))));
         return out;
     }
 

@@ -94,10 +94,20 @@ public final class RemoteTier {
 
     /** As {@link #RemoteTier(CacheBackend, String, boolean)}, waiting {@code backoff} before an upload's first retry. */
     RemoteTier(CacheBackend backend, String platform, boolean writes, Duration backoff) {
+        this(backend, platform, writes, backoff, BATCH_WINDOW);
+    }
+
+    /** A tier only read from, whose first unknown key waits {@code batchWindow} for others to join its lookup. */
+    RemoteTier(CacheBackend backend, String platform, Duration batchWindow) {
+        this(backend, platform, false, BACKOFF, batchWindow);
+    }
+
+    private RemoteTier(CacheBackend backend, String platform, boolean writes, Duration backoff, Duration batchWindow) {
         this.backend = Objects.requireNonNull(backend, "backend");
         this.platform = Objects.requireNonNull(platform, "platform");
         this.writes = writes;
         this.backoff = Objects.requireNonNull(backoff, "backoff");
+        this.batchWindowNanos = batchWindow.toNanos();
     }
 
     /** The wait before an upload's first retry; each later one waits four times the last. */
@@ -608,7 +618,7 @@ public final class RemoteTier {
      * The record text the backend holds for {@code key}, or null when it has none or is off.
      *
      * <p>Asks that arrive together share one lookup: the first unknown key opens a batch and waits
-     * {@link #BATCH_WINDOW_NANOS} for others, so the forecast's lanes, which price a wave of
+     * {@link #BATCH_WINDOW} for others, so the forecast's lanes, which price a wave of
      * independent modules at once, cost one round trip per wave rather than one per key.
      */
     @Nullable
@@ -645,7 +655,7 @@ public final class RemoteTier {
             batch.keys.putIfAbsent(key, accept);
         }
         if (leads) {
-            LockSupport.parkNanos(BATCH_WINDOW_NANOS);
+            LockSupport.parkNanos(batchWindowNanos);
             Map<String, CacheBackend.@Nullable Accept> ask;
             synchronized (batches) {
                 if (open == batch) open = null;
@@ -670,7 +680,9 @@ public final class RemoteTier {
     }
 
     /** How long the first ask of a batch waits for others: short beside a round trip, long beside a lane's next ask. */
-    static final long BATCH_WINDOW_NANOS = TimeUnit.MILLISECONDS.toNanos(2);
+    static final Duration BATCH_WINDOW = Duration.ofMillis(2);
+
+    private final long batchWindowNanos;
 
     /** Keys one lookup carries at most; a fuller batch opens the next. */
     static final int MAX_BATCH = 500;

@@ -3,14 +3,17 @@ package cc.jumpkick.run;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ForkJoinPool;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 
 /**
- *: the CPU pool floors at 8 carriers (never capped below the machine's cores), and the
- * IO pool runs every task on a virtual thread — blocking waits (process forks, artifact gates)
- * must be cheap.
+ * The CPU pool floors at 8 carriers, a managed wait on it lets the pool run the tasks queued
+ * behind it, and the IO pool runs every task on a virtual thread.
  */
 class JkThreadsTest {
 
@@ -19,6 +22,60 @@ class JkThreadsTest {
         assertThat(JkThreads.CPU_THREADS)
                 .isEqualTo(Math.max(Runtime.getRuntime().availableProcessors(), 8))
                 .isGreaterThanOrEqualTo(8);
+    }
+
+    @Test
+    void a_managed_wait_on_a_pool_thread_lets_the_pool_run_the_task_queued_behind_it() throws Exception {
+        ForkJoinPool pool = new ForkJoinPool(1);
+        Object monitor = new Object();
+        CountDownLatch waiting = new CountDownLatch(1);
+        try {
+            pool.execute(() -> {
+                synchronized (monitor) {
+                    waiting.countDown();
+                    try {
+                        JkThreads.waitManaged(monitor, 20_000);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    }
+                }
+            });
+            assertThat(waiting.await(10, TimeUnit.SECONDS)).isTrue();
+
+            CompletableFuture<String> queued = CompletableFuture.supplyAsync(() -> "ran", pool);
+
+            assertThat(queued.get(10, TimeUnit.SECONDS)).isEqualTo("ran");
+        } finally {
+            synchronized (monitor) {
+                monitor.notifyAll();
+            }
+            pool.shutdownNow();
+        }
+    }
+
+    @Test
+    void a_managed_latch_wait_on_a_pool_thread_lets_the_pool_run_the_task_queued_behind_it() throws Exception {
+        ForkJoinPool pool = new ForkJoinPool(1);
+        CountDownLatch release = new CountDownLatch(1);
+        CountDownLatch waiting = new CountDownLatch(1);
+        try {
+            pool.execute(() -> {
+                waiting.countDown();
+                try {
+                    JkThreads.blockManaged(() -> release.await(20, TimeUnit.SECONDS));
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            });
+            assertThat(waiting.await(10, TimeUnit.SECONDS)).isTrue();
+
+            CompletableFuture<String> queued = CompletableFuture.supplyAsync(() -> "ran", pool);
+
+            assertThat(queued.get(10, TimeUnit.SECONDS)).isEqualTo("ran");
+        } finally {
+            release.countDown();
+            pool.shutdownNow();
+        }
     }
 
     @Test

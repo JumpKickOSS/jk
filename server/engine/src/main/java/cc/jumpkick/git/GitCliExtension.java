@@ -23,6 +23,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Base64;
@@ -64,8 +65,8 @@ public final class GitCliExtension implements GitBackend {
         return "git-cli";
     }
 
-    private static final long LOCAL_TIMEOUT_SEC = 120;
-    private static final long NETWORK_TIMEOUT_SEC = 600;
+    private static final Duration LOCAL_TIMEOUT = Duration.ofMinutes(2);
+    private static final Duration NETWORK_TIMEOUT = Duration.ofMinutes(10);
 
     /** A detected, usable {@code git} executable and its version. */
     public record GitCli(String exe, int major, int minor) {
@@ -157,31 +158,31 @@ public final class GitCliExtension implements GitBackend {
     private final Path gitRoot;
     private final ForgeGitCredentials credentials;
     private final GitCli git;
-    private final long localTimeoutSec;
-    private final long networkTimeoutSec;
+    private final Duration localTimeout;
+    private final Duration networkTimeout;
     private final GitProxy proxy;
 
     /** Mirrors this instance has fully fetched; each is fetched at most once per instance. */
     private final Set<Path> fetched = ConcurrentHashMap.newKeySet();
 
     public GitCliExtension(Path gitRoot, ForgeGitCredentials credentials, GitCli git, GitProxy proxy) {
-        this(gitRoot, credentials, git, proxy, LOCAL_TIMEOUT_SEC, NETWORK_TIMEOUT_SEC);
+        this(gitRoot, credentials, git, proxy, LOCAL_TIMEOUT, NETWORK_TIMEOUT);
     }
 
-    /** With explicit timeouts for local and network commands, in seconds; tests shorten them. */
+    /** With explicit timeouts for local and network commands; tests shorten them. */
     GitCliExtension(
             Path gitRoot,
             ForgeGitCredentials credentials,
             GitCli git,
             GitProxy proxy,
-            long localTimeoutSec,
-            long networkTimeoutSec) {
+            Duration localTimeout,
+            Duration networkTimeout) {
         this.gitRoot = Objects.requireNonNull(gitRoot, "gitRoot");
         this.credentials = Objects.requireNonNull(credentials, "credentials");
         this.git = Objects.requireNonNull(git, "git");
         this.proxy = Objects.requireNonNull(proxy, "proxy");
-        this.localTimeoutSec = localTimeoutSec;
-        this.networkTimeoutSec = networkTimeoutSec;
+        this.localTimeout = Objects.requireNonNull(localTimeout, "localTimeout");
+        this.networkTimeout = Objects.requireNonNull(networkTimeout, "networkTimeout");
     }
 
     // --- operations ----------------------------------------------------------
@@ -189,7 +190,7 @@ public final class GitCliExtension implements GitBackend {
     @Override
     public GitFetcher.RemoteRefs listRefs(GitSource source) throws IOException {
         String url = source.canonicalUrl();
-        ProcResult r = exec(null, url, List.of("ls-remote", url), networkTimeoutSec);
+        ProcResult r = exec(null, url, List.of("ls-remote", url), networkTimeout);
         if (r.exit != 0) throw new IOException("git ls-remote failed: " + r.output.strip());
         List<String> tags = new ArrayList<>();
         String head = null;
@@ -229,7 +230,7 @@ public final class GitCliExtension implements GitBackend {
         Path bareDir = ensureBareClone(source);
         String sha = resolveRefSha(source, bareDir);
         ProcResult t =
-                exec(bareDir, null, List.of("show", "-s", "--format=%ct", "--end-of-options", sha), localTimeoutSec);
+                exec(bareDir, null, List.of("show", "-s", "--format=%ct", "--end-of-options", sha), localTimeout);
         if (t.exit != 0) throw new IOException("git show failed for " + sha + ": " + t.output.strip());
         long epoch;
         try {
@@ -245,12 +246,14 @@ public final class GitCliExtension implements GitBackend {
         if (!Files.isDirectory(dir)) return Optional.empty();
         // Two commands, not five: a build with [build-info] asks this on every run. The branch
         // header of one status names HEAD's commit and branch beside the dirty entries, and one
-        // show prints the commit time and, on git 2.32+, the nearest tag.
+        // show prints the commit time and, on git 2.32+, the nearest tag. The checkout is the
+        // user's: without --no-optional-locks the status takes index.lock to refresh the index,
+        // which a git command of theirs then trips over, and a status killed mid-refresh leaves.
         ProcResult status = exec(
                 dir,
                 null,
-                List.of("status", "--porcelain=v2", "--branch", "--untracked-files=normal"),
-                localTimeoutSec);
+                List.of("--no-optional-locks", "status", "--porcelain=v2", "--branch", "--untracked-files=normal"),
+                localTimeout);
         if (status.exit != 0) {
             if (status.output.contains("not a git repository")) return Optional.empty();
             throw new IOException("git status failed: " + status.output.strip());
@@ -271,7 +274,7 @@ public final class GitCliExtension implements GitBackend {
         boolean describeFormat = git.major() > 2 || (git.major() == 2 && git.minor() >= 32);
         String format = describeFormat ? "%ct%n%(describe:tags=true,abbrev=0)" : "%ct";
         ProcResult show =
-                exec(dir, null, List.of("show", "-s", "--format=" + format, "--end-of-options", sha), localTimeoutSec);
+                exec(dir, null, List.of("show", "-s", "--format=" + format, "--end-of-options", sha), localTimeout);
         if (show.exit != 0) throw new IOException("git show failed for " + sha + ": " + show.output.strip());
         String[] lines = show.output.strip().split("\n", 2);
         long epoch;
@@ -305,7 +308,7 @@ public final class GitCliExtension implements GitBackend {
                                 "origin",
                                 "+refs/heads/*:refs/heads/*",
                                 "+refs/tags/*:refs/tags/*"),
-                        networkTimeoutSec);
+                        networkTimeout);
                 if (r.exit != 0) throw new IOException("git fetch failed: " + r.output.strip());
                 fetched.add(bareDir);
                 return bareDir;
@@ -328,7 +331,7 @@ public final class GitCliExtension implements GitBackend {
                 args.add("--");
                 args.add(url);
                 args.add(staging.toString());
-                ProcResult r = exec(null, url, args, networkTimeoutSec);
+                ProcResult r = exec(null, url, args, networkTimeout);
                 if (r.exit != 0) throw new IOException("git clone failed: " + r.output.strip());
             });
             if (!source.shallow()) fetched.add(bareDir);
@@ -343,7 +346,7 @@ public final class GitCliExtension implements GitBackend {
                                 bareDir,
                                 null,
                                 List.of("rev-parse", "--verify", "--quiet", "--end-of-options", r.sha() + "^{commit}"),
-                                localTimeoutSec)
+                                localTimeout)
                         .exit
                 == 0;
     }
@@ -368,8 +371,7 @@ public final class GitCliExtension implements GitBackend {
                 display = "refs/heads/" + b.name();
             }
         }
-        ProcResult res =
-                exec(bareDir, null, List.of("rev-parse", "--verify", "--end-of-options", rev), localTimeoutSec);
+        ProcResult res = exec(bareDir, null, List.of("rev-parse", "--verify", "--end-of-options", rev), localTimeout);
         if (res.exit != 0) {
             String detail = res.output.strip();
             throw new IOException("ref " + display + " not found" + (detail.isEmpty() ? "" : ": " + detail));
@@ -390,20 +392,20 @@ public final class GitCliExtension implements GitBackend {
                             null,
                             null,
                             List.of("clone", "--no-checkout", "--", bareDir.toString(), staging.toString()),
-                            localTimeoutSec);
+                            localTimeout);
                     if (clone.exit != 0) throw new IOException("checkout clone failed: " + clone.output.strip());
                     // NB: no `--end-of-options` here. Unlike rev-parse/show/describe, `git checkout --detach`
                     // rejects it — git parses the token as a pathspec and fails with "--detach does not take
                     // a path argument '--end-of-options'" (seen on git 2.43). `sha` is an already-resolved
                     // full 40-hex commit id (resolveRefSha → rev-parse --verify), so it can't be mistaken for
                     // an option or a path; the plain form is safe and works across git versions.
-                    ProcResult co = exec(staging, null, List.of("checkout", "--detach", sha), localTimeoutSec);
+                    ProcResult co = exec(staging, null, List.of("checkout", "--detach", sha), localTimeout);
                     if (co.exit != 0) throw new IOException("checkout failed: " + co.output.strip());
                 }));
     }
 
     private Optional<String> describeNearestTag(Path bareDir, String sha) throws IOException {
-        ProcResult d = exec(bareDir, null, List.of("describe", "--tags", "--end-of-options", sha), localTimeoutSec);
+        ProcResult d = exec(bareDir, null, List.of("describe", "--tags", "--end-of-options", sha), localTimeout);
         if (d.exit != 0) return Optional.empty(); // "fatal: No names found"
         String out = d.output.strip();
         if (out.isEmpty()) return Optional.empty();
@@ -415,16 +417,22 @@ public final class GitCliExtension implements GitBackend {
 
     private record ProcResult(int exit, String output) {}
 
+    /** {@code timeout} in whole seconds, as {@code 120s}, or in milliseconds when it has a fraction. */
+    private static String spoken(Duration timeout) {
+        long ms = timeout.toMillis();
+        return ms % 1_000 == 0 ? ms / 1_000 + "s" : ms + "ms";
+    }
+
     /**
      * Run {@code git <args>} with the worker allow-list environment plus git's own switches (no
      * prompts, no pager, C locale). {@code remoteUrl} names the remote a network command talks to:
      * git reaches it through the {@code http.proxy} jk chose for it, and when it is a https URL
      * with resolvable forge credentials, an {@code Authorization: Basic} header scoped to that URL
-     * is injected through the environment (never argv). A command that outlives {@code timeoutSec} dies with its whole
+     * is injected through the environment (never argv). A command that outlives {@code timeout} dies with its whole
      * process tree: {@code git-remote-https} and {@code ssh} are children that would otherwise
      * keep the transfer, and the stdout pipe, going.
      */
-    private ProcResult exec(@Nullable Path cwd, @Nullable String remoteUrl, List<String> args, long timeoutSec)
+    private ProcResult exec(@Nullable Path cwd, @Nullable String remoteUrl, List<String> args, Duration timeout)
             throws IOException {
         List<String> lead = new ArrayList<>();
         Map<String, String> credEnv = new HashMap<>();
@@ -461,7 +469,7 @@ public final class GitCliExtension implements GitBackend {
 
         boolean done;
         try {
-            done = p.waitFor(timeoutSec, TimeUnit.SECONDS);
+            done = p.waitFor(timeout.toMillis(), TimeUnit.MILLISECONDS);
         } catch (InterruptedException e) {
             JobWorkers.destroyTree(p);
             Thread.currentThread().interrupt();
@@ -469,7 +477,7 @@ public final class GitCliExtension implements GitBackend {
         }
         if (!done) {
             JobWorkers.destroyTree(p);
-            throw new IOException("git timed out after " + timeoutSec + "s: git " + String.join(" ", args));
+            throw new IOException("git timed out after " + spoken(timeout) + ": git " + String.join(" ", args));
         }
         try {
             reader.join(1000);

@@ -12,6 +12,7 @@ import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.config.WorkspaceLocator;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.orchestrator.ClassTags;
 import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.task.ClassAbi;
 import cc.jumpkick.task.MainAbi;
@@ -19,7 +20,6 @@ import cc.jumpkick.test.AbiIndex;
 import cc.jumpkick.test.AffectedChangedPublish;
 import cc.jumpkick.test.AffectedTestRanker;
 import cc.jumpkick.test.AffectedTests;
-import cc.jumpkick.test.ClassTags;
 import cc.jumpkick.test.SuiteFilter;
 import cc.jumpkick.test.TestClassIndex;
 import java.nio.file.Files;
@@ -108,18 +108,19 @@ public final class AffectedTestRun {
                 new AffectedTests.ModuleRow(rel.toString().isEmpty() ? "." : rel.toString(), coord, why);
 
         AffectedTests report = AffectedTestRanker.rank(new AffectedTestRanker.Inputs(
-                moduleDir,
-                coord,
-                wsRoot,
-                effectiveSel,
-                dirty,
-                pre,
-                current,
-                compiled,
-                tests,
-                production,
-                List.of(coneRow),
-                foreign));
+                        moduleDir,
+                        coord,
+                        wsRoot,
+                        effectiveSel,
+                        dirty,
+                        pre,
+                        current,
+                        compiled,
+                        tests,
+                        production,
+                        List.of(coneRow),
+                        foreign))
+                .capped();
         ctx.put(BuildPlanner.AFFECTED_TESTS, report);
         AffectedTests.Refuse refuse = report.refuse();
         if (refuse != null) {

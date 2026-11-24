@@ -106,6 +106,23 @@ public final class ForecastScope implements StepForecast.Scope {
      */
     final List<Path> orderDeps;
 
+    /**
+     * Every dirty sibling whose jar the suite may be handed by path ({@code -Djk.engine.jar}, a
+     * {@code test-plugin-jars} worker): one on its compile or test classpath as well as one it
+     * reaches by build order alone.
+     */
+    List<Path> dirtySiblings() {
+        return dirtySiblings(dep);
+    }
+
+    /** Every sibling {@code dep} names dirty: on the compile classpath, on a test scope only, or by build order alone. */
+    static List<Path> dirtySiblings(TaskForecaster.DepDirtiness dep) {
+        List<Path> out = new ArrayList<>(dep.compileDeps());
+        out.addAll(dep.testDeps());
+        out.addAll(dep.orderDeps());
+        return out;
+    }
+
     /** What this module's dirty compile-scope dependencies' edits look like, for its compile texts. */
     final TaskForecaster.DepHint depHint;
 
@@ -178,6 +195,9 @@ public final class ForecastScope implements StepForecast.Scope {
     boolean nativeBinaryToRestore;
 
     int testCount;
+
+    /** How many of {@link #testCount} the suite runs when it does, the rest replayed; negative for all. */
+    int rerunTests = -1;
 
     private @Nullable Prepared prepared;
     private @Nullable TestSources testSources;
@@ -674,7 +694,15 @@ public final class ForecastScope implements StepForecast.Scope {
         boolean producesImage =
                 project.image().base() != null || project.image().registry() != null;
         return new TaskForecast.Module(
-                u.dir(), u.coord(), steps, sourceCount, testCount, !p.parsed().noSources(), producesImage);
+                u.dir(),
+                u.coord(),
+                steps,
+                sourceCount,
+                testCount,
+                !p.parsed().noSources(),
+                producesImage,
+                null,
+                rerunTests < 0 ? testCount : rerunTests);
     }
 
     /** The module when its lock must be written first: each priced or always-run step of {@code plan} runs. */
@@ -717,9 +745,29 @@ public final class ForecastScope implements StepForecast.Scope {
         return names.isEmpty() ? null : names;
     }
 
+    /**
+     * What the pending compiles will rewrite of the classes this module's suite runs: its own edit
+     * unless its compile is dirty only for a sibling's jar, then each dirty sibling's, as the
+     * siblings published them ({@link #hints}). Null when a dirty sibling published none.
+     */
+    @Nullable
+    List<SourceApiIndex.Hint> pendingEdits() {
+        List<SourceApiIndex.Hint> edits = new ArrayList<>();
+        if (compileDirty && !depOnlyDirty) edits.add(ownHint);
+        List<Path> siblings = new ArrayList<>(dep.compileDeps());
+        siblings.addAll(dep.testDeps());
+        siblings.addAll(orderDeps);
+        for (Path sibling : siblings) {
+            TaskForecaster.ModuleHint h = hints.get(sibling.toAbsolutePath().normalize());
+            if (h == null) return null;
+            edits.add(h.hint());
+        }
+        return edits;
+    }
+
     private void publishHint() {
         SourceApiIndex.Hint hint = ownHint.codeKept() && treeMayMoveBeyondCode()
-                ? new SourceApiIndex.Hint(ownHint.kind(), ownHint.files())
+                ? new SourceApiIndex.Hint(ownHint.kind(), ownHint.files(), false, null)
                 : ownHint;
         hints.put(
                 dir.toAbsolutePath().normalize(),

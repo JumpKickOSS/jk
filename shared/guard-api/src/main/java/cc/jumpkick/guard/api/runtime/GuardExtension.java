@@ -23,9 +23,11 @@ import org.junit.jupiter.api.extension.BeforeEachCallback;
 import org.junit.jupiter.api.extension.ConditionEvaluationResult;
 import org.junit.jupiter.api.extension.ExecutionCondition;
 import org.junit.jupiter.api.extension.ExtensionContext;
+import org.junit.jupiter.api.extension.InvocationInterceptor;
 import org.junit.jupiter.api.extension.ParameterContext;
 import org.junit.jupiter.api.extension.ParameterResolutionException;
 import org.junit.jupiter.api.extension.ParameterResolver;
+import org.junit.jupiter.api.extension.ReflectiveInvocationContext;
 import org.junit.jupiter.api.extension.TestExecutionExceptionHandler;
 
 /**
@@ -35,14 +37,16 @@ import org.junit.jupiter.api.extension.TestExecutionExceptionHandler;
  * what each {@link Guard} reports, and appends one report line per guard for the engine. A guard
  * that throws is reported as such and the next guard still runs; a guard's violations never fail
  * the JUnit run — the verdict is the engine's. Every other test in the same JVM keeps its own
- * verdict: the extension touches nothing that is not a {@link Guard}.
+ * verdict: the extension touches nothing that is not a {@link Guard}. A guard whose reads all hold
+ * since the last run is not invoked: its last line is reported again ({@link ReadLedger}).
  */
 public final class GuardExtension
         implements ParameterResolver,
                 ExecutionCondition,
                 BeforeEachCallback,
                 AfterEachCallback,
-                TestExecutionExceptionHandler {
+                TestExecutionExceptionHandler,
+                InvocationInterceptor {
 
     /** Outside jk there are no views to inject: the guards are skipped, not failed. */
     @Override
@@ -107,6 +111,42 @@ public final class GuardExtension
     }
 
     /**
+     * A guard the ledger can replay is skipped, its last line kept for {@link #afterEach}; any other
+     * runs, and the reason a guard with a line to replay runs anyway is printed for the run's log.
+     */
+    @Override
+    public void interceptTestMethod(
+            Invocation<@Nullable Void> invocation,
+            ReflectiveInvocationContext<Method> invocationContext,
+            ExtensionContext ctx)
+            throws Throwable {
+        Guard g = ctx.getRequiredTestMethod().getAnnotation(Guard.class);
+        GuardRuntime rt = GuardRuntime.current();
+        ReadLedger ledger = rt == null ? null : rt.ledger();
+        if (g == null || ledger == null) {
+            invocation.proceed();
+            return;
+        }
+        List<String> params = params(ctx.getRequiredTestMethod());
+        String replay = ledger.replay(g.id(), params, why -> Log.info("guard " + g.id() + " runs: " + why));
+        if (replay == null) {
+            ledger.starting(g.id(), params);
+            invocation.proceed();
+            return;
+        }
+        ctx.getStore(NS).put(REPLAYED, replay);
+        invocation.skip();
+    }
+
+    private static final String REPLAYED = "replayed";
+
+    private static List<String> params(Method m) {
+        List<String> params = new ArrayList<>();
+        for (Class<?> pt : m.getParameterTypes()) params.add(pt.getSimpleName());
+        return params;
+    }
+
+    /**
      * A {@link Guard} that throws is a scanner failure the engine reports under the guard's id, so
      * its exception is recorded and swallowed. Any other test's exception is that test's own
      * failure: with autodetection on, this extension sees every test in the JVM, and a swallow
@@ -134,8 +174,15 @@ public final class GuardExtension
         List<Report.AllowEntry> allows = new ArrayList<>();
         for (Allow a : m.getAnnotationsByType(Allow.class)) allows.add(new Report.AllowEntry(a.in(), a.reason()));
         Fixture fx = m.getAnnotation(Fixture.class);
-        List<String> params = new ArrayList<>();
-        for (Class<?> pt : m.getParameterTypes()) params.add(pt.getSimpleName());
+        List<String> params = params(m);
+        GuardRuntime rt = GuardRuntime.current();
+        ReadLedger ledger = rt == null ? null : rt.ledger();
+        String replayed = ctx.getStore(NS).remove(REPLAYED, String.class);
+        if (rt != null && replayed != null) {
+            Report.appendJson(rt.reportFile(), Report.markReplayed(replayed));
+            if (ledger != null) ledger.record(g.id(), params, "ok", replayed, replayed);
+            return;
+        }
         Report.Line line = new Report.Line(
                 g.id(),
                 g.why(),
@@ -146,9 +193,10 @@ public final class GuardExtension
                 fx == null ? null : fx.value(),
                 params,
                 collector(ctx));
-        GuardRuntime rt = GuardRuntime.current();
-        if (rt != null) Report.append(rt.reportFile(), line);
-        else Log.info("jk guard: " + line.toJson());
+        String json = line.toJson();
+        if (rt != null) Report.appendJson(rt.reportFile(), json);
+        else Log.info("jk guard: " + json);
+        if (ledger != null) ledger.record(g.id(), params, collector(ctx).outcome, json, null);
     }
 
     private static Report.Collector collector(ExtensionContext ctx) {

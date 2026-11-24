@@ -34,7 +34,7 @@ import org.junit.jupiter.api.io.TempDir;
  * {@code apps/heavy}, excluded by default with a reason, which the root profile {@code all} adds back.
  */
 // Network: JUnit from Central; forked test JVMs.
-@Tag("integration")
+@Tag("release")
 class GroupRootE2eTest {
 
     @Test

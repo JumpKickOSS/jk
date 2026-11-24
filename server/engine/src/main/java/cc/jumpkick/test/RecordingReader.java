@@ -57,6 +57,9 @@ public final class RecordingReader {
     private static final long CHECKPOINT_TYPE = 1;
     private static final String EVENT_SUPER_TYPE = "jdk.jfr.Event";
 
+    /** A thread field's type: given as its pool key, which names one thread for the whole recording. */
+    private static final String THREAD = "java.lang.Thread";
+
     private RecordingReader() {}
 
     /**
@@ -82,29 +85,47 @@ public final class RecordingReader {
         }
     }
 
-    /** One read in the engine's heap at a time, engine-wide: memory admission holds back the peak of one. */
-    private static final Semaphore READS = new Semaphore(1, true);
+    /** The reader's turns in kibibytes of {@link #PEAK_BYTES}, the peak memory admission holds back. */
+    private static final int UNITS = (int) (PEAK_BYTES >> 10);
+
+    /** What stands in the engine's heap under the reader's turns, engine-wide, never past {@link #UNITS}. */
+    private static final Semaphore READS = new Semaphore(UNITS, true);
 
     /**
-     * A turn to read recordings in the engine's heap, released on close. Every reader of suite
-     * recordings takes one, so their peaks never add up past the one memory admission holds back.
+     * A share of the reader's turn, released on close. Every reader of suite recordings takes the
+     * whole of it ({@link #acquire()}); a smaller structure that must not stand beside a recording
+     * read, a suite's class index, takes what it costs ({@link #acquire(long)}), so several small
+     * ones stand together while their peaks never add up past the one memory admission holds back.
+     * Turns are handed out in arrival order: a whole turn waits for the shares before it, never for
+     * the ones after.
      */
     public static final class Permit implements AutoCloseable {
-        private Permit() {}
+        private final int units;
 
+        private Permit(int units) {
+            this.units = units;
+        }
+
+        /** The whole turn: one recording read's peak. */
         public static Permit acquire() throws IOException {
+            return acquire(PEAK_BYTES);
+        }
+
+        /** A share of {@code bytes}, at least one kibibyte and at most the whole turn. */
+        public static Permit acquire(long bytes) throws IOException {
+            int units = Math.clamp((bytes + 1023) >> 10, 1, UNITS);
             try {
-                READS.acquire();
+                READS.acquire(units);
             } catch (InterruptedException stopped) {
                 Thread.currentThread().interrupt();
                 throw new IOException("interrupted waiting to read a recording");
             }
-            return new Permit();
+            return new Permit(units);
         }
 
         @Override
         public void close() {
-            READS.release();
+            READS.release(units);
         }
     }
 
@@ -121,8 +142,8 @@ public final class RecordingReader {
         /**
          * @param endNanos the start plus the event's duration; the start for an event without one
          * @param values the fields in the order {@link #read} was asked for them: a string field as
-         *     its value, a boolean as {@code "true"} or {@code "false"}, a number in decimal, a field
-         *     the event type does not have or that was null as {@code null}
+         *     its value, a boolean as {@code "true"} or {@code "false"}, a number in decimal, a thread
+         *     as its id in decimal, a field the event type does not have or that was null as {@code null}
          */
         void event(String name, long startNanos, long endNanos, @Nullable String[] values);
     }
@@ -183,16 +204,16 @@ public final class RecordingReader {
                 List<Field> fields = want.type.fields;
                 for (int i = 0; i < fields.size(); i++) {
                     Field f = fields.get(i);
-                    Integer slot = want.slotOf.get(f.name);
+                    int slot = want.slotOf[i];
                     if (i == 0) {
                         // startTime: every event's first field, in ticks
                         ticks = in.varLong();
-                        if (slot != null) values[slot] = Long.toString(ticks);
+                        if (slot >= 0) values[slot] = Long.toString(ticks);
                     } else if (i == 1 && f.name.equals("duration")) {
                         // the duration of an event that has one, in ticks
                         duration = in.varLong();
-                        if (slot != null) values[slot] = Long.toString(duration);
-                    } else if (slot != null) {
+                        if (slot >= 0) values[slot] = Long.toString(duration);
+                    } else if (slot >= 0) {
                         values[slot] = value(in, f, meta, strings);
                     } else {
                         skip(in, f, meta);
@@ -259,6 +280,9 @@ public final class RecordingReader {
     }
 
     private static @Nullable String value(In in, Field f, Metadata meta, Map<Long, String> strings) throws IOException {
+        if (f.dimension == 0 && f.constantPool && THREAD.equals(meta.type(f.typeId).name)) {
+            return Long.toString(in.varLong());
+        }
         if (f.dimension > 0 || f.constantPool) {
             skip(in, f, meta);
             return null;
@@ -339,8 +363,11 @@ public final class RecordingReader {
         }
     }
 
-    /** What to take from one event type: a slot per asked-for field. */
-    private record Want(Type type, Map<String, Integer> slotOf, int slots) {}
+    /**
+     * What to take from one event type: for each of its fields in order, the slot it fills, or -1
+     * when it was not asked for.
+     */
+    private record Want(Type type, int[] slotOf, int slots) {}
 
     /** A chunk's metadata: its types by id. */
     static final class Metadata {
@@ -357,8 +384,8 @@ public final class RecordingReader {
             types.forEach((id, t) -> {
                 List<String> fields = t.event ? wanted.get(t.name) : null;
                 if (fields == null) return;
-                Map<String, Integer> slots = new HashMap<>();
-                for (int i = 0; i < fields.size(); i++) slots.put(fields.get(i), i);
+                int[] slots = new int[t.fields.size()];
+                for (int i = 0; i < slots.length; i++) slots[i] = fields.indexOf(t.fields.get(i).name);
                 out.put(id, new Want(t, slots, fields.size()));
             });
             return out;
@@ -395,8 +422,16 @@ public final class RecordingReader {
             if (depth > 32) throw new IOException("metadata nesting past 32");
             String name = at(table, in.varLong());
             int attributes = (int) in.varLong();
-            Map<String, String> attrs = new HashMap<>();
-            for (int i = 0; i < attributes; i++) attrs.put(at(table, in.varLong()), at(table, in.varLong()));
+            boolean declares = ("class".equals(name) && "metadata".equals(parent))
+                    || ("field".equals(name) && "class".equals(parent) && owner != null);
+            // Only a type or a field is kept; every other element's attributes (annotations,
+            // settings) are passed over, which is most of the metadata.
+            Map<String, String> attrs = declares ? new HashMap<>() : Map.of();
+            for (int i = 0; i < attributes; i++) {
+                String key = at(table, in.varLong());
+                String value = at(table, in.varLong());
+                if (declares) attrs.put(key, value);
+            }
             Type type = null;
             if ("class".equals(name) && "metadata".equals(parent)) {
                 long id = Long.parseLong(attrs.getOrDefault("id", "-1"));
@@ -426,6 +461,7 @@ public final class RecordingReader {
         private final ByteBuffer buf = ByteBuffer.allocate(64 << 10);
         private long bufStart;
         private byte[] bytes = new byte[256];
+        private char[] chars = new char[256];
 
         In(FileChannel ch) {
             this.ch = ch;
@@ -514,9 +550,9 @@ public final class RecordingReader {
                 }
                 case 4 -> {
                     int n = length();
-                    StringBuilder sb = new StringBuilder(n);
-                    for (int i = 0; i < n; i++) sb.append((char) varLong());
-                    return sb.toString();
+                    if (chars.length < n) chars = new char[Math.max(n, chars.length * 2)];
+                    for (int i = 0; i < n; i++) chars[i] = (char) varLong();
+                    return new String(chars, 0, n);
                 }
                 default -> throw new IOException("string encoding " + encoding + " at " + (position() - 1));
             }

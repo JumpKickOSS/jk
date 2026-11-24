@@ -24,11 +24,10 @@ import org.jspecify.annotations.Nullable;
 public final class JkThreads {
 
     /**
-     * Parallelism for the CPU pool: the machine's cores with a floor of 8. The old
-     * {@code min(cores, 8)} capped big machines at 8 concurrent compile/package steps — with 13
-     * modules ready at the workspace graph's widest level, a 24-core host ran at a third of its
-     * width. The floor keeps small hosts responsive: CPU steps mostly block on forked compiler
-     * JVMs, and how many of those run is the worker lease ledger, not this pool.
+     * Parallelism for the CPU pool: the machine's cores with a floor of 8. The floor keeps small
+     * hosts responsive: CPU steps mostly wait on forked JVMs, and how many of those run is the
+     * worker lease ledger, not this pool. Those waits are {@link #blockManaged} blocks, so a step
+     * waiting on its fork lets the pool start a thread for the steps queued behind it.
      */
     public static final int CPU_THREADS = Math.max(Runtime.getRuntime().availableProcessors(), 8);
 
@@ -56,6 +55,48 @@ public final class JkThreads {
             }
             return cpu;
         }
+    }
+
+    /**
+     * True when every thread of {@link #cpu()} is busy, so a task submitted now queues until one
+     * finishes or blocks in a way the pool compensates for. False before the pool exists.
+     */
+    public static boolean cpuSaturated() {
+        return cpuReal instanceof ForkJoinPool pool && pool.getActiveThreadCount() >= pool.getParallelism();
+    }
+
+    /** A wait {@link #blockManaged} runs once. */
+    @FunctionalInterface
+    public interface Wait {
+        void await() throws InterruptedException;
+    }
+
+    /**
+     * Run {@code wait} once as a {@link ForkJoinPool#managedBlock}: a {@link #cpu()} thread that
+     * waits so lets the pool start another for the tasks queued behind it, which a latch, a join, a
+     * monitor wait or a pipe read does not. Off the pool it just runs {@code wait}.
+     */
+    public static void blockManaged(Wait wait) throws InterruptedException {
+        ForkJoinPool.managedBlock(new ForkJoinPool.ManagedBlocker() {
+            private boolean done;
+
+            @Override
+            public boolean block() throws InterruptedException {
+                wait.await();
+                done = true;
+                return true;
+            }
+
+            @Override
+            public boolean isReleasable() {
+                return done;
+            }
+        });
+    }
+
+    /** {@code monitor.wait(millis)}, whose monitor the caller holds, as a {@link #blockManaged} block. */
+    public static void waitManaged(Object monitor, long millis) throws InterruptedException {
+        blockManaged(() -> monitor.wait(millis));
     }
 
     /** Virtual-thread executor. One thread per task; names start with {@code jk-io-}. */

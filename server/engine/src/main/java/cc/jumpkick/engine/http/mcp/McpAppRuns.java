@@ -125,7 +125,8 @@ public final class McpAppRuns {
             out.append("no file yet\n");
             return;
         }
-        McpAppLog.Tail tail = McpAppLog.tail(McpAppLog.read(file), request, max, budget, McpAppLog.REGEX_MILLIS);
+        McpAppLog.Tail tail =
+                McpAppLog.tail(McpAppLog.read(file), request, max, budget, McpAppLog.REGEX_MILLIS, Clock.SYSTEM);
         if (request != null && !request.isBlank()) {
             out.append(tail.of())
                     .append(tail.of() == 1 ? " line for " : " lines for ")

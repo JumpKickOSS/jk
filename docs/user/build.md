@@ -89,10 +89,14 @@ siblings on its classpath, so a changed sibling invalidates only the consumer cl
 referenced the changed producer class — not every class that touched the sibling's jar. A
 sibling whose analysis is missing or does not match its classes is treated like any other jar.
 
+A Java compile served from the action cache lays down the incremental analysis of the compile
+that wrote those classes, in whichever worktree of the project it ran, so the next edit after a hit
+compiles the sources it changed and the ones that use what it changed, nothing more.
+
 A class file whose source is gone leaves the classes tree on the next compile, whatever put it
 there. The Java and Scala compile sweeps every class its incremental analysis does not own before
-it runs — a restore from the action cache rewrites the tree without telling the analysis, so a
-tree can hold the class of a source the analysis never saw — and the Kotlin compile starts its
+it runs — a restore whose compile cached no analysis rewrites the tree without telling the
+analysis, so a tree can hold the class of a source the analysis never saw — and the Kotlin compile starts its
 incremental state over when a restore under that state's own key lays down another tree. The
 other way round holds too: a tree short of a class its incremental state claims (a write cut short,
 a restore of a tree that lacks it) compiles whole, in Java, Scala and Kotlin alike.

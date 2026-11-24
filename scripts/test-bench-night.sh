@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Fixture test for scripts/bench-night.sh with fake agent CLIs and a fake jk: a dry run lists every
-# cell of the plan with its expected time, each step's minutes and what starts past the soft deadline,
+# Fixture test for scripts/bench-night.sh with fake agent CLIs and a fake jk: a dry run checks every
+# cell's arguments against its harness and refuses to start on one it refuses, lists every cell of the
+# plan with its expected time, each step's minutes and what starts past the soft deadline,
 # every agent on its pinned model, the new agent alone first, and names each agent that is not logged
 # in, and no agent runs; an agent cut by NIGHT_SKIP or the skip file leaves steps 2 and 3 only; smoke
 # names an agent that is not logged in and runs nothing; a real run over a fake harness runs every cell
@@ -163,6 +164,37 @@ if grep -qE 'not logged in: (claude|codex|muse|agy|copilot)' "$WORK/dry"; then f
 grep -q 'not set up: commons-lang' "$WORK/dry" || fail "a repository not set up is not named"
 grep -q -- '--driver cursor .*\[cursor-agent is not logged in' "$WORK/dry" || fail "cursor's cells are not marked skipped"
 
+# Every cell's arguments are its harness's: cursor's prescription arm is one change-tasks takes.
+grep -q -- 'change-tasks --driver cursor --arm jk-cursorrules --task ' "$WORK/dry" ||
+  fail "the dry run plans no change-tasks cell on cursor's prescription arm"
+printf -- '--driver\tcursor\t--arm\tjk-cursorrules\t--task\tpetclinic-callers-addpet\n--arm\tjk-nosuch\n--task\tno-such-task\n' |
+  "$ROOT/bench/agent-loop/change-tasks" --check >"$WORK/check" 2>&1 && fail "change-tasks --check passed an unknown arm and task"
+if [ "$(wc -l <"$WORK/check")" -ne 2 ] || ! grep -q "jk-nosuch: argument --arm: invalid choice" "$WORK/check" ||
+  ! grep -q "no-such-task: argument --task: invalid choice" "$WORK/check"; then
+  fail "change-tasks --check: $(cat "$WORK/check")"
+fi
+# A harness that refuses a cell's arguments (here a change-tasks without cursor's arm): the dry run names
+# the cell and refuses to start, listing nothing.
+mkdir -p "$WORK/strict"
+ln -s "$ROOT/bench/agent-loop/smoke-test" "$WORK/strict/smoke-test"
+cat >"$WORK/strict/change-tasks" <<EOF
+#!/usr/bin/env python3
+import importlib.machinery, importlib.util, sys
+loader = importlib.machinery.SourceFileLoader("change_tasks", "$ROOT/bench/agent-loop/change-tasks")
+ct = importlib.util.module_from_spec(importlib.util.spec_from_loader("change_tasks", loader))
+loader.exec_module(ct)
+del ct.ARMS["jk-cursorrules"]
+sys.exit(ct.main())
+EOF
+chmod +x "$WORK/strict/change-tasks"
+if NIGHT_HARNESS="$WORK/strict" night run --until 07:00 --dry-run >"$WORK/dry-strict" 2>&1; then
+  fail "the dry run started with a cell its harness refuses"
+fi
+grep -q -- "change-tasks --driver cursor --arm jk-cursorrules --task .*invalid choice: 'jk-cursorrules'" "$WORK/dry-strict" ||
+  fail "the refused cell is not named: $(cat "$WORK/dry-strict")"
+grep -q "a cell has arguments its harness refuses" "$WORK/dry-strict" || fail "the refusal is not said: $(cat "$WORK/dry-strict")"
+if grep -q '^step ' "$WORK/dry-strict"; then fail "the refused dry run listed cells"; fi
+
 # An agent cut at the start or by the skip file during the night leaves steps 2 and 3, never step 1.
 NIGHT_SKIP=copilot night run --until 07:00 --dry-run >"$WORK/dry-skip" 2>&1 || fail "the NIGHT_SKIP dry run failed"
 grep -q -- '^step 1 tier 1 .*--driver copilot ' "$WORK/dry-skip" || fail "NIGHT_SKIP cut copilot from step 1"
@@ -202,6 +234,7 @@ wait "$pausing" || fail "pause failed: $(cat "$WORK/pause")"
 grep -q '^no gate runs$' "$WORK/pause" || fail "pause does not say no gate runs: $(cat "$WORK/pause")"
 cat >"$WORK/harness/smoke-test" <<EOF
 #!/usr/bin/env bash
+if [ "\$1" = --check ]; then cat >/dev/null; exit 0; fi
 echo "smoke-test \$*" >>"$WORK/ran"
 if [ ! -e "$WORK/first" ]; then
   touch "$WORK/first"
@@ -210,6 +243,7 @@ fi
 EOF
 cat >"$WORK/harness/change-tasks" <<EOF
 #!/usr/bin/env bash
+if [ "\$1" = --check ]; then cat >/dev/null; exit 0; fi
 echo "change-tasks \$*" >>"$WORK/ran"
 exec python3 -I -c '
 import datetime, json, os, sys

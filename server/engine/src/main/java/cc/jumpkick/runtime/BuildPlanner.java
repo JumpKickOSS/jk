@@ -239,7 +239,9 @@ public final class BuildPlanner {
          * the effort-weight prediction. A {@code jdksDir} of {@code null} is load-bearing: it routes
          * {@link EffortWeights#jdkWeight} through the full JDK probe chain (PATH / JAVA_HOME / GraalVM
          * / SDKMAN / …) instead of the empty managed JDK root, so an already-installed JDK predicts a
-         * zero-cost {@code ensure-jdk} rather than a phantom download.
+         * zero-cost {@code ensure-jdk} rather than a phantom download. The session's test selection
+         * is the module's own ({@link SessionContext#selectionFor}): a module-qualified {@code --class}
+         * holds in that module alone.
          *
          * @param workers {@code 0} is auto at run-tests; the forecast prices it as one
          * @param projectModules the build graph's module dirs, so the prediction can borrow a
@@ -258,7 +260,7 @@ public final class BuildPlanner {
                 Set<Path> projectModules,
                 boolean testOnly,
                 boolean compileOnly) {
-            Session session = SessionContext.current();
+            Session session = SessionContext.current().withTestSelection(SessionContext.selectionFor(dir));
             boolean skip = BuildKnobs.skipsTests(session.testSelection(), testOnly, skipTests);
             int estimatedTestCount =
                     skip ? 0 : TestSupport.estimateAllSuiteTestCount(dir, CompileSupport.isSimpleLayout(dir));

@@ -18,6 +18,8 @@ import cc.jumpkick.testing.SysProps;
 import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
 import cc.jumpkick.wire.runtime.WorkspaceRequest;
 import cc.jumpkick.wire.runtime.WorkspaceResult;
+import cc.jumpkick.wire.runtime.WorkspaceSpec;
+import cc.jumpkick.wire.runtime.WorkspaceTarget;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -40,7 +42,8 @@ import org.junit.jupiter.api.io.TempDir;
 @SysProps.TempRoots({"jk.env.JK_STORE_DIR", "jk.m2.local"})
 class BareJobRequestScopeTest {
 
-    private static final List<String> MODULES = List.of("a", "b", "c", "d");
+    /** Two modules and the compile goal reach the forecast and a compile per module, and no more. */
+    private static final List<String> MODULES = List.of("a", "b");
 
     @TempDir
     Path tmp;
@@ -66,8 +69,25 @@ class BareJobRequestScopeTest {
                         .success())
                 .as("workspace lock")
                 .isTrue();
-        WorkspaceRequest request =
-                new WorkspaceRequest(workspace, cache, null, 0, null, false, false, 1, null, false, false);
+        WorkspaceRequest request = new WorkspaceRequest(
+                workspace,
+                cache,
+                null,
+                0,
+                null,
+                false,
+                false,
+                1,
+                null,
+                false,
+                false,
+                false,
+                null,
+                null,
+                false,
+                WorkspaceSpec.of(WorkspaceTarget.COMPILE),
+                null,
+                false);
 
         long before = WorkspaceLoader.loads();
         WorkspaceResult result = Request.of(4_242L, new IoLedger())

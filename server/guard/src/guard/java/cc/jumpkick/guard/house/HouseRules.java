@@ -13,6 +13,7 @@ import cc.jumpkick.guard.api.Scope;
 import cc.jumpkick.guard.api.Text;
 import cc.jumpkick.guard.api.TextSite;
 import cc.jumpkick.guard.api.Violations;
+import cc.jumpkick.host.Hashing;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -144,17 +145,22 @@ final class HouseRules {
             banned.add("\"" + n + suffix + "\":\"" + n + "\"");
             banned.add("\"" + n + "\":\"" + n + suffix + "\"");
         }
+        String salt = "tool paths " + shortDigest(banned);
         long files = 0;
         for (String rel : text.files(MAIN_JAVA)) {
             if (rel.equals(JDK_FINGERPRINT)) continue;
             files++;
-            String code = code(text, rel).replace(" ", "");
-            for (String b : banned) {
-                int at = code.indexOf(b);
-                while (at >= 0) {
-                    v.add(new TextSite(rel, lineOf(code, at), b), "hand-built JDK tool path " + b);
-                    at = code.indexOf(b, at + b.length());
+            for (String site : text.perFile(rel, salt, r -> {
+                String code = code(text, r).replace(" ", "");
+                List<String> out = new ArrayList<>();
+                for (String b : banned) {
+                    for (int at = code.indexOf(b); at >= 0; at = code.indexOf(b, at + b.length()))
+                        out.add(lineOf(code, at) + "\t" + b);
                 }
+                return out;
+            })) {
+                String[] at = site.split("\t", 2);
+                v.add(new TextSite(rel, Integer.parseInt(at[0]), at[1]), "hand-built JDK tool path " + at[1]);
             }
         }
         v.population(files);
@@ -176,14 +182,17 @@ final class HouseRules {
         long files = 0;
         for (String rel : text.files(MAIN_JAVA)) {
             files++;
-            String code = text.blanked(rel, Blank.COMMENTS_AND_STRINGS);
-            Matcher m = VIRTUAL_STARTER.matcher(code);
-            while (m.find()) {
-                if (PIPE_READ.matcher(callArguments(code, m.end() - 1)).find()) {
-                    v.add(
-                            new TextSite(rel, lineOf(code, m.start()), m.group()),
-                            "reads a Process pipe on a virtual thread");
-                }
+            for (String site : text.perFile(rel, "virtual pipe reads", r -> {
+                String code = text.blanked(r, Blank.COMMENTS_AND_STRINGS);
+                List<String> out = new ArrayList<>();
+                Matcher m = VIRTUAL_STARTER.matcher(code);
+                while (m.find())
+                    if (PIPE_READ.matcher(callArguments(code, m.end() - 1)).find())
+                        out.add(lineOf(code, m.start()) + "\t" + m.group());
+                return out;
+            })) {
+                String[] at = site.split("\t", 2);
+                v.add(new TextSite(rel, Integer.parseInt(at[0]), at[1]), "reads a Process pipe on a virtual thread");
             }
         }
         v.population(files);
@@ -227,23 +236,31 @@ final class HouseRules {
         for (String rel : sources) {
             if (rel.equals(PROCESSES)) continue;
             files++;
-            String code = text.blanked(rel, Blank.COMMENTS_AND_STRINGS);
-            if (!PROCESS_TYPE.matcher(code).find()) continue;
-            Set<String> streams = new LinkedHashSet<>();
-            Matcher var = PIPE_STREAM_VAR.matcher(code);
-            while (var.find()) streams.add(var.group(1));
-            List<Pattern> reads = new ArrayList<>(List.of(PIPE_READ_CHAINED));
-            for (String s : streams) reads.add(Pattern.compile("\\b" + Pattern.quote(s) + READ_TO_END));
-            for (Pattern read : reads) {
-                Matcher m = read.matcher(code);
-                while (m.find()) {
-                    v.add(
-                            new TextSite(rel, lineOf(code, m.start()), m.group().strip()),
-                            "reads a Process pipe to its end outside Processes");
-                }
+            for (String site : text.perFile(rel, "pipe reads to end", r -> pipeReadsToEnd(text, r))) {
+                String[] at = site.split("\t", 2);
+                v.add(
+                        new TextSite(rel, Integer.parseInt(at[0]), at[1]),
+                        "reads a Process pipe to its end outside Processes");
             }
         }
         v.population(files);
+    }
+
+    /** Each read of a Process pipe to its end in {@code rel}, as "line TAB call". */
+    private static List<String> pipeReadsToEnd(Text text, String rel) {
+        String code = text.blanked(rel, Blank.COMMENTS_AND_STRINGS);
+        if (!PROCESS_TYPE.matcher(code).find()) return List.of();
+        Set<String> streams = new LinkedHashSet<>();
+        Matcher var = PIPE_STREAM_VAR.matcher(code);
+        while (var.find()) streams.add(var.group(1));
+        List<Pattern> reads = new ArrayList<>(List.of(PIPE_READ_CHAINED));
+        for (String s : streams) reads.add(Pattern.compile("\\b" + Pattern.quote(s) + READ_TO_END));
+        List<String> out = new ArrayList<>();
+        for (Pattern read : reads) {
+            Matcher m = read.matcher(code);
+            while (m.find()) out.add(lineOf(code, m.start()) + "\t" + m.group().strip());
+        }
+        return out;
     }
 
     @Guard(
@@ -260,9 +277,13 @@ final class HouseRules {
         long files = 0;
         for (String rel : text.files(MAIN_JAVA)) {
             files++;
-            Matcher m = handRolled.matcher(code(text, rel));
-            int n = 0;
-            while (m.find()) n++;
+            int n = Integer.parseInt(text.perFile(rel, "comparisons", r -> {
+                        Matcher m = handRolled.matcher(code(text, r));
+                        int found = 0;
+                        while (m.find()) found++;
+                        return List.of(String.valueOf(found));
+                    })
+                    .getFirst());
             // every file with a hit is a metric unit: the baseline holds the ratchet, growth is red
             if (n > 0) v.metric(new MetricSite(rel, n, rel), n + " hand-rolled truth comparison(s)");
         }
@@ -287,23 +308,31 @@ final class HouseRules {
                             + ownerEscapes);
         }
         Pattern unicode = Pattern.compile(Pattern.quote(unicodeEscape), Pattern.CASE_INSENSITIVE);
-        Set<String> decodesJson = new LinkedHashSet<>(ownerEscapes);
+        Set<String> decodesJson = new TreeSet<>(ownerEscapes);
         decodesJson.remove("/");
+        // Each file is judged against the alphabet read from the owner, so the alphabet is the salt.
+        String salt = "codec " + shortDigest(List.of(unicodeEscape, String.join("", decodesJson)));
         long files = 0;
         for (String rel : text.files(MAIN_JAVA)) {
             if (JSON_CODEC_OWNERS.contains(rel)) continue;
             files++;
-            String code = code(text, rel);
-            Set<String> labels = caseLabelChars(code);
-            if (unicode.matcher(code).find()
-                    && labels.contains("\"")
-                    && JSON_OBJECT_LITERAL.matcher(code).find()) {
-                v.add(new TextSite(rel, 0, "json writer"), "assembles a JSON object with an escaper of its own");
-            }
-            int decoded = 0;
-            for (String l : labels) if (decodesJson.contains(l)) decoded++;
-            if (labels.contains("/") && decoded >= 4) {
-                v.add(new TextSite(rel, 0, "json reader"), "decodes JSON's escape alphabet itself");
+            for (String found : text.perFile(rel, salt, r -> {
+                String code = code(text, r);
+                Set<String> labels = caseLabelChars(code);
+                List<String> out = new ArrayList<>();
+                if (unicode.matcher(code).find()
+                        && labels.contains("\"")
+                        && JSON_OBJECT_LITERAL.matcher(code).find()) out.add("json writer");
+                int decoded = 0;
+                for (String l : labels) if (decodesJson.contains(l)) decoded++;
+                if (labels.contains("/") && decoded >= 4) out.add("json reader");
+                return out;
+            })) {
+                v.add(
+                        new TextSite(rel, 0, found),
+                        found.equals("json writer")
+                                ? "assembles a JSON object with an escaper of its own"
+                                : "decodes JSON's escape alphabet itself");
             }
         }
         v.population(files);
@@ -318,6 +347,27 @@ final class HouseRules {
         }
     }
 
+    private static final Pattern WIRE_PREFIX = Pattern.compile("\"(##JK[A-Z]+:)\"");
+    private static final Pattern CONFIG_READ =
+            Pattern.compile("\\.(?:string|stringOpt|bool|stringList|group|intValue)\\(\\s*\"([^\"]+)\"");
+
+    /** The {@code ##JK*:} wire prefixes {@code rel} spells as string literals, in order. */
+    private static List<String> wirePrefixes(Text text, String rel) {
+        return text.perFile(rel, "wire prefixes", r -> groups(WIRE_PREFIX, text.blanked(r, Blank.COMMENTS)));
+    }
+
+    /** The config keys {@code rel} reads by literal through a config accessor, in order. */
+    private static List<String> configReads(Text text, String rel) {
+        return text.perFile(rel, "config reads", r -> groups(CONFIG_READ, text.blanked(r, Blank.COMMENTS)));
+    }
+
+    private static List<String> groups(Pattern p, String code) {
+        List<String> out = new ArrayList<>();
+        Matcher m = p.matcher(code);
+        while (m.find()) out.add(m.group(1));
+        return out;
+    }
+
     @Guard(
             id = "plugin-family",
             why =
@@ -329,7 +379,6 @@ final class HouseRules {
         if (engine.size() < 350)
             throw new IllegalStateException("scanned " + engine.size()
                     + " engine Java files; measured against 425 — the walk stopped seeing server/*/src/main/java");
-        Pattern quotedPrefix = Pattern.compile("\"(##JK[A-Z]+:)\"");
         String variants = owner(text, "shared/jk-api/src/main/java/cc/jumpkick/model/Variants.java");
         Matcher bt =
                 Pattern.compile("String\\s+BUILD_TYPE\\s*=\\s*\"([^\"]+)\"").matcher(variants);
@@ -344,13 +393,11 @@ final class HouseRules {
                     "VariantApply no longer builds a \"variant.\" + dimension config key: the second injected shape is gone");
         String variantPrefix = vp.group(1);
         Map<String, Set<String>> enginePrefixes = new LinkedHashMap<>();
-        for (String rel : engine) {
-            Matcher m = quotedPrefix.matcher(text.blanked(rel, Blank.COMMENTS));
-            while (m.find())
+        for (String rel : engine)
+            for (String prefix : wirePrefixes(text, rel))
                 enginePrefixes
-                        .computeIfAbsent(m.group(1), k -> new LinkedHashSet<>())
+                        .computeIfAbsent(prefix, k -> new LinkedHashSet<>())
                         .add(rel);
-        }
         long plugins = 0;
         for (String module : model.modules()) {
             if (!module.startsWith("plugins/")) continue;
@@ -359,7 +406,7 @@ final class HouseRules {
             String manifest = module + "/jk.toml";
             if (declarativeOnly(text, module + "/jk-plugin.toml")) {
                 for (String rel : files)
-                    if (quotedPrefix.matcher(text.blanked(rel, Blank.COMMENTS)).find())
+                    if (!wirePrefixes(text, rel).isEmpty())
                         v.add(new TextSite(rel, 0, "prefix"), module + " has no [code] layer, so no wire prefix");
                 continue;
             }
@@ -370,12 +417,9 @@ final class HouseRules {
                 continue;
             }
             Map<String, Set<String>> declared = new TreeMap<>();
-            for (String rel : files) {
-                Matcher m = quotedPrefix.matcher(text.blanked(rel, Blank.COMMENTS));
-                while (m.find())
-                    declared.computeIfAbsent(m.group(1), k -> new LinkedHashSet<>())
-                            .add(rel);
-            }
+            for (String rel : files)
+                for (String prefix : wirePrefixes(text, rel))
+                    declared.computeIfAbsent(prefix, k -> new LinkedHashSet<>()).add(rel);
             if (declared.size() != 1) {
                 v.add(
                         new TextSite(manifest, 0, "prefixes " + declared.keySet()),
@@ -437,14 +481,9 @@ final class HouseRules {
                     continue;
                 }
                 Map<String, Set<String>> reads = new TreeMap<>();
-                Pattern accessor =
-                        Pattern.compile("\\.(?:string|stringOpt|bool|stringList|group|intValue)\\(\\s*\"([^\"]+)\"");
-                for (String rel : files) {
-                    Matcher m = accessor.matcher(text.blanked(rel, Blank.COMMENTS));
-                    while (m.find())
-                        reads.computeIfAbsent(m.group(1), k -> new LinkedHashSet<>())
-                                .add(rel);
-                }
+                for (String rel : files)
+                    for (String key : configReads(text, rel))
+                        reads.computeIfAbsent(key, k -> new LinkedHashSet<>()).add(rel);
                 Matcher cond = Pattern.compile("config\\s*=\\s*\"([^\"]+)\"").matcher(desc);
                 while (cond.find())
                     reads.computeIfAbsent(cond.group(1), k -> new LinkedHashSet<>())
@@ -483,18 +522,29 @@ final class HouseRules {
         long files = 0;
         for (String rel : text.files(MAIN_JAVA)) {
             files++;
-            List<String> lines = text.lines(rel);
-            for (int i = 0; i < lines.size(); i++) {
-                if (!lines.get(i).stripTrailing().endsWith(".filter(Files::isRegularFile)")) continue;
-                int j = i + 1;
-                while (j < lines.size()
-                        && (lines.get(j).isBlank() || lines.get(j).strip().startsWith("//"))) j++;
-                if (j >= lines.size()) continue;
-                String next = lines.get(j).strip();
-                if (!next.startsWith(".filter(")
-                        || next.contains("Files.")
-                        || !nameOnly.matcher(next).find()) continue;
-                v.add(new TextSite(rel, i + 1, next), "a stat runs before a free name test: " + next);
+            // One "line<TAB>next filter" per site, so an unedited file is not read again.
+            List<String> sites = text.perFile(rel, "sites", r -> {
+                List<String> lines = text.lines(r);
+                List<String> out = new ArrayList<>();
+                for (int i = 0; i < lines.size(); i++) {
+                    if (!lines.get(i).stripTrailing().endsWith(".filter(Files::isRegularFile)")) continue;
+                    int j = i + 1;
+                    while (j < lines.size()
+                            && (lines.get(j).isBlank() || lines.get(j).strip().startsWith("//"))) j++;
+                    if (j >= lines.size()) continue;
+                    String next = lines.get(j).strip();
+                    if (!next.startsWith(".filter(")
+                            || next.contains("Files.")
+                            || !nameOnly.matcher(next).find()) continue;
+                    out.add((i + 1) + "\t" + next);
+                }
+                return out;
+            });
+            for (String site : sites) {
+                String[] at = site.split("\t", 2);
+                v.add(
+                        new TextSite(rel, Integer.parseInt(at[0]), at[1]),
+                        "a stat runs before a free name test: " + at[1]);
             }
         }
         v.population(files);
@@ -552,81 +602,143 @@ final class HouseRules {
             reason = "a background freshen that never throws; its log line carries the message and the position")
     void configErrorThroughBroadCatch(Text text, Violations v) {
         List<String> files = text.files(MAIN_JAVA);
-        Map<String, String> codes = new LinkedHashMap<>();
-        for (String rel : files) codes.put(rel, text.blanked(rel, Blank.COMMENTS_AND_STRINGS));
         // The reads: every method whose javadoc declares the throw. No list to keep: a new strict
         // reader is followed as soon as it says what it throws.
         List<Callee> doors = new ArrayList<>();
-        for (String rel : files) {
-            String raw = text.blanked(rel, Blank.NONE);
-            if (!raw.contains("UserConfigParseException")) continue;
-            List<Method> types = types(codes.get(rel));
-            Matcher doc = THROWS_CONFIG_ERROR.matcher(raw);
-            while (doc.find()) {
-                Matcher name = DECLARED_NAME.matcher(raw).region(doc.end(), raw.length());
-                if (name.lookingAt()) doors.add(new Callee(ownerAt(types, doc.end(), rel), name.group(1), rel));
-            }
-        }
+        for (String rel : files)
+            for (String d : text.perFile(rel, "reads", r -> declaredReads(text, r))) doors.add(callee(d, rel));
         if (doors.isEmpty())
             throw new OwnerMissing(
                     "no method declares `@throws UserConfigParseException`, so this guard knows no read to follow");
-        // One hop: a method that calls a read is a read to a caller in its own module.
+        // One hop: a method that calls a read is a read to a caller in its own module. Each file is
+        // judged against every read, so the reads' digest is part of what it found.
+        String readsSalt = "wrappers " + digest(doors);
         List<Callee> wrappers = new ArrayList<>();
-        for (String rel : files) {
-            String code = codes.get(rel);
-            Pattern direct = calls(doors, List.of(), rel);
-            if (!direct.matcher(code).find()) continue;
-            List<Method> types = types(code);
-            for (Method m : methods(code)) {
-                if (direct.matcher(code).region(m.open(), m.close()).find())
-                    wrappers.add(new Callee(ownerAt(types, m.open(), rel), m.name(), rel));
-            }
-        }
+        for (String rel : files)
+            for (String w : text.perFile(rel, readsSalt, r -> wrappersIn(text, r, doors))) wrappers.add(callee(w, rel));
+        Map<String, List<Callee>> wrappersByModule = new LinkedHashMap<>();
+        for (Callee w : wrappers)
+            wrappersByModule
+                    .computeIfAbsent(moduleOf(w.file()), k -> new ArrayList<>())
+                    .add(w);
+        Map<String, String> catchSalts = new LinkedHashMap<>();
         long tries = 0;
         for (String rel : files) {
-            String code = codes.get(rel);
-            if (!code.contains("catch")) continue;
-            Pattern reach = calls(doors, wrappers, rel);
-            Matcher t = TRY.matcher(code);
-            while (t.find()) {
-                int open = t.end();
-                if (open < code.length() && code.charAt(open) == '(')
-                    open = skipSpace(code, closing(code, open, '(', ')') + 1);
-                if (open >= code.length() || code.charAt(open) != '{') continue;
-                int close = closing(code, open, '{', '}');
-                Matcher door = reach.matcher(code).region(open, close);
-                if (!door.find()) continue;
-                tries++;
-                String read = door.group().replaceAll("\\s*\\($", "").replaceAll("\\s+", "");
-                boolean through = false;
-                int at = close + 1;
-                Matcher c = CATCH.matcher(code);
-                while (c.find(at) && c.start() == at) {
-                    int paren = c.end() - 1;
-                    int parenEnd = closing(code, paren, '(', ')');
-                    String types = code.substring(paren + 1, parenEnd);
-                    int body = code.indexOf('{', parenEnd);
-                    if (body < 0) break;
-                    int bodyEnd = closing(code, body, '{', '}');
-                    String handler = code.substring(body, bodyEnd + 1);
-                    String var = types.strip().replaceAll(".*\\s", "");
-                    if (NARROW_CONFIG.matcher(types).find()) {
-                        through = true;
-                    } else if (BROAD.matcher(types).find() && !through) {
-                        if (handlesConfigError(handler, var)) {
-                            if (rethrows(handler, var)) through = true;
-                        } else {
-                            String site = "catch (" + types.strip() + ") around " + read;
-                            v.add(
-                                    new TextSite(rel, lineOf(code, c.start()), site),
-                                    site + " neither lets UserConfigParseException through nor renders its message");
-                        }
-                    }
-                    at = bodyEnd + 1;
-                }
+            List<Callee> moduleWrappers = wrappersByModule.getOrDefault(moduleOf(rel), List.of());
+            String salt = catchSalts.computeIfAbsent(
+                    moduleOf(rel), m -> "catches " + digest(doors) + " " + digest(moduleWrappers));
+            List<String> found = text.perFile(rel, salt, r -> broadCatches(text, r, doors, moduleWrappers));
+            tries += Long.parseLong(found.getFirst());
+            for (String site : found.subList(1, found.size())) {
+                String[] at = site.split("\t", 2);
+                v.add(
+                        new TextSite(rel, Integer.parseInt(at[0]), at[1]),
+                        at[1] + " neither lets UserConfigParseException through nor renders its message");
             }
         }
         v.population(tries);
+    }
+
+    /** The methods {@code rel} declares to throw {@code UserConfigParseException}, as "owner TAB name". */
+    private static List<String> declaredReads(Text text, String rel) {
+        String raw = text.blanked(rel, Blank.NONE);
+        if (!raw.contains("UserConfigParseException")) return List.of();
+        List<Method> types = types(text.blanked(rel, Blank.COMMENTS_AND_STRINGS));
+        List<String> out = new ArrayList<>();
+        Matcher doc = THROWS_CONFIG_ERROR.matcher(raw);
+        while (doc.find()) {
+            Matcher name = DECLARED_NAME.matcher(raw).region(doc.end(), raw.length());
+            if (name.lookingAt()) out.add(ownerAt(types, doc.end(), rel) + "\t" + name.group(1));
+        }
+        return out;
+    }
+
+    /** The methods of {@code rel} that call one of {@code doors}, as "owner TAB name". */
+    private static List<String> wrappersIn(Text text, String rel, List<Callee> doors) {
+        String code = text.blanked(rel, Blank.COMMENTS_AND_STRINGS);
+        Pattern direct = calls(doors, List.of(), rel);
+        if (!direct.matcher(code).find()) return List.of();
+        List<Method> types = types(code);
+        List<String> out = new ArrayList<>();
+        for (Method m : methods(code)) {
+            if (direct.matcher(code).region(m.open(), m.close()).find())
+                out.add(ownerAt(types, m.open(), rel) + "\t" + m.name());
+        }
+        return out;
+    }
+
+    /**
+     * The tries in {@code rel} around a read or a wrapper of its module: first their count, then one
+     * "line TAB site" per broad catch that neither lets the config error through nor renders it.
+     */
+    private static List<String> broadCatches(Text text, String rel, List<Callee> doors, List<Callee> wrappers) {
+        String code = text.blanked(rel, Blank.COMMENTS_AND_STRINGS);
+        List<String> out = new ArrayList<>();
+        out.add("0");
+        if (!code.contains("catch")) return out;
+        Pattern reach = calls(doors, wrappers, rel);
+        long tries = 0;
+        Matcher t = TRY.matcher(code);
+        while (t.find()) {
+            int open = t.end();
+            if (open < code.length() && code.charAt(open) == '(')
+                open = skipSpace(code, closing(code, open, '(', ')') + 1);
+            if (open >= code.length() || code.charAt(open) != '{') continue;
+            int close = closing(code, open, '{', '}');
+            Matcher door = reach.matcher(code).region(open, close);
+            if (!door.find()) continue;
+            tries++;
+            String read = door.group().replaceAll("\\s*\\($", "").replaceAll("\\s+", "");
+            boolean through = false;
+            int at = close + 1;
+            Matcher c = CATCH.matcher(code);
+            while (c.find(at) && c.start() == at) {
+                int paren = c.end() - 1;
+                int parenEnd = closing(code, paren, '(', ')');
+                String types = code.substring(paren + 1, parenEnd);
+                int body = code.indexOf('{', parenEnd);
+                if (body < 0) break;
+                int bodyEnd = closing(code, body, '{', '}');
+                String handler = code.substring(body, bodyEnd + 1);
+                String var = types.strip().replaceAll(".*\\s", "");
+                if (NARROW_CONFIG.matcher(types).find()) {
+                    through = true;
+                } else if (BROAD.matcher(types).find() && !through) {
+                    if (handlesConfigError(handler, var)) {
+                        if (rethrows(handler, var)) through = true;
+                    } else {
+                        out.add(lineOf(code, c.start()) + "\t" + "catch (" + types.strip() + ") around " + read);
+                    }
+                }
+                at = bodyEnd + 1;
+            }
+        }
+        out.set(0, String.valueOf(tries));
+        return out;
+    }
+
+    /** A callee from its "owner TAB name" line and the file that declares it. */
+    private static Callee callee(String line, String file) {
+        String[] parts = line.split("\t", 2);
+        return new Callee(parts[0], parts[1], file);
+    }
+
+    /** A digest of callees, which names them in a per-file scan's salt. */
+    private static String digest(List<Callee> callees) {
+        StringBuilder sb = new StringBuilder();
+        for (Callee c : callees)
+            sb.append(c.owner())
+                    .append('\t')
+                    .append(c.name())
+                    .append('\t')
+                    .append(c.file())
+                    .append('\n');
+        return Hashing.sha256Hex(sb.toString()).substring(0, 16);
+    }
+
+    /** A digest of {@code parts}, which names what a per-file scan read from other files in its salt. */
+    private static String shortDigest(List<String> parts) {
+        return Hashing.sha256Hex(String.join("\n", parts)).substring(0, 16);
     }
 
     /**

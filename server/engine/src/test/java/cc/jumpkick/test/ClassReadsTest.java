@@ -3,6 +3,7 @@ package cc.jumpkick.test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assumptions.assumeFalse;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import cc.jumpkick.host.GitCommand;
 import cc.jumpkick.host.Os;
@@ -13,6 +14,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import jdk.jfr.Event;
 import jdk.jfr.Name;
 import jdk.jfr.Recording;
@@ -117,6 +120,224 @@ class ClassReadsTest {
         assertThat(first.reads()).as("never a read after its window closed").doesNotContain(late, b);
     }
 
+    /**
+     * A launch runs its own test JVMs, so what no window held in one launch's JVMs is that launch's
+     * pool, not another's: a run of the guard's suites whose integration JVMs reached Maven Central
+     * outside every window ran every class of jk-engine's default suite too, after a body-only
+     * engine edit its cones did not reach. A recording whose launch is not told leaves every launch
+     * on every JVM's pool.
+     */
+    @Test
+    void what_no_window_held_is_the_pool_of_its_own_launch(@TempDir Path tmp) throws Exception {
+        Path ws = Files.createDirectories(tmp.resolve("ws"));
+        Path unit = write(ws, "unit.txt");
+        Path integration = write(ws, "integration.txt");
+        Path recordings = Files.createDirectories(tmp.resolve("rec"));
+        record(recordings.resolve("unit.jfr"), "demo.UnitTest", unit);
+        record(recordings.resolve("integration.jfr"), "demo.IntegrationTest", integration);
+        ClassReads.Layout layout = new ClassReads.Layout(
+                List.of(ws.resolve("m/target/test-classes")), List.of(ws.resolve("m/target")), Set.of(), ws, null);
+
+        ClassReads.Attributed seen = ClassReads.attribute(
+                recordings,
+                ws,
+                layout,
+                classes -> classes.contains("demo.IntegrationTest") ? "test:integration" : "test:test");
+
+        assertThat(seen.pooled("test:test").reads())
+                .as("the default launch's JVM")
+                .containsExactly(unit);
+        assertThat(seen.pooled("test:integration").reads())
+                .as("the integration launch's JVM")
+                .containsExactly(integration);
+        assertThat(seen.pooled().reads())
+                .as("the suite's pool is every JVM's")
+                .containsExactlyInAnyOrder(unit, integration);
+
+        ClassReads.Attributed untold = ClassReads.attribute(
+                recordings, ws, layout, classes -> classes.contains("demo.IntegrationTest") ? null : "test:test");
+        assertThat(untold.launches()).as("one recording's launch unknown").isEmpty();
+        assertThat(untold.pooled("test:test").reads())
+                .as("so every launch stands on every JVM's pool")
+                .containsExactlyInAnyOrder(unit, integration);
+    }
+
+    /**
+     * A class with an integration method among its unit tests runs in the default launch's JVMs and
+     * the integration launch's. What its integration window read (an engine it started) is that
+     * launch's row alone: its default row stands on what its unit tests read there.
+     */
+    @Test
+    void a_class_two_launches_run_keeps_each_launchs_window_apart(@TempDir Path tmp) throws Exception {
+        Path ws = Files.createDirectories(tmp.resolve("ws"));
+        Path unitRead = write(ws, "unit.txt");
+        Path engineRead = write(ws, "engine.txt");
+        Path recordings = Files.createDirectories(tmp.resolve("rec"));
+        recordWindows(recordings.resolve("unit.jfr"), "demo.UnitTest", write(ws, "u.txt"), "demo.MixedTest", unitRead);
+        recordWindows(
+                recordings.resolve("integration.jfr"),
+                "demo.MixedTest",
+                engineRead,
+                "demo.IntegrationTest",
+                write(ws, "i.txt"));
+        ClassReads.Layout layout = new ClassReads.Layout(
+                List.of(ws.resolve("m/target/test-classes")), List.of(ws.resolve("m/target")), Set.of(), ws, null);
+
+        ClassReads.Attributed seen = ClassReads.attribute(
+                recordings,
+                ws,
+                layout,
+                classes -> classes.contains("demo.IntegrationTest") ? "test:integration" : "test:test");
+
+        assertThat(Objects.requireNonNull(seen.of("test:test", "demo.MixedTest"))
+                        .reads())
+                .as("the default launch's window")
+                .containsExactly(unitRead);
+        assertThat(Objects.requireNonNull(seen.of("test:integration", "demo.MixedTest"))
+                        .reads())
+                .as("the integration launch's window")
+                .containsExactly(engineRead);
+
+        ClassReads.Attributed untold = ClassReads.attribute(
+                recordings, ws, layout, classes -> classes.contains("demo.IntegrationTest") ? null : "test:test");
+        assertThat(Objects.requireNonNull(untold.of("test:test", "demo.MixedTest"))
+                        .reads())
+                .as("one recording's launch unknown: every window of the class is its row's")
+                .containsExactlyInAnyOrder(unitRead, engineRead);
+    }
+
+    /** A recording of one JVM at {@code file}: {@code firstRead} in the window of {@code first}, then the same of the second. */
+    private static void recordWindows(Path file, String first, Path firstRead, String second, Path secondRead)
+            throws Exception {
+        try (Recording r = new Recording()) {
+            r.enable("jdk.FileRead").withThreshold(Duration.ZERO);
+            r.enable(ClassReads.WINDOW_EVENT).withThreshold(Duration.ZERO);
+            r.start();
+            Window w = window(first);
+            Files.readString(firstRead);
+            w.commit();
+            w = window(second);
+            Files.readString(secondRead);
+            w.commit();
+            r.stop();
+            r.dump(file);
+        }
+    }
+
+    /** A recording of one JVM at {@code file}: {@code pooled} read before the window of {@code testClass}. */
+    private static void record(Path file, String testClass, Path pooled) throws Exception {
+        try (Recording r = new Recording()) {
+            r.enable("jdk.FileRead").withThreshold(Duration.ZERO);
+            r.enable(ClassReads.WINDOW_EVENT).withThreshold(Duration.ZERO);
+            r.start();
+            Files.readString(pooled);
+            window(testClass).commit();
+            r.stop();
+            r.dump(file);
+        }
+    }
+
+    /** The probe's use event, as the recording names it. */
+    @Name(ClassReads.USE_EVENT)
+    @StackTrace(false)
+    static final class Use extends Event {
+        @Nullable
+        String className;
+    }
+
+    @Test
+    void a_use_is_the_classes_whose_window_held_it_and_one_outside_every_window_is_every_classs(@TempDir Path tmp)
+            throws Exception {
+        Path ws = Files.createDirectories(tmp.resolve("ws"));
+        Path recordings = Files.createDirectories(tmp.resolve("rec"));
+
+        try (Recording r = new Recording()) {
+            r.enable(ClassReads.WINDOW_EVENT).withThreshold(Duration.ZERO);
+            r.enable(ClassReads.USE_EVENT);
+            r.start();
+            use("demo.Registry");
+            Window first = window("demo.ATest");
+            use("demo.ATest");
+            use("demo.Engine");
+            first.commit();
+            Window second = window("demo.BTest");
+            use("demo.BTest");
+            second.commit();
+            r.stop();
+            r.dump(recordings.resolve("one.jfr"));
+        }
+
+        ClassReads.Attributed seen =
+                ClassReads.attribute(recordings, ws, new ClassReads.Layout(List.of(), List.of(), Set.of(), ws, null));
+        ClassReads.Observation first = Objects.requireNonNull(seen.classes().get("demo.ATest"));
+        ClassReads.Observation second = Objects.requireNonNull(seen.classes().get("demo.BTest"));
+        assertThat(first.used("demo.Engine")).as("its code ran in the window").isTrue();
+        assertThat(second.used("demo.Engine"))
+                .as("loaded already, but not run in this window")
+                .isFalse();
+        assertThat(second.used("demo.BTest")).isTrue();
+        assertThat(second.used("demo.Registry"))
+                .as("what ran before any window left state every class may read")
+                .isTrue();
+        assertThat(first.usedMore()).isFalse();
+    }
+
+    /**
+     * What a JVM ran outside every window is state only its own classes may read: one class that
+     * started an engine before its window must not widen the keys of every class of the suite.
+     */
+    @Test
+    void a_use_outside_every_window_is_no_class_of_another_launch(@TempDir Path tmp) throws Exception {
+        Path ws = Files.createDirectories(tmp.resolve("ws"));
+        Path recordings = Files.createDirectories(tmp.resolve("rec"));
+        recordUse(recordings.resolve("unit.jfr"), "demo.Registry", "demo.UnitTest");
+        recordUse(recordings.resolve("integration.jfr"), "demo.Engine", "demo.IntegrationTest");
+        ClassReads.Layout layout = new ClassReads.Layout(List.of(), List.of(), Set.of(), ws, null);
+
+        ClassReads.Attributed seen = ClassReads.attribute(
+                recordings,
+                ws,
+                layout,
+                classes -> classes.contains("demo.IntegrationTest") ? "test:integration" : "test:test");
+        ClassReads.Observation unit = Objects.requireNonNull(seen.of("test:test", "demo.UnitTest"));
+        ClassReads.Observation integration =
+                Objects.requireNonNull(seen.of("test:integration", "demo.IntegrationTest"));
+        assertThat(unit.used("demo.Registry")).as("its own JVM's").isTrue();
+        assertThat(unit.used("demo.Engine"))
+                .as("the integration launch's JVM's")
+                .isFalse();
+        assertThat(integration.used("demo.Engine")).as("its own JVM's").isTrue();
+        assertThat(integration.used("demo.Registry"))
+                .as("the default launch's JVM's")
+                .isFalse();
+
+        ClassReads.Attributed untold = ClassReads.attribute(recordings, ws, layout);
+        assertThat(Objects.requireNonNull(untold.classes().get("demo.UnitTest")).used("demo.Engine"))
+                .as("launches untold: still another JVM's")
+                .isFalse();
+    }
+
+    /** A recording of one JVM at {@code file}: {@code used} ran before the window of {@code testClass}. */
+    private static void recordUse(Path file, String used, String testClass) throws Exception {
+        try (Recording r = new Recording()) {
+            r.enable(ClassReads.WINDOW_EVENT).withThreshold(Duration.ZERO);
+            r.enable(ClassReads.USE_EVENT);
+            r.start();
+            use(used);
+            Window w = window(testClass);
+            use(testClass);
+            w.commit();
+            r.stop();
+            r.dump(file);
+        }
+    }
+
+    private static void use(String className) {
+        Use u = new Use();
+        u.className = className;
+        u.commit();
+    }
+
     @Test
     void the_pool_names_more_files_than_a_class_keeps(@TempDir Path tmp) throws Exception {
         Path ws = Files.createDirectories(tmp.resolve("ws"));
@@ -141,6 +362,97 @@ class ClassReadsTest {
                 .as("what discovery read keys every class by content, not as all the suite read")
                 .isFalse();
         assertThat(seen.pooled().reads()).containsExactlyInAnyOrderElementsOf(templates);
+    }
+
+    /** A socket read, as the JDK's event names it. */
+    @Name("jdk.SocketRead")
+    @StackTrace(false)
+    static final class SocketRead extends Event {
+        @Nullable
+        String host;
+
+        @Nullable
+        String address;
+    }
+
+    /** A socket write, as the JDK's event names it. */
+    @Name("jdk.SocketWrite")
+    @StackTrace(false)
+    static final class SocketWrite extends Event {
+        @Nullable
+        String host;
+
+        @Nullable
+        String address;
+    }
+
+    /**
+     * A connection a class left open is read from when the server closes it, minutes later: the
+     * read is the class's that opened it, not the class whose window or the gap it falls in. A later
+     * class that sends a request on the same connection reached the host itself.
+     */
+    @Test
+    void a_read_on_a_connection_an_earlier_class_opened_is_that_classs(@TempDir Path tmp) throws Exception {
+        Path ws = Files.createDirectories(tmp.resolve("ws"));
+        Path recordings = Files.createDirectories(tmp.resolve("rec"));
+        ExecutorService client = Executors.newSingleThreadExecutor();
+        try (Recording r = new Recording()) {
+            r.enable("jdk.SocketRead").withThreshold(Duration.ZERO);
+            r.enable("jdk.SocketWrite").withThreshold(Duration.ZERO);
+            r.enable(ClassReads.WINDOW_EVENT).withThreshold(Duration.ZERO);
+            r.start();
+            Window opens = window("demo.OpensTest");
+            client.submit(() -> socket(true)).get();
+            client.submit(() -> socket(false)).get();
+            opens.commit();
+
+            Window bystander = window("demo.BystanderTest");
+            client.submit(() -> socket(false)).get();
+            bystander.commit();
+
+            client.submit(() -> socket(false)).get();
+
+            Window reuses = window("demo.ReusesTest");
+            client.submit(() -> socket(true)).get();
+            client.submit(() -> socket(false)).get();
+            reuses.commit();
+            r.stop();
+            r.dump(recordings.resolve("one.jfr"));
+        } finally {
+            client.shutdownNow();
+        }
+
+        ClassReads.Attributed seen =
+                ClassReads.attribute(recordings, ws, new ClassReads.Layout(List.of(), List.of(), Set.of(), ws, null));
+
+        assertThat(Objects.requireNonNull(seen.classes().get("demo.OpensTest")).hosts())
+                .containsExactly("repo.example");
+        assertThat(Objects.requireNonNull(seen.classes().get("demo.BystanderTest"))
+                        .hosts())
+                .as("the server closing an earlier class's connection in its window")
+                .isEmpty();
+        assertThat(seen.pooled().hosts())
+                .as("the server closing it between windows: no class of the launch runs for it")
+                .isEmpty();
+        assertThat(Objects.requireNonNull(seen.classes().get("demo.ReusesTest")).hosts())
+                .as("a request it sent on the connection")
+                .containsExactly("repo.example");
+    }
+
+    /** One socket event to a documentation address, on the calling thread. */
+    private static @Nullable Void socket(boolean write) {
+        if (write) {
+            SocketWrite w = new SocketWrite();
+            w.host = "repo.example";
+            w.address = "192.0.2.1";
+            w.commit();
+        } else {
+            SocketRead e = new SocketRead();
+            e.host = "repo.example";
+            e.address = "192.0.2.1";
+            e.commit();
+        }
+        return null;
     }
 
     @Test
@@ -234,17 +546,18 @@ class ClassReadsTest {
         ClassReads.Attributed seen =
                 ClassReads.attribute(recordings, ws, new ClassReads.Layout(List.of(), List.of(), Set.of(), ws, null));
 
-        assertThat(Objects.requireNonNull(seen.classes().get("demo.QuietTest")).processes())
+        assertThat(Objects.requireNonNull(seen.classes().get("demo.QuietTest")).tools())
                 .as("the harness's own command around the class")
                 .isEmpty();
         assertThat(Objects.requireNonNull(seen.classes().get("demo.StartingTest"))
-                        .processes())
-                .containsExactly(java);
+                        .tools())
+                .containsExactlyInAnyOrder(ClassReads.EXTERNAL_PROGRAM, ClassReads.STARTED_PROGRAM);
     }
 
     /**
      * git started in a temp root reads a repository the test made: its class stands on git's
-     * identity, not its module. The same command in the workspace reads the workspace's repository.
+     * identity, not its module. The same command in the workspace reads the workspace's repository,
+     * and runs none of the JVM's classes: its class stands on every program the stamp keys.
      */
     @Test
     void git_in_a_temp_root_is_keyed_by_its_identity_not_as_a_program_started(@TempDir Path tmp) throws Exception {
@@ -275,8 +588,9 @@ class ClassReadsTest {
         ClassReads.Observation ownRepo = Objects.requireNonNull(seen.classes().get("demo.OwnRepoTest"));
         ClassReads.Observation inCheckout =
                 Objects.requireNonNull(seen.classes().get("demo.CheckoutTest"));
-        assertThat(inCheckout.processes()).as("git in the workspace").containsExactly("git");
-        assertThat(inCheckout.tools()).isEmpty();
+        assertThat(inCheckout.processes()).as("git in the workspace").isEmpty();
+        assertThat(inCheckout.tools())
+                .containsExactlyInAnyOrder(ClassReads.EXTERNAL_PROGRAM, ClassReads.STARTED_PROGRAM);
         // A host whose home is a repository encloses the temp root: git there is a program started.
         if (GitRuns.unenclosed(List.of(temp)).isEmpty()) return;
         assertThat(ownRepo.processes()).as("git in a repository the test made").isEmpty();
@@ -293,7 +607,7 @@ class ClassReadsTest {
 
     /**
      * A utility whose command names no file of the workspace stands on its identity; one that reads a
-     * workspace file is a program started.
+     * workspace file stands on every program the stamp keys and on that file, by content.
      */
     @Test
     void a_utility_naming_no_workspace_file_is_keyed_by_its_identity(@TempDir Path tmp) throws Exception {
@@ -324,9 +638,216 @@ class ClassReadsTest {
         ClassReads.Observation sleep = Objects.requireNonNull(seen.classes().get("demo.SleepTest"));
         ClassReads.Observation cat = Objects.requireNonNull(seen.classes().get("demo.CatTest"));
         assertThat(sleep.processes()).isEmpty();
-        assertThat(sleep.tools()).containsExactly("sleep");
-        assertThat(cat.processes()).as("a file of the workspace").containsExactly("cat");
-        assertThat(cat.tools()).isEmpty();
+        assertThat(sleep.tools()).containsExactlyInAnyOrder("sleep", ClassReads.STARTED_PROGRAM);
+        assertThat(cat.processes()).as("a file of the workspace").isEmpty();
+        assertThat(cat.tools()).containsExactlyInAnyOrder(ClassReads.EXTERNAL_PROGRAM, ClassReads.STARTED_PROGRAM);
+        assertThat(cat.reads())
+                .containsExactly(ws.resolve("README").toAbsolutePath().normalize());
+    }
+
+    /**
+     * The test JDK's own launcher is no program the class depends on, but what it was told to run is
+     * read in a process no recording holds: the class that started it, and every class after it in the
+     * JVM, which may talk to what it left running, say a program was started. A class before it does
+     * not, and git in a repository a test made says nothing.
+     */
+    @Test
+    void a_program_started_marks_its_class_and_every_later_class_of_the_jvm(@TempDir Path tmp) throws Exception {
+        Path ws = Files.createDirectories(tmp.resolve("ws"));
+        Path temp = Files.createDirectories(tmp.resolve("temp"));
+        Path repo = Files.createDirectories(temp.resolve("repo"));
+        Path recordings = Files.createDirectories(tmp.resolve("rec"));
+        Path javaHome = Path.of(System.getProperty("java.home"));
+        String java = javaHome.resolve("bin")
+                .resolve(Os.isWindows() ? "java.exe" : "java")
+                .toString();
+
+        try (Recording r = new Recording()) {
+            r.enable("jdk.ProcessStart");
+            r.enable(ClassReads.WINDOW_EVENT).withThreshold(Duration.ZERO);
+            r.start();
+            Window before = window("demo.BeforeTest");
+            runIn(repo, GitCommand.of("rev-parse", "--show-toplevel"));
+            before.commit();
+            Window starts = window("demo.StartsTest");
+            runIn(ws, List.of(java, "-version"));
+            starts.commit();
+            Window after = window("demo.AfterTest");
+            after.commit();
+            r.stop();
+            r.dump(recordings.resolve("one.jfr"));
+        }
+
+        ClassReads.Attributed seen = ClassReads.attribute(
+                recordings,
+                ws,
+                new ClassReads.Layout(List.of(), List.of(), Set.of(), ws, javaHome, List.of(), List.of(temp)));
+        ClassReads.Observation first = Objects.requireNonNull(seen.classes().get("demo.BeforeTest"));
+        ClassReads.Observation starter = Objects.requireNonNull(seen.classes().get("demo.StartsTest"));
+        ClassReads.Observation later = Objects.requireNonNull(seen.classes().get("demo.AfterTest"));
+        assertThat(starter.processes()).as("the JDK the key holds").isEmpty();
+        assertThat(starter.tools()).containsExactly(ClassReads.STARTED_PROGRAM);
+        assertThat(later.tools()).as("a class after it in the JVM").containsExactly(ClassReads.STARTED_PROGRAM);
+        assertThat(first.tools()).doesNotContain(ClassReads.STARTED_PROGRAM);
+    }
+
+    /**
+     * The test JDK's own launcher run through {@code setsid} is the same launcher: on the test JVM's
+     * class tree it is a program the class started, but not one its key adds.
+     */
+    @Test
+    void the_test_jdk_launcher_behind_setsid_is_the_test_jdk(@TempDir Path tmp) throws Exception {
+        assumeFalse(Os.isWindows(), "setsid is a POSIX launcher");
+        Path setsid = Path.of("/usr/bin/setsid");
+        assumeTrue(Files.isExecutable(setsid), "no setsid on this host");
+        Path ws = Files.createDirectories(tmp.resolve("ws"));
+        Path classes = Files.createDirectories(ws.resolve("target/classes"));
+        Path temp = Files.createDirectories(tmp.resolve("temp"));
+        Path recordings = Files.createDirectories(tmp.resolve("rec"));
+        Path javaHome = Path.of(System.getProperty("java.home"));
+        String java = javaHome.resolve("bin").resolve("java").toString();
+
+        try (Recording r = new Recording()) {
+            r.enable("jdk.ProcessStart");
+            r.enable(ClassReads.WINDOW_EVENT).withThreshold(Duration.ZERO);
+            r.start();
+            Window plain = window("demo.PlainTest");
+            runIn(ws, List.of(java, "-cp", classes.toString(), "-version"));
+            plain.commit();
+            Window wrapped = window("demo.SetsidTest");
+            runIn(ws, List.of(setsid.toString(), java, "-cp", classes.toString(), "-version"));
+            wrapped.commit();
+            r.stop();
+            r.dump(recordings.resolve("one.jfr"));
+        }
+
+        ClassReads.Attributed seen = ClassReads.attribute(
+                recordings,
+                ws,
+                new ClassReads.Layout(List.of(classes), List.of(), Set.of(), ws, javaHome, List.of(), List.of(temp)));
+        ClassReads.Observation direct = Objects.requireNonNull(seen.classes().get("demo.PlainTest"));
+        ClassReads.Observation behind = Objects.requireNonNull(seen.classes().get("demo.SetsidTest"));
+        assertThat(direct.processes()).as("the JDK the key holds").isEmpty();
+        assertThat(behind.processes()).as("the same JDK behind setsid").isEmpty();
+        assertThat(behind.tools()).isEqualTo(direct.tools()).containsExactly(ClassReads.STARTED_PROGRAM);
+    }
+
+    /**
+     * A JDK's java on the test JVM's own class tree runs the workspace's classes, which no recording
+     * of the suite holds: its class is keyed by its module. The same launcher on nothing of the class
+     * path runs none of them.
+     */
+    @Test
+    void java_on_the_test_class_path_is_a_program_started(@TempDir Path tmp) throws Exception {
+        Path ws = Files.createDirectories(tmp.resolve("ws"));
+        Path classes = Files.createDirectories(ws.resolve("target/classes"));
+        Path temp = Files.createDirectories(tmp.resolve("temp"));
+        Path recordings = Files.createDirectories(tmp.resolve("rec"));
+        // The layout names no test JDK, so this launcher stands for another JDK's: the test JDK's own
+        // is the JDK the key holds.
+        String java = Path.of(System.getProperty("java.home"))
+                .resolve("bin")
+                .resolve(Os.isWindows() ? "java.exe" : "java")
+                .toString();
+
+        try (Recording r = new Recording()) {
+            r.enable("jdk.ProcessStart");
+            r.enable(ClassReads.WINDOW_EVENT).withThreshold(Duration.ZERO);
+            r.start();
+            Window onClassPath = window("demo.ForkTest");
+            runIn(ws, List.of(java, "-cp", classes.toString(), "-version"));
+            onClassPath.commit();
+            Window version = window("demo.VersionTest");
+            runIn(ws, List.of(java, "-version"));
+            version.commit();
+            r.stop();
+            r.dump(recordings.resolve("one.jfr"));
+        }
+
+        ClassReads.Attributed seen = ClassReads.attribute(
+                recordings,
+                ws,
+                new ClassReads.Layout(List.of(classes), List.of(), Set.of(), ws, null, List.of(), List.of(temp)));
+        ClassReads.Observation fork = Objects.requireNonNull(seen.classes().get("demo.ForkTest"));
+        ClassReads.Observation plain = Objects.requireNonNull(seen.classes().get("demo.VersionTest"));
+        assertThat(fork.processes()).containsExactly(java);
+        assertThat(plain.processes()).isEmpty();
+        assertThat(plain.tools()).containsExactlyInAnyOrder(ClassReads.EXTERNAL_PROGRAM, ClassReads.STARTED_PROGRAM);
+    }
+
+    /**
+     * The test JDK's own java on the test class path is no program the class depends on, but it runs
+     * classes no window marks: its class keeps its cone and keys every class of it, not only what its
+     * window ran. The same launcher on nothing of the class path leaves what was used as it was.
+     */
+    @Test
+    void the_test_jdks_java_on_the_test_class_path_keys_the_whole_cone(@TempDir Path tmp) throws Exception {
+        Path ws = Files.createDirectories(tmp.resolve("ws"));
+        Path classes = Files.createDirectories(ws.resolve("target/test-classes"));
+        Path temp = Files.createDirectories(tmp.resolve("temp"));
+        Path recordings = Files.createDirectories(tmp.resolve("rec"));
+        Path javaHome = Path.of(System.getProperty("java.home"));
+        String java = javaHome.resolve("bin")
+                .resolve(Os.isWindows() ? "java.exe" : "java")
+                .toString();
+
+        try (Recording r = new Recording()) {
+            r.enable("jdk.ProcessStart");
+            r.enable(ClassReads.WINDOW_EVENT).withThreshold(Duration.ZERO);
+            r.enable(ClassReads.USE_EVENT);
+            r.start();
+            Window child = window("demo.ChildTest");
+            use("demo.ChildTest");
+            runIn(ws, List.of(java, "-cp", classes.toString(), "-version"));
+            child.commit();
+            Window version = window("demo.VersionTest");
+            use("demo.VersionTest");
+            runIn(ws, List.of(java, "-version"));
+            version.commit();
+            r.stop();
+            r.dump(recordings.resolve("one.jfr"));
+        }
+
+        ClassReads.Attributed seen = ClassReads.attribute(
+                recordings,
+                ws,
+                new ClassReads.Layout(List.of(classes), List.of(), Set.of(), ws, javaHome, List.of(), List.of(temp)));
+        ClassReads.Observation child = Objects.requireNonNull(seen.classes().get("demo.ChildTest"));
+        ClassReads.Observation plain = Objects.requireNonNull(seen.classes().get("demo.VersionTest"));
+        assertThat(child.processes()).as("the JDK the key holds").isEmpty();
+        assertThat(child.used("demo.ChildTest")).isTrue();
+        assertThat(child.usedMore()).as("the child ran what no window marked").isTrue();
+        assertThat(plain.usedMore()).isFalse();
+    }
+
+    /** A test JDK child started outside every window ran unmarked for every class of its JVM. */
+    @Test
+    void a_test_jdk_child_outside_every_window_keys_every_classs_whole_cone(@TempDir Path tmp) throws Exception {
+        Path ws = Files.createDirectories(tmp.resolve("ws"));
+        Path classes = Files.createDirectories(ws.resolve("target/test-classes"));
+        Path recordings = Files.createDirectories(tmp.resolve("rec"));
+        Path javaHome = Path.of(System.getProperty("java.home"));
+        String java = javaHome.resolve("bin")
+                .resolve(Os.isWindows() ? "java.exe" : "java")
+                .toString();
+
+        try (Recording r = new Recording()) {
+            r.enable("jdk.ProcessStart");
+            r.enable(ClassReads.WINDOW_EVENT).withThreshold(Duration.ZERO);
+            r.enable(ClassReads.USE_EVENT);
+            r.start();
+            runIn(ws, List.of(java, "-cp", classes.toString(), "-version"));
+            Window w = window("demo.LaterTest");
+            use("demo.LaterTest");
+            w.commit();
+            r.stop();
+            r.dump(recordings.resolve("one.jfr"));
+        }
+
+        ClassReads.Attributed seen = ClassReads.attribute(
+                recordings, ws, new ClassReads.Layout(List.of(classes), List.of(), Set.of(), ws, javaHome));
+        assertThat(Objects.requireNonNull(seen.classes().get("demo.LaterTest")).usedMore())
+                .isTrue();
     }
 
     private static void runIn(Path dir, List<String> command) throws Exception {
@@ -378,5 +899,54 @@ class ClassReadsTest {
 
     private static Path write(Path dir, String name) throws Exception {
         return Files.writeString(dir.resolve(name), name);
+    }
+
+    /**
+     * A class that reads past its bound keeps directories that cover every file it read: the
+     * workspace's own manifest and thirty plugin manifests are the root's files and everything under
+     * plugins, which holds no engine source.
+     */
+    @Test
+    void read_roots_cover_every_file_a_class_read_and_no_more(@TempDir Path ws) {
+        ClassReads.Observation o = ClassReads.Observation.empty();
+        o.addRead(ws.resolve("jk.toml"));
+        for (int i = 0; i < 30; i++) o.addRead(ws.resolve("plugins/p" + i + "/jk-plugin.toml"));
+        assertThat(o.readsMore()).isTrue();
+        assertThat(o.readRoots())
+                .containsExactlyInAnyOrder(
+                        new ClassReads.ReadRoot(ws, false), new ClassReads.ReadRoot(ws.resolve("plugins"), true));
+        assertThat(o.readRoots().stream().anyMatch(r -> r.covers(ws.resolve("server/engine/src/Self.java"))))
+                .as("an engine source lies under no root")
+                .isFalse();
+        assertThat(o.readRoots().stream().anyMatch(r -> r.covers(ws.resolve("plugins/p3/README.md"))))
+                .isTrue();
+    }
+
+    /** Reads with no directory in common past the bound leave no roots: the class keys on its whole suite. */
+    @Test
+    void reads_that_share_no_directory_leave_no_roots() {
+        ClassReads.Observation o = ClassReads.Observation.empty();
+        for (int i = 0; i < 12; i++) o.addRead(Path.of("d" + i, "f.txt"));
+        assertThat(o.readsMore()).isTrue();
+        assertThat(o.rootsMore()).isTrue();
+        assertThat(o.readRoots()).isEmpty();
+    }
+
+    /** A class past its read bound keeps the names of the files it read, up to their own bound. */
+    @Test
+    void a_class_keeps_the_file_names_it_read_up_to_their_bound(@TempDir Path ws) {
+        ClassReads.Observation o = ClassReads.Observation.empty();
+        o.addRead(ws.resolve("jk.toml"));
+        for (int i = 0; i < 30; i++) o.addRead(ws.resolve("m" + i + "/jk.toml"));
+        assertThat(o.readsMore()).isTrue();
+        assertThat(o.readNames()).containsExactly("jk.toml");
+        assertThat(o.wantsRead(ws.resolve("m3/jk.toml")))
+                .as("a name and a root it holds")
+                .isFalse();
+        assertThat(o.wantsRead(ws.resolve("m3/jk-lock.toml")))
+                .as("a name it has not seen")
+                .isTrue();
+        for (int i = 0; i < ClassReads.READ_NAMES_KEPT; i++) o.addRead(ws.resolve("m1/f" + i + ".txt"));
+        assertThat(o.readNames()).as("past the bound the names say nothing").isEmpty();
     }
 }

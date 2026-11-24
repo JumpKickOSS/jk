@@ -40,8 +40,20 @@ public final class DurationText {
      * machine slept or the engine was stopped): {@code took 3m 37s, suspended 4m 34s}.
      */
     public static String took(Duration d, long suspendedMs) {
-        String body =
-                "took " + human(d) + (suspendedMs > 0 ? ", suspended " + human(Duration.ofMillis(suspendedMs)) : "");
+        return tookLine(
+                "took " + human(d) + (suspendedMs > 0 ? ", suspended " + human(Duration.ofMillis(suspendedMs)) : ""));
+    }
+
+    /**
+     * As {@link #took(Duration)} for a unit that spent {@code waitedMs} of it blocked on others:
+     * {@code took 15.4s, 14.9s waiting}.
+     */
+    public static String tookWaiting(Duration d, long waitedMs) {
+        return tookLine(
+                "took " + human(d) + (waitedMs > 0 ? ", " + human(Duration.ofMillis(waitedMs)) + " waiting" : ""));
+    }
+
+    private static String tookLine(String body) {
         if (!Theme.active().isAnsi()) {
             return "- " + body;
         }

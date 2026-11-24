@@ -18,6 +18,9 @@ public final class ProtoJobs {
     /** {@code --coverage}: present and true only on a coverage run. */
     public static final String COVERAGE = "coverage";
 
+    /** {@code jk test --rerun}: present and true only when every selected suite runs, its compiles cached. */
+    public static final String RERUN_TESTS = "rerunTests";
+
     /** {@code --test-failures} / {@code JK_TEST_FAILURES}: {@code fail} or {@code report}; absent for the modules' own. */
     public static final String TEST_FAILURES = "testFailures";
 

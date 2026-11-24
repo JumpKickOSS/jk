@@ -33,8 +33,9 @@ class SseFrameTest {
 
     @Test
     void a_module_finish_frame_carries_every_field_the_wire_does() {
-        String record =
-                new ModuleFinishEvent("/ws/a", "g:a", false, 1, 42, true, false, true, null, null, null, null).encode();
+        String record = new ModuleFinishEvent(
+                        "/ws/a", "g:a", false, 1, 42, 0, true, false, true, null, null, null, null)
+                .encode();
         List<String> wire = EventEnvelope.keys(record);
         List<String> frame =
                 EventEnvelope.keys(SseFrame.of("module-finish", 7, record).toString());

@@ -95,12 +95,18 @@ public final class BuildPlan {
         return clock.nanos();
     }
 
+    /** What the finished steps reported blocked on a shared resource ({@link TaskContext#waited}), summed. */
+    public Duration waited() {
+        return Duration.ofNanos(waitedNanos.sum());
+    }
+
     private final boolean interactive;
     private final List<Task> steps;
     private final List<BuildPlanListener> listeners;
 
     private final LongAdder numerator = new LongAdder();
     private final LongAdder denominator = new LongAdder();
+    private final LongAdder waitedNanos = new LongAdder();
     private final AtomicInteger stepsComplete = new AtomicInteger();
     private final AtomicBoolean cancelled = new AtomicBoolean(false);
 
@@ -427,12 +433,21 @@ public final class BuildPlan {
         if (p.kind() == TaskKind.SYNC) {
             return runOneStep(p, ticks, weight);
         }
+        // A step is announced as it is submitted; when the pool has no free thread, its row says so
+        // until the body begins, rather than showing a step in flight that does nothing.
+        boolean queued = p.kind() == TaskKind.CPU && JkThreads.cpuSaturated();
+        Admission admission = new Admission(stepName);
         // Two handles on one body. `body` completes only when the step really stops, so the plan can
         // wait for it; `f` is the copy the plan cancels. Cancelling a copy leaves the original
         // running, which is the point: the drain loop still gets its one event per step immediately,
         // and the plan can still tell the difference between "reported" and "stopped".
-        CompletableFuture<TaskStatus> body =
-                CompletableFuture.supplyAsync(() -> runOneStep(p, ticks, weight), executorFor(p.kind()));
+        CompletableFuture<TaskStatus> body = CompletableFuture.supplyAsync(
+                () -> {
+                    admission.begin();
+                    return runOneStep(p, ticks, weight);
+                },
+                executorFor(p.kind()));
+        if (queued) admission.queued();
         CompletableFuture<TaskStatus> f = body.copy();
         Set<CompletableFuture<TaskStatus>> asyncOutstanding = Objects.requireNonNull(outstanding);
         BlockingQueue<Done> asyncEvents = Objects.requireNonNull(events);
@@ -443,6 +458,34 @@ public final class BuildPlan {
         // — `f` is the one we keep so it stays cancellable.
         f.whenComplete((s, ex) -> asyncEvents.add(new Done(p, s, f)));
         return null;
+    }
+
+    /**
+     * Whether an async step's body has a thread yet. Its row is told it waits for one only while the
+     * body has not begun, and told it works once it does; both under one lock, so the two cannot
+     * arrive in the wrong order.
+     */
+    private final class Admission {
+        private final String step;
+        private boolean begun;
+        private boolean told;
+
+        Admission(String step) {
+            this.step = step;
+        }
+
+        synchronized void queued() {
+            if (begun) return;
+            told = true;
+            emit(l -> l.waiting(step, StepWait.THREAD));
+        }
+
+        synchronized void begin() {
+            begun = true;
+            if (!told) return;
+            told = false;
+            emit(l -> l.waiting(step, null));
+        }
     }
 
     /**
@@ -591,6 +634,7 @@ public final class BuildPlan {
             Duration dur = Duration.between(start, clock.instant());
             reports.add(new BuildPlanResult.StepReport(step.name(), terminal, dur, step.requires()));
             stepsComplete.incrementAndGet();
+            waitedNanos.add(ctx.waited().toNanos());
             emit(l -> l.stepFinish(step.name(), step.group().orElse(null), terminal, dur, ctx.waited()));
             return terminal;
         } catch (Throwable t) {
@@ -627,6 +671,7 @@ public final class BuildPlan {
             Duration dur = Duration.between(start, clock.instant());
             reports.add(new BuildPlanResult.StepReport(step.name(), terminal, dur, step.requires()));
             stepsComplete.incrementAndGet();
+            waitedNanos.add(ctx.waited().toNanos());
             emit(l -> l.stepFinish(step.name(), step.group().orElse(null), terminal, dur, ctx.waited()));
             return terminal;
         }

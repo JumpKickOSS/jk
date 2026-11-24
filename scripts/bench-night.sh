@@ -26,11 +26,14 @@
 # during the night write its name into $NIGHT_STATE/skip (one per line): each cell reads it before it
 # starts. `status` reads the night's progress under $NIGHT_STATE/night, running or ended.
 #
-# `run` checks first, and refuses a real run on any failure: the installed jk is this tree's version
-# and lists every MCP tool a step calls; the queue and Full loops are paused; no gate holds the gate
-# lock (which it then holds to the end). It names every agent CLI that is not logged in and every
-# corpus repository not set up, and skips their cells; it never logs in. An agent whose two cells in a
-# row end in an error row (a preflight or a login refused) is skipped for the rest of the step.
+# `run`, the dry run too, first puts every cell's arguments to its harness (smoke-test or change-tasks
+# --check), which parses them as the cell would, and refuses to start when a harness refuses one: an
+# arm, driver or task it does not know. It then checks, and refuses a real run on any failure: the
+# installed jk is this tree's version and lists every MCP tool a step calls; the queue and Full loops
+# are paused; no gate holds the gate lock (which it then holds to the end). It names every agent CLI
+# that is not logged in and every corpus repository not set up, and skips their cells; it never logs
+# in. An agent whose two cells in a row end in an error row (a preflight or a login refused) is skipped
+# for the rest of the step.
 #
 # `pause` writes the queue's pause file, <QUEUE_REPO>/pause, with its reason: while it exists the
 # loops keep running but start no batch or Full cycle, however long the night. It then waits for the
@@ -206,8 +209,10 @@ run() {
   flock -n 9 || problems+=("a gate holds $LOCK")
   [ "$dry" -eq 1 ] && flock -u 9
 
-  local plan
+  local plan refused
   plan="$("$PLAN" plan)" || die "night-plan failed"
+  refused="$(check_cells <<<"$plan")" ||
+    { say "$refused"; die "a cell has arguments its harness refuses: fix the plan or the harness; nothing ran"; }
   declare -A skip=()
   local driver model repo why
   while IFS=$'\t' read -r driver model; do
@@ -319,6 +324,33 @@ status() {
   "$SUMMARY" --since "$(date -d "@$start" +%F)"
 }
 
+# cell_cmd: the command of the plan line in its caller's step, tier, driver, … into its caller's cmd.
+cell_cmd() {
+  if [ "$tier" = 0 ]; then
+    cmd=("$HARNESS/smoke-test" --driver "$driver" --arm "$arm" --model "$model" --effort "$effort")
+  else
+    cmd=("$HARNESS/change-tasks" --driver "$driver" --arm "$arm" --task "$task" --runs "$runs"
+      --first-run "$first" --model "$model" --effort "$effort")
+  fi
+}
+
+# check_cells: every plan line on stdin, its command's arguments put to its own harness's --check, which
+# parses them as a run would and starts nothing. Prints each cell a harness refuses; 1 when any is.
+check_cells() {
+  local step tier driver arm task repo runs first model effort est source cmd harness out failed=0
+  declare -A args=()
+  while IFS=$'\t' read -r step tier driver arm task repo runs first model effort est source; do
+    [ -n "$step" ] || continue
+    cell_cmd
+    args[${cmd[0]}]+="$(IFS=$'\t' && echo "${cmd[*]:1}")"$'\n'
+  done
+  for harness in "${!args[@]}"; do
+    out="$(cd "$ROOT" && printf '%s' "${args[$harness]}" | "$harness" --check 2>&1)" ||
+      { failed=1; echo "refused by $harness:"; echo "  ${out//$'\n'/$'\n'  }"; }
+  done
+  return "$failed"
+}
+
 # cells: run (or, dry, list) the plan lines on stdin, in order; run's locals are this function's too.
 # Every cell runs, the soft deadline past or not; past it, each start logs what is done and left.
 cells() {
@@ -326,12 +358,7 @@ cells() {
   while IFS=$'\t' read -r step tier driver arm task repo runs first model effort est source; do
     [ -n "$step" ] || continue
     n=$((n + 1))
-    if [ "$tier" = 0 ]; then
-      cmd=("$HARNESS/smoke-test" --driver "$driver" --arm "$arm" --model "$model" --effort "$effort")
-    else
-      cmd=("$HARNESS/change-tasks" --driver "$driver" --arm "$arm" --task "$task" --runs "$runs"
-        --first-run "$first" --model "$model" --effort "$effort")
-    fi
+    cell_cmd
     why="${skip[$driver]:-${skip[$repo]:-}}"
     [ "$step" = 1 ] || [ -n "$why" ] || why="$(cut_by_file "$driver")"
     [ "${fails[$driver.$step]:-0}" -lt 2 ] || why="two error rows in a row for $driver"

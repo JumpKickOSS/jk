@@ -20,6 +20,7 @@ import cc.jumpkick.model.Profile;
 import cc.jumpkick.model.SuiteSettings;
 import cc.jumpkick.model.TestCache;
 import cc.jumpkick.orchestrator.OrchestratorCode;
+import cc.jumpkick.orchestrator.SuiteChoice;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.base.CompileSupport;
 import cc.jumpkick.runtime.base.FilteredResources;
@@ -34,12 +35,17 @@ import cc.jumpkick.task.PortablePath;
 import cc.jumpkick.task.TestStamp;
 import cc.jumpkick.task.ToolIdentity;
 import cc.jumpkick.task.ToolchainPolicy;
+import cc.jumpkick.test.CoverageAgent;
+import cc.jumpkick.test.EnvProbeJar;
 import cc.jumpkick.test.SuiteEnvReads;
+import cc.jumpkick.test.SuiteFilter;
+import cc.jumpkick.test.SuiteReads;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
@@ -112,7 +118,7 @@ public record TestStampInputs(
                     layout,
                     javaHome,
                     profileName,
-                    SessionContext.current().testSelection(),
+                    SessionContext.selectionFor(dir),
                     pluginDecls,
                     testStampWorkerJars(dir, project),
                     classpaths.testRuntime(),
@@ -131,7 +137,7 @@ public record TestStampInputs(
                     BuildLayout.of(dir, project),
                     JavaHomes.resolveJavaHome(dir),
                     null,
-                    SessionContext.current().testSelection(),
+                    SessionContext.selectionFor(dir),
                     null,
                     testStampWorkerJars(dir, project),
                     List.of(),
@@ -157,7 +163,7 @@ public record TestStampInputs(
     }
 
     /**
-     * This stamp as the guard's run would take it ({@link #guardCovering}), or null when the guard's
+     * This stamp as the guard's run would take it ({@link SuiteChoice#guardCovering}), or null when the guard's
      * run does not cover this one. A green guard run ran every test of the run it covers, over the
      * same tree ({@link TestSuites#compiled} compiles every guard suite whatever the selection), so
      * {@code jk build} and {@code jk test} after {@code jk install -g} replay its marker instead of
@@ -165,33 +171,8 @@ public record TestStampInputs(
      */
     @Nullable
     TestStampInputs underGuard() throws IOException {
-        TestSelection guard = guardCovering(selection, facts.dir());
+        TestSelection guard = SuiteChoice.guardCovering(selection, facts.dir());
         return guard == null ? null : of(facts.withSelection(guard), identity);
-    }
-
-    /**
-     * The selection {@code jk test -g} runs in the workspace of {@code dir}, when its run covers
-     * {@code selection}'s: a plain selection (no tags, classes, scripts or {@code --all}) whose suites
-     * are all guard suites; null otherwise, and for the guard's own selection.
-     */
-    static @Nullable TestSelection guardCovering(TestSelection selection, Path dir) {
-        if (selection.guard()
-                || selection.allSuites()
-                || selection.scriptsOnly()
-                || !selection.includeTags().isEmpty()
-                || !selection.excludeTags().isEmpty()
-                || !selection.classes().isEmpty()) return null;
-        TestSelection guard;
-        try {
-            Path root = WorkspaceScan.owningRoot(dir).orElse(dir);
-            guard = TestSelection.of(TestSelection.guardSuites(root), false, List.of(), List.of(), true, false, false);
-        } catch (RuntimeException unreadable) {
-            return null;
-        }
-        if (guard.identityToken().equals(selection.identityToken())) return null;
-        return guard.wantedSuites().containsAll(selection.wantedSuites())
-                ? guard.withOnlyModules(selection.onlyModules())
-                : null;
     }
 
     /** The stamp inputs of {@code facts}, with the worker jars read through {@code identity}. */
@@ -286,14 +267,18 @@ public record TestStampInputs(
     }
 
     /**
-     * The stamp's identity tokens: environment values, tool identities, the JVM flags, worker jars
-     * and test compiles. Read again on every call, as a suite that recorded what it reads keys
-     * those reads on its next stamp.
+     * The stamp's identity tokens: environment values, tool identities, the JVM flags, what each
+     * launch starts its JVMs with, what every suite JVM gets from jk on any host, the agents they
+     * start with, worker jars and test compiles. Read again on every call, as a
+     * suite that recorded what it reads keys those reads on its next stamp.
      */
     List<String> extras() throws IOException {
         List<String> extras = new ArrayList<>(
                 testStampExtras(facts.workerJars(), selection, facts.project(), jvmArgs, facts.dir(), identity));
         extras.add(suitesToken(suites));
+        extras.addAll(forkTokens(facts.project(), selection, suites));
+        extras.add(SuiteEnvKeys.environment(facts.project()));
+        extras.add(agentsToken());
         String node = NodeTestStamp.nodeTestToken(facts.project(), facts.dir());
         if (node != null) extras.add(node);
         extras.addAll(SuiteEnvKeys.profileEnv(facts.project(), facts.profileName()));
@@ -302,6 +287,17 @@ public record TestStampInputs(
         // its record's HOST (architecture.md, the key table).
         extras.add("java:" + level());
         return TestStamp.withCompileTest(extras, facts.compileTestKeys());
+    }
+
+    /**
+     * The stamp token of the agents and the recording every JVM that runs tests may start with, as
+     * the functions the launch spells their flags with write them over stand-ins: the environment
+     * probe with the manifest its jar is cut under, the read recording and the coverage agent. So an
+     * edit to what one spells moves every suite's key, and a path moves none.
+     */
+    static String agentsToken() {
+        return "jvm-agents:probe=" + EnvProbeJar.token() + " ; recording=" + SuiteReads.recordingToken()
+                + " ; coverage=" + CoverageAgent.token();
     }
 
     /**
@@ -326,18 +322,8 @@ public record TestStampInputs(
                 .all();
         List<Path> stampRt = runtimeClasspath;
         List<String> stampExtras = extras();
-        List<String> compiledSuites =
-                TestSuites.compiled(dir, compact, run, project.build().runSuites());
-        // As the live copy: the test KSP round's output roots, then the suites' resources.
-        List<Path> stampRes = new ArrayList<>(PlannerKsp.outputRoots(PlannerKsp.kspTestOutBase(layout)));
-        stampRes.addAll(ModuleLayout.suiteResourceDirs(dir, compact, compiledSuites));
-        if (compiledSuites.contains(TestSuites.DEFAULT)) {
-            // The live run keys the default suite's [resources] test-dirs and staged test-filtered
-            // roots too. A staged root that no longer holds what its source expands to is one the
-            // run restages: nothing on disk prices it, so the suite is forecast to run.
-            if (FilteredResources.testStageOutOfSync(dir, project, layout)) return null;
-            stampRes.addAll(FilteredResources.testRootsAsStaged(dir, project, layout));
-        }
+        List<Path> stampRes = forecastResources(compact);
+        if (stampRes == null) return null;
         String key = key(stampSrcs, mainClasses, mainClassesFingerprint, stampRes, stampExtras);
         if (Perf.enabled()) {
             // The key itself, not just its inputs: when this disagrees with `live-test-stamp` for
@@ -366,6 +352,30 @@ public record TestStampInputs(
                     mainClassesFingerprint != null ? mainClassesFingerprint : ClasspathFingerprint.entry(mainClasses));
         }
         return key;
+    }
+
+    /**
+     * The resource roots the live run keys and its classes read, for the forecast: the test KSP
+     * round's output roots, then the suites' resources. Null when a staged test-filtered root no
+     * longer holds what its source expands to: the run restages it, so nothing on disk prices it.
+     */
+    @Nullable
+    List<Path> forecastResources(boolean compact) throws IOException {
+        Path dir = facts.dir();
+        JkBuild project = facts.project();
+        BuildLayout layout = facts.layout();
+        List<String> run = suites.ok() ? suites.suites() : List.of(TestSuites.DEFAULT);
+        List<String> compiledSuites =
+                TestSuites.compiled(dir, compact, run, project.build().runSuites());
+        List<Path> res = new ArrayList<>(PlannerKsp.outputRoots(PlannerKsp.kspTestOutBase(layout)));
+        res.addAll(ModuleLayout.suiteResourceDirs(dir, compact, compiledSuites));
+        if (compiledSuites.contains(TestSuites.DEFAULT)) {
+            // The live run keys the default suite's [resources] test-dirs and staged test-filtered
+            // roots too.
+            if (FilteredResources.testStageOutOfSync(dir, project, layout)) return null;
+            res.addAll(FilteredResources.testRootsAsStaged(dir, project, layout));
+        }
+        return res;
     }
 
     /**
@@ -403,19 +413,17 @@ public record TestStampInputs(
     }
 
     /**
-     * The suites a run of {@code moduleDir} runs under {@code selection}, resolved against the
-     * module's suites, the built-in {@code integration} suite always among them ({@link
-     * DeclaredSuite#withConvention}, so a caller handing the raw tables cannot lose it). The one
-     * derivation of it: the planner's compile-test and suite filter, the stamp, the forecast and the
-     * test-count estimate all read it here, so the suites a green marker is stored under are the
-     * suites that ran.
+     * The suites a run of {@code moduleDir} runs under {@code selection} ({@link SuiteChoice#resolve}).
+     * The one derivation of it: the planner's compile-test and suite filter, the stamp, the forecast
+     * and the test-count estimate all read it here, so the suites a green marker is stored under are
+     * the suites that ran.
      *
      * @param declared the module's {@link cc.jumpkick.model.BuildBlock#runSuites}
      */
     @KeyOwner(step = TaskNames.RUN_TESTS)
     public static TestSelection.Resolved resolveSuites(
             TestSelection selection, Path moduleDir, boolean compact, Map<String, DeclaredSuite> declared) {
-        return TestSuites.resolve(selection, moduleDir, compact, DeclaredSuite.withConvention(declared));
+        return SuiteChoice.resolve(selection, moduleDir, compact, declared);
     }
 
     /**
@@ -425,6 +433,23 @@ public record TestStampInputs(
     private static String suitesToken(TestSelection.Resolved suites) {
         return "suites-run:" + String.join(",", suites.suites())
                 + (suites.ok() ? "" : "?missing=" + String.join(",", suites.missing()));
+    }
+
+    /**
+     * The stamp token of each launch the run starts ({@link SuiteFilter#launches}): what it starts its
+     * test JVMs with on every host, as {@link TestLaunch#forkSpec} derives it for the launch itself.
+     * So a change to what a launch spells moves the key of exactly the suites it launches, and a
+     * change to how the JVMs are forked moves none.
+     */
+    static List<String> forkTokens(JkBuild project, TestSelection selection, TestSelection.Resolved suites) {
+        List<String> run = suites.ok() ? suites.suites() : List.of(TestSuites.DEFAULT);
+        List<String> out = new ArrayList<>();
+        for (SuiteFilter.Launch launch : SuiteFilter.launches(
+                List.copyOf(new LinkedHashSet<>(run)), project.build().runSuites())) {
+            out.add("fork:"
+                    + TestLaunch.forkSpec(project, selection, launch.suites()).token());
+        }
+        return out;
     }
 
     /**
@@ -449,17 +474,30 @@ public record TestStampInputs(
      * suite runs once the jar is rebuilt.
      */
     static @Nullable String rebuildingWorker(Path dir, JkBuild project, List<Path> rebuilding) throws IOException {
-        if (rebuilding.isEmpty()) return null;
+        Map<String, Path> workers = rebuildingWorkers(dir, project, rebuilding);
+        return workers.isEmpty() ? null : workers.keySet().iterator().next();
+    }
+
+    /**
+     * Each worker jar of {@code dir}'s run-tests stamp ({@link #testStampWorkerJars}) that one of
+     * {@code rebuilding} makes, by its property, in the stamp's order; empty when none does.
+     */
+    static Map<String, Path> rebuildingWorkers(Path dir, JkBuild project, List<Path> rebuilding) throws IOException {
+        if (rebuilding.isEmpty()) return Map.of();
         List<Path> roots = new ArrayList<>();
         for (Path sibling : rebuilding) roots.add(sibling.toAbsolutePath().normalize());
+        Map<String, Path> out = new LinkedHashMap<>();
         for (Map.Entry<String, String> worker :
                 testStampWorkerJars(dir, project).entrySet()) {
             Path jar = Path.of(worker.getValue()).toAbsolutePath().normalize();
             for (Path root : roots) {
-                if (jar.startsWith(root)) return worker.getKey();
+                if (jar.startsWith(root)) {
+                    out.put(worker.getKey(), jar);
+                    break;
+                }
             }
         }
-        return null;
+        return out;
     }
 
     /**
@@ -514,12 +552,6 @@ public record TestStampInputs(
         extras.add("orchestrator:" + OrchestratorCode.digest());
         // Suite + tag filters are part of the outcome.
         if (selection != null) extras.add("sel:" + selection.identityToken());
-        // Whether the suite JVM ran with -ea decides what an `assert` did.
-        extras.add("assertions:" + build.testAssertions());
-        // Excluded classes are classes the suite does not run.
-        if (!build.testExcludeClasses().isEmpty()) {
-            extras.add("exclude-classes:" + String.join(",", build.testExcludeClasses()));
-        }
         // A declared suite decides which tests the default suite and every other suite runs.
         build.runSuites()
                 .forEach((suite, spec) -> extras.add("suite:" + suite + "=" + String.join(",", spec.classes())
@@ -563,7 +595,7 @@ public record TestStampInputs(
             } catch (IOException ex) {
                 fp = "err";
             }
-            extras.add("worker:" + e.getKey() + "=" + fp);
+            extras.add(TestStamp.WORKER_JAR + e.getKey() + "=" + fp);
         }
         extras.addAll(SuiteEnvKeys.tokens(
                 build,

@@ -14,12 +14,13 @@ import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.DeclaredSuite;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.orchestrator.ClassTags;
 import cc.jumpkick.task.ClassAbi;
+import cc.jumpkick.task.SourceApiIndex;
 import cc.jumpkick.test.AbiIndex;
 import cc.jumpkick.test.AffectedChangedPublish;
 import cc.jumpkick.test.AffectedTestRanker;
 import cc.jumpkick.test.AffectedTests;
-import cc.jumpkick.test.ClassTags;
 import cc.jumpkick.test.SourceClassNames;
 import cc.jumpkick.test.SuiteFilter;
 import cc.jumpkick.test.TestClassIndex;
@@ -27,7 +28,6 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -101,9 +101,14 @@ public final class AffectedTestsCompute {
                 if (rel.isBlank()) rel = ".";
                 String coord = unit.project().group() + ":" + unit.project().name();
                 var row = List.of(new AffectedTests.ModuleRow(rel, coord, "dirty"));
-                // No compile happens on this path: a dirty source newer than its compiled class
-                // means the bytecode is a lie — refuse rather than rank from it.
-                String stale = AffectedTestRanker.staleDirtyMain(root, modDir, dirty, layout.classesDir());
+                // No compile happens on this path: a dirty source whose content moved past its
+                // compiled class means the bytecode is a lie — refuse rather than rank from it.
+                String stale = AffectedTestRanker.staleDirtyMain(
+                        root,
+                        modDir,
+                        dirty,
+                        layout.classesDir(),
+                        SourceApiIndex.load(SourceApiIndex.path(layout.buildDir())));
                 if (stale != null) {
                     return AffectedTests.refused(
                             new AffectedTests.Refuse("stale", stale + " is newer than its compiled class; build first"),
@@ -171,10 +176,38 @@ public final class AffectedTestsCompute {
                     tests,
                     production,
                     List.of(new AffectedTests.ModuleRow(rel, coord, why)),
-                    foreign));
+                    foreign,
+                    recorded(root, u.dir(), u.build(), u.layout(), sel, dirty)));
             acc = acc.merge(slice);
         }
-        return capGlobal(acc);
+        return acc.sorted();
+    }
+
+    /**
+     * How each class of the module's selection that jk recorded meets the {@code dirty} paths of the
+     * whole workspace, by its recorded cone and reads ({@link TestClassRecording#overlaps}).
+     */
+    private static Map<String, String> recorded(
+            Path root, Path dir, JkBuild build, BuildLayout layout, TestSelection sel, List<String> dirty)
+            throws IOException {
+        if (dirty.isEmpty()) return Map.of();
+        Path base = root.toAbsolutePath().normalize();
+        Path workspace = layout.workspaceRoot().toAbsolutePath().normalize();
+        List<String> changed = new ArrayList<>();
+        for (String raw : dirty) {
+            Path p = Path.of(raw);
+            p = (p.isAbsolute() ? p : base.resolve(p)).normalize();
+            if (p.startsWith(workspace)) changed.add(workspace.relativize(p).toString());
+        }
+        return TestClassRecording.overlaps(
+                dir,
+                layout,
+                layout.testClassesDir(),
+                layout.classesDir(),
+                PlannerTest.testRuntimeClasspath(dir, build),
+                changed,
+                SuiteResources.launchNames(
+                        dir, ModuleLayout.isCompact(dir), sel, build.build().runSuites()));
     }
 
     static boolean hasLocalDirty(Path root, Path module, List<String> dirty) {
@@ -264,20 +297,5 @@ public final class AffectedTestsCompute {
             }
         }
         return List.copyOf(out.values());
-    }
-
-    /** Display/MCP budget: highest scores across the workspace, at most {@link AffectedTests#CAP}. */
-    static AffectedTests capGlobal(AffectedTests acc) {
-        if (acc.refused()) return acc;
-        List<AffectedTests.Row> rows = new ArrayList<>(acc.ranked());
-        rows.sort(Comparator.comparingInt(AffectedTests.Row::score)
-                .reversed()
-                .thenComparing(AffectedTests.Row::className));
-        int candidates = Math.max(acc.candidateCount(), rows.size());
-        if (rows.size() > AffectedTests.CAP) {
-            rows = List.copyOf(rows.subList(0, AffectedTests.CAP));
-        }
-        if (rows.isEmpty()) return AffectedTests.empty(acc.modules(), acc.changed());
-        return AffectedTests.ranked(acc.modules(), acc.changed(), rows, candidates);
     }
 }

@@ -13,17 +13,19 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.ToIntFunction;
 import org.jspecify.annotations.Nullable;
 
 /**
- * What every engine of one state directory holds, so that the worker budget, its {@link
+ * What every engine of one memory budget holds, so that the worker budget, its {@link
  * WorkerLeases#OVERBOOK_CAP_FACTOR} cap and the JVM slot cap bound the host rather than one process:
- * a displaced engine still draining and the successor that took over lease from one total.
+ * a displaced engine still draining and the successor that took over, or engines with different
+ * homes in one container, lease from one total.
  *
- * <p>{@value #FILE} under the engine directory has one line per live engine, {@code <pid>
+ * <p>{@value #FILE} under the budget's directory ({@link LeaseScope}) has one line per live engine, {@code <pid>
  * <start-epoch-millis> <budget> <cpu-cap> <bytes> <jvms> <waiting>} followed by {@code
  * <pid>:<start-epoch-millis>} for each worker it forked, and is replaced whole under {@code
  * worker-leases.lock}. {@code <waiting>} counts the leases the engine has queued. Each engine writes
@@ -44,7 +46,7 @@ import org.jspecify.annotations.Nullable;
  */
 final class HostLeases {
 
-    /** The shared file's name under the engine directory. */
+    /** The shared file's name under the budget's directory. */
     static final String FILE = "worker-leases";
 
     /** A cached reading of the other engines is reused for this long to refuse a lease. */
@@ -146,13 +148,13 @@ final class HostLeases {
     private long reclaims;
 
     /**
-     * {@code self}'s line in {@code engineDir}'s file. {@code alive} decides which other lines still
+     * {@code self}'s line in {@code dir}'s file. {@code alive} decides which other lines still
      * count; {@code stop} is handed the workers of a line that does not and answers how many it
      * stopped.
      */
-    HostLeases(Path engineDir, Owner self, Predicate<Owner> alive, ToIntFunction<List<Worker>> stop) {
-        this.file = engineDir.resolve(FILE);
-        this.lockFile = engineDir.resolve(FILE + ".lock");
+    HostLeases(Path dir, Owner self, Predicate<Owner> alive, ToIntFunction<List<Worker>> stop) {
+        this.file = dir.resolve(FILE);
+        this.lockFile = dir.resolve(FILE + ".lock");
         this.self = Objects.requireNonNull(self, "self");
         this.alive = Objects.requireNonNull(alive, "alive");
         this.stop = Objects.requireNonNull(stop, "stop");
@@ -161,9 +163,9 @@ final class HostLeases {
     /** The share {@link #forThisProcess} made last: in the engine, its own; null before. */
     private static volatile @Nullable HostLeases thisProcess;
 
-    /** This process's line in {@code engineDir}'s file, judging the others by {@link Owner#alive}. */
-    static HostLeases forThisProcess(Path engineDir) {
-        HostLeases made = new HostLeases(engineDir, Owner.current(), Owner::alive, HostLeases::stopAll);
+    /** This process's line in {@code dir}'s file, judging the others by {@link Owner#alive}. */
+    static HostLeases forThisProcess(Path dir) {
+        HostLeases made = new HostLeases(dir, Owner.current(), Owner::alive, HostLeases::stopAll);
         thisProcess = made;
         return made;
     }
@@ -251,6 +253,29 @@ final class HostLeases {
             Thread.currentThread().interrupt();
             return false;
         }
+    }
+
+    /**
+     * The live engine in {@code dir}'s file that forked one of {@code ancestors}, a process that still
+     * runs and started when the line says; null when none did or the file cannot be read. An engine
+     * started inside another engine's worker is already charged there, its resident set counted with
+     * that worker's.
+     */
+    static @Nullable Owner forkedOneOf(Path dir, Set<Long> ancestors) {
+        String text;
+        try {
+            text = AtomicWrites.readString(dir.resolve(FILE));
+        } catch (IOException e) {
+            return null;
+        }
+        for (String raw : text.split("\n")) {
+            Entry e = raw.isBlank() ? null : Entry.parse(raw);
+            if (e == null || !e.owner.alive()) continue;
+            for (Worker w : e.line.workers()) {
+                if (ancestors.contains(w.pid()) && w.running().isPresent()) return e.owner;
+            }
+        }
+        return null;
     }
 
     /** The other engines' reading, read now. */

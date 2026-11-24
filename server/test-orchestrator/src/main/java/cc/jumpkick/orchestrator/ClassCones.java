@@ -1,11 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.test;
+package cc.jumpkick.orchestrator;
 
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.PathUtil;
 import java.io.IOException;
 import java.io.InputStream;
+import java.lang.classfile.ClassFile;
+import java.lang.classfile.ClassModel;
+import java.lang.classfile.CodeModel;
+import java.lang.classfile.MethodModel;
+import java.lang.classfile.MethodTransform;
+import java.lang.classfile.attribute.SourceFileAttribute;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -22,6 +28,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.function.Predicate;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
@@ -32,16 +39,23 @@ import org.jspecify.annotations.Nullable;
  * Each test class's static cone: the class with every class nested in it, then every workspace class
  * reachable from them, each named by its bytes' digest. A class reaches another when its class file
  * names it anywhere: a class entry of its constant pool, a field or method descriptor, a signature,
- * an annotation, or a string constant spelling a workspace class's binary name. The walk stops at
- * the workspace's edge; what lies past it (the JDK, dependency jars) is keyed whole elsewhere.
+ * an annotation, or, in a class file that calls a method loading a class by name ({@link
+ * #LOADS_BY_NAME}), a string constant spelling a workspace class's binary name. Elsewhere such a
+ * string is data (a process argument, a manifest value) and reaches nothing. The walk stops at the
+ * workspace's edge; what lies past it (the JDK, dependency jars) is keyed whole elsewhere.
  *
  * <p>A cone that names {@code java.util.ServiceLoader} takes in every provider a workspace service
  * file lists. A cone that names a classpath-scanning entry point (Spring's test context, Quarkus,
  * Micronaut, ArchUnit's importer, ClassGraph, Reflections, CDI) says so: what such a framework loads
  * no reference shows, so the class is keyed by its whole module.
  *
+ * <p>Every class has a second digest, of its bytes less every method body but its static
+ * initialiser's ({@link Cone#digest(String)}): what the classes that ran it see of it when its own
+ * code did not run in their window. The probe marks a sibling's jar as it marks a class tree, so
+ * this holds for a class read from either.
+ *
  * <p>The index is compact: each name once, each class's references as an array of name numbers and
- * its digest as two longs, so a module with tens of thousands of workspace classes on its classpath
+ * its digests as two longs each, so a module with tens of thousands of workspace classes on its classpath
  * costs a few megabytes ({@link #BYTES_PER_CLASS}).
  */
 public final class ClassCones {
@@ -69,6 +83,51 @@ public final class ClassCones {
             return id != null && members.get(id);
         }
 
+        /**
+         * Which of the cone's classes ran, by {@code ran}: one bit for each, in name order, the
+         * first the high bit of the first byte, as hex. What {@link #digest(String)} takes back.
+         */
+        public String used(Predicate<String> ran) {
+            List<Integer> order = index.sorted(members);
+            BitSet bits = new BitSet();
+            int bit = 0;
+            for (int id : order) {
+                if (ran.test(index.names.get(id).replace('/', '.'))) bits.set(bit);
+                bit++;
+            }
+            byte[] out = new byte[(bit + 7) / 8];
+            for (int i = bits.nextSetBit(0); i >= 0; i = bits.nextSetBit(i + 1))
+                out[i / 8] |= (byte) (0x80 >>> (i % 8));
+            return Hashing.hex(out);
+        }
+
+        /**
+         * Whether the class {@code binaryName} lies in the cone and ran by {@code used} ({@link
+         * #used}), or past the bits it holds; what {@link #digest(String)} names by its bytes. A
+         * reader asking of several classes takes {@link #ranBy} once.
+         */
+        public Predicate<String> ranBy(String used) {
+            List<Integer> order = index.sorted(members);
+            Map<Integer, Integer> bitOf = new HashMap<>();
+            for (int bit = 0; bit < order.size(); bit++) bitOf.put(order.get(bit), bit);
+            byte[] bits = Index.bits(used);
+            return binaryName -> {
+                Integer id = index.ids.get(internal(binaryName));
+                Integer bit = id == null ? null : bitOf.get(id);
+                return bit != null && Index.ran(bits, bit);
+            };
+        }
+
+        /**
+         * The cone as one digest, each class whose bit in {@code used} ({@link #used}) is clear
+         * named by its bytes less its method bodies: a body that did not run in the class's window
+         * cannot have decided its outcome. A class that ran and a class past the bits {@code used}
+         * holds are named by their bytes.
+         */
+        public String digest(String used) {
+            return index.digestOf(members, used);
+        }
+
         /** The cone's classes by binary name, sorted. */
         public Set<String> classes() {
             Set<String> out = new TreeSet<>();
@@ -93,6 +152,13 @@ public final class ClassCones {
             "org/jboss/weld/",
             "jakarta/enterprise/inject/se/");
 
+    /**
+     * Names of the methods that load a class by name: a class file naming none of them only passes
+     * its strings on as data. A class loaded by name through a workspace helper is caught by the
+     * class's record, which joins what it loaded outside its static cone.
+     */
+    static final Set<String> LOADS_BY_NAME = Set.of("forName", "loadClass", "findClass", "tryToLoadClass");
+
     private static final String SERVICE_LOADER = "java/util/ServiceLoader";
     private static final String SERVICES = "META-INF/services/";
     private static final int[] NONE = new int[0];
@@ -105,6 +171,9 @@ public final class ClassCones {
         private final List<int @Nullable []> refs = new ArrayList<>();
 
         private long[] digests = new long[64];
+        /** By name number: the digest of the class less its method bodies. */
+        private long[] bodyless = new long[64];
+
         private int[] scanners = new int[16];
         private final List<Integer> providers = new ArrayList<>();
         private final int loader;
@@ -130,7 +199,10 @@ public final class ClassCones {
             ids.put(internalName, id);
             names.add(internalName);
             refs.add(null);
-            if (2 * id + 1 >= digests.length) digests = Arrays.copyOf(digests, digests.length * 2);
+            if (2 * id + 1 >= digests.length) {
+                digests = Arrays.copyOf(digests, digests.length * 2);
+                bodyless = Arrays.copyOf(bodyless, bodyless.length * 2);
+            }
             if (id >= scanners.length) scanners = Arrays.copyOf(scanners, scanners.length * 2);
             scanners[id] = -1;
             return id;
@@ -147,7 +219,7 @@ public final class ClassCones {
             }
             int id = id(internalName);
             if (defines(id)) return;
-            ClassFile cf = read(bytes);
+            ClassRefs cf = read(bytes);
             int[] out = new int[cf.refs().size()];
             int n = 0;
             for (String r : cf.refs()) out[n++] = id(r);
@@ -155,6 +227,9 @@ public final class ClassCones {
             ByteBuffer d = ByteBuffer.wrap(cf.digest());
             digests[2 * id] = d.getLong();
             digests[2 * id + 1] = d.getLong();
+            ByteBuffer b = ByteBuffer.wrap(bodyless(bytes, cf.digest()));
+            bodyless[2 * id] = b.getLong();
+            bodyless[2 * id + 1] = b.getLong();
             scanners[id] = cf.scanner() == null ? -1 : id(cf.scanner());
             defined++;
         }
@@ -162,6 +237,30 @@ public final class ClassCones {
         /** How many classes the roots hold. */
         public int size() {
             return defined;
+        }
+
+        /**
+         * The classes of the roots a source file at {@code path} compiles to, by the longest tail
+         * of its path that names a class, with every class nested in it: {@code
+         * src/main/java/a/B.java} names {@code a.B} and {@code a.B$C}. Empty when no class of the
+         * roots is named so, as for a source not yet compiled.
+         */
+        public Set<String> compiledFrom(String path) {
+            String p = path.replace('\\', '/');
+            int dot = p.lastIndexOf('.');
+            if (dot > p.lastIndexOf('/')) p = p.substring(0, dot);
+            Set<String> out = new TreeSet<>();
+            for (String tail = p; ; ) {
+                Integer id = ids.get(tail);
+                if (id != null && defines(id)) {
+                    out.add(tail.replace('/', '.'));
+                    for (int n : nestedOf(tail)) out.add(names.get(n).replace('/', '.'));
+                    return out;
+                }
+                int slash = tail.indexOf('/');
+                if (slash < 0) return out;
+                tail = tail.substring(slash + 1);
+            }
         }
 
         /** Whether {@code binaryName} is a class of the roots. */
@@ -255,19 +354,46 @@ public final class ClassCones {
         }
 
         private String digestOf(BitSet members) {
-            // Sorted by name, so the digest is one whatever order the roots were read in.
-            List<Integer> order = new ArrayList<>(members.cardinality());
-            for (int i = members.nextSetBit(0); i >= 0; i = members.nextSetBit(i + 1)) order.add(i);
-            order.sort((a, b) -> names.get(a).compareTo(names.get(b)));
+            return digestOf(members, null);
+        }
+
+        /** The digest of {@code members}; with {@code used}, a class whose bit is clear by its bodyless digest. */
+        private String digestOf(BitSet members, @Nullable String used) {
             MessageDigest md = Hashing.newSha256();
             ByteBuffer two = ByteBuffer.allocate(16);
-            for (int id : order) {
+            byte[] bits = used == null ? new byte[0] : bits(used);
+            int bit = 0;
+            for (int id : sorted(members)) {
                 md.update(names.get(id).getBytes(StandardCharsets.UTF_8));
+                long[] by = digests;
+                if (used != null) {
+                    boolean ran = ran(bits, bit++);
+                    md.update((byte) (ran ? 1 : 2));
+                    if (!ran) by = bodyless;
+                }
                 two.clear();
-                two.putLong(digests[2 * id]).putLong(digests[2 * id + 1]);
+                two.putLong(by[2 * id]).putLong(by[2 * id + 1]);
                 md.update(two.array());
             }
             return Hashing.hex(md.digest());
+        }
+
+        /** {@code members} by name, so a digest is one whatever order the roots were read in. */
+        private List<Integer> sorted(BitSet members) {
+            List<Integer> order = new ArrayList<>(members.cardinality());
+            for (int i = members.nextSetBit(0); i >= 0; i = members.nextSetBit(i + 1)) order.add(i);
+            order.sort((a, b) -> names.get(a).compareTo(names.get(b)));
+            return order;
+        }
+
+        /** The bits of {@link Cone#used}'s hex; none, so every class counts as run, when it is not hex. */
+        private static byte[] bits(String used) {
+            return Hashing.isHex(used) && used.length() % 2 == 0 ? Hashing.unhex(used) : new byte[0];
+        }
+
+        /** Bit {@code i} of {@code bits}; set past their end. */
+        private static boolean ran(byte[] bits, int i) {
+            return i / 8 >= bits.length || (bits[i / 8] & (0x80 >>> (i % 8))) != 0;
         }
 
         private void provider(String binaryName) {
@@ -276,7 +402,7 @@ public final class ClassCones {
     }
 
     /** One class file: its bytes' digest, the names it refers to past the platform's own, and a scanner it names. */
-    record ClassFile(
+    record ClassRefs(
             byte[] digest, Set<String> refs, @Nullable String scanner) {}
 
     /** The classes under {@code roots}, directories of class files and jars, in class-path order. */
@@ -299,6 +425,41 @@ public final class ClassCones {
             }
         }
         return index;
+    }
+
+    /**
+     * How many classes an index of {@code roots} would hold, at most {@code most}, read from names
+     * alone (a directory's file names, a jar's central directory) and never from a class's bytes. A
+     * class two roots define counts twice, so the count never falls short of the index.
+     */
+    public static int count(List<Path> roots, int most) {
+        int[] n = {0};
+        for (Path root : roots) {
+            if (n[0] >= most) break;
+            try {
+                if (Files.isDirectory(root)) {
+                    PathUtil.forEachRegularFile(root, (f, attrs) -> {
+                        String name = String.valueOf(f.getFileName());
+                        if (name.endsWith(".class") && !name.equals("module-info.class")) n[0]++;
+                    });
+                } else if (Files.isRegularFile(root)) {
+                    try (ZipFile zip = new ZipFile(root.toFile())) {
+                        Enumeration<? extends ZipEntry> entries = zip.entries();
+                        while (entries.hasMoreElements() && n[0] < most) {
+                            ZipEntry e = entries.nextElement();
+                            String name = e.getName();
+                            if (!e.isDirectory()
+                                    && name.endsWith(".class")
+                                    && !name.startsWith("META-INF/")
+                                    && !name.endsWith("module-info.class")) n[0]++;
+                        }
+                    }
+                }
+            } catch (IOException | RuntimeException unreadable) {
+                Log.debug("class cones: " + root + " uncounted", unreadable);
+            }
+        }
+        return Math.min(n[0], most);
     }
 
     private static void readTree(Path root, Index index) throws IOException {
@@ -352,8 +513,8 @@ public final class ClassCones {
     private static final Pattern DESCRIPTOR_NAME = Pattern.compile("L([\\w$]+(?:/[\\w$]+)*)[;<]");
     private static final Pattern BINARY_NAME = Pattern.compile("[\\w$]+(?:\\.[\\w$]+)+");
 
-    /** One class file's digest and every name its constant pool spells, by class entry, descriptor or string. */
-    static ClassFile read(byte[] bytes) {
+    /** One class file's digest and every name its constant pool spells, by class entry, descriptor or loaded string. */
+    static ClassRefs read(byte[] bytes) {
         Set<String> refs = new HashSet<>();
         int count = u2(bytes, 8);
         Map<Integer, String> utf8 = new HashMap<>();
@@ -387,9 +548,11 @@ public final class ClassCones {
             if (name.startsWith("[")) addDescriptorNames(name, refs);
             else refs.add(name);
         }
+        boolean loadsByName = false;
+        for (String s : utf8.values()) loadsByName |= LOADS_BY_NAME.contains(s);
         for (String s : utf8.values()) {
             addDescriptorNames(s, refs);
-            if (s.indexOf('.') > 0 && BINARY_NAME.matcher(s).matches()) refs.add(internal(s));
+            if (loadsByName && s.indexOf('.') > 0 && BINARY_NAME.matcher(s).matches()) refs.add(internal(s));
         }
         // The platform's own names reach nothing of the workspace; leaving them out keeps the index
         // small. The service loader stays: a cone naming it takes in the providers.
@@ -401,7 +564,35 @@ public final class ClassCones {
                 if (ref.startsWith(prefix) && (scanner == null || ref.compareTo(scanner) < 0)) scanner = ref;
             }
         }
-        return new ClassFile(Hashing.sha256(bytes), refs, scanner);
+        return new ClassRefs(Hashing.sha256(bytes), refs, scanner);
+    }
+
+    /**
+     * The digest of a class file less every method body but its static initialiser's (and less
+     * what only debuggers read), over a constant pool built anew, so a constant only a body used
+     * leaves no trace: its supertypes, fields, signatures, annotations and static state as the
+     * class that holds it sees them. {@code whole}, the digest of all of it, when the class file
+     * is past reading so.
+     */
+    static byte[] bodyless(byte[] bytes, byte[] whole) {
+        try {
+            ClassFile cf = ClassFile.of(
+                    ClassFile.ConstantPoolSharingOption.NEW_POOL,
+                    ClassFile.StackMapsOption.DROP_STACK_MAPS,
+                    ClassFile.DebugElementsOption.DROP_DEBUG,
+                    ClassFile.LineNumbersOption.DROP_LINE_NUMBERS);
+            ClassModel model = cf.parse(bytes);
+            byte[] out = cf.transformClass(model, (cb, e) -> {
+                if (e instanceof MethodModel m && !m.methodName().equalsString("<clinit>")) {
+                    cb.transformMethod(m, MethodTransform.dropping(me -> me instanceof CodeModel));
+                } else if (!(e instanceof SourceFileAttribute)) {
+                    cb.with(e);
+                }
+            });
+            return Hashing.sha256(out);
+        } catch (RuntimeException unreadable) {
+            return whole;
+        }
     }
 
     private static void addDescriptorNames(String s, Collection<String> into) {

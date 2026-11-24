@@ -117,6 +117,13 @@ final class JkManagerPlainView {
         if (elapsedNs < HEARTBEAT_MS * 1_000_000L) return;
         if (firstActiveRow() == null) return;
         String status = currentStatus();
+        // A step that waits says what for at every beat, whatever stage it waits in.
+        PlanModel.Row waiting = newestWaitingRow();
+        if (waiting != null) {
+            String subject = waiting.module == null || waiting.module.isEmpty() ? waiting.step : waiting.module;
+            printSnapshot(currentPercent(), status, false, subject, JkManagerView.waitingDetail(waiting.waiting), true);
+            return;
+        }
         if (PlainPhase.PREPARE.equals(status)
                 || PlainPhase.DONE.equals(status)
                 || PlainPhase.BUILT.equals(status)
@@ -126,6 +133,16 @@ final class JkManagerPlainView {
         // Same gate as phase-change: wait for "compiling N sources" / "running N tests".
         if ("compiling".equals(status) || PlainPhase.RUNNING_TESTS.equals(status)) return;
         printSnapshot(currentPercent(), status, false, currentSubject(), "", true);
+    }
+
+    /** The newest active row whose step waits, or null when every active step works. */
+    private PlanModel.@Nullable Row newestWaitingRow() {
+        PlanModel.Row last = null;
+        for (PlanModel.Row r : m.model.rows().values()) {
+            if (r.state == PlanModel.RowState.ACTIVE
+                    && !JkManagerView.waitingDetail(r.waiting).isEmpty()) last = r;
+        }
+        return last;
     }
 
     /**

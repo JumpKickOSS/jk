@@ -22,7 +22,7 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-@Tag("integration")
+@Tag("release")
 @SysProps.TempRoots("jk.m2.local")
 class PublishCommandTest {
 

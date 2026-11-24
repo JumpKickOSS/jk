@@ -5,7 +5,6 @@ import static cc.jumpkick.runtime.BuildPlanner.*;
 import static cc.jumpkick.runtime.LangRuntimes.groovyRuntime;
 import static cc.jumpkick.runtime.LangRuntimes.kotlinStdlib;
 import static cc.jumpkick.runtime.SelfHostEngine.needsNestedEngineIsolation;
-import static cc.jumpkick.runtime.SelfHostEngine.nestedEngineTestEnv;
 
 import cc.jumpkick.cache.ActionRecordText;
 import cc.jumpkick.cache.Cas;
@@ -13,52 +12,42 @@ import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.guard.eval.OutputArtifacts;
 import cc.jumpkick.host.Errors;
-import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.Log;
-import cc.jumpkick.host.ManifestNames;
-import cc.jumpkick.host.PathUtil;
-import cc.jumpkick.http.Http;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.ModuleLayout;
-import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.JkBuild;
-import cc.jumpkick.model.Profile;
 import cc.jumpkick.model.SuiteSettings;
 import cc.jumpkick.model.TestFailureMode;
-import cc.jumpkick.node.NodeHome;
+import cc.jumpkick.orchestrator.SuiteChoice;
 import cc.jumpkick.orchestrator.TestProgressListener;
 import cc.jumpkick.orchestrator.TestRun;
-import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.run.SessionCancel;
 import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.run.TestSummary;
-import cc.jumpkick.runtime.base.CompileSupport;
 import cc.jumpkick.runtime.base.LiveUnits;
 import cc.jumpkick.runtime.base.Perf;
 import cc.jumpkick.runtime.base.StepTimings;
 import cc.jumpkick.runtime.base.TestEnv;
 import cc.jumpkick.runtime.base.TestFailureSource;
-import cc.jumpkick.runtime.base.TestStoreSeed;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.CacheStats;
 import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.task.TestStamp;
 import cc.jumpkick.test.CoverageAgent;
 import cc.jumpkick.test.CoverageResults;
+import cc.jumpkick.test.ForkSpec;
 import cc.jumpkick.test.JUnitLauncher;
 import cc.jumpkick.test.SuiteFilter;
 import cc.jumpkick.test.TestLauncherFailure;
 import cc.jumpkick.test.TestWorkers;
 import cc.jumpkick.util.TestHomes;
-import cc.jumpkick.wire.EnginePaths;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -75,12 +64,6 @@ import org.jspecify.annotations.Nullable;
 final class TestLaunch {
 
     private TestLaunch() {}
-
-    /** The active profile's {@code env}: what every forked test JVM of this run is given on top of {@code [test] env}. */
-    static Map<String, String> profileEnv(JkBuild project, @Nullable String profileName) {
-        Profile profile = CompileSupport.resolveProfile(project.profiles(), profileName);
-        return profile == null ? Map.of() : profile.env();
-    }
 
     /**
      * The launcher never ran a test: a failed step with the fork's output, not a red test — and a
@@ -161,116 +144,6 @@ final class TestLaunch {
                 + CoverageResults.pct(counters.linesCovered(), counters.linesMissed()) + " · branches "
                 + CoverageResults.pct(counters.branchesCovered(), counters.branchesMissed()) + " · html "
                 + in.dir().relativize(index));
-    }
-
-    /**
-     * Sandboxed JK_HOME/JK_M2_LOCAL plus this module's [test] env — without it a forked test JVM
-     * inherits the engine's environment and runs against the developer's real product layout.
-     * Nested-engine suites (e2e/cli) isolate JK_STATE_DIR so EngineTestExtension cannot kill the
-     * host engine running this test step; that isolation layers on top and wins on any key both set.
-     */
-    static WorkerEnv testEnvironment(TaskContext ctx, BuildPlanner.Inputs in, JkBuild projectUnderTest)
-            throws Exception {
-        warmTestRoots();
-        WorkerEnv testEnv = TestEnv.forModule(
-                projectUnderTest, in.dir(), ctx.require(MODULE).layout());
-        if (needsNestedEngineIsolation(projectUnderTest)) {
-            testEnv = testEnv.with(nestedEngineTestEnv(in.dir()));
-        }
-        SiblingJars.stageSiblingRulePacks(in.dir(), projectUnderTest, testEnv.extras());
-        NodeHome node = ctx.get(BuildPlanner.NODE_HOME).orElse(null);
-        if (node != null) {
-            // A module that declares node runs its tests with the locked Node.js first on PATH.
-            testEnv = testEnv.with(Map.of(
-                    "NODE_HOME",
-                    node.home().toString(),
-                    "PATH",
-                    node.path(testEnv.environment().get("PATH"))));
-        }
-        return testEnv;
-    }
-
-    private static final Object TEST_ROOTS_WARMED = new Object();
-
-    private static volatile boolean testRootsWarm;
-
-    /**
-     * Puts the injected test roots' POMs and version lists into this engine's store, once, by locking
-     * a throwaway project the way a fixture does. The sandbox seed ({@link TestStoreSeed}) can only
-     * hand a walled-off suite what this store holds, and a store filled from a lock holds jars alone.
-     * Warmth only: a lock that fails (offline, no network) leaves the fixtures to fetch.
-     */
-    static void warmTestRoots() {
-        if (testRootsWarm) return;
-        synchronized (TEST_ROOTS_WARMED) {
-            if (testRootsWarm) return;
-            testRootsWarm = true;
-            if (TestStoreSeed.holdsTestRoots()) return;
-            Path dir = null;
-            try {
-                dir = Files.createTempDirectory(Files.createDirectories(JkDirs.cache()), "test-roots-");
-                Path project = Files.createDirectories(dir.resolve("project"));
-                Files.writeString(project.resolve(ManifestNames.MANIFEST), """
-                        name    = "test-roots"
-                        group   = "jk.internal"
-                        version = "0.0.0"
-                        java    = 25
-                        """);
-                var lock = LockPlans.lockBuildPlan(
-                                project,
-                                Files.createDirectories(dir.resolve("cache")),
-                                null,
-                                List.of(),
-                                true,
-                                false,
-                                ResolveObserver.NOOP,
-                                null)
-                        .run();
-                if (!lock.errors().isEmpty()) {
-                    Log.debug("TestLaunch: the test roots stay cold: "
-                            + lock.errors().getFirst().message());
-                }
-            } catch (Exception e) {
-                Log.debug("TestLaunch: the test roots stay cold; fixtures fetch them", e);
-            } finally {
-                PathUtil.deleteRecursively(dir);
-            }
-        }
-    }
-
-    /**
-     * The environment {@code project}'s suite JVMs get: its {@link #testEnvironment} with the active
-     * profile's {@code env} on top. Each launch adds its suites' own {@code env} and, for the default
-     * tier, its walls ({@link #withFastTierWalls}).
-     */
-    static WorkerEnv suiteEnvironment(TaskContext ctx, BuildPlanner.Inputs in, JkBuild project) throws Exception {
-        return testEnvironment(ctx, in, project).with(profileEnv(project, in.profileName()));
-    }
-
-    /**
-     * The default tier's walls. A launch that runs the default suite beside no suite that claims a
-     * tag, with no tag included, in a module that routes tiers ({@link BuildBlock#routesTiers}: a
-     * {@code [test.suites.<name>]} table of its own or its workspace root's claims tests by tag), runs
-     * the fast tier's tests: plain {@code jk test}, the test step of {@code jk build}, and the
-     * default suite's launch under {@code jk test -g}. Its JVMs find every host but this one refused
-     * by {@link Http} with the host named, and may not start or take over an engine ({@link
-     * EnginePaths#NO_SPAWN_ENV}). A launch of a tag suite ({@code integration}, {@code slow}), one
-     * that runs one beside the default suite ({@code --all}), or a run that includes a tag may do
-     * both; a project that never sorted its tests keeps them as they are; and a module that sets
-     * either variable in {@code [test] env} keeps its value.
-     */
-    static WorkerEnv withFastTierWalls(WorkerEnv testEnv, Set<String> suites, TestSelection sel, JkBuild project) {
-        boolean defaultTier = suites.contains(TestSuites.DEFAULT)
-                && suites.stream()
-                        .map(project.build().runSuites()::get)
-                        .allMatch(s -> s == null || s.tags().isEmpty());
-        if (!project.build().routesTiers() || !sel.includeTags().isEmpty() || !defaultTier) {
-            return testEnv;
-        }
-        Map<String, String> walls = new LinkedHashMap<>();
-        if (!testEnv.extras().containsKey(Http.DENY_HOSTS_ENV)) walls.put(Http.DENY_HOSTS_ENV, Http.ANY_REMOTE_HOST);
-        if (!testEnv.extras().containsKey(EnginePaths.NO_SPAWN_ENV)) walls.put(EnginePaths.NO_SPAWN_ENV, "1");
-        return testEnv.with(walls);
     }
 
     /** Notes the live run-tests stamp and what it read, beside the forecast's {@code fstamp} note. */
@@ -460,17 +333,36 @@ final class TestLaunch {
     }
 
     /**
-     * The launcher for this module's suite: its label, the selection's tag and class filters less
-     * the module's {@code [test] exclude-classes} and the classes already {@code settled} under this
-     * stamp ({@link TestClassLedger}), its {@code [test] serial-tags} (those classes run
-     * on one trailing worker while the rest shard) and assertions, the fork's JVM args then {@code suite}'s own, the debug port, the coverage agent when the run
-     * measures coverage, and the affected class names when the session ranked them. The caller adds
-     * the environment probe ({@code SuiteEnvDelivery#probe}).
+     * What a launch of {@code suites} under {@code selection} starts {@code project}'s test JVMs with
+     * on every host: the one derivation of it, which the run-tests stamp keys ({@link
+     * TestStampInputs}) and the launch runs ({@link #launch}). Its JVMs are walled off the network
+     * and from starting engines when the launch is the fast tier's ({@link SuiteChoice#fastTier}).
+     */
+    static ForkSpec forkSpec(JkBuild project, TestSelection selection, Set<String> suites) {
+        BuildBlock build = project.build();
+        return new ForkSpec(
+                build.testAssertions(),
+                build.testFailureSnapshot(),
+                build.testIdleTimeoutMs(),
+                needsNestedEngineIsolation(project),
+                build.testSerialTags(),
+                selection.includeTags(),
+                selection.excludeTags(),
+                selection.classes(),
+                build.testExcludeClasses(),
+                SuiteChoice.fastTier(suites, selection, project));
+    }
+
+    /**
+     * The launcher for this module's suite: its label, the fork's JVM args then {@code suite}'s own,
+     * the classes already {@code settled} under this stamp ({@link TestClassLedger}), the debug port,
+     * the coverage agent when the run measures coverage, and the affected class names when the
+     * session ranked them. The caller adds the environment probe ({@code SuiteEnvDelivery#probe});
+     * {@link #launch} adds the launch's {@link #forkSpec}.
      */
     static JUnitLauncher launcher(
             BuildPlanner.Inputs in,
             JkBuild projectUnderTest,
-            TestSelection effectiveSel,
             List<String> testJvmArgs,
             SuiteSettings suite,
             AffectedTestRun.@Nullable Outcome affected,
@@ -483,15 +375,9 @@ final class TestLaunch {
                 + projectUnderTest.project().name();
         JUnitLauncher launcher = new JUnitLauncher()
                 .withModuleLabel(moduleLabel)
-                .withTagFilters(effectiveSel.includeTags(), effectiveSel.excludeTags())
-                .withSerialTags(projectUnderTest.build().testSerialTags())
-                .withWorkerHomes(needsNestedEngineIsolation(projectUnderTest))
-                .withAssertions(projectUnderTest.build().testAssertions())
-                .withFailureSnapshot(projectUnderTest.build().testFailureSnapshot())
-                .withIdleTimeout(projectUnderTest.build().testIdleTimeoutMs())
                 .withJvmArgs(jvmArgs)
-                .withClassPatterns(effectiveSel.classes())
-                .withExcludedClasses(projectUnderTest.build().testExcludeClasses(), settled)
+                .withSettled(settled)
+                .withRunsEngines(SelfHostEngine.isEngineModule(projectUnderTest))
                 .withDebug(in.session().debugJvm())
                 .withKeepOutput(in.verbose());
         if (jacoco != null && coverageExec != null) {
@@ -502,8 +388,10 @@ final class TestLaunch {
     }
 
     /**
-     * Runs the suite; the caller holds the serial-test gate when the session asks for one. The
-     * module's sandbox slots are held for the run so no reaper takes the jars the fork reads.
+     * Runs the suite from the launch's {@link #forkSpec}, its JVMs' environment {@code moduleEnv}
+     * with the launch's suites' own {@code env} on top; the caller holds the serial-test gate when the
+     * session asks for one. The module's sandbox slots are held for the run so no reaper takes the
+     * jars the fork reads.
      */
     static TestSummary launch(
             TaskContext ctx,
@@ -516,11 +404,8 @@ final class TestLaunch {
             SuiteFilter.Launch launch,
             TestProgressListener listener)
             throws Exception {
-        WorkerEnv testEnv = withFastTierWalls(
-                moduleEnv.with(launch.settings().env()),
-                launch.suites(),
-                in.session().testSelection(),
-                ctx.require(MODULE).project());
+        WorkerEnv testEnv = moduleEnv.with(launch.settings().env());
+        launcher.withFork(forkSpec(ctx.require(MODULE).project(), in.session().testSelection(), launch.suites()));
         TestSummary summary;
         try (TestHomes.Hold held = TestEnv.holdSandboxes(in.dir())) {
             summary = launcher.run(

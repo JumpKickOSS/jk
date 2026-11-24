@@ -11,6 +11,11 @@ import org.jspecify.annotations.Nullable;
 /**
  * The result of one module's build (see {@link WorkspaceBuildListener#onModuleFinish}).
  *
+ * @param millis the module's wall from the start of its plan, waits included
+ *
+ * @param waitedMillis how much of {@code millis} the module's steps spent blocked on a sibling or a
+ * shared resource such as a worker lease, at most {@code millis}
+ *
  * @param didWork {@code true} when at least one productive step (compile / test / package / …) did
  * real work rather than a cache hit or no-op. Used so the CLI can say "checked N modules, all
  * up to date" instead of "built N modules" when every re-entered module was fully cached
@@ -34,6 +39,7 @@ public record ModuleOutcome(
         boolean success,
         int exitCode,
         long millis,
+        long waitedMillis,
         boolean didWork,
         boolean cancelled,
         boolean stopped,
@@ -110,26 +116,41 @@ public record ModuleOutcome(
         }
     }
 
-    /** How many tests a suite counted, skipped ones included, and how many of them were skipped. */
-    public record Tests(long total, long skipped) {}
+    /**
+     * How many tests a suite counted, skipped ones included, how many of them were skipped, and
+     * whether they were replayed from the suite's last green run rather than run.
+     */
+    public record Tests(long total, long skipped, boolean replayed) {}
 
     public ModuleOutcome(
             String coord, Path dir, boolean success, int exitCode, long millis, boolean didWork, boolean cancelled) {
-        this(coord, dir, success, exitCode, millis, didWork, cancelled, false, null, null, null, null);
+        this(coord, dir, success, exitCode, millis, 0, didWork, cancelled, false, null, null, null, null);
     }
 
     /** Assume work was done when the caller does not know (fail-open for "built"). */
     public ModuleOutcome(String coord, Path dir, boolean success, int exitCode, long millis) {
-        this(coord, dir, success, exitCode, millis, true, false, false, null, null, null, null);
+        this(coord, dir, success, exitCode, millis, 0, true, false, false, null, null, null, null);
     }
 
     public ModuleOutcome(String coord, Path dir, boolean success, int exitCode, long millis, boolean didWork) {
-        this(coord, dir, success, exitCode, millis, didWork, false, false, null, null, null, null);
+        this(coord, dir, success, exitCode, millis, 0, didWork, false, false, null, null, null, null);
     }
 
     public ModuleOutcome withStopped(boolean stop) {
         return new ModuleOutcome(
-                coord, dir, success, exitCode, millis, didWork, cancelled, stop, image, installed, published, tests);
+                coord,
+                dir,
+                success,
+                exitCode,
+                millis,
+                waitedMillis,
+                didWork,
+                cancelled,
+                stop,
+                image,
+                installed,
+                published,
+                tests);
     }
 
     /**
@@ -155,24 +176,89 @@ public record ModuleOutcome(
         return "FAIL".equals(u) || "FAILED".equals(u);
     }
 
+    /** This outcome with {@code waited} of its millis spent blocked, clamped to them. */
+    public ModuleOutcome withWaited(long waited) {
+        return new ModuleOutcome(
+                coord,
+                dir,
+                success,
+                exitCode,
+                millis,
+                Math.clamp(waited, 0, millis),
+                didWork,
+                cancelled,
+                stopped,
+                image,
+                installed,
+                published,
+                tests);
+    }
+
     public ModuleOutcome withImage(Image img) {
         return new ModuleOutcome(
-                coord, dir, success, exitCode, millis, didWork, cancelled, stopped, img, installed, published, tests);
+                coord,
+                dir,
+                success,
+                exitCode,
+                millis,
+                waitedMillis,
+                didWork,
+                cancelled,
+                stopped,
+                img,
+                installed,
+                published,
+                tests);
     }
 
     public ModuleOutcome withInstalled(Installed shelf) {
         return new ModuleOutcome(
-                coord, dir, success, exitCode, millis, didWork, cancelled, stopped, image, shelf, published, tests);
+                coord,
+                dir,
+                success,
+                exitCode,
+                millis,
+                waitedMillis,
+                didWork,
+                cancelled,
+                stopped,
+                image,
+                shelf,
+                published,
+                tests);
     }
 
     public ModuleOutcome withPublished(Published pub) {
         return new ModuleOutcome(
-                coord, dir, success, exitCode, millis, didWork, cancelled, stopped, image, installed, pub, tests);
+                coord,
+                dir,
+                success,
+                exitCode,
+                millis,
+                waitedMillis,
+                didWork,
+                cancelled,
+                stopped,
+                image,
+                installed,
+                pub,
+                tests);
     }
 
     public ModuleOutcome withTests(Tests counted) {
         return new ModuleOutcome(
-                coord, dir, success, exitCode, millis, didWork, cancelled, stopped, image, installed, published,
+                coord,
+                dir,
+                success,
+                exitCode,
+                millis,
+                waitedMillis,
+                didWork,
+                cancelled,
+                stopped,
+                image,
+                installed,
+                published,
                 counted);
     }
 }

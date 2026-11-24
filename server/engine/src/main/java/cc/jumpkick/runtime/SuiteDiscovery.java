@@ -9,6 +9,7 @@ import cc.jumpkick.host.Log;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.orchestrator.DiscoveryRules;
 import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.task.InputGuard;
@@ -32,6 +33,7 @@ import java.util.TreeSet;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
+import java.util.function.Predicate;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -53,9 +55,38 @@ final class SuiteDiscovery {
     }
 
     /**
+     * What a run of the suite at {@code moduleDir} under {@code selection}, in the launches {@code
+     * launches} names, each over the classes it selects, replays under {@code [test] cache = "cone"}, for the forecast: the classes
+     * whose key, taken now, has not moved since they passed ({@link TestClassRecording#replayedNow}).
+     */
+    static TestClassRecording.Replayed replayedByCone(
+            Path moduleDir,
+            BuildLayout layout,
+            TestSelection selection,
+            List<Path> runtimeCp,
+            List<String> stampExtras,
+            List<Path> resourceDirs,
+            @Nullable String stampKey,
+            Map<String, Predicate<String>> launches)
+            throws IOException {
+        return TestClassRecording.replayedNow(
+                moduleDir,
+                layout,
+                selection,
+                layout.testClassesDir(),
+                layout.classesDir(),
+                runtimeCp,
+                stampExtras,
+                resourceDirs,
+                stampKey,
+                launches);
+    }
+
+    /**
      * One run's recording: the flag every suite JVM starts with, when the run began, what the stamp
-     * already keys for it, and whether it runs the whole suite (not only the classes an edit
-     * affects), so that what it reads is all the suite reads.
+     * already keys for it (with the worker jars it keys by content, {@code workerJars}, which a
+     * class's key holds only where the class read them), and whether it runs the whole suite (not
+     * only the classes an edit affects), so that what it reads is all the suite reads.
      */
     record Run(
             String flag,
@@ -64,15 +95,34 @@ final class SuiteDiscovery {
             BuildLayout layout,
             TestSelection selection,
             Collection<Path> keyed,
+            Collection<Path> workerJars,
             boolean networkAllowed,
             boolean whole,
             SuiteEnvReads.Policy envPolicy,
             EnvScopeHint envHint,
             AtomicReference<TestClassRecording.@Nullable Pending> classes) {
 
+        /** This run, as one that ran only some of the suite's classes. */
+        private Run partial() {
+            return new Run(
+                    flag,
+                    startedMillis,
+                    moduleDir,
+                    layout,
+                    selection,
+                    keyed,
+                    workerJars,
+                    networkAllowed,
+                    false,
+                    envPolicy,
+                    envHint,
+                    classes);
+        }
+
         /**
          * Keep each class's record of this run ({@link TestClassRecording}) once it settles: what the
-         * classes are keyed on folds in the inputs settling decides.
+         * classes are keyed on, the stamp's tokens ({@code stampExtras}) among it, folds in the inputs
+         * settling decides.
          */
         void recordClasses(
                 TestClassLedger ledger,
@@ -81,13 +131,14 @@ final class SuiteDiscovery {
                 Path mainClasses,
                 List<Path> runtimeCp,
                 @Nullable Path javaHome,
-                List<String> stampExtras,
+                TestClassRecording.StampExtras stampExtras,
                 List<Path> resourceDirs,
                 @Nullable String stampKey) {
             classes.set(new TestClassRecording.Pending(
                     moduleDir,
                     layout,
                     keyed,
+                    workerJars,
                     ledger,
                     moduleLabel,
                     testClasses,
@@ -145,8 +196,12 @@ final class SuiteDiscovery {
                 @Nullable TestClassLedger ledger)
                 throws Exception {
             TestClassRecording.Pending pending = classes.getAndSet(null);
-            String before = pending == null ? "" : pending.suiteReads(selection);
-            String settled = SuiteDiscovery.settle(ctx, this, stampKey, rekey, env);
+            ClassKeys.SuiteReadSet before =
+                    pending == null ? ClassKeys.SuiteReadSet.NONE : pending.suiteReads(selection);
+            // A run that left classes out read only what the classes it ran read: what the classes it
+            // replayed read must stay in the list, or the next stamp keys none of it.
+            Run run = ledger != null && ledger.leftClassesOut() ? partial() : this;
+            String settled = SuiteDiscovery.settle(ctx, run, stampKey, rekey, env);
             if (pending != null) pending.record(before, pending.suiteReads(selection));
             if (settled != null
                     && ledger != null
@@ -179,6 +234,7 @@ final class SuiteDiscovery {
             Path moduleDir,
             TestSelection selection,
             Collection<Path> keyed,
+            Collection<Path> workerJars,
             boolean networkAllowed,
             boolean whole,
             JkBuild project)
@@ -192,6 +248,7 @@ final class SuiteDiscovery {
                 layout,
                 selection,
                 List.copyOf(keyed),
+                List.copyOf(workerJars),
                 networkAllowed,
                 whole,
                 SuiteEnvReads.Policy.of(project),
@@ -220,8 +277,8 @@ final class SuiteDiscovery {
         // Only files outside every keyed root are held while the recordings are read: a run that
         // writes and reads a hundred thousand files in its own sandbox costs nothing and still replays.
         Path workspace = WorkspaceScan.findRoot(moduleDir).orElse(moduleDir);
-        SuiteReads.Observed seen =
-                SuiteReads.collect(SuiteReads.recordingDir(target), moduleDir, workspace, SuiteReads.candidates(roots));
+        SuiteReads.Observed seen = SuiteReads.collect(
+                SuiteReads.recordingDir(target), moduleDir, workspace, DiscoveryRules.candidates(roots));
         if (!seen.complete()) {
             // Never silent: a suite that cannot replay runs on every build, so the result line, the
             // build's record, the forecast and doctor all say why.
@@ -231,18 +288,19 @@ final class SuiteDiscovery {
             return null;
         }
         SuiteReads.clearUnread(moduleDir);
-        Set<Path> read = SuiteReads.undeclared(seen, roots, workspace, run.startedMillis());
-        Set<Path> jkState = SuiteReads.under(read, JkDirs.state());
+        Set<Path> read = DiscoveryRules.undeclared(seen.files(), roots, workspace, run.startedMillis());
+        Set<Path> jkState = DiscoveryRules.under(read, JkDirs.state());
         if (!jkState.isEmpty()) {
             read.removeAll(jkState);
             ctx.warn(JK_STATE, jkStateWarning(jkState, JkDirs.state()));
         }
-        Set<String> started = SuiteReads.undeclaredCommands(seen, roots, workspace, run.startedMillis());
+        Set<String> started = DiscoveryRules.undeclaredCommands(seen.commands(), roots, workspace, run.startedMillis());
         Set<String> hosts = run.networkAllowed() ? Set.of() : seen.hosts();
         boolean reached = !hosts.isEmpty();
         SuiteReads.Discovered before = SuiteReads.load(moduleDir, run.selection());
         // A whole run's reads are all the suite reads now: what it no longer reads drops out. A run
-        // of only the affected classes adds to what the whole suite was found to read.
+        // of only some classes (the affected ones, or what a red or per-class run did not replay)
+        // adds to what the whole suite was found to read.
         // What a suite read of the environment only grows: a whole run under another shell reads
         // other names, and dropping the ones it did not read this time would move the key back and
         // forth as the user alternates terminals, so no result ever held.
@@ -420,7 +478,7 @@ final class SuiteDiscovery {
         Set<Path> paths = new TreeSet<>(files);
         for (String c : commands) {
             try {
-                // A recorded command is its program alone (SuiteReads.executable), spaces and all.
+                // A recorded command is its program alone (DiscoveryRules.executable), spaces and all.
                 Path p = Path.of(c);
                 if (p.isAbsolute()) paths.add(p);
             } catch (InvalidPathException bareName) {

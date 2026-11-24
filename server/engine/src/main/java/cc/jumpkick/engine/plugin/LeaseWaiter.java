@@ -34,6 +34,11 @@ final class LeaseWaiter {
     /** The host sample an overbooked grant was allowed on. */
     OverbookSignals.Reading sample = OverbookSignals.Reading.closed();
 
+    /** The {@link OverbookSignals.Spent} series its grant was counted in, {@code 0} for none, and at how many bytes. */
+    long spentSeries;
+
+    long spentBytes;
+
     /** The forked process, once {@link WorkerLeases.Grant#watch} names it; {@code -1} before. */
     long pid = -1;
 

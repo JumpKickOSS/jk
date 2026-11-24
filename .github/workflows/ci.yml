@@ -221,10 +221,10 @@ jobs:
       - name: Docs test suite
         run: jk test -s docs --no-ansi
 
-      # The boundary lane: the integration classes curated-integration.txt names, module by module,
-      # under the same engine, workers and home the fast tier just ran with. The full integration
-      # suite is nightly; this subset is the only integration coverage a pull request gets, so
-      # guard G63 owns the registry's integrity and this step's existence.
+      # The boundary lane: the integration classes curated-integration.txt names, in one jk test over
+      # their modules, under the same engine, workers and home the fast tier just ran with. The full
+      # integration suite is nightly; this subset is the only integration coverage a pull request
+      # gets, so guard G63 owns the registry's integrity and this step's existence.
       #
       # Budget: 8 minutes wall clock. Over it, drop or split an entry — raising the number turns the
       # lane back into the full suite the branch gate cannot afford. The elapsed seconds land in
@@ -238,9 +238,9 @@ jobs:
           echo "curated integration lane: $((SECONDS - start))s of an 8 minute budget" \
             >> "$GITHUB_STEP_SUMMARY"
 
-      # The release tier: tests worth running once per release and on no other run, such as the
-      # dashboard's new-project wizard driven through Playwright's Chromium. They may fetch (the
-      # browser, the dashboard's CDN), which this job can.
+      # The release tier: tests too slow for every queue batch that a release must pass, such as the
+      # dashboard's new-project wizard driven through Playwright's Chromium; the Full tier runs it
+      # too. They may fetch (the browser, the dashboard's CDN, Maven Central), which this job can.
       - name: Release test tier
         run: jk test -s release --no-ansi
 

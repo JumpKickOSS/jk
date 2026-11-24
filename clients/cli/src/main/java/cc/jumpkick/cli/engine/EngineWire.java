@@ -262,14 +262,39 @@ public final class EngineWire {
      * The client-side protocol reader: line-capped to what this process's heap can hold ({@link
      * BoundedLineReader#maxLineForHeap}), and idle-timed so a dead engine surfaces as an error
      * instead of a forever-blocked {@code readLine}. The idle bound is {@link
-     * BoundedLineReader#streamIdleMillis} — the same one the engine holds its clients to.
+     * BoundedLineReader#streamIdleMillis} — the same one the engine holds its clients to. A {@code
+     * heartbeat} line resets that bound and goes no further, so no decoder ever reads one.
      */
-    static BoundedLineReader protocolReader(SocketChannel ch) {
-        return new BoundedLineReader(
+    static BufferedReader protocolReader(SocketChannel ch) {
+        return new HeartbeatSkip(new BoundedLineReader(
                 new InputStreamReader(Channels.newInputStream(ch), StandardCharsets.UTF_8),
                 ch,
                 BoundedLineReader.streamIdleMillis(System::getenv),
-                BoundedLineReader.maxLineForHeap(Runtime.getRuntime().maxMemory()));
+                BoundedLineReader.maxLineForHeap(Runtime.getRuntime().maxMemory())));
+    }
+
+    /** Reads past the engine's {@code heartbeat} lines: they keep the stream alive and say nothing else. */
+    static final class HeartbeatSkip extends BufferedReader {
+        private final BufferedReader in;
+
+        HeartbeatSkip(BufferedReader in) {
+            super(in, 1);
+            this.in = in;
+        }
+
+        @Override
+        public @Nullable String readLine() throws IOException {
+            String line;
+            do {
+                line = in.readLine();
+            } while (line != null && EngineProtocol.HEARTBEAT.equals(EngineProtocol.typeOf(line)));
+            return line;
+        }
+
+        @Override
+        public void close() throws IOException {
+            in.close();
+        }
     }
 
     /**

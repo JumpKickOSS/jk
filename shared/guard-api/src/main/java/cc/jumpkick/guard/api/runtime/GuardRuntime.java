@@ -8,8 +8,10 @@ import cc.jumpkick.guard.api.Text;
 import cc.jumpkick.guard.facts.ClassFacts;
 import cc.jumpkick.guard.facts.FactsFormat;
 import cc.jumpkick.guard.facts.FactsIndex;
+import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.OutputDirs;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
@@ -26,19 +28,36 @@ public final class GuardRuntime {
 
     private final GuardConfig config;
     private final Path textRoot;
-    private final Facts facts;
+    private @Nullable Facts facts;
     private final Model model;
     private final Text text;
     private final Output output;
+    private final @Nullable ReadLedger ledger;
 
     private GuardRuntime(GuardConfig config) throws IOException {
         this.config = config;
-        this.facts = new FactsView(merge(config.facts()), merge(config.testFacts()), config.classDirs());
         this.model = config.model() == null ? ModelView.empty() : ModelView.read(config.model());
         this.textRoot = config.textRoot() == null ? config.root() : config.textRoot();
-        this.text = new TextView(textRoot, config.sources(), config.fixture(), outputDirOf(config));
+        TextView textView = new TextView(textRoot, config.sources(), config.fixture(), outputDirOf(config));
+        this.text = textView;
         this.output = new OutputView(config.poms(), config.jars(), config.coverage());
         Files.createDirectories(config.report().toAbsolutePath().getParent());
+        // A fixture run judges a case, not the tree: every guard runs.
+        this.ledger = config.fixture() || config.textRoot() != null
+                ? null
+                : ReadLedger.open(
+                        config.report(),
+                        ReadLedger.stamp(Classpaths.ofThisJvm(), scope(config)),
+                        config.model(),
+                        textView);
+    }
+
+    /** What the run judges, for the ledger's stamp: the config without the report it is written to. */
+    static String scope(GuardConfig config) {
+        StringBuilder sb = new StringBuilder();
+        for (String line : config.toProperties().split("\n"))
+            if (!line.startsWith("report=")) sb.append(line).append('\n');
+        return sb.toString();
     }
 
     /**
@@ -87,8 +106,18 @@ public final class GuardRuntime {
         return problem;
     }
 
-    public Facts facts() {
-        return facts;
+    /** The facts view, read on first use: a suite whose guards take none never loads the indexes. */
+    public synchronized Facts facts() {
+        Facts f = facts;
+        if (f == null) {
+            try {
+                f = new FactsView(merge(config.facts()), merge(config.testFacts()), config.classDirs());
+            } catch (IOException e) {
+                throw new UncheckedIOException("guard facts: " + e.getMessage(), e);
+            }
+            facts = f;
+        }
+        return f;
     }
 
     public Model model() {
@@ -103,6 +132,12 @@ public final class GuardRuntime {
         return output;
     }
 
+    /** What the guards of the last run read, or {@code null} when every guard runs (a fixture run). */
+    @Nullable
+    ReadLedger ledger() {
+        return ledger;
+    }
+
     public Path reportFile() {
         return config.report();
     }
@@ -115,7 +150,8 @@ public final class GuardRuntime {
     /**
      * The directory {@link Text} paths resolve against: the workspace root, or a tree fixture's case
      * when the run judges one as the checkout. A guard that shells out over the tree runs there, so
-     * the fixture reaches it like every read does.
+     * the fixture reaches it like every read does, and reads the files the tool reads through {@link
+     * Text} as well: a guard's verdict is replayed while what it read through {@link Text} holds.
      */
     public Path textRoot() {
         return textRoot;

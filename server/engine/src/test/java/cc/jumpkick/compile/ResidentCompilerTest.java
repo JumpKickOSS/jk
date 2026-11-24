@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import cc.jumpkick.config.RequestShell;
+import cc.jumpkick.engine.plugin.MemoryProbe;
 import cc.jumpkick.engine.plugin.WarmLinger;
 import cc.jumpkick.engine.plugin.WorkerLeases;
 import cc.jumpkick.engine.plugin.WorkerScope;
@@ -22,6 +23,7 @@ import java.util.Map;
 import java.util.concurrent.Callable;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.jar.JarEntry;
 import java.util.jar.JarOutputStream;
 import javax.tools.ToolProvider;
@@ -51,6 +53,7 @@ class ResidentCompilerTest {
     void reset() {
         CompilerPool.closeAllForTests();
         WarmLinger.forTests(-1);
+        CompilerBudget.hostForTests(null);
     }
 
     @Test
@@ -67,17 +70,31 @@ class ResidentCompilerTest {
                     dir, worker, "bad" + i, "package p; public class C { int n() { return \"bad" + i + "\"; } }"));
         }
 
-        List<ForkedJavac.Result> results = inJob(9401L, () -> {
-            List<Future<ForkedJavac.Result>> running = new ArrayList<>();
-            for (ForkedJavac.Request req : requests) running.add(JkThreads.io().submit(() -> ForkedJavac.compile(req)));
-            List<ForkedJavac.Result> out = new ArrayList<>();
-            for (Future<ForkedJavac.Result> f : running) out.add(f.get(120, TimeUnit.SECONDS));
-            return out;
-        });
+        // Admission alone decides the overlap: a busy host's free memory may not hold the second
+        // compile back, and every module is queued before the first may start, so none finishes
+        // before the next arrives.
+        CompilerBudget.hostForTests(() -> new MemoryProbe.Memory(64L << 30, 64L << 30));
+        String key = JavaCompilerHost.residentKey(requests.getFirst());
+        AtomicInteger held = new AtomicInteger(CompilerBudget.slots());
+        for (int i = 0; i < held.get(); i++) CompilerBudget.took();
+        List<ForkedJavac.Result> results;
+        try {
+            results = inJob(9401L, () -> {
+                List<Future<ForkedJavac.Result>> running = new ArrayList<>();
+                for (ForkedJavac.Request req : requests)
+                    running.add(JkThreads.io().submit(() -> ForkedJavac.compile(req)));
+                awaitQueued(key, requests.size());
+                CompilerBudget.gave(held.getAndSet(0));
+                requireNonNull(CompilerPool.get(key)).wake();
+                List<ForkedJavac.Result> out = new ArrayList<>();
+                for (Future<ForkedJavac.Result> f : running) out.add(f.get(120, TimeUnit.SECONDS));
+                return out;
+            });
+        } finally {
+            CompilerBudget.gave(held.getAndSet(0));
+        }
 
-        CompilerPool pool = requireNonNull(
-                CompilerPool.get(JavaCompilerHost.residentKey(requests.getFirst())),
-                "one pool for every module on this JDK");
+        CompilerPool pool = requireNonNull(CompilerPool.get(key), "one pool for every module on this JDK");
         List<CompilerWorker> workers = pool.workers();
         assertThat(workers).as("one worker process for every module").hasSize(1);
         CompilerWorker only = workers.getFirst();
@@ -224,6 +241,20 @@ class ResidentCompilerTest {
                     .isNull();
         } finally {
             WorkerLeases.engineForTests(null);
+        }
+    }
+
+    /** Wait, at most a minute, until {@code count} items wait in the pool for {@code key}. */
+    private static void awaitQueued(String key, int count) throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.MINUTES.toNanos(1);
+        while (true) {
+            CompilerPool pool = CompilerPool.get(key);
+            int queued = pool == null ? 0 : pool.queued();
+            if (queued >= count) return;
+            assertThat(System.nanoTime() - deadline)
+                    .as("%d of %d modules queued", queued, count)
+                    .isNegative();
+            Thread.sleep(10);
         }
     }
 

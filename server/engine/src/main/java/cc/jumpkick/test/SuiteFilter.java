@@ -5,6 +5,7 @@ import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.model.DeclaredSuite;
 import cc.jumpkick.model.SuiteSettings;
+import cc.jumpkick.orchestrator.ClassTags;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
@@ -12,6 +13,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -144,20 +146,35 @@ public final class SuiteFilter {
     public record Launch(Set<String> suites, SuiteSettings settings) {}
 
     /**
-     * How the selection's suites share test JVMs: the suites without settings of their own in one
-     * launch, then each suite with settings alone, since its env and flags are its JVMs' only. A
-     * test two launches' suites claim runs in each.
+     * How the selection's suites share test JVMs: the suites that claim no tag and carry no settings
+     * in one launch, the default suite's, walled like the fast tier whichever command runs it; the
+     * tag suites without settings in a second; then each suite with settings alone, since its env
+     * and flags are its JVMs' only. A tag suite beside the default suite would take its wall away, and
+     * an engine a tag suite's class starts would key every class after it in that JVM. A test two
+     * launches' suites claim runs in each.
      */
     public List<Launch> launches() {
-        Set<String> shared = new LinkedHashSet<>();
+        return launches(selected, declared);
+    }
+
+    /**
+     * {@link #launches()} of a selection of {@code selected} suites in a module whose {@code
+     * [test.suites]} declare {@code declared}: what a run-tests stamp keys a launch by, before any
+     * class is compiled.
+     */
+    public static List<Launch> launches(List<String> selected, Map<String, DeclaredSuite> declared) {
+        Set<String> untagged = new LinkedHashSet<>();
+        Set<String> tagged = new LinkedHashSet<>();
         List<Launch> own = new ArrayList<>();
         for (String suite : selected) {
             DeclaredSuite spec = declared.get(suite);
-            if (spec == null || spec.settings().isEmpty()) shared.add(suite);
-            else own.add(new Launch(Set.of(suite), spec.settings()));
+            if (spec != null && !spec.settings().isEmpty()) own.add(new Launch(Set.of(suite), spec.settings()));
+            else if (spec != null && !spec.tags().isEmpty()) tagged.add(suite);
+            else untagged.add(suite);
         }
         List<Launch> out = new ArrayList<>();
-        if (!shared.isEmpty()) out.add(new Launch(Collections.unmodifiableSet(shared), SuiteSettings.NONE));
+        if (!untagged.isEmpty()) out.add(new Launch(Collections.unmodifiableSet(untagged), SuiteSettings.NONE));
+        if (!tagged.isEmpty()) out.add(new Launch(Collections.unmodifiableSet(tagged), SuiteSettings.NONE));
         out.addAll(own);
         return out;
     }
@@ -355,6 +372,26 @@ public final class SuiteFilter {
     }
 
     /**
+     * True when a class compiled under {@code testClasses} may hold a test this filter runs, by the
+     * tags it already reads ({@link #withTags}), an unread tag counting as present: false lets a
+     * launch of a tag suite that claims nothing in the module go unstarted.
+     */
+    public boolean runsCompiledClass(Path testClasses, List<String> excludeClasses) {
+        return runsCompiledClass(testClasses, excludeClasses, name -> true);
+    }
+
+    /**
+     * {@link #runsCompiledClass(Path, List)} counting only the classes {@code left} keeps, asked of
+     * a class this filter runs and of nothing else: false lets a launch whose every class passed
+     * earlier, or holds no test, go unstarted.
+     */
+    public boolean runsCompiledClass(Path testClasses, List<String> excludeClasses, Predicate<String> left) {
+        if (!Files.isDirectory(testClasses)) return true;
+        Predicate<String> runnable = runnable(excludeClasses);
+        return compiledClasses(testClasses, true).stream().anyMatch(name -> runnable.test(name) && left.test(name));
+    }
+
+    /**
      * Whether this run may run a test of a class: its suites admit it ({@link #acceptor}) and
      * {@code excludeClasses}, the {@code [test] exclude-classes} patterns, do not name it or the
      * class it is nested in.
@@ -406,6 +443,33 @@ public final class SuiteFilter {
                     }
                 }
                 return byClass.get(name);
+            }
+        };
+    }
+
+    /**
+     * Whether a top-level class compiled under {@code testClasses} may hold a test, as {@link
+     * TestClassIndex} judges it over {@code classpath} on first use: false for a helper or fixture
+     * JUnit would find no test in, true for every other class, or for any when the tree cannot be
+     * read.
+     */
+    public static Predicate<String> holdsTestsIn(Path testClasses, List<Path> classpath) {
+        Set<String> helpers = new HashSet<>();
+        boolean[] read = {false};
+        return name -> {
+            synchronized (helpers) {
+                if (!read[0]) {
+                    read[0] = true;
+                    try {
+                        for (TestClassIndex.Entry entry : TestClassIndex.scan(testClasses, Set.of(), classpath)) {
+                            if (!entry.runsTests()) helpers.add(entry.className());
+                        }
+                    } catch (IOException | UncheckedIOException unreadable) {
+                        // Nothing known: every class may hold a test.
+                        helpers.clear();
+                    }
+                }
+                return !helpers.contains(name);
             }
         };
     }

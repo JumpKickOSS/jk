@@ -138,7 +138,7 @@ public final class CachePlans {
 
         yield.check();
         if (includeJkTmp) {
-            var tmpReport = TmpGc.sweep(JkDirs.tmp(), TmpGc.DEFAULT_TTL, dryRun);
+            var tmpReport = TmpGc.sweep(JkDirs.tmp(), TmpGc.DEFAULT_TTL, dryRun, yield);
             totalFiles += tmpReport.deleted();
             totalBytes += tmpReport.freedBytes();
         }

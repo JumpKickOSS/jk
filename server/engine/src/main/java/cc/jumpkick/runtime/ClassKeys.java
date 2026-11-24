@@ -5,10 +5,10 @@ import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.orchestrator.ClassCones;
 import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.task.FileHashMemo;
 import cc.jumpkick.task.TestStamp;
-import cc.jumpkick.test.ClassCones;
 import cc.jumpkick.test.ClassReads;
 import cc.jumpkick.test.SuiteEnvReads;
 import cc.jumpkick.test.SuiteReads;
@@ -20,6 +20,7 @@ import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -35,18 +36,22 @@ import org.jspecify.annotations.Nullable;
  *   <li>the suite part, what every class of the suite sees: the stamp's tokens less those a finer
  *       part replaces (what the suite read of the caller's environment among those kept), every
  *       classpath entry outside the workspace by content, the resource roots;
- *   <li>the class part, its static cone ({@link ClassCones});
+ *   <li>the class part, its static cone ({@link ClassCones}): each class by its bytes, or, where
+ *       the probe told which of the cone's classes ran in the class's window, a class that did not
+ *       run by its bytes less its method bodies;
  *   <li>the observed part, what its last run read: data files by content (with the listing of a
  *       workspace directory it read in), code files loaded by path by content, the identity of each
- *       program it started that read nothing else ({@link ClassReads.Observation#tools}), and what no
- *       class's window held.
+ *       program it started that read nothing else ({@link ClassReads.Observation#tools}), every
+ *       program the suite's stamp keys when it started one that runs none of its JVM's classes
+ *       ({@link ClassReads#EXTERNAL_PROGRAM}), and what no class's window held.
  * </ul>
  *
  * <p>A workspace class the class loaded that its static cone does not name (one loaded by name, a
  * JUnit extension a properties file names) joins its cone with what it reaches, up to {@link
  * #REFLECTIVE_KEPT} of them. A class whose cone cannot be trusted is keyed by its whole module,
  * every workspace class on its classpath in place of its cone, and by every program the suite's
- * stamp keys: one that started a program that could read what no recording sees, loaded more
+ * stamp keys: one that started a program that could run its JVM's workspace classes, or whose suite
+ * started one outside every class's window ({@link #pooledFallback}), loaded more
  * workspace classes outside its cone than are kept, names a classpath-scanning entry point, or has
  * no attributed record. A class that read more code files than its record names stands on every
  * code file its suite read instead (the suite code files of its record file's header), and on its
@@ -58,10 +63,12 @@ final class ClassKeys {
 
     /**
      * What one class was seen to read, from its record or this run, bounded as a record holds it: a
-     * class that read more data files than its record names ({@code readsMore}) is keyed on every
-     * file its suite was found to read instead. {@code tools} are the programs it started that read
-     * nothing but their own identity: by name as a record holds them, by identity once {@link
-     * #identified}.
+     * class that read more data files than its record names ({@code readsMore}) is keyed on the
+     * files its suite was found to read under its read roots ({@code readRoots}, as {@link
+     * TestClassRecords#roots} spells them) that carry one of the file names it read ({@code
+     * readNames}), the roots or the names left out when it has none. {@code tools} are the
+     * programs it started that read nothing but their own identity: by name as a record holds them,
+     * by identity once {@link #identified}.
      */
     record Observed(
             boolean attributed,
@@ -70,10 +77,12 @@ final class ClassKeys {
             List<String> code,
             boolean codeMore,
             List<String> processes,
-            List<String> tools) {
+            List<String> tools,
+            List<String> readRoots,
+            List<String> readNames) {
         static final Observed NONE = new Observed(false, List.of(), false, List.of(), false, List.of());
 
-        /** A class that started no program keyed by its identity. */
+        /** A class that started no program keyed by its identity and has no read roots. */
         Observed(
                 boolean attributed,
                 List<String> reads,
@@ -81,7 +90,75 @@ final class ClassKeys {
                 List<String> code,
                 boolean codeMore,
                 List<String> processes) {
-            this(attributed, reads, readsMore, code, codeMore, processes, List.of());
+            this(attributed, reads, readsMore, code, codeMore, processes, List.of(), List.of(), List.of());
+        }
+    }
+
+    /**
+     * What a suite was found to read, its discovered inputs' tokens ({@link SuiteReads#tokens}): what
+     * a class past its read bound is keyed on, all of it ({@link #all}) or what lies under the class's
+     * read roots ({@link #under}), each as one digest ({@link SuiteReads#memoDigest}).
+     */
+    static final class SuiteReadSet {
+        static final SuiteReadSet NONE = new SuiteReadSet(List.of(), Path.of(""));
+
+        private final List<String> tokens;
+        private final Path workspace;
+        private final String all;
+        private final Map<List<List<String>>, String> under = new HashMap<>();
+
+        SuiteReadSet(List<String> tokens, Path workspace) {
+            this.tokens = List.copyOf(tokens);
+            this.workspace = workspace.toAbsolutePath().normalize();
+            this.all = SuiteReads.memoDigest(this.tokens, this.workspace);
+        }
+
+        String all() {
+            return all;
+        }
+
+        /**
+         * The files read under {@code roots} (each {@code <dir>/*} for the files directly in the
+         * directory, {@code <dir>/**} for everything under it, none for the whole tree) whose file
+         * name is one of {@code names} (none for any), the directories listed under {@code roots},
+         * and what else the suite was found to use (its programs, the network, the caller's
+         * environment).
+         */
+        String under(List<String> roots, List<String> names) {
+            return under.computeIfAbsent(List.of(List.copyOf(roots), List.copyOf(names)), key -> {
+                List<ClassReads.ReadRoot> parsed = new ArrayList<>();
+                for (String spelled : roots) parsed.add(root(spelled));
+                Set<String> named = new TreeSet<>(names);
+                List<String> kept = new ArrayList<>();
+                for (String t : tokens) {
+                    Path p = SuiteReads.tokenFile(workspace, t);
+                    boolean listing = t.startsWith("list:");
+                    if (p == null
+                            || ((parsed.isEmpty() || coveredBy(parsed, p, listing))
+                                    && (listing || named.isEmpty() || hasName(named, p)))) kept.add(t);
+                }
+                return SuiteReads.memoDigest(kept, workspace);
+            });
+        }
+
+        private static boolean hasName(Set<String> names, Path p) {
+            Path file = p.getFileName();
+            return file != null && names.contains(file.toString());
+        }
+
+        private ClassReads.ReadRoot root(String spelled) {
+            boolean deep = spelled.endsWith("**");
+            String dir = spelled.substring(0, spelled.length() - (deep ? 2 : 1));
+            if (dir.endsWith("/")) dir = dir.substring(0, dir.length() - 1);
+            return new ClassReads.ReadRoot(workspace.resolve(dir).normalize(), deep);
+        }
+
+        /** Whether a read file, or a listed directory ({@code listing}), lies under one of {@code roots}. */
+        private static boolean coveredBy(List<ClassReads.ReadRoot> roots, Path p, boolean listing) {
+            for (ClassReads.ReadRoot r : roots) {
+                if (listing ? (r.deep() ? p.startsWith(r.dir()) : p.equals(r.dir())) : r.covers(p)) return true;
+            }
+            return false;
         }
     }
 
@@ -91,11 +168,17 @@ final class ClassKeys {
     /**
      * Each program the suite's stamp keys, by name: its {@code proc:<name>=<identity>} token. The
      * stamp asks each program the suite was seen to start what it is ({@code SuitePrograms}); a
-     * class's tools stand on that answer.
+     * class's tools stand on that answer. Each worker jar the stamp keys rides along under its whole
+     * token ({@code worker:<property>=<content>}), a name no tool has: a class keyed by its module
+     * stands on it as on every program, since no record says what such a class handed the jar to.
      */
     static Map<String, String> programs(List<String> stampExtras) {
         Map<String, String> out = new TreeMap<>();
         for (String t : stampExtras) {
+            if (t.startsWith(TestStamp.WORKER_JAR)) {
+                out.put(t, t);
+                continue;
+            }
             if (!t.startsWith(PROGRAM)) continue;
             int eq = t.indexOf('=');
             if (eq > PROGRAM.length()) out.put(t.substring(PROGRAM.length(), eq), t);
@@ -114,8 +197,12 @@ final class ClassKeys {
         if (seen.tools().isEmpty()) return seen;
         List<String> named = new ArrayList<>();
         for (String tool : seen.tools()) {
-            // A program the test wrote is its own output: the class's cone holds what it is.
-            if (tool.equals(ClassReads.WRITTEN_PROGRAM)) named.add(PROGRAM + tool);
+            // A program the test wrote is its own output: the class's cone holds what it is. A
+            // program started in its JVM stands on the worker jars (key), not on an identity.
+            // A program that runs none of its JVM's classes stands on every program the stamp keys (key).
+            if (tool.equals(ClassReads.WRITTEN_PROGRAM)
+                    || tool.equals(ClassReads.STARTED_PROGRAM)
+                    || tool.equals(ClassReads.EXTERNAL_PROGRAM)) named.add(PROGRAM + tool);
             else named.add(programs.getOrDefault(tool, PROGRAM + tool + "=" + UNSTAMPED));
         }
         named.sort(null);
@@ -126,7 +213,9 @@ final class ClassKeys {
                 seen.code(),
                 seen.codeMore(),
                 seen.processes(),
-                named);
+                named,
+                seen.readRoots(),
+                seen.readNames());
     }
 
     /**
@@ -140,7 +229,10 @@ final class ClassKeys {
     /**
      * The stamp tokens a finer part replaces: the test compiles (the cone), the files and listings the
      * suite read and its use of the network (the observed part), each program's identity (which {@link
-     * #key} keys a class by as a tool, or when it is its module's). The selection stays: which suites
+     * #key} keys a class by as a tool, or when it is its module's), each worker jar the suite's JVMs
+     * are handed by path (which a class that read it keys by content as a code file, and a class keyed
+     * by its module through {@link #programs}): a nested engine's jars move with every engine edit,
+     * and a class that never opened them stands on none of their bytes. The selection stays: which suites
      * and tags run decides which of a class's methods run, so a class that passed in a run of the fast
      * tier says nothing of its methods a wider run selects. What the suite read of the caller's
      * environment stays too: no record says which class read it.
@@ -149,6 +241,7 @@ final class ClassKeys {
         return token.startsWith(TestStamp.COMPILE_TEST)
                 || token.startsWith(TestStamp.COMPILE_TEST_KOTLIN)
                 || token.startsWith(TestStamp.COMPILE_TEST_GROOVY)
+                || token.startsWith(TestStamp.WORKER_JAR)
                 || (SuiteReads.isReadsToken(token) && !SuiteEnvReads.isToken(token));
     }
 
@@ -169,39 +262,79 @@ final class ClassKeys {
     }
 
     /**
-     * The key of a class in {@code launch}: the suite part, {@code cone}'s digest, or with a {@code
+     * The key of a class in {@code launch}: the suite part, {@code cone}'s digest (over which of its
+     * classes ran, {@code used}, when known: {@link ClassCones.Cone#digest(String)}), or with a {@code
      * fallback} every workspace class ({@code module}, the digest of them all), and what it and the
-     * pool ({@code pooled}) were seen to read. A read set past its record's bound is keyed as every
-     * file the suite was found to read ({@code suiteReads}, the suite's discovered inputs as one
-     * digest), which holds the class's own. A class keyed by its module stands on every program the
-     * suite's stamp keys ({@code programs}, from {@link #programs}): no record says what a program it
-     * started read, nor which. {@code listings} holds each directory's listing once it is taken, for
+     * pool ({@code pooled}) were seen to read. A read set past its record's bound is keyed as the
+     * files the suite was found to read ({@code suiteReads}, the suite's discovered inputs) under the
+     * class's read roots with the file names it read, which hold the class's own, or as every one of
+     * them when it has neither or the pool is past its bound. Every class stands on the identity of each
+     * tool the pool started ({@code pooled}'s tools, named as {@link #identified} names them): no record
+     * says which class it served. A class keyed by its module, and one that it or the pool saw start
+     * a program that runs none of its JVM's classes ({@link ClassReads#EXTERNAL_PROGRAM}), stands on
+     * every program the suite's stamp keys ({@code programs}, from {@link #programs}): no record says
+     * what a program it started read, nor which. {@code listings} holds each directory's listing once it is taken, for
      * the caller to share across the classes of one pass.
      */
     static Key key(
             String launch,
             ClassCones.Cone cone,
+            @Nullable String used,
             String suitePart,
             Observed seen,
             Map<String, String> programs,
             Observed pooled,
             String module,
-            String suiteReads,
+            SuiteReadSet suiteReads,
             Path workspace,
             @Nullable String fallback,
             Map<Path, String> listings) {
         MessageDigest md = Hashing.newSha256();
         feed(md, "suite:" + suitePart);
         feed(md, "launch:" + launch);
-        feed(md, fallback == null ? "cone:" + cone.digest() : "module:" + module);
-        if (fallback != null) for (String program : programs.values()) feed(md, "program:" + program);
-        if (seen.readsMore() || pooled.readsMore()) feed(md, "suite-reads:" + suiteReads);
+        if (fallback != null) feed(md, "module:" + module);
+        else feed(md, used == null ? "cone:" + cone.digest() : "cone-used:" + cone.digest(used));
+        if (fallback != null || external(seen) || external(pooled))
+            for (String program : programs.values()) feed(md, "program:" + program);
+        else if (startedProgram(seen))
+            for (String program : programs.values())
+                if (program.startsWith(TestStamp.WORKER_JAR)) feed(md, "program:" + program);
+        boolean bounded = !seen.readRoots().isEmpty() || !seen.readNames().isEmpty();
+        if (pooled.readsMore() || (seen.readsMore() && !bounded)) feed(md, "suite-reads:" + suiteReads.all());
+        else if (seen.readsMore())
+            feed(
+                    md,
+                    "suite-reads-under:" + seen.readRoots() + " named " + seen.readNames() + "="
+                            + suiteReads.under(seen.readRoots(), seen.readNames()));
         if (!seen.readsMore()) feedFiles(md, "read", seen.reads(), workspace, listings);
         feedFiles(md, "code", seen.code(), workspace, null);
         for (String tool : seen.tools()) feed(md, "tool:" + tool);
         if (!pooled.readsMore()) feedFiles(md, "pooled-read", pooled.reads(), workspace, listings);
         feedFiles(md, "pooled-code", pooled.code(), workspace, null);
+        for (String tool : identified(pooled, programs).tools()) feed(md, "pooled-tool:" + tool);
         return new Key((fallback == null ? "" : "module:") + Hashing.hex(md.digest()), fallback);
+    }
+
+    /**
+     * Whether a program was started in the class's JVM before its window closed ({@link
+     * ClassReads#STARTED_PROGRAM}): it may run a worker jar the suite was handed by path without the
+     * class's JVM reading it, so the class stands on every worker jar ({@link #key}). {@code seen}'s
+     * tools as a record names them or as {@link #identified} names them.
+     */
+    static boolean startedProgram(Observed seen) {
+        return hasTool(seen, ClassReads.STARTED_PROGRAM);
+    }
+
+    /**
+     * Whether a program that runs none of the JVM's classes was started ({@link
+     * ClassReads#EXTERNAL_PROGRAM}), as {@link #startedProgram} reads {@code seen}'s tools.
+     */
+    static boolean external(Observed seen) {
+        return hasTool(seen, ClassReads.EXTERNAL_PROGRAM);
+    }
+
+    private static boolean hasTool(Observed seen, String tool) {
+        return seen.tools().contains(tool) || seen.tools().contains(PROGRAM + tool);
     }
 
     /** The most workspace classes outside its static cone a class may load and keep its cone. */
@@ -228,7 +361,7 @@ final class ClassKeys {
 
     /**
      * Why a class's cone cannot be trusted, or null when it can: no attributed record, a program
-     * started, more code files than its suite's list holds ({@code suiteCodeMore}), more loaded
+     * started that could run its JVM's workspace classes, more code files than its suite's list holds ({@code suiteCodeMore}), more loaded
      * classes than are kept, more workspace classes loaded outside its static cone than {@link
      * #reflective} keeps ({@code reflectiveMore}), or a scanning entry point in the cone. Decided
      * when the class ran, from what it loaded then; its record keeps the answer.
@@ -242,6 +375,18 @@ final class ClassKeys {
         if (reflectiveMore) return "reflective loads past the record's bound";
         if (cone.scanner() != null) return "scanner " + cone.scanner();
         return null;
+    }
+
+    /**
+     * Why every class of a suite is keyed by its module for what no class's window held, or null: a
+     * program started outside every window ({@code pooled}'s processes), in discovery or a static
+     * initialiser before the first class, reads what no recording holds, and no record says which
+     * class it served. A record that kept its cone over such a pool runs once more.
+     */
+    static @Nullable String pooledFallback(Observed pooled) {
+        return pooled.processes().isEmpty()
+                ? null
+                : "pooled process " + pooled.processes().getFirst();
     }
 
     /**

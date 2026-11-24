@@ -4,7 +4,7 @@ package cc.jumpkick.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.jsonl.Jsonl;
-import cc.jumpkick.test.ClassCones;
+import cc.jumpkick.orchestrator.ClassCones;
 import cc.jumpkick.test.ClassReads;
 import java.io.IOException;
 import java.lang.classfile.ClassFile;
@@ -217,11 +217,11 @@ class TestClassRecordingScaleTest {
                     ClassCones.index(List.of(tests, mains), TestClassRecording.INDEX_CLASSES),
                     "suite",
                     ws,
-                    ClassShadow.pooledOf(TestClassRecords.header(file)),
-                    ClassShadow.observed(seen.pooled(), ws),
+                    launch -> ClassShadow.pooledOf(TestClassRecords.header(file)),
+                    launch -> ClassShadow.observed(seen.pooled(), ws),
                     Map.of(),
-                    "reads",
-                    "reads",
+                    ClassKeys.SuiteReadSet.NONE,
+                    ClassKeys.SuiteReadSet.NONE,
                     Long.MIN_VALUE,
                     false,
                     "stamp");

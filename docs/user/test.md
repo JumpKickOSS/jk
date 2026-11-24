@@ -16,8 +16,10 @@ jk test -E slow,bench
 jk test -I smoke
 jk test -S OrdersTest           # one class (simple or qualified name, * wildcards; repeatable)
 jk test -S OrdersTest#refunds   # one method of it (* wildcards in the method too)
+jk test -X -m app -m orders -S orders:OrdersIT   # app's whole suite, only OrdersIT in orders
 jk test -U                  # suspended test JVM listening on localhost:5005 — attach and go
 jk test -T                   # JaCoCo agent on every suite JVM; Coverage block in jk-results.md, HTML per module
+jk test --rerun              # run the selected tests again; compiles and packages stay cached
 jk test -t report       # failing tests are reported, the run still exits 0
 jk test -f                   # ranked classes for the working tree (does not run them)
 jk test -e HEAD~2      # ranked classes since that ref (does not run them)
@@ -25,8 +27,8 @@ jk build -g                      # package with the guards green (same flag on a
 jk build -A                       # package with the full suite green
 ```
 
-`--affected` and `--affected-since=<ref>` rank at most 20 test **classes**, print them as a
-table, and write `target/jk-tests-affected.md`. They do **not** run tests. `--affected` is
+`--affected` and `--affected-since=<ref>` rank test **classes**, print the top 20 as a
+table (`-O jsonl` carries every one), and write `target/jk-tests-affected.md`. They do **not** run tests. `--affected` is
 the git working tree (unstaged + untracked; last commit if the tree is clean).
 `--affected-since` is `ref...HEAD`. Neither is `jk explain`'s rebuild set. They cannot
 be combined (`--aff` is ambiguous). Refuse exits **2**; that file is not `jk-results.md`.
@@ -244,10 +246,23 @@ there the empty match fails on the spot. A selection that ran nothing is a **usa
 `details.jsonl` and the results. Red tests beside a dropped class still exit 4. `[test] serial-tags` partitions inside one module are
 judged together: a pattern that only matches serial-tagged classes is a match.
 
+A pattern qualified with its module, `--class <module>:<class>`, holds in that module alone:
+`jk test -s integration -X -m e2e/cli -m server/engine -S server/engine:EngineIT` runs the whole
+integration suite of `e2e/cli` and only `EngineIT` in `server/engine`, in one run. The module
+half is read as `-m` reads it, and the class half follows the rules above (`'orders:*IT'`,
+`orders:OrdersIT#refunds`). A module no qualified pattern names runs what the unqualified
+patterns select, its whole suites when there are none; that includes prerequisites, so pair
+qualified patterns with `--exclusive` to keep them out. A module a qualified pattern names is
+judged on its own: when nothing matches there, the run fails naming it
+(`server/engine: no test classes matched --class EngineIT`), whatever the other modules ran. A
+qualifier that names no module, or a module outside the `-m` selection, is refused before
+anything builds. A module's suite keys only the patterns that hold in it, so its green run is the
+one `jk test -m server/engine -S EngineIT` would have stored.
+
 `-m` narrows the run to the selected modules **and their prerequisites**, and a prerequisite
 runs its own suite too (a green suite replays from its stamp; a dirty one runs). `-m` is the
 same cone for `jk build` and `jk test`. To reach one module's class from the workspace root,
-name the class: `jk test -m e2e/cli -S SelfNukeCommandTest` runs it in `e2e/cli`
+name the class: `jk test -m e2e/cli -S AgentReportParityTest` runs it in `e2e/cli`
 and skips the prerequisites, whose suites match nothing. A prerequisite compiles its tests and
 is judged from their class files, so it skips without a test JVM, warm engine or cold.
 The run's count is the whole cone's: `jk test -m e2e/cli` reports that module's tests
@@ -319,6 +334,15 @@ skipped it gives the reason: `OK test app · 1 test, 1 skipped · 0.6s — skipp
 suite replayed from its green stamp counts the tests it skipped too:
 `Tests passed. Build up to date (served from cache); 2 tests skipped`.
 
+## Run the tests again (`--rerun`)
+
+`jk test --rerun` runs every test class the run selects, in every module whose suite it runs,
+even where a green stamp would replay the suite. Compiles, packages and every cache key stay as
+they are, so a compile already done is not done again. Use it to time a suite, or to check that a
+test that passed once still passes on unchanged code. It combines with the selection flags (`-s`,
+`-S`, `-m`, `-X`, `--quarantined`), and the run's plan shows such a suite as `run tests · rerun`.
+`-r` (`--redo`) runs the compiles again as well.
+
 ## The slowest tests (`[test] fast-method-budget`)
 
 `jk test` ends with the run's slowest test classes and methods, above the result line: the top
@@ -380,7 +404,7 @@ when the module's run ends; a class re-run after its JVM ran out of heap reports
 MCP `build`) puts it in the verdict: under a failed test whose class printed, `printed N lines; jk test
 -v shows them`, and on a `-v` run an `OUT <class> printed N lines` block per class holding its last
 40 lines (200 across the run), naming the report file when earlier lines are left out. An up-to-date
-suite prints nothing; `-r` runs it again.
+suite prints nothing; `--rerun` runs it again.
 While the run goes, each class that finishes adds a `class-finish` line to the run's
 `details.jsonl` (its tests, failures, skips and wall), so a run cancelled or timed out part way
 still names every class that completed ([Machine output](machine-output.md#event-vocabulary)). A
@@ -430,7 +454,7 @@ bind error; run again.
 ## Affected tests (WIP)
 
 ```bash
-jk test -f              # rank ≤20 classes for the working tree; print a table; do not run
+jk test -f              # rank classes for the working tree; print the top 20; do not run
 jk test -e HEAD~2 # same table for ref...HEAD (does not run)
 ```
 
@@ -438,19 +462,22 @@ jk test -e HEAD~2 # same table for ref...HEAD (does not run)
 It is **not** `--affected-since=HEAD` (that range is empty). The two flags cannot be combined.
 `--aff` is ambiguous.
 
-Both flags print the ranking as a table (Score · Class · Reason) and write
-`target/jk-tests-affected.md`. They do **not** run tests and do not replace
+Both flags print the 20 highest as a table (Score · Class · Reason) and write
+`target/jk-tests-affected.md`; with `-O jsonl` the row lists every ranked class. They do **not** run tests and do not replace
 `target/jk-results.md`. `-m` intersects the ranked list exactly as it intersects the
 build cone (`jk test -f -m api`). An edited test ranks first, unless the run's tags or
 `[test] exclude-classes` keep it out; then it is not listed. Only a class JUnit would find
 tests in is ranked: a helper or fixture under the test root, edited or using a changed type, is
-not listed. A test counts as using a type
+not listed. A class that has run before ranks by what JumpKick recorded of its last run in the
+selected suites ([class records](#what-a-suite-read-discovered-inputs)): first when its code ran a
+class compiled from a changed source or it read a changed file (`cone-ran:` and `reads:` reasons),
+lower when its cone only reaches such a class (`cone:`), and not at all when neither, whatever it
+names. A class with no record ranks by the changed types it uses, and a test counts as using a type
 however its bytecode names it: a call, a class literal, a method reference, a caught exception
 or an annotation's class value. A test's tags are read as `jk test` reads them, a tag composed
 in another module or a library included, from the class files and jars already on disk. Ranking
 refuse exits **2**. When the guess
-would be dishonest (`jk.toml` change, stale class files, too many types or modules, a
-dirty test outside the current suite), JumpKick prints `cannot rank affected tests` and tells
+would be dishonest (`jk.toml` change, stale class files, too many types or modules), JumpKick prints `cannot rank affected tests` and tells
 you to run `jk test`.
 
 ## One-run tag filters (`-I` / `-E`)
@@ -464,10 +491,11 @@ A module whose tests the filter drops reports `0 tests (all excluded by --exclud
 plain results line, and `-I` and `-E` naming the same tag selects nothing and says so. A `--class`
 that names a class the filter drops fails the run with the class, its tags and the flag to drop.
 
-**The default tier cannot reach the network.** A run of the default suite alone with no `-I` — the
-bare `jk test`, and the test step of `jk build` — in a module that routes tiers (a
-`[test.suites.<name>]` table of its own or its workspace root's claims a tag) hands every test JVM
-`JK_HTTP_DENY_HOSTS=*`, so a unit test that reaches a remote host (directly, or through an engine it
+**The default tier cannot reach the network.** In a module that routes tiers (a
+`[test.suites.<name>]` table of its own or its workspace root's claims a tag), a run with no `-I`
+hands every test JVM that runs the default suite `JK_HTTP_DENY_HOSTS=*`: the bare `jk test`, the test
+step of `jk build`, and the default suite's JVMs under `-s`, `-g` and `--all`, which never share their
+JVMs with a suite that claims a tag. So a unit test that reaches a remote host (directly, or through an engine it
 starts) fails at once with the host named. Any other suite may fetch; put such a test there. A
 module that sets `JK_HTTP_DENY_HOSTS` in `[test] env` keeps its own value (`""` lifts the wall), and
 any process honours the variable as a comma-separated host list.
@@ -477,7 +505,14 @@ jvm-args = ["-Dprobe=1"]`) are appended to every forked test JVM after JumpKick'
 [`[test] jvm-args`](#the-test-jvms-flags-test-jvm-args-test-system-properties), and the step
 prints every flag the JVM started with as `test JVM flags: …`; its `javac` list reaches the compiler the same way
 ([Projects](projects.md#features-profiles-variants)). Suites, tags and the test JVM's flags are
-part of the test stamp: changing any of them re-runs tests even if sources are unchanged. A failed suite is never
+part of the test stamp: changing any of them re-runs tests even if sources are unchanged. So is what
+JumpKick itself starts each test JVM with: `-ea` or not (`[test] assertions`), the `--class`
+patterns, `[test] exclude-classes`, `serial-tags`, `idle-timeout` and `failure-snapshot`, and the
+fast tier's walls, and the variables JumpKick sets in every test JVM's environment (the sandbox
+`JK_HOME` and its roots, `TERM`, the locale and time zone, git's configuration) by name and
+fixed value, and the agents JumpKick starts test JVMs with (the environment probe, the read
+recording, the coverage agent) by the flags they take. The heap, temp directories, ports and the number of test JVMs are each host's and
+re-run nothing. A failed suite is never
 skipped: it leaves a red marker under the same stamp, so the next run executes it again and
 `jk explain` prices it as a suite rather than as a stale stamp. That holds after `--redo` too: a
 forced run that fails replaces the green marker it ran over, and the module stays on the next
@@ -493,11 +528,12 @@ all. A
 class counts as passed only when it and every class nested in it passed. The run says so with a
 `tests-not-rerun` warning (`6 test classes passed earlier under these same inputs and are not run
 again`), its counts and `jk results` include the classes not re-run, and once every class has
-passed the suite's marker is green and the next run skips it whole. A class that failed and then
+passed the suite's marker is green and the next run skips it whole. `jk explain` prices such a
+suite the same way: `run tests · ~3 tests · 290 classes replayed · last run failed`. A class that failed and then
 passes with nothing changed is flaky or depends on what ran before it, and the run warns
 `test-passed-on-rerun` naming it, and its `class-finish` row in `jk results -O jsonl` carries
 `"passedOnRerun":true` ([Machine output](machine-output.md#event-vocabulary)); past a threshold it is quarantined
-([Flaky tests](#flaky-tests-are-quarantined-jk-flaky)). `--redo`, `--debug-jvm`, a coverage run and `--affected` run their
+([Flaky tests](#flaky-tests-are-quarantined-jk-flaky)). `--redo`, `--rerun`, `--debug-jvm`, a coverage run and `--affected` run their
 whole selection. A change to any stamp input still re-runs every class.
 
 A suite whose classes share state — a database one class seeds and the next reads, a server the
@@ -515,10 +551,20 @@ a green run is still replayed whole from its marker.
 With `cache = "cone"` a changed stamp no longer re-runs every class. A class that passed is replayed
 when its key still matches its class record ([what a suite read](#what-a-suite-read-discovered-inputs)): its bytes and
 those of every workspace class it reaches (its cone), the files it read, the suite's settings,
-external classpath and selection. An edit to one main class runs the classes whose cone holds it,
-and any class keyed by its whole module (one that started a program that could read what no
-recording sees, or names a classpath scanner), and replays the rest. A workspace class a test loaded
-by name joins its cone, so an edit to that class runs it too. A class that ran after a
+external classpath and selection. A workspace class that a test class reaches but whose code did
+not run while it ran counts by its signatures and static initialiser only, so a change inside a
+method body runs only the classes that ran that class's code, in this module or in a module that
+depends on it; JumpKick learns which ran by marking the classes it loads from your class directories
+and your modules' jars, which a coverage run leaves alone. An edit to a
+signature runs every class whose cone holds it, and so does any class keyed by its whole module (one
+that started a program that could run your workspace's classes, such as another JDK's `java` on the
+test class path or a command that expands a variable, or names a classpath scanner), and replays the
+rest. A class that started the test JDK's own `java` on the test class path keeps its cone, but a
+change inside any method body of that cone runs it: what the second JVM ran is not marked. A
+class that started a program that runs none of your classes (`git` in your checkout, `node`) keeps
+its cone and stands on what the suite's stamp says of every program the suite started and on the
+workspace files its command names, so an edit inside a method body it never ran replays it. A workspace class a test loaded by name joins its cone, so an edit to that class
+runs it too. A class that ran after a
 test loaded more jars by path than its record names (an in-process compiler's) stands on every jar
 its suite loaded that way: it runs again when one of them changes. A class whose only program is
 `git`, run in a repository the test made in its temp directory (the module's test temp root or
@@ -526,10 +572,19 @@ its suite loaded that way: it runs again when one of them changes. A class whose
 that `git` says to `--version`: an upgrade runs it again. So does a class whose programs are
 utilities (`sleep`, `setsid`, `sh -c …`, `ps`) or a program the test wrote in its temp directory,
 when no word of the command names a file outside that directory, a variable, another host or a
-program other than such a utility. The warning then reads
-`… passed earlier and nothing they reach or read has changed since; they are not run again`, and
-each replayed class's `class-finish` row carries `replayedFrom`. A class that reached the network,
-or a suite that did outside every class, is never replayed; `--redo` runs every class. Set at the
+program other than such a utility. A jar the suite is handed by path rather than on its classpath
+(a `[build] test-plugin-jars` entry) runs only the
+classes that read it, those that ran in a test JVM after any program but such a `git` was started
+in it, and those keyed by their whole module, so a rebuilt jar replays a class that never touched
+it. A class that read more files than its record names (a test
+that reads every plugin's manifest) stands on the files its suite read in the directories that
+cover its own reads, so a source another class of the suite scanned does not run it. The warning
+then reads `… passed earlier and nothing they reach or read has changed since; they are not run
+again`, and each replayed class's `class-finish` row carries `replayedFrom`. When the replayed classes
+leave nothing to run but classes with no test in them (helpers, fixtures), no test JVM starts. `jk explain` prices
+such a suite as the run will: its step reads `run tests · … · ~12 tests · 281 classes replayed`
+once the module's compile is current, and its Tests row counts only those tests. A class that reached the network,
+or a suite that did outside every class, is never replayed; `--rerun` runs every class. Set at the
 workspace root, it holds for every member that does not say otherwise. It needs the class records, so `JK_TEST_TELEMETRY=off` or `JK_TEST_SHADOW=off` in the
 caller's shell runs it as `"class"`.
 
@@ -621,6 +676,15 @@ A suite that starts while the build is wide widens as the build narrows. While i
 still queued, auto reads the share again every two seconds and starts another runner, up to what
 the formula gives at that share, whenever the engine has a free JVM slot and the memory for one
 more with nothing else waiting. It never stops a runner it started.
+
+A suite whose tests start engines of their own runs at half the share, since each runner's engine
+compiles and tests on cores of its own. It starts with no more runners than the idle cores give
+two each, at least one, and widens toward that half share only while two cores sit idle, so a busy
+host gets fewer runners rather than slower ones. The idle cores are the processors less the cores
+busy outside the engine and its child processes over the last few seconds: the build's other suites
+running beside it do not count as load. Where the host does not report that (macOS, Windows), the
+one-minute load average stands in. The engine log has one `test pool` line per start and widening,
+with the width, the share, the load average and the load the pool was sized by.
 
 An explicit `-w N` is never rescaled; it means N.
 
@@ -952,8 +1016,8 @@ com.acme.OrdersTest  orders
 `issue`) ([MCP](mcp.md)).
 
 `jk test --quarantined` runs only the quarantined classes, in every module that has them, to check
-whether a fix holds. It cannot be combined with `--class`; add `-r` to run classes that already
-passed under the same inputs.
+whether a fix holds. It cannot be combined with `--class`; add `--rerun` to run classes that
+already passed under the same inputs.
 
 The dashboard's project page lists the quarantined and the flaky classes with their recent runs on
 its **Flaky tests** tab, and the bell rings with a toast when a run quarantines a class
@@ -1415,7 +1479,10 @@ names its version (`store:tools/node/24.22.0/bin/node`); a script of the workspa
 (`/opt/homebrew/bin/node`) keys by content, since only what an administrator installed is run to
 ask its version for a list from another host. The run that discovers an input
 keeps its outcome but stores no marker, and the build says what it found; the next run is keyed on
-it and is replayed from then on while it holds. A green marker is stored only when every input the
+it and is replayed from then on while it holds. A run of every class the selection names replaces
+the list, so a file the suite stopped reading keys it no more; a run of only some of them (what a
+red run left, or what `cache = "cone"` did not replay) adds to it, so a
+file only a replayed class reads still keys the suite. A green marker is stored only when every input the
 key names, discovered ones and their listings included, still matches once the suite is done. When
 one moved while it ran (a test that writes beside a fixture it reads, say), the run keeps its
 outcome, stores no marker and warns `an input of run-tests changed while it ran: <file>; the next
@@ -1430,15 +1497,16 @@ uses the Gradle Tooling API or the Kotlin daemon from ever replaying. The same g
 suite reads and then replaces by renaming a temp file it wrote beside it, as the JDK refreshes its
 font cache under `~/.java/fonts` once the system's fonts change.
 
-**A suite that reaches the network is never replayed.** "Reaches the network" means a test JVM
+**A suite that reaches the network keeps no green result.** "Reaches the network" means a test JVM
 read from or wrote to a socket whose address is not this machine's: loopback (`localhost`,
 `127.0.0.1`, `::1`) and Unix-domain sockets do not count, and neither does a program the tests
 start (only the JVM's own sockets are recorded). Such a suite stores no green marker, so every build
 runs it, and every such run says why with the host it reached: `tests reached repo.example.com,
-so they rerun; [test] network = "allowed" caches them`. `jk explain` forecasts its run as `run
-tests · tests use the network`. Serve what the test needs from a stub on loopback, move the test to
-a suite such as `network` that the gate does not run, or set `[test] network = "allowed"` when its
-result depends on nothing the remote can change. A file under JumpKick's own state directory
+so they rerun; [test] network = "allowed" caches them`. Under `[test] cache = "cone"` the run
+replays the classes that did not reach it, and `jk explain` counts only the rest: `run tests ·
+tests use the network · ~2 tests · 40 classes replayed`. Serve what the test needs from a stub on
+loopback, move the test to a suite such as `network` that the gate does not run, or set `[test]
+network = "allowed"` when its result depends on nothing the remote can change. A file under JumpKick's own state directory
 (`~/.jk/state`: the engine's endpoint, pid and log files) is never keyed, since it changes with
 every engine restart; the build warns `tests read jk's own state, not keyed: <file>`, because a
 test that reads it is reaching past its sandbox.

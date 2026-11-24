@@ -4,9 +4,11 @@ package cc.jumpkick.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.model.SuiteSettings;
 import cc.jumpkick.orchestrator.TestProgressListener;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.task.ActionCache;
+import cc.jumpkick.test.JUnitLauncher;
 import java.nio.file.Path;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
@@ -102,5 +104,24 @@ class TestClassLedgerLaunchesTest {
         assertThat(rerun.withSettled(none).total())
                 .as("both launches' FooTest methods count; the second launch no longer overwrites the first")
                 .isEqualTo(2);
+    }
+
+    @Test
+    void a_run_planned_before_it_starts_records_each_launch_s_classes_as_its_own() throws Exception {
+        TestClassLedger first = load();
+        TestProgressListener l = first.recording(TestProgressListener.noop());
+        SuiteResources.Launcher launcher = first.launching((settled, s) -> new JUnitLauncher());
+        // Both launches are planned before either starts, as the run does before it takes the gate.
+        launcher.of(UNIT, SuiteSettings.NONE);
+        launcher.of(INTEG, SuiteSettings.NONE);
+        launcher.starting(UNIT);
+        launch(l, "demo.FooTest", "unit", "SUCCESSFUL");
+        first.store(cache, TASK, STAMP);
+
+        TestClassLedger rerun = load();
+        assertThat(rerun.enter(UNIT))
+                .as("FooTest passed in the launch that started, not the one planned last")
+                .containsExactly("demo.FooTest");
+        assertThat(rerun.enter(INTEG)).isEmpty();
     }
 }

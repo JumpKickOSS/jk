@@ -220,6 +220,11 @@ public final class BridgingWorkspaceListener implements WorkspaceBuildListener {
             }
 
             @Override
+            public void stepWaiting(String d, String step, @Nullable String reason) {
+                nested.stepWaiting(d, step, reason);
+            }
+
+            @Override
             public @Nullable StepCost priced(String d, String step) {
                 return nested.priced(d, step);
             }
@@ -265,6 +270,7 @@ public final class BridgingWorkspaceListener implements WorkspaceBuildListener {
                 o.success(),
                 o.exitCode(),
                 o.millis(),
+                o.waitedMillis(),
                 o.didWork(),
                 o.cancelled(),
                 o.stopped(),

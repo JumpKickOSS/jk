@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime.base;
 
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.layout.BuildLayout;
 import java.nio.file.Path;
 import java.util.ArrayDeque;
@@ -43,6 +44,8 @@ import org.jspecify.annotations.NullMarked;
  * start. One that fails publishes on completion, and the waiting step then names the missing jar
  * itself and the step the sibling failed at, which is the accurate failure. A cancelled session
  * ends the wait at once.
+ *
+ * <p>It also keeps how long each module had a step blocked here ({@link #waitedMillis}).
  */
 @NullMarked
 public final class SiblingArtifacts implements WorkspaceScheduler.Parking {
@@ -136,6 +139,8 @@ public final class SiblingArtifacts implements WorkspaceScheduler.Parking {
     private final Map<Path, CompletableFuture<Void>> linked = new ConcurrentHashMap<>();
     private final Map<String, String> failedSteps = new ConcurrentHashMap<>();
     private final Map<Path, Integer> parkedSteps = new ConcurrentHashMap<>();
+    private final Map<Path, WaitClock> waits = new ConcurrentHashMap<>();
+    private final Clock clock;
     private volatile Runnable onPark = () -> {};
 
     /** As {@link #SiblingArtifacts(Map, TestReads, Collection)} for a graph whose tests read nothing more. */
@@ -149,6 +154,12 @@ public final class SiblingArtifacts implements WorkspaceScheduler.Parking {
      * @param scheduled the units this build runs; every other unit's outputs already exist
      */
     public SiblingArtifacts(Map<Path, Set<Path>> edges, TestReads tests, Collection<Path> scheduled) {
+        this(edges, tests, scheduled, Clock.SYSTEM);
+    }
+
+    /** As {@link #SiblingArtifacts(Map, TestReads, Collection)}, timing the waits on {@code clock}. */
+    public SiblingArtifacts(Map<Path, Set<Path>> edges, TestReads tests, Collection<Path> scheduled, Clock clock) {
+        this.clock = clock;
         this.prereqs = transitive(edges);
         this.tests = tests;
         for (var e : tests.classes().entrySet()) {
@@ -309,7 +320,7 @@ public final class SiblingArtifacts implements WorkspaceScheduler.Parking {
         return new Gate() {
             @Override
             public void awaitArtifacts(BooleanSupplier cancelled) throws InterruptedException {
-                await(published, waitOn, cancelled);
+                timed(dir, pending(published, waitOn), () -> await(published, waitOn, cancelled));
             }
 
             @Override
@@ -336,7 +347,7 @@ public final class SiblingArtifacts implements WorkspaceScheduler.Parking {
 
             @Override
             public void awaitIndexed(Collection<Path> dirs, BooleanSupplier cancelled) throws InterruptedException {
-                await(indexed, dirs, cancelled);
+                timed(dir, pending(indexed, dirs), () -> await(indexed, dirs, cancelled));
             }
 
             @Override
@@ -375,9 +386,52 @@ public final class SiblingArtifacts implements WorkspaceScheduler.Parking {
         parkedSteps.merge(dir, 1, Integer::sum);
         onPark.run();
         try {
-            wait.run();
+            timed(dir, true, wait);
         } finally {
             parkedSteps.computeIfPresent(dir, (k, n) -> n <= 1 ? null : n - 1);
+        }
+    }
+
+    /**
+     * Milliseconds the module at {@code dir} had at least one step blocked on a sibling here, so far;
+     * two steps waiting at once count once.
+     */
+    public long waitedMillis(Path dir) {
+        WaitClock w = waits.get(dir);
+        return w == null ? 0 : w.nanos(clock.nanos()) / 1_000_000;
+    }
+
+    /** Run {@code wait}, counting the time it blocks against {@code dir} when anything it waits on is {@code pending}. */
+    private void timed(Path dir, boolean pending, Wait wait) throws InterruptedException {
+        if (!pending) {
+            wait.run();
+            return;
+        }
+        WaitClock w = waits.computeIfAbsent(dir, k -> new WaitClock());
+        w.enter(clock.nanos());
+        try {
+            wait.run();
+        } finally {
+            w.exit(clock.nanos());
+        }
+    }
+
+    /** One module's blocked time: the union of its steps' waits. */
+    private static final class WaitClock {
+        private int active;
+        private long since;
+        private long total;
+
+        synchronized void enter(long now) {
+            if (active++ == 0) since = now;
+        }
+
+        synchronized void exit(long now) {
+            if (--active == 0) total += now - since;
+        }
+
+        synchronized long nanos(long now) {
+            return total + (active > 0 ? now - since : 0);
         }
     }
 

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.test;
 
+import cc.jumpkick.host.Os;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.SearchPath;
 import cc.jumpkick.task.ToolIdentity;
@@ -23,7 +24,9 @@ import org.jspecify.annotations.Nullable;
  * <p>Such a program keys a class by its identity, as the suite's stamp names it ({@link
  * SuitePrograms}), or as {@link ClassReads#WRITTEN_PROGRAM} for one the test wrote, whose bytes the
  * class's cone already decides. The recording keeps the command as one line with its words joined
- * by spaces; every word, split at the shell's quotes and operators, is judged:
+ * by spaces; every word, split at the shell's quotes and operators, is judged (outside Windows,
+ * where a backslash escapes a character rather than separates directories, both as written and
+ * with its backslashes dropped):
  *
  * <ul>
  *   <li>a word naming a path lies under a temp root, {@code /dev}, {@code /proc} or a system
@@ -160,12 +163,24 @@ final class OwnPrograms {
     }
 
     private static boolean ownPart(String part, Path dir, boolean own, Collection<Path> temp, @Nullable String path) {
+        // Outside Windows a backslash is no directory: the shell drops one that escapes a character
+        // outside quotes and keeps it inside single quotes, so the program gets either word.
+        if (!Os.isWindows() && part.indexOf('\\') >= 0) {
+            String unescaped = part.replace("\\", "");
+            return ownWord(part, dir, own, temp, path)
+                    && (unescaped.isEmpty() || ownWord(unescaped, dir, own, temp, path));
+        }
+        return ownWord(part, dir, own, temp, path);
+    }
+
+    private static boolean ownWord(String part, Path dir, boolean own, Collection<Path> temp, @Nullable String path) {
         if (part.equals("$@")) return true;
         if (part.contains("$") || part.contains("`") || part.startsWith("~")) return false;
         if (part.contains("://") || USER_AT_HOST.matcher(part).matches()) return false;
         if (CHANGES_DIRECTORY.contains(part)) return false;
         if (ToolIdentity.toolName(part).equals(GitRuns.GIT)) return false;
-        boolean pathLike = part.contains("/") || part.contains("\\") || part.equals(".") || part.equals("..");
+        boolean pathLike =
+                part.contains("/") || (Os.isWindows() && part.contains("\\")) || part.equals(".") || part.equals("..");
         if (!pathLike) {
             if (BARE.matcher(part).matches() && !utility(part) && onPath(part, path)) return false;
             if (own) return true;

@@ -492,7 +492,12 @@ or there is no cgroup.
 
 If that setup cannot be done (the cgroup is shared with other processes, it is not
 writable, or the memory controller is not delegated), the engine keeps the score adjustment
-only and remembers why. On any other operating system it does neither, and does not error.
+only and remembers why. Workers then share the engine's cgroup, and one that exits by
+SIGKILL while the `oom_kill` count of that cgroup's `memory.events` rose (the host's
+`/proc/vmstat` where the cgroup has none) is reported as killed for memory: its raised score
+makes it the kernel's victim. Where that count is the host's, a worker killed by other means
+at the moment the host killed some other process for memory is reported the same way.
+On any other operating system it does neither, and does not error.
 `jk engine status` reports the mode: `cgroup (max … GiB)` (with the per-worker cap when
 there is one), `score-only (<reason>)`, or `none`. On Linux the client starts the engine in its own delegated systemd user scope
 when `systemd-run` can reach a user manager, so that cgroup is private; `JK_ENGINE_SCOPE=0`
@@ -525,11 +530,16 @@ that is how a stale override shows up. `-O jsonl` carries the same facts as
 is queued), and `workerOverLease` (the Over lease line, `""` when no worker is). The
 dashboard's Admin page shows the same line.
 
-The worker limits are one per host: every engine of one state directory leases from them
-together, so an engine still draining after `jk engine stop` and the engine that took over
-never hold more between them than one engine could alone. Host-wide are the budget, its
-twice-the-budget overbooking cap, the running-JVM cap, and the free
-memory overbooking reads. Each engine records its line in `<state>/engine/worker-leases` —
+The worker limits are one per memory budget: every engine of the same user that draws on
+one budget leases from them together, whatever `JK_HOME` it runs from, so an engine still
+draining after `jk engine stop` and the engine that took over, or engines with different
+homes in one container, never hold more between them than one engine could alone. The
+budget is the host's, or, when a cgroup above the engine sets `memory.max`, the tightest such
+group's. Shared are the budget, its twice-the-budget overbooking cap, the running-JVM cap,
+and the free memory overbooking reads. Each engine records its line in
+`jk-<user>-leases/<budget>/worker-leases` under JumpKick's temporary directory (`/var/tmp` on
+Linux), where `<budget>` is `host` or `cgroup-<id>`; when that directory cannot be made owner-only
+the engine says so in its log and keeps the file in `<state>/engine` instead —
 its budget, its running-JVM cap, the bytes it holds, its running JVMs, how many leases it has
 queued, and the pid of each worker it forked — and counts the others' lines before it grants
 a lease; the leased total and the JVM count on the Workers line, and the
@@ -547,8 +557,15 @@ When the file cannot be read or written, an engine says so once in the engine lo
 against the others' last reading, and offers its line again, after a pause that doubles up to
 5 seconds, until the file takes it: a release is never lost to one failed write.
 The file costs each fork a few file-locked rewrites of a few hundred bytes, a fraction of a
-millisecond each. A test JVM's in-process engine keeps its own ledger, and a nested engine
-under `jk test` has its own state directory, so neither shares the host's limits.
+millisecond each. A test JVM's in-process engine keeps its own ledger. An engine started
+inside another engine's worker, such as a test's engine inside a `jk test` JVM, records its
+line in `nested/worker-leases` under the outer engine's directory instead, and says so in its
+log: the outer engine already charges that worker at the resident set of its whole tree, the
+inner engine and its forks included, so sharing the outer file would count them twice and leave
+the inner engine's forks waiting on memory that only the worker's own exit frees. Every engine
+inside a worker of that budget's engines shares the one `nested` file, so the inner engines of
+two test JVMs lease from one budget and one JVM cap, not one each; an engine inside a worker of
+one of those leases one level further down, in `nested/nested`.
 
 A JVM's `-Xmx` is its ceiling, and the ceiling's lease is the `-Xmx` plus overhead of
 `max(160 MiB, 12% of -Xmx)`. The 12% is the resident cost of GC and thread structures
@@ -612,7 +629,11 @@ waits when every JVM slot is taken (one per logical processor); that is ordinary
 and writes nothing. A warm helper takes no JVM slot, so only forks that are working fill
 them. While none of a step's forks runs and its next one
 waits, the terminal dims its row and says why: `Waiting for a free slot…` or
-`Waiting for memory…`. A memory wait of 5 seconds or more is recorded on the step as
+`Waiting for memory…`. A step that waits for something else says so the same way:
+`Waiting for a free engine thread…` while every engine thread is busy and its work has not begun,
+or `Waiting for another jk's guard suite run on this tree…` while another engine holds the lock on
+that module's guard report. Without a terminal (`--no-ansi`, CI) the 30-second progress line ends
+with the same words after `=`. A memory wait of 5 seconds or more is recorded on the step as
 `waited Ns for memory`. Several waits on one step add up to that one line. `target/jk-results.md` and the agent report each carry it, and they carry
 `retried with 1.0 GiB heap after running out of 512 MiB` when a planned heap was retried.
 A workspace names the module on both lines.
@@ -620,7 +641,9 @@ When the budget is an override, the wait line names it:
 `waited 12s for memory (JK_WORKER_BUDGET_MB)`. A wait ends only when the line stands still:
 once no lease has been granted to anyone for ten minutes, a lease still queued fails its step,
 naming what it needed and who held the memory. A long wait in a line that keeps moving, such
-as two builds sharing the JVM slots, does not fail:
+as two builds sharing the JVM slots, does not fail, and neither does a wait for room its own
+build's working forks hold, such as one module's test JVM behind a sibling module's long suite:
+those forks free it as they end. When a lease does give up:
 `job #7 waited 600s for memory and gave up: needs 3.4 GiB (2.9 GiB free of the 13.5 GiB worker budget); held by job #3 6.1 GiB in 9 forks`.
 The ten minutes count from the last grant, so a lease that saw others granted first waited longer
 and says for how long the line stood still:
@@ -656,7 +679,15 @@ usage in that sample, not at the reservation they hold. On Linux pressure has to
 container's and the workers group's `memory.pressure` when those files are present. The
 reserved total, including the new lease, stays at or under twice the budget (one and a half
 times under `CI`) across every engine of the host, so a run
-of grants between samples cannot grow without a bound. The sample is reused for 250 ms. When the pressure rises or the free
+of grants between samples cannot grow without a bound. The sample is reused for 250 ms. A fork
+just admitted has not reached its resident size, so neither that sample nor the next ones see
+most of what it will use: every lease granted in a series, inside the budget or past it, is
+charged at its worst case against the sample the series started on, and each later grant is
+judged on the lower of a fresh sample's free memory and what the first one has left. The series
+ends 5 s after its last grant, once its forks have had time to grow; a fork of it that exits gives
+its charge back. Bursts of grants on one sample, or on several samples taken while the forks
+grow, therefore spend one sample's free memory once, and the free figure the engine log names is
+what was left of it when that grant was judged. When the pressure rises or the free
 memory falls short, further leases wait in the same queue. A running fork is never killed to
 make room. The engine log records each grant that started past the budget, with the cap and
 the sample that allowed it:
@@ -673,7 +704,10 @@ a second. When it runs out of compiles it collects at once and its heap shrinks 
 between builds, so an idle worker holds little of the budget and a test JVM is not kept waiting
 for a reservation. A worker lingering between builds takes no JVM slot and exits when a fork
 needs the memory it holds. It runs every compile of its JDK on its own threads, one per core it sees;
-`JK_COMPILE_CONCURRENCY` pins the count for measurement.
+`JK_COMPILE_CONCURRENCY` pins the count for measurement. A build whose worker flags differ
+(`--jvm-arg`, `--ram-percent`, a `[jvm]` table) gets a compiler worker of its own, so one
+command's flags never reach another's compiles; a worker that exits before its first compile is
+dropped, and the next build starts a fresh one.
 
 Forked JVMs that are actually running are also capped at the machine's online processors,
 or at the cgroup CPU quota when that quota is finite, separate from the memory lease, so
@@ -798,7 +832,10 @@ peak and go back to the first heap. Each row also keeps the worker's last ten re
 peaks (a native-image build's include its builder JVM; on Linux, where a worker runs in its own
 cgroup, the memory its child processes held, page cache left out), which price its lease; each kind's
 peaks across every project are kept in `<state>/worker-heaps/host`, which prices a module's
-first run.
+first run. A test JVM whose tests start engines of their own holds those engines' compilers and
+test JVMs too, which no other engine leases: its resident peak is its whole process tree, kept in
+its module's row only, and it is leased at that price even past its own heap's lease, at most the
+worker budget.
 
 A compile, test or format worker JumpKick has not seen before starts at a quarter of the worker budget, at
 most 2 GiB, and never below the compiler estimate. The memory plan's share (the free memory over
@@ -982,7 +1019,7 @@ requests have no shell, and those decisions fall back to the engine's environmen
 | `JK_ENGINE_TRANSPORT` | unix; tcp on Windows | Force tcp or unix for the client-engine wire. |
 | `JK_ENGINE_NO_SPAWN` | unset; 1 in fast-tier test JVMs | 1: a client in this process uses an engine already serving but never starts or takes one over. |
 | `JK_INSTALL_LOCK` | on | off: a client in this process neither holds nor waits for the host install lock. |
-| `JK_ENGINE_HEARTBEAT_MS` | 30000 | Heartbeat while async jobs run. 0 disables. |
+| `JK_ENGINE_HEARTBEAT_MS` | 30000 | Heartbeat while jobs and reads run. 0 disables. |
 | `JK_ENGINE_JOB_DEADLINE_MS` | 0 | Wall deadline for a job a client owns over its socket, in ms. 0 = off. |
 | `JK_ENGINE_JOB_DEADLINE_GRACE_MS` | 30000 | Join grace after a deadline cancel, in ms. |
 | `JK_CANCEL_GRACE_MS` | 500 | Shared SIGTERM-to-SIGKILL window for forked workers on cancel, in ms; clamped to 5000. |

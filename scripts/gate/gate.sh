@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # The gate a tip must pass, in one of three tiers. Each detaches a checkout at the tip, runs
 # `jk guard` and never pushes; the Full and Queue tiers then check that the engine which served the
-# tests is the tip's and run the shell fixtures. Both start with the reinstall without tests
-# (`jk install -S`), so every test they run runs under the tip's own engine: test verdicts are keyed
-# by the engine that ran them, so a change to the engine reruns every suite in the gate that lands
-# it, and the gate after it reuses them. The install that runs tests after it, under the engine it
-# installed, restores the native client the reinstall linked: the log's `NATIVE_LINKS
-# reinstall=<n> install=<n>` line counts the native images each of the two linked.
+# tests is the tip's, and run the shell fixtures beside their steps. Both start with the reinstall
+# without tests (`jk install -S`), so every test they run runs under the tip's own engine: test
+# verdicts are keyed by the engine that ran them, so a change to the engine reruns every suite in
+# the gate that lands it, and the gate after it reuses them. The install that runs tests after it,
+# under the engine it installed, restores the native client the reinstall linked: the log's
+# `NATIVE_LINKS reinstall=<n> install=<n>` line counts the native images each of the two linked.
 #
 # The Full tier (GATE_TIER=full, the default): after the reinstall, `jk install -g -c` (the fast
 # tier with the gated tiers, run once) under a freshly started engine, the docs suite (`jk test -s
@@ -22,9 +22,14 @@
 # reinstall, one install that runs every module's fast tier (`jk install -c`), then, under a
 # freshly started engine, the integration suite of each module changed since GATE_BASE
 # (scripts/gate/changed-modules.sh; every module when a root build file changed) and the curated
-# lane's classes (curated-integration.txt) in the other modules, then the docs suite (`jk test -s
+# lane's classes (curated-integration.txt) in the other modules, as one `jk test`, then the docs suite (`jk test -s
 # docs`) and the tree suite (`jk test -s tree`, the tests that scan every module's sources). The
-# Full tier runs the tree suite inside `jk install -g`, as one of the guard suites. jk passes a run red only in the classes .jk/test/quarantine.toml holds; a run red in other
+# Full tier runs the tree suite inside `jk install -g`, as one of the guard suites. Each changed
+# suite runs only the classes scripts/gate/rank-integration.sh ranks highest for the batch, within
+# GATE_INTEG_BUDGET, with the class records the Full tier shipped to <JK_QUEUE_REMOTE>/full-records
+# when that queue is a local directory (scripts/gate/class-records.sh); the log says how many of each
+# module's classes have a record, names each class left for the Full tier on a `DEFERRED <module>
+# <class> (<why>)` line, and each changed module's count on an `INTEG_RANKED` line. jk passes a run red only in the classes .jk/test/quarantine.toml holds; a run red in other
 # classes runs them once more under the same inputs, and passes when they pass there. Each class
 # still red is a `FAILED <module> <class>` line of the log, its failure in g<n>-failures.txt.
 #
@@ -34,10 +39,22 @@
 # results` prints the latest run that kept one, and a run red in a transcript the gate cannot read
 # stays red, with a line saying which run jk printed.
 #
+# A red `jk guard` writes a `GUARD FAIL <check>` line for each check it failed, from its own
+# transcript: the id of each rule a guard lane broke, `<module> <task>` for each other step that
+# failed, and `format` when guard left the checkout changed. An internal error (exit 70) names no
+# check, nor does a transcript of another run.
+#
 # Every tier runs every quarantined class. jk records each class's runs and quarantines a flaky one
 # in the checkout; the gate saves that file, restores the checkout, and then opens a ticket for each
 # class jk added and submits the file, with their tickets and without the classes whose ticket
 # closed, to the merge queue (scripts/gate/flaky.sh review, its output in g<n>-quarantine.log).
+#
+# The shell fixtures (scripts/test-*.sh) of the Full and Queue tiers run one after another in the
+# background from the checkout on, beside guard and the steps after it; the gate waits for them at
+# the end, a red step included, and writes a `FIXTURE FAIL <script>` line for each that failed. A
+# fixture whose header holds the line `# gate-fixture: after-install` runs the tip's own build, so
+# it starts once the tier's last install has finished (scripts/test-headless-keychain.sh, which
+# installs target/dist/jk). Each fixture's output lands in g<n>-fixture-<script>.log.
 #
 # The docs tier (GATE_TIER=docs), which the merge queue runs in place of the Queue tier when
 # everything since GATE_BASE is docs-only (scripts/gate/docs-only.sh range): `jk guard`, which holds
@@ -59,6 +76,10 @@
 #   GATE_BASE         the Queue tier's changed modules are those changed since this commit
 #                     (default origin/main), and the docs tier's range starts there; in the Full
 #                     tier, the slow tier runs when a plugin changed since it (default: no slow tier)
+#   GATE_INTEG_BUDGET the Queue tier's ranked integration classes hold at most this many seconds of
+#                     recorded class wall across the changed modules (default 900; 0 runs their
+#                     whole suites)
+#   GATE_INTEG_POLE   the longest class the ranking runs without having to (default 90 s)
 #   PRE_MODULES       modules whose whole suites run first; PRE_MODULE_SUITES their suites
 #   PRE_SCRIPTS       scripts that must pass before guard; POST_SCRIPTS after the fixtures
 #   PRE_REDO          non-empty: the pre-run ignores cached verdicts (`jk test -r`)
@@ -98,7 +119,33 @@
     GATE_LOG_DIR="$D" bash scripts/gate/flaky.sh review "$D/g$n-quarantine.toml" "$D/g$n-quarantine.log" >>"$L" 2>&1 \
       || echo "FLAKY review failed" >>"$L"
   }
-  done_gate() { quarantine_review; echo "GATE$n DONE" >>"$L"; exit 0; }
+  # fixtures_start <script...>: those fixtures one after another in the background, each one's exit
+  # status in g<n>-fixture-<script>.exit.
+  fixture_pids=() fixtures_run=()
+  fixtures_start() {
+    [ "$#" -gt 0 ] || return 0
+    fixtures_run+=("$@")
+    (
+      for t in "$@"; do
+        bash "$t" >"$D/g$n-fixture-$(basename "$t").log" 2>&1
+        echo "$?" >"$D/g$n-fixture-$(basename "$t").exit"
+      done
+    ) </dev/null &
+    fixture_pids+=("$!")
+  }
+  # fixtures_collect: waits for every fixture started, then a FIXTURE FAIL line for each that did not
+  # exit 0, and FIXTURES_FAIL=1 in the log and $ff when any failed; at most once.
+  ff=0
+  fixtures_collect() {
+    [ "${#fixture_pids[@]}" -gt 0 ] || return 0
+    wait "${fixture_pids[@]}"
+    fixture_pids=()
+    for t in "${fixtures_run[@]}"; do
+      [ "$(cat "$D/g$n-fixture-$(basename "$t").exit" 2>/dev/null)" = 0 ] || { echo "FIXTURE FAIL $t" >>"$L"; ff=1; }
+    done
+    echo "FIXTURES_FAIL=$ff $(date +%H:%M:%S)" >>"$L"
+  }
+  done_gate() { fixtures_collect; quarantine_review; echo "GATE$n DONE" >>"$L"; exit 0; }
   red() { echo "$1" >>"$L"; done_gate; }
   # flaky_named <details.jsonl> <command>: a FLAKY line in the log for each class that passed on the
   # re-run, when the transcript is that run of `jk <command>`.
@@ -119,6 +166,21 @@
         end' 2>/dev/null)"
     echo "${c:-0}"
   }
+  # guard_failed <details.jsonl> <since>: a `GUARD FAIL <check>` line for each check the red guard
+  # run failed, read from its transcript: each rule a guard lane broke, by its id, and each other
+  # step that failed, as `<module> <task>`. A transcript of a run begun before <since> (epoch
+  # seconds), or of no build, is another run's: it names none.
+  guard_failed() {
+    jq -nrR --argjson since "$(($2 * 1000))" '
+      [inputs | fromjson? // empty] as $e
+      | ($e | map(select(.type == "session-start")) | .[0]) as $s
+      | if $s == null or $s.command != "build" or ($s.ts // 0) < $since then empty
+        else
+          def lane: (.task // "") | (. == "guard" or startswith("guard-"));
+          ($e[] | select(.type == "error" and lane) | .code // .task),
+          ($e[] | select(.type == "task-finish" and .status == "FAIL" and (lane | not)) | "\(.module // "-") \(.task)")
+        end' "$1" 2>/dev/null | grep . | sort -u | sed 's/^/GUARD FAIL /'
+  }
   # The FAIL/T/E lines of the pre-run log, then the gate stops red.
   pre_red() { noansi "$D/g$n-pre.log" | grep -aE "^(FAIL|T |E )" | tail -8 >>"$L"; red "RED (pre)"; }
 
@@ -138,6 +200,18 @@
     echo "engine restarted under WSL_INTEROP=$WSL_INTEROP" >>"$L"
   fi
   echo "tip $(git rev-parse --short HEAD) $(date +%H:%M:%S) jk $(jk --version) tier $tier" >>"$L"
+
+  # The shell fixtures start now, beside every step below; those that run the tip's own build wait
+  # for the tier's last install.
+  early=() late=()
+  if [ "$tier" != docs ]; then
+    rm -f "$D/g$n-fixture-"*.exit
+    for t in scripts/test-*.sh; do
+      if grep -qx '# gate-fixture: after-install' "$t"; then late+=("$t"); else early+=("$t"); fi
+    done
+    fixtures_start ${early[@]+"${early[@]}"}
+    echo "FIXTURES started ${#early[@]}; after the installs: ${late[*]:-none}" >>"$L"
+  fi
 
   # Targeted tests first, fail fast: PRE_MODULES, then PRE_SCRIPTS.
   for pm in ${PRE_MODULES:-}; do
@@ -160,12 +234,21 @@
   fi
   git status --porcelain >>"$L"
 
+  since="$(date +%s)"
   jk guard >"$D/g$n-guard.log" 2>&1
   g=$?
   echo "GUARD_EXIT=$g $(date +%H:%M:%S)" >>"$L"
   git status --porcelain >>"$L"
-  [ -n "$(git status --porcelain)" ] && { echo "GUARD LEFT CHANGES" >>"$L"; g=99; }
-  if [ "$g" -ne 0 ]; then
+  left=""
+  if [ -n "$(git status --porcelain)" ]; then
+    left=1
+    printf '%s\n' "GUARD LEFT CHANGES" "GUARD FAIL format" >>"$L"
+  fi
+  if [ "$g" -ne 0 ] && [ "$g" -ne 70 ]; then
+    jk results -O jsonl >"$D/g$n-guard.jsonl" 2>/dev/null </dev/null
+    guard_failed "$D/g$n-guard.jsonl" "$since" >>"$L"
+  fi
+  if [ "$g" -ne 0 ] || [ -n "$left" ]; then
     noansi "$D/g$n-guard.log" | grep -vE '^\s*$' | tail -20 >>"$L"
     red "RED (guard)"
   fi
@@ -251,6 +334,7 @@
     echo "INSTALL_EXIT=$m $(date +%H:%M:%S)" >>"$L"
     echo "NATIVE_LINKS reinstall=$linked install=$(native_links "$since")" >>"$L"
     [ "$m" -eq 0 ] || red "RED (install)"
+    fixtures_start ${late[@]+"${late[@]}"}
     # The integration runs below start a fresh engine from the jar just installed.
     jk engine stop >/dev/null 2>&1
 
@@ -269,16 +353,35 @@
     if [ "$mods" = "*" ]; then
       integ changed -s integration -c --no-ansi
     else
-      margs=()
-      for mo in $mods; do margs+=(-m "$mo"); done
-      [ "${#margs[@]}" -eq 0 ] || integ changed -s integration -c -X --no-ansi "${margs[@]}"
-      # The curated lane, one `jk test` per module, in the modules the run above did not cover.
-      while read -r -a cmd; do
-        cm=""
-        for k in "${!cmd[@]}"; do [ "${cmd[$k]}" = -m ] && cm="${cmd[$((k + 1))]}"; done
-        grep -Fxq -- "$cm" <<<"$mods" && continue
-        integ "curated-${cm//\//-}" "${cmd[@]:2}"
-      done < <(JK=jk bash scripts/curated-integration.sh --print)
+      # One `jk test`: the whole integration suite of each changed module, and the curated lane's
+      # classes, each qualified with its module, in every other module the lane names.
+      with=()
+      for mo in $mods; do with+=(--with "$mo"); done
+      lane="$(JK=jk bash scripts/curated-integration.sh --print ${with[@]+"${with[@]}"} 2>>"$L")" ||
+        red "RED (curated lane: scripts/curated-integration.sh could not read its registry)"
+      read -r -a cmd <<<"$lane"
+      # Within the budget, each changed suite runs only its classes ranked highest for the batch
+      # (scripts/gate/rank-integration.sh); the Full tier runs the classes it leaves.
+      if [ -n "$mods" ] && [ "${GATE_INTEG_BUDGET:-900}" -gt 0 ]; then
+        # The class records the Full tier shipped (scripts/gate/full-loop.sh), when the queue is here.
+        records=""
+        [[ -z "${JK_QUEUE_REMOTE:-}" || "$JK_QUEUE_REMOTE" =~ ^[^/:]+: ]] || records="$JK_QUEUE_REMOTE/full-records"
+        # shellcheck disable=SC2086 # one changed module per word
+        RANK_RECORDS="$records" bash scripts/gate/rank-integration.sh --budget "${GATE_INTEG_BUDGET:-900}" \
+          --pole "${GATE_INTEG_POLE:-90}" "$base" HEAD $mods >"$D/g$n-ranking.txt" 2>>"$L" ||
+          red "RED (ranking: scripts/gate/rank-integration.sh failed)"
+        for mo in $mods; do
+          awk -v m="$mo" '$2 == m && $1 == "DEFER" { d = 1 } END { exit !d }' "$D/g$n-ranking.txt" || continue
+          while read -r c; do cmd+=(--class "$mo:$c"); done < <(awk -v m="$mo" '$2 == m && $1 == "RUN" { print $3 }' "$D/g$n-ranking.txt")
+        done
+        awk '
+          { n[$2]++; t = $4; sub(/^~/, "", t); if ($1 == "RUN") { r[$2]++; s[$2] += t } else d[$2]++ }
+          END { for (m in n) printf "INTEG_RANKED %s ran %d of %d classes (%.0fs recorded), deferred %d to the Full tier\n", m, r[m], n[m], s[m], d[m] }
+        ' "$D/g$n-ranking.txt" | sort >>"$L"
+        awk '$1 == "DEFER" { why = $5; for (i = 6; i <= NF; i++) why = why " " $i; print "DEFERRED " $2 " " $3 " (" why ")" }' \
+          "$D/g$n-ranking.txt" >>"$L"
+      fi
+      integ integration "${cmd[@]:2}"
     fi
     # The docs suite checks the docs against the code, so a code change can break it too.
     tested docs test -s docs -c --no-ansi
@@ -318,6 +421,7 @@
         echo "RERUN green, but the first run was red outside a test class: the push gate stays red" >>"$L"
       fi
     fi
+    fixtures_start ${late[@]+"${late[@]}"}
   fi
 
   # The engine's commit, read after the tests ran under a freshly started engine. It counts when
@@ -371,11 +475,7 @@
     echo "TEST_READS_EXIT=$dr $(date +%H:%M:%S)" >>"$L"
   fi
 
-  ff=0
-  for t in scripts/test-*.sh; do
-    bash "$t" >"$D/g$n-fixture-$(basename "$t").log" 2>&1 || { echo "FIXTURE FAIL $t" >>"$L"; ff=1; }
-  done
-  echo "FIXTURES_FAIL=$ff $(date +%H:%M:%S)" >>"$L"
+  fixtures_collect
   for ps in ${POST_SCRIPTS:-}; do
     pl="$D/g$n-post-$(basename "$ps").log"
     bash "$ps" >"$pl" 2>&1

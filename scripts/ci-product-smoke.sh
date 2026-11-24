@@ -13,7 +13,18 @@ fi
 
 workdir="${TMPDIR:-/tmp}/jk-os-smoke-$$"
 mkdir -p "$workdir"
-trap 'rm -rf "$workdir"' EXIT
+# The engine may still write the project's target/ after the build returns, so removing it waits for
+# that, up to SMOKE_CLEANUP_WAIT seconds; a directory left behind is a warning, never the verdict.
+cleanup() {
+  local rc=$? i=0
+  until rm -rf "$workdir" 2>/dev/null || [ "$i" -ge "${SMOKE_CLEANUP_WAIT:-60}" ]; do
+    i=$((i + 1))
+    sleep 1
+  done
+  [ ! -e "$workdir" ] || echo "warning: could not remove $workdir" >&2
+  exit "$rc"
+}
+trap cleanup EXIT
 cd "$workdir"
 "$jk_bin" new smoke-app --lang java --no-ansi
 cd smoke-app

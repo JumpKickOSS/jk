@@ -89,6 +89,20 @@ the task names it: no file needs finding or opening first.
 - jk `skill` only when a verdict names a topic.
 """
 
+# Cursor's project rule (.cursor/rules/, which cursor-agent loads): the cursor prescription.
+CURSOR_RULES = """---
+description: JumpKick (jk) code graph
+alwaysApply: true
+---
+This project's Java code is indexed by jk's code graph, on the `jk` MCP server. For a question about
+or a change to a Java method, use it, not Grep or file reads:
+
+- Rename `T.m`: call `rename` first, before any search or read. It edits the method, its overrides
+  and every caller in one call, then runs the edited tests and guard: when its answer says the task
+  is done, it is. Do not grep for the old name afterwards.
+- Who calls `T.m`: `usages` once. Its list is complete, from the compiled classes.
+"""
+
 # arm: build tool, extra MCP servers, jk graph tools hidden, hooks installed in the sandbox, prompt addition
 ARMS = {
     # jk as it ships: the default MCP list carries one graph card, usages.
@@ -111,6 +125,9 @@ ARMS = {
     # jk as shipped plus agy's own workspace rule (.agents/rules/, which agy loads): the agy prescription.
     "jk-agyrules": dict(tool="jk", extra=[], hide_graph=False, hooks=None, prompt="", files={
         ".agents/rules/jk.md": AGY_RULES}),
+    # jk as shipped plus cursor's own project rule (.cursor/rules/, which only cursor reads): the cursor prescription.
+    "jk-cursorrules": dict(tool="jk", extra=[], hide_graph=False, hooks=None, prompt="", files={
+        ".cursor/rules/jk.mdc": CURSOR_RULES}),
     # jk as shipped, its AGENTS.md section without the usages line: what that line costs or saves.
     "jk-noline": dict(tool="jk", extra=[], hide_graph=False, hooks=None, prompt="", strip_usages=True),
     "jk-nograph-noline": dict(tool="jk", extra=[], hide_graph=True, hooks=None, prompt="", strip_usages=True),
@@ -1105,10 +1122,34 @@ def render(out_dir: Path) -> None:
     print((out_dir / "TABLE.md").read_text())
 
 
-def main() -> int:
+class Refused(Exception):
+    """An invocation's arguments its parser refuses."""
+
+
+def check_cells(ap: argparse.ArgumentParser, lines) -> int:
+    """Each line one invocation's arguments, tab-separated, parsed as ``ap`` would parse them: a line the
+    parser refuses is printed with its reason. 1 when any is refused; nothing runs."""
+    def refuse(message: str):
+        raise Refused(message)
+
+    ap.error = refuse
+    refused = 0
+    for line in lines:
+        argv = line.rstrip("\n").split("\t")
+        if argv == [""]:
+            continue
+        try:
+            ap.parse_args(argv)
+        except Refused as e:
+            print(f"{ap.prog} {' '.join(argv)}: {e}")
+            refused += 1
+    return 1 if refused else 0
+
+
+def parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--list", action="store_true")
-    ap.add_argument("--task", action="append")
+    ap.add_argument("--task", action="append", choices=sorted(tasks()), metavar="TASK")
     ap.add_argument("--arm", action="append", choices=sorted(ARMS))
     ap.add_argument("--runs", type=int, default=1)
     ap.add_argument("--first-run", type=int, default=1, help="number the runs from here (keeps earlier runs of the day)")
@@ -1123,7 +1164,17 @@ def main() -> int:
     ap.add_argument("--render", action="store_true")
     ap.add_argument("--reverify", action="store_true", help="re-judge kept sandboxes that are not green")
     ap.add_argument("--out")
+    ap.add_argument("--check", action="store_true",
+                    help="read one invocation's arguments per line on stdin, tab-separated; print each this "
+                         "parser refuses, run nothing, and exit 1 when any is refused")
+    return ap
+
+
+def main() -> int:
+    ap = parser()
     ns = ap.parse_args()
+    if ns.check:
+        return check_cells(parser(), sys.stdin)
     ns.date = dt.date.today().isoformat()
     ns.model = ns.model or DEFAULT_MODEL[ns.driver]
     ns.effort = ns.effort or DEFAULT_EFFORT[ns.driver]

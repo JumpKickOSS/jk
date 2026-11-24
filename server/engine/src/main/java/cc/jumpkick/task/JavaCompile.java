@@ -7,6 +7,7 @@ import cc.jumpkick.compile.CompileResult;
 import cc.jumpkick.compile.ForkedJavac;
 import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.host.AtomicWrites;
+import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.run.ContextPropagator;
@@ -318,6 +319,7 @@ public final class JavaCompile {
         }
         Files.createDirectories(stateDir);
         ActionCachePrune.markInUse(stateDir);
+        nameRoot(stateDir, out);
 
         // The record's inputs describe the bytes the key hashed, so they are taken here, before
         // the worker reads a source; the same snapshot is what the post-fork re-read is held to.
@@ -418,6 +420,7 @@ public final class JavaCompile {
             Files.createDirectories(stateDir);
             LangCompile.recordTree(stateDir, key, outputs);
             keepGeneratedLedger(stateDir, key, out);
+            storeState(actionCache, cas, taskId, key, stateDir);
         } else if (Files.isDirectory(stateDir)) {
             PathUtil.deleteRecursively(stateDir);
         }
@@ -468,9 +471,10 @@ public final class JavaCompile {
     }
 
     /**
-     * The compile keyed {@code key} laid back from its record, saying again the warnings its run
-     * said; null when there is no record or a blob of it is gone, and the compile runs. Tells
-     * {@code onLookup} whether the record is there.
+     * The compile keyed {@code key} laid back from its record, with its incremental state when it
+     * cached one ({@link #restoreState}), saying again the warnings its run said; null when there is
+     * no record or a blob of it is gone, and the compile runs. Tells {@code onLookup} whether the
+     * record is there.
      */
     private static @Nullable Result restored(
             String key, CompileRequest request, ActionCache actionCache, Path stateDir, Consumer<Boolean> onLookup)
@@ -482,8 +486,9 @@ public final class JavaCompile {
         ActionCache.ActionRecord cached = MirroredOutputs.omitting(out, hit.get());
         if (!actionCache.restore(cached, out)) return null;
         restoreReferences(actionCache, key, out);
-        restoreGeneratedLedger(stateDir, key, out);
         Files.createDirectories(stateDir);
+        restoreState(actionCache, key, stateDir, out);
+        restoreGeneratedLedger(stateDir, key, out);
         LangCompile.recordTree(stateDir, key, cached.outputs());
         List<CompileResult.Diagnostic> said = CompileWarnings.fromSaid(cached.said(), request.sources());
         return new Result(true, "cache-hit:" + key.substring(0, 8), key, List.of(), said, List.of(), List.of(), 0L);
@@ -517,15 +522,17 @@ public final class JavaCompile {
     /**
      * Keep in {@code stateDir} the generated-file ledger the compile keyed {@code key} wrote beside
      * {@code out}. {@code jk clean} takes the ledger and not the state, so a hit of the same key
-     * can lay it back ({@link #restoreGeneratedLedger}); the ledger names this checkout's absolute
-     * paths, so it stays here and never enters the shared record. Best-effort.
+     * can lay it back ({@link #restoreGeneratedLedger}). The copy spells the paths under the project
+     * root from the root, so it travels with the rest of the state ({@link #storeState}) to another
+     * checkout. Best-effort.
      */
     static void keepGeneratedLedger(Path stateDir, String key, Path out) {
         Path kept = stateDir.resolve(GENERATED_LEDGER);
         try {
             Path ledger = generatedLedger(out);
             if (Files.isRegularFile(ledger)) {
-                AtomicWrites.replace(kept, key + "\n" + Files.readString(ledger, StandardCharsets.UTF_8));
+                String text = Files.readString(ledger, StandardCharsets.UTF_8);
+                AtomicWrites.replace(kept, key + "\n" + spellLedger(text, out, true));
             } else {
                 Files.deleteIfExists(kept);
             }
@@ -552,7 +559,7 @@ public final class JavaCompile {
                 Files.deleteIfExists(ledger);
                 return;
             }
-            String body = text.substring(nl + 1);
+            String body = spellLedger(text.substring(nl + 1), out, false);
             if (Files.isRegularFile(ledger)
                     && Files.readString(ledger, StandardCharsets.UTF_8).equals(body)) return;
             Files.createDirectories(ledger.getParent());
@@ -613,6 +620,128 @@ public final class JavaCompile {
         } catch (IOException | RuntimeException unrestored) {
             Log.debug("reference index not restored for " + out, unrestored);
         }
+    }
+
+    /**
+     * The file in a compile's state that names the project root its analysis spells paths from; the
+     * compiler worker reads it as {@code PortableAnalysis.ROOT_FILE}.
+     */
+    static final String ROOT_FILE = "root";
+
+    /** What a path under the project root starts with in a portable file: the worker's {@code PortableAnalysis.MARK}. */
+    static final String ROOT_MARK = "${root}";
+
+    /**
+     * The files of a compile's state that describe the classes it wrote, and travel with them: the
+     * Zinc analysis, the processor and aggregating markers, the kept generated-file ledger and the
+     * warnings ledger. Each spells this checkout's paths from the project root, or none at all.
+     */
+    static final List<String> STATE_FILES = List.of(
+            ProducerAnalyses.ANALYSIS_FILE, "processors", "aggregating", GENERATED_LEDGER, CompileWarnings.LEDGER);
+
+    /** A marker that belongs to this checkout's last compile alone, and goes when another compile's state comes. */
+    static final String ANALYSIS_OFF = "analysis-off";
+
+    /**
+     * Name in {@code stateDir} the project root that holds {@code out} ({@link PortablePath#projectRoot}),
+     * so the worker writes and reads the analysis relative to it; none for an output under no
+     * project, whose analysis then names absolute paths. Best-effort: an analysis read without its
+     * root names no file here, and the compile it carries goes whole.
+     */
+    static void nameRoot(Path stateDir, Path out) {
+        Path file = stateDir.resolve(ROOT_FILE);
+        try {
+            Optional<Path> root = PortablePath.projectRoot(out);
+            if (root.isEmpty()) {
+                Files.deleteIfExists(file);
+                return;
+            }
+            String text = root.get() + "\n";
+            if (Files.isRegularFile(file)
+                    && Files.readString(file, StandardCharsets.UTF_8).equals(text)) return;
+            AtomicWrites.replace(file, text);
+        } catch (IOException | RuntimeException unnamed) {
+            Log.debug("project root not named for " + out, unnamed);
+        }
+    }
+
+    /** The key the state of the compile keyed {@code key} is cached under, hex as {@link #referencesKey} is. */
+    static String stateKey(String key) {
+        return EnvKeyText.digest(key + "\nstate");
+    }
+
+    /** The task the state of {@code taskId}'s compile is cached under. */
+    static String stateTaskId(String taskId) {
+        return taskId + "+state";
+    }
+
+    /**
+     * Caches the {@link #STATE_FILES} of the compile keyed {@code key} beside its classes, so a hit
+     * of that key in any checkout lays back the analysis that describes them ({@link #restoreState}).
+     * Only a state spelled from a named root travels: one with absolute paths names this checkout.
+     * Best-effort: a state that is not cached costs the next compile after a hit its precision.
+     */
+    static void storeState(ActionCache cache, Cas cas, String taskId, String key, Path stateDir) {
+        if (!Files.isRegularFile(stateDir.resolve(ROOT_FILE))
+                || !Files.isRegularFile(stateDir.resolve(ProducerAnalyses.ANALYSIS_FILE))) return;
+        try {
+            Map<String, String> files = new TreeMap<>();
+            for (String name : STATE_FILES) {
+                Path file = stateDir.resolve(name);
+                if (!Files.isRegularFile(file)) continue;
+                String hex = Hashing.sha256Hex(file);
+                if (!cas.contains(hex)) cas.putFile(file, hex);
+                files.put(name, hex);
+            }
+            cache.storeWithOutputs(stateTaskId(taskId), stateKey(key), Map.of(), files);
+        } catch (IOException | RuntimeException unstored) {
+            Log.debug("compile state not cached for " + stateDir, unstored);
+        }
+    }
+
+    /**
+     * Make {@code stateDir} the state the compile keyed {@code key} cached, so the next compile
+     * continues from the classes this hit lays down rather than from this checkout's last compile:
+     * otherwise every source the two compiles differ in compiles again. With no cached state the
+     * state stays as it is, behind the restore. A cached state that cannot be laid back leaves none,
+     * and the next compile is whole.
+     */
+    static void restoreState(ActionCache cache, String key, Path stateDir, Path out) {
+        try {
+            Optional<ActionCache.ActionRecord> state = cache.lookup(stateKey(key));
+            if (state.isEmpty()) return;
+            for (String name : STATE_FILES) Files.deleteIfExists(stateDir.resolve(name));
+            Files.deleteIfExists(stateDir.resolve(ANALYSIS_OFF));
+            if (cache.restoreFiles(state.get(), stateDir)) nameRoot(stateDir, out);
+        } catch (IOException | RuntimeException unrestored) {
+            Log.debug("compile state not restored for " + stateDir, unrestored);
+        }
+    }
+
+    /**
+     * {@code ledger}, the generated-file ledger of {@code out}, with each path under the project
+     * root spelled from the root ({@code portable}) or back under this checkout's root. A column
+     * is a path escaped as the ledger escapes it, backslashes doubled.
+     */
+    static String spellLedger(String ledger, Path out, boolean portable) {
+        Optional<Path> root = PortablePath.projectRoot(out);
+        if (root.isEmpty()) return ledger;
+        String escaped = root.get().toString().replace("\\", "\\\\");
+        String from = portable ? escaped : ROOT_MARK;
+        String to = portable ? ROOT_MARK : escaped;
+        List<String> lines = new ArrayList<>();
+        for (String line : ledger.split("\n", -1)) {
+            String[] columns = line.split("\t", -1);
+            for (int i = 0; i < columns.length; i++) {
+                String c = columns[i];
+                int end = from.length();
+                boolean under =
+                        c.startsWith(from) && (c.length() == end || c.charAt(end) == '/' || c.charAt(end) == '\\');
+                if (under) columns[i] = to + c.substring(end);
+            }
+            lines.add(String.join("\t", columns));
+        }
+        return String.join("\n", lines);
     }
 
     public static Prediction predict(
@@ -687,6 +816,7 @@ public final class JavaCompile {
         if (planWorkers != PlanWorkers.NONE && workerJar != null && Files.isRegularFile(workerJar)) {
             Path gen = generatedSourceDir != null ? generatedSourceDir : stateDir.resolve("gen");
             Files.createDirectories(gen);
+            nameRoot(stateDir, Objects.requireNonNull(request.outputDir(), "outputDir"));
             ForkedJavac.@Nullable Plan plan;
             try {
                 ForkedJavac.Request planned = new ForkedJavac.Request(
@@ -712,7 +842,7 @@ public final class JavaCompile {
                 // A plan the worker cannot make (a sibling jar not built yet, say) is a full compile.
                 return new Prediction(Outcome.FULL, key, request.sources().size(), "no plan: " + e.getMessage());
             }
-            if (plan != null) return fromPlan(plan, key, request);
+            if (plan != null) return fromPlan(plan, key, request, actionCache.lastFor(taskId, stateDir));
         }
         Optional<ActionCache.ActionRecord> prior = actionCache.lastFor(taskId, stateDir);
         if (prior.isEmpty()) {
@@ -739,16 +869,66 @@ public final class JavaCompile {
         return new Prediction(Outcome.INCREMENTAL, key, n, reason, changed);
     }
 
-    private static Prediction fromPlan(ForkedJavac.Plan plan, String key, CompileRequest request) {
+    /**
+     * {@code onDisk} is the record of the tree the state's ledger names: after a hit under another
+     * key whose compile cached no state, the restored compile's, while the analysis is still the
+     * last compile's.
+     */
+    private static Prediction fromPlan(
+            ForkedJavac.Plan plan, String key, CompileRequest request, Optional<ActionCache.ActionRecord> onDisk)
+            throws IOException {
         List<Path> files = plan.sources();
         if (plan.full()) {
             return new Prediction(
                     Outcome.FULL, key, files.isEmpty() ? request.sources().size() : files.size(), plan.reason(), files);
         }
+        List<Path> unseen = onDisk.isPresent() ? unseenSince(plan, onDisk.get().inputs()) : List.of();
+        if (!unseen.isEmpty()) return behindRestore(plan, key, unseen);
         String reason = plan.reason();
         if (reason.isBlank()) {
             int n = files.size();
             reason = n == 1 ? "1 source" : n + " sources";
+        }
+        return new Prediction(Outcome.INCREMENTAL, key, files.size(), reason, files);
+    }
+
+    /** The why the compiler worker's plan gives a source whose bytes differ from its analysis. */
+    private static final String SOURCE_CHANGED = "source changed";
+
+    /**
+     * The sources the plan recompiles because they differ from the analysis, while their bytes are
+     * the ones the tree on disk was compiled from: the analysis is behind a restore, not the edit.
+     */
+    private static List<Path> unseenSince(ForkedJavac.Plan plan, Map<String, String> onDiskInputs) throws IOException {
+        List<Path> differ = new ArrayList<>();
+        for (ForkedJavac.Invalidation i : plan.invalidations()) {
+            if (SOURCE_CHANGED.equals(i.why())) differ.add(i.source());
+        }
+        if (differ.isEmpty()) return List.of();
+        Set<Path> edited = new HashSet<>(ActionKey.changedSources(differ, onDiskInputs));
+        return differ.stream().filter(s -> !edited.contains(s)).toList();
+    }
+
+    /**
+     * An incremental plan whose {@code unseen} sources come from a restore, listed after the rest:
+     * {@code 208 sources: 1 changed, 207 since a cache hit}.
+     */
+    private static Prediction behindRestore(ForkedJavac.Plan plan, String key, List<Path> unseen) {
+        Set<Path> behind = new HashSet<>(unseen);
+        List<ForkedJavac.Invalidation> rest = plan.invalidations().stream()
+                .filter(i -> !behind.contains(i.source()))
+                .toList();
+        List<Path> files = new ArrayList<>();
+        for (ForkedJavac.Invalidation i : rest) files.add(i.source());
+        files.addAll(unseen);
+        String since = unseen.size() + " since a cache hit";
+        String reason = (files.size() == 1 ? "1 source: " : files.size() + " sources: ");
+        if (rest.isEmpty()) {
+            reason += "all since a cache hit";
+        } else if (rest.stream().allMatch(i -> SOURCE_CHANGED.equals(i.why()))) {
+            reason += rest.size() + " changed, " + since;
+        } else {
+            reason += since;
         }
         return new Prediction(Outcome.INCREMENTAL, key, files.size(), reason, files);
     }

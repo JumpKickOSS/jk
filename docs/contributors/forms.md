@@ -146,7 +146,7 @@ the default template.
   a time with its heap capped at 3 GiB, since `native-image` takes gigabytes and every core. An Android
   template builds only where an Android SDK has its licenses accepted, and is skipped otherwise; a
   template with a known defect (`KNOWN_DEFECTS`, each with its reason) is scaffolded but not built.
-- **Conformance** (`NewProjectConformanceTest`, CLI, fast tier). One scripted answer set through
+- **Conformance** (`NewProjectConformanceTest`, CLI, integration tier: it starts Node). One scripted answer set through
   the terminal walk, through MCP form elicitation with a fake client, and through the web wizard's
   view model under Node (a wizard link carrying the script, then the body the wizard posts, settled
   by `NewProjectPost`): the posted answers and the scaffolded trees must be identical. The view

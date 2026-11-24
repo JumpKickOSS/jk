@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.testrunner;
 
+import cc.jumpkick.testrunner.env.ClassUses;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import jdk.jfr.Category;
@@ -32,7 +33,9 @@ final class ClassWindows {
     void started(String uniqueId, String className) {
         if (!AVAILABLE) return;
         Object window = Recorded.begin(uniqueId, className);
-        if (window != null) open.put(uniqueId, window);
+        if (window == null) return;
+        open.put(uniqueId, window);
+        ClassUses.opened();
     }
 
     /** The class whose container is {@code uniqueId} finished: its window closes. */

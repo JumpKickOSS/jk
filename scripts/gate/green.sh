@@ -13,8 +13,8 @@
 #   GREEN_CHECKOUT  a clone whose origin holds main and green; only fetched and pushed, with this
 #                   host's credentials (required)
 #
-# Prints one line: `green` when green names the newest tip the Full tier passed, `green at <sha>`
-# when it names an older one, then why the newer tips wait; `NOT pushed to green (...)` when the
+# Prints one line about the branch, never a verdict: `green at <sha>, the newest tip the Full tier
+# passed`, or `green at <sha>` naming an older one, then why the newer tips wait; `NOT pushed to green (...)` when the
 # push failed. Exits 0 unless the checkout cannot be read.
 {
   set -uo pipefail
@@ -84,7 +84,7 @@
       || { echo "NOT pushed to green (not a fast-forward of it?)"; exit 0; }
   fi
   if [ "$pick" = "${passed[0]}" ]; then
-    echo "green"
+    echo "green at $(short "$pick"), the newest tip the Full tier passed"
   else
     echo "green at $(short "$pick")${why:+; $why}"
   fi

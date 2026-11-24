@@ -25,9 +25,8 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
-import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
@@ -49,7 +48,7 @@ class EngineTakeoverTest {
     @RegisterExtension
     final ShortTempDirs tempDirs = new ShortTempDirs("jkt-");
 
-    private final List<Throwable> serverFailures = Collections.synchronizedList(new ArrayList<>());
+    private final List<Throwable> serverFailures = new CopyOnWriteArrayList<>();
 
     /** An {@link EngineServer} on its own thread; {@code done} opens when {@code run()} returns. */
     private record Running(Thread thread, CountDownLatch done) {}
@@ -262,7 +261,7 @@ class EngineTakeoverTest {
         Path firstSocket = EnginePaths.activeSocket(p);
         assertThat(old.claimPlanSlotForTests()).isTrue();
 
-        List<String> logs = Collections.synchronizedList(new ArrayList<>());
+        List<String> logs = new CopyOnWriteArrayList<>();
         EngineServer newer = new EngineServer(p, JkEngineConfig.DEFAULTS, "2.0.0-test", logs::add);
         Running newerRun = start(newer);
         try {
@@ -302,7 +301,7 @@ class EngineTakeoverTest {
         String episode = requireNonNull(before.placeRun("mcp", label, "test", dir, at));
         assertThat(old.claimPlanSlotForTests()).isTrue();
 
-        List<String> logs = Collections.synchronizedList(new ArrayList<>());
+        List<String> logs = new CopyOnWriteArrayList<>();
         EngineServer newer = new EngineServer(p, JkEngineConfig.DEFAULTS, "2.0.0-test", logs::add);
         Running newerRun = start(newer);
         try {

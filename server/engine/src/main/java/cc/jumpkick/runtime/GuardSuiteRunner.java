@@ -7,6 +7,7 @@ import cc.jumpkick.guard.eval.GuardSuites;
 import cc.jumpkick.guard.eval.WorkspaceModules;
 import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.KeyedLocks;
+import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.orchestrator.TestProgressListener;
 import cc.jumpkick.run.TestSummary;
@@ -18,11 +19,13 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.function.Consumer;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -116,6 +119,18 @@ final class GuardSuiteRunner {
      * Reentrant: a body may call {@link #run}.
      */
     static <T> T takingTurn(Path report, Turn<T> body) throws IOException, InterruptedException {
+        return takingTurn(report, reason -> {}, body);
+    }
+
+    /** The wait {@code waiting} hears while another engine holds the tree's turn on the report. */
+    static final String OTHER_ENGINE = "another jk's guard suite run on this tree";
+
+    /**
+     * As above; {@code waiting} hears {@link #OTHER_ENGINE} while another engine holds the turn, and
+     * {@code null} once this run has it, so a step blocked on that engine says so.
+     */
+    static <T> T takingTurn(Path report, Consumer<@Nullable String> waiting, Turn<T> body)
+            throws IOException, InterruptedException {
         Path guardDir = Objects.requireNonNull(report.toAbsolutePath().getParent(), "report has a parent");
         Files.createDirectories(guardDir);
         Path key = guardDir.normalize();
@@ -123,8 +138,19 @@ final class GuardSuiteRunner {
         try (KeyedLocks.Held turn = RUNS.holdInterruptibly(key);
                 FileChannel channel = FileChannel.open(
                         guardDir.resolve(LOCK_FILE), StandardOpenOption.CREATE, StandardOpenOption.WRITE);
-                FileLock held = channel.lock()) {
+                FileLock held = lockTelling(channel, waiting)) {
             return body.run();
+        }
+    }
+
+    private static FileLock lockTelling(FileChannel channel, Consumer<@Nullable String> waiting) throws IOException {
+        FileLock now = channel.tryLock();
+        if (now != null) return now;
+        waiting.accept(OTHER_ENGINE);
+        try {
+            return channel.lock();
+        } finally {
+            waiting.accept(null);
         }
     }
 
@@ -227,15 +253,50 @@ final class GuardSuiteRunner {
                                 "true"),
                         listener,
                         null);
-        if (Files.isRegularFile(part)) AtomicWrites.moveInto(part, report);
-        else Files.deleteIfExists(report);
-        long reported = Files.isRegularFile(report) ? Files.readAllLines(report).size() : 0;
+        long reported = settle(part, report);
         // What the fork said, next to the report it left: the place to look when a guard is missing from it.
         StringBuilder log = new StringBuilder("total=" + summary.total() + " succeeded=" + summary.succeeded()
                 + " failed=" + summary.failed() + " skipped=" + summary.skipped() + " reported=" + reported + "\n");
         for (String l : said) log.append(l).append('\n');
         Files.writeString(report.resolveSibling("junit.log"), log.toString());
         return problems(summary, reported, said);
+    }
+
+    /**
+     * Moves the fork's side file into place as the report, one line per guard, and returns how many
+     * guards it holds; no side file leaves no report. A suite JVM that ran out of heap appended the
+     * lines of the guards it finished before it died, and the launcher's retry runs the class again
+     * into the same file, so a guard can appear twice: its last line, the retry's, is its verdict.
+     */
+    static long settle(Path part, Path report) throws IOException {
+        if (!Files.isRegularFile(part)) {
+            Files.deleteIfExists(report);
+            return 0;
+        }
+        List<String> lines = lastLinePerGuard(Files.readAllLines(part));
+        AtomicWrites.replace(report, lines.isEmpty() ? "" : String.join("\n", lines) + "\n");
+        Files.delete(part);
+        return lines.size();
+    }
+
+    /** {@code lines} with each guard's last line kept, at the place its first stood; a line naming no guard stays as is. */
+    static List<String> lastLinePerGuard(List<String> lines) {
+        Map<String, String> byGuard = new LinkedHashMap<>();
+        for (String line : lines) {
+            if (line.isBlank()) continue;
+            byGuard.put(guardOf(line), line);
+        }
+        return List.copyOf(byGuard.values());
+    }
+
+    /** The guard {@code line} reports, prefixed so it never equals a line; the line itself when it names none. */
+    private static String guardOf(String line) {
+        try {
+            if (MiniJson.parse(line) instanceof Map<?, ?> m && m.get("id") instanceof String id) return "id:" + id;
+        } catch (RuntimeException unreadable) {
+            // a line a dying fork cut short is kept, for the evaluator to report
+        }
+        return line;
     }
 
     /**

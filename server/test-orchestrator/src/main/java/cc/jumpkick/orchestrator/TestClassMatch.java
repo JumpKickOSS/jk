@@ -15,8 +15,9 @@ import org.jspecify.annotations.Nullable;
  * <p>The patterns are judged against the whole run, not each module: in a workspace most modules
  * do not contain the class the user named, and each of them skips. Only when no module matched
  * anything is the pattern a typo, and a typo must never pass green. A standalone project is its own
- * run, so there the empty match fails on the spot. Either way it is a {@link #NO_TESTS_MATCHED}
- * usage error, not a failed test.
+ * run, so there the empty match fails on the spot, and so does a module a qualified pattern names
+ * ({@code server/engine:EngineIT}): the pattern was meant for it alone. Either way it is a {@link
+ * #NO_TESTS_MATCHED} usage error, not a failed test.
  */
 public final class TestClassMatch {
 
@@ -82,10 +83,59 @@ public final class TestClassMatch {
         return tagged == null ? head : tagged;
     }
 
+    /** The failure line of a module a qualified pattern named, opening with that module. */
+    public static String inModule(String module, String noMatch) {
+        return module + ": " + noMatch;
+    }
+
+    /**
+     * What one module's run leaves under {@code selection}.
+     *
+     * @param result the summary of the tests that ran; {@code null} when none did or the module skipped
+     * @param noMatch the failure line when the selection named something that did not run
+     * @param skipped a workspace module the patterns matched nothing in: the run-wide verdict judges it
+     * @param otherSuite the suite hint to warn with when tests ran but a named class belongs to
+     *     another suite
+     */
+    public record Verdict(
+            @Nullable TestSummary result,
+            @Nullable String noMatch,
+            boolean skipped,
+            @Nullable String otherSuite) {}
+
+    /**
+     * The verdict of a module's run of {@code selection}. A workspace module the patterns matched
+     * nothing in skips, so the run-wide verdict judges the patterns across modules; a standalone
+     * project fails on the spot, naming the runner's {@code tagExcluded} warning when the tag
+     * filter emptied the run. A class named without a wildcard that the tag filter dropped fails
+     * the module, whatever else ran. A {@code --class} naming a class another suite owns says which
+     * suite ({@code suiteHint}), matched or not.
+     *
+     * @param workspace whether the module is one of several the run covers and no qualified
+     *     pattern names it
+     */
+    public static Verdict judge(
+            TestSelection selection,
+            boolean exactClassList,
+            @Nullable String tagExcluded,
+            @Nullable String suiteHint,
+            boolean workspace,
+            TestSummary result) {
+        boolean nothing = nothingMatched(selection, exactClassList, result);
+        if (!exactClassList && tagExcluded != null && namesClasses(selection)) {
+            return nothing
+                    ? new Verdict(null, noMatchMessage(selection, tagExcluded, suiteHint), false, null)
+                    : new Verdict(result, tagExcluded, false, null);
+        }
+        if (!nothing) return new Verdict(result, null, false, suiteHint);
+        if (workspace) return new Verdict(null, null, true, null);
+        return new Verdict(null, noMatchMessage(selection, tagExcluded, suiteHint), false, null);
+    }
+
     /**
      * The workspace's verdict once every module has finished: the no-match message when the session
-     * asked for classes, the run executed suites, and no module's suite ran a test — otherwise
-     * {@code null}. {@code runs} holds what each module's test step left. A module that matched
+     * asked for classes no module qualifies, the run executed suites, and no module's suite ran a
+     * test — otherwise {@code null}. A qualified pattern was judged in its own module. {@code runs} holds what each module's test step left. A module that matched
      * carries a {@link TestRun#result} with tests in it, whether it ran them or replayed a green
      * stamp for the same patterns. A module whose tag filter dropped a named class left {@link
      * TestRun#tagExcluded}, and a module whose unselected suite owns a named class left {@link
@@ -93,7 +143,8 @@ public final class TestClassMatch {
      */
     public static @Nullable String runWideVerdict(Session session, boolean skipTests, Collection<TestRun> runs) {
         TestSelection selection = session.testSelection();
-        if (selection.classes().isEmpty() || session.affected()) return null;
+        List<String> patterns = selection.unqualifiedClasses();
+        if (patterns.isEmpty() || session.affected()) return null;
         if (skipTests || selection.scriptsOnly()) return null;
         for (TestRun run : runs) {
             TestSummary result = run.result();
@@ -108,7 +159,7 @@ public final class TestClassMatch {
             if (suiteHint != null) hints.add(suiteHint);
         }
         return noMatchMessage(
-                selection,
+                selection.withClasses(patterns),
                 excluded.isEmpty() ? null : String.join("; ", excluded),
                 hints.isEmpty() ? null : String.join("; ", hints));
     }

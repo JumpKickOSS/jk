@@ -163,7 +163,7 @@ class WorkerLeasesTest {
     @Test
     void a_lease_larger_than_the_budget_is_clamped_to_it() {
         long budget = 200L << 20;
-        long fitted = WorkerLeases.clampXmx(2L << 30, budget);
+        long fitted = LeaseDemand.clampXmx(2L << 30, budget);
         assertThat(fitted).isLessThan(2L << 30);
         assertThat(WorkerLeases.jvmLease(fitted)).isLessThanOrEqualTo(budget);
         List<String> rewritten =

@@ -125,6 +125,23 @@ class ProtoSessionRequestTest {
         assertThat(ProtoSession.sessionOf(buildLine(), TOKEN).keyAudit()).isEqualTo(KeyAuditMode.OFF);
     }
 
+    /** {@code jk test --rerun} rides the line to the engine, without a rebuild; a plain build never spells it. */
+    @Test
+    void a_test_rerun_session_reaches_the_engine_without_a_rebuild_and_a_plain_line_stays_silent() {
+        String plain = new BuildRequest(
+                        DIR, CACHE, JDKS, 3, "ci", false, true, 4, false, false, false, false, false, false, null,
+                        SELECTION, null, List.of(), false, null, Map.of(), null, null, null)
+                .encode();
+        String spliced =
+                ProtoSession.withSessionFields(plain, Session.defaults().withRerunTests(true));
+        Session s = ProtoSession.sessionOf(spliced, TOKEN);
+        assertThat(s.rerunTests()).isTrue();
+        assertThat(s.config().rebuildOr(false)).isFalse();
+        assertThat(s.force()).isFalse();
+        assertThat(ProtoSession.withSessionFields(plain, Session.defaults())).doesNotContain("\"rerunTests\"");
+        assertThat(ProtoSession.sessionOf(plain, TOKEN).rerunTests()).isFalse();
+    }
+
     /** A guard run's session rides the line to the engine; a plain build never spells it. */
     @Test
     void a_guard_run_session_reaches_the_engine_and_a_plain_line_stays_silent() {

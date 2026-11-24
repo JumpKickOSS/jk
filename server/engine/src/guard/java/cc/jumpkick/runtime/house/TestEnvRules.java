@@ -58,7 +58,7 @@ final class TestEnvRules {
     /**
      * What the launcher sets on every test JVM beyond the names it inherits: the JDK it runs under
      * ({@code WorkerEnv}), the nested engine's listeners and self-update switch and the search
-     * ceilings ({@code TestEnv.forModule}), and the fast tier's walls ({@code TestLaunch}).
+     * ceilings ({@code TestEnv.forModule}), and the fast tier's walls ({@code ForkSpec}).
      */
     private static final Set<String> LAUNCHER = Set.of(
             "JAVA_HOME",
@@ -69,7 +69,7 @@ final class TestEnvRules {
             Http.DENY_HOSTS_ENV,
             EnginePaths.NO_SPAWN_ENV);
 
-    /** A module that pins Node.js runs its tests with that Node.js named ({@code TestLaunch}). */
+    /** A module that pins Node.js runs its tests with that Node.js named ({@code SuiteEnvironment}). */
     private static final String NODE_HOME = "NODE_HOME";
 
     /**

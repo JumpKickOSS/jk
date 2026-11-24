@@ -9,11 +9,13 @@ import cc.jumpkick.host.GitCommand;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.Os;
+import cc.jumpkick.host.OwnerOnlyFiles;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.ProcessEnv;
 import cc.jumpkick.host.SearchPath;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.util.AttemptWindow;
+import cc.jumpkick.util.FileLocks;
 import cc.jumpkick.util.GitProxy;
 import cc.jumpkick.util.GitVersion;
 import cc.jumpkick.util.StoreWriteGate;
@@ -111,10 +113,12 @@ public final class OfficialTemplatesFreshen {
             Files.createDirectories(cacheRoot);
             Parsed p = parse(ref);
             Path dest = destination(cacheRoot, p.cacheKey());
-            if (!Files.isDirectory(dest) || !isRepositoryRoot(dest) || !looksLikeTemplateMonorepo(dest)) {
-                refreshRef(ref, cacheRoot, log, proxy);
-            }
-            fetchAndReset(dest, commit, proxy.httpProxy(p.url()).orElse(null));
+            FileLocks.withLock(lockFile(cacheRoot, p.cacheKey()), () -> {
+                if (!Files.isDirectory(dest) || !isRepositoryRoot(dest) || !looksLikeTemplateMonorepo(dest)) {
+                    refreshRef(ref, cacheRoot, log, proxy);
+                }
+                fetchAndReset(dest, commit, proxy.httpProxy(p.url()).orElse(null));
+            });
             log.accept("jk engine: templates updated to " + commit.substring(0, 12));
         }
     }
@@ -189,10 +193,20 @@ public final class OfficialTemplatesFreshen {
         }
     }
 
+    /**
+     * Bring the clone of {@code ref} up to date, holding its {@link #lockFile}: a second refresh, in
+     * this process or another, waits rather than fetching beside it, and a scaffold copying a template
+     * out ({@link #copyFromClone}) never reads a clone this deletes and clones again.
+     */
     static void refreshRef(String ref, Path cacheRoot, Consumer<String> log, GitProxy proxy) throws IOException {
         Parsed p = parse(ref);
         Path dest = destination(cacheRoot, p.cacheKey());
         @Nullable String httpProxy = proxy.httpProxy(p.url()).orElse(null);
+        FileLocks.withLock(lockFile(cacheRoot, p.cacheKey()), () -> refreshLocked(p, dest, httpProxy, log));
+    }
+
+    private static void refreshLocked(Parsed p, Path dest, @Nullable String httpProxy, Consumer<String> log)
+            throws IOException {
         // Incomplete clones (e.g. only a .git dir left from a failed private-repo attempt) must be
         // wiped and re-cloned — fetch/reset cannot recover them. So must a catalog-shaped directory
         // that is not a repository of its own: a fetch and reset there would act on whatever
@@ -217,6 +231,40 @@ public final class OfficialTemplatesFreshen {
             runGit(p.cloneArgs(dest), httpProxy, Duration.ofSeconds(120));
             log.accept("jk engine: re-cloned templates source (" + dest.getFileName() + ")");
         }
+    }
+
+    /**
+     * The lock every writer of the clone {@code cacheKey} names holds, and every reader that copies
+     * out of it: a sibling file of the clone, so deleting the clone never unlinks it.
+     */
+    public static Path lockFile(Path cacheRoot, String cacheKey) throws IOException {
+        Path dest = destination(cacheRoot, cacheKey);
+        return dest.resolveSibling(cacheKey + ".lock");
+    }
+
+    /**
+     * A private copy of {@code templateRoot} under {@link JkDirs#tmp()} when it lies in a clone under
+     * {@link JkDirs#templates()}, taken while no refresh rewrites that clone; null for a template
+     * anywhere else. The caller renders from the copy and deletes it.
+     */
+    public static @Nullable Path copyFromClone(Path templateRoot) throws IOException {
+        Path cacheRoot = JkDirs.templates().toAbsolutePath().normalize();
+        Path root = templateRoot.toAbsolutePath().normalize();
+        if (!root.startsWith(cacheRoot) || root.getNameCount() <= cacheRoot.getNameCount()) return null;
+        String cacheKey = root.getName(cacheRoot.getNameCount()).toString();
+        Path tmp = JkDirs.tmp();
+        OwnerOnlyFiles.createDirectories(tmp);
+        Path copy = Files.createTempDirectory(tmp, "jk-g8-");
+        try {
+            FileLocks.withLock(lockFile(cacheRoot, cacheKey), () -> {
+                PathUtil.copyTree(
+                        root, copy, dir -> dir.getFileName().toString().equals(".git"));
+            });
+        } catch (IOException | RuntimeException e) {
+            PathUtil.deleteRecursively(copy);
+            throw e;
+        }
+        return copy;
     }
 
     /**

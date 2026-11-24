@@ -11,9 +11,12 @@ import cc.jumpkick.cli.args.ArgParser;
 import cc.jumpkick.cli.args.ParseException;
 import cc.jumpkick.command.project.ExplainCommand;
 import cc.jumpkick.command.toolchain.ToolInstallCommand;
+import cc.jumpkick.config.Session;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.TestQuarantine;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
+import cc.jumpkick.wire.protocol.ProjectInfo;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -62,6 +65,53 @@ class TestCommandOptionsTest {
     }
 
     @Test
+    void a_module_qualified_class_needs_both_halves() throws Exception {
+        assertThat(BuildFlags.testSelection(parse("-S", "server/engine:EngineIT", "-S", "OrdersTest"))
+                        .classes())
+                .containsExactly("server/engine:EngineIT", "OrdersTest");
+        for (String bad : List.of(":EngineIT", "server/engine:")) {
+            assertThatThrownBy(() -> BuildFlags.testSelection(parse("-S", bad)))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("needs a module and a class around ':'");
+        }
+    }
+
+    private static ProjectInfo modules(String... dirs) {
+        StringBuilder map = new StringBuilder();
+        for (String dir : dirs)
+            map.append(map.isEmpty() ? "" : ",").append("\"").append(dir).append("\":\"m\"");
+        return ProjectInfo.decode("{\"type\":\"project-info-ack\",\"modules\":{" + map + "}}");
+    }
+
+    @Test
+    void a_module_qualifier_becomes_the_directory_of_each_module_it_names() {
+        List<String> resolved = TestVerb.qualifiedByDir(
+                List.of("orders:OrdersIT#refund*", "*SmokeIT"),
+                module -> module.equals("orders") ? modules("/ws/orders") : modules(),
+                List.of("/ws/orders", "/ws/app"));
+
+        assertThat(resolved).containsExactly("/ws/orders:OrdersIT#refund*", "*SmokeIT");
+    }
+
+    @Test
+    void a_qualifier_naming_no_module_or_one_outside_the_run_is_refused() {
+        assertThatThrownBy(() -> TestVerb.qualifiedByDir(List.of("ordrs:OrdersIT"), module -> modules(), null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("--class ordrs:OrdersIT: no module matches ordrs");
+        assertThatThrownBy(() -> TestVerb.qualifiedByDir(
+                        List.of("ordrs:OrdersIT"), module -> ProjectInfo.error("no module 'ordrs'"), null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("--class ordrs:OrdersIT: no module 'ordrs'");
+        assertThatThrownBy(() -> TestVerb.qualifiedByDir(
+                        List.of("orders:OrdersIT"), module -> modules("/ws/orders"), List.of("/ws/app")))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("--class orders:OrdersIT: orders is not in this run; add -m orders");
+        assertThat(TestVerb.qualifiedByDir(List.of("orders:OrdersIT"), module -> modules("/ws/orders"), null))
+                .as("a run over the whole workspace holds every module")
+                .containsExactly("/ws/orders:OrdersIT");
+    }
+
+    @Test
     void quarantined_selects_the_classes_the_quarantine_file_holds(@TempDir Path root) throws Exception {
         assertThat(parse("--quarantined").isSet("quarantined")).isTrue();
         assertThatThrownBy(() -> BuildFlags.quarantinedClasses(root, List.of()))
@@ -81,6 +131,29 @@ class TestCommandOptionsTest {
         assertThatThrownBy(() -> BuildFlags.quarantinedClasses(root, List.of("OrdersTest")))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessage(BuildFlags.QUARANTINED_WITH_CLASS);
+    }
+
+    /** {@code --rerun} asks for the suites alone: the session re-runs tests and leaves the caches on. */
+    @Test
+    void rerun_reruns_the_tests_and_leaves_rebuild_off() throws Exception {
+        Session plain = rerunSession();
+        assertThat(plain.rerunTests()).isFalse();
+        Session rerun = rerunSession("--rerun");
+        assertThat(rerun.rerunTests()).isTrue();
+        assertThat(rerun.config().rebuildOr(false)).isFalse();
+        assertThat(rerun.force()).isFalse();
+        assertThat(BuildVerbCommand.argv(new TestVerb(), parse("--rerun"))).contains("--rerun");
+    }
+
+    /** The session {@code jk test <args>} parses into, inside an invocation of its own. */
+    private static Session rerunSession(String... args) throws Exception {
+        return SessionContext.invocation(() -> {
+            Invocation in = parse(args);
+            BuildFlags flags = BuildFlags.from(in);
+            TestVerb verb = new TestVerb();
+            verb.parse(in, new BuildRun(verb, flags, in, null, null, null));
+            return SessionContext.current();
+        });
     }
 
     @Test

@@ -225,8 +225,9 @@ class InstallLockTest {
 
     /**
      * When taking back a set-aside run fails (an interrupt while another session holds the lock,
-     * here a conflicting lock in this JVM), the run's own close must not unbalance the count: a
-     * later run in this JVM still has to take the OS lock and hold an install off.
+     * here a conflicting lock in this JVM), the run's own close must not unbalance the count, and the
+     * failed acquires must leave no channel open for a collection to close later: a later run in
+     * this JVM still has to take the OS lock and hold an install off.
      */
     @Test
     void a_failed_take_back_of_a_set_aside_run_leaves_later_runs_locked() throws Exception {
@@ -251,11 +252,25 @@ class InstallLockTest {
             other.release();
             run.close();
         }
-        try (InstallLock.Hold later = InstallLock.shared(lock(), "jk test");
-                var install = InstallLockHolderMain.start(lock(), "exclusive", "jk install")) {
-            assertThat(install.nextLine(Duration.ofSeconds(60)))
-                    .as("an install waits for this JVM's run")
-                    .startsWith("WAIT ");
+        try (InstallLock.Hold later = InstallLock.shared(lock(), "jk test")) {
+            collectUnreachableChannels();
+            try (var install = InstallLockHolderMain.start(lock(), "exclusive", "jk install")) {
+                assertThat(install.nextLine(Duration.ofSeconds(60)))
+                        .as("an install waits for this JVM's run")
+                        .startsWith("WAIT ");
+            }
+        }
+    }
+
+    /**
+     * Run the collector and give the cleaner time to close what it found. A channel left open and
+     * unreachable is closed by its cleaner whenever a collection finds it, and on POSIX that close
+     * drops every lock this process holds on the file; a run beside other suites collects often.
+     */
+    private static void collectUnreachableChannels() throws InterruptedException {
+        for (int i = 0; i < 3; i++) {
+            System.gc();
+            Thread.sleep(100);
         }
     }
 

@@ -98,4 +98,46 @@ final class CliTestRules {
                     "the scan never reached LibrarySearchCommandTest, a class that seeds Central's tree");
         v.population(tests.size());
     }
+
+    /** A tag that takes a class out of e2e/cli's fast tier. */
+    private static final Pattern TIER_TAG = Pattern.compile("@Tag\\(\"(?:integration|slow|release|network|bench)\"\\)");
+
+    /** Where a test starts a program itself. */
+    private static final Pattern STARTS_PROGRAM =
+            Pattern.compile("new ProcessBuilder\\(|Runtime\\.getRuntime\\(\\)\\.exec\\(");
+
+    @Guard(
+            id = "cli-e2e-fast-starts-nothing",
+            why =
+                    "e2e/cli's test JVMs are handed the engine assembly, and a program started in one keys that class and every later class of its JVM by the engine's bytes, so any engine edit runs them again",
+            instead = "tag the class @Tag(\"integration\"), or move it to clients/cli when it needs no engine")
+    void aFastCliE2eClassStartsNoProgram(Text text, Violations v) {
+        List<String> tests = new ArrayList<>();
+        for (String rel : tests(text)) {
+            if (rel.startsWith("e2e/cli/") && rel.endsWith("Test.java")) tests.add(rel);
+        }
+        boolean sawStarter = false;
+        for (String rel : tests) {
+            String code = text.blanked(rel, Blank.COMMENTS);
+            String compiled = text.blanked(rel, Blank.COMMENTS_AND_STRINGS);
+            Matcher start = STARTS_PROGRAM.matcher(compiled);
+            if (!start.find()) continue;
+            if (rel.endsWith("/SelfNukeOverlayStoreTest.java")) sawStarter = true;
+            if (TIER_TAG.matcher(code).find()) continue;
+            v.add(
+                    new TextSite(rel, line(compiled, start.start()), start.group()),
+                    rel + " starts a program (" + start.group() + ") in e2e/cli's fast tier");
+        }
+        if (!sawStarter)
+            throw new IllegalStateException(
+                    "the scan never saw SelfNukeOverlayStoreTest start a program, the shape this rule looks for");
+        v.population(tests.size());
+    }
+
+    /** The 1-based line of {@code offset} in {@code text}. */
+    private static int line(String text, int offset) {
+        int line = 1;
+        for (int i = 0; i < offset; i++) if (text.charAt(i) == '\n') line++;
+        return line;
+    }
 }

@@ -152,7 +152,8 @@ modules = [
 #                          it; the Full tier runs it with the guard suites.
 #   jk test -s slow        framework and language e2e. Nightly, never gating.
 #   jk test -s network     talks to a real remote. Nightly, never gating.
-#   jk test -s release     a real browser or other cost worth paying once per release. CI on the tag.
+#   jk test -s release     a real browser, or an end-to-end too slow for every queue batch. The
+#                          Full tier runs it every cycle; CI on the tag.
 #   jk test -s live        talks to this machine's own services (the OS keychain). On demand.
 #   jk test -s bench       microbenchmarks. On demand, gates nothing.
 #   jk test --all          every suite but live and bench (explicit).
@@ -212,9 +213,11 @@ exclude-tags = ["network", "release", "live", "bench"]
 tags = ["network"]
 exclude-tags = ["release", "live", "bench"]
 
-# Once per release: CI's self-host job runs it on the release tag, after the fast tier and the
-# curated lane, so a red run stops the release. For a test too slow or too heavy for every push
-# that a release must still pass, such as the dashboard driven in a real browser. It may fetch.
+# Before every release, never in a queue batch: the Full tier runs it every cycle, and CI's self-host
+# job on the release tag, after the fast tier and the curated lane, so a red run stops the release.
+# For a test too slow or too heavy for every batch that a release must still pass: the dashboard
+# driven in a real browser, the Helidon scaffolds served end to end, publish and release against a
+# local repository, the cross-host key proof, the forecast-against-run matrix. It may fetch.
 [test.suites.release]
 tags = ["release"]
 exclude-tags = ["live", "bench"]

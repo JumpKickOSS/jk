@@ -27,8 +27,9 @@ the tier `GATE_TIER` names ([tiers](test-suite-tiers.md#gate-tiers)). It takes t
 
 - **`GATE_TIER=queue`**, the push gate the [merge queue](#the-merge-queue) runs on every batch:
   `jk install -S` (the reinstall without tests), then under a freshly started engine
-  `jk install -c` (every module's fast tier, then the reinstall), the integration suite of each
-  module changed since `GATE_BASE` (`scripts/gate/changed-modules.sh`), the curated lane's
+  `jk install -c` (every module's fast tier, then the reinstall), the integration classes ranked
+  highest within a budget in each module changed since `GATE_BASE` (`scripts/gate/changed-modules.sh`,
+  [ranking](test-suite-tiers.md#the-queue-tier-runs-the-classes-a-batch-ranks-highest)), the curated lane's
   classes in the other modules, the docs suite (`jk test -s docs`), which holds the docs to
   the code, and the tree suite (`jk test -s tree`), the tests that scan every module's sources.
 - **`GATE_TIER=full`** (the default): `jk install -S` (the reinstall without tests), `jk install -g`
@@ -46,7 +47,10 @@ the tier `GATE_TIER` names ([tiers](test-suite-tiers.md#gate-tiers)). It takes t
 Both reinstall before any test runs, because a test's verdict is keyed by the engine that ran it:
 a batch that changes the engine reruns every suite under its own engine, and the next gate reuses
 those verdicts for every module it did not change. The Queue and Full tiers then check that the
-engine which served the tests is the tip's and run the shell fixtures. Each tier writes `GREEN <sha>` or `RED` to `integ-gate-<n>.log` under
+engine which served the tests is the tip's, and run the shell fixtures (`scripts/test-*.sh`) in the
+background beside every step from guard on; a fixture whose header holds the line
+`# gate-fixture: after-install` runs the tip's build, so it starts once the tier's last install has
+finished. Each tier writes `GREEN <sha>` or `RED` to `integ-gate-<n>.log` under
 `GATE_LOG_DIR`. A gate never pushes.
 The header of `scripts/gate/gate.sh` lists its settings; `scripts/test-gate.sh` runs it against a
 stand-in `jk`.
@@ -110,8 +114,16 @@ replacing an earlier submission of the branch.
 
 Each batch, under the host's gate lock, the loop fetches `origin/main` and cherry-picks every
 waiting branch onto it, oldest first, skipping commits the batch already carries (a branch cut from
-another waiting branch lands its own commits only). A branch that conflicts, or that carries a
-merge commit, is ejected. It gates the result with the Queue tier of `scripts/gate/gate.sh`
+another waiting branch lands its own commits only). Each batch runs the copy of
+`scripts/queue/loop.sh` that `origin/main` holds, so a change to the batch lands with the batch
+after it; when `origin/main` has none, or one bash cannot parse, the last copy runs. A change to
+the loop around the batches (polling, pausing) still waits for a restart. A branch that conflicts, or that carries a
+merge commit, is ejected, with one exception: two branches that each change the code of a key
+contract each record its digest on the same line of `KeyContract.java`, in one batch or in two
+back to back, and when that file is the
+only conflict and its conflicts differ only in those digests, the queue records the digests
+`jk guard` prints for the merged code and goes on (the batch's line names the branch after
+`rerecorded:`). A commit left with nothing to apply once its digest is the merged one is dropped. It gates the result with the Queue tier of `scripts/gate/gate.sh`
 (`QUEUE_TIER=full` gates with the Full tier instead; a [docs-only](#docs-only-changes) batch gets
 the docs tier) and, on `GREEN`, pushes it to `origin/main` as a fast-forward. It never forces: when
 `origin/main` moved while the batch gated, the push is refused. When everything that moved it is
@@ -142,15 +154,26 @@ its taking the gate lock) and `gate` seconds. Each branch that lands or is eject
 its batch took the lock, when the gate started and ended, and when it landed or was ejected.
 `status.sh --stats` reads it; the target is ten minutes or less from submission to landing at the
 median. A batch that could not gate at all (a dirty
-checkout, a failed fetch, no verdict) puts its branches back to waiting and stops the loop. On
-bocabox it runs as
+checkout, a failed fetch, no verdict) puts its branches back to waiting and stops the loop.
+
+The gate installs each batch, a candidate that is not on `main` yet, and runs it. So the loop runs
+in a JumpKick home of its own (`JK_HOME`), and refuses to start without one or with `~/.jk`: the
+default home is the one every other session on its host builds and tests with, and a candidate
+installed there would change their engine, and with it every suite's key, every few minutes. The
+host's `~/.jk` moves only when something installs `main` into it. The home is made once, as a
+[private home](#beside-the-default-home) is; on bocabox the loop then runs as
 
 ```bash
+export JK_HOME=$HOME/jk-queue/home JK_SELF_UPDATE=never
+mkdir -p "$JK_HOME" && printf '[http]\nport = 0\n' >"$JK_HOME/config.toml"
+(cd ~/src/jk-queue-checkout && env -u JK_HOME ~/.jk/bin/jk build -S \
+  && bash install.sh target/dist/jk && git clean -qfd)   # once: the new home has no jk yet
 QUEUE_CHECKOUT=~/src/jk-queue-checkout scripts/queue/loop.sh
 ```
 
-from a checkout other than `QUEUE_CHECKOUT`; the header of `scripts/queue/loop.sh` lists its
-settings, and `scripts/test-queue.sh` holds it to the rules above in scratch repositories.
+from a checkout other than `QUEUE_CHECKOUT`. Every batch after the first install installs into the
+queue's home. That home keeps its own store and caches, so the first batch in a new one builds
+cold. The header of `scripts/queue/loop.sh` lists its settings, and `scripts/test-queue.sh` holds it to the rules above in scratch repositories.
 
 **Pausing.** While `pause` exists in the queue's repository, the queue and the
 [Full tier loop](#the-full-tier-loop) start no batch or cycle: the one in flight finishes, each loop
@@ -165,12 +188,18 @@ for a night of benches.
 A change is docs-only when every file it touches is a doc (a file under `docs/` or `hosting/`, or a
 Markdown file at the root) that no test reads but those of the docs suite, which the docs tier
 runs; `scripts/gate/docs-only.sh range <base> <tip>` says whether a range is. The docs tests read
-are `scripts/gate/test-reads.txt`. Nobody writes it by hand: JumpKick records every file a suite
-reads ([discovered inputs](../user/test.md#what-a-suite-read-discovered-inputs)), one record per
-module and selection, and `scripts/gate/docs-only.sh write` collects the docs among them for every
-workspace member from JumpKick's cache, leaving out the record of `jk test -s docs`. Run it after a
-run of every suite and commit the result. The Full tier runs `scripts/gate/docs-only.sh check` once
-all its suites ran, and is red naming each doc a suite read that the list lacks.
+are `scripts/gate/test-reads.txt`. JumpKick records every file a suite reads
+([discovered inputs](../user/test.md#what-a-suite-read-discovered-inputs)), one record per module
+and selection, and `scripts/gate/docs-only.sh write` adds the docs among them to the list for every
+workspace member from JumpKick's cache. It reads only the records of the selections a gate runs:
+the default suite, each suite the root `jk.toml` declares but the docs suite, its `guard-suites`
+(`-g`) and `--all`. A run of chosen classes or tags (`--class`, `-I`) keeps a record of its own,
+which the list never takes in, so a scratch test that reads the whole checkout leaves it alone. A
+host's cache holds only the suites it ran, so `write` never drops a listed doc git still tracks; a
+doc no test reads any more leaves the list by hand. The Full tier runs `scripts/gate/docs-only.sh
+check` once all its suites ran, and is red naming each doc a suite read that the list lacks. The
+Branch tier runs the same check after its tests and warns, without refusing the branch, when the
+suites it ran read a doc the list lacks; `write` and a commit of the list settle it.
 
 **The docs suite** holds the tests that scan the doc tree: `MachineOutputCallersTest` (every
 `-O json` caller, in the docs too) and `PluginDefaultDocsTest` (every built-in plugin default a page
@@ -206,32 +235,48 @@ that passed; before there is a `green`, it always does. Then:
   [holds it](#windows-and-macos), and releases are cut from it ([releases](releases.md#cutting-a-release-by-hand)).
   A gate green because its failed classes passed on its re-run ([flaky tests](#flaky-tests)) is a
   green cycle, and its line in `full-runs.log` names those classes.
-- **Red** finds the batch that made it red among the queue's batches landed since `green`
-  (`queue-batches.log`). It bisects them: it gates batch tips with the Full tier until it knows the
-  first red one, and gates no commit twice. It names that batch, with its branches and the log of
-  its red gate, in `full-runs.log`.
-- **A confirmed culprit is reverted**, once per batch. The loop runs the classes the batch's red gate
-  failed again (`scripts/gate/rerun-classes.sh`: the reinstall without tests, then those classes
+- **Red** reads what its own gate failed, from that gate's log: its red set, the test classes still
+  red after the re-run, the fixtures and guard checks that failed and the steps that ended red. A
+  red `jk guard` writes a `GUARD FAIL <check>` line in the gate's log for each check it failed, read
+  from its own transcript: the id of each rule a guard lane broke, `<module> <task>` for each other
+  step that failed, `format` when it left the checkout changed. It finds the batch that made it red
+  among the queue's batches landed since `green` (`queue-batches.log`). It bisects them: it gates
+  batch tips with the Full tier until it knows the first whose own gate fails one of the classes,
+  fixtures or guard checks this gate fails, and gates no commit twice. A batch whose gate was red
+  for something else is not blamed, and a red in no class, fixture or guard check (a step alone,
+  such as a reinstall that failed) names no batch. It names the batch, with its
+  branches, what both gates fail, this gate's log and the batch's, in `full-runs.log`.
+- **A confirmed culprit is reverted**, once per batch. The loop runs the classes both the batch's red gate
+  and this one failed again (`scripts/gate/rerun-classes.sh`: the reinstall without tests, then those classes
   alone): they must fail at the batch's tip and pass at its base, and a bisect of the batch's
   commits finds the one they fail with and pass without. It reverts that commit on top of the red
   tip, passes the revert through the Branch tier and submits it to the queue as
   `full-revert/<ticket>-<sha>`, which gates it like any branch; it never pushes `main`. It comments
   on the commit's ticket and reopens it (a ticket `done` or in `review` goes back to `ready`), so its
   worker fixes forward on top of the revert and submits again.
-- **Otherwise it reverts nothing**: when the red gate failed outside a test class, the classes pass
-  when run again, they fail before the batch too, or the revert conflicts with later work. It
-  comments once on each ticket the batch's commits name (a subject `<ticket>: …`), saying why;
+- **Otherwise it reverts nothing**: when the red both gates share is in no test class (a fixture
+  or a guard check), when the classes pass when run again, they fail before the batch too, or the
+  revert conflicts with later work. It comments once on each ticket the batch's commits name (a subject `<ticket>: …`), saying why;
   revert the batch's commits or fix forward, through the queue.
-- **Two red cycles in a row** (`FULL_HOLD_AFTER`) write `full-hold` in the queue's repository: the
-  batch's tickets (`ticket <id>`) and commits (`commit <sha>`). While it exists the queue lands only
-  a fix, a branch with a commit for one of those tickets or one that reverts one of those commits;
-  the others wait, and `scripts/queue/status.sh` shows them `held`. The next green cycle removes it.
-  A hold that names nothing (no batch was found red) lands nothing until a person adds a line to it.
+- **After every gate** it ships the class records its checkout holds to `full-records/` in the
+  queue's repository, one directory per member, replacing what it shipped before
+  (`scripts/gate/class-records.sh export`), so the Queue tier ranks the classes it defers by their
+  last run here ([ranking](test-suite-tiers.md#the-queue-tier-runs-the-classes-a-batch-ranks-highest)).
+  A shipment that fails is said on stderr and changes nothing else.
+- **Two red cycles in a row with the same red set** (`FULL_HOLD_AFTER`) write `full-hold` in the
+  queue's repository: the culprit batch's tickets (`ticket <id>`) and commits (`commit <sha>`). While
+  it exists the queue lands only a fix, a branch with a commit for one of those tickets or one that
+  reverts one of those commits; the others wait, and `scripts/queue/status.sh` shows them `held`. A
+  red set unlike the last red cycle's counts as the first red cycle again (`full-red-set` keeps the
+  last one). A red cycle that does not hold the queue removes a hold an earlier one wrote, so a red
+  that names no batch never holds it; the next green cycle removes it too.
 - **A JumpKick that cannot start is an infra failure**, not a red: before each gate, and after a
   gate red at guard (which runs on the install the tip has not replaced yet), the loop runs
   `jk engine start` in its checkout. When that fails, `full-runs.log` says `INFRA` with the first
   line JumpKick printed, and the loop records no verdict, names no culprit, counts no red cycle and
-  holds nothing.
+  holds nothing. A gate red at guard because JumpKick failed inside it (exit 70, its internal
+  error, as when the engine dies mid-guard) with no check failed is one too: `INFRA jk failed
+  inside guard`, and the same nothing recorded.
   It tries the tip again `FULL_POLL` seconds later; `--once` exits 5.
 
 It runs in a checkout and a JumpKick home of its own (`JK_HOME`), so its gates never replace the
@@ -276,18 +321,21 @@ On the host the run keeps a checkout, a JumpKick home and a local Maven reposito
 that home without tests (a home that does not exist yet is made the way CI makes one, with
 `scripts/ci-bootstrap.sh` and `scripts/ci-takeover.sh`), then runs every module's fast tier, each
 test class whose source names an OS (`@EnabledOnOs`, `OS.WINDOWS`, `os.name`, …) in the fast or
-integration tier, by module, and the product smoke (`scripts/ci-product-smoke.sh`).
+integration tier, by module, and the product smoke (`scripts/ci-product-smoke.sh`). A JUnit 3 class
+(one that extends a `*TestCase`, as IntelliJ's headless tests do) is not one the JUnit Platform can
+select, so the module's test classes that name it run in its place.
 
 - **Red** files a ticket (a bug labelled `platform-windows` or `platform-macos`) that says what
   failed. While it is open, a red run with other failures comments on it, and a green run says so.
+  When `ka` will not file it, the run's line says why.
 - **Trailing, then holding.** A platform's runs do not hold `green` at first. Once it has been green
   for a week with no red run between, its loop writes `platform-<platform>-blocking` in the queue's
   repository, and from then on `green` moves only to a tip the Full tier and that platform both
   passed: the Full loop leaves `green` where it is until the platform's verdict comes in, and the
   platform's loop moves it. Delete the file to make the platform trail again.
 
-Verdicts are `platform-verdicts` and each run is a line of `platform-runs.log`, both beside the Full
-loop's; the run's output is `/var/tmp/jk-platform/platform-<platform>-<n>.log` on the gate host, and
+Verdicts are `platform-verdicts` and each run is a few lines of `platform-runs.log`, both beside the
+Full loop's, the last one the verdict with where `green` stands (`run 3 RED; branch green at …`); the run's output is `/var/tmp/jk-platform/platform-<platform>-<n>.log` on the gate host, and
 its steps' own logs are in `~/jk-platform/logs` on the platform's host. The header of
 `scripts/gate/platform-loop.sh` lists its settings; `scripts/test-platform-loop.sh` holds the run,
 the loop and the hold to the rules above.
@@ -560,7 +608,7 @@ jk test -g                       # the guard suites, which the Full tier (jk ins
 jk test -s tree                  # the tests that scan every module's sources (Branch, Queue, Full)
 jk test -s slow                  # framework / language e2e (nightly)
 jk test -s network               # talks to a real remote (nightly)
-jk test -s release               # a real browser (CI on the release tag)
+jk test -s release               # a real browser, the slowest end-to-ends (Full tier, CI on the release tag)
 jk test -s live                  # this machine's OS keychain (on demand, desktop only)
 jk test -s bench                 # microbenchmarks (nightly)
 jk test -A                       # every suite but the explicit ones (live, bench)

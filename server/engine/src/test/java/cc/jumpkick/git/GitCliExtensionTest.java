@@ -51,7 +51,7 @@ class GitCliExtensionTest {
                   printf '0000000000000000000000000000000000000000\\trefs/tags/%s\\n' "$name"
                 done
                 """);
-        GitBackend backend = backend(git, 30);
+        GitBackend backend = backend(git, Duration.ofSeconds(30));
         Map<String, String> engine = new LinkedHashMap<>();
         engine.put("PATH", System.getenv("PATH"));
         engine.put("HOME", dir.toString());
@@ -86,7 +86,7 @@ class GitCliExtensionTest {
     void a_git_that_outlives_its_timeout_is_killed_together_with_the_children_it_spawned() throws Exception {
         Path pidFile = dir.resolve("sleeper.pid");
         Path git = script("git", "#!/bin/sh\nsleep 300 &\necho $! > '" + pidFile + "'\nwait\n");
-        GitBackend backend = backend(git, 1);
+        GitBackend backend = backend(git, Duration.ofMillis(300));
         try {
             assertThatThrownBy(() -> backend.listRefs(source()))
                     .isInstanceOf(IOException.class)
@@ -106,8 +106,8 @@ class GitCliExtensionTest {
         Path pidFile = dir.resolve("probe.pid");
         Path git = script("git", "#!/bin/sh\necho 'git version 2.40.1'\necho $$ > '" + pidFile + "'\nsleep 300\n");
         try {
-            Optional<GitCliExtension.GitCli> probed = assertTimeoutPreemptively(
-                    Duration.ofSeconds(10), () -> GitCliExtension.probe(git.toString(), 1_000));
+            Optional<GitCliExtension.GitCli> probed =
+                    assertTimeoutPreemptively(Duration.ofSeconds(10), () -> GitCliExtension.probe(git.toString(), 200));
             assertThat(probed).as("a git that never exits is not a usable git").isEmpty();
         } finally {
             killRecorded(pidFile);
@@ -130,8 +130,8 @@ class GitCliExtensionTest {
                 new ForgeGitCredentials(),
                 new GitCliExtension.GitCli(git.toString(), 2, 30),
                 remote -> Optional.of("http://user:secret@proxy.corp:3128"),
-                30,
-                30);
+                Duration.ofSeconds(30),
+                Duration.ofSeconds(30));
 
         assertThatThrownBy(() -> backend.listRefs(source()))
                 .isInstanceOf(IOException.class)
@@ -157,20 +157,20 @@ class GitCliExtensionTest {
                 new ForgeGitCredentials(),
                 new GitCliExtension.GitCli(git.toString(), 2, 30),
                 remote -> Optional.of(""),
-                30,
-                30);
+                Duration.ofSeconds(30),
+                Duration.ofSeconds(30));
 
         assertThat(backend.listRefs(source()).tags()).containsExactlyInAnyOrder("no_proxy=*", "count=unset");
     }
 
-    private GitBackend backend(Path git, long timeoutSec) {
+    private GitBackend backend(Path git, Duration timeout) {
         return new GitCliExtension(
                 dir.resolve("git-root"),
                 new ForgeGitCredentials(),
                 new GitCliExtension.GitCli(git.toString(), 2, 40),
                 GitProxy.NONE,
-                timeoutSec,
-                timeoutSec);
+                timeout,
+                timeout);
     }
 
     private static GitSource source() {

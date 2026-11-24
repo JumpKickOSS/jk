@@ -3,12 +3,14 @@ package cc.jumpkick.config;
 
 import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.lock.ManifestPaths;
+import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Which test suites and JUnit tags a {@code jk test} / build-with-tests run should use.
@@ -39,7 +41,9 @@ public record TestSelection(
         /**
          * {@code --class}: run only test classes matching these names — a fully qualified name, a
          * simple name (matched in any package), or either with {@code *} wildcards. Empty means every
-         * class the suites and tags select.
+         * class the suites and tags select. A pattern qualified with its module ({@code
+         * server/engine:EngineIT}) holds in that module alone, and a module no qualified pattern
+         * names runs what the unqualified ones select ({@link #forModule}).
          */
         List<String> classes,
         /**
@@ -47,6 +51,9 @@ public record TestSelection(
          * prerequisites compile but run no tests. Empty means every module in the run tests.
          */
         List<String> onlyModules) {
+
+    /** What splits a qualified {@code --class} pattern's module from its class: {@code server/engine:EngineIT}. */
+    public static final char MODULE_SEPARATOR = ':';
 
     public static final TestSelection DEFAULT =
             new TestSelection(List.of(), false, List.of(), List.of(), false, false, false, List.of(), List.of());
@@ -112,6 +119,71 @@ public record TestSelection(
             }
         }
         return List.copyOf(suites);
+    }
+
+    /**
+     * The module half of a qualified {@code --class} pattern ({@code server/engine} of {@code
+     * server/engine:EngineIT}), or null when the pattern is unqualified. A class name never holds a
+     * {@code :}, so the last one splits the two, whatever the module path holds.
+     */
+    public static @Nullable String moduleOf(String pattern) {
+        int at = pattern.lastIndexOf(MODULE_SEPARATOR);
+        return at < 0 ? null : pattern.substring(0, at);
+    }
+
+    /** The class half of a {@code --class} pattern: the pattern itself when it is unqualified. */
+    public static String classOf(String pattern) {
+        return pattern.substring(pattern.lastIndexOf(MODULE_SEPARATOR) + 1);
+    }
+
+    /** {@code pattern}'s class half qualified with {@code module}. */
+    public static String qualify(String module, String pattern) {
+        return module + MODULE_SEPARATOR + classOf(pattern);
+    }
+
+    /** The {@code --class} patterns that hold in every module: those no module qualifies. */
+    public List<String> unqualifiedClasses() {
+        return classes.stream().filter(p -> moduleOf(p) == null).toList();
+    }
+
+    /**
+     * Whether a qualified {@code --class} pattern names {@code moduleDir}. A relative module path is
+     * read from {@code base}; the CLI sends each one already resolved to the module's directory.
+     */
+    public boolean namesModule(Path moduleDir, Path base) {
+        for (String pattern : classes) {
+            String module = moduleOf(pattern);
+            if (module != null && sameDir(base.resolve(module), moduleDir)) return true;
+        }
+        return false;
+    }
+
+    /**
+     * This selection as {@code moduleDir} runs it: the unqualified {@code --class} patterns, and the
+     * class half of each pattern qualified with this module. A module no qualified pattern names
+     * runs what the unqualified ones select, its whole suites when there are none. The result names
+     * no module, so the suite's key is the one a plain {@code --class} run of the same classes has.
+     */
+    public TestSelection forModule(Path moduleDir, Path base) {
+        if (classes.stream().allMatch(p -> moduleOf(p) == null)) return this;
+        List<String> local = new ArrayList<>();
+        for (String pattern : classes) {
+            String module = moduleOf(pattern);
+            if (module == null) local.add(pattern);
+            else if (sameDir(base.resolve(module), moduleDir)) local.add(classOf(pattern));
+        }
+        return withClasses(local);
+    }
+
+    private static boolean sameDir(Path a, Path b) {
+        Path x = a.toAbsolutePath().normalize();
+        Path y = b.toAbsolutePath().normalize();
+        if (x.equals(y)) return true;
+        try {
+            return x.toRealPath().equals(y.toRealPath());
+        } catch (IOException e) {
+            return false;
+        }
     }
 
     /** True when {@code --exclusive} limits the run's suites to {@link #onlyModules}. */

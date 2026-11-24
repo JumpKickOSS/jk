@@ -2,6 +2,7 @@
 package cc.jumpkick.test;
 
 import cc.jumpkick.config.BuildEnv;
+import cc.jumpkick.orchestrator.DiscoveryRules;
 import cc.jumpkick.task.FileHashMemo;
 import cc.jumpkick.task.ToolIdentity;
 import java.io.IOException;
@@ -116,7 +117,7 @@ final class SuitePrograms {
             String path = rest.substring(SYSTEM.length());
             String abs = path.length() > 1 && path.charAt(1) == ':' ? path : "/" + path;
             if (abs.contains("\\") || List.of(abs.split("/", -1)).contains("..")) return null;
-            return absolute(abs) == null ? null : SuiteReads.hostSpelling(abs);
+            return absolute(abs) == null ? null : DiscoveryRules.hostSpelling(abs);
         }
         if (SuiteReads.spelledUnderRoot(rest)) {
             return SuiteReadLists.portableName(rest)

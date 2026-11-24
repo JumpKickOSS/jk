@@ -222,6 +222,80 @@ class WorkerLeasesOverbookTest {
     }
 
     @Test
+    void each_grant_of_a_burst_spends_the_free_memory_the_one_before_it_left() throws Exception {
+        AtomicLong clock = new AtomicLong(1_000);
+        FakeSignals raw = healthy();
+        long budget = 10 * GIB;
+        long headroom = OverbookSignals.headroom(budget, false);
+        raw.freeBytes = 8 * GIB;
+        OverbookSignals.Source cached = OverbookSignals.caching(raw, clock::get, OverbookSignals.CACHE_NANOS);
+        WorkerLeases.Ledger ledger = ledger(budget, 8, cached);
+        ledger.spent.clock(clock::get);
+        List<WorkerLeases.Grant> held = new ArrayList<>();
+        try {
+            held.add(ledger.acquireBytes(budget, false, null));
+            held.add(ledger.acquireBytes(3 * GIB, false, null));
+            held.add(ledger.acquireBytes(3 * GIB, false, null));
+            assertThat(held).extracting(WorkerLeases.Grant::overbooked).containsExactly(false, true, true);
+            assertStaysQueued(ledger, 3 * GIB);
+            assertThat(raw.reads).as("the whole burst saw one sample").isEqualTo(1);
+            assertThat(ledger.snapshot().overbookedBytes())
+                    .as("the burst spends no more than the sample had free past the headroom")
+                    .isLessThanOrEqualTo(raw.freeBytes - headroom);
+
+            clock.addAndGet(OverbookSignals.SETTLE_NANOS);
+            held.add(ledger.acquireBytes(3 * GIB, false, null));
+            assertThat(held.getLast().overbooked())
+                    .as("once the forks have had time to grow, a fresh sample is judged on its own")
+                    .isTrue();
+        } finally {
+            for (WorkerLeases.Grant grant : held) grant.close();
+        }
+    }
+
+    @Test
+    void bursts_on_fresh_samples_spend_one_free_figure_while_their_forks_grow() throws Exception {
+        AtomicLong clock = new AtomicLong(1_000);
+        FakeSignals raw = healthy();
+        long budget = 10 * GIB;
+        long headroom = OverbookSignals.headroom(budget, false);
+        long free = 8 * GIB;
+        raw.freeBytes = free;
+        OverbookSignals.Source cached = OverbookSignals.caching(raw, clock::get, OverbookSignals.CACHE_NANOS);
+        WorkerLeases.Ledger ledger = ledger(budget, 16, cached).underCi(false);
+        ledger.spent.clock(clock::get);
+        List<WorkerLeases.Grant> held = new ArrayList<>();
+        try {
+            held.add(ledger.acquireBytes(budget, false, null));
+            held.add(ledger.acquireBytes(3 * GIB, false, null));
+            held.add(ledger.acquireBytes(3 * GIB, false, null));
+            assertThat(held).extracting(WorkerLeases.Grant::overbooked).containsExactly(false, true, true);
+
+            // Each burst lands on a sample the previous one's cache window no longer covers, while
+            // the two overbooked forks have each grown another 256 MiB toward their 3 GiB.
+            for (int burst = 1; burst <= 6; burst++) {
+                clock.addAndGet(OverbookSignals.CACHE_NANOS + 50_000_000L);
+                raw.freeBytes = free - 2 * burst * (256L << 20);
+                int reads = raw.reads;
+                assertStaysQueued(ledger, 3 * GIB);
+                assertThat(raw.reads).as("burst %d read a fresh sample", burst).isGreaterThan(reads);
+                assertThat(ledger.snapshot().overbookedBytes())
+                        .as("burst %d keeps the series within the first sample's free figure past the headroom", burst)
+                        .isLessThanOrEqualTo(free - headroom);
+            }
+
+            held.remove(2).close();
+            held.add(ledger.acquireBytes(3 * GIB, false, null));
+            assertThat(held.getLast().overbooked())
+                    .as("a fork of the series that exits gives back what it was counted at")
+                    .isTrue();
+            assertThat(ledger.snapshot().overbookedBytes()).isLessThanOrEqualTo(free - headroom);
+        } finally {
+            for (WorkerLeases.Grant grant : held) grant.close();
+        }
+    }
+
+    @Test
     void readings_are_reused_until_the_cache_expires_and_the_cap_still_binds() throws Exception {
         AtomicLong clock = new AtomicLong(1_000);
         FakeSignals raw = healthy();
@@ -383,6 +457,57 @@ class WorkerLeasesOverbookTest {
     }
 
     /** Asserts a lease of {@code bytes} stays queued. The caller is holding whatever blocks it. */
+    @Test
+    void a_second_engine_driving_runner_is_admitted_now_only_when_the_host_has_room_to_overbook() throws Exception {
+        long budget = 8 * GIB;
+        List<String> runner = List.of("java", "-Xmx1g", "Main");
+        JvmOptions.HeapChoice tree = new JvmOptions.HeapChoice(false, GIB, "", 4 * GIB + 400 * WorkerLeases.MIB);
+        JobWorkers.Lease drives = JobWorkers.Lease.DRIVES_ENGINES;
+        FakeSignals signals = healthy();
+        WorkerLeases.Ledger overbooks = ledger(budget, 1, signals).underCi(false);
+        WorkerLeases.Ledger off = new WorkerLeases.Ledger(() -> budget, () -> 1, id -> false).underCi(false);
+        for (WorkerLeases.Ledger ledger : List.of(overbooks, off)) {
+            try (WorkerLeases.Grant first = ledger.acquireWithoutSlot(runner, null, tree);
+                    WorkerLeases.Grant other = ledger.acquireBytes(2 * GIB, true, null)) {
+                long leased = ledger.snapshot().leasedBytes();
+                assertThat(leased)
+                        .as("the second runner does not fit the budget")
+                        .isGreaterThan(budget - first.bytes());
+                assertThat(ledger.snapshot().runningJvms())
+                        .as("the one JVM slot is held")
+                        .isEqualTo(1);
+
+                assertThat(ledger.admitsNow(runner, tree, drives))
+                        .as("a runner that takes no JVM slot, past the budget")
+                        .isEqualTo(ledger == overbooks);
+                assertThat(ledger.admitsNow(runner, tree, JobWorkers.Lease.SLOT))
+                        .as("a runner that needs the held JVM slot")
+                        .isFalse();
+                assertThat(ledger.snapshot().leasedBytes())
+                        .as("asking grants nothing")
+                        .isEqualTo(leased);
+            }
+        }
+
+        signals.freeBytes = 4 * GIB;
+        try (WorkerLeases.Grant first = overbooks.acquireWithoutSlot(runner, null, tree)) {
+            assertThat(overbooks.admitsNow(runner, tree, drives))
+                    .as("the host has no room for its tree")
+                    .isFalse();
+            signals.freeBytes = 64 * GIB;
+            try (WorkerLeases.Grant held = overbooks.acquireBytes(budget, false, null)) {
+                CompletableFuture<WorkerLeases.Grant> waiting = spawn(overbooks, 2 * budget, false, 9L);
+                awaitQueued(overbooks, 1);
+                assertThat(overbooks.admitsNow(runner, tree, drives))
+                        .as("a lease is already waiting")
+                        .isFalse();
+                overbooks.cancelRequest(9);
+                assertThatThrownBy(() -> waiting.get(5, TimeUnit.SECONDS))
+                        .hasCauseInstanceOf(InterruptedException.class);
+            }
+        }
+    }
+
     private static void assertStaysQueued(WorkerLeases.Ledger ledger, long bytes) throws Exception {
         int already = ledger.queued();
         CompletableFuture<WorkerLeases.Grant> waiting = spawn(ledger, bytes, false, 9L);

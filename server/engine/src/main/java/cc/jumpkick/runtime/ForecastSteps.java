@@ -288,9 +288,10 @@ final class ForecastSteps {
             JavaCompile.Prediction pred) {
         if (force) return SourceApiIndex.Hint.UNKNOWN;
         if (pred.outcome() == JavaCompile.Outcome.CACHE_HIT) {
+            // The compile is kept: no class of this module's is rewritten.
             return compileDepDirty
-                    ? new SourceApiIndex.Hint(depHint.kind(), List.of(), depCodeKept)
-                    : new SourceApiIndex.Hint(SourceApiIndex.Kind.BODY_ONLY, List.of());
+                    ? new SourceApiIndex.Hint(depHint.kind(), List.of(), depCodeKept, List.of())
+                    : new SourceApiIndex.Hint(SourceApiIndex.Kind.BODY_ONLY, List.of(), false, List.of());
         }
         String reason = pred.reason();
         if (reason.contains("options changed") || reason.contains("release changed")) {
@@ -315,7 +316,8 @@ final class ForecastSteps {
         if (compileDepDirty && depHint.kind() == SourceApiIndex.Kind.API_CHANGED) {
             return new SourceApiIndex.Hint(SourceApiIndex.Kind.API_CHANGED, own.files());
         }
-        if (compileDepDirty && !depCodeKept) return new SourceApiIndex.Hint(own.kind(), own.files());
+        if (compileDepDirty && !depCodeKept)
+            return new SourceApiIndex.Hint(own.kind(), own.files(), false, own.changed());
         return own;
     }
 }

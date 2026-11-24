@@ -39,7 +39,7 @@ import org.junit.jupiter.api.io.TempDir;
  * [network] proxy} is a {@link RecordingProxy}, so anything dialed past the loopback stubs is in
  * its log and fails.
  */
-@Tag("integration")
+@Tag("release")
 @IsolatedHome
 class UserConfigMirrorTest {
 

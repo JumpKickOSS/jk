@@ -192,8 +192,14 @@ continues the same hold, so `hold-start` and `hold-end` do not flap. A wait for 
 memory wait while other forks work, is ordinary scheduling: the bar, the work rows and the clock go
 on, and only the waiting step's row changes. While none of a step's forks runs and its next one
 waits, `task-wait` (`reason` `slot` or `memory`, `""` once a fork runs) dims the row's spinner to a
-steady `○` with the detail `Waiting for a free slot…` or `Waiting for memory…`; plain, jsonl and
-the dashboard print nothing for it. While held, the engine's clock and the build's running steps
+steady `○` with the detail `Waiting for a free slot…` or `Waiting for memory…`. The same event
+carries two other waits (`StepWait`): `thread`, a step announced while every engine CPU thread was
+busy, until its body begins (`Waiting for a free engine thread…`); and a phrase naming a lock
+another run holds, shown as it stands (`Waiting for another jk's guard suite run on this tree…`).
+A lease wait on an engine CPU thread is a managed block, so the pool runs the steps queued behind
+it. The plain heartbeat names the newest waiting row and puts its wait after `=`, in any stage; jsonl and the dashboard
+print nothing for it; a run cancelled while a step waits names the wait in that step's
+`was in flight` error. While held, the engine's clock and the build's running steps
 stand still; every surface shows the hold and restores itself on resume:
 
 | Surface | On hold |

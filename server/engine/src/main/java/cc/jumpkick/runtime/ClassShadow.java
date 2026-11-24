@@ -5,7 +5,7 @@ import cc.jumpkick.host.Log;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jsonl.JsonFields;
 import cc.jumpkick.jsonl.Jsonl;
-import cc.jumpkick.test.ClassCones;
+import cc.jumpkick.orchestrator.ClassCones;
 import cc.jumpkick.test.ClassReads;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -17,6 +17,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -52,11 +53,11 @@ final class ClassShadow {
     private final String module;
     private final String suitePart;
     private final Path workspace;
-    private final ClassKeys.Observed pooledBefore;
-    private final ClassKeys.Observed pooledNow;
+    private final Function<String, ClassKeys.Observed> pooledBefore;
+    private final Function<String, ClassKeys.Observed> pooledNow;
     private final Map<String, String> programs;
-    private final String readsBefore;
-    private final String readsAfter;
+    private final ClassKeys.SuiteReadSet readsBefore;
+    private final ClassKeys.SuiteReadSet readsAfter;
     private final long codeSince;
     private final boolean codePastBound;
 
@@ -76,8 +77,8 @@ final class ClassShadow {
 
     /**
      * The shadow of one run: cones from {@code index}, keys under {@code suitePart}; {@code
-     * pooledBefore} and {@code readsBefore} are what the records were keyed over before this run (the
-     * pool of the record file's header and the suite's discovered inputs as one digest), {@code
+     * pooledBefore} and {@code readsBefore} are what the records were keyed over before this run (each
+     * launch's pool, from the header it stands on, and the suite's discovered inputs), {@code
      * pooledNow} and {@code readsAfter} what this run leaves; {@code programs} the identity of each
      * program the suite's stamp keys, by name ({@link ClassKeys#programs}); {@code codeSince} is since when the code
      * files the record file's header lists have held still ({@link SuiteCodeFiles#since}) and {@code
@@ -88,11 +89,11 @@ final class ClassShadow {
             ClassCones.Index index,
             String suitePart,
             Path workspace,
-            ClassKeys.Observed pooledBefore,
-            ClassKeys.Observed pooledNow,
+            Function<String, ClassKeys.Observed> pooledBefore,
+            Function<String, ClassKeys.Observed> pooledNow,
             Map<String, String> programs,
-            String readsBefore,
-            String readsAfter,
+            ClassKeys.SuiteReadSet readsBefore,
+            ClassKeys.SuiteReadSet readsAfter,
             long codeSince,
             boolean codePastBound,
             @Nullable String stampKey) {
@@ -120,14 +121,18 @@ final class ClassShadow {
                 obs == null || loadedMore ? List.of() : ClassKeys.reflective(index, o.testClass(), obs.loaded());
         ClassCones.Cone cone = index.cone(o.testClass(), reflective == null ? List.of() : reflective);
         String fallback = ClassKeys.fallback(cone, now, loadedMore, reflective == null, codePastBound);
+        ClassKeys.Observed pooled = pooledNow.apply(o.launch());
+        if (fallback == null) fallback = ClassKeys.pooledFallback(pooled);
         if (index.full()) fallback = "index past its bound";
+        String used = fallback == null ? used(cone, obs, o.testClass()) : null;
         ClassKeys.Key key = ClassKeys.key(
                 o.launch(),
                 cone,
+                used,
                 suitePart,
                 ClassKeys.identified(now, programs),
                 programs,
-                pooledNow,
+                pooled,
                 module,
                 readsAfter,
                 workspace,
@@ -147,6 +152,7 @@ final class ClassShadow {
         }
         return new TestClassRecords.Shadowed(
                 key.key(),
+                used,
                 fallback,
                 cone.digest() + " " + cone.size(),
                 why,
@@ -154,8 +160,20 @@ final class ClassShadow {
     }
 
     /**
+     * Which of the cone's classes ran in the window of {@code testClass}, or null when that is not
+     * known: no observation, a use left unnamed, or the class's own code not among its uses, which
+     * says its JVM ran unmarked.
+     */
+    static @Nullable String used(ClassCones.Cone cone, ClassReads.@Nullable Observation obs, String testClass) {
+        if (obs == null || obs.usedMore() || !obs.used(testClass)) return null;
+        return cone.used(obs::used);
+    }
+
+    /**
      * Why per-class selection runs the class whose record was {@code prev}, or null to replay it: the
      * one answer both this shadow and the selection ({@link TestClassRecording#unmoved}) give. A class
+     * whose record kept its cone beside a pool that started a program is keyed by its module now
+     * ({@link ClassKeys#pooledFallback}), so it runs once more. A class
      * that read more code files than its record names, or ran beside a pool that did, runs when one
      * of its suite's code files changed after it finished. Its cone is {@code testClass}'s as it is
      * now, with the classes its record says it loaded outside it ({@code reflective}).
@@ -166,24 +184,69 @@ final class ClassShadow {
         String prevKey = Jsonl.str(prev, "classKey");
         if (prevKey == null) return "no-key";
         if (!"passed".equals(Jsonl.str(prev, "outcome"))) return "red";
-        ClassCones.Cone cone = index.cone(testClass, Jsonl.strArray(prev, "reflective"));
         String fallback = Jsonl.str(prev, "fallback");
-        ClassKeys.Key now = ClassKeys.key(
-                launch,
-                cone,
-                suitePart,
-                ClassKeys.identified(fromRow(prev), programs),
-                programs,
-                pooledBefore,
-                module,
-                readsBefore,
-                workspace,
-                fallback,
-                listings);
-        if (!now.key().equals(prevKey)) return fallback != null ? "module " + fallback : "key";
-        boolean pastOwnCode = Jsonl.bool(prev, "codeMore", false) || pooledBefore.codeMore();
+        ClassKeys.Observed pooled = pooledBefore.apply(launch);
+        if (fallback == null) fallback = ClassKeys.pooledFallback(pooled);
+        String now = rowKey(prev, launch, testClass, fallback, pooled, readsBefore);
+        if (!now.equals(prevKey)) return fallback != null ? "module " + fallback : "key";
+        boolean pastOwnCode = Jsonl.bool(prev, "codeMore", false) || pooled.codeMore();
         if (fallback == null && pastOwnCode && codeSince >= Jsonl.longValue(prev, "ranAt", 0)) return "code moved";
         return null;
+    }
+
+    /**
+     * The key of the class a record {@code row} names, taken now over its cone, what the row says it
+     * read and which of its cone's classes ran, beside
+     * {@code pooled} and the suite's discovered inputs {@code reads}.
+     */
+    private String rowKey(
+            String row,
+            String launch,
+            String testClass,
+            @Nullable String fallback,
+            ClassKeys.Observed pooled,
+            ClassKeys.SuiteReadSet reads) {
+        return ClassKeys.key(
+                        launch,
+                        index.cone(testClass, Jsonl.strArray(row, "reflective")),
+                        Jsonl.str(row, "coneUsed"),
+                        suitePart,
+                        ClassKeys.identified(fromRow(row), programs),
+                        programs,
+                        pooled,
+                        module,
+                        reads,
+                        workspace,
+                        fallback,
+                        listings)
+                .key();
+    }
+
+    /**
+     * The row of a class that did not run in this run, as the next selection will key it. Every row
+     * stands on the record file's header (what no class's window held) and the suite's discovered
+     * inputs, and this run rewrites both: a row keyed over the ones it replaces would read as moved
+     * the next time, though nothing it stands on did, and its class would run once for no change. So
+     * a row the selection replays over what the records were keyed before ({@link #whyRun} null)
+     * takes its key over what this run leaves. Any other row stays as it is, and so does one kept on
+     * its cone beside a pool that now started a program: it runs once more.
+     */
+    String kept(String row) {
+        String launch = Jsonl.str(row, "launch");
+        List<String> container = Jsonl.strArray(row, "container");
+        if (launch == null || container.isEmpty()) return row;
+        String testClass = TestClassRecords.className(container);
+        if (!index.contains(testClass) || whyRun(row, launch, testClass) != null) return row;
+        String fallback = Jsonl.str(row, "fallback");
+        ClassKeys.Observed pooled = pooledNow.apply(launch);
+        if (fallback == null && ClassKeys.pooledFallback(pooled) != null) return row;
+        return rekeyed(row, "classKey", rowKey(row, launch, testClass, fallback, pooled, readsAfter));
+    }
+
+    /** {@code row} with its string field {@code field} holding {@code key}; the row writes it as {@link TestClassRecords#row} does. */
+    private static String rekeyed(String row, String field, String key) {
+        String was = Jsonl.quote(field) + ":" + Jsonl.quote(Jsonl.str(row, field));
+        return row.replace(was, Jsonl.quote(field) + ":" + Jsonl.quote(key));
     }
 
     /** Whether the class's outcome moved since {@code prev}: its verdict or its counts. */
@@ -203,10 +266,12 @@ final class ClassShadow {
                 Jsonl.strArray(row, "code"),
                 Jsonl.bool(row, "codeMore", false),
                 Jsonl.strArray(row, "processes"),
-                Jsonl.strArray(row, "tools"));
+                Jsonl.strArray(row, "tools"),
+                Jsonl.strArray(row, "readRoots"),
+                Jsonl.strArray(row, "readNames"));
     }
 
-    /** What the record file's header says no window held; nothing when there is none. */
+    /** What a record file's {@code header} says no window held; nothing when there is none. */
     static ClassKeys.Observed pooledOf(@Nullable String header) {
         if (header == null) return ClassKeys.Observed.NONE;
         String pooled = Jsonl.nested(header, "pooled");
@@ -217,6 +282,9 @@ final class ClassShadow {
                 Jsonl.bool(pooled, "readsMore", false),
                 Jsonl.strArray(pooled, "code"),
                 Jsonl.bool(pooled, "codeMore", false),
+                Jsonl.strArray(pooled, "processes"),
+                Jsonl.strArray(pooled, "tools"),
+                List.of(),
                 List.of());
     }
 
@@ -228,7 +296,9 @@ final class ClassShadow {
                 TestClassRecords.spelled(o.code(), workspace),
                 o.codeMore(),
                 List.copyOf(o.processes()),
-                List.copyOf(o.tools()));
+                List.copyOf(o.tools()),
+                o.readsMore() ? TestClassRecords.roots(o.readRoots(), workspace) : List.of(),
+                o.readsMore() ? List.copyOf(o.readNames()) : List.of());
     }
 
     /** The classes it would have replayed whose outcome changed: an under-run, when any. */

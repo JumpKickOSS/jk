@@ -12,6 +12,7 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.plugin.manifest.PluginTableRegistry;
 import cc.jumpkick.repo.ArtifactFanOut;
 import cc.jumpkick.repo.RepoGroup;
+import cc.jumpkick.run.JkThreads;
 import cc.jumpkick.runtime.base.CompileSupport;
 import cc.jumpkick.runtime.base.CompileToolchain;
 import cc.jumpkick.runtime.base.DokkaResolver;
@@ -26,6 +27,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Future;
+import java.util.function.BooleanSupplier;
+import org.jspecify.annotations.Nullable;
 
 /**
  * What a build of some modules forks and loads besides their dependencies: jk's workers (the Java
@@ -118,8 +122,12 @@ public final class BuildForks {
      * repository refusing) stops none of the others. Returns a line per fork that failed, naming
      * it; staging is ahead-of-time only, so the step that needs a fork still fetches it, or fails
      * with its own message, and a build that never needs it is not stopped by it.
+     *
+     * <p>Once {@code cancelled} answers true (a sibling step failed, or the user stopped the build),
+     * every stage still running is interrupted and this throws {@link InterruptedException}: a
+     * failed sync returns with nothing of its staging still writing into the store.
      */
-    public static List<String> stage(List<Fork> forks) throws InterruptedException {
+    public static List<String> stage(List<Fork> forks, BooleanSupplier cancelled) throws InterruptedException {
         String store = JkStores.storeCas().root().toString();
         // --force revalidates what it stages, as every fetch under it does.
         boolean force = SessionContext.current().config().forceOr(false);
@@ -140,14 +148,80 @@ public final class BuildForks {
             });
         }
         List<String> failures = new ArrayList<>();
-        try {
+        try (CancelWatch watch = CancelWatch.start(cancelled)) {
             for (String failure : ArtifactFanOut.concurrently(stages)) {
                 if (!failure.isEmpty()) failures.add(failure);
             }
+            watch.finish();
         } catch (IOException e) {
             failures.add(e.getMessage()); // every stage catches its own; unreachable in practice
         }
         return failures;
+    }
+
+    /**
+     * Interrupts the thread that started it once {@code cancelled} answers true, so a fan-out that
+     * waits on that thread cancels its fetches. Polled: a step learns of a cancel only by asking.
+     */
+    private static final class CancelWatch implements AutoCloseable {
+        private static final long POLL_MS = 50;
+
+        private final Thread caller = Thread.currentThread();
+        private final BooleanSupplier cancelled;
+        private final Object lock = new Object();
+        private boolean done;
+        private boolean fired;
+        private @Nullable Future<?> watcher;
+
+        private CancelWatch(BooleanSupplier cancelled) {
+            this.cancelled = cancelled;
+        }
+
+        static CancelWatch start(BooleanSupplier cancelled) {
+            CancelWatch w = new CancelWatch(cancelled);
+            w.watcher = JkThreads.platform().submit(w::watch);
+            return w;
+        }
+
+        private void watch() {
+            try {
+                while (!cancelled.getAsBoolean()) {
+                    synchronized (lock) {
+                        if (done) return;
+                    }
+                    Thread.sleep(POLL_MS);
+                }
+                synchronized (lock) {
+                    if (done) return;
+                    fired = true;
+                    caller.interrupt();
+                }
+            } catch (InterruptedException e) {
+                // closed: the staging finished
+            }
+        }
+
+        /** The staging finished on its own; an interrupt that raced it still means a cancel. */
+        void finish() throws InterruptedException {
+            boolean wasFired;
+            synchronized (lock) {
+                done = true;
+                wasFired = fired;
+            }
+            if (wasFired) {
+                Thread.interrupted();
+                throw new InterruptedException("fork staging cancelled");
+            }
+        }
+
+        @Override
+        public void close() {
+            synchronized (lock) {
+                done = true;
+            }
+            Future<?> w = watcher;
+            if (w != null) w.cancel(true);
+        }
     }
 
     private static void worker(Map<String, Fork> forks, PluginJar worker) {

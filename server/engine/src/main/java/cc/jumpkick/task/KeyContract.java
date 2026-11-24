@@ -29,12 +29,18 @@ public enum KeyContract {
      * The code that picks which test classes a suite runs and builds the JVM that runs them: the
      * package {@code cc.jumpkick.test} and every class of the engine whose own name carries {@code
      * Test}, {@code Suite} or {@code JUnit} ({@link #suiteCode}). A run-tests stamp keys by it. The
-     * code that judges a suite's outcome is not here: it lives in the package {@code
-     * cc.jumpkick.orchestrator}, which the stamp keys by its compiled classes ({@code
-     * OrchestratorCode}). The {@code suite-code-keyed} guard keeps the types that select and judge
-     * a suite inside the one or the other.
+     * code that judges a suite's outcome, decides which suites run, which of a suite's reads count as
+     * its inputs, which failures a retry answers, which classes a discovery fork listed, which tags
+     * a test class carries and what a test class's static cone holds is not here: it lives in the
+     * package {@code cc.jumpkick.orchestrator}, which the stamp keys by its compiled classes ({@code
+     * OrchestratorCode}). Nor is the code that writes the stamp and its discovered-read tokens
+     * ({@link #STAMP}): what it changes reaches a suite only through the key it writes; nor the code
+     * that sizes a suite JVM's heap ({@link #HEAP}), which no key names; nor the code that forks a
+     * suite's JVMs ({@link #LAUNCH}), whose stamp keys what they start with by value; nor the code
+     * whose outcome the stamp keys by value ({@link #BY_VALUE}). The {@code suite-code-keyed} guard
+     * keeps the types that select and judge a suite inside the one or the other.
      */
-    SUITE("a0009f48c6e3", List.of(Sources.SERVER, Sources.SHARED), KeyContract::suiteSource),
+    SUITE("6acef3cd1991", List.of(Sources.SERVER, Sources.SHARED), KeyContract::suiteSource),
 
     /**
      * The code that writes an artifact or a verdict the engine produces itself: the jar, assembly
@@ -44,7 +50,7 @@ public enum KeyContract {
      * but a native image's keys by it.
      */
     ARTIFACT(
-            "34566e3cb921",
+            "c548e443a5f3",
             List.of(
                     Sources.ENGINE + "compile/*Packager.java",
                     Sources.ENGINE + "runtime/PlannerJlink.java",
@@ -90,6 +96,41 @@ public enum KeyContract {
     private static final String ORCHESTRATOR = ROOT + "orchestrator/";
 
     private static final String CLASS = ".class";
+
+    /**
+     * The classes that write a run-tests stamp's tokens: every input they read reaches the suite's
+     * JVM as a token of the key they write, so an edit to them moves the key by what it changes, or
+     * not at all. {@code TestStampInputs} writes the stamp; {@code SuiteReads} reads the suite's
+     * recordings and keeps and reads back what they found, the {@code read:}, {@code list:} and
+     * {@code proc:} tokens, while the rules that decide which reads count live in the orchestrator.
+     */
+    private static final List<String> STAMP = List.of(ROOT + "runtime/TestStampInputs", PACKAGE + "SuiteReads");
+
+    /**
+     * The classes that size a suite JVM's heap and climb it when the heap runs out: the heap a JVM
+     * runs at is learned on each host and no stamp names it, so neither does the code that picks it.
+     * Which failures a retry answers and how its run replaces them is the orchestrator's.
+     */
+    private static final List<String> HEAP = List.of(PACKAGE + "SuiteRetry");
+
+    /**
+     * The classes that fork a suite's JVMs: what those JVMs start with on every host is a value, the
+     * fork spec, which the stamp keys and the launch runs from, so a change to it moves the key of
+     * exactly the suites it spells it for, and a change to the plumbing around it moves none. The
+     * heap, temp directories, ports and worker count it leaves out are each host's. Which failures a
+     * retry answers and when the retries stop is the orchestrator's.
+     */
+    private static final List<String> LAUNCH =
+            List.of(ROOT + "runtime/TestLaunch", PACKAGE + "JUnitLauncher", PACKAGE + "ForkSpec");
+
+    /**
+     * The classes whose outcome reaches a suite by a value the stamp keys. {@code AffectedTests}
+     * hands an affected run the classes its ranking picked and spells their digest as the stamp's
+     * token ({@code identityToken}), so a change to which classes it hands on moves the key by what
+     * it hands on. {@code TestClassStamps} writes compile-test's freshness stamps, which reach a
+     * suite only through the test classes the stamp keys by content.
+     */
+    private static final List<String> BY_VALUE = List.of(ROOT + "runtime/TestClassStamps", PACKAGE + "AffectedTests");
 
     /** The words a class's own name carries when it is suite code, wherever its package. */
     private static final List<String> WORDS = List.of("Test", "Suite", "JUnit");
@@ -152,13 +193,20 @@ public enum KeyContract {
     /**
      * Whether the archive entry {@code entry} is suite code: a jk class of the package {@code
      * cc.jumpkick.test}, or one whose top-level class name carries {@code Test}, {@code Suite} or
-     * {@code JUnit}, outside the package {@code cc.jumpkick.orchestrator}.
+     * {@code JUnit}, outside the package {@code cc.jumpkick.orchestrator}, the classes that write
+     * the stamp ({@link #STAMP}), those that size a suite JVM's heap ({@link #HEAP}), those that
+     * fork it ({@link #LAUNCH}) and those whose outcome the stamp keys by value ({@link #BY_VALUE}).
      */
     public static boolean suiteCode(String entry) {
         if (!entry.startsWith(ROOT) || !entry.endsWith(CLASS) || entry.startsWith(ORCHESTRATOR)) return false;
+        String name = entry.substring(0, entry.length() - CLASS.length());
+        int nested = name.indexOf('$');
+        String owner = nested < 0 ? name : name.substring(0, nested);
+        if (STAMP.contains(owner) || HEAP.contains(owner) || LAUNCH.contains(owner) || BY_VALUE.contains(owner))
+            return false;
         if (entry.startsWith(PACKAGE)) return true;
         String simple = entry.substring(entry.lastIndexOf('/') + 1, entry.length() - CLASS.length());
-        int nested = simple.indexOf('$');
+        nested = simple.indexOf('$');
         String top = nested < 0 ? simple : simple.substring(0, nested);
         for (String word : WORDS) {
             if (top.contains(word)) return true;

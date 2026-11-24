@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # The merge queue, the only writer to origin/main. Each batch, under the host's gate lock: fetch
 # origin/main, cherry-pick every waiting branch onto it in submission order (a branch that
-# conflicts or carries a merge commit is ejected), gate that commit with the Queue tier of
+# conflicts or carries a merge commit is ejected, but for a conflict only in the digests
+# KeyContract.java records, which it resolves by recording those `jk guard` prints for the merged
+# code; the batch's line names such branches `rerecorded:`), gate that commit with the Queue tier of
 # scripts/gate/gate.sh (its docs tier when the batch is docs-only: scripts/gate/docs-only.sh) and,
 # when it is GREEN, push it to origin/main as a fast-forward. It never force-pushes: when origin/main
 # moved during the gate the push is refused; when what moved it is docs-only, the verdict holds and
@@ -45,6 +47,9 @@
 #
 #   QUEUE_REPO      the queue's bare repository (default ~/src/jk-queue.git); created when missing
 #   QUEUE_CHECKOUT  the clean checkout batches are built and gated in; its origin holds main (required)
+#   JK_HOME         the JumpKick home the gate installs each batch into and runs from (required, and
+#                   not ~/.jk): the default home is the one every other session on this host runs, and
+#                   a candidate installed there re-keys their suites with each batch
 #   QUEUE_GATE      the gate, run as <gate> <n> <sha> (default scripts/gate/gate.sh of the batch)
 #   QUEUE_TIER      the gate's tier, its GATE_TIER: queue (default; docs for a docs-only batch) or
 #                   full; GATE_BASE is the batch's origin/main
@@ -56,15 +61,25 @@
 # The whole body is one brace group, so bash has read all of it before a checkout changes this file.
 {
   set -uo pipefail
+  [ -z "${JK_HOME:-}" ] || export PATH="$JK_HOME/bin:$PATH"
   repo="${QUEUE_REPO:-$HOME/src/jk-queue.git}"
   co="${QUEUE_CHECKOUT:?QUEUE_CHECKOUT: the checkout batches are gated in}"
   D="${QUEUE_LOG_DIR:-/var/tmp/jk-queue}"
   S="$repo/queue-state"
 
   if [ "${1:-}" != --batch ]; then
+    case "${JK_HOME:-}" in
+      "" | "$HOME/.jk" | "$HOME/.jk/")
+        echo "queue: JK_HOME must name a JumpKick home of the queue's own, not ${JK_HOME:-the default ~/.jk}: the gate installs each batch there" >&2
+        exit 2
+        ;;
+    esac
     [ -d "$repo" ] || git init -q --bare "$repo" || exit 2
     mkdir -p "$S" "$D" || exit 2
-    # Run a copy, so a batch that changes this script changes the loop only when it is restarted.
+    # Each batch runs a copy, so a checkout that changes this file mid-batch leaves it alone. The
+    # copy is this file at first, then before each batch origin/main's: a change to the batch lands
+    # with the batch after it, not when someone restarts the loop. A change to this outer loop still
+    # waits for a restart.
     cp "$0" "$D/loop-running.sh" || exit 2
     paused=""
     while :; do
@@ -78,6 +93,15 @@
       fi
       [ -z "$paused" ] || echo "queue: resumed $(date -u +%Y-%m-%dT%H:%M:%SZ)"
       paused=""
+      # origin/main's copy, unless it has none or bash cannot parse it: then the last one stays.
+      fresh="$D/loop-fresh.sh"
+      if git -C "$co" fetch -q origin main 2>/dev/null &&
+        git -C "$co" show refs/remotes/origin/main:scripts/queue/loop.sh >"$fresh" 2>/dev/null &&
+        bash -n "$fresh" 2>/dev/null; then
+        mv "$fresh" "$D/loop-running.sh"
+      else
+        rm -f "$fresh"
+      fi
       flock -w 7200 "${GATE_LOCK:-/var/tmp/fleet-gate.lock}" bash "$D/loop-running.sh" --batch
       rc=$?
       # Paused while it waited for the lock: it gated nothing, and waits out the pause above.
@@ -198,8 +222,65 @@
   [ "${#grouped[@]}" -eq 0 ] || grp="$(printf '%s\n' "${grouped[@]}" | sort -V | head -1)"
   echo "$n" >"$repo/queue-batch-n"
 
+  # The one file whose conflicts the batch resolves itself, when they are only in the digests it
+  # records: every branch that changes the code of a key contract records the new digest there.
+  KEYS=server/engine/src/main/java/cc/jumpkick/task/KeyContract.java
+  # digests_only <file>: rewrites the file with each conflict resolved to HEAD's side when every
+  # conflict in it differs only in the 12-hex digests it records; fails, leaving it alone, when not.
+  digests_only() {
+    awk '
+      BEGIN { d = "\""; for (i = 0; i < 12; i++) d = d "[0-9a-f]"; d = d "\"" }
+      function bare(s) { gsub(d, "\"\"", s); return s }
+      /^<<<<<<< / { side = 1; ours = theirs = ""; next }
+      side && /^\|\|\|\|\|\|\| / { side = 2; next }
+      side && /^=======$/ { side = 3; next }
+      side && /^>>>>>>> / { if (bare(ours) != bare(theirs)) exit 1; printf "%s", ours; side = 0; n++; next }
+      side == 1 { ours = ours $0 "\n"; next }
+      side == 2 { next }
+      side == 3 { theirs = theirs $0 "\n"; next }
+      { print }
+      END { if (side || !n) exit 1 }
+    ' "$1" >"$1.resolved" || { rm -f "$1.resolved"; return 1; }
+    mv "$1.resolved" "$1"
+  }
+  # rerecord: records in $KEYS, its conflicts resolved, the digests `jk guard` prints for the code
+  # the cherry-pick merged. Fails when it prints none and is red, since then it cannot tell whether
+  # HEAD's digests are the merged code's.
+  rerecord() {
+    local out g pairs old new
+    out="$(jk guard -x </dev/null 2>&1)"
+    g=$?
+    # Undo whatever the guard formatted: the index holds the merge.
+    git diff --name-only --diff-filter=MD -z | xargs -0 -r git checkout -q --
+    pairs="$(sed -nE 's/.*the code of [A-Z]+ changed: record "([0-9a-f]{12})" for it \(recorded "([0-9a-f]{12})"\).*/\2 \1/p' <<<"$out" | sort -u)"
+    [ -n "$pairs" ] || [ "$g" -eq 0 ] || return 1
+    while read -r old new; do
+      [ -n "$old" ] || continue
+      sed -i.bak "s/\"$old\"/\"$new\"/" "$KEYS" && rm -f "$KEYS.bak"
+    done <<<"$pairs"
+    git add "$KEYS"
+  }
+  # pick <label> <commit>...: cherry-picks the commits onto HEAD. A conflict in $KEYS alone, and
+  # only in the digests it records, is resolved by recording those of the merged code; any other
+  # conflict fails, with the cherry-pick left in progress.
+  pick() {
+    local label="$1" more
+    shift
+    git -c merge.conflictStyle=merge cherry-pick --empty=drop "$@" >/dev/null 2>&1 && return 0
+    while [ "$(git diff --name-only --diff-filter=U)" = "$KEYS" ] && digests_only "$KEYS" && rerecord; do
+      # A commit that only recorded a digest the merged code already has is left out.
+      more=--continue
+      git diff --cached --quiet HEAD && more=--skip
+      if git -c core.editor=true cherry-pick "$more" >/dev/null 2>&1; then
+        rerecorded+=("$label")
+        return 0
+      fi
+    done
+    return 1
+  }
+
   git checkout -q --detach "$base" || exit 2
-  members=() msha=() ejected=() oldest=""
+  members=() msha=() ejected=() rerecorded=() oldest=""
   for i in "${!names[@]}"; do
     b="${names[$i]}" sha="${shas[$i]}" before="$(git rev-parse HEAD)"
     if [ -n "$grp" ] && [ "$(head -1 "$S/$b" 2>/dev/null | cut -d' ' -f1-4)" != "waiting $sha group $grp:" ]; then
@@ -214,7 +295,7 @@
     # The branch's commits that nothing in the batch so far already carries, oldest first.
     # shellcheck disable=SC2207 # commit ids, one word each
     picks=($(git rev-list --reverse --no-merges --cherry-pick --right-only "HEAD...$sha"))
-    if [ "${#picks[@]}" -gt 0 ] && ! git cherry-pick --empty=drop "${picks[@]}" >/dev/null 2>&1; then
+    if [ "${#picks[@]}" -gt 0 ] && ! pick "$b@$(short "$sha")" "${picks[@]}"; then
       files="$(git diff --name-only --diff-filter=U | head -5 | tr '\n' ' ')"
       git cherry-pick --abort >/dev/null 2>&1
       git reset -q --hard "$before"
@@ -228,6 +309,7 @@
   line="batch $n $(date -u +%Y-%m-%dT%H:%M:%SZ) base $(short "$base") tip $(short "$tip")${grp:+ group $grp}"
   members_text=""
   for i in "${!members[@]}"; do members_text+=" ${members[$i]}@$(short "${msha[$i]}")"; done
+  [ "${#rerecorded[@]}" -eq 0 ] || members_text+=" rerecorded:${rerecorded[*]}"
   [ "${#ejected[@]}" -eq 0 ] || members_text+=" ejected:${ejected[*]}"
   # wait and gate seconds, the last words of the batch's line.
   timing() {

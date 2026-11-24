@@ -6,7 +6,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.util.AccessLedger;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
@@ -138,18 +137,6 @@ class StoreCasGcTest {
                 .as("pinned by the current or previous install")
                 .isTrue();
         assertThat(cas.contains(justShelved)).as("younger than the minimum age").isTrue();
-    }
-
-    @Test
-    void no_constant_of_the_class_file_spells_the_engine_main_class() throws Exception {
-        // A test's cone follows a string spelling a workspace class: as a literal, the manifest value
-        // put the whole engine in the cone of every test that reaches this class.
-        byte[] bytes;
-        try (var in = StoreCasGc.class.getResourceAsStream("StoreCasGc.class")) {
-            assertThat(in).isNotNull();
-            bytes = in.readAllBytes();
-        }
-        assertThat(new String(bytes, StandardCharsets.ISO_8859_1)).doesNotContain("cc.jumpkick.engine.EngineMain");
     }
 
     @Test

@@ -66,7 +66,7 @@ public final class AffectedChangedPublish {
             if (name.equals("package-info.java") || name.equals("module-info.java")) continue;
             if (!AffectedTestRanker.isClassSource(name)) continue;
             String rel = module.relativize(p).toString().replace('\\', '/');
-            SourceFqcs.Hit hit = fqcs.classify(rel, Set.of(TestSuites.DEFAULT));
+            SourceFqcs.Hit hit = fqcs.classify(rel);
             if (hit.kind() != SourceFqcs.Kind.MAIN) continue;
             String fqc = hit.fqc();
             if (fqc == null) continue;

@@ -37,7 +37,7 @@ public interface BuildPlanListener {
 
     default void output(String step, String line) {}
 
-    /** {@code step} waits for a worker lease ({@code "slot"} or {@code "memory"}), or works again ({@code null}). */
+    /** {@code step} waits for what {@code reason} names ({@link StepWait}), or works again ({@code null}). */
     default void waiting(String step, @Nullable String reason) {}
 
     /** A line the step's fork printed outside its protocol; the run's record keeps the last of them, the view none. */

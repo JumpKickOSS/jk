@@ -5,6 +5,8 @@ import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.task.ClassAbi;
+import cc.jumpkick.task.FileHashMemo;
+import cc.jumpkick.task.SourceApiIndex;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -17,7 +19,10 @@ import java.util.Map;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
-/** Pure ranking: dirty types × test index → capped {@link AffectedTests}. */
+/**
+ * Pure ranking: each selected test class by what jk recorded of its last run ({@code recorded}), and
+ * a class with no record by the changed types its bytecode names, into {@link AffectedTests}.
+ */
 public final class AffectedTestRanker {
 
     private AffectedTestRanker() {}
@@ -35,7 +40,41 @@ public final class AffectedTestRanker {
             Set<String> productionFqcs,
             List<AffectedTests.ModuleRow> cone,
             /** Changed types other (dependency) modules classified — FQC → kind. Never refused on. */
-            Map<String, ClassAbi.Kind> foreignChanged) {
+            Map<String, ClassAbi.Kind> foreignChanged,
+            /**
+             * By test class with a record of its last run, how its recorded cone and reads meet the
+             * change ({@code TestClassRecording.overlaps}): empty when they do not.
+             */
+            Map<String, String> recorded) {
+
+        public Inputs(
+                Path moduleDir,
+                String moduleCoord,
+                Path workspaceRoot,
+                TestSelection selection,
+                List<String> dirtyPaths,
+                Map<String, ClassAbi.Fingerprint> preCompileAbi,
+                Map<String, ClassAbi.Fingerprint> currentAbi,
+                List<Path> compiledMainSources,
+                List<TestClassIndex.Entry> tests,
+                Set<String> productionFqcs,
+                List<AffectedTests.ModuleRow> cone,
+                Map<String, ClassAbi.Kind> foreignChanged) {
+            this(
+                    moduleDir,
+                    moduleCoord,
+                    workspaceRoot,
+                    selection,
+                    dirtyPaths,
+                    preCompileAbi,
+                    currentAbi,
+                    compiledMainSources,
+                    tests,
+                    productionFqcs,
+                    cone,
+                    foreignChanged,
+                    Map.of());
+        }
 
         public Inputs(
                 Path moduleDir,
@@ -61,6 +100,7 @@ public final class AffectedTestRanker {
                     tests,
                     productionFqcs,
                     cone,
+                    Map.of(),
                     Map.of());
         }
     }
@@ -87,36 +127,30 @@ public final class AffectedTestRanker {
         if (suites.isEmpty()) suites.add(TestSuites.DEFAULT);
         // Layout-aware FQC derivation (compact and traditional); string heuristics as fallback.
         SourceFqcs fqcs = SourceFqcs.of(module, suites);
-        Dirty dirty = classifyDirty(in, module, root, suites, fqcs);
+        Dirty dirty = classifyDirty(in, module, root, fqcs);
         AffectedTests refused = refusal(in, dirty, cone);
         if (refused != null) return refused;
 
         List<Scored> scored = score(in, dirty);
-        int candidates = scored.size();
         List<AffectedTests.Row> rows = new ArrayList<>();
         String coord = in.moduleCoord() == null ? "" : in.moduleCoord();
-        for (int i = 0; i < scored.size() && i < AffectedTests.CAP; i++) {
-            Scored s = scored.get(i);
-            rows.add(new AffectedTests.Row(coord, s.className(), s.reason(), s.score()));
-        }
+        for (Scored s : scored) rows.add(new AffectedTests.Row(coord, s.className(), s.reason(), s.score()));
         if (rows.isEmpty()) return AffectedTests.empty(cone, toChanged(in, dirty.changed()));
-        return AffectedTests.ranked(cone, toChanged(in, dirty.changed()), rows, candidates);
+        return AffectedTests.ranked(cone, toChanged(in, dirty.changed()), rows, rows.size());
     }
 
     /**
-     * What the dirty set says: a manifest touched, a dirty test outside the selection, only
-     * non-class files, the selected test classes edited, and the changed production types by kind.
+     * What the dirty set says: a manifest touched, only non-class files, the test classes edited
+     * (the selection's or not: {@link #score} ranks only the selected), and the changed production
+     * types by kind.
      */
     private record Dirty(
-            boolean outside,
             boolean manifest,
             boolean onlyNonClass,
             LinkedHashSet<String> dirtyTestClasses,
             LinkedHashMap<String, ClassAbi.Kind> changed) {}
 
-    private static Dirty classifyDirty(
-            Inputs in, @Nullable Path module, @Nullable Path root, Set<String> suites, SourceFqcs fqcs) {
-        boolean outside = false;
+    private static Dirty classifyDirty(Inputs in, @Nullable Path module, @Nullable Path root, SourceFqcs fqcs) {
         boolean manifest = false;
         boolean onlyNonClass = true;
         LinkedHashSet<String> dirtyTestClasses = new LinkedHashSet<>();
@@ -137,10 +171,9 @@ public final class AffectedTestRanker {
             onlyNonClass = false;
             if (module != null && p.startsWith(module)) {
                 String relStr = module.relativize(p).toString().replace('\\', '/');
-                SourceFqcs.Hit hit = fqcs.classify(relStr, suites);
+                SourceFqcs.Hit hit = fqcs.classify(relStr);
                 switch (hit.kind()) {
-                    case TEST_OUTSIDE -> outside = true;
-                    case TEST_SELECTED -> {
+                    case TEST -> {
                         if (hit.fqc() != null) dirtyTestClasses.add(hit.fqc());
                     }
                     case MAIN -> {
@@ -165,13 +198,13 @@ public final class AffectedTestRanker {
                 Path p = src.toAbsolutePath().normalize();
                 if (module == null || !p.startsWith(module)) continue;
                 String relStr = module.relativize(p).toString().replace('\\', '/');
-                SourceFqcs.Hit hit = fqcs.classify(relStr, suites);
+                SourceFqcs.Hit hit = fqcs.classify(relStr);
                 if (hit.kind() == SourceFqcs.Kind.MAIN && hit.fqc() != null && !changed.containsKey(hit.fqc())) {
                     changed.put(hit.fqc(), kindOf(hit.fqc(), in));
                 }
             }
         }
-        return new Dirty(outside, manifest, onlyNonClass, dirtyTestClasses, changed);
+        return new Dirty(manifest, onlyNonClass, dirtyTestClasses, changed);
     }
 
     /** The refusals the classified dirty set decides, in precedence order; null when ranking may proceed. */
@@ -180,13 +213,6 @@ public final class AffectedTestRanker {
         if (dirty.manifest()) {
             return AffectedTests.refused(
                     new AffectedTests.Refuse("manifest", "jk.toml or jk-lock.toml changed"),
-                    cone,
-                    toChanged(in, changed));
-        }
-        if (dirty.outside()) {
-            return AffectedTests.refused(
-                    new AffectedTests.Refuse(
-                            "outside-selection", "dirty test source is outside the current test selection"),
                     cone,
                     toChanged(in, changed));
         }
@@ -201,7 +227,10 @@ public final class AffectedTestRanker {
         boolean foreignEmpty =
                 in.foreignChanged() == null || in.foreignChanged().isEmpty();
         boolean noCode = changed.isEmpty() && dirty.dirtyTestClasses().isEmpty() && foreignEmpty;
+        boolean noneRead =
+                in.recorded() == null || in.recorded().values().stream().allMatch(String::isEmpty);
         if (noCode
+                && noneRead
                 && dirty.onlyNonClass()
                 && in.dirtyPaths() != null
                 && !in.dirtyPaths().isEmpty()) {
@@ -212,9 +241,11 @@ public final class AffectedTestRanker {
     }
 
     /**
-     * Every selected test that scores against the changed types, best first, ties by name. A dirty
-     * test source ranks only through its entry in {@code tests}: one the run's tags or {@code [test]
-     * exclude-classes} keep out has none, and stays out.
+     * Every selected test that scores against the change, best first, ties by name. A class with a
+     * record scores by how its recorded cone and reads meet the change; only a class with none is
+     * scored by the changed types its bytecode names. A dirty test source ranks only through its
+     * entry in {@code tests}: one the run's tags or {@code [test] exclude-classes} keep out has none,
+     * and stays out.
      */
     private static List<Scored> score(Inputs in, Dirty dirty) {
         LinkedHashSet<String> dirtyTestClasses = dirty.dirtyTestClasses();
@@ -232,6 +263,7 @@ public final class AffectedTestRanker {
         nameable.addAll(scoreable.keySet());
         Map<String, Set<String>> bySimple = TestClassIndex.productionFqcsBySimple(nameable);
 
+        Map<String, String> recorded = in.recorded() == null ? Map.of() : in.recorded();
         List<Scored> scored = new ArrayList<>();
         for (TestClassIndex.Entry t : in.tests() == null ? List.<TestClassIndex.Entry>of() : in.tests()) {
             // A helper or fixture under the test root runs no test: never a candidate.
@@ -241,6 +273,16 @@ public final class AffectedTestRanker {
             if (dirtyTestClasses.contains(t.className())) {
                 score = 110;
                 reason = "test-src";
+            }
+            String overlap = recorded.get(t.className());
+            if (overlap != null) {
+                int fromRecord = recordScore(overlap);
+                if (fromRecord > score) {
+                    score = fromRecord;
+                    reason = overlap;
+                }
+                if (score > 0) scored.add(new Scored(t.className(), reason, score));
+                continue;
             }
             Set<String> nameHits =
                     t.nameMatchSimple().isEmpty() ? Set.of() : bySimple.getOrDefault(t.nameMatchSimple(), Set.of());
@@ -267,6 +309,15 @@ public final class AffectedTestRanker {
         }
         scored.sort(Comparator.comparingInt(Scored::score).reversed().thenComparing(Scored::className));
         return scored;
+    }
+
+    /**
+     * A recorded overlap's score: a class that ran a changed class's code or read a changed file
+     * ranks with a test named for the changed type, one whose cone only holds it below an import.
+     */
+    private static int recordScore(String overlap) {
+        if (overlap.startsWith("cone-ran:") || overlap.startsWith("reads:")) return 100;
+        return overlap.isEmpty() ? 0 : 75;
     }
 
     private record Scored(String className, String reason, int score) {}
@@ -307,9 +358,13 @@ public final class AffectedTestRanker {
     /**
      * The module-relative path of a dirty main source that is newer than its compiled class, or
      * {@code null} when every dirty class file is at least as fresh as its source (or absent —
-     * ranking from sources is honest, stale bytecode is not).
+     * ranking from sources is honest, stale bytecode is not). A source that is newer by its time
+     * but whose content is the one {@code compiled} records for the classes on disk is not stale:
+     * a checkout rewrites a file with the same bytes, and a compile served from the cache leaves
+     * the class times older than the sources it was keyed by.
      */
-    public static @Nullable String staleDirtyMain(Path root, Path moduleDir, List<String> dirty, Path classesDir) {
+    public static @Nullable String staleDirtyMain(
+            Path root, Path moduleDir, List<String> dirty, Path classesDir, Map<String, SourceApiIndex.Row> compiled) {
         Path module = moduleDir.toAbsolutePath().normalize();
         Path base = root.toAbsolutePath().normalize();
         SourceFqcs fqcs = SourceFqcs.of(module, Set.of(TestSuites.DEFAULT));
@@ -322,12 +377,13 @@ public final class AffectedTestRanker {
             String name = p.getFileName() == null ? "" : p.getFileName().toString();
             if (!isClassSource(name)) continue;
             String rel = module.relativize(p).toString().replace('\\', '/');
-            SourceFqcs.Hit hit = fqcs.classify(rel, Set.of(TestSuites.DEFAULT));
+            SourceFqcs.Hit hit = fqcs.classify(rel);
             if (hit.kind() != SourceFqcs.Kind.MAIN || hit.fqc() == null) continue;
             Path classFile = classesDir.resolve(hit.fqc().replace('.', '/') + ".class");
             try {
                 if (Files.isRegularFile(classFile)
-                        && Files.getLastModifiedTime(classFile).compareTo(Files.getLastModifiedTime(p)) < 0) {
+                        && Files.getLastModifiedTime(classFile).compareTo(Files.getLastModifiedTime(p)) < 0
+                        && !compiledAsIs(compiled.get(rel), p)) {
                     return rel;
                 }
             } catch (IOException e) {
@@ -335,6 +391,11 @@ public final class AffectedTestRanker {
             }
         }
         return null;
+    }
+
+    /** Whether {@code source} holds the content the compile of the classes on disk recorded for it. */
+    private static boolean compiledAsIs(SourceApiIndex.@Nullable Row row, Path source) throws IOException {
+        return row != null && row.contentSha().equals(FileHashMemo.contentHash(source));
     }
 
     /** A source file whose compilation produces classes — the grain the ranker reasons in. */
@@ -360,15 +421,6 @@ public final class AffectedTestRanker {
             return true;
         }
         return s.startsWith("test/") || s.startsWith("integration/") || s.startsWith("e2e/") || s.startsWith("it/");
-    }
-
-    static boolean suiteContains(String rel, Set<String> suites) {
-        String s = rel.replace('\\', '/');
-        for (String suite : suites) {
-            if (s.contains("src/" + suite + "/")) return true;
-            if (s.startsWith(suite + "/")) return true;
-        }
-        return false;
     }
 
     static String simpleName(String fqc) {

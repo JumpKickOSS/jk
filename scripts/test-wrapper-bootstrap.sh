@@ -34,16 +34,29 @@ fi
 openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:3072 -out "$WORK/test-key.pem" 2>/dev/null
 openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:3072 -out "$WORK/other-key.pem" 2>/dev/null
 TEST_SPKI="$(openssl pkey -in "$WORK/test-key.pem" -pubout -outform DER 2>/dev/null | openssl base64 -A)"
-# The wrapper downloads over HTTPS only, so the fixture host is this machine under a throwaway
-# certificate of its own.
-openssl req -x509 -newkey rsa:2048 -nodes -days 2 -subj "/CN=127.0.0.1"   -addext "subjectAltName=IP:127.0.0.1"   -keyout "$WORK/host-key.pem" -out "$WORK/host-cert.pem" 2>/dev/null ||
+# The wrapper downloads over HTTPS only, so the fixture host is this machine, serving a leaf
+# certificate for 127.0.0.1 issued by a throwaway CA the wrapper's curl calls trust. A self-signed
+# leaf that is its own trust anchor is not enough: curl on OpenSSL 4 refuses it as an issuer
+# without certificate-signing key usage (verify error 32), so the trust is a chain of two.
+openssl req -x509 -newkey rsa:2048 -nodes -days 2 -subj "/CN=jk wrapper fixture CA" \
+  -addext "basicConstraints=critical,CA:TRUE" -addext "keyUsage=critical,keyCertSign,cRLSign" \
+  -keyout "$WORK/ca-key.pem" -out "$WORK/ca-cert.pem" 2>/dev/null ||
+  fail "openssl could not issue the fixture CA's certificate"
+openssl req -new -newkey rsa:2048 -nodes -subj "/CN=127.0.0.1" \
+  -keyout "$WORK/host-key.pem" -out "$WORK/host.csr" 2>/dev/null ||
+  fail "openssl could not request the fixture host's certificate"
+printf '%s\n' "basicConstraints=critical,CA:FALSE" "keyUsage=critical,digitalSignature,keyEncipherment" \
+  "extendedKeyUsage=serverAuth" "subjectAltName=IP:127.0.0.1" >"$WORK/host.ext"
+openssl x509 -req -in "$WORK/host.csr" -CA "$WORK/ca-cert.pem" -CAkey "$WORK/ca-key.pem" \
+  -CAcreateserial -CAserial "$WORK/ca.srl" -days 2 -extfile "$WORK/host.ext" \
+  -out "$WORK/host-cert.pem" 2>/dev/null ||
   fail "openssl could not issue the fixture host's certificate"
 
 # The checkout: the wrapper as `jk wrapper` writes it, trusting the throwaway key as the release key
-# and, in both its curl calls, the fixture host's certificate. Nothing else changes.
+# and, in both its curl calls, the fixture CA. Nothing else changes.
 REPO="$WORK/repo"
 mkdir -p "$REPO"
-awk -v key="$TEST_SPKI" -v cert="$WORK/host-cert.pem" '
+awk -v key="$TEST_SPKI" -v cert="$WORK/ca-cert.pem" '
   /^RELEASE_RSA_SPKI=/ { sub(/"[^"]*"/, "\"" key "\"") }
   { gsub(/curl -fsSL /, "curl --cacert \"" cert "\" -fsSL ") }
   { print }

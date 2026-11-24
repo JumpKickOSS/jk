@@ -627,7 +627,8 @@ final class NodeArm {
                     NodeHome home = ctx.require(NODE_HOME);
                     NodeKeys.Keyed keyed = testKey(ctx, script);
                     boolean coverage = in.session().coverage();
-                    if (!rebuild() && !coverage && replayGreen(ctx, actionCache, keyed.key())) {
+                    boolean rerun = rebuild() || in.session().rerunTests();
+                    if (!rerun && !coverage && replayGreen(ctx, actionCache, keyed.key())) {
                         writes.used(TaskNames.NODE_TEST, keyed, () -> testKey(ctx, script));
                         ctx.progress(1);
                         return;
