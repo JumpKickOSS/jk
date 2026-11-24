@@ -163,6 +163,12 @@ def void(row: dict) -> bool:
     return not spent and auth_or_limit(words)
 
 
+def current(row: dict, tasks: dict) -> bool:
+    """Whether a change-task row ran its task as tasks.toml defines it now: the same `series`, 1 when unset."""
+    task = tasks.get(row.get("task"))
+    return task is not None and int(row.get("task_series") or 1) == int(task.get("series", 1))
+
+
 def _kill_group(proc: subprocess.Popen) -> None:
     if proc.poll() is not None:
         return

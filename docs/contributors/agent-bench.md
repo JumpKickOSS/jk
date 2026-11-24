@@ -70,7 +70,9 @@ need a new baseline or a new agent joins, one run per cell like every other arm.
 
 **Compare like with like.** The baseline is a series on the same build era, each agent on its
 prescription (`screen-ff`'s `PRESCRIPTIONS`; `--arm agent=arm` tries another against it). Every row
-records its `jk_build`.
+records its `jk_build`. A change to a task's planted code, hidden files or prompt is another measure:
+raise the task's `series` in `tasks.toml` in the same commit. Rows record it as `task_series`, and
+`screen-ff` and the scoreboard leave out rows of an older one.
 
 **Split wall time.** Each transcript event carries `_t_ms`, its arrival since the agent started, so wall
 time splits into model time and tool time. A rename that "got slower" is usually a test run, not
@@ -121,8 +123,8 @@ none. Bench sessions (`agent-loop-harness`, `scoreboard`) are rows of their own;
 ## Traps
 
 - **Setup is most of a cell.** Copying the repository, its baseline build and tests, and the graph
-  build are cached per repository, corpus commit, baseline command and installed JumpKick build
-  (`$AGENT_LOOP_HOME/prepared/`); an install starts a new entry.
+  build are cached per repository, corpus commit, baseline command, planted edits, task series and
+  installed JumpKick build (`$AGENT_LOOP_HOME/prepared/`); an install starts a new entry.
 - **Disk.** A finished run's sandbox is deleted once its row is written (its diff kept as
   `diff.patch`); only red and claimed runs keep theirs for `--reverify`. A matrix of kept sandboxes
   once filled a 1 TB disk. `/tmp` is a small tmpfs: scratch homes go under `~/.cache`.

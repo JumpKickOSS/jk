@@ -697,7 +697,8 @@ def prepare(task: dict, tool: str, question: bool, sandbox: Path) -> dict:
     # A task that plants files or edits has a sandbox of its own: shared by repository, the first task's
     # sandbox stood in for every later task of that repository, and a planted trap never reached the agent.
     planted = task["name"] if (TASK_FILES / task["name"] / "inject").exists() or task.get("inject") else ""
-    key = hashlib.sha1(json.dumps([task["repo"], rev, tool, cmd, build, planted, test_excludes(), anchor_tail()]).encode()).hexdigest()[:16]
+    key = hashlib.sha1(json.dumps([task["repo"], rev, tool, cmd, build, planted, task.get("inject"), task.get("series", 1),
+                                   test_excludes(), anchor_tail()]).encode()).hexdigest()[:16]
     slot = PREPARED / f"{task['repo']}-{key}"
     if (slot / "meta.json").exists():
         sandbox.parent.mkdir(parents=True, exist_ok=True)
@@ -923,7 +924,9 @@ def _run_one(name: str, task: dict, arm: str, run_no: int, ns, run_root: Path) -
            "sandbox": str(sandbox), "host": benchtools.host_id(), "jk_build": jk_build_id(), "jk_version": jk_version(),
            "test_excluded": test_excludes() or None, "anchor_tail": anchor_tail() or None,
            # A re-pinned corpus is other code: its rows are a series of their own.
-           "corpus": corpus_rev(task) or None}
+           "corpus": corpus_rev(task) or None,
+           # A changed task definition is another measure (tasks.toml, `series`).
+           "task_series": int(task.get("series", 1))}
     try:
         # A question needs the classes (the graph's compiled facts), not a test run.
         prep = prepare(task, tool, question, sandbox)

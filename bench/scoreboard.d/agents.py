@@ -11,7 +11,7 @@ The agent rows are read from the checked-in change-task results (`bench/agent-lo
 `change-tasks` runs them, on an idle host). A cell is one (driver, arm, task) on the driver's default
 model, and it takes the newest series that has it: the newest result date, and within that date the
 highest hundred of `--first-run` (each round on a new build or prescription numbers its runs from a
-new hundred). A void row (its CLI refused the run for a login or a limit) is no run and is left out.
+new hundred). A row of an older task definition (tasks.toml's `series`) is left out. A void row (its CLI refused the run for a login or a limit) is no run and is left out.
 Per driver and arm, over accepted runs:
 
   agents.<driver>.questions.non-graph-nav   share of navigation calls that were not graph calls
@@ -75,7 +75,7 @@ def cells() -> dict[tuple[str, str, str], list[dict]]:
                 continue
             r = json.loads(line)
             # A row with no verdict is a run that never started (its baseline was red): not a series.
-            if (r.get("task") not in tasks or r.get("model") != models.get(r.get("driver"))
+            if (not clis.current(r, tasks) or r.get("model") != models.get(r.get("driver"))
                     or r.get("effort") != efforts.get(r.get("driver")) or "accepted" not in r or clis.void(r)):
                 continue
             r["kind"] = tasks[r["task"]].get("kind", r.get("kind", ""))
@@ -373,7 +373,7 @@ def rate_cells() -> dict[tuple[str, str, str], dict[tuple[str, str, str], list[d
             if not line.strip():
                 continue
             r = json.loads(line)
-            if r.get("task") not in tasks or not r.get("model") or "accepted" not in r or clis.void(r):
+            if not clis.current(r, tasks) or not r.get("model") or "accepted" not in r or clis.void(r):
                 continue
             r["kind"] = tasks[r["task"]].get("kind", r.get("kind", ""))
             key = (r["driver"], r["model"], str(r.get("effort") or ""), r["arm"], r["task"])

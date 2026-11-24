@@ -4,7 +4,9 @@
 # `inject` plants a defect before the baseline commit (`from` must occur exactly once), and
 # `baseline = "red"` says the tests fail before the agent starts. tasks/<task>/<tool>/ (or
 # tasks/<task>/all/) is copied over the sandbox after the agent stops, `restore` directories are put
-# back from the corpus as shipped, and the tool's full test run then decides.
+# back from the corpus as shipped, and the tool's full test run then decides. `series` (1 when unset)
+# goes up when a change to a task's inject, files or prompt makes its results another measure: each row
+# records it as `task_series`, and rows of an older series are never compared with the current one.
 
 [tasks.petclinic-owner-email]
 repo   = "spring-petclinic"
@@ -403,15 +405,19 @@ test   = ["jk", "-u", "-x", "-a", "test", "-S", "PetTypeLabelMoveTests", "-S", "
 
 # A delete: three methods planted in CharSequenceUtils and a type, each named as maybe dead. The type
 # is the only caller of one method; another collides with StringUtils.isEmpty, which hundreds of lines
-# call; the third is used only through a method reference and must stay. The hidden check reads which
-# declarations are left and calls the kept one.
+# call; the third is used only through a method reference in CharSequenceTotals, which the public
+# CharSequenceUtils.totalLength calls, and must stay. The planted methods follow subSequence's closing
+# brace, so no Javadoc is split from its method. The hidden check reads which declarations are left and
+# calls the kept one.
 [tasks.commons-lang-delete-dead-code]
 repo      = "commons-lang"
 kind      = "delete"
 code_tool = "delete"
 tools     = ["jk"]
+series    = 2
 inject    = [
-  { file = "src/main/java/org/apache/commons/lang3/CharSequenceUtils.java", from = "    public static CharSequence subSequence(final CharSequence cs, final int start) {", to = "    static boolean isEmpty(final CharSequence cs) {\n        return cs == null || cs.length() == 0;\n    }\n\n    static String legacyQuote(final CharSequence cs) {\n        return \"'\" + cs + \"'\";\n    }\n\n    static int length(final CharSequence cs) {\n        return cs == null ? 0 : cs.length();\n    }\n\n    public static CharSequence subSequence(final CharSequence cs, final int start) {" },
+  { file = "src/main/java/org/apache/commons/lang3/CharSequenceUtils.java", from = "package org.apache.commons.lang3;\n\n", to = "package org.apache.commons.lang3;\n\nimport java.util.List;\n\n" },
+  { file = "src/main/java/org/apache/commons/lang3/CharSequenceUtils.java", from = "        return cs == null ? null : cs.subSequence(start, cs.length());\n    }\n", to = "        return cs == null ? null : cs.subSequence(start, cs.length());\n    }\n\n    static boolean isEmpty(final CharSequence cs) {\n        return cs == null || cs.length() == 0;\n    }\n\n    static String legacyQuote(final CharSequence cs) {\n        return \"'\" + cs + \"'\";\n    }\n\n    static int length(final CharSequence cs) {\n        return cs == null ? 0 : cs.length();\n    }\n\n    /**\n     * Gets the total length of several character sequences, a null one counting as empty.\n     *\n     * @param parts the character sequences, not null.\n     * @return the sum of their lengths.\n     */\n    public static int totalLength(final List<? extends CharSequence> parts) {\n        return CharSequenceTotals.total(parts);\n    }\n" },
 ]
 prompt = """
 Clean up dead code around `CharSequenceUtils`. Each of these may be unused:

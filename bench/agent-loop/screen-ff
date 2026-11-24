@@ -23,9 +23,13 @@ import json
 import statistics
 import subprocess
 import sys
+import tomllib
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))
+from harnesslib import agents as clis  # noqa: E402
+
 PRESCRIPTIONS = {"claude-code": "jk", "cursor": "jk-cursorrules", "grok": "jk", "muse": "jk", "agy": "jk-agyrules",
                  "codex": "jk", "copilot": "jk"}
 # Tasks whose baseline needs Docker (petclinic's Testcontainers Postgres test); skipped while it is down.
@@ -47,7 +51,9 @@ def rows() -> list[dict]:
     out = []
     for f in sorted((HERE / "results").glob("*-change-tasks/rows.jsonl")):
         out += [json.loads(line) for line in f.read_text().splitlines() if line.strip()]
-    return [r for r in out if "accepted" in r]
+    tasks = tomllib.loads((HERE / "tasks.toml").read_text())["tasks"]
+    # A row of an older task definition is another measure: never a baseline or a new series.
+    return [r for r in out if "accepted" in r and clis.current(r, tasks)]
 
 
 def median(rs: list[dict], key: str) -> float | None:
