@@ -53,7 +53,8 @@ public final class LedgerReads {
      * The digest of the reads guards {@code ids} made in the last run configured by {@code config},
      * or {@code null} when the ledger cannot stand for the suite: a fixture or tree-case run (which
      * keeps no ledger), no ledger, a guard of {@code ids} with no line, or a line whose guard reached
-     * no verdict or takes a view the ledger does not see. {@code hash} answers whether a file still
+     * no verdict or takes a view the ledger does not see. The tree's listing is the process's last
+     * while no directory it listed has changed. {@code hash} answers whether a file still
      * reads as recorded: a UTF-8 text's digest is its bytes', so a match spares reading it, and a
      * file that does not match is read and digested as the ledger digests it.
      */
@@ -64,8 +65,9 @@ public final class LedgerReads {
         if (!Files.isRegularFile(file)) return null;
         Map<String, ReadLedger.Line> lines = ReadLedger.read(file);
         Path root = config.root().toAbsolutePath().normalize();
-        TextView view =
-                mode == Mode.NOW ? new TextView(root, config.sources(), false, GuardRuntime.outputDirOf(config)) : null;
+        TextView view = mode == Mode.NOW
+                ? TextView.keepingWalk(root, config.sources(), GuardRuntime.outputDirOf(config))
+                : null;
         Map<String, String> nowByPath = new HashMap<>();
         MessageDigest md = Hashing.newSha256();
         for (String id : new TreeSet<>(ids)) {

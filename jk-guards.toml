@@ -2501,6 +2501,10 @@ in     = "cc.jumpkick.repo.PomRuntimeClasspath#RESOLVE_CACHE"
 reason = "stamped: keyed by the worker jar's and POM's size and mtime and the repository URL; each hit re-stats its jars, and only successes are kept, 256 at most"
 
 [[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.guard.api.runtime.TreeWalks#HOLDERS"
+reason = "stamped: each read re-stats every directory the kept walk listed and walks again on any move; 8 trees at most"
+
+[[guards.engine-static-memo.allow]]
 in     = "cc.jumpkick.repo.PomRuntimeClasspath#STORE_REPOS"
 reason = "content-keyed: the worker repository group by store root, official URL and extra store, 32 at most"
 
