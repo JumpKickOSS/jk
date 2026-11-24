@@ -143,6 +143,25 @@ class TestClassSelectionE2eTest {
                 .isEqualTo(1L);
     }
 
+    /** A class disabled whole, as {@code @DisabledOnOs} disables one on the other OS, matched: its test is skipped. */
+    @Test
+    void a_class_disabled_whole_is_a_match_whose_tests_are_skipped(@TempDir Path tmp) throws Exception {
+        Path ws = workspace(tmp);
+        Files.writeString(
+                ws.resolve("app/test/src/com/example/OffTest.java"),
+                testClass("OffTest", null)
+                        .replace("class OffTest", "@org.junit.jupiter.api.Disabled(\"off\")\nclass OffTest"));
+        Steps steps = new Steps();
+
+        WorkspaceResult result = test(ws, tmp, List.of("OffTest"), 0, steps);
+
+        assertThat(result.errors()).isEmpty();
+        assertThat(result.success()).isTrue();
+        assertThat(steps.tests(ws.resolve("app")))
+                .extracting(TestSummary::total, TestSummary::skipped)
+                .containsExactly(1L, 1L);
+    }
+
     @Test
     void a_class_the_tag_filter_excluded_fails_its_module_as_a_usage_error_naming_the_tag_and_the_flag(
             @TempDir Path tmp) throws Exception {
