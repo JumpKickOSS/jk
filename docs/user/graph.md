@@ -837,7 +837,7 @@ field, type, annotation or constructor): every card an agent's host shows is pai
 on every turn, and in measured agent runs `usages` and `rename` are the ones that repay it.
 
 <!-- agents-claims:begin -->
-We asked coding agents from 7 vendors questions like "who calls this method?" With JumpKick's code graph, their answers cost **56–90% less**, $0.037–$0.311 a question instead of $0.112–$1.78 (an estimate at API list prices), and took **56–96% fewer tokens** and **41–78% fewer back-and-forth turns** than without it. Renaming a method everywhere it is used cost **66–79% less**, $0.020–$0.127 a rename instead of $0.082–$0.474, with **58–86% fewer tokens** and **45–77% fewer turns**. The graph pays off even on tiny projects: the smallest we tested, gs-multi-module, has just **83 lines of code**. ([The tables](why.md#asking-about-the-code).)
+We asked 7 coding agents questions like "who calls this method?" With JumpKick's code graph, their answers cost **56–90% less**, $0.037–$0.311 a question instead of $0.112–$1.78 (an estimate at API list prices), and took **56–96% fewer tokens** and **41–78% fewer back-and-forth turns** than without it. Renaming a method everywhere it is used cost **66–79% less**, $0.020–$0.127 a rename instead of $0.082–$0.474, with **58–86% fewer tokens** and **45–77% fewer turns**. The graph pays off even on tiny projects: the smallest we tested, gs-multi-module, has just **83 lines of code**. ([The tables](why.md#asking-about-the-code).)
 <!-- agents-claims:end -->
 
 `query`, `read`, `find`, `delete`, `move`, `pull_up` (`jk code pull-up`) and `extract_interface`

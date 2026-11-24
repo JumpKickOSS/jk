@@ -61,7 +61,7 @@ The measure is turns, tokens and wall time to green on broken builds, against Ma
 given the same agent tooling: [Agents reach green](#agents-reach-green).
 
 <!-- agents-claims:begin -->
-We asked coding agents from 7 vendors questions like "who calls this method?" With JumpKick's code graph, their answers cost **56–90% less**, $0.037–$0.311 a question instead of $0.112–$1.78 (an estimate at API list prices), and took **56–96% fewer tokens** and **41–78% fewer back-and-forth turns** than without it. Renaming a method everywhere it is used cost **66–79% less**, $0.020–$0.127 a rename instead of $0.082–$0.474, with **58–86% fewer tokens** and **45–77% fewer turns**. The graph pays off even on tiny projects: the smallest we tested, gs-multi-module, has just **83 lines of code**. ([The tables](#asking-about-the-code).)
+We asked 7 coding agents questions like "who calls this method?" With JumpKick's code graph, their answers cost **56–90% less**, $0.037–$0.311 a question instead of $0.112–$1.78 (an estimate at API list prices), and took **56–96% fewer tokens** and **41–78% fewer back-and-forth turns** than without it. Renaming a method everywhere it is used cost **66–79% less**, $0.020–$0.127 a rename instead of $0.082–$0.474, with **58–86% fewer tokens** and **45–77% fewer turns**. The graph pays off even on tiny projects: the smallest we tested, gs-multi-module, has just **83 lines of code**. ([The tables](#asking-about-the-code).)
 <!-- agents-claims:end -->
 
 ### 2. Never type `clean` again
@@ -460,19 +460,6 @@ to JumpKick itself, each with and without the graph (one run each):
 | commons-lang | 188,332 | `Range.contains` | 2 / 25 · 13k / 221k | 2 / 23 · 35k / 1.0M |
 | JumpKick | 994,905 | `CodeGraph.between` | 11 / 18 · 60k / 219k | 12 / 11 · 353k / 445k |
 <!-- agents-curve:end -->
-
-### Every model
-
-A vendor's top model reasons more, so it might need the graph less. The same tasks on each agent's
-default model and on its vendor's top model, with the graph, run on the same day:
-
-<!-- agents-models-claim:begin -->
-_No runs on another model yet._
-<!-- agents-models-claim:end -->
-
-<!-- agents-models:begin -->
-
-<!-- agents-models:end -->
 
 ## Where it is going
 
