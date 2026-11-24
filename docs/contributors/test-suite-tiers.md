@@ -197,7 +197,8 @@ loop ships its checkout's records to `full-records/` in the queue's repository, 
 `scripts/gate/class-records.sh import` adds to the queue checkout's records the rows of each class
 it has none of. A shipped row loses its key, so JumpKick ranks by it but never replays the class on
 it, and a row JumpKick wrote in the queue checkout always wins. The gate log says, for each changed
-module, how many of its classes have a record and how many of those came from the Full tier
+module, how many of its classes have a record and how many of those have only rows the Full tier
+shipped
 (`rank-integration: <module>: <n> of <m> classes have a record, <k> of them from the Full tier`). A
 class neither checkout has run has no record and ranks by its bytecode.
 

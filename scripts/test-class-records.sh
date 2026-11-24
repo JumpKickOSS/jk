@@ -3,7 +3,8 @@
 # them (its real path's digest under the cache); export copies them; import adds another
 # checkout's rows without their keys, keeps every row jk wrote here and the headers, replaces a row
 # an earlier import added only with a newer one, and adds nothing twice; classes names each class
-# of an integration launch or of a run's only launch (named "") and who recorded it.
+# of an integration launch or of a run's only launch (named "") once, and who recorded it: jk here
+# when it has a row of its own, whatever the Full tier shipped beside it.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -49,6 +50,7 @@ mkdir -p "$(dirname "$want")"
   row test:test CTest 500 kC
   row test:integration DTest 500 kD
   row test:integration ETest 100 kE
+  row test:integration FTest 500 kF
 } >"$want"
 (cd "$WORK/full" && JK_CACHE_DIR="$WORK/cache-full" bash "$CR" export "$WORK/ship")
 cmp -s "$want" "$WORK/ship/mod/a/test-classes.ndjson" || fail "export did not copy mod/a's records"
@@ -97,7 +99,7 @@ imp
 # A member with no records here gets the shipped rows alone.
 (cd "$WORK/full" && JK_CACHE_DIR="$WORK/cache-full" bash "$CR" export "$WORK/ship")
 imp
-[[ "$(jq -sr 'map(.container[1]) | join(",")' "$q")" == "ATest,BTest,CTest,DTest,ETest" ]] || fail "rows into no records: $(cat "$q")"
+[[ "$(jq -sr 'map(.container[1]) | join(",")' "$q")" == "ATest,BTest,CTest,DTest,ETest,FTest" ]] || fail "rows into no records: $(cat "$q")"
 
 # Bad arguments are refused.
 if (cd "$WORK/queue" && bash "$CR" import "$WORK/ship") 2>/dev/null; then fail "import with no member was accepted"; fi
