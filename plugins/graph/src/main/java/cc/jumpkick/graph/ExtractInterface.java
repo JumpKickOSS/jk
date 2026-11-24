@@ -25,6 +25,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -224,7 +225,8 @@ final class ExtractInterface {
 
     /**
      * The answer's list of places: those switched (or, with {@code switching} off, that could be),
-     * then those left with their reasons, each at its line after the edit.
+     * then those left with their reasons, each at its line after the edit, then the routine ones
+     * (see {@link InterfaceSwitch.Why#routine}) as counts per file.
      */
     private static List<String> places(
             List<InterfaceSwitch.Place> places,
@@ -236,6 +238,9 @@ final class ExtractInterface {
         List<String> answer = new ArrayList<>();
         Set<String> could = new LinkedHashSet<>();
         Set<String> left = new LinkedHashSet<>();
+        Map<String, Map<InterfaceSwitch.Routine, Integer>> routine = new TreeMap<>();
+        Set<String> counted = new HashSet<>();
+        int routines = 0;
         for (InterfaceSwitch.Place p : places) {
             String after = afters.getOrDefault(p.file().rel, p.file().text);
             Integer moved = placed.get(p);
@@ -245,6 +250,14 @@ final class ExtractInterface {
             InterfaceSwitch.Why why = p.reason();
             if (why == null) {
                 could.add(where);
+                continue;
+            }
+            InterfaceSwitch.Routine kind = why.routine();
+            if (kind != null) {
+                if (!counted.add(where + why.text())) continue;
+                routine.computeIfAbsent(p.file().rel, k -> new LinkedHashMap<>())
+                        .merge(kind, 1, Integer::sum);
+                routines++;
                 continue;
             }
             FileEdit seen = why.file();
@@ -264,6 +277,15 @@ final class ExtractInterface {
         if (switching && !left.isEmpty()) {
             answer.add("Left as " + simple + " (" + left.size() + (left.size() == 1 ? " line):" : " lines):"));
             answer.addAll(left);
+        }
+        if (switching && routines > 0) {
+            answer.add("Also left as " + simple + ", where only the class will do (" + routines
+                    + (routines == 1 ? " line):" : " lines):"));
+            for (Map.Entry<String, Map<InterfaceSwitch.Routine, Integer>> e : routine.entrySet()) {
+                List<String> counts = new ArrayList<>();
+                e.getValue().forEach((kind, n) -> counts.add(kind.count(n)));
+                answer.add("  " + e.getKey() + "  " + String.join(", ", counts));
+            }
         }
         return answer;
     }

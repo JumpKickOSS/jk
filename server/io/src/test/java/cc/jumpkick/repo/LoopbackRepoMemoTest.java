@@ -14,10 +14,12 @@ import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.URI;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Stream;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -85,6 +87,27 @@ class LoopbackRepoMemoTest {
 
         assertThat(group(tmp.resolve("second"), port).availableVersions(LIB, Set.of(), false))
                 .containsExactly("2.0");
+    }
+
+    /**
+     * A test sandbox's {@code metadata} is a link into the pool every sandbox on the host shares, so
+     * a stub's version list, under a URL no later start will ask for, is kept out of it.
+     */
+    @Test
+    void a_stubs_version_list_is_kept_beside_the_stores_metadata_never_in_it(@TempDir Path tmp) throws Exception {
+        Map<String, byte[]> served = new ConcurrentHashMap<>();
+        new MavenStub(served).metadata("com.example", "lib", "1.0");
+        int port = start(0, served).getAddress().getPort();
+        Path store = tmp.resolve("store");
+
+        assertThat(repo(store, port).availableVersions(LIB)).containsExactly("1.0");
+
+        assertThat(store.resolve("metadata")).doesNotExist();
+        try (Stream<Path> kept = Files.list(store.resolve(MavenRepo.LOOPBACK_METADATA))) {
+            assertThat(kept.map(p -> p.getFileName().toString()))
+                    .as("the body and its validators")
+                    .hasSize(2);
+        }
     }
 
     private HttpServer start(int port, Map<String, byte[]> served) throws IOException {

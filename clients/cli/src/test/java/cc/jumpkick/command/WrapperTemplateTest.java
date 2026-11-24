@@ -481,6 +481,8 @@ class WrapperTemplateTest {
      * download, is refused without being requested and installs nothing.
      */
     @Test
+    @Tag("integration") // two wrapper runs, the second fetching the pointer, its signature and SHA256SUMS: near 20s
+    // on Windows
     void windows_wrapper_refuses_a_redirect_off_https(@TempDir Path tmp) throws Exception {
         if (!Os.isWindows()) return;
         Path releases = Files.createDirectories(tmp.resolve("releases"));

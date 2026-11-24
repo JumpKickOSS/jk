@@ -240,6 +240,52 @@ class SafeDeleteTest {
                 .contains("describeForAudit");
     }
 
+    static Map<String, String> texts(String users) {
+        return RenameFixture.files(DIR + "Texts.java", """
+                package org.acme.shop;
+
+                public class Texts {
+                    static boolean blank(String s) {
+                        return s == null || s.isBlank();
+                    }
+                }
+                """, DIR + "Docs.java", """
+                package org.acme.shop;
+
+                class Docs {
+                    // TODO use Strings#blank() once it exists
+                    /** Like {@link #blank(Object)} in another type. */
+                    static boolean empty(Object o) {
+                        return blank(o);
+                    }
+
+                    static boolean blank(Object o) {
+                        return o == null;
+                    }
+                }
+                """, DIR + "Users.java", users);
+    }
+
+    /** A doc link names the method only through its own type: another type's method of the name is no use. */
+    @Test
+    void aDocLinkToAnotherTypesMethodOfTheNameDoesNotKeepIt(@TempDir Path dir) throws IOException {
+        RenameFixture f = new RenameFixture(dir, texts("package org.acme.shop;\n\nclass Users {}\n"));
+
+        assertThat(f.delete("Texts.blank")).startsWith("Deleted Texts.blank(), lines 4-6 of " + DIR + "Texts.java");
+        assertThat(f.checkDelete()).isEqualTo("Proven: it compiles.");
+    }
+
+    @Test
+    void aDocLinkThroughTheMethodsOwnTypeKeepsIt(@TempDir Path dir) throws IOException {
+        RenameFixture f = new RenameFixture(
+                dir,
+                texts("package org.acme.shop;\n\n/** Checked with {@link Texts#blank(String)}. */\nclass Users {}\n"));
+
+        assertThat(f.delete("Texts.blank"))
+                .startsWith("Not deleted, nothing is written: Texts.blank() is still used.")
+                .contains(DIR + "Users.java:3");
+    }
+
     @Test
     void anUnusedFieldGoesWithItsDocComment(@TempDir Path dir) throws IOException {
         RenameFixture f = new RenameFixture(dir, shop());
@@ -342,5 +388,77 @@ class SafeDeleteTest {
                 .contains("shop.limits.retries")
                 .contains("application.properties:1");
         assertThat(f.read(DIR + "Limits.java")).contains("retries");
+    }
+
+    /** Two classes with an {@code isEmpty} each; only {@code Texts.isEmpty} is the one to delete. */
+    static Map<String, String> twoIsEmpties() {
+        return RenameFixture.files(DIR + "Texts.java", """
+                package org.acme.shop;
+
+                class Texts {
+                    static boolean isEmpty(CharSequence cs) {
+                        return cs == null || cs.length() == 0;
+                    }
+                }
+                """, DIR + "Lists.java", """
+                package org.acme.shop;
+
+                import java.util.List;
+
+                /** Empty per {@link #isEmpty(Object)}; see {@link Lists#isEmpty(Object)}. */
+                class Lists {
+                    static boolean isEmpty(Object o) {
+                        return o == null || ((List<?>) o).isEmpty();
+                    }
+
+                    /**
+                     * Looks a method up by name: {@code set.getClass().getMethod("isEmpty")}.
+                     */
+                    static Object empty(java.util.Set<?> set) throws ReflectiveOperationException {
+                        return set.getClass().getMethod("isEmpty").invoke(set);
+                    }
+                }
+                """);
+    }
+
+    @Test
+    void anotherTypesMethodOfTheSameNameInALinkOrAStringDoesNotKeepAStaticMethod(@TempDir Path dir) throws IOException {
+        RenameFixture f = new RenameFixture(dir, twoIsEmpties());
+
+        assertThat(f.delete("Texts.isEmpty")).startsWith("Deleted Texts.isEmpty(), lines 4-6 of " + DIR + "Texts.java");
+        assertThat(f.checkDelete()).isEqualTo("Proven: it compiles.");
+    }
+
+    @Test
+    void aLinkOrAStringThroughTheMethodsOwnClassOrAnHeirStillKeepsIt(@TempDir Path dir) throws IOException {
+        Map<String, String> linked = twoIsEmpties();
+        linked.put(
+                DIR + "Notes.java",
+                "package org.acme.shop;\n\n/** Uses {@link Texts#isEmpty(CharSequence)}. */\nclass Notes {}\n");
+        assertThat(new RenameFixture(dir.resolve("linked"), linked).delete("Texts.isEmpty"))
+                .startsWith("Not deleted")
+                .contains("a doc link  " + DIR + "Notes.java:3");
+
+        Map<String, String> inherited = twoIsEmpties();
+        inherited.put(
+                DIR + "Prose.java",
+                "package org.acme.shop;\n\n/** Empty per {@link #isEmpty}. */\nclass Prose extends Texts {}\n");
+        assertThat(new RenameFixture(dir.resolve("inherited"), inherited).delete("Texts.isEmpty"))
+                .startsWith("Not deleted")
+                .contains("a doc link  " + DIR + "Prose.java:3");
+
+        Map<String, String> reflected = twoIsEmpties();
+        reflected.put(DIR + "Probe.java", """
+                package org.acme.shop;
+
+                class Probe {
+                    Object m() throws ReflectiveOperationException {
+                        return Texts.class.getDeclaredMethod("isEmpty", CharSequence.class);
+                    }
+                }
+                """);
+        assertThat(new RenameFixture(dir.resolve("reflected"), reflected).delete("Texts.isEmpty"))
+                .startsWith("Not deleted")
+                .contains("a string names it  " + DIR + "Probe.java:5");
     }
 }

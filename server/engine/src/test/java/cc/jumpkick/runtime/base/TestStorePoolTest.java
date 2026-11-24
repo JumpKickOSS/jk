@@ -4,18 +4,24 @@ package cc.jumpkick.runtime.base;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.time.Clock;
+import cc.jumpkick.http.Http;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.RepoStoreDirs;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.RepositorySpec;
+import cc.jumpkick.repo.MavenMetadataCache;
 import cc.jumpkick.repo.RepoArtifactStore;
+import cc.jumpkick.testing.LoopbackHttp;
 import cc.jumpkick.testing.SysProps;
 import cc.jumpkick.util.FileLocks;
+import cc.jumpkick.util.TestHomes;
 import java.io.InputStream;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -23,6 +29,7 @@ import java.nio.file.attribute.FileTime;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
@@ -32,6 +39,9 @@ import org.junit.jupiter.api.io.TempDir;
  */
 @SysProps.TempRoots("jk.env.JK_HOME")
 class TestStorePoolTest {
+
+    @RegisterExtension
+    final LoopbackHttp http = new LoopbackHttp();
 
     private static final String JAR = "org/example/lib/1.0/lib-1.0.jar";
 
@@ -71,7 +81,13 @@ class TestStorePoolTest {
         TestStorePool.link(pool, store);
 
         for (String rel : List.of(
-                "repos/central", "repos/google", "repos/jumpkick", "tools/kotlin", "tools/gradle", "tools/maven")) {
+                "repos/central",
+                "repos/google",
+                "repos/jumpkick",
+                "tools/kotlin",
+                "tools/gradle",
+                "tools/maven",
+                "metadata")) {
             assertThat(TestStorePool.linksTo(store.resolve(rel), pool.resolve(rel)))
                     .as(rel)
                     .isTrue();
@@ -341,6 +357,88 @@ class TestStorePoolTest {
         assertThat(TestStorePool.root().startsWith(Path.of(env.get("JK_HOME"))))
                 .as("the pool is outside the sandbox home a test may delete")
                 .isFalse();
+    }
+
+    /**
+     * A green run takes its slot with it, and the version lists it fetched stay in the pool: the
+     * next launch of the module reads them inside their day instead of asking the repository again.
+     */
+    @Test
+    void a_launch_after_a_green_runs_discard_asks_for_no_version_list_it_had(@TempDir Path tmp) throws Exception {
+        Path module = Files.createDirectories(tmp.resolve("m"));
+        Files.writeString(module.resolve("jk.toml"), """
+                group   = "com.example"
+                name    = "m"
+                version = "1.0.0"
+                """);
+        JkBuild project = JkBuildParser.parse(module.resolve("jk.toml"));
+        String path = "/org/example/lib/maven-metadata.xml";
+        http.serve(path, "<metadata><versioning><versions><version>1.0</version></versions></versioning></metadata>");
+        URI list = URI.create(http.baseUrl() + path.substring(1));
+
+        Path first = sandboxStore(project, module);
+        byte[] fetched = versionLists(first).fetch(list, RepoCredential.ANONYMOUS);
+        assertThat(TestHomes.discard(module)).as("the green run's discard").isTrue();
+        assertThat(first).doesNotExist();
+        MavenMetadataCache.dropBodyMemo();
+
+        Path second = sandboxStore(project, module);
+        assertThat(versionLists(second).fetch(list, RepoCredential.ANONYMOUS)).isEqualTo(fetched);
+        assertThat(http.requestsFor(path)).as("asked once, by the first launch").isEqualTo(1);
+    }
+
+    @Test
+    void a_version_list_unused_for_a_day_goes_with_its_validators_and_the_memos_stay(@TempDir Path tmp)
+            throws Exception {
+        Path pool = tmp.resolve("test-store");
+        TestStorePool.link(pool, tmp.resolve("home/store"));
+        long now = Clock.SYSTEM.millis();
+        Path lists = pool.resolve(TestStorePool.METADATA);
+        Path stale = aged(lists.resolve(Hashing.sha256Hex("https://repo/stale")), now, 25);
+        Path staleValidators = aged(lists.resolve(stale.getFileName() + ".h"), now, 25);
+        Path fresh = aged(lists.resolve(Hashing.sha256Hex("https://repo/fresh")), now, 23);
+        Path freshValidators = aged(lists.resolve(fresh.getFileName() + ".h"), now, 30);
+        Path orphan = aged(lists.resolve(Hashing.sha256Hex("https://repo/gone") + ".h"), now, 1);
+        Path memo = aged(lists.resolve("gradle-markers"), now, 30);
+        Path leak = stale(lists.resolve("." + fresh.getFileName() + "-123.tmp"), now);
+
+        TestStorePool.Pass pass = TestStorePool.reap(pool, now, Long.MAX_VALUE);
+
+        assertThat(pass.evicted()).isEqualTo(1);
+        assertThat(pass.leaks()).isEqualTo(1);
+        assertThat(stale).doesNotExist();
+        assertThat(staleValidators).doesNotExist();
+        assertThat(orphan).as("validators whose list is gone").doesNotExist();
+        assertThat(leak).doesNotExist();
+        assertThat(fresh).exists();
+        assertThat(freshValidators)
+                .as("judged by its list, which a revalidation touches")
+                .exists();
+        assertThat(memo).exists();
+    }
+
+    /** The store of {@code module}'s sandbox, prepared and linked as a launch prepares it. */
+    private static Path sandboxStore(JkBuild project, Path module) throws Exception {
+        var env = TestEnv.forModule(project, module, BuildLayout.of(module, project))
+                .extras();
+        return Path.of(env.get("JK_STORE_DIR"));
+    }
+
+    /**
+     * The metadata cache over {@code store}'s version lists. A loopback repository keeps its lists
+     * aside ({@code MavenRepo.LOOPBACK_METADATA}); the cache is opened on the pooled directory
+     * directly, as a public repository's would be.
+     */
+    private static MavenMetadataCache versionLists(Path store) {
+        return new MavenMetadataCache(new Http(), store.resolve("metadata"), MavenMetadataCache.DEFAULT_TTL);
+    }
+
+    /** A file at {@code path}, last written {@code hours} hours before now. */
+    private static Path aged(Path path, long now, int hours) throws Exception {
+        Files.createDirectories(path.getParent());
+        Files.writeString(path, "x");
+        Files.setLastModifiedTime(path, FileTime.fromMillis(now - hours * 60L * 60 * 1000));
+        return path;
     }
 
     /** A file at {@code path}, two leak windows old. */

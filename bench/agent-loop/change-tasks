@@ -449,14 +449,21 @@ def called(entry: dict) -> str:
     """The tool a transcript entry calls; an MCP call made through a meta-tool counts as the tool it names."""
     name = str(entry.get("tool_use") or "")
     if name in ("use_tool", "call_mcp_tool"):
+        raw = str(entry.get("input") or "{}")
         try:
-            args = json.loads(entry.get("input") or "{}")
+            args = json.loads(raw)
         except json.JSONDecodeError:
-            args = {}
+            # A spine cuts a long input short; the tool's name is still on the text.
+            named = META_TOOL_NAME.search(raw)
+            args = {"tool_name": named.group(1)} if named else {}
         inner = args.get("tool_name") or args.get("ToolName") or args.get("name") or args.get("tool")
         if inner:
             return str(inner)
     return name
+
+
+# The tool a meta-tool call names, read off an input cut short.
+META_TOOL_NAME = re.compile(r'"(?:tool_name|ToolName)":\s*"([^"]+)"')
 
 
 ABS_PATH = re.compile(r'"((?:file://)?/[^"]*)')
@@ -1009,6 +1016,10 @@ def _run_one(name: str, task: dict, arm: str, run_no: int, ns, run_root: Path) -
         for key in ("routed_models", "copilot_aiu"):
             if res.extra.get(key) is not None:
                 row[key] = res.extra[key]
+        why = void_reason(row, res.finding, reply)
+        if why:
+            row["outcome"], row["finding"] = "void", why
+            return row
         if res.extra.get("abort"):
             row["finding"] = f"the {ns.driver} CLI did not start: {res.finding}"[:300]
             return row
@@ -1055,6 +1066,15 @@ def _run_one(name: str, task: dict, arm: str, run_no: int, ns, run_root: Path) -
     return row
 
 
+def void_reason(row: dict, finding: str, reply: str) -> str:
+    """Why a run is void, not run at all: its agent spent no tokens and its CLI refused it for a login or a
+    usage limit. A void cell is no result, neither green nor red; empty when the run is one."""
+    spent = sum(row.get(k) or 0 for k in ("input_tokens", "output_tokens", "cache_read_tokens", "cache_write_tokens"))
+    if spent or not agents.auth_or_limit(f"{finding}\n{reply}"):
+        return ""
+    return f"not run: the {row.get('driver')} CLI refused it: {finding or reply}"[:300]
+
+
 def prune(row: dict) -> None:
     """Delete a finished run's sandbox once its row is written, keeping the agent's diff beside the
     transcript. Only a red or claimed run keeps its sandbox, for --reverify; a sandbox is a full repository
@@ -1075,7 +1095,7 @@ def reverify(out_dir: Path) -> None:
     path = out_dir / "rows.jsonl"
     rows = [json.loads(line) for line in path.read_text().splitlines()]
     for r in rows:
-        if r.get("outcome") in ("green", "error") or "tokens" not in r:
+        if r.get("outcome") in ("green", "error", "void") or "tokens" not in r:
             continue
         sandbox = Path(r["sandbox"])
         tool = ARMS[r["arm"]]["tool"]

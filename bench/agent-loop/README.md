@@ -411,8 +411,11 @@ and none is stopped. Past it, each cell's start logs how far past, what is done 
 estimate for the rest; `status` prints the same for the night, running or ended (cells done, the one
 running with its time so far, cells left, the time they are expected to take and the clock time the
 night ends), then its tables so far. An agent CLI that is not logged in, a
-corpus repository not set up, and an agent whose two cells in a row end in an error row have their
-cells skipped and named. Before it lists or runs a cell, the night, dry or real, puts every cell's arguments
+corpus repository not set up, and an agent whose two cells in a row end in an error row (for the rest
+of that step) have their cells skipped and named. A cell is void, not run, when its agent spent no
+tokens because its CLI refused it for a login or a usage limit (a sign-in that expired mid-night, a
+plan's limit reached): its row's outcome is `void`, neither green nor red. An agent whose two cells in
+a row are void is skipped for the rest of the night, and the log says so with the CLI's words. Before it lists or runs a cell, the night, dry or real, puts every cell's arguments
 to its own harness (`smoke-test --check`, `change-tasks --check`: one invocation per line on stdin,
 parsed as the run would, nothing started) and refuses to start when a harness refuses one, naming the cell:
 an arm, driver or task the harness does not know is a fix before the night, not a night of error rows.
@@ -423,12 +426,13 @@ banked or rendered: that is a separate, reviewed step.
 
 The night ends with its tables, from `night-summary --since <the night's date>`, computed from its rows
 (change-tasks runs 100 to 399 and the smoke rows, from that date on, the newest row of a cell run
-twice): per agent and arm (cells, green, tool hit rate as `3 of 7`, wall, turns, tokens, dollars,
+twice): per agent and arm (cells that ran, green, void, tool hit rate as `3 of 7`, wall, turns, tokens, dollars,
 fallbacks after the tool, tool errors, turn caps), per task and its code tool (hit rate and the agents
 that did not call it), per task and agent with the code tools against without, and every cell (outcome,
 code tool and hit, wall, turns, tokens by kind, dollars, first tool, code-tool calls, searches, reads,
-text after the tool, tool errors, turn cap). Dollars are the tokens at the API list prices of
-`prices.toml`, whose `published` date the header names. A no-code-tools cell's hit is `n/a`.
+text after the tool, tool errors, turn cap), then, when any is, the void cells per agent with the
+first one's reason. A void cell counts in no green and no hit rate. Dollars are the tokens at the API
+list prices of `prices.toml`, whose `published` date the header names. A no-code-tools cell's hit is `n/a`.
 
 `pause` writes the merge queue's pause file, `~/src/jk-queue.git/pause` (`QUEUE_REPO`), with its
 reason on the first line: while it exists the queue and Full loops keep running but start no batch

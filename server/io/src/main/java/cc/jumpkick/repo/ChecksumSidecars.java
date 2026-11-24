@@ -49,7 +49,26 @@ final class ChecksumSidecars {
     }
 
     /** One published digest: which algorithm, its lower-case hex, and the URL that answered with it. */
-    record Published(Algorithm algorithm, String hex, URI from) {}
+    record Published(Algorithm algorithm, String hex, URI from) {
+
+        /** The form an artifact's memo keeps it in: {@code <algorithm>:<hex>}. */
+        String kept() {
+            return algorithm.label + ":" + hex;
+        }
+
+        /** The digest a memo kept ({@link #kept}) for the file at {@code from}; empty when it is not one. */
+        static Optional<Published> ofKept(String kept, URI from) {
+            int colon = kept.indexOf(':');
+            if (colon < 0) return Optional.empty();
+            String label = kept.substring(0, colon);
+            for (Algorithm algorithm : Algorithm.values()) {
+                if (!algorithm.label.equals(label)) continue;
+                return Hashing.checksumFromSidecar(kept.substring(colon + 1), algorithm.hexLength)
+                        .map(hex -> new Published(algorithm, hex, from));
+            }
+            return Optional.empty();
+        }
+    }
 
     private final RepoTransport transport;
     private final RepoCredential credential;

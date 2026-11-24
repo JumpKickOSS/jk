@@ -27,7 +27,7 @@ import org.jspecify.annotations.Nullable;
  * interface method (or {@link Object}'s) or assigns it to or from a variable of the same name; a
  * return type when every call's result is used that way or held by a switched variable. Neither is
  * switched where retyping would change an override, an overload, a method reference or a lambda's
- * target, nor a field another file reads.
+ * target, nor a field another file reads, nor in a method a framework annotation exposes.
  */
 final class InterfaceSwitch {
 
@@ -51,7 +51,52 @@ final class InterfaceSwitch {
     }
 
     /** Why a use stays the class, and the place in {@code file} at {@code offset} that shows it, when there is one. */
-    record Why(String text, @Nullable FileEdit file, int offset) {}
+    record Why(String text, @Nullable FileEdit file, int offset) {
+
+        /**
+         * What this reason counts as when it is routine: the code names the class itself, or a
+         * framework calls the method; {@code null} when the use could change.
+         */
+        @Nullable
+        Routine routine() {
+            if (file != null) return null;
+            if (text.endsWith(FRAMEWORK)) return CALLED;
+            return ROUTINE.get(text);
+        }
+    }
+
+    /** A routine reason's label for one place and for several: {@code type argument}, {@code type arguments}. */
+    record Routine(String one, String many) {
+
+        String count(int n) {
+            return n + " " + (n == 1 ? one : many);
+        }
+    }
+
+    private static final String FRAMEWORK = ": a framework may call it by reflection";
+
+    private static final Routine CALLED = new Routine("in a method a framework calls", "in methods a framework calls");
+
+    private static final String CLASS = "names the class";
+
+    /** The reasons that say only that the code names the class. */
+    private static final Map<String, Routine> ROUTINE = Map.of(
+            "a constructor call",
+            new Routine("constructor call", "constructor calls"),
+            "a type test",
+            new Routine("type test", "type tests"),
+            "a supertype",
+            new Routine("supertype", "supertypes"),
+            CLASS,
+            new Routine("use of the class name", "uses of the class name"),
+            "an array type",
+            new Routine("array type", "array types"),
+            "a type argument",
+            new Routine("type argument", "type arguments"),
+            "a cast",
+            new Routine("cast", "casts"),
+            "a varargs parameter",
+            new Routine("varargs parameter", "varargs parameters"));
 
     /** A declaration typed as the class: its type's reference, where its qualifier starts, and the name it declares. */
     private record Typed(ReferenceIndex.Span type, int start, String name) {}
@@ -101,7 +146,7 @@ final class InterfaceSwitch {
                 int after = skip(code, m.end());
                 if (after < code.length() && code.charAt(after) == '(') {
                     String method = declared(f, m.start(), "M ");
-                    if (method == null) out.add(new Place(f, start, s.end(), "names the class"));
+                    if (method == null) out.add(new Place(f, start, s.end(), CLASS));
                     else returns.add(new Returning(f, new Typed(s, start, m.group()), method));
                     continue;
                 }
@@ -136,6 +181,12 @@ final class InterfaceSwitch {
         return out;
     }
 
+    /** Whether {@code offset} in {@code code} is on its package or an import line, which names no variable. */
+    private static boolean header(String code, int offset) {
+        String line = JavaText.line(code, offset).stripLeading();
+        return line.startsWith("package ") || line.startsWith("import ");
+    }
+
     /** Why the use at {@code [start, end)} is no declaration it could retype, or {@code null} when it declares a name. */
     private static @Nullable String other(String code, int start, int end) {
         int b = before(code, start);
@@ -144,16 +195,16 @@ final class InterfaceSwitch {
         if (word.equals("instanceof") || word.equals("case")) return "a type test";
         if (word.equals("extends") || word.equals("implements")) return "a supertype";
         int k = pastTypeArgs(code, end);
-        if (k >= code.length()) return "names the class";
+        if (k >= code.length()) return CLASS;
         char c = code.charAt(k);
-        if (c == '.' || c == ':') return "names the class";
+        if (c == '.' || c == ':') return CLASS;
         if (c == '[') return "an array type";
         if (c == '>' || c == ',' && b >= 0 && (code.charAt(b) == '<' || code.charAt(b) == ','))
             return "a type argument";
         if (c == ')' && b >= 0 && code.charAt(b) == '(') return "a cast";
         if (code.startsWith("...", k)) return "a varargs parameter";
         Matcher m = NAME.matcher(code).region(k, code.length());
-        return m.lookingAt() ? null : "names the class";
+        return m.lookingAt() ? null : CLASS;
     }
 
     /** The searches one sort shares: the files that name a member, read once each. */
@@ -227,7 +278,7 @@ final class InterfaceSwitch {
             String method = word.isEmpty() ? null : declared(f, at, "M ");
             if (method != null) return signature(f, method, at);
             String type = word.isEmpty() ? null : declared(f, at, "T ");
-            if (type == null) return "names the class";
+            if (type == null) return CLASS;
             if (wordEnding(code, before(code, at)).equals("record")) return "a record component";
             // A constructor's name is recorded as its class.
             int arity = arity(code, open);
@@ -255,7 +306,11 @@ final class InterfaceSwitch {
             String shown = name.equals("<init>") ? "the constructor" : name + "()";
             int from = Math.max(
                     Math.max(f.text.lastIndexOf(';', at), f.text.lastIndexOf('{', at)), f.text.lastIndexOf('}', at));
-            if (f.text.substring(from + 1, at).contains("@Override")) return shown + " overrides a method";
+            String head = f.text.substring(from + 1, at);
+            if (head.contains("@Override")) return shown + " overrides a method";
+            for (String a : SafeDelete.annotations(List.of(), List.of(head.split("\n")))) {
+                if (!SafeDelete.inert(a)) return "@" + a + " on " + shown + FRAMEWORK;
+            }
             GraphNode type = types.get(owner);
             String kind = type == null ? "" : String.valueOf(Decl.kind(type));
             int body = ExtractInterface.bodyStart(f.text, at);
@@ -314,7 +369,7 @@ final class InterfaceSwitch {
             Matcher m = Pattern.compile("(?<![\\w$])" + Pattern.quote(name) + "(?![\\w$])")
                     .matcher(code);
             while (m.find()) {
-                if (declared.contains(m.start())) continue;
+                if (declared.contains(m.start()) || header(code, m.start())) continue;
                 int b = before(code, m.start());
                 if (b >= 0
                         && code.charAt(b) == '.'

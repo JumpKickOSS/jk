@@ -4,6 +4,7 @@ package cc.jumpkick.runtime.base;
 import cc.jumpkick.compat.ToolRegistry;
 import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.host.AtomicWrites;
+import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.Os;
@@ -12,6 +13,8 @@ import cc.jumpkick.host.ProcessEnv;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jdk.DirLinks;
 import cc.jumpkick.model.RepositorySpec;
+import cc.jumpkick.repo.MavenMetadataCache;
+import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.util.FileLocks;
 import cc.jumpkick.util.PoolUse;
 import java.io.IOException;
@@ -40,8 +43,15 @@ import org.jspecify.annotations.Nullable;
  * in a tree of its own, and an artifact lands through a temp file and an atomic rename. A tool
  * distribution is checked against its pin or its publisher's checksum and published by one rename
  * of a staged tree; an Android SDK component likewise. The rest of a sandbox store stays its own:
- * the {@code jk-local} shelf a suite installs onto, version lists, the store CAS and the closure
- * indexes into it, credentials.
+ * the {@code jk-local} shelf a suite installs onto, the store CAS and the closure indexes into it,
+ * credentials.
+ *
+ * <p>The version lists and the memos beside them ({@link #METADATA}) are pooled too, so a green run's
+ * discarded slot does not send the next launch back to Central for every list it had. A body is
+ * keyed by the URL it was fetched from and replaced by one rename, and a body untouched for the
+ * metadata cache's day goes at the next reap ({@link #VERSION_LIST_MILLIS}). A loopback
+ * repository's bodies never land here: its URL names one stub's start, and the metadata cache keeps
+ * them in a store directory of its own ({@link MavenRepo#LOOPBACK_METADATA}).
  *
  * <p>The pool sits beside {@code test-homes}, outside every sandbox home, so a test that nukes or
  * cleans its home deletes the links and not the pool: jk's deletes never follow a link. A test that
@@ -56,6 +66,9 @@ public final class TestStorePool {
     /** Under the product home ({@link JkDirs#home()}), beside {@code test-homes}. */
     public static final String DIR = "test-store";
 
+    /** The store's version lists and the resolver's memos beside them, as {@link MavenRepo#metadataDir} names them. */
+    static final String METADATA = "metadata";
+
     /** Store-relative trees the pool holds, each linked into a sandbox store at the same path. */
     static final List<String> SHARED = List.of(
             "repos/" + RepositorySpec.CENTRAL,
@@ -63,7 +76,15 @@ public final class TestStorePool {
             "repos/" + RepositorySpec.JUMPKICK_NAME,
             "tools/kotlin",
             "tools/gradle",
-            "tools/maven");
+            "tools/maven",
+            METADATA);
+
+    /**
+     * A pooled version list untouched this long goes at the next reap, its validators with it: past
+     * the metadata cache's TTL it would be revalidated anyway, so the pool keeps no list nobody asked
+     * for within a day.
+     */
+    static final long VERSION_LIST_MILLIS = MavenMetadataCache.DEFAULT_TTL.toMillis();
 
     /** The managed Android SDK root under the pool. */
     public static final String ANDROID_SDK = "android-sdk";
@@ -248,7 +269,7 @@ public final class TestStorePool {
 
     /**
      * One walk of the pool: remove the leaked temps older than {@link #LEAK_MILLIS} wherever they
-     * sit, then, while the pool is over {@code capBytes}, evict the least recently used units not
+     * sit and the version lists older than {@link #VERSION_LIST_MILLIS}, then, while the pool is over {@code capBytes}, evict the least recently used units not
      * used within {@link #IDLE_MILLIS}.
      *
      * <p>A unit is what is fetched and published whole: an artifact version directory under {@code
@@ -274,9 +295,9 @@ public final class TestStorePool {
             return true;
         });
         walk.tree(pool.resolve(ANDROID_SDK), false);
+        int evicted = walk.versionLists(pool.resolve(METADATA), nowMillis - VERSION_LIST_MILLIS);
 
         long bytes = walk.bytes;
-        int evicted = 0;
         long idleBefore = nowMillis - IDLE_MILLIS;
         long unusedBefore = nowMillis - UNUSED_MILLIS;
         walk.units.sort(Comparator.comparingLong(Unit::usedAt));
@@ -349,6 +370,44 @@ public final class TestStorePool {
             }
         }
 
+        /**
+         * The pooled metadata directory at {@code dir}: a version list last written or revalidated
+         * before {@code expiredBefore} is removed with its {@code .h} validators, and validators
+         * whose list is gone go too; the memos and the lists still in use only count. Answers how
+         * many lists went.
+         */
+        int versionLists(Path dir, long expiredBefore) throws IOException {
+            int[] expired = {0};
+            PathUtil.forEachChild(dir, (path, attrs) -> {
+                String name = path.getFileName().toString();
+                long mtime = attrs.lastModifiedTime().toMillis();
+                if (!attrs.isRegularFile()) return true;
+                if (name.startsWith(".") && name.endsWith(".tmp")) {
+                    if (mtime < leakBefore && Files.deleteIfExists(path)) leaks++;
+                    else bytes += attrs.size();
+                    return true;
+                }
+                boolean validators = name.endsWith(VALIDATORS);
+                String key = validators ? name.substring(0, name.length() - VALIDATORS.length()) : name;
+                if (!Hashing.isHex(key, 64)) {
+                    bytes += attrs.size();
+                    return true;
+                }
+                long written = validators
+                        ? PathUtil.stat(path.resolveSibling(key))
+                                .map(st -> st.lastModifiedTime().toMillis())
+                                .orElse(Long.MIN_VALUE)
+                        : mtime;
+                if (written >= expiredBefore || !Files.deleteIfExists(path)) {
+                    bytes += attrs.size();
+                } else if (!validators) {
+                    expired[0]++;
+                }
+                return true;
+            });
+            return expired[0];
+        }
+
         /** A directory holding files is a unit; one holding only directories is walked further. */
         private void dir(Entry at) throws IOException {
             List<Entry> children = list(at.path());
@@ -410,6 +469,9 @@ public final class TestStorePool {
             return out;
         }
     }
+
+    /** The suffix the metadata cache gives a body's validators file. */
+    private static final String VALIDATORS = ".h";
 
     /** One entry of a listing; a directory's {@code bytes} is -1. */
     private record Entry(Path path, String name, boolean dir, long bytes, long mtime) {}

@@ -84,6 +84,15 @@ class TestSuitesTest {
     }
 
     @Test
+    void selection_a_class_named_as_a_suite_points_at_the_class_option() {
+        var r = TestSelection.of(List.of("org.acme.PairTest", "MutablePairTest"), false, List.of(), List.of())
+                .resolve(List.of("test", "integration"));
+        assertThat(r.missingMessage())
+                .isEqualTo("unknown test suites 'org.acme.PairTest', 'MutablePairTest' (available: test,"
+                        + " integration); a class runs with -S, MCP classes");
+    }
+
+    @Test
     void gate_includes_integration_when_discovered() {
         var r = TestSelection.of(TestSuites.GUARD_SUITES, false, List.of(), List.of(), true, false, false)
                 .resolve(List.of("test", "integration"));

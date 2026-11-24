@@ -17,6 +17,7 @@ import cc.jumpkick.testing.MavenStub;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Objects;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -26,7 +27,8 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * A store copy a fresh lock is about to pin is confirmed against the checksum the repository
  * publishes, the way an adopted Maven-local copy is: the sidecar is read, the artifact is not, and
- * a copy the repository disowns is evicted and downloaded again.
+ * a copy the repository disowns is evicted and downloaded again. The checksum that confirmed it is
+ * kept in its memo, and a later fresh lock confirms the copy against that instead of the repository.
  */
 class StoreCopyConfirmationTest {
 
@@ -92,17 +94,62 @@ class StoreCopyConfirmationTest {
     }
 
     @Test
-    void a_second_resolve_from_one_store_reads_the_sidecar_and_not_the_artifact(@TempDir Path tmp) throws Exception {
+    void a_second_fresh_lock_from_one_store_asks_the_repository_for_nothing(@TempDir Path tmp) throws Exception {
         Cas cas = new Cas(tmp.resolve("cas"));
         assertThat(RepoGroup.of(repo(cas)).tryFetchArtifact(WIDGET)).isPresent();
         assertThat(http.requestsFor(JAR)).isEqualTo(1);
         RepoGroup.clearProcessFetchCache();
         http.clearRequests();
 
-        assertThat(RepoGroup.of(repo(cas)).tryFetchArtifact(WIDGET)).isPresent();
+        MavenRepo again = repo(cas);
+        assertThat(RepoGroup.of(again).tryFetchArtifact(WIDGET)).isPresent();
 
         assertThat(http.requestsFor(JAR)).as("no second download").isZero();
+        assertThat(http.requestsFor(JAR + ".sha1"))
+                .as("the checksum the download was verified by is kept in its memo")
+                .isZero();
+        assertThat(again.verifiedUpstream())
+                .as("the kept checksum still vouches for the pinned copy")
+                .isEqualTo(1);
+    }
+
+    @Test
+    void a_stored_copy_confirmed_once_is_confirmed_against_its_memo_after(@TempDir Path tmp) throws Exception {
+        seed(tmp, repo(tmp), MavenStub.EMPTY_JAR);
+        assertThat(RepoGroup.of(repo(tmp)).tryFetchArtifact(WIDGET)).isPresent();
         assertThat(http.requestsFor(JAR + ".sha1")).isEqualTo(1);
+        assertThat(ArtifactMemo.read(memoIn(tmp)))
+                .get()
+                .extracting(ArtifactMemo::published)
+                .isEqualTo("sha1:" + Hashing.fileHex("SHA-1", jarIn(tmp)));
+        RepoGroup.clearProcessFetchCache();
+        http.clearRequests();
+
+        assertThat(RepoGroup.of(repo(tmp)).tryFetchArtifact(WIDGET)).isPresent();
+
+        assertThat(http.requested()).isEmpty();
+    }
+
+    @Test
+    void a_kept_checksum_the_bytes_no_longer_match_sends_the_lock_to_the_repository(@TempDir Path tmp)
+            throws Exception {
+        seed(tmp, repo(tmp), MavenStub.EMPTY_JAR);
+        Path memo = memoIn(tmp);
+        ArtifactMemo.read(memo)
+                .orElseThrow()
+                .withPublished("sha1:" + "0".repeat(40))
+                .write(memo);
+
+        RepoGroup.RepoFetched hit =
+                RepoGroup.of(repo(tmp)).tryFetchArtifact(WIDGET).orElseThrow();
+
+        assertThat(hit.fetched().sha256()).isEqualTo(Hashing.sha256Hex(MavenStub.EMPTY_JAR));
+        assertThat(http.requestsFor(JAR + ".sha1"))
+                .as("the repository is asked again")
+                .isEqualTo(1);
+        assertThat(ArtifactMemo.read(memo).orElseThrow().published())
+                .as("and its answer replaces the kept checksum")
+                .isEqualTo("sha1:" + Hashing.fileHex("SHA-1", jarIn(tmp)));
     }
 
     @Test
@@ -173,6 +220,14 @@ class StoreCopyConfirmationTest {
 
     private static RepoArtifactStore store(Path tmp, MavenRepo repo) {
         return RepoArtifactStore.forRepository(tmp.resolve("cas"), "test", repo.baseUrl());
+    }
+
+    private Path memoIn(Path tmp) {
+        return ArtifactMemo.jkPath(Objects.requireNonNull(store(tmp, repo(tmp)).root()), JAR.substring(1));
+    }
+
+    private Path jarIn(Path tmp) {
+        return store(tmp, repo(tmp)).locate(JAR.substring(1)).orElseThrow();
     }
 
     /** The store slot for the widget jar holds {@code bytes} and a memo that agrees with them. */

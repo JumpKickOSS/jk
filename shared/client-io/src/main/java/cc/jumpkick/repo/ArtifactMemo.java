@@ -25,8 +25,10 @@ import org.jspecify.annotations.Nullable;
  * doctor} can tell a shelf no install under the home's engine has touched. A sixth line,
  * {@code fetched}, says jk itself downloaded the bytes: it is what lets a cleanup of the Maven
  * local repository prove a file is jk's to remove (the memo still describes it by size, mtime and
- * digest) rather than one Maven or the user put there. Lives only under the jk store — never in
- * the Maven local repository.
+ * digest) rather than one Maven or the user put there. A seventh, {@code <algorithm>:<hex>},
+ * is the checksum the repository published for these bytes when jk first confirmed them against
+ * it ({@link #published}): a later fresh lock confirms the release against that copy instead of
+ * asking the repository again. Lives only under the jk store — never in the Maven local repository.
  */
 public record ArtifactMemo(
         String coordinate,
@@ -34,7 +36,8 @@ public record ArtifactMemo(
         long size,
         String sha256,
         @Nullable String packagedBy,
-        boolean fetched) {
+        boolean fetched,
+        @Nullable String published) {
 
     public ArtifactMemo {
         Objects.requireNonNull(coordinate, "coordinate");
@@ -44,6 +47,21 @@ public record ArtifactMemo(
             packagedBy = packagedBy.strip().toLowerCase(Locale.ROOT);
             if (packagedBy.isEmpty()) packagedBy = null;
         }
+        if (published != null) {
+            published = published.strip().toLowerCase(Locale.ROOT);
+            if (published.isEmpty()) published = null;
+        }
+    }
+
+    /** A memo that records no published checksum. */
+    public ArtifactMemo(
+            String coordinate,
+            long mtimeMillis,
+            long size,
+            String sha256,
+            @Nullable String packagedBy,
+            boolean fetched) {
+        this(coordinate, mtimeMillis, size, sha256, packagedBy, fetched, null);
     }
 
     /** A memo that records no packaging engine and no download (a client-installed or adopted artifact). */
@@ -91,7 +109,9 @@ public record ArtifactMemo(
             String packagedBy =
                     lines.size() > 4 && !lines.get(4).isBlank() ? lines.get(4).strip() : null;
             boolean fetched = lines.size() > 5 && FETCHED.equals(lines.get(5).strip());
-            return Optional.of(new ArtifactMemo(coord, mtime, size, sha, packagedBy, fetched));
+            String published =
+                    lines.size() > 6 && !lines.get(6).isBlank() ? lines.get(6).strip() : null;
+            return Optional.of(new ArtifactMemo(coord, mtime, size, sha, packagedBy, fetched, published));
         } catch (IOException | NumberFormatException e) {
             return Optional.empty();
         }
@@ -117,7 +137,12 @@ public record ArtifactMemo(
 
     /** This memo with {@code packagedBy} as its packaging engine. */
     public ArtifactMemo withPackagedBy(@Nullable String engineSha256) {
-        return new ArtifactMemo(coordinate, mtimeMillis, size, sha256, engineSha256, fetched);
+        return new ArtifactMemo(coordinate, mtimeMillis, size, sha256, engineSha256, fetched, published);
+    }
+
+    /** This memo with {@code checksum}, {@code <algorithm>:<hex>}, as what the repository published for its bytes. */
+    public ArtifactMemo withPublished(String checksum) {
+        return new ArtifactMemo(coordinate, mtimeMillis, size, sha256, packagedBy, fetched, checksum);
     }
 
     /** The sixth line's word for a download jk made. */
@@ -126,8 +151,10 @@ public record ArtifactMemo(
     public void write(Path jkFile) throws IOException {
         Files.createDirectories(jkFile.getParent());
         String body = coordinate + "\n" + mtimeMillis + "\n" + size + "\n" + sha256 + "\n";
-        if (packagedBy != null || fetched) body = body + (packagedBy == null ? "" : packagedBy) + "\n";
-        if (fetched) body = body + FETCHED + "\n";
+        if (packagedBy != null || fetched || published != null)
+            body = body + (packagedBy == null ? "" : packagedBy) + "\n";
+        if (fetched || published != null) body = body + (fetched ? FETCHED : "") + "\n";
+        if (published != null) body = body + published + "\n";
         AtomicWrites.replace(jkFile, body);
     }
 
@@ -176,17 +203,19 @@ public record ArtifactMemo(
         String gav = coordinate == null || coordinate.isBlank() ? "-" : coordinate;
         Hashed hashed = hash(blob, gav, () -> {});
         if (!hashed.memo().sha256.equalsIgnoreCase(want)) return false;
-        // A re-hash refreshes size and mtime; who packaged the blob, and whether jk downloaded
-        // it, have not changed — unless the bytes did, which the digest match above rules out.
+        // A re-hash refreshes size and mtime; who packaged the blob, whether jk downloaded it and
+        // what the repository published for it have not changed — unless the bytes did, which the
+        // digest match above rules out.
         if (hashed.stable()) {
+            Optional<ArtifactMemo> same = memo.filter(m -> m.sha256.equalsIgnoreCase(want));
             new ArtifactMemo(
                             gav,
                             hashed.memo().mtimeMillis,
                             hashed.memo().size,
                             want,
                             memo.map(ArtifactMemo::packagedBy).orElse(null),
-                            memo.map(m -> m.sha256.equalsIgnoreCase(want) && m.fetched)
-                                    .orElse(false))
+                            same.map(ArtifactMemo::fetched).orElse(false),
+                            same.map(ArtifactMemo::published).orElse(null))
                     .write(jkFile);
         }
         return true;

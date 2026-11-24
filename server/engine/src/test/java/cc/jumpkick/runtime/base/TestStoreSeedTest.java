@@ -6,11 +6,17 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.repo.ArtifactMemo;
+import cc.jumpkick.repo.LibraryRegistrySync;
+import cc.jumpkick.repo.MavenMetadata;
 import cc.jumpkick.testing.MavenStub;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.nio.file.attribute.FileTime;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.List;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -231,6 +237,72 @@ class TestStoreSeedTest {
         assertThat(TestStoreSeed.metadataKey(Path.of(LAUNCHER)))
                 .isEqualTo(
                         Hashing.sha256Hex("https://repo.maven.apache.org/maven2/" + LAUNCHER + "/maven-metadata.xml"));
+    }
+
+    /**
+     * Every fixture lock asks Google's repository and JumpKick's for each JUnit artifact's version
+     * list too: the seed answers for them, as lists a repository that lacks the artifact serves.
+     */
+    @Test
+    void the_other_public_repositories_list_no_version_of_a_seeded_artifact() throws Exception {
+        m2File(userM2(), LAUNCHER, "6.1.3", ".pom", "central");
+        Path store = tmp.resolve("store");
+
+        TestStoreSeed.seed(store, tmp.resolve("sandbox-m2"));
+
+        for (String base : List.of("https://dl.google.com/dl/android/maven2/", "https://jumpkick.build/repo/")) {
+            Path body = store.resolve("metadata").resolve(Hashing.sha256Hex(base + LAUNCHER + "/maven-metadata.xml"));
+            assertThat(MavenMetadata.parse(Files.readAllBytes(body), "org.junit.platform", "junit-platform-launcher")
+                            .versions())
+                    .as(base)
+                    .isEmpty();
+        }
+    }
+
+    /** A synthesised list the machine still agrees with is stamped fresh, so a kept slot never revalidates it. */
+    @Test
+    void a_second_seed_stamps_a_synthesised_list_fresh() throws Exception {
+        m2File(userM2(), LAUNCHER, "6.1.3", ".pom", "central");
+        Path store = tmp.resolve("store");
+        Path sandboxM2 = tmp.resolve("sandbox-m2");
+        TestStoreSeed.seed(store, sandboxM2);
+        Path body = metadata(store, LAUNCHER);
+        FileTime old = FileTime.from(Instant.now().minus(Duration.ofDays(3)));
+        Files.setLastModifiedTime(body, old);
+
+        assertThat(TestStoreSeed.seed(store, sandboxM2)).isZero();
+
+        assertThat(Files.getLastModifiedTime(body)).isGreaterThan(old);
+    }
+
+    /** The sandbox reads the registry the engine reads, stamped fresh, so no lock asks the registry's origin. */
+    @Test
+    void the_sandbox_takes_the_engines_library_registry_unless_it_holds_a_fresh_one() throws Exception {
+        Path engine = Files.writeString(
+                Files.createDirectories(tmp.resolve("engine-store")).resolve("libs.global.toml"), "[libraries]\n");
+        Files.setLastModifiedTime(engine, FileTime.from(Instant.now().minus(Duration.ofDays(2))));
+        Path store = tmp.resolve("store");
+        Path sandbox = store.resolve("libs.global.toml");
+
+        assertThat(TestStoreSeed.seedRegistry(store, engine)).isTrue();
+        assertThat(sandbox).hasSameTextualContentAs(engine);
+        assertThat(Duration.between(Files.getLastModifiedTime(sandbox).toInstant(), Instant.now()))
+                .isLessThan(LibraryRegistrySync.FRESH_FOR);
+
+        Files.writeString(sandbox, "[libraries]\nfetched-by-the-sandbox = \"a:b\"\n");
+        assertThat(TestStoreSeed.seedRegistry(store, engine))
+                .as("a fresh copy of its own")
+                .isFalse();
+        assertThat(Files.readString(sandbox)).contains("fetched-by-the-sandbox");
+
+        Files.setLastModifiedTime(sandbox, FileTime.from(Instant.now().minus(Duration.ofDays(1))));
+        assertThat(TestStoreSeed.seedRegistry(store, engine)).as("a stale copy").isTrue();
+        assertThat(sandbox).hasSameTextualContentAs(engine);
+
+        assertThat(TestStoreSeed.seedRegistry(tmp.resolve("other"), tmp.resolve("none.toml")))
+                .as("an engine with no registry")
+                .isFalse();
+        assertThat(tmp.resolve("other")).doesNotExist();
     }
 
     @Test

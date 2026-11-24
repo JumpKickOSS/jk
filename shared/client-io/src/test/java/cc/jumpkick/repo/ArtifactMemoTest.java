@@ -97,6 +97,46 @@ class ArtifactMemoTest {
     }
 
     @Test
+    void the_published_checksum_is_a_seventh_line_that_survives_a_rehash_of_the_same_bytes(@TempDir Path dir)
+            throws Exception {
+        Path jar = dir.resolve("bar-1.0.jar");
+        Files.writeString(jar, "bytes");
+        String hex = Hashing.sha256Hex(jar);
+        String sha1 = "sha1:" + Hashing.fileHex("SHA-1", jar);
+        Path jk = dir.resolve("bar-1.0.jk");
+        ArtifactMemo.ofBlob(jar, "com.foo:bar:1.0", hex).withPublished(sha1).write(jk);
+
+        assertThat(Files.readString(jk).split("\n", -1))
+                .as("blank packager and download lines keep the checksum seventh")
+                .containsExactly(
+                        "com.foo:bar:1.0",
+                        String.valueOf(Files.getLastModifiedTime(jar).toMillis()),
+                        String.valueOf(Files.size(jar)),
+                        hex,
+                        "",
+                        "",
+                        sha1,
+                        "");
+        ArtifactMemo memo = ArtifactMemo.read(jk).orElseThrow();
+        assertThat(memo.published()).isEqualTo(sha1);
+        assertThat(memo.fetched()).isFalse();
+        assertThat(memo.packagedBy()).isNull();
+
+        Files.setLastModifiedTime(jar, FileTime.fromMillis(memo.mtimeMillis() + 5_000));
+        assertThat(ArtifactMemo.verify(jar, jk, "com.foo:bar:1.0", hex)).isTrue();
+        assertThat(ArtifactMemo.read(jk).orElseThrow().published())
+                .as("a rehash that finds the same bytes keeps what the repository published for them")
+                .isEqualTo(sha1);
+
+        Files.writeString(jar, "other bytes");
+        String other = Hashing.sha256Hex(jar);
+        assertThat(ArtifactMemo.verify(jar, jk, "com.foo:bar:1.0", other)).isTrue();
+        assertThat(ArtifactMemo.read(jk).orElseThrow().published())
+                .as("other bytes never inherit the checksum published for the old ones")
+                .isNull();
+    }
+
+    @Test
     void a_memo_with_no_download_line_proves_nothing(@TempDir Path dir) throws Exception {
         Path jar = dir.resolve("bar-1.0.jar");
         Files.writeString(jar, "bytes");

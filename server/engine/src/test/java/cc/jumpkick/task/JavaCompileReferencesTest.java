@@ -107,7 +107,7 @@ class JavaCompileReferencesTest {
         Path stateTwo = Files.createDirectories(dir.resolve("state-two"));
         Path ledgerOne = JavaCompile.generatedLedger(outOne);
         Files.createDirectories(ledgerOne.getParent());
-        Files.writeString(ledgerOne, one.resolve("gen/a/AGen.java") + "\t" + one.resolve("src/a/A.java") + "\n");
+        Files.writeString(ledgerOne, row(one.resolve("gen/a/AGen.java"), one.resolve("src/a/A.java")));
         Files.writeString(stateOne.resolve("zinc"), "analysis of key-1");
         Files.writeString(stateOne.resolve(CompileWarnings.LEDGER), "");
         JavaCompile.nameRoot(stateOne, outOne);
@@ -126,7 +126,13 @@ class JavaCompileReferencesTest {
                 .doesNotExist();
         assertThat(stateTwo.resolve(JavaCompile.ROOT_FILE)).hasContent(two + "\n");
         assertThat(JavaCompile.generatedLedger(outTwo))
-                .hasContent(two.resolve("gen/a/AGen.java") + "\t" + two.resolve("src/a/A.java") + "\n");
+                .hasContent(row(two.resolve("gen/a/AGen.java"), two.resolve("src/a/A.java")));
+    }
+
+    /** A ledger row as the compiler writes it: each path with its backslashes doubled, so Windows paths too. */
+    private static String row(Path generated, Path origin) {
+        return generated.toString().replace("\\", "\\\\") + "\t"
+                + origin.toString().replace("\\", "\\\\") + "\n";
     }
 
     @Test

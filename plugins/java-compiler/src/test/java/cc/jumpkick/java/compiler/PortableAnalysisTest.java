@@ -16,6 +16,9 @@ import java.util.Map;
 import java.util.zip.GZIPInputStream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import xsbti.VirtualFileRef;
+import xsbti.compile.analysis.ReadMapper;
+import xsbti.compile.analysis.WriteMapper;
 
 /**
  * An analysis one checkout wrote, laid beside the same classes in another checkout, carries that
@@ -58,7 +61,10 @@ class PortableAnalysisTest {
         try (InputStream in = new GZIPInputStream(Files.newInputStream(one.workdir.resolve("zinc")))) {
             text = new String(in.readAllBytes(), StandardCharsets.ISO_8859_1);
         }
-        assertThat(text).contains(PortableAnalysis.MARK).doesNotContain(one.root.toString());
+        assertThat(text)
+                .contains(PortableAnalysis.MARK)
+                .doesNotContain(one.root.toString())
+                .doesNotContain(one.root.toString().replace(File.separatorChar, '/'));
     }
 
     @Test
@@ -87,8 +93,25 @@ class PortableAnalysisTest {
                 .relations()
                 .allProducts()
                 .iterator();
-        assertThat(products.next().id())
-                .isEqualTo(two.classes.resolve("a/B.class").toString());
+        assertThat(Path.of(products.next().id())).isEqualTo(two.classes.resolve("a/B.class"));
+    }
+
+    /**
+     * On Windows Zinc names a product with {@code /} and a classpath entry with {@code \}; each
+     * spelling of the root is rebased, and reads back spelled as it was written.
+     */
+    @Test
+    void a_root_zinc_spells_with_slashes_on_windows_is_rebased_and_read_back_with_slashes() {
+        WriteMapper write = PortableAnalysis.mappers("C:\\w\\one", '\\').getWriteMapper();
+        ReadMapper read = PortableAnalysis.mappers("C:\\w\\two", '\\').getReadMapper();
+
+        VirtualFileRef written = write.mapProductFile(VirtualFileRef.of("C:/w/one/target/classes/a/B.class"));
+
+        assertThat(written.id()).isEqualTo(PortableAnalysis.SLASHED_MARK + "/target/classes/a/B.class");
+        assertThat(read.mapProductFile(written).id()).isEqualTo("C:/w/two/target/classes/a/B.class");
+        assertThat(read.mapJavacOption(write.mapJavacOption("C:\\w\\one")))
+                .as("the separator's own spelling keeps its mark")
+                .isEqualTo("C:\\w\\two");
     }
 
     @Test

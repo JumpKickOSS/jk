@@ -617,7 +617,50 @@ public final class RepoArtifactStore {
                 .filter(memo -> memo.sha256().equalsIgnoreCase(sha256));
         @Nullable String packagedBy = held.map(ArtifactMemo::packagedBy).orElse(null);
         boolean downloaded = fetched || held.map(ArtifactMemo::fetched).orElse(false);
-        return ArtifactMemo.ofBlob(blob, inferGav(relativePath), sha256, packagedBy, downloaded);
+        ArtifactMemo memo = ArtifactMemo.ofBlob(blob, inferGav(relativePath), sha256, packagedBy, downloaded);
+        @Nullable String published = held.map(ArtifactMemo::published).orElse(null);
+        return published == null ? memo : memo.withPublished(published);
+    }
+
+    /**
+     * The checksum the repository published for the bytes at {@code relativePath}, {@code
+     * <algorithm>:<hex>}, as the memo recorded it when they were first confirmed; empty when the
+     * memo records none, or records it for bytes other than {@code sha256}.
+     */
+    public Optional<String> publishedChecksum(String relativePath, String sha256) {
+        if (root == null) return Optional.empty();
+        return ArtifactMemo.read(sidecarPath(relativePath))
+                .filter(memo -> memo.sha256().equalsIgnoreCase(sha256))
+                .map(ArtifactMemo::published);
+    }
+
+    /**
+     * Keep {@code checksum}, {@code <algorithm>:<hex>}, in the memo of {@code relativePath} as what
+     * the repository published for its bytes. Written only while the memo still describes the file
+     * on disk as {@code sha256}, under the lock its writers take, so a copy replaced in the meantime
+     * never inherits a checksum confirmed for other bytes. Best-effort: without it the next fresh
+     * lock asks the repository again.
+     */
+    public void recordPublished(String relativePath, String sha256, String checksum) {
+        if (root == null) return;
+        Path memoFile = sidecarPath(relativePath);
+        Path artifact = artifactPath(relativePath);
+        Path lock = inM2(artifact)
+                ? Objects.requireNonNull(m2).resolve(M2_LOCK_NAME)
+                : rootOf(this).resolve(SHELF_LOCK_NAME);
+        try {
+            Files.createDirectories(lock.getParent());
+            FileLocks.withLock(lock, () -> {
+                Optional<ArtifactMemo> memo = ArtifactMemo.read(memoFile);
+                if (memo.isEmpty()
+                        || !memo.get().sha256().equalsIgnoreCase(sha256)
+                        || checksum.equalsIgnoreCase(memo.get().published())
+                        || !memo.get().describes(artifact)) return;
+                memo.get().withPublished(checksum).write(memoFile);
+            });
+        } catch (IOException | RuntimeException e) {
+            Log.debug("recordPublished: the next fresh lock asks the repository again", e);
+        }
     }
 
     // -------------------------------------------------------------------------

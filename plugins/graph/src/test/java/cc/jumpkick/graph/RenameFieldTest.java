@@ -504,6 +504,19 @@ class RenameFieldTest {
         assertThat(ws.read(OWNER_DIR + "Owner.java")).contains("private String telephone;");
     }
 
+    /** A qualified new name asks for a move: the answer names it, and nothing is written. */
+    @Test
+    void aQualifiedNewNameIsRefusedWithTheMoveThatDoesIt(@TempDir Path dir) throws IOException {
+        RenameFixture ws = new RenameFixture(dir, petclinic());
+        assertThat(ws.rename("Owner.telephone", "Phones.telephone"))
+                .isEqualTo("Not renamed: a rename keeps Owner.telephone in Owner; to put it in Phones, move it"
+                        + " (jk code move, MCP move).");
+        assertThat(ws.rename("Owner.getTelephone", "Phones.getTelephone"))
+                .isEqualTo("Not renamed: a rename keeps Owner.getTelephone in Owner; to put it in Phones, move it"
+                        + " (jk code move, MCP move).");
+        assertThat(ws.read(OWNER_DIR + "Owner.java")).contains("private String telephone;", "getTelephone()");
+    }
+
     @Test
     void accessorsFalseRenamesTheFieldAlone(@TempDir Path dir) throws IOException {
         RenameFixture ws = new RenameFixture(dir, petclinic());

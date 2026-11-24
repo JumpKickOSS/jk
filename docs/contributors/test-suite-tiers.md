@@ -509,6 +509,10 @@ re-downloading what another worktree already holds. Instead, every sandbox share
   build-tool distributions (`tools/kotlin`, `tools/gradle`, `tools/maven`) of every sandbox store
   are links into the pool at the same relative path. The engine places them when it prepares the
   sandbox, replacing a private tree left from before.
+- The store's version lists and the memos beside them (`metadata`) are a link into the pool too,
+  so a green run, which deletes its slot, does not send the next launch back to Central for every
+  version list it had. A loopback repository's lists are kept apart, in the store's own
+  `metadata-loopback`: a loopback URL names one stub's start, so no other sandbox could use them.
 - The managed Android SDK is `<home>/test-store/android-sdk`. A suite reaches it through
   `TestCaches.pooled("android-sdk")`, which the launcher's `-Djk.test.pool.dir` points at the
   pool. A suite that writes into its SDK (a fake system image, an AVD: `AndroidSpikeTest`) keeps a
@@ -522,9 +526,10 @@ That content is safe to share because it is verified and published whole:
 - A tool distribution is checked against its pin or its publisher's checksum, staged beside its
   version directory and published by one rename. An Android component is checked against the
   feed's SHA-1 and published the same way, and an accepted license file is replaced whole.
+- A version list is keyed by the URL it was fetched from and replaced by one rename.
 
 So engines in several sandboxes can fill the pool at once. Everything else stays per sandbox: the
-`jk-local` shelf a suite installs onto, version lists, the store CAS and the tool closure indexes
+`jk-local` shelf a suite installs onto, the store CAS and the tool closure indexes
 into it, Node and the other tools, JDKs, state, locks and ledgers. The pool sits beside
 `test-homes`, outside every sandbox home, and JumpKick's deletes never follow a link. So `jk self nuke`,
 `jk storage nuke`, `jk clean` and the slot reaper remove a sandbox's links and leave the pool alone,
@@ -540,7 +545,9 @@ What keeps the pool from becoming an archive is the week rule below, not the cap
 - **What goes.** Whole units, never single files: an artifact's version directory under
   `repos/<id>`, a tool version under `tools/<slug>`, an Android SDK component (the accepted
   licenses stay). A unit unused for a week goes whatever the pool weighs. Over the cap, the least
-  recently used units go first, until the pool fits.
+  recently used units go first, until the pool fits. A version list under `metadata` goes, with
+  its validators, once nothing has fetched or revalidated it for a day, the metadata cache's TTL;
+  the memos beside the lists stay.
 - **Last use.** Reads leave no trace JumpKick can rely on, since access times are off on many
   filesystems. So a pooled tree carries a `.jk-pool` marker, and in a marked tree the repository
   store, the tool registry and the SDK installer set a unit's directory mtime to now when a build
@@ -553,7 +560,7 @@ What keeps the pool from becoming an archive is the week rule below, not the cap
 - **Leaks.** The same walk removes what a killed process left staged for over an hour, at any
   depth: an artifact's `.*.part` beside its version, a download's `.put-*.tmp`, a tool's
   `jk-tool-stage-*`, an SDK unpack's `.extract-*`, an SDK zip under `.downloads`, and whatever a
-  killed reap left in `.trash`.
+  killed reap left in `.trash`, and a version list's `.*.tmp` under `metadata`.
 - **Cost.** Preparing a sandbox reaps the pool at most once an hour per host: `.reaped-at` records
   the last start, and `.reap.lock` keeps a second process from walking beside the first.
 
@@ -596,9 +603,14 @@ home's `[network] proxy`, is the request log of everything dialed past the loopb
 `latest`, which needs a version list. When the engine prepares a module's sandbox it seeds that
 sandbox's store from its own (`TestStoreSeed`): the JUnit Platform trees hard-linked under
 `repos/central` (the pool, through the sandbox's link), and for each artifact a version list naming exactly the versions whose POM came
-along, under the key the metadata cache reads for the Central URL. A cold sandbox therefore locks
-its test roots without Central, and a Central that throttles this host cannot turn the tier red; a
-real index the sandbox fetched itself is left in place. A store filled from a lock holds the jars
+along, under the key the metadata cache reads for the Central URL. A lock asks every repository
+it knows for a version list, so the seed also gives Google's Maven and JumpKick's repository an
+empty list for each of those artifacts, which is what they would answer. A cold sandbox therefore
+locks its test roots without asking any repository for a list, and a Central that throttles this
+host cannot turn the tier red; a real index the sandbox fetched itself is left in place, and a
+synthesised list is stamped fresh at every launch. The sandbox store also takes the engine's
+library registry (`libs.global.toml`), stamped fresh unless the sandbox holds a fresh copy of its
+own, so no fixture lock asks the registry's origin. A store filled from a lock holds the jars
 but not their POMs (a fresh CI runner's, a new machine's), so before its first test launch the
 engine locks a throwaway project once when its store has no launcher or Jupiter POM, which puts the
 test roots' closure into its own store with the network it has. Only those trees come from the

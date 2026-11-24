@@ -172,6 +172,11 @@ final class RenameFixture {
                 : ask("extract-interface", List.of(type, name), 8000, "methods=" + String.join(",", methods));
     }
 
+    /** {@code extract-interface type name --methods a,b} in a {@code budget} of tokens (MCP's is 2,000). */
+    String extract(int budget, String type, String name, String... methods) throws IOException {
+        return ask("extract-interface", List.of(type, name), budget, "methods=" + String.join(",", methods));
+    }
+
     /** {@code extract-interface type name --no-switch [--methods a,b]}: the interface alone, the places listed. */
     String extractOnly(String type, String name, String... methods) throws IOException {
         return methods.length == 0

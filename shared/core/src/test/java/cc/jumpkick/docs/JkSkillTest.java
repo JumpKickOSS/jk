@@ -30,9 +30,10 @@ class JkSkillTest {
         assertThat(description.substring("description:".length()).strip())
                 .doesNotContain("\n")
                 .isNotBlank();
+        // The code page carries a row per refactoring tool, since an agent asks skill for one by name.
         for (String topic : JkSkill.TOPICS) {
             String body = Objects.requireNonNull(JkSkill.topic(topic));
-            assertThat(body.getBytes(StandardCharsets.UTF_8).length).as(topic).isLessThanOrEqualTo(1_200);
+            assertThat(body.getBytes(StandardCharsets.UTF_8).length).as(topic).isLessThanOrEqualTo(1_664);
         }
         assertThat(JkSkill.topic("nope")).isNull();
         assertThat(JkSkill.topic("../SKILL")).isNull();

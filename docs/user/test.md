@@ -244,7 +244,9 @@ methods matched` for a `Class#method`) only when no module matched anything: a t
 there the empty match fails on the spot. A selection that ran nothing is a **usage error**, exit
 64, not a failed test: no `Tests:` count, and the error carries code `no-tests-matched` in
 `details.jsonl` and the results. Red tests beside a dropped class still exit 4. `[test] serial-tags` partitions inside one module are
-judged together: a pattern that only matches serial-tagged classes is a match.
+judged together: a pattern that only matches serial-tagged classes is a match. So is a class
+disabled whole, such as an `@DisabledOnOs(WINDOWS)` class on Windows: each of its tests counts as
+skipped.
 
 A pattern qualified with its module, `--class <module>:<class>`, holds in that module alone:
 `jk test -s integration -X -m e2e/cli -m server/engine -S server/engine:EngineIT` runs the whole
@@ -574,9 +576,9 @@ utilities (`sleep`, `setsid`, `sh -c …`, `ps`) or a program the test wrote in 
 when no word of the command names a file outside that directory, a variable, another host or a
 program other than such a utility. A jar the suite is handed by path rather than on its classpath
 (a `[build] test-plugin-jars` entry) runs only the
-classes that read it, those that ran in a test JVM after any program but such a `git` was started
-in it, and those keyed by their whole module, so a rebuilt jar replays a class that never touched
-it. A class that read more files than its record names (a test
+classes that read it, those that started a program other than such a `git`, those that talked to a
+program on this host (a local socket or a pipe) after one was started in their test JVM, and those
+keyed by their whole module, so a rebuilt jar replays a class that never touched it. A class that read more files than its record names (a test
 that reads every plugin's manifest) stands on the files its suite read in the directories that
 cover its own reads, so a source another class of the suite scanned does not run it. The warning
 then reads `… passed earlier and nothing they reach or read has changed since; they are not run

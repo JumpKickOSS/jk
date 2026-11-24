@@ -423,11 +423,13 @@ public final class MavenRepo {
         // applies to http(s) repos — a file:// (or other) baseUrl can be paired
         // with an Http client but must keep enumerating via the transport. A loopback port names
         // whatever process holds it now, so its list is never trusted for the day: every ask is a
-        // conditional GET, answered 304 when the server still holds the body it stored.
-        Duration ttl =
-                RepositorySpec.loopback(this.fetchBase.getHost()) ? Duration.ZERO : MavenMetadataCache.DEFAULT_TTL;
+        // conditional GET, answered 304 when the server still holds the body it stored. Its bodies
+        // sit apart from the rest, so a store that shares its version lists never shares one of them.
+        boolean loopback = RepositorySpec.loopback(this.fetchBase.getHost());
+        Duration ttl = loopback ? Duration.ZERO : MavenMetadataCache.DEFAULT_TTL;
+        Path bodies = loopback ? cas.root().resolve(LOOPBACK_METADATA) : metadataDir();
         this.metadataCache = (httpOrNull != null && isHttp(this.fetchBase))
-                ? new MavenMetadataCache(httpOrNull, metadataDir(), ttl, HostRateLimiter.shared(), gate)
+                ? new MavenMetadataCache(httpOrNull, bodies, ttl, HostRateLimiter.shared(), gate)
                 : null;
         this.download =
                 new DownloadLeg(name, this.fetchBase, gate.over(transport), credential, storeDir(), allowUnverified);
@@ -537,7 +539,17 @@ public final class MavenRepo {
         return scheme != null && (scheme.equalsIgnoreCase("http") || scheme.equalsIgnoreCase("https"));
     }
 
-    /** The directory the metadata cache keeps its bodies in, and the resolver its per-POM answers. */
+    /**
+     * The store directory a loopback repository's version lists are kept in, beside {@link
+     * #metadataDir}: a loopback URL names whatever process holds the port now, so its bodies are
+     * this store's alone even where the rest of {@code metadata} is shared.
+     */
+    public static final String LOOPBACK_METADATA = "metadata-loopback";
+
+    /**
+     * The directory the metadata cache keeps its bodies in, a loopback repository's aside ({@link
+     * #LOOPBACK_METADATA}), and the resolver its per-POM answers.
+     */
     public Path metadataDir() {
         return cas.root().resolve("metadata");
     }
@@ -853,6 +865,7 @@ public final class MavenRepo {
                     throw refused;
                 }
                 if (!placed.equals(stored.path())) deleteTemp(stored.path());
+                keep(relativePath, stored.sha256(), stored.kept());
                 verified.put(relativePath, stored.sha256());
             }
             return new Fetched(uri, placed, stored.sha256(), stored.size());
@@ -1017,8 +1030,9 @@ public final class MavenRepo {
      * The store's copy of {@code relativePath} when it may answer for {@code coord}: a copy whose
      * bytes verify as the pin, or — without one — as what its memo recorded ({@link
      * LocalMirrorVerifier#stored}); an unpinned artifact is then confirmed by the checksum the repository
-     * publishes ({@link #confirmed}), and so is a POM in the Maven local repository that jk never
-     * verified. A POM or metadata file jk wrote is served as stored.
+     * publishes ({@link #confirmed}), or by the copy of it its memo kept when it was first confirmed
+     * ({@link #keptConfirms}), and so is a POM in the Maven local repository that jk never verified,
+     * by the repository alone. A POM or metadata file jk wrote is served as stored.
      *
      * <p>A non-unique snapshot's unpinned copy, POM or artifact, answers only while its source still
      * holds those bytes: a file repository's file is compared with it ({@link #sourceHolds}), a
@@ -1040,6 +1054,7 @@ public final class MavenRepo {
                 return local;
             if (local.get().sha256().equalsIgnoreCase(verified.get(relativePath))) return local;
             if (moving && local()) return sourceHolds(relativePath, local.get());
+            if (!unvouched && !moving && !local() && keptConfirms(coord, relativePath, local.get(), leg)) return local;
             Optional<Fetched> answer =
                     confirmed(coord, relativePath, local.get(), leg, abort, unvouched || moving, unvouched);
             if (unvouched && answer.isPresent() && answer.get().sha256().equalsIgnoreCase(verified.get(relativePath))) {
@@ -1047,6 +1062,34 @@ public final class MavenRepo {
             }
             return answer;
         }
+    }
+
+    /**
+     * Whether the checksum this repository published for {@code local}'s bytes, kept in their memo
+     * when they were first confirmed ({@link #keep}), still matches them: a release is not
+     * republished in place, so a fresh lock pins it without asking the repository again. A
+     * repository on local disk is read again instead, since a file there is cheap to read and may
+     * be replaced in place.
+     */
+    private boolean keptConfirms(Coordinate coord, String relativePath, Fetched local, Leg leg) throws IOException {
+        Optional<String> kept = repoStore.publishedChecksum(relativePath, local.sha256());
+        if (kept.isEmpty()
+                || !download.confirmKept(
+                        coord,
+                        kept.get(),
+                        vouchFor(fetchBase.resolve(relativePath)).artifact(),
+                        local.cachePath(),
+                        local.sha256(),
+                        leg)) {
+            return false;
+        }
+        verified.put(relativePath, local.sha256());
+        return true;
+    }
+
+    /** Keep {@code published}, the repository's checksum of the bytes {@code sha256} names, in their memo. */
+    private void keep(String relativePath, String sha256, ChecksumSidecars.@Nullable Published published) {
+        if (published != null && !local()) repoStore.recordPublished(relativePath, sha256, published.kept());
     }
 
     /**
@@ -1127,15 +1170,17 @@ public final class MavenRepo {
     private Optional<Fetched> confirmedOnce(
             Coordinate coord, String relativePath, Fetched local, Leg leg, boolean requirePublished)
             throws IOException, InterruptedException {
-        if (download.confirmStored(
+        Optional<DownloadLeg.Confirmed> confirmed = download.confirmStored(
                 coord,
                 vouchFor(fetchBase.resolve(relativePath)),
                 relativePath,
                 local.cachePath(),
                 local.sha256(),
                 leg,
-                requirePublished)) {
+                requirePublished);
+        if (confirmed.isPresent()) {
             verified.put(relativePath, local.sha256());
+            keep(relativePath, local.sha256(), confirmed.get().kept());
             return Optional.of(local);
         }
         repoStore.evict(relativePath);

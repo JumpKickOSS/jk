@@ -729,6 +729,8 @@ final class LauncherPath {
 
         private final AtomicBoolean failed = new AtomicBoolean(false);
         private final ClassWindows windows = new ClassWindows();
+        /** The plan executing now, for the tests under a container the Platform skips whole. */
+        private volatile @Nullable TestPlan plan;
 
         Adapter(EventWriter out, int workerId) {
             this.out = out;
@@ -777,7 +779,27 @@ final class LauncherPath {
         }
 
         @Override
+        public void testPlanExecutionStarted(TestPlan testPlan) {
+            plan = testPlan;
+        }
+
+        /**
+         * A skipped class reports once, for itself, and the Platform says nothing of the tests
+         * under it; each is reported skipped here, as Surefire does, so a class its condition
+         * disables on this OS is a class that matched and skipped, not a {@code --class} that
+         * matched nothing.
+         */
+        @Override
         public void executionSkipped(TestIdentifier id, String reason) {
+            emitSkipped(id, reason);
+            TestPlan running = plan;
+            if (id.isTest() || running == null) return;
+            for (TestIdentifier under : running.getDescendants(id)) {
+                if (under.isTest()) emitSkipped(under, reason);
+            }
+        }
+
+        private void emitSkipped(TestIdentifier id, @Nullable String reason) {
             Map<String, Object> p = identity(id);
             p.put("type", typeName(id));
             p.put("reason", reason == null ? "" : reason);

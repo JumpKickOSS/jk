@@ -793,10 +793,16 @@ rule; `SharedCacheAcrossCheckoutsE2eTest` pins the first half.
 Dependency jars are real `*.jar` files. Compile classpaths never use hash-named CAS blobs.
 A digest-matching file in the Maven local repo is used in place; a mismatch is left untouched
 and the locked bytes live under `repos/<origin-id>/`. The same published checksum confirms a store
-copy a fresh lock is about to pin: the resolve reads the repository's `.sha256` / `.sha1` beside
-the artifact and skips only the download, so a slot holding the wrong bytes for a coordinate (a
-killed write, a jar copied in by hand, a republished artifact) is evicted and fetched again, with a
-line in the lock output. A pinned build trusts the lock's digest instead, an offline resolve serves
+copy a fresh lock is about to pin: the first time, the resolve reads the repository's `.sha256` /
+`.sha1` beside the artifact and skips only the download, so a slot holding the wrong bytes for a
+coordinate (a killed write, a jar copied in by hand) is evicted and fetched again, with a line in
+the lock output. The checksum that verified a download or a store copy is kept as the seventh line
+of its `.jk` memo (`<algorithm>:<hex>`, `ArtifactMemo.published`), written only while the memo
+still describes those bytes and carried by every rewrite of the same bytes; later fresh locks
+confirm the copy against it and send no request. The repository's own word only: a checksum
+Central's mirror vouched with while Central refused the host is not kept. A non-unique snapshot
+and a `file://` repository are asked every time. A remote repository that republishes a release
+in place is therefore caught only by the first lock that verifies the artifact, not by later ones. A pinned build trusts the lock's digest instead, an offline resolve serves
 the store as it stands, and a repository that publishes no checksum follows the `allow-unverified`
 rule a download does. A POM or Gradle `.module` the store holds is the resolver's input, not a file
 the lock pins, so it is read as stored, with no sidecar read. Action-cache restore stays copy-not-link so compilers cannot mutate cached

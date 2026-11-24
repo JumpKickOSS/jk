@@ -23,6 +23,10 @@ import xsbti.compile.analysis.WriteMapper;
  * paths rebased an analysis another checkout wrote describes this checkout's classes exactly when
  * their bytes agree, and the engine can lay it back beside the classes of a cache hit.
  *
+ * <p>On Windows Zinc names a file both ways: a product as {@code C:/w/target/classes/a/B.class},
+ * a classpath entry or javac option as {@code C:\w\lib}. Each spelling of the root has its own
+ * mark, so a path reads back spelled as it was written and Zinc's ids still compare equal.
+ *
  * <p>The engine names the root in the workdir's {@link #ROOT_FILE}. A workdir without one is read
  * and written with absolute paths, and so is a path outside the root (a jar in jk's store, a JDK):
  * on one host every checkout spells those the same.
@@ -34,6 +38,9 @@ final class PortableAnalysis {
 
     /** What a path under the root starts with in a written analysis. */
     static final String MARK = "${root}";
+
+    /** What a path under the root starts with when it was written with {@code /} on a host whose separator is not. */
+    static final String SLASHED_MARK = "${root/}";
 
     private PortableAnalysis() {}
 
@@ -52,8 +59,15 @@ final class PortableAnalysis {
     /** Mappers spelling paths under {@code root} portably; Zinc's identity mappers when there is no root. */
     static ReadWriteMappers mappers(@Nullable Path root) {
         if (root == null) return ReadWriteMappers.getEmptyMappers();
-        String abs = root.toAbsolutePath().normalize().toString();
-        return new ReadWriteMappers(new Spelling(MARK, abs), new Spelling(abs, MARK));
+        return mappers(root.toAbsolutePath().normalize().toString(), File.separatorChar);
+    }
+
+    /** {@link #mappers(Path)} for a root spelled {@code abs} on a host whose separator is {@code separator}. */
+    static ReadWriteMappers mappers(String abs, char separator) {
+        String slashed = abs.replace(separator, '/');
+        if (slashed.equals(abs)) return new ReadWriteMappers(new Spelling(MARK, abs), new Spelling(abs, MARK));
+        return new ReadWriteMappers(
+                new Spelling(MARK, abs, SLASHED_MARK, slashed), new Spelling(abs, MARK, slashed, SLASHED_MARK));
     }
 
     /**
@@ -79,13 +93,23 @@ final class PortableAnalysis {
     }
 
     /**
-     * One direction of the rebase, {@code from} to {@code to}. Zinc's read and write mappers declare
-     * the same methods, so one class serves both; stamps are content hashes and pass through.
+     * One direction of the rebase, {@code from} to {@code to} and then {@code from2} to {@code to2}.
+     * Zinc's read and write mappers declare the same methods, so one class serves both; stamps are
+     * content hashes and pass through.
      */
-    private record Spelling(String from, String to) implements ReadMapper, WriteMapper {
+    private record Spelling(
+            String from,
+            String to,
+            @Nullable String from2,
+            @Nullable String to2) implements ReadMapper, WriteMapper {
+
+        Spelling(String from, String to) {
+            this(from, to, null, null);
+        }
 
         private String map(String text) {
-            return replace(text, from, to);
+            String once = replace(text, from, to);
+            return from2 == null || to2 == null ? once : replace(once, from2, to2);
         }
 
         private VirtualFileRef map(VirtualFileRef file) {

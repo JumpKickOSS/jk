@@ -62,7 +62,8 @@ public final class CodeGraphTool implements McpTool {
                                         "Type.method, Type.field, Type, @Annotation, or an anchor, whose answer"
                                                 + " adds the uses no compiler checks (scripts, SQL, YAML, front end):"
                                                 + " route:GET /x/{}, table:t, column:t.c, env:NAME, config:key; route:* lists"
-                                                + " a kind's."),
+                                                + " a kind's. dep:artifact@version: what moving a dependency to that"
+                                                + " version breaks."),
                                 "transitive",
                                 McpSchemas.bool(),
                                 "max_hops",

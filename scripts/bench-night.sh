@@ -32,8 +32,10 @@
 # installed jk is this tree's version and lists every MCP tool a step calls; the queue and Full loops
 # are paused; no gate holds the gate lock (which it then holds to the end). It names every agent CLI
 # that is not logged in and every corpus repository not set up, and skips their cells; it never logs
-# in. An agent whose two cells in a row end in an error row (a preflight or a login refused) is skipped
-# for the rest of the step.
+# in. An agent whose two cells in a row end in an error row (a preflight that failed) is skipped for the
+# rest of the step. A void cell is one that did not run: its agent spent no tokens because its CLI
+# refused it for a login or a usage limit (outcome `void`, neither green nor red). An agent whose two
+# cells in a row are void is skipped for the rest of the night, and the log says why.
 #
 # `pause` writes the queue's pause file, <QUEUE_REPO>/pause, with its reason: while it exists the
 # loops keep running but start no batch or Full cycle, however long the night. It then waits for the
@@ -58,6 +60,9 @@ NIGHT="$STATE/night"
 RESULTS="${NIGHT_RESULTS:-$ROOT/bench/agent-loop/results}"
 HARNESS="${NIGHT_HARNESS:-bench/agent-loop}"
 SUMMARY="$ROOT/bench/agent-loop/night-summary"
+# Where smoke-test writes its rows, as it resolves it.
+SMOKE_ROWS="$(python3 -I -c 'import sys; sys.path.insert(0, sys.argv[1]); import benchtools
+print(benchtools.scratch("AGENT_LOOP_HOME", "agent-loop") / "smoke")' "$ROOT/bench")" || exit 2
 CORPUS="$("$PLAN" corpus)" || exit 2
 
 die() {
@@ -228,7 +233,7 @@ run() {
 
   start=$now at=$now full=0
   n=0 ran=0 skipped=0 late=0
-  declare -A fails=() step_n=() step_s=() step_late=()
+  declare -A fails=() voids=() step_n=() step_s=() step_late=()
   if [ "$dry" -eq 0 ]; then
     # The night's progress, for the past-the-deadline lines and `status`: its cells with their expected
     # seconds, and a line as each starts, ends or is skipped.
@@ -354,7 +359,7 @@ check_cells() {
 # cells: run (or, dry, list) the plan lines on stdin, in order; run's locals are this function's too.
 # Every cell runs, the soft deadline past or not; past it, each start logs what is done and left.
 cells() {
-  local step tier driver arm task repo runs first model effort est source cmd why last when
+  local step tier driver arm task repo runs first model effort est source cmd why when rows before new
   while IFS=$'\t' read -r step tier driver arm task repo runs first model effort est source; do
     [ -n "$step" ] || continue
     n=$((n + 1))
@@ -387,19 +392,37 @@ cells() {
     fi
     past
     say "$(date +%H:%M) step $step tier $tier ~$(mins "$est"): ${cmd[*]}"
+    # The rows this cell writes: those its harness appends to the file of the day it starts.
+    if [ "$tier" = 0 ]; then rows="$SMOKE_ROWS/$(date +%F)/rows.jsonl"; else rows="$RESULTS/$(date +%F)-change-tasks/rows.jsonl"; fi
+    before="$(wc -l 2>/dev/null <"$rows" || echo 0)"
     mark "$n" start
     (cd "$ROOT" && "${cmd[@]}") >>"$LOG" 2>&1
     mark "$n" end
     ran=$((ran + 1))
-    # A smoke run's rows are its own; its FAIL is a result, not an error row.
+    new="$(tail -n "+$((before + 1))" "$rows" 2>/dev/null)"
+    [ -n "$new" ] || continue
+    if ! grep -qv '"outcome": "void"' <<<"$new"; then
+      voids[$driver]=$((${voids[$driver]:-0} + 1))
+      if [ "${voids[$driver]}" -ge 2 ]; then
+        skip[$driver]="two void cells in a row for $driver: $(void_why <<<"$new")"
+        say "$(date +%H:%M) void: ${skip[$driver]}; $driver is skipped for the rest of the night"
+      fi
+      continue
+    fi
+    voids[$driver]=0
+    # A smoke run's FAIL is a result, not an error row.
     [ "$tier" != 0 ] || continue
-    last="$(tail -n 1 "$RESULTS/$(date +%F)-change-tasks/rows.jsonl" 2>/dev/null)"
-    if grep -q '"outcome": "error"' <<<"$last"; then
+    if grep -q '"outcome": "error"' <<<"$(tail -n 1 <<<"$new")"; then
       fails[$driver.$step]=$((${fails[$driver.$step]:-0} + 1))
     else
       fails[$driver.$step]=0
     fi
   done
+}
+
+# void_why: the finding of the last of the rows on stdin, the reason its cell was void.
+void_why() {
+  tail -n 1 | python3 -I -c 'import json, sys; print(json.loads(sys.stdin.read()).get("finding") or "no finding")'
 }
 
 # extra_lines: step 4's commands, from $NIGHT_EXTRA, one per line.

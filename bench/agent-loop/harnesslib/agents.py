@@ -137,6 +137,21 @@ def _startup_failure(text: str) -> bool:
     ))
 
 
+# A CLI that refuses a run for its login or its plan's limit says so in its own words; these are the
+# pieces of them, lower-cased, that no agent's work at 0 tokens would say.
+_AUTH_OR_LIMIT = re.compile(
+    r"failed to authenticate|authentication (failed|error)|authentication_error|oauth|session (has )?expired"
+    r"|token (has )?expired|not logged|not signed in|not authenticated|no credentials|please (sign|log) in"
+    r"|/login|no valid authentication|invalid (api|x-api)[ -]key|unauthori[sz]ed|\b401\b"
+    r"|usage limit|rate limit|rate_limit|limit reached|hit your limit|quota|credit balance|insufficient credit"
+    r"|billing|too many requests|\b429\b|\b402\b")
+
+
+def auth_or_limit(text: str) -> bool:
+    """Whether a CLI's words refuse the run for its login or its usage limit, not for the task."""
+    return bool(_AUTH_OR_LIMIT.search(text.lower()))
+
+
 def _kill_group(proc: subprocess.Popen) -> None:
     if proc.poll() is not None:
         return
@@ -939,9 +954,13 @@ def _agy_summary(events: list[dict]) -> list[dict]:
             continue
         if step.get("step_type") == "tool":
             info = step.get("tool_info") if isinstance(step.get("tool_info"), dict) else {}
+            params = info.get("parameters") if isinstance(info.get("parameters"), dict) else {}
+            # call_mcp_tool's Arguments come first in the stream; the names go ahead of them so the cut
+            # below keeps the tool the call names.
+            names = {k: params[k] for k in ("ServerName", "ToolName") if k in params}
             out.append({
                 "tool_use": step.get("tool_name"),
-                "input": json.dumps(info.get("parameters") or {})[:200],
+                "input": json.dumps({**names, **params})[:200],
             })
     for ev in events:
         step = ev.get("step_update") or {}

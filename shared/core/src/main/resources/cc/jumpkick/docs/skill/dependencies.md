@@ -1,17 +1,18 @@
 # Dependencies
 
-A version in `jk.toml` is an exact pin. `jk add g:a` writes today's stable as a number. `jk add g:a:1.2.3` pins that version. When a platform BOM already supplies it, the entry is `managed`.
+A version in `jk.toml` is an exact pin. `jk add g:a` writes today's stable as a number; `g:a:1.2.3` pins that one. When a platform BOM already supplies it, the entry is `managed`.
 
 `deps` applies and relocks in one call.
 
 - add: `deps(action=add, coords=["g:a"])` or `coords=["g:a:1.2.3"]`
 - remove: `action=remove` with the coordinate or the artifact name
 - pin: `action=pin` with `g:a:version` rewrites that entry
-- a red run's `FIX deps(add, g:a)`, `FIX deps(pin, g:a:version)`, or `FIX deps(remove, g:a)` is that call
+- a red run's `FIX deps(add|pin|remove, …)` is that call
 - `scope`: `main` (default), `test`, `runtime`, `provided`, `processor`
-- `preview=true` checks the coordinate and shows the edit; it writes nothing
+- `preview=true` checks the coordinate and shows the edit, writing nothing
 - `did you mean g2:a?`: add that coordinate. `the newest release is X`: use X. Never guess a version
+- what another version breaks: `usages(address="dep:a@version")`, never memory
 
-CLI: `jk add` and `jk remove`. The reply is the `jk.toml` change, then `lock ok` or the resolve failure. The next `build()` needs no lock step.
+CLI: `jk add`, `jk remove`. The reply is the `jk.toml` change, then `lock ok` or the resolve failure; `build()` needs no lock step.
 
 `java = N` is the language level (`--release`). Do not set `jdk = 17` or `jdk = 21` to emit older bytecode. `jk update` bumps pins on the same major. `jk update -m` crosses one. Do not hand-edit versions inside a BOM.

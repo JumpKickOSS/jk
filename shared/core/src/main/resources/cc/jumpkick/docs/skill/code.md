@@ -3,15 +3,19 @@
 JumpKick keeps a graph of the code, built from the compiled classes, so one call answers a question about a
 symbol completely. Address: `Type.method` (`pkg.Type.method` when two packages declare it,
 `Type.method(Param)` for one overload), `Type.field`, `Type`, `a.pkg`; or an anchor, for uses no compiler
-checks: `route:GET /x/{}`, `table:t`, `column:t.c`, `env:NAME`, `config:key`.
+checks: `route:GET /x/{}`, `table:t`, `column:t.c`, `env:NAME`, `config:key`; `dep:g:a@V`: what version V breaks.
 
 | | Shell | MCP |
 |---|---|---|
 | who calls or uses it (`-t`: all that reach it) | `jk code usages X` | `usages(address=X)` |
 | rename a method, a field with get/set, a type, a package | `jk code rename X new` | `rename(address=X, to=new)` |
+| delete what nothing uses | `jk code delete X` | `delete(address=X)`* |
+| move a method or static field to another type | `jk code move X T` | `move(address=X, to=T)`* |
+| pull a member up to the class it extends | `jk code pull-up X` | `pull_up(address=X)`* |
+| extract an interface, retyping uses that need only it | `jk code extract-interface T I` | `extract_interface(address=T, to=I)`* |
 | one method's source, not the file | `jk code read T.m` | `read`* |
 
-\* on the extended `tools/list`.
+\* on the extended `tools/list`; else the shell verb. Each edit above compiles, or undoes itself.
 
 `rename` edits every use the compiler bound and lists the rest with ids: first those that should change
 too, then judgment calls (a SQL column, a message key). Apply the ones the task wants with `also=c1,c3`

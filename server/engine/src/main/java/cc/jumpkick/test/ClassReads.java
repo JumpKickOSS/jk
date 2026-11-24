@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.test;
 
-import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.engine.plugin.HeapFlags;
 import cc.jumpkick.host.GitCommand;
 import cc.jumpkick.host.Log;
@@ -10,14 +9,12 @@ import cc.jumpkick.host.ProcessEnv;
 import cc.jumpkick.orchestrator.DiscoveryRules;
 import java.io.IOException;
 import java.net.InetAddress;
-import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -46,6 +43,13 @@ import org.jspecify.annotations.Nullable;
  *   <li>A code file (a jar, a class file outside the class trees) the JVM read: the class in whose
  *       window it was read and every class that ran later in that JVM, since a class loader keeps
  *       what it loaded for whoever asks next.
+ *   <li>A worker jar the suite was handed ({@link Handed}): only the classes whose window read it,
+ *       since no loader of the test JVM opens it. Read outside every window on a thread whose first
+ *       read a window held, that window's class's; on a thread no window owns, every class whose
+ *       window had not closed by then, and the pool's when no window was left.
+ *   <li>A program started: the class in whose window it started, and each later class of the JVM
+ *       whose window reached a local peer (a loopback or Unix domain socket other than the run's
+ *       own, or a pipe), the only ways a class talks to a program it did not start.
  * </ul>
  *
  * <p>A class file read under one of the suite's class trees is a class loading: noted by name, as
@@ -131,6 +135,24 @@ public final class ClassReads {
     }
 
     /**
+     * What the run handed its test JVMs besides their class path.
+     *
+     * @param workerJars the worker jars the suite's stamp keys by content: the tests hash, copy and
+     *     hand them to the programs they start, and no loader of a test JVM keeps one open for a
+     *     later class
+     * @param ownPorts the loopback ports of the run's own channels to its JVMs (the environment
+     *     broker): traffic on them reaches no program a test started
+     */
+    public record Handed(Set<Path> workerJars, Set<Integer> ownPorts) {
+        public static final Handed NONE = new Handed(Set.of(), Set.of());
+
+        public Handed {
+            workerJars = Set.copyOf(normalized(workerJars));
+            ownPorts = Set.copyOf(ownPorts);
+        }
+    }
+
+    /**
      * The most data files a class keeps; past it the class keys on the files its suite read under
      * its read roots ({@link #ROOTS_KEPT}).
      */
@@ -194,9 +216,10 @@ public final class ClassReads {
 
     /**
      * The name a class's tools keep when a program other than git in a repository a test made was
-     * started in its JVM before its window closed, by it or by a class before it: what such a program
-     * runs (a jar the suite was handed by path, a long-lived engine a later class talks to) is read
-     * in a process no recording of the suite holds. The test JDK's own launcher counts.
+     * started in its window, or before it in its JVM by a class whose program its window may have
+     * talked to ({@link Handed}): what such a program runs (a jar the suite was handed by path, a
+     * long-lived engine a later class talks to) is read in a process no recording of the suite
+     * holds. The test JDK's own launcher counts.
      */
     public static final String STARTED_PROGRAM = "(started)";
 
@@ -250,6 +273,8 @@ public final class ClassReads {
             + SUITE_CODE_KEPT * 200L
             + (ClassReads.WRITTEN_KEPT + ClassReads.CODE_FILES_KEPT + ClassReads.EXISTS_KEPT) * 200L
             + ClassReads.NETWORK_THREADS_KEPT * 200L
+            + ClassReads.READ_THREADS_KEPT * 200L
+            + (CLASSES_KEPT + 1) * (ClassReads.WORKER_JARS_KEPT / 8L)
             + ClassReads.VERDICTS_KEPT * 600L;
 
     /**
@@ -266,6 +291,18 @@ public final class ClassReads {
      * goes by its time.
      */
     static final int NETWORK_THREADS_KEPT = 8_192;
+
+    /**
+     * The most threads one JVM's join remembers the first window of for its worker-jar reads; a read
+     * outside every window on a thread past it goes as one on a thread no window owns.
+     */
+    static final int READ_THREADS_KEPT = 8_192;
+
+    /**
+     * The most worker jars a class names apart from its own code files ({@link #CODE_KEPT}); a worker
+     * jar past it is kept as any code file.
+     */
+    static final int WORKER_JARS_KEPT = 64;
 
     /** How many answers to "is this file there" one JVM's join remembers. */
     static final int EXISTS_KEPT = 2_048;
@@ -296,6 +333,8 @@ public final class ClassReads {
         private final Set<String> names = new TreeSet<>();
         private boolean namesMore;
         private boolean codeMore;
+        private final BitSet workers = new BitSet();
+        private @Nullable List<Path> workerJars;
         private boolean loadedMore;
         private final BitSet used = new BitSet();
         private @Nullable UseNames useNames;
@@ -328,11 +367,20 @@ public final class ClassReads {
 
         /** Code files read by path (worker and plugin jars, a jar a test opens itself). */
         public Set<Path> code() {
-            return Collections.unmodifiableSet(code);
+            List<Path> jars = workerJars;
+            if (jars == null || workers.isEmpty()) return Collections.unmodifiableSet(code);
+            Set<Path> all = new TreeSet<>(code);
+            workers.stream().forEach(i -> all.add(jars.get(i)));
+            return Collections.unmodifiableSet(all);
         }
 
         public boolean codeMore() {
             return codeMore;
+        }
+
+        /** Note that the class may have read more code files than any list names. */
+        void markCodeMore() {
+            codeMore = true;
         }
 
         /** Workspace classes loaded from the class trees, by binary name. */
@@ -485,6 +533,12 @@ public final class ClassReads {
             else codeMore = true;
         }
 
+        /** Note the worker jar numbered {@code id} in {@code jars}, the run's, outside the code bound. */
+        void addWorker(int id, List<Path> jars) {
+            workerJars = jars;
+            workers.set(id);
+        }
+
         /** Note a load, out of {@code budget}, the suite's loads left to keep. */
         void addLoaded(String binaryName, int[] budget) {
             if (loadedMore || loaded.contains(binaryName)) return;
@@ -614,6 +668,10 @@ public final class ClassReads {
             return more;
         }
 
+        void markMore() {
+            more = true;
+        }
+
         void add(Path p) {
             if (more || files.contains(p)) return;
             if (files.size() < SUITE_CODE_KEPT) files.add(p);
@@ -702,7 +760,7 @@ public final class ClassReads {
      */
     private static final Map<String, List<String>> EVENTS = Map.of(
             "jdk.FileRead",
-            List.of("path"),
+            List.of("path", "eventThread"),
             "jdk.FileWrite",
             List.of("path"),
             "jdk.ProcessStart",
@@ -710,9 +768,9 @@ public final class ClassReads {
             "jdk.NativeLibraryLoad",
             List.of("name", "success"),
             "jdk.SocketRead",
-            List.of("host", "address", "eventThread"),
+            List.of("host", "address", "eventThread", "port"),
             "jdk.SocketWrite",
-            List.of("host", "address", "eventThread"),
+            List.of("host", "address", "eventThread", "port"),
             USE_EVENT,
             List.of("className"));
 
@@ -757,6 +815,15 @@ public final class ClassReads {
      */
     public static Attributed attribute(
             Path dir, Path cwd, Layout layout, Function<Collection<String>, @Nullable String> launchOf) {
+        return attribute(dir, cwd, layout, launchOf, Handed.NONE);
+    }
+
+    /**
+     * As {@link #attribute(Path, Path, Layout, Function)}, knowing what the run {@code handed} its
+     * JVMs: the worker jars, which key only the classes that read them, and its own ports.
+     */
+    public static Attributed attribute(
+            Path dir, Path cwd, Layout layout, Function<Collection<String>, @Nullable String> launchOf, Handed handed) {
         List<Path> recordings = new ArrayList<>();
         try {
             PathUtil.forEachChild(dir, (child, attrs) -> {
@@ -801,8 +868,18 @@ public final class ClassReads {
                                 .map(w -> new Window(launchKey(launch, w.testClass()), w.start(), w.end()))
                                 .toList();
                     }
-                    Join join = new Join(
-                            windows, f.written(), cwd, layout, verdicts, classes, pools, code, loadedLeft, useNames);
+                    WindowJoin join = new WindowJoin(
+                            windows,
+                            f.written(),
+                            cwd,
+                            layout,
+                            verdicts,
+                            classes,
+                            pools,
+                            code,
+                            loadedLeft,
+                            useNames,
+                            handed);
                     try (RecordingReader.Permit permit = RecordingReader.Permit.acquire()) {
                         f.pass().run(EVENTS, (name, start, end, v) -> read(name, start, v, join));
                     }
@@ -821,9 +898,13 @@ public final class ClassReads {
     }
 
     /** The second pass: one event, given to its classes as it is read. */
-    private static void read(String name, long at, @Nullable String[] v, Join join) {
+    private static void read(String name, long at, @Nullable String[] v, WindowJoin join) {
         switch (name) {
-            case "jdk.FileRead" -> join.accept(at, Kind.READ, v[0]);
+            case "jdk.FileRead" -> {
+                // A read with no path is of a pipe or a socket handed in: a program's output.
+                if (v[0] == null) join.peer(at);
+                else join.read(at, v[0], v[1]);
+            }
             case "jdk.FileWrite" -> join.accept(at, Kind.WRITE, v[0]);
             case USE_EVENT -> join.accept(at, Kind.USE, v[0]);
             case "jdk.ProcessStart" -> {
@@ -851,294 +932,23 @@ public final class ClassReads {
                 join.accept(at, Kind.NATIVE, v[0]);
             }
             case "jdk.SocketRead", "jdk.SocketWrite" -> {
-                if (!local(v[1]))
+                if (!local(v[1])) {
                     join.host(at, DiscoveryRules.hostName(v[0], v[1]), v[2], name.equals("jdk.SocketRead"));
+                } else if (!join.ownPort(v[3])) {
+                    join.peer(at);
+                }
             }
             default -> {}
         }
     }
 
-    /**
-     * One JVM's events given to the classes whose window holds each, or to the pool, one at a time. A
-     * file the JVM wrote is its own output: a read of it is no input.
-     */
-    static final class Join {
-        private final List<Window> windows;
-        private final long[] starts;
-        private final long[] reach; // the latest end of any window up to i
-        private final Set<Path> written;
-        private final Path cwd;
-        /** The temp roots a git command may run in and still read only what a test made. */
-        private final List<Path> gitTemp;
-        /** The {@code PATH} a program's bare name is looked up on. */
-        private final @Nullable String path = BuildEnv.machine().get("PATH");
-
-        private final Layout layout;
-        private final PathVerdicts verdicts;
-        private final Map<String, Observation> classes;
-        /** What no window holds goes to each: the suite's pool, and its launch's where told. */
-        private final List<Observation> pools;
-
-        /**
-         * Each thread that reached another host, by its id, with the classes whose window held its
-         * first such event; at most {@value #NETWORK_THREADS_KEPT}.
-         */
-        private final Map<String, List<Observation>> networkThreads = new HashMap<>();
-
-        /** The uses no window of this JVM held, which every class it ran may have read the state of. */
-        private final Observation unheldUses = Observation.empty();
-
-        private final SuiteCode suiteCode;
-        /** Whether each recently asked path is there, the last {@value #EXISTS_KEPT} asked. */
-        private final Map<Path, Boolean> exists = new LinkedHashMap<>(256, 0.75f, true) {
-            @Override
-            protected boolean removeEldestEntry(Map.Entry<Path, Boolean> eldest) {
-                return size() > EXISTS_KEPT;
-            }
-        };
-
-        private boolean codeOverflow;
-        /** The suite's loads left to keep, shared by its JVMs' joins. */
-        private final int[] loadedLeft;
-
-        /** The classes the suite's uses name, shared by its JVMs' joins. */
-        private final UseNames useNames;
-
-        /** One instance of each class name loaded, shared by every class that loaded it. */
-        private final Map<String, String> names = new HashMap<>();
-        /** Each code file read, by the first and the last time it was read. */
-        private final Map<Path, long[]> codeReads = new LinkedHashMap<>();
-        /** When the JVM first started a program git in a test's own repository is not ({@link #STARTED_PROGRAM}). */
-        private long firstStart = Long.MAX_VALUE;
-
-        long events;
-
-        Join(
-                List<Window> windows,
-                Set<Path> written,
-                Path cwd,
-                Layout layout,
-                PathVerdicts verdicts,
-                Map<String, Observation> classes,
-                List<Observation> pools,
-                SuiteCode suiteCode,
-                int[] loadedLeft,
-                UseNames useNames) {
-            this.verdicts = verdicts;
-            this.loadedLeft = loadedLeft;
-            this.useNames = useNames;
-            this.suiteCode = suiteCode;
-            this.windows = new ArrayList<>(windows);
-            this.windows.sort(Comparator.comparingLong(Window::start));
-            this.written = written;
-            this.cwd = cwd;
-            this.gitTemp = GitRuns.unenclosed(layout.temp());
-            this.layout = layout;
-            this.classes = classes;
-            this.pools = pools;
-            int n = this.windows.size();
-            starts = new long[n];
-            reach = new long[n];
-            for (int i = 0; i < n; i++) {
-                Window w = this.windows.get(i);
-                starts[i] = w.start();
-                reach[i] = Math.max(w.end(), i > 0 ? reach[i - 1] : Long.MIN_VALUE);
-                of(classes, w.testClass());
-            }
-        }
-
-        /**
-         * A socket event to {@code host} on {@code thread}. A read on a thread whose first such event
-         * an earlier class's window held is that class's: a connection a class left open is read
-         * from when the server closes it, minutes later, in whichever window or gap is open then, and
-         * a class that sends a request on it writes in its own window. Every write goes by its time.
-         */
-        void host(long at, String host, @Nullable String thread, boolean read) {
-            if (thread == null) {
-                accept(at, Kind.HOST, host);
-                return;
-            }
-            List<Observation> first = networkThreads.get(thread);
-            if (first == null) {
-                List<Observation> held = held(at);
-                if (held != null && !held.isEmpty() && networkThreads.size() < NETWORK_THREADS_KEPT) {
-                    networkThreads.put(thread, held);
-                }
-            } else if (read && !first.equals(held(at))) {
-                events++;
-                first.forEach(o -> o.addHost(host));
-                return;
-            }
-            accept(at, Kind.HOST, host);
-        }
-
-        /**
-         * The observations of the classes whose window holds {@code at}, empty when every one of them
-         * is past the suite's bound; null when no window holds it.
-         */
-        private @Nullable List<Observation> held(long at) {
-            List<Observation> held = null;
-            for (int i = lastStartingBy(starts, at); i >= 0 && reach[i] >= at; i--) {
-                Window w = windows.get(i);
-                if (w.end() < at) continue;
-                if (held == null) held = new ArrayList<>(1);
-                Observation o = classes.get(w.testClass());
-                if (o != null) held.add(o);
-            }
-            return held;
-        }
-
-        void accept(long at, Kind kind, @Nullable String value) {
-            if (value == null || value.isBlank()) return;
-            events++;
-            if (kind == Kind.WRITE) return;
-            List<Observation> into = new ArrayList<>(2);
-            boolean inWindow = false;
-            for (int i = lastStartingBy(starts, at); i >= 0 && reach[i] >= at; i--) {
-                Window w = windows.get(i);
-                if (w.end() < at) continue;
-                inWindow = true;
-                Observation o = classes.get(w.testClass());
-                // A class past the suite's bound keeps nothing and is keyed by its module.
-                if (o != null) into.add(o);
-            }
-            if (inWindow && into.isEmpty()) return;
-            if (into.isEmpty()) into.addAll(pools);
-            switch (kind) {
-                case PROCESS -> {
-                    // The test JDK's own launcher is the JDK the key already holds, not a program the
-                    // class depends on; but what it runs of the test class path no window marks, so
-                    // the class keys its whole cone, not only what its window ran.
-                    firstStart = Math.min(firstStart, at);
-                    if (!underJdk(value, layout)) {
-                        into.forEach(o -> o.addProcess(value));
-                    } else {
-                        into.forEach(Observation::ranUnmarked);
-                        if (!inWindow) unheldUses.ranUnmarked();
-                    }
-                }
-                case EXTERNAL -> {
-                    firstStart = Math.min(firstStart, at);
-                    if (!underJdk(value, layout)) into.forEach(o -> o.addTool(EXTERNAL_PROGRAM));
-                }
-                case TOOL -> {
-                    if (!value.equals(GitRuns.GIT)) firstStart = Math.min(firstStart, at);
-                    into.forEach(o -> o.addTool(value));
-                }
-                case HOST -> into.forEach(o -> o.addHost(value));
-                case USE -> {
-                    into.forEach(o -> o.addUsed(value, useNames));
-                    if (!inWindow) unheldUses.addUsed(value, useNames);
-                }
-                case NATIVE -> {
-                    if (!underJdk(value, layout)) into.forEach(o -> o.addNative(value));
-                }
-                case READ -> {
-                    PathVerdicts.Verdict read = verdicts.of(value);
-                    if (read == null) return;
-                    Path p = read.path();
-                    if (written.contains(p)) return;
-                    switch (where(read)) {
-                        case LOADED -> {
-                            String cls = read.className();
-                            if (cls != null) {
-                                String one = names.computeIfAbsent(cls, c -> c);
-                                into.forEach(o -> o.addLoaded(one, loadedLeft));
-                            }
-                        }
-                        case OS -> into.forEach(o -> o.addOsPath(p));
-                        case CODE -> {
-                            if (!codeReads.containsKey(p) && codeReads.size() >= CODE_FILES_KEPT) {
-                                codeOverflow = true;
-                                return;
-                            }
-                            long[] span = codeReads.computeIfAbsent(p, k -> new long[] {at, at});
-                            span[0] = Math.min(span[0], at);
-                            span[1] = Math.max(span[1], at);
-                        }
-                        case DATA -> {
-                            // A file gone once the run ended was made and removed by it: no input.
-                            if (into.stream().anyMatch(o -> o.wantsRead(p)) && exists(p))
-                                into.forEach(o -> o.addRead(p));
-                        }
-                        case KEYED -> {}
-                    }
-                }
-                case WRITE -> {}
-            }
-        }
-
-        /**
-         * A code file read by the time a class finished is one its JVM's loaders may serve it from:
-         * the classes a file's first read reaches are every class any read of it reaches, and it is
-         * the pool's when its last read came after every window closed. One gone once the run ended
-         * is none of them.
-         */
-        /** The code files already judged, by their verdict under their real path, the last few thousand. */
-        private final Map<Path, Where> code = new LinkedHashMap<>(256, 0.75f, true) {
-            @Override
-            protected boolean removeEldestEntry(Map.Entry<Path, Where> eldest) {
-                return size() > EXISTS_KEPT;
-            }
-        };
-
-        /** Where {@code read} lies; a code file is judged again under its real path, once. */
-        private Where where(PathVerdicts.Verdict read) {
-            if (read.where() != Where.CODE) return read.where();
-            return code.computeIfAbsent(read.path(), f -> {
-                Path r = real(f);
-                return r.equals(f) ? Where.CODE : classify(r, layout);
-            });
-        }
-
-        private boolean exists(Path p) {
-            return exists.computeIfAbsent(p, Files::exists);
-        }
-
-        void finish() {
-            if (codeOverflow) {
-                // More code files than are kept: no class can name what it may have loaded.
-                for (Window w : windows) {
-                    Observation o = classes.get(w.testClass());
-                    if (o != null) o.codeMore = true;
-                }
-                for (Observation p : pools) p.codeMore = true;
-                suiteCode.more = true;
-            }
-            long lastEnd = Long.MIN_VALUE;
-            for (Window w : windows) lastEnd = Math.max(lastEnd, w.end());
-            // A program outlives the window that started it, as a loaded jar does: every later class
-            // of the JVM may talk to what it runs. A use outside every window (discovery, a static
-            // initialiser) leaves state any class of the JVM may read, and none of another JVM's.
-            for (Window w : windows) {
-                Observation o = classes.get(w.testClass());
-                if (o == null) continue;
-                if (firstStart <= w.end()) o.addTool(STARTED_PROGRAM);
-                o.addUses(unheldUses);
-            }
-            for (Map.Entry<Path, long[]> c : codeReads.entrySet()) {
-                // A code file gone once the run ended was made and removed by it (a jar a test wrote
-                // in its temp directory): no input, and no load a later class may be served from.
-                if (!exists(c.getKey())) continue;
-                suiteCode.add(c.getKey());
-                long first = c.getValue()[0];
-                for (Window w : windows) {
-                    Observation o = classes.get(w.testClass());
-                    if (first <= w.end() && o != null) o.addCode(c.getKey());
-                }
-                if (c.getValue()[1] > lastEnd) pools.forEach(p -> p.addCode(c.getKey()));
-            }
-            codeReads.clear();
-        }
-    }
-
     /** The class's observation, made for it unless the suite already has {@link #CLASSES_KEPT}. */
-    private static void of(Map<String, Observation> classes, String testClass) {
+    static void of(Map<String, Observation> classes, String testClass) {
         if (classes.size() < CLASSES_KEPT) classes.computeIfAbsent(testClass, c -> Observation.empty());
     }
 
     /** The index of the last window starting at or before {@code at}, or -1. */
-    private static int lastStartingBy(long[] starts, long at) {
+    static int lastStartingBy(long[] starts, long at) {
         int lo = 0;
         int hi = starts.length - 1;
         int found = -1;
@@ -1213,7 +1023,7 @@ public final class ClassReads {
     private static final List<String> OS_PREFIXES =
             List.of("/proc/", "/sys/", "/dev/", "/etc/", "/System/", "/Library/", "/private/etc/");
 
-    private static boolean underJdk(String library, Layout layout) {
+    static boolean underJdk(String library, Layout layout) {
         if (layout.javaHome() == null) return false;
         try {
             Path lib = Path.of(library).toAbsolutePath().normalize();
@@ -1223,7 +1033,7 @@ public final class ClassReads {
         }
     }
 
-    private static Path real(Path p) {
+    static Path real(Path p) {
         try {
             return p.toRealPath();
         } catch (IOException | RuntimeException gone) {

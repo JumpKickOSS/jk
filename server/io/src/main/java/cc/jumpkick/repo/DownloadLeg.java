@@ -41,7 +41,7 @@ import org.jspecify.annotations.Nullable;
 final class DownloadLeg {
 
     /** A verified download: the temp file it landed in, its SHA-256 and its size. */
-    record Downloaded(Path path, String sha256, long size) {}
+    record Downloaded(Path path, String sha256, long size, ChecksumSidecars.@Nullable Published kept) {}
 
     private final String name;
     private final URI baseUrl;
@@ -173,6 +173,7 @@ final class DownloadLeg {
         Files.createDirectories(shard);
         Path tmp = Files.createTempFile(shard, ".put-", ".tmp");
         Streamed streamed = null;
+        ChecksumSidecars.@Nullable Published kept = null;
         long ms;
         try {
             for (int attempt = 1; ; attempt++) {
@@ -191,7 +192,8 @@ final class DownloadLeg {
             verifyPin(coord, relativePath, streamed, expectedSha256);
             if (streamed.sidecars() != null && vouch != null) {
                 try {
-                    verifyUpstreamChecksum(coord, streamed.sidecars(), relativePath, streamed.stored(), leg, vouch);
+                    kept = verifyUpstreamChecksum(
+                            coord, streamed.sidecars(), relativePath, streamed.stored(), leg, vouch);
                 } catch (MavenRepo.ChecksumMismatchException disowned) {
                     throw disowned;
                 } catch (IOException unread) {
@@ -221,7 +223,8 @@ final class DownloadLeg {
                 Log.debug("run: advisory", e);
             }
         }
-        return streamed.stored();
+        Downloaded stored = streamed.stored();
+        return new Downloaded(stored.path(), stored.sha256(), stored.size(), kept);
     }
 
     /**
@@ -275,7 +278,7 @@ final class DownloadLeg {
             throw e;
         }
         // Counted as landed by the caller, once the bytes verify.
-        return new Streamed(new Downloaded(tmp, Hashing.hex(digest.digest()), size), sidecars, transfer);
+        return new Streamed(new Downloaded(tmp, Hashing.hex(digest.digest()), size, null), sidecars, transfer);
     }
 
     /**
@@ -406,9 +409,10 @@ final class DownloadLeg {
      * note ({@link #checksumNotes}). With no sidecar at all the bytes are accepted only when the
      * repository is on local disk, or under {@code allow-unverified = true}; otherwise the fetch is
      * refused, because a pin taken from unverified bytes would protect every later build with a
-     * checksum of whatever arrived.
+     * checksum of whatever arrived. Returns the checksum a memo may keep for the bytes ({@link
+     * #keepable}), or null.
      */
-    private void verifyUpstreamChecksum(
+    private ChecksumSidecars.@Nullable Published verifyUpstreamChecksum(
             Coordinate coord,
             ChecksumSidecars sidecars,
             String relativePath,
@@ -426,21 +430,36 @@ final class DownloadLeg {
                         + published.get().hex() + " but got " + differing.get());
             }
             accept(coord, published.get(), leg, vouch);
-            return;
+            return keepable(published.get(), vouch);
         }
         unpublished(coord, relativePath, leg);
+        return null;
     }
+
+    /**
+     * {@code published} when a memo may keep it for later fresh locks to confirm against: the
+     * repository's own word, never the mirror vouching for itself while Central refuses this host.
+     */
+    private static ChecksumSidecars.@Nullable Published keepable(ChecksumSidecars.Published published, Vouch vouch) {
+        return vouch.mirrorVouched(published) ? null : published;
+    }
+
+    /**
+     * A store copy that may stand, and the checksum a memo may keep for it ({@link #keepable}): null
+     * when the repository publishes none, or only its mirror vouched.
+     */
+    record Confirmed(ChecksumSidecars.@Nullable Published kept) {}
 
     /**
      * Confirm a copy the store already holds against the checksum this repository publishes at
      * {@code uri}, the check a download of it gets, before a lock pins it; {@code sha256} is the
-     * digest of the bytes at {@code path}, verified by the caller. True when the copy may
+     * digest of the bytes at {@code path}, verified by the caller. Present when the copy may
      * stand: its bytes match, or the repository publishes no checksum and the rule that lets a
      * download through — a repository on local disk, or {@code allow-unverified} — lets it through.
-     * False, with a note, when the repository disowns the bytes. A sidecar-less copy the rule
+     * Empty, with a note, when the repository disowns the bytes. A sidecar-less copy the rule
      * refuses is refused with the {@link MavenRepo.MissingChecksumException} a download gets.
      */
-    boolean confirmStored(
+    Optional<Confirmed> confirmStored(
             Coordinate coord,
             Vouch vouch,
             String relativePath,
@@ -459,18 +478,33 @@ final class DownloadLeg {
         if (published.isEmpty()) {
             // A file nobody here has verified, found in the Maven local repository, has only the
             // repository's word to stand on: none published, nothing vouches, even under allow-unverified.
-            if (requirePublished) return false;
+            if (requirePublished) return Optional.empty();
             unpublished(coord, relativePath, leg);
-            return true;
+            return Optional.of(new Confirmed(null));
         }
         Optional<String> differing = differing(published.get(), path, sha256);
         if (differing.isPresent()) {
             checksumNotes.add(coord + " from " + name + ": stored " + relativePath + " has "
                     + published.get().algorithm().label + " " + differing.get() + ", the repository publishes "
                     + published.get().hex() + "; downloaded it again");
-            return false;
+            return Optional.empty();
         }
         accept(coord, published.get(), leg, vouch);
+        return Optional.of(new Confirmed(keepable(published.get(), vouch)));
+    }
+
+    /**
+     * Confirm a copy the store already holds against {@code kept}, the checksum this repository
+     * published for it when it was first confirmed and its memo kept ({@link
+     * ChecksumSidecars.Published#kept}), without asking the repository again: a release is not
+     * republished in place. True, and counted as a match of a published checksum, when the bytes
+     * at {@code path} still have it; false when they do not or {@code kept} is no checksum.
+     */
+    boolean confirmKept(Coordinate coord, String kept, URI artifact, Path path, String sha256, MavenRepo.Leg leg)
+            throws IOException {
+        Optional<ChecksumSidecars.Published> published = ChecksumSidecars.Published.ofKept(kept, artifact);
+        if (published.isEmpty() || differing(published.get(), path, sha256).isPresent()) return false;
+        accept(coord, published.get(), leg, Vouch.beside(artifact));
         return true;
     }
 

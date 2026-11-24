@@ -6,7 +6,9 @@
 # in, and no agent runs; an agent cut by NIGHT_SKIP or the skip file leaves steps 2 and 3 only; smoke
 # names an agent that is not logged in and runs nothing; a real run over a fake harness runs every cell
 # past its deadline, logs how far past with what is done and left, `status` gives done, running, left
-# and an ETA while it runs, and the night ends with its tables, the tool hit rate in them; pause writes
+# and an ETA while it runs, and the night ends with its tables, the tool hit rate in them; an agent whose
+# CLI refuses two cells in a row at 0 tokens for its login has them recorded void, not red, is skipped
+# for the rest of the night with the reason logged, and its void cells are listed apart; pause writes
 # the queue's pause file with its reason and waits for a gate holding the lock; resume removes it, and
 # a real run then refuses because the loops are not paused.
 set -euo pipefail
@@ -119,11 +121,28 @@ assert ct.code_tool({"kind": "question", "code_tool": "find"}, "jk") is None
 assert ct.code_tool({"kind": "question", "code_tool": "find"}, "jk-graph") == "find"
 assert ct.code_tool_calls(spine, "usages") == 2
 assert ct.code_tool_calls([{"tool_use": "Bash", "input": '{"command": "jk code pull-up A.b"}'}], "pull_up") == 1
+# agy's call_mcp_tool puts its Arguments first; the spine keeps the tool's name inside its 200 bytes.
+agy_step = {"event": "step_update", "step_update": {"state": "DONE", "step_type": "tool", "tool_name": "call_mcp_tool",
+            "tool_info": {"parameters": {"Arguments": {"address": "org.acme." + "x" * 200, "to": "Priced"},
+                                         "ServerName": "jk", "ToolName": "extract_interface"}}}}
+assert ct.code_tool_calls(ct.agents._agy_summary([agy_step]), "extract_interface") == 1
+assert ct.called({"tool_use": "use_tool", "input": '{"tool_name": "jk__move", "tool_input": {"address": "A.'}) == "jk__move"
 assert ct.tool_errors(Path(sys.argv[2]), "claude-code") == 3
 assert ct.tool_errors(Path(sys.argv[2]), "gemini") is None
 assert ct.tool_errors(Path(sys.argv[3]) / "grok.jsonl", "grok") == 1
 assert ct.tool_errors(Path(sys.argv[3]) / "cursor.jsonl", "cursor") == 3
 assert ct.tool_errors(Path(sys.argv[3]) / "muse.jsonl", "muse") == 2
+# A run whose CLI refused it for its login or its limit, at 0 tokens, is void; the same words after work
+# spent are the agent's, and a 0-token stop for another reason is a result.
+idle = {"driver": "claude-code", "input_tokens": 0, "output_tokens": 0, "cache_read_tokens": 0, "cache_write_tokens": 0}
+expired = "agent stopped: Failed to authenticate: OAuth session expired and could not be refreshed"
+assert ct.void_reason(idle, expired, "").startswith("not run: the claude-code CLI refused it: agent stopped: Failed to"), \
+    ct.void_reason(idle, expired, "")
+assert ct.void_reason({**idle, "driver": "codex"}, "", "You've hit your usage limit. Try again at 6:00 AM.")
+assert ct.void_reason({"driver": "cursor", "input_tokens": None, "output_tokens": None}, "Error: 429 Too Many Requests", "")
+assert not ct.void_reason({**idle, "input_tokens": 1200}, expired, "")
+assert not ct.void_reason(idle, "turn budget exhausted (40)", "")
+assert not ct.void_reason(idle, "the claude CLI exited without a result event: model id not found", "")
 PY
 
 # A dry run: every cell of the plan, each with its expected time; the agents not logged in named.
@@ -256,6 +275,9 @@ row = {"date": datetime.date.today().isoformat(), "driver": a["--driver"], "task
        "first_tool": "mcp__jk__usages" if tools else "Grep", "searches": 1, "reads": 2,
        "text_after_code_tool": 0 if tools else None, "tool_errors": 0, "turn_cap": False,
        "code_tool": "usages" if tools else None, "code_tool_calls": 1 if tools else None}
+if a["--driver"] == "codex":
+    row.update(outcome="void", turns=0, input_tokens=0, output_tokens=0, tokens=None, code_tool_calls=0,
+               finding="not run: the codex CLI refused it: agent stopped: Failed to authenticate: token expired")
 out = os.path.join(os.environ["NIGHT_RESULTS"], row["date"] + "-change-tasks")
 os.makedirs(out, exist_ok=True)
 open(os.path.join(out, "rows.jsonl"), "a").write(json.dumps(row) + "\n")
@@ -264,7 +286,7 @@ EOF
 chmod +x "$WORK/harness/smoke-test" "$WORK/harness/change-tasks"
 echo "echo step four >>'$WORK/ran-extra'" >"$WORK/extra"
 real_night() {
-  NIGHT_EXTRA="$WORK/extra" NIGHT_DRIVERS="claude-code copilot" NIGHT_HARNESS="$WORK/harness" NIGHT_RESULTS="$WORK/results" \
+  NIGHT_EXTRA="$WORK/extra" NIGHT_DRIVERS="claude-code copilot codex" NIGHT_HARNESS="$WORK/harness" NIGHT_RESULTS="$WORK/results" \
     AGENT_LOOP_HOME="$WORK/agent-loop" night "$@"
 }
 deadline="$(date -d '+3 seconds' '+%F %T')"
@@ -281,18 +303,34 @@ touch "$WORK/go"
 for _ in $(seq 1200); do kill -0 "$runpid" 2>/dev/null || break; sleep 0.1; done
 if kill -0 "$runpid" 2>/dev/null; then kill "$runpid"; fail "the real run did not end: $(tail "$WORK/run")"; fi
 wait "$runpid" || fail "the real run failed: $(cat "$WORK/run")"
-plan="$(NIGHT_DRIVERS="claude-code copilot" NIGHT_RESULTS="$WORK/results" GRAPH_RETRIEVAL_HOME="$WORK/gr" \
+plan="$(NIGHT_DRIVERS="claude-code copilot codex" NIGHT_RESULTS="$WORK/results" GRAPH_RETRIEVAL_HOME="$WORK/gr" \
   AGENT_LOOP_HOME="$WORK/agent-loop" "$ROOT/bench/agent-loop/night-plan" plan)"
-want_ran="$(awk -F'\t' '$6 == "-" || $6 == "spring-petclinic"' <<<"$plan" | wc -l)"
+# Every cell on the set-up repository runs, but codex's after its first two, both void.
+want_ran="$(awk -F'\t' '$3 != "codex" && ($6 == "-" || $6 == "spring-petclinic")' <<<"$plan" | wc -l)"
 [ "$want_ran" -gt 5 ] || fail "the plan has only $want_ran cells on the set-up repository"
+[ "$(awk -F'\t' '$3 == "codex" && $6 == "spring-petclinic"' <<<"$plan" | wc -l)" -gt 2 ] || fail "the plan has too few codex cells"
+want_ran=$((want_ran + 2))
 [ "$(wc -l <"$WORK/ran")" -eq "$want_ran" ] || fail "$(wc -l <"$WORK/ran") of $want_ran cells ran: $(cat "$WORK/run")"
+[ "$(grep -c -- '--driver codex ' "$WORK/ran")" -eq 2 ] || fail "codex ran on after two void cells: $(grep -- '--driver codex ' "$WORK/ran")"
+grep -q 'void: two void cells in a row for codex: not run: the codex CLI refused it: .*token expired; codex is skipped for the rest of the night' "$WORK/run" ||
+  fail "the night does not log why codex is skipped: $(grep codex "$WORK/run" | head -5)"
+grep -q -- 'skip: .*smoke-test --driver codex .*(two void cells in a row for codex' "$WORK/run" ||
+  fail "codex's step-3 cells are not skipped for its void cells: $(grep 'skip: ' "$WORK/run" | head -3)"
+grep -q '^# Bench night from .*, 2 of them void (not run)$' "$WORK/run" || fail "the header does not count the void cells: $(grep '^# Bench' "$WORK/run")"
+grep -qE '^\| codex \| jk-nograph \| 0 \| 0 \| 2 \| - \|' "$WORK/run" ||
+  fail "codex's void cells are counted as cells that ran: $(grep '^| codex' "$WORK/run")"
+grep -q '^## Void cells (not run), per agent' "$WORK/run" || fail "the night lists no void cells"
+grep -qE '^\| codex \| 2 \| [a-z-]+ jk-nograph, [a-z-]+ jk-nograph \| not run: the codex CLI refused it: ' "$WORK/run" ||
+  fail "codex's void cells are not listed: $(grep -A3 '^## Void' "$WORK/run")"
+grep -qE '^\| [a-z-]+ \| codex \| [^|]+ \| [^|]+ \| - / void \|' "$WORK/run" ||
+  fail "the task table shows a void cell as red: $(grep '| codex |' "$WORK/run" | head -3)"
 grep -qE "past the soft deadline [0-9]{2}:[0-9]{2} by 0:00: 1 done, 0 running, [0-9]+ left; " "$WORK/run" ||
   fail "past the deadline, the run does not log what is done and left: $(cat "$WORK/run")"
 if grep -q 'deadline)' "$WORK/run"; then fail "a cell was skipped for the deadline: $(grep 'deadline)' "$WORK/run")"; fi
 grep -q '^## Per agent and arm' "$WORK/run" || fail "the night did not end with its tables: $(tail "$WORK/run")"
-grep -qE '^\| claude-code \| jk-nograph \| [0-9]+ \| [0-9]+ \| n/a \|' "$WORK/run" ||
+grep -qE '^\| claude-code \| jk-nograph \| [0-9]+ \| [0-9]+ \| 0 \| n/a \|' "$WORK/run" ||
   fail "the no-code-tools arm has a hit rate: $(grep '^| claude-code' "$WORK/run")"
-grep -qE '^\| copilot \| jk[^ ]* \| [0-9]+ \| [0-9]+ \| ([0-9]+) of \1 \|' "$WORK/run" ||
+grep -qE '^\| copilot \| jk[^ ]* \| [0-9]+ \| [0-9]+ \| 0 \| ([0-9]+) of \1 \|' "$WORK/run" ||
   fail "copilot's tool hit rate is missing: $(grep '^| copilot' "$WORK/run")"
 grep -q '^| petclinic-callers-addpet | claude-code | usages | 1 of 1 | yes / yes |' "$WORK/run" ||
   fail "the task table does not set with the tools against without: $(grep '^| petclinic-callers-addpet' "$WORK/run")"
