@@ -23,6 +23,7 @@ import cc.jumpkick.engine.plugin.WorkerLeases;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.HostLoad;
 import cc.jumpkick.host.HostProcessors;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.orchestrator.DiscoveryListing;
@@ -36,6 +37,7 @@ import cc.jumpkick.orchestrator.TestProgressListener;
 import cc.jumpkick.run.SessionCancel;
 import cc.jumpkick.run.TestFailureInfo;
 import cc.jumpkick.run.TestSummary;
+import cc.jumpkick.runtime.base.HostBusy;
 import cc.jumpkick.runtime.base.RecentClassWalls;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -43,6 +45,7 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -494,11 +497,49 @@ public final class JUnitLauncher {
     static final int CORES_PER_DRIVING_RUNNER = 2;
 
     /**
+     * The load an auto pool is sized against, out of the host's one-minute {@code loadAverage}: for
+     * a pool of engine-driving test JVMs, the cores busy outside this engine and its child processes
+     * ({@link HostBusy#external}), since the load average counts this build's own suites too; on a
+     * 24-core host at load 24 to 30, much of it this build's other modules, such a pool started at
+     * one runner and ran 447 s. The load average where that share is unknown, and for every other
+     * pool.
+     */
+    double poolLoad(double loadAverage, int processors) {
+        if (!fork.drivesEngines()) return loadAverage;
+        return foreignLoad(loadAverage, HostBusy.external(), processors);
+    }
+
+    /**
+     * The cores {@code externalShare} of {@code processors} keeps busy, or {@code loadAverage} when
+     * the share is unknown (negative).
+     */
+    static double foreignLoad(double loadAverage, double externalShare, int processors) {
+        return externalShare >= 0 && processors > 0 ? externalShare * processors : loadAverage;
+    }
+
+    /**
+     * The engine-log line of a pool that may grow to {@code share} runners when it starts or widens
+     * ({@code event}, "widens to 3 runners"), with the {@code loadAverage} it read and the {@code
+     * sizedBy} load it was sized against ({@link #poolLoad}).
+     */
+    static String poolLine(String module, String event, int share, double loadAverage, double sizedBy, int processors) {
+        return String.format(
+                Locale.ROOT,
+                "test pool %s: %s; share %d, load1 %.2f, sized by load %.2f on %d processors",
+                module.isEmpty() ? "-" : module,
+                event,
+                share,
+                loadAverage,
+                sizedBy,
+                processors);
+    }
+
+    /**
      * The share an auto pool of engine-driving test JVMs starts at out of {@code share}: no more
-     * runners than the host's idle cores give two each, at least one. Cores another build or session
-     * is using are not free for this suite's engines, and a pool past the cores runs slower, not
-     * faster: on a seven-core host eight runners took 519 s where four took 445 s. Every other pool
-     * keeps the share.
+     * runners than the host's idle cores give two each, at least one, the idle cores read from the
+     * {@link #poolLoad} {@code loadAverage}. Cores another build or session is using are not free for
+     * this suite's engines, and a pool past the cores runs slower, not faster: on a seven-core host
+     * eight runners took 519 s where four took 445 s. Every other pool keeps the share.
      */
     int startShare(int share, double loadAverage, int processors) {
         if (!fork.drivesEngines()) return share;
@@ -508,8 +549,8 @@ public final class JUnitLauncher {
 
     /**
      * Whether the host has the cores for one more pooled test JVM: an engine-driving one needs
-     * {@link #CORES_PER_DRIVING_RUNNER} idle, since its lease holds no JVM slot; every other one is
-     * bounded by the lease ledger alone.
+     * {@link #CORES_PER_DRIVING_RUNNER} idle under the {@link #poolLoad} {@code loadAverage}, since
+     * its lease holds no JVM slot; every other one is bounded by the lease ledger alone.
      */
     boolean coresForAnother(double loadAverage, int processors) {
         return !fork.drivesEngines() || HostLoad.idleProcessors(loadAverage, processors) >= CORES_PER_DRIVING_RUNNER;
@@ -695,11 +736,16 @@ public final class JUnitLauncher {
                 preDiscovered = discovery.classes();
             }
             int share = poolShare(wanted > 0 ? wanted : TestWorkers.effectiveJobs());
-            int start = startShare(share, HostLoad.loadAverage(), HostProcessors.count());
+            int processors = HostProcessors.count();
+            double load1 = HostLoad.loadAverage();
+            double sizedBy = poolLoad(load1, processors);
+            int start = startShare(share, sizedBy, processors);
             Map<String, Long> recorded = RecentClassWalls.forModule(inferredModuleDir);
             List<String> selection = preDiscovered;
             resolvedWorkers =
                     selection.isEmpty() ? 1 : TestWorkers.autoCount(start, recorded, selection, selection.size());
+            String event = "starts at " + resolvedWorkers + " runners, " + start + " by the idle cores";
+            Log.info(poolLine(moduleLabel, event, share, load1, sizedBy, processors));
             // A pool started below its share for want of idle cores widens back to it as they free up.
             int asked = wanted;
             IntSupplier live = widening != null || start == share

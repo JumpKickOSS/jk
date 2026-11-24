@@ -678,9 +678,13 @@ the formula gives at that share, whenever the engine has a free JVM slot and the
 more with nothing else waiting. It never stops a runner it started.
 
 A suite whose tests start engines of their own runs at half the share, since each runner's engine
-compiles and tests on cores of its own. It starts with no more runners than the idle cores (the
-processors less the one-minute load average) give two each, at least one, and widens toward that
-half share only while two cores sit idle, so a busy host gets fewer runners rather than slower ones.
+compiles and tests on cores of its own. It starts with no more runners than the idle cores give
+two each, at least one, and widens toward that half share only while two cores sit idle, so a busy
+host gets fewer runners rather than slower ones. The idle cores are the processors less the cores
+busy outside the engine and its child processes over the last few seconds: the build's other suites
+running beside it do not count as load. Where the host does not report that (macOS, Windows), the
+one-minute load average stands in. The engine log has one `test pool` line per start and widening,
+with the width, the share, the load average and the load the pool was sized by.
 
 An explicit `-w N` is never rescaled; it means N.
 

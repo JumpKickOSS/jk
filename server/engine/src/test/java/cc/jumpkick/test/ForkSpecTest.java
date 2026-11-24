@@ -2,8 +2,10 @@
 package cc.jumpkick.test;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.within;
 
 import cc.jumpkick.engine.plugin.JobWorkers;
+import cc.jumpkick.runtime.base.HostBusy;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -119,6 +121,40 @@ class ForkSpecTest {
         assertThat(driving.startShare(3, -1, 7)).as("no load average").isEqualTo(3);
         assertThat(new JUnitLauncher().withFork(homes(false, false)).startShare(7, 11.0, 7))
                 .isEqualTo(7);
+    }
+
+    /**
+     * An engine-driving pool reads the cores busy outside its engine, not the load average: on a
+     * 24-core host at load 27, nearly all of it this build's own suites, it starts wide, where the
+     * load average alone started it at one runner. Where that share is unknown it falls back to the
+     * load average, and every other pool reads the load average.
+     */
+    @Test
+    void a_pool_that_drives_engines_does_not_count_its_own_engines_load() {
+        JUnitLauncher driving = new JUnitLauncher().withFork(homes(true, false));
+        try {
+            HostBusy.forTests(() -> 0.1);
+            assertThat(driving.poolLoad(27.0, 24)).isCloseTo(2.4, within(1e-9));
+            assertThat(driving.startShare(12, driving.poolLoad(27.0, 24), 24)).isEqualTo(10);
+            assertThat(driving.startShare(12, 27.0, 24))
+                    .as("the load average alone")
+                    .isEqualTo(1);
+            assertThat(new JUnitLauncher().withFork(homes(false, false)).poolLoad(27.0, 24))
+                    .isEqualTo(27.0);
+            HostBusy.forTests(() -> -1);
+            assertThat(driving.poolLoad(27.0, 24)).as("no external share").isEqualTo(27.0);
+        } finally {
+            HostBusy.forTests(null);
+        }
+    }
+
+    /** Each start and widening of a pool logs one line naming its width, share and load. */
+    @Test
+    void a_pool_logs_its_width_share_and_load() {
+        assertThat(JUnitLauncher.poolLine(
+                        "jk-cli-e2e", "starts at 6 runners, 10 by the idle cores", 12, 27.314, 2.4, 24))
+                .isEqualTo("test pool jk-cli-e2e: starts at 6 runners, 10 by the idle cores;"
+                        + " share 12, load1 27.31, sized by load 2.40 on 24 processors");
     }
 
     /** An engine-driving pool widens only while two cores sit idle; every other pool is bounded by its leases. */

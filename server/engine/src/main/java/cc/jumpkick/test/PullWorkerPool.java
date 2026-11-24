@@ -13,6 +13,7 @@ import cc.jumpkick.engine.plugin.WorkerExit;
 import cc.jumpkick.engine.plugin.WorkerLeases;
 import cc.jumpkick.host.HostLoad;
 import cc.jumpkick.host.HostProcessors;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.orchestrator.ResultAggregator;
 import cc.jumpkick.orchestrator.RunShortfall;
@@ -247,9 +248,14 @@ final class PullWorkerPool {
             int want = Math.min(Math.min(widen.getAsInt(), classCount), shards.size() + queue.size());
             if (want <= shards.size()) continue;
             List<String> command = shards.getFirst().command.get();
-            if (!launcher.coresForAnother(HostLoad.loadAverage(), HostProcessors.count())) continue;
+            int processors = HostProcessors.count();
+            double load1 = HostLoad.loadAverage();
+            double sizedBy = launcher.poolLoad(load1, processors);
+            if (!launcher.coresForAnother(sizedBy, processors)) continue;
             if (command.isEmpty() || !roomFor(command)) continue;
             start(shards, queue, workerIdBase, want, true, xml, md);
+            String event = "widens to " + shards.size() + " runners";
+            Log.info(JUnitLauncher.poolLine(moduleLabel, event, want, load1, sizedBy, processors));
             if (announce) listener.onWorkers(shards.size());
         }
     }
