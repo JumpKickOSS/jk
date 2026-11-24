@@ -46,7 +46,7 @@ def med(rs: list[dict], key: str) -> float | None:
 def cells(rows: list[dict]) -> dict:
     out: dict = {}
     for r in rows:
-        if r.get("outcome") == "error":
+        if r.get("outcome") in ("error", "void"):
             continue
         key = (r.get("driver"), r.get("model"), r.get("effort"), r.get("task"), r.get("arm"))
         out.setdefault(key, []).append(r)

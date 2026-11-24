@@ -14,6 +14,10 @@ The tool hit rate counts the cells where a JumpKick code tool is the right move 
 (the row's `code_tool`): a hit is a cell whose agent called that tool at least once. A no-code-tools
 cell has no right tool, so its hit is `n/a`. Rows written before the harness recorded a column show `-`
 in it.
+
+A void cell is one that did not run: its agent spent no tokens because its CLI refused it for a login or a
+usage limit (change-tasks' outcome `void`). It is neither green nor red: the per-agent table counts it
+apart from the cells that ran, the tool hit rates leave it out, and the void cells are listed per agent.
 """
 from __future__ import annotations
 
@@ -56,6 +60,10 @@ def rows(since: dt.date) -> list[dict]:
     return list(newest.values())
 
 
+def void(r: dict) -> bool:
+    return r.get("outcome") == "void"
+
+
 def usd(r: dict) -> float | None:
     return cost.estimate(r).get("cost_est_usd")
 
@@ -88,7 +96,7 @@ def total(rs: list[dict], key: str) -> float | None:
 
 
 def rate(rs: list[dict]) -> str:
-    hits = [hit(r) for r in rs if hit(r) is not None]
+    hits = [hit(r) for r in rs if not void(r) and hit(r) is not None]
     if hits:
         return f"{sum(hits)} of {len(hits)}"
     return "n/a" if any("code_tool" in r for r in rs) else "-"
@@ -120,16 +128,18 @@ def cell_table(rs: list[dict]) -> list[str]:
 
 
 def agent_table(rs: list[dict]) -> list[str]:
-    out = ["| Agent | Arm | Cells | Green | Tool hit rate | Wall s | Turns | Tokens | $ | Fell back after the tool "
-           "| Tool errors | Turn caps |",
-           "|---|---|---:|---:|---|---:|---:|---:|---:|---:|---:|---:|"]
+    out = ["| Agent | Arm | Cells | Green | Void | Tool hit rate | Wall s | Turns | Tokens | $ "
+           "| Fell back after the tool | Tool errors | Turn caps |",
+           "|---|---|---:|---:|---:|---|---:|---:|---:|---:|---:|---:|---:|"]
     for driver, arm in sorted({(r.get("driver", "claude-code"), r.get("arm")) for r in rs}):
-        cs = [r for r in rs if (r.get("driver", "claude-code"), r.get("arm")) == (driver, arm)]
+        group = [r for r in rs if (r.get("driver", "claude-code"), r.get("arm")) == (driver, arm)]
+        cs = [r for r in group if not void(r)]
         dollars = [usd(r) for r in cs if usd(r) is not None]
         fell = [r["text_after_code_tool"] > 0 for r in cs if r.get("text_after_code_tool") is not None]
         caps = [r["turn_cap"] for r in cs if r.get("turn_cap") is not None]
         out.append(
-            f"| {driver} | {arm} | {len(cs)} | {sum(r.get('outcome') == 'green' for r in cs)} | {rate(cs)} "
+            f"| {driver} | {arm} | {len(cs)} | {sum(r.get('outcome') == 'green' for r in cs)} "
+            f"| {len(group) - len(cs)} | {rate(cs)} "
             f"| {fmt(total(cs, 'wall_s'))} | {fmt(total(cs, 'turns'))} | {fmt(total(cs, 'tokens'))} "
             f"| {money(sum(dollars) if dollars else None)} | {f'{sum(fell)} of {len(fell)}' if fell else '-'} "
             f"| {fmt(total(cs, 'tool_errors'))} | {sum(caps) if caps else '-'} |")
@@ -149,11 +159,13 @@ def task_table(rs: list[dict]) -> list[str]:
         def side(group: list[dict], f) -> str:
             return ", ".join(f(r) for r in group) or "-"
 
+        def green(r: dict) -> str:
+            return "void" if void(r) else fmt(r.get("outcome") == "green")
+
         right = next((r["code_tool"] for r in with_ if r.get("code_tool")), None)
         out.append(
             f"| {task} | {driver} | {right or rate(with_)} | {rate(with_)} "
-            f"| {side(with_, lambda r: fmt(r.get('outcome') == 'green'))} / "
-            f"{side(without, lambda r: fmt(r.get('outcome') == 'green'))} "
+            f"| {side(with_, green)} / {side(without, green)} "
             f"| {side(with_, lambda r: fmt(r.get('wall_s')))} / {side(without, lambda r: fmt(r.get('wall_s')))} "
             f"| {side(with_, lambda r: fmt(r.get('tokens')))} / {side(without, lambda r: fmt(r.get('tokens')))} "
             f"| {side(with_, lambda r: money(usd(r)))} / {side(without, lambda r: money(usd(r)))} |")
@@ -164,9 +176,23 @@ def tool_table(rs: list[dict]) -> list[str]:
     """Per task, its right code tool and in how many of the cells offering it the agent called it."""
     out = ["| Task | Code tool | Tool hit rate | Agents that did not call it |", "|---|---|---|---|"]
     for task in sorted({r.get("task") for r in rs if r.get("code_tool")}):
-        cs = [r for r in rs if r.get("task") == task and r.get("code_tool")]
+        cs = [r for r in rs if r.get("task") == task and r.get("code_tool") and not void(r)]
+        if not cs:
+            continue
         missed = sorted({r.get("driver", "claude-code") for r in cs if hit(r) is False})
         out.append(f"| {task} | {cs[0]['code_tool']} | {rate(cs)} | {', '.join(missed) or '-'} |")
+    return out
+
+
+def void_table(rs: list[dict]) -> list[str]:
+    """Per agent, its void cells: how many, which, and the first one's reason."""
+    out = ["| Agent | Void cells | Cells | Why (the first) |", "|---|---:|---|---|"]
+    for driver in sorted({r.get("driver", "claude-code") for r in rs if void(r)}):
+        vs = sorted((r for r in rs if void(r) and r.get("driver", "claude-code") == driver),
+                    key=lambda r: (str(r.get("date")), r.get("run") or 0, r.get("task") or ""))
+        cells = ", ".join(f"{r.get('task')} {r.get('arm')}" for r in vs)
+        why = (vs[0].get("finding") or "-").replace("|", "/").replace("\n", " ")
+        out.append(f"| {driver} | {len(vs)} | {cells} | {why} |")
     return out
 
 
@@ -177,7 +203,8 @@ def main() -> int:
     rs = rows(dt.date.fromisoformat(ns.since))
     published = tomllib.loads(cost.PRICES.read_text()).get("published")
     day = published.date().isoformat() if hasattr(published, "date") else str(published)
-    print(f"# Bench night from {ns.since}: {len(rs)} cells")
+    voids = sum(void(r) for r in rs)
+    print(f"# Bench night from {ns.since}: {len(rs)} cells" + (f", {voids} of them void (not run)" if voids else ""))
     print()
     if not rs:
         print("No rows yet.")
@@ -185,9 +212,11 @@ def main() -> int:
     print(f"Dollars: API list prices of the price table published {day}. Hit: the agent called the right code "
           "tool; n/a where the arm offers none. After the tool: text searches and reads after the first "
           "code-tool call.")
-    for title, table in (("Per agent and arm", agent_table), ("Per task and code tool", tool_table),
-                         ("Per task and agent, with the code tools / without", task_table),
-                         ("Every cell", cell_table)):
+    tables = [("Per agent and arm", agent_table), ("Per task and code tool", tool_table),
+              ("Per task and agent, with the code tools / without", task_table), ("Every cell", cell_table)]
+    if voids:
+        tables.append(("Void cells (not run), per agent", void_table))
+    for title, table in tables:
         print()
         print(f"## {title}")
         print()
