@@ -708,7 +708,7 @@ public final class PathUtil {
      * Read once — {@code PATHEXT} cannot change inside one invocation, and thirteen callers probing
      * three names each over a fifty-entry {@code PATH} re-read it 150 times.
      */
-    private static List<String> windowsExecutableExtensions() {
+    public static List<String> windowsExecutableExtensions() {
         List<String> memo = pathExt;
         if (memo != null) return memo;
         String raw = ProcessEnv.get("PATHEXT");

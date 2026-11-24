@@ -3,6 +3,7 @@ package cc.jumpkick.testrunner;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.tuple;
 
 import cc.jumpkick.model.command.Exit;
 import java.io.IOException;
@@ -22,6 +23,7 @@ import java.util.function.Supplier;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 import org.jspecify.annotations.Nullable;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.RepeatedTest;
@@ -448,6 +450,21 @@ class LauncherPathTest {
         assertThat(finished).doesNotContainKey("display");
     }
 
+    /**
+     * A class its condition disables (on Windows, a whole {@code @DisabledOnOs(WINDOWS)} class) is
+     * reported skipped test by test, so its tests count and a {@code --class} naming it matched.
+     */
+    @Test
+    void a_class_disabled_whole_reports_each_of_its_tests_skipped() {
+        var events = new Recorder();
+        LauncherPath.runClass(
+                LauncherFactory.create(), DisabledWhole.class.getName(), List.of(), TagFilters.NONE, 0, events);
+        assertThat(events.skippedTests())
+                .extracting(p -> p.get("testMethod"), p -> p.get("reason"))
+                .containsExactlyInAnyOrder(tuple("first()", "off here"), tuple("second()", "off here"));
+        assertThat(events.finishedTests()).isEmpty();
+    }
+
     @Test
     void a_passing_run_reports_no_failures() {
         assertThat(LauncherPath.runClass(
@@ -714,6 +731,17 @@ class LauncherPathTest {
             return out;
         }
 
+        List<Map<String, Object>> skippedTests() {
+            var out = new ArrayList<Map<String, Object>>();
+            for (int i = 0; i < types.size(); i++) {
+                if (types.get(i) == EventType.SKIPPED
+                        && "TEST".equals(events.get(i).get("type"))) {
+                    out.add(events.get(i));
+                }
+            }
+            return out;
+        }
+
         List<Map<String, Object>> finishedTests() {
             var out = new ArrayList<Map<String, Object>>();
             for (int i = 0; i < types.size(); i++) {
@@ -764,6 +792,17 @@ class LauncherPathTest {
 
         @Test
         void uses() {}
+    }
+
+    /** Disabled as a whole: the Platform skips the class and never names its two tests. */
+    @Disabled("off here")
+    static class DisabledWhole {
+
+        @Test
+        void first() {}
+
+        @Test
+        void second() {}
     }
 
     /** A class with a {@code @Nested} child: one class to the pull workers, not two. */

@@ -244,7 +244,9 @@ methods matched` for a `Class#method`) only when no module matched anything: a t
 there the empty match fails on the spot. A selection that ran nothing is a **usage error**, exit
 64, not a failed test: no `Tests:` count, and the error carries code `no-tests-matched` in
 `details.jsonl` and the results. Red tests beside a dropped class still exit 4. `[test] serial-tags` partitions inside one module are
-judged together: a pattern that only matches serial-tagged classes is a match.
+judged together: a pattern that only matches serial-tagged classes is a match. So is a class
+disabled whole, such as an `@DisabledOnOs(WINDOWS)` class on Windows: each of its tests counts as
+skipped.
 
 A pattern qualified with its module, `--class <module>:<class>`, holds in that module alone:
 `jk test -s integration -X -m e2e/cli -m server/engine -S server/engine:EngineIT` runs the whole

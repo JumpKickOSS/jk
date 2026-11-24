@@ -838,7 +838,8 @@ class ClassReadsTest {
 
     @Test
     void a_library_on_the_classpath_is_keyed_already() {
-        Path lib = Path.of("/store/lib-1.0.jar");
+        // Absolute, as the probe reports a read: on Windows "/store" has no drive and is not.
+        Path lib = Path.of("/store/lib-1.0.jar").toAbsolutePath();
         ClassReads.Layout layout = new ClassReads.Layout(List.of(), List.of(), Set.of(lib), Path.of("/ws"), null);
         assertThat(ClassReads.classify(lib, layout)).isEqualTo(ClassReads.Where.KEYED);
     }

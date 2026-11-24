@@ -32,7 +32,8 @@ class OwnProgramsTest {
         Files.writeString(module.resolve("README"), "x");
         bin = Files.createDirectories(root.resolve("bin"));
         for (String program : List.of("mvn", "sleep", "sh")) {
-            Path f = Files.writeString(bin.resolve(program), "#!/bin/sh\n");
+            // On Windows a program on PATH carries one of PATHEXT's extensions.
+            Path f = Files.writeString(bin.resolve(Os.isWindows() ? program + ".cmd" : program), "#!/bin/sh\n");
             f.toFile().setExecutable(true);
         }
         Files.createDirectories(temp().resolve("1"));

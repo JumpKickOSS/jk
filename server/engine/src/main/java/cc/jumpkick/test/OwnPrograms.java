@@ -198,24 +198,48 @@ final class OwnPrograms {
         } catch (InvalidPathException odd) {
             return false;
         }
-        if (under(p, temp) || startsWithAny(p, STATE_TREES)) return true;
+        if (under(p, temp) || startsWithAny(p, STATE_TREES) || startsWithAny(rooted(part), STATE_TREES)) return true;
         // An installed program's path is one more program the command runs.
         return startsWithAny(p, PROGRAM_TREES) && (utility(ToolIdentity.toolName(part)) || !Files.isRegularFile(p));
     }
 
-    /** Whether {@code name} is a runnable file in a directory of {@code path}. */
+    /**
+     * {@code part} normalized as written when it starts at {@code /}, which on Windows a shell like
+     * Git Bash reads as its own tree ({@code /dev/zero}) and resolving would give the drive's root;
+     * an empty path otherwise.
+     */
+    private static Path rooted(String part) {
+        if (!part.startsWith("/")) return Path.of("");
+        try {
+            return Path.of(part).normalize();
+        } catch (InvalidPathException odd) {
+            return Path.of("");
+        }
+    }
+
+    /**
+     * Whether {@code name} is a runnable file in a directory of {@code path}: on Windows also with
+     * each {@code PATHEXT} extension, as Windows finds {@code mvn} as {@code mvn.cmd}.
+     */
     private static boolean onPath(String name, @Nullable String path) {
+        List<String> extensions = Os.isWindows() ? PathUtil.windowsExecutableExtensions() : List.of();
         for (String entry : SearchPath.entries(path)) {
             Path d = SearchPath.path(entry);
             if (d == null) continue;
             try {
-                Path f = d.resolve(name);
-                if (Files.isRegularFile(f) && PathUtil.isRunnable(f)) return true;
+                if (runnable(d.resolve(name))) return true;
+                for (String ext : extensions) {
+                    if (runnable(d.resolve(name + ext))) return true;
+                }
             } catch (InvalidPathException odd) {
                 // no file of that directory
             }
         }
         return false;
+    }
+
+    private static boolean runnable(Path f) {
+        return Files.isRegularFile(f) && PathUtil.isRunnable(f);
     }
 
     private static boolean startsWithAny(Path p, List<String> trees) {

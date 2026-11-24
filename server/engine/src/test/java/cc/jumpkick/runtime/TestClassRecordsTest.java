@@ -69,7 +69,9 @@ class TestClassRecordsTest {
                 .as("its nested class folded in")
                 .isEqualTo(3);
         assertThat(Jsonl.strArray(order, "reads")).containsExactly("data/orders.json");
-        assertThat(Jsonl.strArray(order, "osPaths")).contains("/etc/localtime");
+        assertThat(Jsonl.strArray(order, "osPaths"))
+                .as("a path outside the workspace, spelled as the host spells it")
+                .contains(Path.of("/etc/localtime").toString());
         assertThat(Jsonl.strArray(order, "nativeCode")).containsExactly("/opt/lib/libfast.so");
         assertThat(Jsonl.strArray(order, "env")).containsExactly("LANG");
         assertThat(order).contains("\"props\":[\"user.home\"]").contains("\"loaded\":1");
