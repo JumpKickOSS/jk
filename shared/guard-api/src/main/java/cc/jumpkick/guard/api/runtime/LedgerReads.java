@@ -2,7 +2,6 @@
 package cc.jumpkick.guard.api.runtime;
 
 import cc.jumpkick.host.Hashing;
-import cc.jumpkick.jsonl.MiniJson;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -11,7 +10,6 @@ import java.security.MessageDigest;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.TreeMap;
 import java.util.TreeSet;
 import org.jspecify.annotations.Nullable;
 
@@ -64,42 +62,24 @@ public final class LedgerReads {
         if (config.fixture() || config.textRoot() != null || ids.isEmpty()) return null;
         Path file = config.report().toAbsolutePath().normalize().resolveSibling(ReadLedger.FILE);
         if (!Files.isRegularFile(file)) return null;
-        Map<String, Map<?, ?>> lines = new HashMap<>();
-        for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
-            Object parsed;
-            try {
-                parsed = MiniJson.parse(line);
-            } catch (RuntimeException torn) {
-                continue;
-            }
-            String id = MiniJson.str(parsed, "id");
-            if (parsed instanceof Map<?, ?> m && id != null) lines.put(id, m);
-        }
+        Map<String, ReadLedger.Line> lines = ReadLedger.read(file);
         Path root = config.root().toAbsolutePath().normalize();
         TextView view =
                 mode == Mode.NOW ? new TextView(root, config.sources(), false, GuardRuntime.outputDirOf(config)) : null;
         Map<String, String> nowByPath = new HashMap<>();
         MessageDigest md = Hashing.newSha256();
         for (String id : new TreeSet<>(ids)) {
-            Map<?, ?> line = lines.get(id);
-            if (line == null
-                    || !"ok".equals(MiniJson.str(line, "outcome"))
-                    || !Boolean.TRUE.equals(MiniJson.get(line, "replayable"))) return null;
+            ReadLedger.Line line = lines.get(id);
+            if (line == null || !"ok".equals(line.outcome()) || !line.replayable()) return null;
             feed(md, "guard", id);
-            feed(md, "stamp", String.valueOf(MiniJson.str(line, "stamp")));
-            if (MiniJson.get(line, "globs") instanceof Map<?, ?> globs) {
-                for (var e : new TreeMap<>(stringKeys(globs)).entrySet()) {
-                    String now =
-                            view == null ? e.getValue() : ReadLedger.listingDigest(view.unrecordedFiles(e.getKey()));
-                    feed(md, "glob:" + e.getKey(), now);
-                }
+            feed(md, "stamp", String.valueOf(line.stamp()));
+            for (var e : line.globs().entrySet()) {
+                String now = view == null ? e.getValue() : ReadLedger.listingDigest(view.unrecordedFiles(e.getKey()));
+                feed(md, "glob:" + e.getKey(), now);
             }
-            if (MiniJson.get(line, "files") instanceof Map<?, ?> files) {
-                for (var e : new TreeMap<>(stringKeys(files)).entrySet()) {
-                    String now =
-                            view == null ? e.getValue() : now(view, root, e.getKey(), e.getValue(), hash, nowByPath);
-                    feed(md, "file:" + e.getKey(), now);
-                }
+            for (var e : line.files().entrySet()) {
+                String now = view == null ? e.getValue() : now(view, root, e.getKey(), e.getValue(), hash, nowByPath);
+                feed(md, "file:" + e.getKey(), now);
             }
         }
         return Hashing.hex(md.digest());
@@ -119,12 +99,6 @@ public final class LedgerReads {
         else now = ReadLedger.textDigest(view, rel);
         known.put(rel, now);
         return now;
-    }
-
-    private static Map<String, String> stringKeys(Map<?, ?> m) {
-        Map<String, String> out = new HashMap<>();
-        m.forEach((k, v) -> out.put(String.valueOf(k), String.valueOf(v)));
-        return out;
     }
 
     private static void feed(MessageDigest md, String tag, String value) {

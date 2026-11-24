@@ -14,6 +14,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.security.MessageDigest;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -30,22 +31,28 @@ import org.jspecify.annotations.Nullable;
  * reads all hold replays its report line instead of running again.
  *
  * <p>One JSON line per guard in {@code ledger.jsonl} beside the report: the guard's id, the run's
- * stamp, whether it may replay at all, each glob it listed with a digest of the match list, each
- * file it read with a digest of its text, and its report line. The stamp covers what is not tree
- * text: every class-path entry's bytes (the suite, its libraries and this runtime), the JDK, the
- * operating system and the run's scope; a guard that takes the {@link cc.jumpkick.guard.api.Model} adds the model snapshot's bytes.
+ * stamp, whether it may replay at all, each glob it listed with a digest of the match list, the
+ * files it read, and its report line. The stamp covers what is not tree text: every class-path
+ * entry's bytes (the suite, its libraries and this runtime), the JDK, the operating system and the
+ * run's scope; a guard that takes the {@link cc.jumpkick.guard.api.Model} adds the model snapshot's bytes.
  * A guard replays only when its stamp is the same, every glob lists the same files, every file reads
  * the same, and its last outcome was a verdict ({@code ok}); a guard that takes {@code Facts} or
  * {@code Output}, or threw, skipped or found its owner missing, always runs.
  *
- * <p>The ledger is read once when the runtime starts and rewritten as the run goes, one line per
- * guard as it finishes, so a run cut short leaves the lines of the guards it finished.
+ * <p>A file is named once per ledger: a path line {@code {"path":…,"digest":…}} gives it the next
+ * index, numbered from 0 in file order, ahead of the first guard line that reads it, and a guard
+ * line lists its files as runs of indexes, {@code [first, count, first, count, …]}. So the ledger
+ * grows with the files read and the lines found, not with the files times the guards reading them.
+ *
+ * <p>The ledger is read once when the runtime starts and rewritten as the run goes, path lines and
+ * one guard line per guard as it finishes, so a run cut short leaves the lines of the guards it
+ * finished.
  *
  * <p>A guard that runs again may still be spared most of its work: what it found in each file
  * through {@link cc.jumpkick.guard.api.Text#perFile} is kept in its line under {@code memo}, per
- * file the digest of its text and, per salt, the lines found. The next run that invokes the guard
- * under the same stamp hands those lines back for every file that reads the same, so only the edited
- * files are scanned again.
+ * salt the runs of files it scanned and, by index, the lines found in each file where it found any.
+ * The next run that invokes the guard under the same stamp hands those lines back for every file
+ * that reads the same, so only the edited files are scanned again.
  */
 final class ReadLedger implements TextView.Recorder {
 
@@ -58,18 +65,21 @@ final class ReadLedger implements TextView.Recorder {
     private final String stamp;
     private final @Nullable Path model;
     private final TextView text;
-    private final Map<String, Map<?, ?>> previous;
+    private final Map<String, Line> previous;
     private final ConcurrentHashMap<String, Reads> reads = new ConcurrentHashMap<>();
     /** Per running guard, what it found per file this run, by path. */
     private final ConcurrentHashMap<String, ConcurrentHashMap<String, Found>> found = new ConcurrentHashMap<>();
-    /** Per running guard, what it found per file in the last run under the same stamp, by path. */
-    private final ConcurrentHashMap<String, Map<?, ?>> lastFound = new ConcurrentHashMap<>();
+    /** Per running guard, its line of the last run when that run had the same stamp. */
+    private final ConcurrentHashMap<String, Line> lastFound = new ConcurrentHashMap<>();
     /** Each file's text digest: the view reads a file once per run, so its digest holds as long. */
     private final ConcurrentHashMap<String, String> digests = new ConcurrentHashMap<>();
 
+    /** The index of each path and digest this run's file has named so far, by {@code path\0digest}. */
+    private final Map<String, Integer> indexes = new HashMap<>();
+
     private @Nullable String modelDigest;
 
-    private ReadLedger(Path file, String stamp, @Nullable Path model, TextView text, Map<String, Map<?, ?>> previous) {
+    private ReadLedger(Path file, String stamp, @Nullable Path model, TextView text, Map<String, Line> previous) {
         this.file = file;
         this.stamp = stamp;
         this.model = model;
@@ -90,19 +100,7 @@ final class ReadLedger implements TextView.Recorder {
      */
     static ReadLedger open(Path report, String stamp, @Nullable Path model, TextView text) throws IOException {
         Path file = report.toAbsolutePath().normalize().resolveSibling(FILE);
-        Map<String, Map<?, ?>> previous = new LinkedHashMap<>();
-        if (Files.isRegularFile(file)) {
-            for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
-                Object parsed;
-                try {
-                    parsed = MiniJson.parse(line);
-                } catch (RuntimeException torn) {
-                    continue; // a line a killed run left half written replays nothing
-                }
-                String id = MiniJson.str(parsed, "id");
-                if (parsed instanceof Map<?, ?> m && id != null) previous.put(id, m);
-            }
-        }
+        Map<String, Line> previous = read(file);
         Files.createDirectories(file.getParent());
         Files.writeString(file, "", StandardCharsets.UTF_8);
         ReadLedger ledger = new ReadLedger(file, stamp, model, text, previous);
@@ -165,10 +163,8 @@ final class ReadLedger implements TextView.Recorder {
     void starting(String id, List<String> params) {
         reads.remove(id);
         found.put(id, new ConcurrentHashMap<>());
-        Map<?, ?> last = previous.get(id);
-        if (last != null
-                && stampFor(params).equals(MiniJson.str(last, "stamp"))
-                && MiniJson.get(last, "memo") instanceof Map<?, ?> memo) lastFound.put(id, memo);
+        Line last = previous.get(id);
+        if (last != null && stampFor(params).equals(last.stamp())) lastFound.put(id, last);
         else lastFound.remove(id);
     }
 
@@ -193,28 +189,20 @@ final class ReadLedger implements TextView.Recorder {
 
     /** The lines guard {@code id} found in {@code path} under {@code salt} last run, when the text was the same. */
     private @Nullable List<String> lastLines(String id, String path, String digest, String salt) {
-        Map<?, ?> memo = lastFound.get(id);
-        if (memo == null
-                || !(memo.get(path) instanceof List<?> entry)
-                || entry.size() != 2
-                || !digest.equals(entry.get(0))
-                || !(entry.get(1) instanceof Map<?, ?> bySalt)
-                || !(bySalt.get(salt) instanceof List<?> stored)) return null;
-        List<String> lines = new ArrayList<>(stored.size());
-        for (Object o : stored) {
-            if (!(o instanceof String line)) return null;
-            lines.add(line);
-        }
-        return List.copyOf(lines);
+        Line last = lastFound.get(id);
+        if (last == null || !digest.equals(last.files().get(path))) return null;
+        Map<String, List<String>> bySalt = last.memo().get(salt);
+        return bySalt == null ? null : bySalt.get(path);
     }
 
-    /** What guard {@code id} found per file this run, as its ledger line keeps it. */
-    private Map<String, Object> memoOf(String id) {
-        Map<String, Object> memo = new TreeMap<>();
+    /** What guard {@code id} found per file this run, per salt by path, as its ledger line keeps it. */
+    private Map<String, Map<String, List<String>>> memoOf(String id) {
+        Map<String, Map<String, List<String>>> memo = new TreeMap<>();
         ConcurrentHashMap<String, Found> mine = found.remove(id);
         lastFound.remove(id);
         if (mine == null) return memo;
-        mine.forEach((path, f) -> memo.put(path, List.of(f.digest(), new TreeMap<>(f.bySalt()))));
+        mine.forEach((path, f) -> f.bySalt().forEach((salt, lines) -> memo.computeIfAbsent(salt, k -> new TreeMap<>())
+                .put(path, lines)));
         return memo;
     }
 
@@ -224,36 +212,30 @@ final class ReadLedger implements TextView.Recorder {
      */
     @Nullable
     String replay(String id, List<String> params, Consumer<String> why) {
-        Map<?, ?> last = previous.get(id);
+        Line last = previous.get(id);
         if (last == null) return null;
         if (!replayable(params)) return null;
-        if (!"ok".equals(MiniJson.str(last, "outcome"))) {
+        if (!"ok".equals(last.outcome())) {
             why.accept("its last run was not a verdict");
             return null;
         }
-        if (!stampFor(params).equals(MiniJson.str(last, "stamp"))) {
+        if (!stampFor(params).equals(last.stamp())) {
             why.accept("the suite, its class path, the JDK or what it judges changed");
             return null;
         }
-        if (MiniJson.get(last, "globs") instanceof Map<?, ?> globs) {
-            for (var e : globs.entrySet()) {
-                String glob = String.valueOf(e.getKey());
-                if (!listingDigest(text.unrecordedFiles(glob)).equals(e.getValue())) {
-                    why.accept("the files matching " + glob + " changed");
-                    return null;
-                }
+        for (var e : last.globs().entrySet()) {
+            if (!listingDigest(text.unrecordedFiles(e.getKey())).equals(e.getValue())) {
+                why.accept("the files matching " + e.getKey() + " changed");
+                return null;
             }
         }
-        if (MiniJson.get(last, "files") instanceof Map<?, ?> files) {
-            for (var e : files.entrySet()) {
-                String path = String.valueOf(e.getKey());
-                if (!digest(path).equals(e.getValue())) {
-                    why.accept("it reads " + path + ", which changed");
-                    return null;
-                }
+        for (var e : last.files().entrySet()) {
+            if (!digest(e.getKey()).equals(e.getValue())) {
+                why.accept("it reads " + e.getKey() + ", which changed");
+                return null;
             }
         }
-        return MiniJson.str(last, "line");
+        return last.line();
     }
 
     /**
@@ -262,36 +244,192 @@ final class ReadLedger implements TextView.Recorder {
      */
     void record(String id, List<String> params, String outcome, String line, @Nullable String replayed)
             throws IOException {
-        Map<String, Object> entry = new LinkedHashMap<>();
-        entry.put("id", id);
-        entry.put("stamp", stampFor(params));
-        entry.put("outcome", outcome);
-        entry.put("replayable", replayable(params));
-        Map<?, ?> last = previous.remove(id);
-        if (replayed == null) last = null;
-        if (last != null) {
-            entry.put("globs", MiniJson.get(last, "globs"));
-            entry.put("files", MiniJson.get(last, "files"));
-            entry.put("memo", MiniJson.get(last, "memo"));
+        Line last = previous.remove(id);
+        Line entry;
+        if (replayed != null && last != null) {
+            entry = new Line(
+                    id,
+                    stampFor(params),
+                    outcome,
+                    replayable(params),
+                    last.globs(),
+                    last.files(),
+                    last.memo(),
+                    replayed);
         } else {
             Reads r = reads.getOrDefault(id, new Reads());
             Map<String, String> globs = new TreeMap<>();
             Map<String, String> files = new TreeMap<>();
             for (String g : new TreeSet<>(r.globs)) globs.put(g, listingDigest(text.unrecordedFiles(g)));
             for (String f : new TreeSet<>(r.files)) files.put(f, digest(f));
-            entry.put("globs", globs);
-            entry.put("files", files);
-            entry.put("memo", memoOf(id));
+            entry = new Line(
+                    id,
+                    stampFor(params),
+                    outcome,
+                    replayable(params),
+                    globs,
+                    files,
+                    memoOf(id),
+                    replayed != null ? replayed : line);
         }
-        entry.put("line", replayed != null ? replayed : line);
         synchronized (this) {
             Files.writeString(
-                    file,
-                    MiniJson.write(entry) + "\n",
-                    StandardCharsets.UTF_8,
-                    StandardOpenOption.CREATE,
-                    StandardOpenOption.APPEND);
+                    file, encode(entry), StandardCharsets.UTF_8, StandardOpenOption.CREATE, StandardOpenOption.APPEND);
         }
+    }
+
+    /**
+     * One guard's line: {@code files} is each file it read with its text's digest, and {@code memo}
+     * what it found per salt, by file, in each file it scanned under that salt.
+     */
+    record Line(
+            String id,
+            @Nullable String stamp,
+            @Nullable String outcome,
+            boolean replayable,
+            Map<String, String> globs,
+            Map<String, String> files,
+            Map<String, Map<String, List<String>>> memo,
+            @Nullable String line) {}
+
+    /**
+     * The path lines {@code entry} names first, then its guard line, each ending in a newline. Caller
+     * holds the monitor: the indexes are this run's file's.
+     */
+    private String encode(Line entry) {
+        StringBuilder out = new StringBuilder();
+        Map<String, Integer> index = new HashMap<>();
+        entry.files().forEach((path, digest) -> {
+            Integer i = indexes.get(path + "\0" + digest);
+            if (i == null) {
+                i = indexes.size();
+                indexes.put(path + "\0" + digest, i);
+                Map<String, Object> named = new LinkedHashMap<>();
+                named.put("path", path);
+                named.put("digest", digest);
+                out.append(MiniJson.write(named)).append('\n');
+            }
+            index.put(path, i);
+        });
+        Map<String, Object> memo = new TreeMap<>();
+        entry.memo().forEach((salt, byPath) -> {
+            List<Integer> scanned = new ArrayList<>();
+            Map<String, Object> lines = new TreeMap<>();
+            byPath.forEach((path, found) -> {
+                Integer i = index.get(path);
+                if (i == null) return; // perFile notes each file it scans as read, so none is missed here
+                scanned.add(i);
+                if (!found.isEmpty()) lines.put(String.valueOf(i), found);
+            });
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("files", runs(scanned));
+            m.put("found", lines);
+            memo.put(salt, m);
+        });
+        Map<String, Object> line = new LinkedHashMap<>();
+        line.put("id", entry.id());
+        line.put("stamp", entry.stamp());
+        line.put("outcome", entry.outcome());
+        line.put("replayable", entry.replayable());
+        line.put("globs", entry.globs());
+        line.put("files", runs(new ArrayList<>(index.values())));
+        line.put("memo", memo);
+        line.put("line", entry.line());
+        return out.append(MiniJson.write(line)).append('\n').toString();
+    }
+
+    /** {@code indexes} as runs, {@code [first, count, …]} in ascending order. */
+    private static List<Integer> runs(List<Integer> indexes) {
+        List<Integer> sorted = new ArrayList<>(new TreeSet<>(indexes));
+        List<Integer> runs = new ArrayList<>();
+        for (int i = 0; i < sorted.size(); ) {
+            int first = sorted.get(i);
+            int j = i + 1;
+            while (j < sorted.size() && sorted.get(j) == first + (j - i)) j++;
+            runs.add(first);
+            runs.add(j - i);
+            i = j;
+        }
+        return runs;
+    }
+
+    /**
+     * The guard lines of the ledger {@code file}, by guard id; empty when there is none. A line that
+     * does not read, a killed run's half-written tail or another shape, is left out: its guard runs.
+     */
+    static Map<String, Line> read(Path file) throws IOException {
+        Map<String, Line> lines = new LinkedHashMap<>();
+        if (!Files.isRegularFile(file)) return lines;
+        List<String> paths = new ArrayList<>();
+        List<String> digests = new ArrayList<>();
+        for (String text : Files.readAllLines(file, StandardCharsets.UTF_8)) {
+            try {
+                Object parsed = MiniJson.parse(text);
+                String id = MiniJson.str(parsed, "id");
+                String path = MiniJson.str(parsed, "path");
+                if (id != null) lines.put(id, decode(id, parsed, paths, digests));
+                else if (path != null) {
+                    paths.add(path);
+                    digests.add(String.valueOf(MiniJson.str(parsed, "digest")));
+                }
+            } catch (RuntimeException torn) {
+                // replays nothing
+            }
+        }
+        return lines;
+    }
+
+    private static Line decode(String id, @Nullable Object parsed, List<String> paths, List<String> digests) {
+        Map<String, String> globs = new TreeMap<>();
+        if (MiniJson.get(parsed, "globs") instanceof Map<?, ?> g)
+            g.forEach((k, v) -> globs.put(String.valueOf(k), String.valueOf(v)));
+        Map<String, String> files = new TreeMap<>();
+        for (int i : indexes(MiniJson.get(parsed, "files"), paths.size())) files.put(paths.get(i), digests.get(i));
+        Map<String, Map<String, List<String>>> memo = new HashMap<>();
+        if (MiniJson.get(parsed, "memo") instanceof Map<?, ?> m) {
+            for (var e : m.entrySet()) {
+                Map<String, List<String>> byPath = new HashMap<>();
+                Object found = MiniJson.get(e.getValue(), "found");
+                for (int i : indexes(MiniJson.get(e.getValue(), "files"), paths.size())) {
+                    Object lines = found instanceof Map<?, ?> f ? f.get(String.valueOf(i)) : null;
+                    byPath.put(paths.get(i), strings(lines));
+                }
+                memo.put(String.valueOf(e.getKey()), byPath);
+            }
+        }
+        return new Line(
+                id,
+                MiniJson.str(parsed, "stamp"),
+                MiniJson.str(parsed, "outcome"),
+                Boolean.TRUE.equals(MiniJson.get(parsed, "replayable")),
+                globs,
+                files,
+                memo,
+                MiniJson.str(parsed, "line"));
+    }
+
+    /** The indexes {@code runs} lists, each below {@code size}; anything else does not read. */
+    private static List<Integer> indexes(@Nullable Object runs, int size) {
+        if (!(runs instanceof List<?> list) || list.size() % 2 != 0) throw new IllegalArgumentException("runs");
+        List<Integer> out = new ArrayList<>();
+        for (int k = 0; k < list.size(); k += 2) {
+            if (!(list.get(k) instanceof Long first) || !(list.get(k + 1) instanceof Long count))
+                throw new IllegalArgumentException("runs");
+            if (first < 0 || count < 0 || first + count > size) throw new IllegalArgumentException("runs");
+            for (long i = first; i < first + count; i++) out.add((int) i);
+        }
+        return out;
+    }
+
+    private static List<String> strings(@Nullable Object lines) {
+        if (lines == null) return List.of();
+        if (!(lines instanceof List<?> list)) throw new IllegalArgumentException("lines");
+        List<String> out = new ArrayList<>(list.size());
+        for (Object o : list) {
+            if (!(o instanceof String s)) throw new IllegalArgumentException("lines");
+            out.add(s);
+        }
+        return List.copyOf(out);
     }
 
     /** Whether a guard taking {@code params} may replay: the ledger sees everything it reads of them. */

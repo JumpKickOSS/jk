@@ -143,9 +143,9 @@ class GuardSuiteLedgerKeyTest {
                 .substring(0, 16);
         Files.writeString(
                 report.resolveSibling("ledger.jsonl"),
-                "{\"id\":\"reads-text\",\"stamp\":\"s\",\"outcome\":\"" + outcome + "\",\"replayable\":true,"
-                        + "\"globs\":{},\"files\":{\".jk/notes.txt\":\"" + digest
-                        + "\"},\"memo\":{},\"line\":\"{}\"}\n");
+                "{\"path\":\".jk/notes.txt\",\"digest\":\"" + digest + "\"}\n"
+                        + "{\"id\":\"reads-text\",\"stamp\":\"s\",\"outcome\":\"" + outcome + "\",\"replayable\":true,"
+                        + "\"globs\":{},\"files\":[0,1],\"memo\":{},\"line\":\"{}\"}\n");
     }
 
     private static GuardKeys.LaneProbe probe(Path root) throws Exception {

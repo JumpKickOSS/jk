@@ -20,6 +20,7 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
@@ -387,6 +388,20 @@ class ReadLedgerTest {
         assertThat(scans("closure", "src/k/one.txt")).isEqualTo(1);
         assertThat(String.valueOf(MiniJson.get(after.get("closure"), "violations")))
                 .contains("uses other");
+    }
+
+    @Test
+    void the_ledger_names_each_file_once_however_many_guards_read_it() throws Exception {
+        run();
+        run();
+        String ledger = Files.readString(report.resolveSibling(ReadLedger.FILE));
+
+        assertThat(ledger.split("\"src/k/one.txt\"", -1))
+                .as("per-file and closure both scan it, in a run and a replay; a report line quotes it escaped")
+                .hasSize(2);
+        ReadLedger.Line closure = Objects.requireNonNull(
+                ReadLedger.read(report.resolveSibling(ReadLedger.FILE)).get("closure"));
+        assertThat(closure.files()).containsOnlyKeys("src/k/one.txt", "src/k/two.txt");
     }
 
     @Test
