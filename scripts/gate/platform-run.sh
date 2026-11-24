@@ -10,7 +10,8 @@
 #      then scripts/ci-takeover.sh --install-only);
 #   3. under a freshly started engine, runs every module's fast tier (`jk test -c`);
 #   4. runs each test class whose source carries an OS condition, fast or integration (those tagged
-#      live, slow, network or bench are left out): `jk test -A -c -m <module> --class ...` per module;
+#      live, slow, network or bench are left out), a JUnit 3 one through the module's test classes
+#      that name it: `jk test -A -c -m <module> --class ...` per module;
 #   5. runs the product smoke (scripts/ci-product-smoke.sh): the engine answers, a new project builds.
 #
 # It prints a `STEP <name> EXIT=<n>` line per step, the FAIL lines of each red one, and last
@@ -100,13 +101,28 @@
   step fast jk test -c --no-ansi
 
   # The test classes whose source names an OS, by module: `<module dir> <class>` lines. Those of the
-  # live, slow, network and bench tiers are left to the runs that own those tiers.
+  # live, slow, network and bench tiers are left to the runs that own those tiers. A JUnit 3 class
+  # (one that extends a *TestCase) is not a class the JUnit Platform discovers: the module's test
+  # classes that name it run it, so those stand in for it, and it stays itself when none does.
+  junit3='class[[:space:]]+[[:alnum:]_]+([[:space:]]+extends[[:space:]]+|[[:space:]]*:[[:space:]]*)[[:alnum:]_.]*TestCase([^[:alnum:]_]|$)'
+  untiered() { xargs grep -LE '@Tag\("(live|slow|network|bench)"\)' 2>/dev/null; }
   (cd "$co" && git ls-files '*/src/test/*.java' '*/src/test/*.kt' '*/src/test/*.groovy' \
     | xargs grep -lE '@(Enabled|Disabled)OnOs|OS\.(WINDOWS|MAC|LINUX)|IS_OS_|isWindows|isMac|os\.name' 2>/dev/null \
-    | grep -E '(Test|Tests|IT)\.(java|kt|groovy)$' \
-    | xargs grep -LE '@Tag\("(live|slow|network|bench)"\)' 2>/dev/null \
+    | grep -E '(Test|Tests|IT)\.(java|kt|groovy)$' | untiered \
+    | while read -r f; do
+      if ! grep -qE "$junit3" "$f"; then
+        echo "$f"
+        continue
+      fi
+      hosts=""
+      for h in $(git ls-files "${f%%/src/test/*}/src/test/*" | grep -E '(Test|Tests|IT)\.(java|kt|groovy)$'); do
+        [ "$h" != "$f" ] && grep -qw "$(basename "${f%.*}")" "$h" && ! grep -qE "$junit3" "$h" && hosts="${hosts:+$hosts
+}$h"
+      done
+      if [ -z "$hosts" ]; then echo "$f"; else echo "$hosts" | untiered; fi
+    done \
     | sed -nE 's#^(.*)/src/test/(java|kotlin|groovy)/(.*)\.(java|kt|groovy)$#\1 \3#p' \
-    | awk '{ gsub("/", ".", $2); print }' | sort) >"$logs/os-classes.txt"
+    | awk '{ gsub("/", ".", $2); print }' | sort -u) >"$logs/os-classes.txt"
   echo "OS_CLASSES $(wc -l <"$logs/os-classes.txt" | tr -d ' ') in $(awk '{ print $1 }' "$logs/os-classes.txt" | sort -u | wc -l | tr -d ' ') modules"
   awk '{ print $1 }' "$logs/os-classes.txt" | sort -u >"$logs/os-modules.txt"
   while read -r module; do

@@ -13,7 +13,8 @@
 # The platform trails at first: its verdicts do not hold `green`. Once it has been green for
 # PLATFORM_WEEK seconds with no red run between, the loop writes platform-<platform>-blocking, and
 # from then on `green` moves only to tips this platform passed too (scripts/gate/green.sh). Removing
-# that file makes it trail again. Each cycle ends by moving `green` as far as every gate allows.
+# that file makes it trail again. Each cycle ends by moving `green` as far as every gate allows and
+# logs the run's verdict with where the branch stands: `run <n> RED; branch green at <sha>, ...`.
 #
 # Usage: scripts/gate/platform-loop.sh <windows|macos> [--once]
 #
@@ -106,12 +107,14 @@
           -t "$(title) run red on main: ${line#"PLATFORM RED $sha: "}"
           -accept "The $(title) platform run (scripts/gate/platform-loop.sh $p) is green on main" -m "$body")
         [ -z "${PLATFORM_PARENT:-}" ] || args+=(-parent "$PLATFORM_PARENT")
-        ticket="$("$ka" "${args[@]}" </dev/null 2>/dev/null | jq -r '.id // empty' 2>/dev/null)"
+        # `ka new -json` answers {"created": [{"id": ...}], ...}; its complaint, when it has one, is
+        # kept beside the run's log.
+        ticket="$("$ka" "${args[@]}" </dev/null 2>"$L.ka" | jq -r '.created[0].id // empty' 2>/dev/null)"
         if [ -n "$ticket" ]; then
           echo "$ticket" >"$repo/platform-$p-ticket"
           log "$(short "$sha") run $n filed $ticket"
         else
-          log "$(short "$sha") run $n could not file a ticket"
+          log "$(short "$sha") run $n could not file a ticket: $(head -1 "$L.ka" 2>/dev/null | cut -c1-200)"
         fi
       elif [ "$failed" != "$(cat "$repo/platform-$p-failed" 2>/dev/null)" ]; then
         "$ka" comment "$ticket" --type progress -m "$body" </dev/null >/dev/null 2>&1 || log "$(short "$sha") run $n could not comment on $ticket"
@@ -132,7 +135,7 @@
         log "$(short "$sha") run $n: green for a week, so $p now holds green"
       fi
     fi
-    log "$(short "$sha") run $n: $(QUEUE_REPO="$repo" GREEN_CHECKOUT="$co" bash "$H/green.sh")"
+    log "$(short "$sha") run $n $v; branch $(QUEUE_REPO="$repo" GREEN_CHECKOUT="$co" bash "$H/green.sh")"
     return 0
   }
 

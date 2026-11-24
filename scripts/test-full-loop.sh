@@ -292,7 +292,7 @@ status_has e -q '^e: waiting .* held:' || fail "the held branch moved: $(status 
 full || fail "the green cycle after the fix failed"
 [[ "$(origin green)" == "$(origin main)" ]] || fail "green did not move to the fixed tip: $(runs)"
 [[ -f "$QUEUE_REPO/full-hold" ]] && fail "a green cycle left the hold"
-last_run_has -q 'GREEN green; the queue.s hold is lifted' || fail "the green cycle does not say the hold lifted: $(runs)"
+last_run_has -q 'GREEN green at [0-9a-f]*, the newest tip the Full tier passed; the queue.s hold is lifted' || fail "the green cycle does not say the hold lifted: $(runs)"
 queue || fail "the queue did not run after the hold"
 [[ "$(status e)" == "e: landed "* ]] || fail "the held branch did not land after the hold: $(status e)"
 
@@ -303,7 +303,7 @@ for k in 1 2; do
   land "once$k" once.txt "TK-OOOO$k: lands beside a flaky class"
   full || fail "flaky cycle $k failed"
   [[ "$(origin green)" == "$(origin main)" ]] || fail "flaky cycle $k did not move green: $(runs)"
-  last_run_has -q "GREEN green; passed on the re-run: core cc.example.RedTest$" ||
+  last_run_has -q "GREEN green at [0-9a-f]*, the newest tip the Full tier passed; passed on the re-run: core cc.example.RedTest$" ||
     fail "flaky cycle $k does not name the class that passed on the re-run: $(runs)"
 done
 [[ -f "$QUEUE_REPO/full-hold" ]] && fail "two flaky cycles held the queue: $(cat "$QUEUE_REPO/full-hold")"

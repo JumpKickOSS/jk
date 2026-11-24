@@ -310,18 +310,21 @@ On the host the run keeps a checkout, a JumpKick home and a local Maven reposito
 that home without tests (a home that does not exist yet is made the way CI makes one, with
 `scripts/ci-bootstrap.sh` and `scripts/ci-takeover.sh`), then runs every module's fast tier, each
 test class whose source names an OS (`@EnabledOnOs`, `OS.WINDOWS`, `os.name`, …) in the fast or
-integration tier, by module, and the product smoke (`scripts/ci-product-smoke.sh`).
+integration tier, by module, and the product smoke (`scripts/ci-product-smoke.sh`). A JUnit 3 class
+(one that extends a `*TestCase`, as IntelliJ's headless tests do) is not one the JUnit Platform can
+select, so the module's test classes that name it run in its place.
 
 - **Red** files a ticket (a bug labelled `platform-windows` or `platform-macos`) that says what
   failed. While it is open, a red run with other failures comments on it, and a green run says so.
+  When `ka` will not file it, the run's line says why.
 - **Trailing, then holding.** A platform's runs do not hold `green` at first. Once it has been green
   for a week with no red run between, its loop writes `platform-<platform>-blocking` in the queue's
   repository, and from then on `green` moves only to a tip the Full tier and that platform both
   passed: the Full loop leaves `green` where it is until the platform's verdict comes in, and the
   platform's loop moves it. Delete the file to make the platform trail again.
 
-Verdicts are `platform-verdicts` and each run is a line of `platform-runs.log`, both beside the Full
-loop's; the run's output is `/var/tmp/jk-platform/platform-<platform>-<n>.log` on the gate host, and
+Verdicts are `platform-verdicts` and each run is a few lines of `platform-runs.log`, both beside the
+Full loop's, the last one the verdict with where `green` stands (`run 3 RED; branch green at …`); the run's output is `/var/tmp/jk-platform/platform-<platform>-<n>.log` on the gate host, and
 its steps' own logs are in `~/jk-platform/logs` on the platform's host. The header of
 `scripts/gate/platform-loop.sh` lists its settings; `scripts/test-platform-loop.sh` holds the run,
 the loop and the hold to the rules above.

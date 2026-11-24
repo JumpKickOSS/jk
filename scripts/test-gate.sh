@@ -113,9 +113,9 @@ cat >"$WORK/died.jsonl" <<'EOF'
 EOF
 [[ "$(bash "$ROOT/scripts/gate/flaky.sh" failed "$WORK/died.jsonl")" == "cc.jumpkick:jk-engine cc.jumpkick.runtime.KspOutputsTest" ]] ||
   fail "a dead worker's failed classes were: $(bash "$ROOT/scripts/gate/flaky.sh" failed "$WORK/died.jsonl")"
-# A stand-in ka: `new` opens TK-F<n> (or fails under KA_FAIL) and logs its arguments, `show`
-# answers the status written in $KA_STATE/<id>. Each reads its stdin to the end, as a ka that
-# prompts would.
+# A stand-in ka: `new` opens TK-F<n> (or fails under KA_FAIL), logs its arguments and answers as
+# `ka new -json` does, `show` answers the status written in $KA_STATE/<id>. Each reads its stdin to
+# the end, as a ka that prompts would.
 mkdir -p "$WORK/bin" "$WORK/ka"
 cat >"$WORK/bin/ka" <<'EOF'
 #!/usr/bin/env bash
@@ -126,7 +126,7 @@ case "$1" in
     id="$(printf 'TK-F%04d' $(($(find "$KA_STATE" -type f | wc -l) + 1)))"
     echo ready >"$KA_STATE/$id"
     printf '%s\n' "$@" >>"$KA_STATE.new.log"
-    echo "{\"id\":\"$id\",\"status\":\"ready\"}"
+    echo "{\"created\":[{\"id\":\"$id\",\"status\":\"ready\"}],\"pushed\":true}"
     ;;
   show)
     cat >/dev/null
