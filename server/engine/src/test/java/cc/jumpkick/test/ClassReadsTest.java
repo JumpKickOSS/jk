@@ -452,17 +452,18 @@ class ClassReadsTest {
         ClassReads.Attributed seen =
                 ClassReads.attribute(recordings, ws, new ClassReads.Layout(List.of(), List.of(), Set.of(), ws, null));
 
-        assertThat(Objects.requireNonNull(seen.classes().get("demo.QuietTest")).processes())
+        assertThat(Objects.requireNonNull(seen.classes().get("demo.QuietTest")).tools())
                 .as("the harness's own command around the class")
                 .isEmpty();
         assertThat(Objects.requireNonNull(seen.classes().get("demo.StartingTest"))
-                        .processes())
-                .containsExactly(java);
+                        .tools())
+                .containsExactlyInAnyOrder(ClassReads.EXTERNAL_PROGRAM, ClassReads.STARTED_PROGRAM);
     }
 
     /**
      * git started in a temp root reads a repository the test made: its class stands on git's
-     * identity, not its module. The same command in the workspace reads the workspace's repository.
+     * identity, not its module. The same command in the workspace reads the workspace's repository,
+     * and runs none of the JVM's classes: its class stands on every program the stamp keys.
      */
     @Test
     void git_in_a_temp_root_is_keyed_by_its_identity_not_as_a_program_started(@TempDir Path tmp) throws Exception {
@@ -493,8 +494,9 @@ class ClassReadsTest {
         ClassReads.Observation ownRepo = Objects.requireNonNull(seen.classes().get("demo.OwnRepoTest"));
         ClassReads.Observation inCheckout =
                 Objects.requireNonNull(seen.classes().get("demo.CheckoutTest"));
-        assertThat(inCheckout.processes()).as("git in the workspace").containsExactly("git");
-        assertThat(inCheckout.tools()).containsExactly(ClassReads.STARTED_PROGRAM);
+        assertThat(inCheckout.processes()).as("git in the workspace").isEmpty();
+        assertThat(inCheckout.tools())
+                .containsExactlyInAnyOrder(ClassReads.EXTERNAL_PROGRAM, ClassReads.STARTED_PROGRAM);
         // A host whose home is a repository encloses the temp root: git there is a program started.
         if (GitRuns.unenclosed(List.of(temp)).isEmpty()) return;
         assertThat(ownRepo.processes()).as("git in a repository the test made").isEmpty();
@@ -511,7 +513,7 @@ class ClassReadsTest {
 
     /**
      * A utility whose command names no file of the workspace stands on its identity; one that reads a
-     * workspace file is a program started.
+     * workspace file stands on every program the stamp keys and on that file, by content.
      */
     @Test
     void a_utility_naming_no_workspace_file_is_keyed_by_its_identity(@TempDir Path tmp) throws Exception {
@@ -543,8 +545,10 @@ class ClassReadsTest {
         ClassReads.Observation cat = Objects.requireNonNull(seen.classes().get("demo.CatTest"));
         assertThat(sleep.processes()).isEmpty();
         assertThat(sleep.tools()).containsExactlyInAnyOrder("sleep", ClassReads.STARTED_PROGRAM);
-        assertThat(cat.processes()).as("a file of the workspace").containsExactly("cat");
-        assertThat(cat.tools()).containsExactly(ClassReads.STARTED_PROGRAM);
+        assertThat(cat.processes()).as("a file of the workspace").isEmpty();
+        assertThat(cat.tools()).containsExactlyInAnyOrder(ClassReads.EXTERNAL_PROGRAM, ClassReads.STARTED_PROGRAM);
+        assertThat(cat.reads())
+                .containsExactly(ws.resolve("README").toAbsolutePath().normalize());
     }
 
     /**
@@ -591,6 +595,49 @@ class ClassReadsTest {
         assertThat(starter.tools()).containsExactly(ClassReads.STARTED_PROGRAM);
         assertThat(later.tools()).as("a class after it in the JVM").containsExactly(ClassReads.STARTED_PROGRAM);
         assertThat(first.tools()).doesNotContain(ClassReads.STARTED_PROGRAM);
+    }
+
+    /**
+     * A JDK's java on the test JVM's own class tree runs the workspace's classes, which no recording
+     * of the suite holds: its class is keyed by its module. The same launcher on nothing of the class
+     * path runs none of them.
+     */
+    @Test
+    void java_on_the_test_class_path_is_a_program_started(@TempDir Path tmp) throws Exception {
+        Path ws = Files.createDirectories(tmp.resolve("ws"));
+        Path classes = Files.createDirectories(ws.resolve("target/classes"));
+        Path temp = Files.createDirectories(tmp.resolve("temp"));
+        Path recordings = Files.createDirectories(tmp.resolve("rec"));
+        // The layout names no test JDK, so this launcher stands for another JDK's: the test JDK's own
+        // is the JDK the key holds.
+        String java = Path.of(System.getProperty("java.home"))
+                .resolve("bin")
+                .resolve(Os.isWindows() ? "java.exe" : "java")
+                .toString();
+
+        try (Recording r = new Recording()) {
+            r.enable("jdk.ProcessStart");
+            r.enable(ClassReads.WINDOW_EVENT).withThreshold(Duration.ZERO);
+            r.start();
+            Window onClassPath = window("demo.ForkTest");
+            runIn(ws, List.of(java, "-cp", classes.toString(), "-version"));
+            onClassPath.commit();
+            Window version = window("demo.VersionTest");
+            runIn(ws, List.of(java, "-version"));
+            version.commit();
+            r.stop();
+            r.dump(recordings.resolve("one.jfr"));
+        }
+
+        ClassReads.Attributed seen = ClassReads.attribute(
+                recordings,
+                ws,
+                new ClassReads.Layout(List.of(classes), List.of(), Set.of(), ws, null, List.of(), List.of(temp)));
+        ClassReads.Observation fork = Objects.requireNonNull(seen.classes().get("demo.ForkTest"));
+        ClassReads.Observation plain = Objects.requireNonNull(seen.classes().get("demo.VersionTest"));
+        assertThat(fork.processes()).containsExactly(java);
+        assertThat(plain.processes()).isEmpty();
+        assertThat(plain.tools()).containsExactlyInAnyOrder(ClassReads.EXTERNAL_PROGRAM, ClassReads.STARTED_PROGRAM);
     }
 
     private static void runIn(Path dir, List<String> command) throws Exception {

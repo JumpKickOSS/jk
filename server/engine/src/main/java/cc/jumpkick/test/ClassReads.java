@@ -197,6 +197,13 @@ public final class ClassReads {
      */
     public static final String STARTED_PROGRAM = "(started)";
 
+    /**
+     * The name a class's tools keep when it started a program that runs no class of its JVM's class
+     * path ({@link ClassPathCommands}): what such a program reads stands on what it is, which the
+     * suite's stamp says of every program the suite started, not on the workspace's classes.
+     */
+    public static final String EXTERNAL_PROGRAM = "(external)";
+
     /** The most of each kind of platform evidence a class keeps: presence decides, a few say what. */
     public static final int EVIDENCE_KEPT = 2;
 
@@ -657,6 +664,7 @@ public final class ClassReads {
         READ,
         WRITE,
         PROCESS,
+        EXTERNAL,
         TOOL,
         NATIVE,
         HOST,
@@ -806,7 +814,15 @@ public final class ClassReads {
                     return;
                 }
                 String tool = OwnPrograms.tool(v[0], v[1], join.cwd, join.gitTemp, join.path);
-                join.accept(at, tool != null ? Kind.TOOL : Kind.PROCESS, tool != null ? tool : program(v[0]));
+                if (tool != null) {
+                    join.accept(at, Kind.TOOL, tool);
+                } else if (ClassPathCommands.reaches(v[0], v[1], join.cwd, join.layout)) {
+                    join.accept(at, Kind.PROCESS, program(v[0]));
+                } else {
+                    join.accept(at, Kind.EXTERNAL, program(v[0]));
+                    for (Path named : ClassPathCommands.named(v[0], v[1], join.cwd, join.layout))
+                        join.accept(at, Kind.READ, named.toString());
+                }
             }
             case "jdk.NativeLibraryLoad" -> {
                 // A failed load (JDK 22 and later say so) loaded nothing.
@@ -925,6 +941,10 @@ public final class ClassReads {
                     // does) is the JDK the key already holds, not a program the class depends on.
                     firstStart = Math.min(firstStart, at);
                     if (!underJdk(value, layout)) into.forEach(o -> o.addProcess(value));
+                }
+                case EXTERNAL -> {
+                    firstStart = Math.min(firstStart, at);
+                    if (!underJdk(value, layout)) into.forEach(o -> o.addTool(EXTERNAL_PROGRAM));
                 }
                 case TOOL -> {
                     if (!value.equals(GitRuns.GIT)) firstStart = Math.min(firstStart, at);

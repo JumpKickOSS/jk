@@ -147,8 +147,10 @@ bytes, whether or not it ran.
 - each code file it loaded by path outside everything the suite's key holds (a jar a test opens
   through its own class loader, a worker jar the suite was handed), by content;
 - the programs it started, by identity: a tool by the identity the suite's stamp gives it, and a
-  class keyed by its module by every program the stamp keys (`proc:`), so an upgrade of `node` re-runs
-  a class that started it;
+  class that started a program running none of its JVM's classes (`git` in the checkout, `node`,
+  `setsid` around a worker JVM: `ClassReads.EXTERNAL_PROGRAM`, `(external)` among its tools) or
+  keyed by its module by every program the stamp keys (`proc:`), so an upgrade of `node` re-runs a
+  class that started it; such a program's command keys the workspace files it names by content;
 - every worker jar the stamp keys, by content, for a class in whose JVM a program was started and
   a class keyed by its module ([below](#nested-engines-and-worker-jars)).
 
@@ -249,7 +251,7 @@ result would differ, must run. Each known hole:
 | **Parameterized and dynamic tests** (`@ParameterizedTest`, `@TestFactory`, data from files) | The unit is the class: every invocation runs or none does. Data files read while generating cases are read in the class's window and keyed |
 | **Test fixtures** (`src/fixtures`, a sibling's fixtures) | They are workspace classes on the runtime classpath; the cone walks them |
 | **Tests that scan the repository** | Their reads land in their own window and key only them. A new file in a directory one of them read changes that directory's listing, keyed. A directory listed where nothing was read is unseen, as today |
-| **Programs started** (a test that execs a built jar, `git`, a nested `jk`) | What a child process reads is not recorded. A class that started a program, or ran in a suite that started one outside every class's window, is unattributable and falls back to the module key, unless the command can read nothing its key does not hold (`git` in a repository the test made, a utility or a program the test wrote naming no file outside its temp roots, below). A checkout file a JumpKick test names through `RepoRoot.file`, a script it hands to `bash` say, is read once in the test JVM, so the suite's reads key it |
+| **Programs started** (a test that execs a built jar, `git`, a nested `jk`) | What a child process reads is not recorded. A class that started a program that could run its JVM's workspace classes, or ran in a suite that started one outside every class's window, is unattributable and falls back to the module key: a command that names one of the test JVM's class trees or workspace jars, expands a variable or a command, hands over an argument file (`@args`), or runs a program the test wrote (`ClassPathCommands`). Any other program (`git` in the checkout, `node`, `setsid` around a worker JVM on a plugin jar) keeps the class's cone and keys it by every program the stamp keys and the workspace files its command names; a command that can read nothing its key does not hold (`git` in a repository the test made, a utility or a program the test wrote naming no file outside its temp roots, below) keys it by that program's identity alone. The test JDK's own launcher marks the class as having started a program and nothing more. A checkout file a JumpKick test names through `RepoRoot.file`, a script it hands to `bash` say, is read once in the test JVM, so the suite's reads key it |
 | **Nested engines and worker jars** (jk-cli and jk-engine tests drive a real engine that loads plugin jars by path) | A worker jar keys a class that read it, as a code file, from then on in its JVM, so a class loader cached across classes keys every class after the first; a class in whose JVM a program was started (below); and a class keyed by its module. A class that did none of these never touched the jar's bytes ([below](#nested-engines-and-worker-jars)) |
 | **Line numbers and source file names** (a test asserting a stack trace) | Bytes are hashed whole, debug attributes included |
 | **The network** | A suite that reached past the host stores no marker. A class that reached it never replays, and nor does any class of a suite whose pool reached it |

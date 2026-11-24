@@ -41,15 +41,16 @@ import org.jspecify.annotations.Nullable;
  *       run by its bytes less its method bodies;
  *   <li>the observed part, what its last run read: data files by content (with the listing of a
  *       workspace directory it read in), code files loaded by path by content, the identity of each
- *       program it started that read nothing else ({@link ClassReads.Observation#tools}), and what no
- *       class's window held.
+ *       program it started that read nothing else ({@link ClassReads.Observation#tools}), every
+ *       program the suite's stamp keys when it started one that runs none of its JVM's classes
+ *       ({@link ClassReads#EXTERNAL_PROGRAM}), and what no class's window held.
  * </ul>
  *
  * <p>A workspace class the class loaded that its static cone does not name (one loaded by name, a
  * JUnit extension a properties file names) joins its cone with what it reaches, up to {@link
  * #REFLECTIVE_KEPT} of them. A class whose cone cannot be trusted is keyed by its whole module,
  * every workspace class on its classpath in place of its cone, and by every program the suite's
- * stamp keys: one that started a program that could read what no recording sees, or whose suite
+ * stamp keys: one that started a program that could run its JVM's workspace classes, or whose suite
  * started one outside every class's window ({@link #pooledFallback}), loaded more
  * workspace classes outside its cone than are kept, names a classpath-scanning entry point, or has
  * no attributed record. A class that read more code files than its record names stands on every
@@ -198,8 +199,10 @@ final class ClassKeys {
         for (String tool : seen.tools()) {
             // A program the test wrote is its own output: the class's cone holds what it is. A
             // program started in its JVM stands on the worker jars (key), not on an identity.
-            if (tool.equals(ClassReads.WRITTEN_PROGRAM) || tool.equals(ClassReads.STARTED_PROGRAM))
-                named.add(PROGRAM + tool);
+            // A program that runs none of its JVM's classes stands on every program the stamp keys (key).
+            if (tool.equals(ClassReads.WRITTEN_PROGRAM)
+                    || tool.equals(ClassReads.STARTED_PROGRAM)
+                    || tool.equals(ClassReads.EXTERNAL_PROGRAM)) named.add(PROGRAM + tool);
             else named.add(programs.getOrDefault(tool, PROGRAM + tool + "=" + UNSTAMPED));
         }
         named.sort(null);
@@ -267,9 +270,10 @@ final class ClassKeys {
      * class's read roots with the file names it read, which hold the class's own, or as every one of
      * them when it has neither or the pool is past its bound. Every class stands on the identity of each
      * tool the pool started ({@code pooled}'s tools, named as {@link #identified} names them): no record
-     * says which class it served. A class keyed by its module stands on every program the
-     * suite's stamp keys ({@code programs}, from {@link #programs}): no record says what a program it
-     * started read, nor which. {@code listings} holds each directory's listing once it is taken, for
+     * says which class it served. A class keyed by its module, and one that it or the pool saw start
+     * a program that runs none of its JVM's classes ({@link ClassReads#EXTERNAL_PROGRAM}), stands on
+     * every program the suite's stamp keys ({@code programs}, from {@link #programs}): no record says
+     * what a program it started read, nor which. {@code listings} holds each directory's listing once it is taken, for
      * the caller to share across the classes of one pass.
      */
     static Key key(
@@ -290,7 +294,8 @@ final class ClassKeys {
         feed(md, "launch:" + launch);
         if (fallback != null) feed(md, "module:" + module);
         else feed(md, used == null ? "cone:" + cone.digest() : "cone-used:" + cone.digest(used));
-        if (fallback != null) for (String program : programs.values()) feed(md, "program:" + program);
+        if (fallback != null || external(seen) || external(pooled))
+            for (String program : programs.values()) feed(md, "program:" + program);
         else if (startedProgram(seen))
             for (String program : programs.values())
                 if (program.startsWith(TestStamp.WORKER_JAR)) feed(md, "program:" + program);
@@ -317,8 +322,19 @@ final class ClassKeys {
      * tools as a record names them or as {@link #identified} names them.
      */
     static boolean startedProgram(Observed seen) {
-        return seen.tools().contains(ClassReads.STARTED_PROGRAM)
-                || seen.tools().contains(PROGRAM + ClassReads.STARTED_PROGRAM);
+        return hasTool(seen, ClassReads.STARTED_PROGRAM);
+    }
+
+    /**
+     * Whether a program that runs none of the JVM's classes was started ({@link
+     * ClassReads#EXTERNAL_PROGRAM}), as {@link #startedProgram} reads {@code seen}'s tools.
+     */
+    static boolean external(Observed seen) {
+        return hasTool(seen, ClassReads.EXTERNAL_PROGRAM);
+    }
+
+    private static boolean hasTool(Observed seen, String tool) {
+        return seen.tools().contains(tool) || seen.tools().contains(PROGRAM + tool);
     }
 
     /** The most workspace classes outside its static cone a class may load and keep its cone. */
@@ -345,7 +361,7 @@ final class ClassKeys {
 
     /**
      * Why a class's cone cannot be trusted, or null when it can: no attributed record, a program
-     * started, more code files than its suite's list holds ({@code suiteCodeMore}), more loaded
+     * started that could run its JVM's workspace classes, more code files than its suite's list holds ({@code suiteCodeMore}), more loaded
      * classes than are kept, more workspace classes loaded outside its static cone than {@link
      * #reflective} keeps ({@code reflectiveMore}), or a scanning entry point in the cone. Decided
      * when the class ran, from what it loaded then; its record keeps the answer.

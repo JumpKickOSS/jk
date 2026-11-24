@@ -25,7 +25,7 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * A class's key moves with what it read; past its record's bound it moves with everything its suite
  * read; a workspace class it loaded outside its cone joins the cone; it falls back to its module when
- * it started a program, loaded past its bound, read more code files than its suite's list holds or
+ * it started a program that could run its JVM's classes, loaded past its bound, read more code files than its suite's list holds or
  * has no record.
  */
 class ClassKeysTest {
@@ -242,6 +242,89 @@ class ClassKeysTest {
         assertThat(stampKey(cone, nothing, v25, null, ws))
                 .as("a class keyed by its cone started no program")
                 .isEqualTo(stampKey(cone, nothing, v24, null, ws));
+    }
+
+    /**
+     * A class that started a program that runs none of its JVM's classes (git, node, setsid around a
+     * worker JVM) keeps its cone: an edit outside it, which moves the module's digest, leaves its key,
+     * while an upgrade of any program the suite's stamp keys moves it. A class keyed by its module
+     * moves with the module.
+     */
+    @Test
+    void a_program_running_no_class_of_the_jvm_keys_by_the_stamps_programs_not_the_module(@TempDir Path ws)
+            throws Exception {
+        ClassCones.Cone cone = ClassCones.index(List.of(Files.createDirectories(ws.resolve("classes"))))
+                .cone("demo.T");
+        List<String> v24 = List.of("sel:fast", "proc:node=v24.1.0", "worker:jk.engine.jar=v1");
+        List<String> v25 = List.of("sel:fast", "proc:node=v25.0.0", "worker:jk.engine.jar=v1");
+        ClassKeys.Observed external = new ClassKeys.Observed(
+                true,
+                List.of(),
+                false,
+                List.of(),
+                false,
+                List.of(),
+                List.of(ClassReads.EXTERNAL_PROGRAM, ClassReads.STARTED_PROGRAM),
+                List.of(),
+                List.of());
+        assertThat(ClassKeys.fallback(cone, external, false, false, false)).isNull();
+
+        assertThat(moduleKey(cone, external, v24, null, "module edited", ws))
+                .as("an edit outside its cone")
+                .isEqualTo(moduleKey(cone, external, v24, null, "module", ws));
+        assertThat(moduleKey(cone, external, v25, null, "module", ws))
+                .as("node upgraded")
+                .isNotEqualTo(moduleKey(cone, external, v24, null, "module", ws));
+
+        ClassKeys.Observed pooled = new ClassKeys.Observed(
+                true,
+                List.of(),
+                false,
+                List.of(),
+                false,
+                List.of(),
+                List.of(ClassReads.EXTERNAL_PROGRAM),
+                List.of(),
+                List.of());
+        assertThat(ClassKeys.pooledFallback(pooled)).isNull();
+        ClassKeys.Observed nothing = observed(List.of(), false, List.of());
+        assertThat(moduleKey(cone, nothing, v25, pooled, "module", ws))
+                .as("node upgraded under a pool that started it")
+                .isNotEqualTo(moduleKey(cone, nothing, v24, pooled, "module", ws));
+
+        ClassKeys.Observed classPath = observed(List.of(), false, List.of("/opt/jdk/bin/java"));
+        String fallback = ClassKeys.fallback(cone, classPath, false, false, false);
+        assertThat(fallback).isEqualTo("process /opt/jdk/bin/java");
+        assertThat(moduleKey(cone, classPath, v24, null, "module edited", ws))
+                .as("a class that ran java on the test class path, keyed by its module")
+                .isNotEqualTo(moduleKey(cone, classPath, v24, null, "module", ws));
+    }
+
+    /** {@link #stampKey} with a pool and the module's digest, the fallback decided as the shadow does. */
+    private static String moduleKey(
+            ClassCones.Cone cone,
+            ClassKeys.Observed seen,
+            List<String> extras,
+            ClassKeys.@Nullable Observed pooled,
+            String module,
+            Path ws)
+            throws Exception {
+        Map<String, String> programs = ClassKeys.programs(extras);
+        String fallback = ClassKeys.fallback(cone, seen, false, false, false);
+        return ClassKeys.key(
+                        "",
+                        cone,
+                        null,
+                        ClassKeys.suitePart(extras, List.of(), List.of()),
+                        ClassKeys.identified(seen, programs),
+                        programs,
+                        pooled == null ? ClassKeys.Observed.NONE : pooled,
+                        module,
+                        ClassKeys.SuiteReadSet.NONE,
+                        ws,
+                        fallback,
+                        new HashMap<>())
+                .key();
     }
 
     /**

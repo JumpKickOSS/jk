@@ -557,8 +557,11 @@ method body runs only the classes that ran that class's code, in this module or 
 depends on it; JumpKick learns which ran by marking the classes it loads from your class directories
 and your modules' jars, which a coverage run leaves alone. An edit to a
 signature runs every class whose cone holds it, and so does any class keyed by its whole module (one
-that started a program that could read what no recording sees, or names a classpath scanner), and
-replays the rest. A workspace class a test loaded by name joins its cone, so an edit to that class
+that started a program that could run your workspace's classes, such as `java` on the test class
+path or a command that expands a variable, or names a classpath scanner), and replays the rest. A
+class that started a program that runs none of your classes (`git` in your checkout, `node`) keeps
+its cone and stands on what the suite's stamp says of every program the suite started and on the
+workspace files its command names, so an edit inside a method body it never ran replays it. A workspace class a test loaded by name joins its cone, so an edit to that class
 runs it too. A class that ran after a
 test loaded more jars by path than its record names (an in-process compiler's) stands on every jar
 its suite loaded that way: it runs again when one of them changes. A class whose only program is
