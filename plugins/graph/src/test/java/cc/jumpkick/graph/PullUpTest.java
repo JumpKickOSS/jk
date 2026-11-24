@@ -131,7 +131,12 @@ class PullUpTest {
 
         assertThat(answer)
                 .startsWith("Pulled up Book.label() to org.acme.base.Item: 3 uses and 1 import, 1 @Override in"
-                        + " 3 files; each use javac bound.");
+                        + " 3 files; each use javac bound.")
+                .endsWith("\n== " + BASE + "Item.java:18-21 now reads:\n"
+                        + "18|     /** The name, upper-cased. */\n"
+                        + "19|     public String label() {\n"
+                        + "20|         return name().toUpperCase(Locale.ROOT);\n"
+                        + "21|     }");
         assertThat(f.read(BASE + "Item.java")).isEqualTo("""
                 package org.acme.base;
 

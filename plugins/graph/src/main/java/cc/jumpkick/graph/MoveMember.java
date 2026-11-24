@@ -441,6 +441,7 @@ final class MoveMember {
 
             RenamePlan plan = new RenamePlan(what, canonical(toBin));
             List<String[]> refs = new ArrayList<>();
+            List<String> moved = List.of();
             int imports = 0;
             for (FileEdit f : files.values()) {
                 if (!f.imports.isEmpty() || !f.staticImports.isEmpty()) {
@@ -459,6 +460,7 @@ final class MoveMember {
                 if (f == to) {
                     int base = lineNumber(after, starts.getOrDefault(insert, 0)) + lead.length();
                     for (Mark m : blockMarks) refs.add(ref(m.symbol(), f.rel, base + m.at()));
+                    moved = shown(after, base, (int) block.lines().count(), f.rel);
                 }
             }
             long uses = blockMarks.stream().filter(m -> m.kind() != 'd').count();
@@ -478,7 +480,25 @@ final class MoveMember {
                 answer.add("Strings that spell " + name + ", left as they are (reflection?):");
                 for (String s : strings) answer.add("  " + s);
             }
+            answer.addAll(moved);
             return answer;
+        }
+
+        /**
+         * The moved code as the target now reads, numbered as {@code read} numbers it, so the answer shows
+         * the result without another read; past {@link GraphRename#LISTED_LINES} lines, only where it is.
+         */
+        private static List<String> shown(String after, int first, int count, String rel) {
+            int last = first + count - 1;
+            List<String> out = new ArrayList<>();
+            out.add("== " + rel + ":" + first + "-" + last + (count > GraphRename.LISTED_LINES ? "" : " now reads:"));
+            if (count > GraphRename.LISTED_LINES) return out;
+            List<String> lines = after.lines().toList();
+            int width = String.valueOf(last).length();
+            for (int n = first; n <= last && n <= lines.size(); n++) {
+                out.add(" ".repeat(width - String.valueOf(n).length()) + n + "| " + lines.get(n - 1));
+            }
+            return out;
         }
 
         /** The lines of {@code after} each edit of {@code f} touched; an import line it wrote may hold any reference. */

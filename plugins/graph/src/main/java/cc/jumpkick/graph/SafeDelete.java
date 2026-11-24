@@ -58,6 +58,8 @@ final class SafeDelete {
 
     private static final Pattern ANNOTATION = Pattern.compile("@([\\w.$]+)");
 
+    private static final Pattern STATIC = Pattern.compile("(?<![\\w$])static(?![\\w$])");
+
     private static final int QUOTE_WIDTH = 160;
 
     /** What a delete removes and what keeps it alive. */
@@ -78,6 +80,14 @@ final class SafeDelete {
 
         /** Whether only a string literal counts: a member's name is a word in too much prose to count elsewhere. */
         boolean literalOnly;
+
+        /**
+         * For a static method, the simple names of its class and the classes inheriting it, as words:
+         * reflection reaches a static method only through one of those classes, so a JVM source that
+         * names none of them cannot reach it by a string.
+         */
+        @Nullable
+        Pattern reflectedThrough;
 
         Target(String subject, String rel) {
             this.subject = subject;
@@ -243,9 +253,15 @@ final class SafeDelete {
             t.also.add("  an entry point: the JVM runs main");
         }
         named(w, g, t, name, sites);
-        docLinks(w, g, t, ownerName(GraphQuery.clean(g.display(id))), name);
+        GraphNode owner = owner(g, n);
+        Heirs heirs = owner == null ? null : heirs(g, owner);
+        docLinks(w, g, t, name, owner == null ? null : simple(owner), heirs);
         t.strings.add(Pattern.compile("\"" + Pattern.quote(name) + "\""));
         t.literalOnly = true;
+        if (heirs != null && preamble.stream().anyMatch(l -> STATIC.matcher(l).find())) {
+            t.reflectedThrough = Pattern.compile("(?<![\\w$])(?:"
+                    + String.join("|", heirs.names.stream().map(Pattern::quote).toList()) + ")(?![\\w$])");
+        }
         return t;
     }
 
@@ -428,6 +444,12 @@ final class SafeDelete {
         return line;
     }
 
+    /** Whether {@code line} is a comment line: a member's name in a string there is an example, not a use. */
+    private static boolean comment(String line) {
+        String code = line.strip();
+        return code.startsWith("*") || code.startsWith("/*") || code.startsWith("//");
+    }
+
     /** The lines of {@code rel}, none when it cannot be read. */
     private static String[] lines(Path root, String rel) {
         String text = RenameText.read(root, rel);
@@ -502,44 +524,93 @@ final class SafeDelete {
                         .find();
     }
 
-    /** The simple name of the type that declares the method {@code display} shows ({@code Type.name(...)}). */
-    static String ownerName(String display) {
-        int paren = display.indexOf('(');
-        String member = paren < 0 ? display : display.substring(0, paren);
-        String owner = member.substring(0, Math.max(0, member.lastIndexOf('.')));
-        return owner.substring(owner.lastIndexOf('.') + 1);
-    }
-
     /**
-     * Doc comment links to {@code name} of the type {@code owner} (its simple name) in Java sources:
-     * {@code owner#name}, or {@code #name} in a file that names the type, its own included. A link
-     * through another type ({@code Optional#name}), or bare in a file that never names it, is that
-     * type's member.
+     * Doc comment links to method {@code name} of {@code owner} in Java sources: {@code Type#name} where
+     * the type is the owner, and a bare {@code #name} in a file of the owner or of a type inheriting from
+     * it, where javadoc resolves the bare link. A link to another type's method of the same name is not
+     * a use. With no owner known, every link to the name counts.
      */
-    private static void docLinks(GraphService.Workspace w, CodeGraph g, Target t, String owner, String name) {
+    private static void docLinks(
+            GraphService.Workspace w,
+            CodeGraph g,
+            Target t,
+            String name,
+            @Nullable String simple,
+            @Nullable Heirs heirs) {
         Pattern link = Pattern.compile("([\\w$.]*)#" + Pattern.quote(name) + "(?![\\w$])");
-        Pattern named = Pattern.compile("(?<![\\w$])" + Pattern.quote(owner) + "(?![\\w$])");
         for (String rel : sources(g)) {
             if (!rel.endsWith(".java")) continue;
             String text = RenameText.read(w.root(), rel);
             if (text == null || !text.contains("#" + name)) continue;
-            boolean bare =
-                    rel.equals(t.rel) || owner.isEmpty() || named.matcher(text).find();
             String[] lines = text.split("\n", -1);
             for (int i = 0; i < lines.length; i++) {
                 if (rel.equals(t.rel) && inside(t, i + 1)) continue;
                 String code = lines[i].strip();
                 if (!(code.startsWith("*") || code.startsWith("/*") || code.startsWith("//"))) continue;
                 Matcher m = link.matcher(lines[i]);
-                while (m.find()) {
-                    String type = m.group(1).substring(m.group(1).lastIndexOf('.') + 1);
-                    if (type.isEmpty() ? bare : type.equals(owner)) {
-                        t.also.add("  a doc link  " + rel + ":" + (i + 1) + "  " + quote(lines[i]));
+                boolean hit = false;
+                while (m.find() && !hit) {
+                    String type = m.group(1);
+                    hit = simple == null
+                            || heirs == null
+                            || (type.isEmpty()
+                                    ? heirs.files.contains(rel)
+                                    : simple.equals(type.substring(type.lastIndexOf('.') + 1)));
+                }
+                if (hit) t.also.add("  a doc link  " + rel + ":" + (i + 1) + "  " + quote(lines[i]));
+            }
+        }
+    }
+
+    /** The type that declares member {@code n}, by its {@code method} or {@code contains} edge. */
+    private static @Nullable GraphNode owner(CodeGraph g, GraphNode n) {
+        for (GraphEdge e : g.incident(n.id())) {
+            if (e.target().equals(n.id())
+                    && (e.relation().equals(Relations.METHOD) || e.relation().equals(Relations.CONTAINS))) {
+                GraphNode o = g.node(e.source());
+                if (o != null && Decl.isType(o)) return o;
+            }
+        }
+        return null;
+    }
+
+    /** The simple name of {@code type}, nested ones by their own name. */
+    private static String simple(GraphNode type) {
+        String q = String.valueOf(type.extra().getOrDefault(Linker.QUALIFIED_NAME, type.label()))
+                .replace('$', '.');
+        return q.substring(q.lastIndexOf('.') + 1);
+    }
+
+    /** A type and every workspace type that extends or implements it: their simple names and files. */
+    private record Heirs(Set<String> names, Set<String> files) {}
+
+    /**
+     * {@code owner} and every workspace type that extends or implements it, directly or not, matched by
+     * the simple name its declaration writes.
+     */
+    private static Heirs heirs(CodeGraph g, GraphNode owner) {
+        Set<String> names = new TreeSet<>(Set.of(simple(owner)));
+        Set<String> files = new TreeSet<>(Set.of(owner.sourceFile()));
+        boolean grew = true;
+        while (grew) {
+            grew = false;
+            for (GraphNode n : g.nodes()) {
+                if (!Decl.isType(n) || names.contains(simple(n))) continue;
+                List<String> supers = new ArrayList<>(Decl.superclass(n));
+                supers.addAll(Decl.interfaces(n));
+                for (String s : supers) {
+                    String raw =
+                            s.contains("<") ? s.substring(0, s.indexOf('<')).strip() : s.strip();
+                    if (names.contains(raw.substring(raw.lastIndexOf('.') + 1))) {
+                        names.add(simple(n));
+                        files.add(n.sourceFile());
+                        grew = true;
                         break;
                     }
                 }
             }
         }
+        return new Heirs(names, files);
     }
 
     /**
@@ -553,9 +624,14 @@ final class SafeDelete {
             if (t.literalOnly && !source && !RenameText.classList(rel) && !rel.endsWith(".xml")) continue;
             String text = RenameText.read(root, rel);
             if (text == null) continue;
+            if (source
+                    && t.reflectedThrough != null
+                    && !rel.equals(t.rel)
+                    && !t.reflectedThrough.matcher(text).find()) continue;
             String[] lines = text.split("\n", -1);
             for (int i = 0; i < lines.length; i++) {
                 if (rel.equals(t.rel) && removed.contains(i + 1)) continue;
+                if (source && t.literalOnly && comment(lines[i])) continue;
                 for (Pattern p : t.strings) {
                     Matcher m = p.matcher(lines[i]);
                     boolean hit = false;

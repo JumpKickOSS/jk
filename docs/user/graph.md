@@ -745,9 +745,11 @@ jk code extract-interface Book Priced --methods price,total  # Book implements i
 
 `delete` removes a method (every overload), a field or a type only when nothing uses it: no call or
 reference in the compiled classes, no anchor it maps to, no override, no framework annotation or entry
-point, no doc link or string naming it. A doc link counts when it names the member through its
-own type (`Order#label`), or bare (`#label`) in a file that names the type; `Optional#label` is
-another type's. Otherwise it writes nothing and lists the uses as `usages`
+point, no doc link or string naming it. A doc link counts when it can mean this member: through its
+own type (`Order#label`; `Optional#label` is another type's), or bare (`#label`) in the files of its
+type and the types inheriting from it, where javadoc resolves it. A string counts outside comments,
+and for a static method only in a file that names its class or one inheriting from it, the only ways
+reflection reaches a static method. Otherwise it writes nothing and lists the uses as `usages`
 does, and each framework annotation that keeps it at the `file:line` that writes it. `move` takes a
 static Java method (every overload) or static field to another class, enum or record and edits
 every use javac bound; `pull-up` takes an instance method or field to the class its type extends,
@@ -755,7 +757,8 @@ where its uses bind as written. Naming that class is optional; a class the type 
 refused. Both write nothing and list what would break or change
 behaviour without a compile error (state the target does not have, a `super` call, a member one side
 cannot see, an override). Like `rename`, each then compiles the modules it touched and undoes the
-edit whole when they do not compile. A string that spells the moved name (reflection) does not stop
+edit whole when they do not compile. The answer ends with the moved code as the target now reads,
+numbered by line, up to 40 lines. A string that spells the moved name (reflection) does not stop
 a `move`: it is listed at `file:line`, and the answer ends `Not done` while one is left.
 
 `move` takes an instance method too, through a route to an instance of the target: a field of the
