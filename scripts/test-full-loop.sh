@@ -69,7 +69,10 @@ while [ "${1#-}" != "$1" ]; do case "$1" in -[opliF]) shift 2 ;; *) shift ;; esa
 echo "$1" >>"$SSH_LOG"
 [ "$1" = queuehost ] || { echo "ssh: Could not resolve hostname $1" >&2; exit 255; }
 shift
-exec bash -c "$*"
+# The remote login shell reads the joined words: zsh when installed (an unmatched glob is an error
+# there), else bash with failglob.
+if command -v zsh >/dev/null 2>&1; then exec zsh -c "$*"; fi
+exec bash -O failglob -c "$*"
 SSH
 chmod +x "$WORK/bin/jk" "$WORK/bin/ka" "$WORK/bin/ssh"
 export PATH="$WORK/bin:$PATH" KA_LOG="$WORK/ka.log" SSH_LOG="$WORK/ssh.log"
@@ -382,6 +385,13 @@ else
   full || fail "the cycle after the fix failed: $(runs)"
   [[ "$(origin green)" == "$(origin main)" ]] || fail "the fixed tip did not pass: $(runs)"
 fi
+
+# --- a queue behind a login shell that fails on an unmatched glob still runs its commands as bash ---
+# shellcheck source=scripts/queue/common.sh
+out="$(JK_QUEUE_REMOTE="queuehost:$QUEUE_REPO" . "$ROOT/scripts/queue/common.sh"
+  queue_sh "for f in no-such-*-file; do [ -f \"\$f\" ] && echo \"found \$f\"; done; echo \"it's ok\"" </dev/null)" \
+  || fail "a queue command with an unmatched glob failed behind the login shell"
+[[ "$out" == "it's ok" ]] || fail "a queue command with a quote and a glob printed: $out"
 
 # --- the queue's host cannot be reached: the cycle gates nothing and says so ---
 land w w.txt "TK-WWWW1: w"

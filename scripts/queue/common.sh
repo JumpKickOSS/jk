@@ -10,8 +10,12 @@ QUEUE_REMOTE="${JK_QUEUE_REMOTE:-bocabox:src/jk-queue.git}"
 # Run a shell command in the queue repository's directory, over ssh when the remote names a host.
 queue_sh() {
   if [[ "$QUEUE_REMOTE" =~ ^([^/:]+):(.*)$ ]]; then
-    # shellcheck disable=SC2029 # the path is quoted here on purpose; the command runs there
-    ssh "${BASH_REMATCH[1]}" "cd $(printf %q "${BASH_REMATCH[2]}") && $1"
+    # The login shell there may not be bash (zsh fails on an unmatched glob), so the command goes
+    # to bash as one single-quoted argument.
+    local cmd
+    cmd="cd $(printf %q "${BASH_REMATCH[2]}") && $1"
+    # shellcheck disable=SC2029 # the command is quoted here on purpose; it runs there
+    ssh "${BASH_REMATCH[1]}" "bash -c '${cmd//\'/\'\\\'\'}'"
   else
     (cd "$QUEUE_REMOTE" && bash -c "$1")
   fi
