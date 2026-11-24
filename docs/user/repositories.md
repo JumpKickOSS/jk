@@ -734,7 +734,8 @@ the next ask, without `--force`. A loopback repository's store tree (`repos/127.
 likewise one process's: the first time an engine process touches it, whatever a previous process
 stored there is removed, so a stub that reappears on a reused port in a later run never serves a
 predecessor's artifacts from disk. Within one engine's lifetime the tree is a warm store like any
-other; an ssh-tunnelled repository re-downloads once per engine lifetime.
+other; an ssh-tunnelled repository re-downloads once per engine lifetime. Its version lists sit in
+the store's `metadata-loopback`, apart from every other repository's under `metadata`.
 
 **A `<proxy>` is JumpKick's proxy for every request** — artifacts, JDK and tool distributions, forge
 APIs — for the protocol it names, between `~/.jk/config.toml [network]` and the shell's

@@ -423,11 +423,13 @@ public final class MavenRepo {
         // applies to http(s) repos — a file:// (or other) baseUrl can be paired
         // with an Http client but must keep enumerating via the transport. A loopback port names
         // whatever process holds it now, so its list is never trusted for the day: every ask is a
-        // conditional GET, answered 304 when the server still holds the body it stored.
-        Duration ttl =
-                RepositorySpec.loopback(this.fetchBase.getHost()) ? Duration.ZERO : MavenMetadataCache.DEFAULT_TTL;
+        // conditional GET, answered 304 when the server still holds the body it stored. Its bodies
+        // sit apart from the rest, so a store that shares its version lists never shares one of them.
+        boolean loopback = RepositorySpec.loopback(this.fetchBase.getHost());
+        Duration ttl = loopback ? Duration.ZERO : MavenMetadataCache.DEFAULT_TTL;
+        Path bodies = loopback ? cas.root().resolve(LOOPBACK_METADATA) : metadataDir();
         this.metadataCache = (httpOrNull != null && isHttp(this.fetchBase))
-                ? new MavenMetadataCache(httpOrNull, metadataDir(), ttl, HostRateLimiter.shared(), gate)
+                ? new MavenMetadataCache(httpOrNull, bodies, ttl, HostRateLimiter.shared(), gate)
                 : null;
         this.download =
                 new DownloadLeg(name, this.fetchBase, gate.over(transport), credential, storeDir(), allowUnverified);
@@ -537,7 +539,17 @@ public final class MavenRepo {
         return scheme != null && (scheme.equalsIgnoreCase("http") || scheme.equalsIgnoreCase("https"));
     }
 
-    /** The directory the metadata cache keeps its bodies in, and the resolver its per-POM answers. */
+    /**
+     * The store directory a loopback repository's version lists are kept in, beside {@link
+     * #metadataDir}: a loopback URL names whatever process holds the port now, so its bodies are
+     * this store's alone even where the rest of {@code metadata} is shared.
+     */
+    public static final String LOOPBACK_METADATA = "metadata-loopback";
+
+    /**
+     * The directory the metadata cache keeps its bodies in, a loopback repository's aside ({@link
+     * #LOOPBACK_METADATA}), and the resolver its per-POM answers.
+     */
     public Path metadataDir() {
         return cas.root().resolve("metadata");
     }

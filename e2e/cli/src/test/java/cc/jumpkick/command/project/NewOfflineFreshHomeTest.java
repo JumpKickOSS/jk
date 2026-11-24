@@ -87,7 +87,9 @@ class NewOfflineFreshHomeTest {
     private static void shareTierRepositories() throws IOException {
         Path tier = Path.of(Objects.requireNonNull(System.getenv("JK_STORE_DIR"), "the tier's store"));
         Path store = JkDirs.store();
-        PathUtil.copyTree(tier.resolve("metadata"), store.resolve("metadata"));
+        // The tier's version lists are a link into the host's pool: copied from where it points.
+        Path lists = tier.resolve("metadata");
+        if (Files.isDirectory(lists)) PathUtil.copyTree(lists.toRealPath(), store.resolve("metadata"));
         Path repos = Files.createDirectories(store.resolve("repos"));
         PathUtil.forEachChild(tier.resolve("repos"), (tree, attrs) -> {
             Symlinks.create(repos.resolve(String.valueOf(tree.getFileName())), tree.toRealPath());

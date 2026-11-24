@@ -11,6 +11,7 @@ import cc.jumpkick.host.Hashing;
 import cc.jumpkick.kotlin.KotlinResolver;
 import cc.jumpkick.lock.LockFreshness;
 import cc.jumpkick.lock.Lockfile;
+import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.resolver.ResolveProcessCacheControl;
 import cc.jumpkick.runtime.base.LockMode;
@@ -435,7 +436,7 @@ class LockFreshenTest {
         String root = http.base().toString();
         if (!root.endsWith("/")) root = root + "/";
         URI metaUri = URI.create(root).resolve("com/foo/lib/maven-metadata.xml");
-        Path metaDir = JkStores.store().resolve("metadata");
+        Path metaDir = JkStores.store().resolve(MavenRepo.LOOPBACK_METADATA);
         Path body = metaDir.resolve(Hashing.sha256Hex(metaUri.toString()));
         Files.deleteIfExists(body);
         Files.deleteIfExists(body.resolveSibling(body.getFileName() + ".h"));
