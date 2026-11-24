@@ -553,8 +553,10 @@ whole chain in one answer.
 
 Ask it before changing a method's signature or behaviour, and trust the list: it is complete, so
 there is no need to grep for the name afterwards. A method reached only by reflection or named in
-a string is not a call, so it is not listed; the note under the answer says when a module's calls
-are missing.
+a string is not a call, so it is not counted; the strings that name it, the ones `delete` keeps it
+for, are listed right under the completeness line (`Named in a string, …`), so a method with no
+calls and such a string never reads as unused. The note under the answer says when a module's
+calls are missing.
 
 **One completeness rule, every language.** `usages` says its list is complete only where a
 compiler bound every call it lists. A call matched by name instead is listed `(inferred)`, and the

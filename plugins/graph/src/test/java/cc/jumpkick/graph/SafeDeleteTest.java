@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -186,44 +187,47 @@ class SafeDeleteTest {
                         + "Job.java:13");
     }
 
+    /** An owner whose legacy name only a dead type calls and whose audit line reflection calls by name. */
+    static Map<String, String> owners() {
+        return RenameFixture.files(
+                DIR + "Owner.java", """
+        package org.acme.shop;
+
+        public class Owner {
+            String name = "Ada";
+
+            public String formatLegacyName() {
+                return name.toUpperCase();
+            }
+
+            public String describeForAudit() {
+                return "owner " + name;
+            }
+        }
+        """, DIR + "OwnerLegacyFormat.java", """
+        package org.acme.shop;
+
+        final class OwnerLegacyFormat {
+            static String format(Owner owner) {
+                return owner.formatLegacyName();
+            }
+        }
+        """, DIR + "OwnerAudit.java", """
+        package org.acme.shop;
+
+        final class OwnerAudit {
+            static final String DESCRIBE = "describeForAudit";
+
+            static Object line(Owner owner) throws ReflectiveOperationException {
+                return Owner.class.getMethod(DESCRIBE).invoke(owner);
+            }
+        }
+        """);
+    }
+
     @Test
     void aMethodOnlyADeadTypeCallsGoesOnceTheTypeDoesAndOneCalledByNameStays(@TempDir Path dir) throws IOException {
-        RenameFixture f = new RenameFixture(
-                dir,
-                RenameFixture.files(
-                        DIR + "Owner.java", """
-                package org.acme.shop;
-
-                public class Owner {
-                    String name = "Ada";
-
-                    public String formatLegacyName() {
-                        return name.toUpperCase();
-                    }
-
-                    public String describeForAudit() {
-                        return "owner " + name;
-                    }
-                }
-                """, DIR + "OwnerLegacyFormat.java", """
-                package org.acme.shop;
-
-                final class OwnerLegacyFormat {
-                    static String format(Owner owner) {
-                        return owner.formatLegacyName();
-                    }
-                }
-                """, DIR + "OwnerAudit.java", """
-                package org.acme.shop;
-
-                final class OwnerAudit {
-                    static final String DESCRIBE = "describeForAudit";
-
-                    static Object line(Owner owner) throws ReflectiveOperationException {
-                        return Owner.class.getMethod(DESCRIBE).invoke(owner);
-                    }
-                }
-                """));
+        RenameFixture f = new RenameFixture(dir, owners());
 
         assertThat(f.delete("Owner.formatLegacyName"))
                 .startsWith("Not deleted")
@@ -238,6 +242,65 @@ class SafeDeleteTest {
         assertThat(f.read(DIR + "Owner.java"))
                 .doesNotContain("formatLegacyName")
                 .contains("describeForAudit");
+    }
+
+    /**
+     * Usages lists the string a delete keeps a method for, right under its completeness line: an
+     * answer listing only the calls reads as unused, and an agent deleted the method by hand.
+     */
+    @Test
+    void usagesListsTheStringThatNamesAMethodForReflection(@TempDir Path dir) throws IOException {
+        RenameFixture f = new RenameFixture(dir, owners());
+
+        List<String> answer = f.usages("Owner.describeForAudit").lines().toList();
+
+        assertThat(answer.get(0)).isEqualTo("Usages of Owner.describeForAudit(): 0 in main sources, 0 in tests.");
+        assertThat(answer.get(1)).startsWith("Complete from the compiled classes");
+        assertThat(answer.subList(2, 4))
+                .containsExactly(
+                        "Named in a string, as reflection calls a method: no compiled class records that use, so it"
+                                + " may still run, and a delete keeps it:",
+                        "  a string names it  " + DIR + "OwnerAudit.java:4  static final String DESCRIBE ="
+                                + " \"describeForAudit\";");
+        assertThat(f.usages("Owner.formatLegacyName")).doesNotContain("Named in a string");
+    }
+
+    /**
+     * A static method a dead class reaches by a method reference is kept, and the class itself is
+     * unused: deleting it is sound, and then the method goes too.
+     */
+    @Test
+    void aMethodReferenceFromADeadClassKeepsTheMethodUntilTheClassGoes(@TempDir Path dir) throws IOException {
+        RenameFixture f =
+                new RenameFixture(dir, RenameFixture.files(DIR + "Chars.java", """
+                package org.acme.shop;
+
+                final class Chars {
+                    static int length(CharSequence cs) {
+                        return cs == null ? 0 : cs.length();
+                    }
+                }
+                """, DIR + "Totals.java", """
+                package org.acme.shop;
+
+                import java.util.List;
+
+                final class Totals {
+                    static int total(List<? extends CharSequence> parts) {
+                        return parts.stream().mapToInt(Chars::length).sum();
+                    }
+                }
+                """));
+
+        assertThat(f.usages("Chars.length"))
+                .contains("Totals.total()  " + DIR + "Totals.java:7")
+                .doesNotContain("Named in a string");
+        assertThat(f.delete("Chars.length"))
+                .startsWith("Not deleted, nothing is written: Chars.length() is still used.")
+                .contains("Totals.total()  " + DIR + "Totals.java:7");
+        assertThat(f.delete("Totals")).startsWith("Deleted org.acme.shop.Totals, its file");
+        assertThat(f.checkDelete()).isEqualTo("Proven: it compiles.");
+        assertThat(f.delete("Chars.length")).startsWith("Deleted Chars.length()");
     }
 
     static Map<String, String> texts(String users) {

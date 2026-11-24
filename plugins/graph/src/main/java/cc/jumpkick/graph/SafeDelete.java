@@ -256,13 +256,40 @@ final class SafeDelete {
         GraphNode owner = owner(g, n);
         Heirs heirs = owner == null ? null : heirs(g, owner);
         docLinks(w, g, t, name, owner == null ? null : simple(owner), heirs);
+        reflective(t, name, preamble, heirs);
+        return t;
+    }
+
+    /**
+     * The strings that name method {@code id} as reflection would, one line each ({@code a string
+     * names it  file:line  quote}), as a delete finds them: what {@code usages} lists below the calls,
+     * since no compiled class records such a use.
+     */
+    static List<String> namedByString(GraphService.Workspace w, CodeGraph g, String id) throws IOException {
+        GraphNode n = g.node(id);
+        if (n == null || Decl.line(n) <= 0) return List.of();
+        Target t = new Target("", n.sourceFile());
+        GraphNode owner = owner(g, n);
+        reflective(t, bare(n.label()), preamble(w.root(), n), owner == null ? null : heirs(g, owner));
+        String[] text = lines(w.root(), n.sourceFile());
+        if (text.length < Math.max(Decl.line(n), Decl.end(n))) return List.of();
+        Set<Integer> declared = new TreeSet<>(widened(text, Decl.line(n), Math.max(Decl.line(n), Decl.end(n))));
+        for (int[] more : Decl.more(n)) declared.addAll(widened(text, more[0], Math.max(more[0], more[1])));
+        strings(w.root(), t, declared);
+        return t.also;
+    }
+
+    /**
+     * A method's name in a string literal names it, as {@code getMethod("name")} does; for a static
+     * method only in a source naming its class or a class inheriting it.
+     */
+    private static void reflective(Target t, String name, List<String> preamble, @Nullable Heirs heirs) {
         t.strings.add(Pattern.compile("\"" + Pattern.quote(name) + "\""));
         t.literalOnly = true;
         if (heirs != null && preamble.stream().anyMatch(l -> STATIC.matcher(l).find())) {
             t.reflectedThrough = Pattern.compile("(?<![\\w$])(?:"
                     + String.join("|", heirs.names.stream().map(Pattern::quote).toList()) + ")(?![\\w$])");
         }
-        return t;
     }
 
     /** A Java field: unused when no source reads, writes or names it and it maps to no anchor. */

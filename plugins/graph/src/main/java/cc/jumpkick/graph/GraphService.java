@@ -19,6 +19,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -282,10 +283,18 @@ public final class GraphService {
             case "neighbors" ->
                 tools.neighbors(arg(a, 0, "a node name"), r.relation() == null ? "" : r.relation(), r.budget());
             case "usages" ->
-                tools.callers(
+                withStrings(
+                        w,
+                        g,
+                        tools,
                         arg(a, 0, "a method"),
-                        EnvValues.parseBool(r.options().get("transitive")).orElse(false) ? r.maxHops() : 1,
-                        r.budget());
+                        tools.callers(
+                                arg(a, 0, "a method"),
+                                EnvValues.parseBool(r.options().get("transitive"))
+                                                .orElse(false)
+                                        ? r.maxHops()
+                                        : 1,
+                                r.budget()));
             case "rules" -> RulesFor.answer(g, w.root(), arg(a, 0, "a file"), w.guardRules());
             case "find" -> find(w, g, scope, r, a);
             case "read" ->
@@ -301,6 +310,34 @@ public final class GraphService {
                                 r.budget());
             default -> throw new IllegalArgumentException("unknown graph operation '" + r.op() + "'");
         };
+    }
+
+    /** The most strings naming a method that usages lists. */
+    private static final int NAMED_SHOWN = 6;
+
+    /**
+     * A method's usages with the strings that name it, as reflection calls it, under the line saying
+     * how complete the calls are: no compiled class records such a use, and a delete keeps the method
+     * for it, so an answer listing calls alone would read as unused.
+     */
+    private static String withStrings(Workspace w, CodeGraph g, GraphTools tools, String name, String answer)
+            throws IOException {
+        if (!answer.startsWith("Usages of ") && !answer.startsWith("Every method that reaches ")) return answer;
+        String wanted = GraphTools.address(name).replaceFirst("^([^(]+)\\([^()]+\\)$", "$1");
+        Set<String> named = new LinkedHashSet<>();
+        for (String id : g.has(wanted) ? List.of(wanted) : tools.members(wanted)) {
+            named.addAll(SafeDelete.namedByString(w, g, id));
+        }
+        if (named.isEmpty()) return answer;
+        List<String> lines = new ArrayList<>(answer.lines().toList());
+        List<String> note = new ArrayList<>();
+        note.add("Named in a string, as reflection calls a method: no compiled class records that use, so it may"
+                + " still run, and a delete keeps it:");
+        List<String> shown = List.copyOf(named);
+        note.addAll(shown.subList(0, Math.min(shown.size(), NAMED_SHOWN)));
+        if (shown.size() > NAMED_SHOWN) note.add("  and " + (shown.size() - NAMED_SHOWN) + " more strings");
+        lines.addAll(Math.min(2, lines.size()), note);
+        return String.join("\n", lines);
     }
 
     /** The read tools over {@code g}, quoting from the tree and seeing modules as the build does. */
