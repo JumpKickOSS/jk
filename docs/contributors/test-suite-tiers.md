@@ -596,9 +596,14 @@ home's `[network] proxy`, is the request log of everything dialed past the loopb
 `latest`, which needs a version list. When the engine prepares a module's sandbox it seeds that
 sandbox's store from its own (`TestStoreSeed`): the JUnit Platform trees hard-linked under
 `repos/central` (the pool, through the sandbox's link), and for each artifact a version list naming exactly the versions whose POM came
-along, under the key the metadata cache reads for the Central URL. A cold sandbox therefore locks
-its test roots without Central, and a Central that throttles this host cannot turn the tier red; a
-real index the sandbox fetched itself is left in place. A store filled from a lock holds the jars
+along, under the key the metadata cache reads for the Central URL. A lock asks every repository
+it knows for a version list, so the seed also gives Google's Maven and JumpKick's repository an
+empty list for each of those artifacts, which is what they would answer. A cold sandbox therefore
+locks its test roots without asking any repository for a list, and a Central that throttles this
+host cannot turn the tier red; a real index the sandbox fetched itself is left in place, and a
+synthesised list is stamped fresh at every launch. The sandbox store also takes the engine's
+library registry (`libs.global.toml`), stamped fresh unless the sandbox holds a fresh copy of its
+own, so no fixture lock asks the registry's origin. A store filled from a lock holds the jars
 but not their POMs (a fresh CI runner's, a new machine's), so before its first test launch the
 engine locks a throwaway project once when its store has no launcher or Jupiter POM, which puts the
 test roots' closure into its own store with the network it has. Only those trees come from the

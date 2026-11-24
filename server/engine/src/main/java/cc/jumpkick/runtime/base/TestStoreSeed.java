@@ -3,10 +3,13 @@ package cc.jumpkick.runtime.base;
 
 import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.repo.ArtifactMemo;
 import cc.jumpkick.repo.EmptyArchive;
+import cc.jumpkick.repo.LibraryRegistrySync;
 import cc.jumpkick.repo.M2Dirs;
 import cc.jumpkick.repo.RepoArtifactStore;
 import cc.jumpkick.version.Versions;
@@ -14,6 +17,9 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.attribute.FileTime;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -54,6 +60,15 @@ public final class TestStoreSeed {
 
     /** Central's base, as {@code MavenRepo} resolves a metadata path against it. */
     static final String CENTRAL_BASE = RepositorySpec.MAVEN_CENTRAL.url().toString();
+
+    /**
+     * The other public repositories a fixture's lock asks for every version list, none of which
+     * publishes the JUnit Platform: each gets an empty list for the seeded artifacts, so the lock
+     * learns that without asking.
+     */
+    static final List<String> OTHER_PUBLIC_BASES = List.of(
+            RepositorySpec.GOOGLE_MAVEN.url().toString(),
+            RepositorySpec.JUMPKICK.url().toString());
 
     private TestStoreSeed() {}
 
@@ -126,9 +141,38 @@ public final class TestStoreSeed {
             });
         }
         for (Map.Entry<Path, TreeSet<String>> e : pomVersions.entrySet()) {
-            if (writeVersionList(sandboxStore, e.getKey(), e.getValue())) materialised[0]++;
+            if (writeVersionList(sandboxStore, CENTRAL_BASE, e.getKey(), e.getValue())) materialised[0]++;
+            for (String base : OTHER_PUBLIC_BASES) {
+                if (writeVersionList(sandboxStore, base, e.getKey(), new TreeSet<>())) materialised[0]++;
+            }
         }
         return materialised[0];
+    }
+
+    /**
+     * Give {@code sandboxStore} the library registry this engine reads ({@code engineRegistry}),
+     * stamped fresh, unless the sandbox holds a fresh copy of its own: a fixture's lock then expands
+     * short names without asking the registry's origin. Nothing happens when the engine has none.
+     * True when a copy was written.
+     */
+    public static boolean seedRegistry(Path sandboxStore, Path engineRegistry) throws IOException {
+        Path target = sandboxStore.resolve(JkDirs.LIBRARY_REGISTRY_FILE);
+        if (!Files.isRegularFile(engineRegistry)
+                || target.toAbsolutePath()
+                        .normalize()
+                        .equals(engineRegistry.toAbsolutePath().normalize())) {
+            return false;
+        }
+        Instant now = Clock.SYSTEM.instant();
+        if (Files.isRegularFile(target)
+                && Duration.between(Files.getLastModifiedTime(target).toInstant(), now)
+                                .compareTo(LibraryRegistrySync.FRESH_FOR)
+                        < 0) {
+            return false;
+        }
+        copyInto(engineRegistry, target);
+        Files.setLastModifiedTime(target, FileTime.from(now));
+        return true;
     }
 
     /** The local repositories to copy from: this process's own, then the user's, never {@code target}. */
@@ -285,17 +329,23 @@ public final class TestStoreSeed {
     static final String SEED_MARK = "<!-- synthesised by the jk test-store seed; the store's own fetch replaces it -->";
 
     /**
-     * The metadata body for {@code artifactDir} under the sandbox: written when absent, rewritten
-     * when it is a synthesised list that no longer names the host's versions, left alone when the
-     * store fetched it itself. True when a body was written.
+     * The metadata body for {@code artifactDir} in the repository at {@code base} under the
+     * sandbox: written when absent, rewritten when it is a synthesised list that no longer names the
+     * host's versions, left alone when the store fetched it itself. A synthesised list that still
+     * names them is stamped fresh, so a slot kept past the cache's day never asks for it. True when a
+     * body was written.
      */
-    private static boolean writeVersionList(Path sandbox, Path artifactDir, TreeSet<String> versions)
+    private static boolean writeVersionList(Path sandbox, String base, Path artifactDir, TreeSet<String> versions)
             throws IOException {
-        Path body = sandbox.resolve("metadata").resolve(metadataKey(artifactDir));
+        Path body = sandbox.resolve("metadata").resolve(metadataKey(base, artifactDir));
         String xml = versionList(artifactDir, versions);
         if (Files.exists(body)) {
             String current = Files.readString(body);
-            if (!current.contains(SEED_MARK) || current.equals(xml)) return false;
+            if (!current.contains(SEED_MARK)) return false;
+            if (current.equals(xml)) {
+                Files.setLastModifiedTime(body, FileTime.from(Clock.SYSTEM.instant()));
+                return false;
+            }
         }
         Files.createDirectories(body.getParent());
         Files.writeString(body, xml);
@@ -304,24 +354,33 @@ public final class TestStoreSeed {
 
     /** The cache key {@code MavenMetadataCache} derives for the artifact's Central metadata URL. */
     static String metadataKey(Path artifactDir) {
-        return Hashing.sha256Hex(CENTRAL_BASE + slashes(artifactDir) + "/maven-metadata.xml");
+        return metadataKey(CENTRAL_BASE, artifactDir);
     }
 
-    /** A {@code maven-metadata.xml} naming {@code versions}, newest as {@code latest} and {@code release}. */
+    /** The cache key {@code MavenMetadataCache} derives for the artifact's metadata URL under {@code base}. */
+    static String metadataKey(String base, Path artifactDir) {
+        return Hashing.sha256Hex(base + slashes(artifactDir) + "/maven-metadata.xml");
+    }
+
+    /**
+     * A {@code maven-metadata.xml} naming {@code versions}, newest as {@code latest} and {@code
+     * release}; with none, a list a repository that lacks the artifact would answer.
+     */
     static String versionList(Path artifactDir, TreeSet<String> versions) {
         List<String> segments = new ArrayList<>();
         for (Path p : artifactDir) segments.add(p.toString());
         String artifactId = segments.remove(segments.size() - 1);
         String groupId = String.join(".", segments);
-        String newest = versions.last();
         StringBuilder xml = new StringBuilder("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n")
                 .append(SEED_MARK)
                 .append("\n<metadata>\n");
         xml.append("  <groupId>").append(groupId).append("</groupId>\n");
         xml.append("  <artifactId>").append(artifactId).append("</artifactId>\n");
         xml.append("  <versioning>\n");
-        xml.append("    <latest>").append(newest).append("</latest>\n");
-        xml.append("    <release>").append(newest).append("</release>\n");
+        if (!versions.isEmpty()) {
+            xml.append("    <latest>").append(versions.last()).append("</latest>\n");
+            xml.append("    <release>").append(versions.last()).append("</release>\n");
+        }
         xml.append("    <versions>\n");
         for (String v : versions) xml.append("      <version>").append(v).append("</version>\n");
         xml.append("    </versions>\n  </versioning>\n</metadata>\n");

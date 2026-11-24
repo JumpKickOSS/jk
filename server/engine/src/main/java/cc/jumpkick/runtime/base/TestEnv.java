@@ -7,6 +7,7 @@ import cc.jumpkick.config.SearchCeiling;
 import cc.jumpkick.config.SelfUpdatePolicy;
 import cc.jumpkick.config.TestEnvValues;
 import cc.jumpkick.engine.plugin.WorkerEnv;
+import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.SearchPath;
@@ -113,8 +114,8 @@ public final class TestEnv {
      * The sandbox store's pooled trees become links into the host's shared pool ({@link
      * TestStorePool}), then the sandbox store and its local m2 learn the JUnit Platform from this
      * machine's local repositories ({@link TestStoreSeed}), so the suite's fixtures lock their
-     * injected test roots without Central. Warmth only: a link or seed that fails leaves the
-     * fixtures to fetch what they need.
+     * injected test roots without a repository in reach, and the store takes this engine's library
+     * registry. Warmth only: a link or seed that fails leaves the fixtures to fetch what they need.
      */
     private static void warmStore(Path sandboxHome, Path sandboxM2) {
         Path store = sandboxHome.resolve("store");
@@ -126,6 +127,7 @@ public final class TestEnv {
         try {
             int seeded = TestStoreSeed.seed(store, sandboxM2);
             if (seeded > 0) Log.debug("TestEnv: seeded " + seeded + " JUnit Platform files into " + sandboxHome);
+            TestStoreSeed.seedRegistry(store, JkDirs.libraryRegistry());
         } catch (IOException | RuntimeException e) {
             Log.debug("TestEnv: the sandbox store keeps whatever it had; fixtures fetch the rest", e);
         }
@@ -274,13 +276,16 @@ public final class TestEnv {
 
     /**
      * Which trees warm a sandbox store before its suite runs: the store-relative trees linked into
-     * the host's pool ({@link TestStorePool}), and the JUnit Platform trees and injected test roots
-     * the seed copies and lists ({@link TestStoreSeed}).
+     * the host's pool ({@link TestStorePool}), the JUnit Platform trees and injected test roots the
+     * seed copies and lists, the repositories it lists them as absent from, and the library
+     * registry ({@link TestStoreSeed}).
      */
     public static String seeds() {
         return "pool=" + String.join(",", TestStorePool.SHARED)
                 + ";trees=" + String.join(",", TestStoreSeed.TREES)
-                + ";roots=" + String.join(",", TestStoreSeed.TEST_ROOTS);
+                + ";roots=" + String.join(",", TestStoreSeed.TEST_ROOTS)
+                + ";absent-from=" + String.join(",", TestStoreSeed.OTHER_PUBLIC_BASES)
+                + ";registry";
     }
 
     /**
