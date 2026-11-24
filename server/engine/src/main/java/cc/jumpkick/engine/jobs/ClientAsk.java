@@ -4,8 +4,10 @@ package cc.jumpkick.engine.jobs;
 import cc.jumpkick.config.CallerAsker;
 import cc.jumpkick.engine.api.WireWriter;
 import cc.jumpkick.host.Os;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.wire.protocol.EnvAskFrame;
 import java.io.BufferedWriter;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -20,6 +22,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Consumer;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -27,9 +30,13 @@ import org.jspecify.annotations.Nullable;
  * engine side of {@link CallerAsker}. The connection's read loop hands every answer to {@link
  * #deliver} and says when the client is gone ({@link #gone}).
  *
- * <p>What the client answers is kept here, in memory, for the job's life: each name once, so a
- * second test JVM that reads the same variable asks no one. Nothing is logged and nothing is
- * written; the job drops this object when it ends, and with it every value.
+ * <p>Each question is asked once per job. Every reader that wants the same thing waits on that one
+ * question, and no longer than its answer bound: a question the client left unanswered reads as
+ * unknown at once from then on, so a slow client costs a run one bound, not one per reader. An
+ * answer that comes late is still kept for the readers after it.
+ *
+ * <p>What the client answers is kept here, in memory, for the job's life. Nothing is logged and
+ * nothing is written; the job drops this object when it ends, and with it every value.
  */
 final class ClientAsk implements CallerAsker {
 
@@ -37,10 +44,16 @@ final class ClientAsk implements CallerAsker {
     static final long ANSWER_MS = 30_000;
 
     private final BufferedWriter writer;
-    private final long answerMs;
+    private final long answerNanos;
     private final AtomicLong ids = new AtomicLong();
-    private final Map<Long, CompletableFuture<@Nullable String>> pending = new ConcurrentHashMap<>();
+    private final Map<Long, Question> pending = new ConcurrentHashMap<>();
     private final Map<String, Optional<String>> known = new ConcurrentHashMap<>();
+
+    /** The question that asks for each name, by {@link #key}; guarded by this. */
+    private final Map<String, Question> byName = new LinkedHashMap<>();
+
+    private @Nullable Question namesAsked;
+    private @Nullable Question allAsked;
     private volatile @Nullable Set<String> names;
     private volatile @Nullable Map<String, String> all;
     private volatile boolean gone;
@@ -52,21 +65,26 @@ final class ClientAsk implements CallerAsker {
 
     ClientAsk(BufferedWriter writer, long answerMs) {
         this.writer = writer;
-        this.answerMs = answerMs;
+        this.answerNanos = TimeUnit.MILLISECONDS.toNanos(answerMs);
     }
+
+    /** One question on the wire: answered true, or false once the client is gone. */
+    private record Question(CompletableFuture<Boolean> answered, Consumer<String> keep, long deadlineNanos) {}
 
     /** Hand {@code line}, read from the job's connection, to the question it answers; any other line is ignored. */
     void deliver(String line) {
         long id = EnvAskFrame.answerId(line);
         if (id < 0) return;
-        CompletableFuture<@Nullable String> waiting = pending.remove(id);
-        if (waiting != null) waiting.complete(line);
+        Question q = pending.remove(id);
+        if (q == null) return;
+        q.keep().accept(line);
+        q.answered().complete(true);
     }
 
     /** The client is gone: every question waiting, and every later one, goes unanswered. */
     void gone() {
         gone = true;
-        for (CompletableFuture<@Nullable String> waiting : pending.values()) waiting.complete(null);
+        for (Question q : pending.values()) q.answered().complete(false);
         pending.clear();
     }
 
@@ -77,18 +95,28 @@ final class ClientAsk implements CallerAsker {
 
     @Override
     public @Nullable Map<String, String> values(Collection<String> wanted) {
+        List<Question> waits = new ArrayList<>();
+        synchronized (this) {
+            if (all == null) {
+                List<String> ask = new ArrayList<>();
+                for (String name : new LinkedHashSet<>(wanted)) {
+                    if (known.containsKey(key(name))) continue;
+                    Question q = byName.get(key(name));
+                    if (q != null) waits.add(q);
+                    else ask.add(name);
+                }
+                if (!ask.isEmpty()) {
+                    List<String> asked = List.copyOf(ask);
+                    Question q = ask(new EnvAskFrame(ids.incrementAndGet(), asked, null), line -> keep(asked, line));
+                    for (String name : asked) byName.put(key(name), q);
+                    waits.add(q);
+                }
+            }
+        }
+        for (Question q : waits) {
+            if (!answered(q)) return null;
+        }
         Map<String, String> whole = all;
-        Set<String> ask = new LinkedHashSet<>();
-        for (String name : wanted) {
-            if (whole == null && !known.containsKey(key(name))) ask.add(name);
-        }
-        if (!ask.isEmpty()) {
-            String line = ask(new EnvAskFrame(ids.incrementAndGet(), List.copyOf(ask), null));
-            if (line == null) return null;
-            Map<String, String> answered = new LinkedHashMap<>();
-            EnvAskFrame.answerVars(line).forEach((name, value) -> answered.put(key(name), value));
-            for (String name : ask) known.put(key(name), Optional.ofNullable(answered.get(key(name))));
-        }
         Map<String, String> out = new LinkedHashMap<>();
         for (String name : wanted) {
             String v = whole != null
@@ -105,53 +133,78 @@ final class ClientAsk implements CallerAsker {
         if (whole != null) return whole.keySet();
         Set<String> sent = names;
         if (sent != null) return sent;
-        String line = ask(new EnvAskFrame(ids.incrementAndGet(), List.of(), EnvAskFrame.NAMES));
-        List<String> answered = line == null ? null : EnvAskFrame.answerNames(line);
-        if (answered == null) return null;
-        Set<String> got = Set.copyOf(new LinkedHashSet<>(answered));
-        names = got;
-        return got;
+        Question q;
+        synchronized (this) {
+            q = namesAsked;
+            if (q == null) {
+                q = namesAsked = ask(new EnvAskFrame(ids.incrementAndGet(), List.of(), EnvAskFrame.NAMES), line -> {
+                    List<String> answered = EnvAskFrame.answerNames(line);
+                    if (answered != null) names = Set.copyOf(new LinkedHashSet<>(answered));
+                });
+            }
+        }
+        return answered(q) ? names : null;
     }
 
     @Override
     public @Nullable Map<String, String> all() {
         Map<String, String> whole = all;
         if (whole != null) return whole;
-        String line = ask(new EnvAskFrame(ids.incrementAndGet(), List.of(), EnvAskFrame.ALL));
-        if (line == null) return null;
-        Map<String, String> got = Map.copyOf(EnvAskFrame.answerVars(line));
-        all = got;
-        return got;
+        Question q;
+        synchronized (this) {
+            q = allAsked;
+            if (q == null) {
+                q = allAsked = ask(
+                        new EnvAskFrame(ids.incrementAndGet(), List.of(), EnvAskFrame.ALL),
+                        line -> all = Map.copyOf(EnvAskFrame.answerVars(line)));
+            }
+        }
+        return answered(q) ? all : null;
     }
 
-    /** One question and its answer line, or null when the client is gone or does not answer in time. */
-    private @Nullable String ask(EnvAskFrame frame) {
+    /** What an answer to a question for {@code asked} says of each of them. */
+    private void keep(List<String> asked, String line) {
+        Map<String, String> answered = new LinkedHashMap<>();
+        EnvAskFrame.answerVars(line).forEach((name, value) -> answered.put(key(name), value));
+        for (String name : asked) known.put(key(name), Optional.ofNullable(answered.get(key(name))));
+    }
+
+    /** Send {@code frame}, its answer handed to {@code keep}; a client already gone gets no question. */
+    private Question ask(EnvAskFrame frame, Consumer<String> keep) {
+        Question q = new Question(new CompletableFuture<>(), keep, Clock.SYSTEM.nanos() + answerNanos);
         if (gone) {
-            lost = true;
-            return null;
+            q.answered().complete(false);
+            return q;
         }
-        CompletableFuture<@Nullable String> answer = new CompletableFuture<>();
-        pending.put(frame.id(), answer);
+        pending.put(frame.id(), q);
         if (gone) {
             pending.remove(frame.id());
-            lost = true;
-            return null;
+            q.answered().complete(false);
+            return q;
         }
         WireWriter.sendNoWait(writer, frame.encode());
+        return q;
+    }
+
+    /** Whether the client answered {@code q} by its deadline; a question it did not marks the job lost. */
+    private boolean answered(Question q) {
+        CompletableFuture<Boolean> answered = q.answered();
         try {
-            String line = answer.get(answerMs, TimeUnit.MILLISECONDS);
-            if (line == null) lost = true;
-            return line;
+            if (answered.isDone()) return mark(answered.get());
+            long left = q.deadlineNanos() - Clock.SYSTEM.nanos();
+            if (left <= 0) return mark(false);
+            return mark(answered.get(left, TimeUnit.NANOSECONDS));
         } catch (TimeoutException | ExecutionException e) {
-            lost = true;
-            return null;
+            return mark(false);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            lost = true;
-            return null;
-        } finally {
-            pending.remove(frame.id());
+            return mark(false);
         }
+    }
+
+    private boolean mark(boolean answered) {
+        if (!answered) lost = true;
+        return answered;
     }
 
     private static @Nullable String lookup(Map<String, String> vars, String name) {
