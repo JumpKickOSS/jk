@@ -152,6 +152,17 @@ def auth_or_limit(text: str) -> bool:
     return bool(_AUTH_OR_LIMIT.search(text.lower()))
 
 
+def void(row: dict) -> bool:
+    """Whether a change-task row is no result: its agent spent no tokens and its CLI refused it for a login
+    or a usage limit. Rows written before change-tasks recorded the outcome `void` carry `red` and the CLI's
+    words, so those words decide them too."""
+    if row.get("outcome") == "void":
+        return True
+    spent = sum(row.get(k) or 0 for k in ("input_tokens", "output_tokens", "cache_read_tokens", "cache_write_tokens"))
+    words = "\n".join(str(row.get(k) or "") for k in ("finding", "agent_finding", "reply"))
+    return not spent and auth_or_limit(words)
+
+
 def _kill_group(proc: subprocess.Popen) -> None:
     if proc.poll() is not None:
         return

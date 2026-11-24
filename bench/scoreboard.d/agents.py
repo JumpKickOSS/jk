@@ -11,7 +11,8 @@ The agent rows are read from the checked-in change-task results (`bench/agent-lo
 `change-tasks` runs them, on an idle host). A cell is one (driver, arm, task) on the driver's default
 model, and it takes the newest series that has it: the newest result date, and within that date the
 highest hundred of `--first-run` (each round on a new build or prescription numbers its runs from a
-new hundred). Per driver and arm, over accepted runs:
+new hundred). A void row (its CLI refused the run for a login or a limit) is no run and is left out.
+Per driver and arm, over accepted runs:
 
   agents.<driver>.questions.non-graph-nav   share of navigation calls that were not graph calls
                                             (grep, glob and file reads over all three), median per
@@ -43,6 +44,7 @@ import tomllib
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "agent-loop"))
+from harnesslib import agents as clis  # noqa: E402
 from harnesslib import cost  # noqa: E402
 
 TIERS = ("night", "release")
@@ -74,7 +76,7 @@ def cells() -> dict[tuple[str, str, str], list[dict]]:
             r = json.loads(line)
             # A row with no verdict is a run that never started (its baseline was red): not a series.
             if (r.get("task") not in tasks or r.get("model") != models.get(r.get("driver"))
-                    or r.get("effort") != efforts.get(r.get("driver")) or "accepted" not in r):
+                    or r.get("effort") != efforts.get(r.get("driver")) or "accepted" not in r or clis.void(r)):
                 continue
             r["kind"] = tasks[r["task"]].get("kind", r.get("kind", ""))
             r["results"] = f.parent.name
@@ -82,14 +84,12 @@ def cells() -> dict[tuple[str, str, str], list[dict]]:
     return {k: v[max(v)] for k, v in by.items()}
 
 
-# The banked series the claims render from: each agent's model and effort as its claims' rows were
-# measured, and the corpus lines where the corpus has moved on since (jk's tree, at 1d0d441ed). New runs
-# use change-tasks' pins (DEFAULT_MODEL, DEFAULT_EFFORT); once a baseline on those pins is banked, they
-# replace these and CLAIMED_LOC goes.
-CLAIMED = {"claude-code": ("claude-sonnet-5-5", "medium"), "grok": ("grok-4.7", "high"),
-           "agy": ("gemini-3.8-flash-high", "high"), "cursor": ("composer-2.5", "medium"),
-           "muse": ("muse-spark-1.3-contributor", "xhigh"), "codex": ("gpt-6.1-terra", "medium")}
-CLAIMED_LOC = {"jk": 679533}
+# The banked series the claims render from: each agent's model and effort, change-tasks' pins
+# (DEFAULT_MODEL, DEFAULT_EFFORT). A new pin there starts a new series, and the claims follow it here.
+CLAIMED = {"claude-code": ("claude-opus-5-5", "medium"), "grok": ("grok-4.7", "high"),
+           "agy": ("gemini-4-neon-medium", "medium"), "cursor": ("composer-2.5", "default"),
+           "muse": ("muse-spark-1.3-contributor", "max"), "codex": ("gpt-6.2-sol", "medium"),
+           "copilot": ("fusion", "standard")}
 
 
 def _graph_question(task: str, kind: str) -> bool:
@@ -199,8 +199,8 @@ def measure(ctx) -> list[dict]:
 # Each agent's arm with the graph as `jk agents` sets it up: Cursor and agy with jk's rules file.
 PRESCRIPTION = {"claude-code": "jk", "grok": "jk", "muse": "jk", "cursor": "jk-cursorrules", "agy": "jk-agyrules",
                 "codex": "jk", "copilot": "jk"}
-LABELS = {"claude-code": "Vendor A, mid-tier", "grok": "Vendor B, frontier", "agy": "Vendor C, fast",
-          "cursor": "Vendor D", "muse": "Vendor E", "codex": "Vendor F"}
+LABELS = {"claude-code": "Vendor A, frontier", "grok": "Vendor B, frontier", "agy": "Vendor C, frontier",
+          "cursor": "Vendor D", "muse": "Vendor E", "codex": "Vendor F", "copilot": "Vendor G"}
 QUESTIONS = JK_TREE / "bench" / "graph-retrieval" / "questions"
 # The docs that carry the default-against-top-model comparison (a doc without a block's markers is skipped).
 MODEL_DOCS = (JK_TREE / "docs" / "user" / "why.md", JK_TREE / "hosting" / "public" / "index.html")
@@ -274,9 +274,8 @@ def comparison_table(rows: list[dict], unit: str) -> str:
                      f"{b['runs']} | {_n(a['turns'])} / {_n(b['turns'])} | {_k(a['tokens'])} / {_k(b['tokens'])} | "
                      f"{a['wall']:,.0f} / {b['wall']:,.0f} s |")
     sets = sorted({s for r in rows for s in r["results"]})
-    lines += ["", "JumpKick is each agent as `jk agents` sets it up (Vendor C and D with JumpKick's rules file), one run per task "
-              "on the current build; without the graph, three to five runs per task, the graph hidden from MCP and "
-              "the shell alike. "
+    lines += ["", "JumpKick is each agent as `jk agents` sets it up (Vendor C and D with JumpKick's rules file); without the graph, "
+              "the graph hidden from MCP and the shell alike. One run per task on each, on the current build. "
               "Medians per task, summed over the tasks each agent ran on both arms; results: "
               + ", ".join(f"`{s}`" for s in sets) + "."]
     return "\n".join(lines)
@@ -376,7 +375,7 @@ def rate_cells() -> dict[tuple[str, str, str], dict[tuple[str, str, str], list[d
             if not line.strip():
                 continue
             r = json.loads(line)
-            if r.get("task") not in tasks or not r.get("model") or "accepted" not in r:
+            if r.get("task") not in tasks or not r.get("model") or "accepted" not in r or clis.void(r):
                 continue
             r["kind"] = tasks[r["task"]].get("kind", r.get("kind", ""))
             key = (r["driver"], r["model"], str(r.get("effort") or ""), r["arm"], r["task"])
@@ -428,8 +427,6 @@ def rates(measured_by: dict, held: str | None = None, now: str | None = None) ->
 
 
 def _loc(repo: str) -> int | None:
-    if repo in CLAIMED_LOC:
-        return CLAIMED_LOC[repo]
     f = QUESTIONS / f"{repo}.json"
     return json.loads(f.read_text())["loc"] if f.is_file() else None
 
@@ -521,7 +518,8 @@ def claims(questions: list[dict], renames: list[dict], points: list[dict], link:
 
 def models(prescription_only: bool = True) -> list[dict]:
     """Each agent's default model against every other model it ran, on the tasks both ran with its
-    prescription: the newest series of each (driver, model, task)."""
+    prescription on the same day: the newest series of each (driver, model, task). A run of another day
+    ran another build and another night's load, so it is no comparison."""
     tasks = tomllib.loads((RESULTS.parent / "tasks.toml").read_text())["tasks"]
     newest: dict[tuple[str, str, str], dict[tuple[str, int], list[dict]]] = {}
     for f in sorted(RESULTS.glob("*/rows.jsonl")):
@@ -530,7 +528,8 @@ def models(prescription_only: bool = True) -> list[dict]:
                 continue
             r = json.loads(line)
             d = r.get("driver")
-            if r.get("task") not in tasks or "accepted" not in r or r.get("arm") != PRESCRIPTION.get(d, "jk"):
+            if (r.get("task") not in tasks or "accepted" not in r or r.get("arm") != PRESCRIPTION.get(d, "jk")
+                    or clis.void(r)):
                 continue
             tier = f"{r.get('model')}/{r.get('effort')}"
             newest.setdefault((d, tier, r["task"]), {}).setdefault(series(r), []).append(r)
@@ -541,7 +540,8 @@ def models(prescription_only: bool = True) -> list[dict]:
         default = "/".join(CLAIMED.get(driver, ("", "")))
         for model in sorted(mine - {default}):
             both = sorted(t for (d, m, t) in cells if d == driver and m == model
-                          and (driver, default, t) in cells)
+                          and (driver, default, t) in cells
+                          and cells[(driver, model, t)][0].get("date") == cells[(driver, default, t)][0].get("date"))
             if both:
                 out.append({"driver": driver, "tasks": both,
                             "default": _sums({t: cells[(driver, default, t)] for t in both}, both),
@@ -550,6 +550,8 @@ def models(prescription_only: bool = True) -> list[dict]:
 
 
 def models_table(rows: list[dict]) -> str:
+    if not rows:
+        return ""
     lines = ["| Agent (tasks) | Model | Correct | Turns | Tokens | Wall |", "|---|---|---|---|---|---|"]
     for r in rows:
         for tier in ("default", "top"):
