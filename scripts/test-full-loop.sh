@@ -170,7 +170,7 @@ status_has() {
   grep "${@:2}" <<<"$out"
 }
 queue() {
-  QUEUE_CHECKOUT="$WORK/qco" QUEUE_GATE="$WORK/gate.sh" QUEUE_LOG_DIR="$logs" bash "$Q/loop.sh" --once
+  QUEUE_CHECKOUT="$WORK/qco" JK_HOME="$WORK/queue-home" QUEUE_GATE="$WORK/gate.sh" QUEUE_LOG_DIR="$logs" bash "$Q/loop.sh" --once
 }
 # The Full loop's host reaches the queue's repository over ssh and has a gate lock of its own.
 remote="queuehost:$QUEUE_REPO" full_lock="$WORK/full-host.lock"

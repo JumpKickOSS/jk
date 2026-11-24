@@ -154,15 +154,26 @@ its taking the gate lock) and `gate` seconds. Each branch that lands or is eject
 its batch took the lock, when the gate started and ended, and when it landed or was ejected.
 `status.sh --stats` reads it; the target is ten minutes or less from submission to landing at the
 median. A batch that could not gate at all (a dirty
-checkout, a failed fetch, no verdict) puts its branches back to waiting and stops the loop. On
-bocabox it runs as
+checkout, a failed fetch, no verdict) puts its branches back to waiting and stops the loop.
+
+The gate installs each batch, a candidate that is not on `main` yet, and runs it. So the loop runs
+in a JumpKick home of its own (`JK_HOME`), and refuses to start without one or with `~/.jk`: the
+default home is the one every other session on its host builds and tests with, and a candidate
+installed there would change their engine, and with it every suite's key, every few minutes. The
+host's `~/.jk` moves only when something installs `main` into it. The home is made once, as a
+[private home](#beside-the-default-home) is; on bocabox the loop then runs as
 
 ```bash
+export JK_HOME=$HOME/jk-queue/home JK_SELF_UPDATE=never
+mkdir -p "$JK_HOME" && printf '[http]\nport = 0\n' >"$JK_HOME/config.toml"
+(cd ~/src/jk-queue-checkout && env -u JK_HOME ~/.jk/bin/jk build -S \
+  && bash install.sh target/dist/jk && git clean -qfd)   # once: the new home has no jk yet
 QUEUE_CHECKOUT=~/src/jk-queue-checkout scripts/queue/loop.sh
 ```
 
-from a checkout other than `QUEUE_CHECKOUT`; the header of `scripts/queue/loop.sh` lists its
-settings, and `scripts/test-queue.sh` holds it to the rules above in scratch repositories.
+from a checkout other than `QUEUE_CHECKOUT`. Every batch after the first install installs into the
+queue's home. That home keeps its own store and caches, so the first batch in a new one builds
+cold. The header of `scripts/queue/loop.sh` lists its settings, and `scripts/test-queue.sh` holds it to the rules above in scratch repositories.
 
 **Pausing.** While `pause` exists in the queue's repository, the queue and the
 [Full tier loop](#the-full-tier-loop) start no batch or cycle: the one in flight finishes, each loop

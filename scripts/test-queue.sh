@@ -15,8 +15,11 @@
 # pause file exists the loop starts no batch, even one it was waiting on the gate lock for, logs once
 # that it is paused and why, and status says so; removing the file resumes it. Every landing and
 # ejection is timed (ready, lock, gate, done), every batch line carries its wait and gate seconds,
-# and status --stats prints the last 20 landings with their medians and the slowest three.
+# and status --stats prints the last 20 landings with their medians and the slowest three. The loop
+# refuses to start without a JumpKick home of its own (JK_HOME, not ~/.jk), and its gate runs that
+# home's jk.
 set -euo pipefail
+unset JK_HOME
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/jk-queue.XXXXXX")"
@@ -53,6 +56,8 @@ if [ "$1" = guard ]; then
 fi
 JK
 chmod +x "$WORK/bin/jk"
+# The queue's own home, whose jk is the same stand-in.
+mkdir -p "$WORK/home/bin" && ln -s "$WORK/bin/jk" "$WORK/home/bin/jk"
 export JK_LOG="$WORK/jk.log"
 export PATH="$WORK/bin:$PATH"
 # macOS has no flock: there the loop's lock is a stand-in that runs the batch.
@@ -67,6 +72,7 @@ cat >"$WORK/gate.sh" <<'GATE'
 n="$1" tip="$2"
 L="$GATE_LOG_DIR/integ-gate-$n.log"
 echo "$n $GATE_TIER" >>"$GATE_LOG_DIR/tiers.log"
+echo "$n ${JK_HOME:-unset} $(command -v jk)" >>"$GATE_LOG_DIR/homes.log"
 cd "$GATE_CHECKOUT" && git checkout -q --detach "$tip"
 [ -z "${DROP_REF:-}" ] || git --git-dir="$DROP_IN" update-ref -d "refs/queue/$DROP_REF"
 red="$(git ls-tree -r --name-only HEAD | grep -E '(^|/)red\.txt$' | head -1)"
@@ -145,7 +151,7 @@ status_has() {
   grep "${@:2}" <<<"$out"
 }
 queue() {
-  env QUEUE_REPO="$WORK/queue.git" QUEUE_CHECKOUT="$WORK/co" QUEUE_GATE="$WORK/gate.sh" \
+  env QUEUE_REPO="$WORK/queue.git" QUEUE_CHECKOUT="$WORK/co" QUEUE_GATE="$WORK/gate.sh" JK_HOME="$WORK/home" \
     QUEUE_LOG_DIR="$WORK/logs" GATE_LOCK="$WORK/gate.lock" DROP_IN="$WORK/queue.git" "$@" bash "$Q/loop.sh" --once
 }
 origin_main() { git -C "$WORK/origin.git" rev-parse main; }
@@ -187,7 +193,18 @@ for x in a b c; do submit "$x" || fail "submitting $x failed: $(cat "$WORK/submi
 [[ "$(status a)" == "a: waiting "* ]] || fail "a submitted branch is not waiting: $(status a)"
 [[ "$(status untried || true)" == "untried: not in the queue" ]] || fail "a refused branch shows as queued"
 
+# The queue gates in a home of its own: with none, or with the default one, it starts no batch.
+for h in "" "$HOME/.jk"; do
+  rc=0
+  queue JK_HOME="$h" 2>"$WORK/home.err" || rc=$?
+  [[ "$rc" -eq 2 ]] || fail "the loop with JK_HOME='$h' exited $rc, want 2"
+  grep -q "JK_HOME must name a JumpKick home of the queue's own" "$WORK/home.err" || fail "the refusal does not say why: $(cat "$WORK/home.err")"
+  [[ ! -e "$WORK/queue.git/queue-batch-n" && "$(status a)" == "a: waiting "* ]] || fail "the loop with JK_HOME='$h' ran a batch"
+done
+
 queue || fail "the first batch did not run"
+[[ "$(cat "$WORK/logs/homes.log")" == "1 $WORK/home $WORK/home/bin/jk" ]] ||
+  fail "the gate did not run in the queue's home: $(cat "$WORK/logs/homes.log")"
 holds b.txt || fail "b did not land: $(git -C "$WORK/origin.git" log --oneline main)"
 [[ "$(git -C "$WORK/origin.git" show main:base.txt)" == from-a ]] || fail "a did not land"
 [[ "$(git -C "$WORK/origin.git" rev-list --count main)" -eq 3 ]] || fail "a's commit landed twice: $(git -C "$WORK/origin.git" log --oneline main)"

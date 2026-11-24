@@ -47,6 +47,9 @@
 #
 #   QUEUE_REPO      the queue's bare repository (default ~/src/jk-queue.git); created when missing
 #   QUEUE_CHECKOUT  the clean checkout batches are built and gated in; its origin holds main (required)
+#   JK_HOME         the JumpKick home the gate installs each batch into and runs from (required, and
+#                   not ~/.jk): the default home is the one every other session on this host runs, and
+#                   a candidate installed there re-keys their suites with each batch
 #   QUEUE_GATE      the gate, run as <gate> <n> <sha> (default scripts/gate/gate.sh of the batch)
 #   QUEUE_TIER      the gate's tier, its GATE_TIER: queue (default; docs for a docs-only batch) or
 #                   full; GATE_BASE is the batch's origin/main
@@ -58,12 +61,19 @@
 # The whole body is one brace group, so bash has read all of it before a checkout changes this file.
 {
   set -uo pipefail
+  [ -z "${JK_HOME:-}" ] || export PATH="$JK_HOME/bin:$PATH"
   repo="${QUEUE_REPO:-$HOME/src/jk-queue.git}"
   co="${QUEUE_CHECKOUT:?QUEUE_CHECKOUT: the checkout batches are gated in}"
   D="${QUEUE_LOG_DIR:-/var/tmp/jk-queue}"
   S="$repo/queue-state"
 
   if [ "${1:-}" != --batch ]; then
+    case "${JK_HOME:-}" in
+      "" | "$HOME/.jk" | "$HOME/.jk/")
+        echo "queue: JK_HOME must name a JumpKick home of the queue's own, not ${JK_HOME:-the default ~/.jk}: the gate installs each batch there" >&2
+        exit 2
+        ;;
+    esac
     [ -d "$repo" ] || git init -q --bare "$repo" || exit 2
     mkdir -p "$S" "$D" || exit 2
     # Each batch runs a copy, so a checkout that changes this file mid-batch leaves it alone. The
