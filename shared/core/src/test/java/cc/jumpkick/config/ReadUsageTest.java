@@ -10,7 +10,7 @@ import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-/** {@code [agents] read-usage}: on unless the environment or the file says false, and its notice once per surface. */
+/** {@code [agents] read-usage}: on unless the environment or the file says false, and its notice once. */
 class ReadUsageTest {
 
     @TempDir
@@ -51,23 +51,14 @@ class ReadUsageTest {
     void a_machine_that_saw_the_earlier_wording_sees_this_one_once() throws IOException {
         Path state = dir.resolve("state");
         Files.createDirectories(state);
-        Files.createFile(state.resolve("read-usage-noticed-" + ReadUsage.CLI));
-        assertThat(ReadUsage.firstNotice(state, ReadUsage.CLI)).isTrue();
-        assertThat(ReadUsage.firstNotice(state, ReadUsage.CLI)).isFalse();
-    }
-
-    @Test
-    void each_surface_gets_its_notice_once() {
-        Path state = dir.resolve("state");
-        assertThat(ReadUsage.firstNotice(state, ReadUsage.CLI)).isTrue();
-        assertThat(ReadUsage.firstNotice(state, ReadUsage.CLI)).isFalse();
-        assertThat(ReadUsage.firstNotice(state, ReadUsage.WEB)).isTrue();
-        assertThat(ReadUsage.firstNotice(state, ReadUsage.WEB)).isFalse();
+        Files.createFile(state.resolve("read-usage-noticed-web"));
+        assertThat(ReadUsage.firstNotice(state)).isTrue();
+        assertThat(ReadUsage.firstNotice(state)).isFalse();
     }
 
     @Test
     void the_notice_fits_a_line() {
         assertThat(ReadUsage.NOTICE.length()).isLessThanOrEqualTo(78);
-        assertThat(("    " + ReadUsage.OFF).length()).isLessThanOrEqualTo(78);
+        assertThat(ReadUsage.OFF.length()).isLessThanOrEqualTo(78);
     }
 }

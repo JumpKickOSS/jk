@@ -21,7 +21,7 @@ public final class ReadUsageNotice {
 
     /** Raise the notice when reading is on in {@code userConfig} and the bell has not said so; true if raised. */
     public static boolean announce(Notices notices, Path userConfig, Path stateDir) {
-        if (!ReadUsage.on(userConfig) || !ReadUsage.firstNotice(stateDir, ReadUsage.WEB)) return false;
+        if (!ReadUsage.on(userConfig) || !ReadUsage.firstNotice(stateDir)) return false;
         notices.add(KIND, ReadUsage.NOTICE + "; " + ReadUsage.OFF, HREF, null);
         return true;
     }

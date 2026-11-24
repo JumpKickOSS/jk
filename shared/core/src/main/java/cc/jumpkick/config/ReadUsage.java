@@ -14,7 +14,7 @@ import org.tomlj.TomlTable;
  * (Claude Code's, Codex's, Grok's, Copilot CLI's, Muse's and Antigravity's) for an episode's receipt. On unless
  * {@link #ENV} or the user-global file says {@code false}, the environment first; a missing or unreadable
  * file, or a value that is not a boolean, leaves the layer below in charge. Machine-scoped: {@code
- * ~/.jk/config.toml} only. Each surface tells the person once that it is on ({@link #firstNotice}).
+ * ~/.jk/config.toml} only. The dashboard's bell tells the person once that it is on ({@link #firstNotice}).
  */
 public final class ReadUsage {
 
@@ -26,12 +26,6 @@ public final class ReadUsage {
 
     /** The environment variable that overrides the file: {@code true} or {@code false}. */
     public static final String ENV = "JK_AGENTS_READ_USAGE";
-
-    /** The surface that shows the notice in the dashboard's bell. */
-    public static final String WEB = "web";
-
-    /** The surface that shows the notice after a command at a terminal. */
-    public static final String CLI = "cli";
 
     /** The {@code [agents]} table and its key. */
     public static final UserConfigTable AGENTS = UserConfigTable.of("agents");
@@ -61,15 +55,15 @@ public final class ReadUsage {
     }
 
     /**
-     * True exactly once per {@code surface} on this machine, the first time it asks: the marker it
+     * True exactly once on this machine, the first time it is asked: the marker it
      * leaves under {@code stateDir} answers every later ask, from any process. False when the marker
      * cannot be written, so a read-only home never shows the notice on every command. The marker
      * names this wording of the notice, so a machine that saw an earlier wording sees this one once.
      */
-    public static boolean firstNotice(Path stateDir, String surface) {
+    public static boolean firstNotice(Path stateDir) {
         try {
             Files.createDirectories(stateDir);
-            Files.createFile(stateDir.resolve("read-usage-agents-noticed-" + surface));
+            Files.createFile(stateDir.resolve("read-usage-agents-noticed"));
             return true;
         } catch (IOException e) {
             return false;
