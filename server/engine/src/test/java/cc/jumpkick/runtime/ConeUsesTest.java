@@ -82,6 +82,21 @@ class ConeUsesTest {
     }
 
     @Test
+    void a_body_only_a_child_jvm_ran_runs_the_test_class(@TempDir Path ws) throws Exception {
+        Path classes = ws.resolve("classes");
+        write(classes, "demo/T", testClass());
+        write(classes, "demo/Dep", dep(1, CD_int, 0));
+        ClassReads.Observation forked = observation("demo.T");
+        forked.ranUnmarked();
+        String row = row(classes, ws, forked);
+
+        write(classes, "demo/Dep", dep(2, CD_int, 0));
+        assertThat(whyRun(classes, ws, row))
+                .as("its window never ran it, the child it started may have")
+                .isEqualTo("key");
+    }
+
+    @Test
     void a_siblings_jar_counts_as_a_class_tree_does(@TempDir Path ws) throws Exception {
         Path classes = ws.resolve("classes");
         write(classes, "demo/T", testClass());

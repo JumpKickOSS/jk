@@ -775,6 +775,81 @@ class ClassReadsTest {
         assertThat(plain.tools()).containsExactlyInAnyOrder(ClassReads.EXTERNAL_PROGRAM, ClassReads.STARTED_PROGRAM);
     }
 
+    /**
+     * The test JDK's own java on the test class path is no program the class depends on, but it runs
+     * classes no window marks: its class keeps its cone and keys every class of it, not only what its
+     * window ran. The same launcher on nothing of the class path leaves what was used as it was.
+     */
+    @Test
+    void the_test_jdks_java_on_the_test_class_path_keys_the_whole_cone(@TempDir Path tmp) throws Exception {
+        Path ws = Files.createDirectories(tmp.resolve("ws"));
+        Path classes = Files.createDirectories(ws.resolve("target/test-classes"));
+        Path temp = Files.createDirectories(tmp.resolve("temp"));
+        Path recordings = Files.createDirectories(tmp.resolve("rec"));
+        Path javaHome = Path.of(System.getProperty("java.home"));
+        String java = javaHome.resolve("bin")
+                .resolve(Os.isWindows() ? "java.exe" : "java")
+                .toString();
+
+        try (Recording r = new Recording()) {
+            r.enable("jdk.ProcessStart");
+            r.enable(ClassReads.WINDOW_EVENT).withThreshold(Duration.ZERO);
+            r.enable(ClassReads.USE_EVENT);
+            r.start();
+            Window child = window("demo.ChildTest");
+            use("demo.ChildTest");
+            runIn(ws, List.of(java, "-cp", classes.toString(), "-version"));
+            child.commit();
+            Window version = window("demo.VersionTest");
+            use("demo.VersionTest");
+            runIn(ws, List.of(java, "-version"));
+            version.commit();
+            r.stop();
+            r.dump(recordings.resolve("one.jfr"));
+        }
+
+        ClassReads.Attributed seen = ClassReads.attribute(
+                recordings,
+                ws,
+                new ClassReads.Layout(List.of(classes), List.of(), Set.of(), ws, javaHome, List.of(), List.of(temp)));
+        ClassReads.Observation child = Objects.requireNonNull(seen.classes().get("demo.ChildTest"));
+        ClassReads.Observation plain = Objects.requireNonNull(seen.classes().get("demo.VersionTest"));
+        assertThat(child.processes()).as("the JDK the key holds").isEmpty();
+        assertThat(child.used("demo.ChildTest")).isTrue();
+        assertThat(child.usedMore()).as("the child ran what no window marked").isTrue();
+        assertThat(plain.usedMore()).isFalse();
+    }
+
+    /** A test JDK child started outside every window ran unmarked for every class of its JVM. */
+    @Test
+    void a_test_jdk_child_outside_every_window_keys_every_classs_whole_cone(@TempDir Path tmp) throws Exception {
+        Path ws = Files.createDirectories(tmp.resolve("ws"));
+        Path classes = Files.createDirectories(ws.resolve("target/test-classes"));
+        Path recordings = Files.createDirectories(tmp.resolve("rec"));
+        Path javaHome = Path.of(System.getProperty("java.home"));
+        String java = javaHome.resolve("bin")
+                .resolve(Os.isWindows() ? "java.exe" : "java")
+                .toString();
+
+        try (Recording r = new Recording()) {
+            r.enable("jdk.ProcessStart");
+            r.enable(ClassReads.WINDOW_EVENT).withThreshold(Duration.ZERO);
+            r.enable(ClassReads.USE_EVENT);
+            r.start();
+            runIn(ws, List.of(java, "-cp", classes.toString(), "-version"));
+            Window w = window("demo.LaterTest");
+            use("demo.LaterTest");
+            w.commit();
+            r.stop();
+            r.dump(recordings.resolve("one.jfr"));
+        }
+
+        ClassReads.Attributed seen = ClassReads.attribute(
+                recordings, ws, new ClassReads.Layout(List.of(classes), List.of(), Set.of(), ws, javaHome));
+        assertThat(Objects.requireNonNull(seen.classes().get("demo.LaterTest")).usedMore())
+                .isTrue();
+    }
+
     private static void runIn(Path dir, List<String> command) throws Exception {
         new ProcessBuilder(command)
                 .directory(dir.toFile())

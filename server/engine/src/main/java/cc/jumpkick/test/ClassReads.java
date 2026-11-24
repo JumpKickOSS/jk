@@ -356,7 +356,10 @@ public final class ClassReads {
             return id != null && used.get(id);
         }
 
-        /** Whether a use went unnamed: the suite's uses named more classes than are kept. */
+        /**
+         * Whether a use went unnamed: the suite's uses named more classes than are kept, or a JVM the
+         * class started ran the test class path, where no probe marks what runs ({@link #ranUnmarked}).
+         */
         public boolean usedMore() {
             return usedMore;
         }
@@ -512,12 +515,20 @@ public final class ClassReads {
             addUsed(binaryName, names == null ? new UseNames() : names);
         }
 
+        /**
+         * Note that a JVM the class started ran classes of the test class path unmarked: what its
+         * window used is not all that ran, so its cone keys every class by its bytes.
+         */
+        public void ranUnmarked() {
+            usedMore = true;
+        }
+
         /** Take in every use of {@code pool}, what no window held. */
         void addUses(Observation pool) {
+            usedMore |= pool.usedMore;
             if (pool.useNames == null) return;
             useNames = pool.useNames;
             used.or(pool.used);
-            usedMore |= pool.usedMore;
         }
 
         public void addProcess(String program) {
@@ -995,10 +1006,16 @@ public final class ClassReads {
             if (into.isEmpty()) into.addAll(pools);
             switch (kind) {
                 case PROCESS -> {
-                    // The test JDK's own launcher (an agent attaching from a second JVM, as Mockito's
-                    // does) is the JDK the key already holds, not a program the class depends on.
+                    // The test JDK's own launcher is the JDK the key already holds, not a program the
+                    // class depends on; but what it runs of the test class path no window marks, so
+                    // the class keys its whole cone, not only what its window ran.
                     firstStart = Math.min(firstStart, at);
-                    if (!underJdk(value, layout)) into.forEach(o -> o.addProcess(value));
+                    if (!underJdk(value, layout)) {
+                        into.forEach(o -> o.addProcess(value));
+                    } else {
+                        into.forEach(Observation::ranUnmarked);
+                        if (!inWindow) unheldUses.ranUnmarked();
+                    }
                 }
                 case EXTERNAL -> {
                     firstStart = Math.min(firstStart, at);
