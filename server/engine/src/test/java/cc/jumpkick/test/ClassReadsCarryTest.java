@@ -16,10 +16,14 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.function.Predicate;
 import jdk.jfr.Event;
 import jdk.jfr.Name;
 import jdk.jfr.Recording;
 import jdk.jfr.StackTrace;
+import jdk.jfr.consumer.RecordedEvent;
+import jdk.jfr.consumer.RecordedThread;
+import jdk.jfr.consumer.RecordingFile;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -28,6 +32,9 @@ import org.junit.jupiter.api.io.TempDir;
  * What a class before it in its JVM did reaches a later class only through what the later class
  * touched: a program started earlier, when its window talked to a local peer; a worker jar, when its
  * window or a thread it started read it.
+ *
+ * <p>A recording holds every thread of the JVM, the test runner's channel and other classes' tests
+ * included, so each test keeps only its own threads' events before it attributes them.
  */
 class ClassReadsCarryTest {
 
@@ -55,6 +62,14 @@ class ClassReadsCarryTest {
         int port;
     }
 
+    /** A read of a pipe, which the JDK records with no path. */
+    @Name("jdk.FileRead")
+    @StackTrace(false)
+    static final class PipeRead extends Event {
+        @Nullable
+        String path;
+    }
+
     /**
      * A program outlives the window that started it, so a later class of the JVM that talked to a
      * local peer may have been served by it: a loopback or Unix domain socket other than the run's
@@ -72,6 +87,7 @@ class ClassReadsCarryTest {
                 .resolve(Os.isWindows() ? "java.exe" : "java")
                 .toString();
 
+        ExecutorService other = Executors.newSingleThreadExecutor();
         try (Recording r = new Recording()) {
             r.enable("jdk.ProcessStart");
             r.enable("jdk.FileRead").withThreshold(Duration.ZERO);
@@ -87,6 +103,8 @@ class ClassReadsCarryTest {
             Process served = version.start();
             starts.commit();
             Window quiet = window("demo.QuietTest");
+            // Another thread of the JVM talks to a local peer while the quiet class runs.
+            other.submit(() -> loopback("127.0.0.1", OWN_PORT + 2)).get();
             quiet.commit();
             Window own = window("demo.OwnPortTest");
             loopback("127.0.0.1", OWN_PORT);
@@ -98,10 +116,13 @@ class ClassReadsCarryTest {
             loopback("[" + tmp.resolve("engine.sock") + "]", 0);
             domain.commit();
             Window pipe = window("demo.PipeTest");
-            Processes.capture(version, served, Duration.ofMinutes(1));
+            new PipeRead().commit();
             pipe.commit();
             r.stop();
-            r.dump(recordings.resolve("one.jfr"));
+            Processes.capture(version, served, Duration.ofMinutes(1));
+            dumpOwn(r, tmp, recordings, Set.of(Thread.currentThread().threadId()));
+        } finally {
+            other.shutdownNow();
         }
 
         ClassReads.Attributed seen = ClassReads.attribute(
@@ -180,7 +201,9 @@ class ClassReadsCarryTest {
             later.commit();
             Files.readAllBytes(last);
             r.stop();
-            r.dump(recordings.resolve("one.jfr"));
+            long worker =
+                    background.submit(() -> Thread.currentThread().threadId()).get();
+            dumpOwn(r, tmp, recordings, Set.of(Thread.currentThread().threadId(), worker));
         } finally {
             background.shutdownNow();
         }
@@ -208,6 +231,19 @@ class ClassReadsCarryTest {
         assertThat(seen.code().files())
                 .as("worker jars are no file a class past its bound stands on")
                 .containsExactly(library);
+    }
+
+    /** Dump {@code r} into {@code recordings}, keeping only the events of {@code threads}. */
+    private static void dumpOwn(Recording r, Path tmp, Path recordings, Set<Long> threads) throws Exception {
+        Path whole = tmp.resolve("whole.jfr");
+        r.dump(whole);
+        Predicate<RecordedEvent> own = e -> {
+            RecordedThread t = e.getThread();
+            return t != null && threads.contains(t.getJavaThreadId());
+        };
+        try (RecordingFile file = new RecordingFile(whole)) {
+            file.write(recordings.resolve("one.jfr"), own);
+        }
     }
 
     private static Window window(String testClass) {
