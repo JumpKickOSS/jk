@@ -316,6 +316,7 @@ starts, not tested.
 | `jk-nograph` | jk | `jk mcp` through `wrappers/mcp-filter --drop`: no graph tool listed or callable | the no-graph baseline |
 | `jk-before` | jk | another jk, `$JK_BEFORE_HOME/bin/jk` in its own `JK_HOME` (a release), for prepare, agent and verification | the graph as it was: is new graph work a net gain |
 | `jk-nograph-noline` | jk | as `jk-nograph`, and the `jk code usages` line taken out of the sandbox's `AGENTS.md` | with `--shell`, what that line alone moves |
+| `jk-grokrules`, `jk-agyrules`, `jk-cursorrules` | jk | `jk mcp`, plus the agent's own rules file (`.grok/rules/jk.md`, `.agents/rules/jk.md`, `.cursor/rules/jk.mdc`), which only that agent reads | each agent's prescription, as the night runs it |
 | `jk-graph` | jk | `jk mcp` through `wrappers/mcp-filter --extended --keep`: the loop tools plus `usages`, `query`, `read`, `find`, `delete`, `move`, `pull_up`, `extract_interface` | the graph as MCP cards |
 | `jk-hooks` | jk | `jk mcp`, plus `wrappers/jk-graph-hook` on `Grep`, `Glob` and `Read`: the graph's answer (callers with each call's line quoted, subtypes, a long file's outline) beside the search | the graph, delivered where the agent already looks |
 | `jk-hooks-replace` | jk | as `jk-hooks`, but the answer replaces the search (the tool call is denied with it) | the graph instead of text search |
@@ -411,7 +412,11 @@ estimate for the rest; `status` prints the same for the night, running or ended 
 running with its time so far, cells left, the time they are expected to take and the clock time the
 night ends), then its tables so far. An agent CLI that is not logged in, a
 corpus repository not set up, and an agent whose two cells in a row end in an error row have their
-cells skipped and named. A real run refuses when the installed jk is not the tree's version or lacks
+cells skipped and named. Before it lists or runs a cell, the night, dry or real, puts every cell's arguments
+to its own harness (`smoke-test --check`, `change-tasks --check`: one invocation per line on stdin,
+parsed as the run would, nothing started) and refuses to start when a harness refuses one, naming the cell:
+an arm, driver or task the harness does not know is a fix before the night, not a night of error rows.
+A real run refuses when the installed jk is not the tree's version or lacks
 an MCP tool a step calls, when the loops are not paused, or when a gate holds the gate lock, which it then holds to
 the end. Rows land in `results/<date>-change-tasks/`, where the scoreboard reads them; nothing is
 banked or rendered: that is a separate, reviewed step.
