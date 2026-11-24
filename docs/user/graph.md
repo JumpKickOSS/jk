@@ -795,8 +795,11 @@ place stays the class when retyping it could break or change an override, an ove
 reference, a lambda's parameter, a record component or a field another file reads, or where a
 framework annotation on the method (`@ModelAttribute`, `@GetMapping`) means a framework calls it
 and reads its result by reflection; constructor
-calls, casts, type arguments and static calls stay too. Each place left is listed at `file:line`
-with its reason (`calls pages()`, `passed on`, `show() overrides a method`). `--no-switch` (MCP
+calls, casts, type arguments and static calls stay too. Each place left that a change could free is
+listed at `file:line` with its reason (`calls pages()`, `passed on`, `show() overrides a method`);
+where only the class will do (a constructor call, a cast, a type argument, a static call, a method
+a framework calls) the places are counted per file (`OwnerController.java  1 constructor call, 5
+type arguments`), which keeps the answer short for a class used widely. `--no-switch` (MCP
 `switch: false`) creates the interface alone and lists the places that could take it. It refuses
 a static or non-public method and a name already taken, writing nothing. Then it
 compiles the modules it touched, undoing the edit whole, the new file and every switch included,

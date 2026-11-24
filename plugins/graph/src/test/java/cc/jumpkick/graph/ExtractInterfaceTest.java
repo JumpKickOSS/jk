@@ -21,6 +21,7 @@ class ExtractInterfaceTest {
 
     static final String SHOP = "src/main/java/org/acme/shop/";
     static final String API = "src/main/java/org/acme/api/";
+    static final String STOCK = "src/main/java/org/acme/stock/";
 
     static final String BOOK = """
             package org.acme.shop;
@@ -131,10 +132,11 @@ class ExtractInterfaceTest {
                   src/main/java/org/acme/shop/Cart.java:16  BigDecimal sum(Priced first, Priced second) {
                   src/main/java/org/acme/shop/Cart.java:28  Priced make() {
                   src/main/java/org/acme/shop/Shelf.java:4  static void put(Priced book) {}
-                Left as Book (3 lines):
+                Left as Book (2 lines):
                   src/main/java/org/acme/shop/Cart.java:20  int size(Book counted) {  (calls pages())
                   src/main/java/org/acme/shop/Cart.java:24  void keep(Book kept) {  (passed on)
-                  src/main/java/org/acme/shop/Cart.java:29  return Book.free();  (names the class)""");
+                Also left as Book, where only the class will do (1 line):
+                  src/main/java/org/acme/shop/Cart.java  1 use of the class name""");
         assertThat(f.read(SHOP + "Priced.java")).isEqualTo("""
                 package org.acme.shop;
 
@@ -296,14 +298,13 @@ class ExtractInterfaceTest {
                                 + " a method)",
                         "  src/main/java/org/acme/api/Till.java:10  Book last;  (a field src/main/java/org/acme/api/"
                                 + "Reader.java uses)",
-                        "  src/main/java/org/acme/api/Till.java:11  final Consumer<Book> printer = (Book b) ->"
-                                + " b.price();  (a type argument)",
                         "(a lambda parameter: its target type fixes it)",
                         "  src/main/java/org/acme/api/Till.java:21  Book any() {  (its result is used as Book at"
                                 + " src/main/java/org/acme/api/Till.java:31)",
                         "  src/main/java/org/acme/api/Till.java:31  Book kept = any();  (calls tags())",
                         "  src/main/java/org/acme/api/Till.java:39  void see(Book seen) {  (a method reference to"
-                                + " see() in src/main/java/org/acme/api/Till.java fixes its types)");
+                                + " see() in src/main/java/org/acme/api/Till.java fixes its types)")
+                .contains("\n  src/main/java/org/acme/api/Till.java  2 type arguments\n");
         assertThat(f.read(API + "Pricer.java"))
                 .contains("import java.math.BigDecimal;\nimport org.acme.shop.Priced;\n\nfinal class Pricer {");
         assertThat(f.read(API + "Till.java")).contains("import org.acme.shop.Book;\nimport org.acme.shop.Priced;\n");
@@ -471,10 +472,67 @@ class ExtractInterfaceTest {
         assertThat(f.extract("Card", "Owned", "owner")).endsWith("""
                 Switched to Owned, calling only its methods (1 line):
                   src/main/java/org/acme/card/Labels.java:4  static String label(Owned card) {
-                Left as Card (2 lines):
-                  src/main/java/org/acme/card/Labels.java:9  public Card find() {  (@Exposed on find(): a framework may call it by reflection)
-                  src/main/java/org/acme/card/Labels.java:10  return new Card();  (a constructor call)""");
+                Also left as Card, where only the class will do (2 lines):
+                  src/main/java/org/acme/card/Labels.java  1 in a method a framework calls, 1 constructor call""");
         assertThat(f.checkExtract()).isEqualTo("Proven: it compiles.");
+    }
+
+    /**
+     * Where only the class will do (a constructor call, a type argument, a cast), the places are
+     * counted per file, so a class used widely still answers inside the MCP budget with every place
+     * an agent could change listed at its line.
+     */
+    @Test
+    void routinePlacesAreCountedPerFileSoAWidelyUsedClassAnswersInTheMcpBudget(@TempDir Path dir) throws IOException {
+        Map<String, String> files = new LinkedHashMap<>();
+        files.put(STOCK + "Item.java", """
+                package org.acme.stock;
+
+                public class Item {
+                    public int price() {
+                        return 1;
+                    }
+
+                    public String name() {
+                        return "pen";
+                    }
+                }
+                """);
+        for (int i = 0; i < 10; i++) {
+            files.put(STOCK + "Shelf" + i + ".java", """
+                    package org.acme.stock;
+
+                    import java.util.List;
+
+                    final class Shelf%1$d {
+                        static final List<Item> FRONT_ROW_OF_SHELF_%1$d = List.of(new Item());
+                        static final List<Item> BACK_ROW_OF_SHELF_%1$d = List.of(new Item());
+                        static final List<Item> TOP_ROW_OF_SHELF_%1$d = List.of(new Item());
+                        static final Object LABEL_OF_SHELF_%1$d = (Item) FRONT_ROW_OF_SHELF_%1$d.getFirst();
+
+                        static int label%1$d(Item item) {
+                            return item.name().length();
+                        }
+                    }
+                    """.formatted(i));
+        }
+        RenameFixture f = new RenameFixture(dir, files);
+
+        String answer = f.extract(2000, "Item", "Priced", "price");
+
+        assertThat(answer).doesNotContain("TRUNCATED").contains("""
+                Nothing outside Item could take Priced as it stands.
+                Left as Item (10 lines):
+                  src/main/java/org/acme/stock/Shelf0.java:11  static int label0(Item item) {  (calls name())
+                """);
+        for (int i = 0; i < 10; i++) {
+            assertThat(answer)
+                    .contains("  src/main/java/org/acme/stock/Shelf" + i + ".java:11  static int label" + i
+                            + "(Item item) {  (calls name())")
+                    .contains("  src/main/java/org/acme/stock/Shelf" + i
+                            + ".java  3 type arguments, 3 constructor calls, 1 cast");
+        }
+        assertThat(answer).contains("Also left as Item, where only the class will do (70 lines):\n");
     }
 
     @Test
