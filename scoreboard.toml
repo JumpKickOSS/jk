@@ -86,6 +86,51 @@ tasks = 3
 
 [[row]]
 dim = "agents"
+subject = "agents.agy.questions.cache-read-tokens.gemini-4-neon-medium"
+project = "change-tasks"
+tool = "jk-agyrules"
+kind = "count"
+value = 205907
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.questions.cache-read-tokens.gemini-4-neon-medium"
+project = "change-tasks"
+tool = "jk-graph"
+kind = "count"
+value = 35461
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.questions.cache-read-tokens.gemini-4-neon-medium"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 16353325
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 9
+
+[[row]]
+dim = "agents"
 subject = "agents.agy.questions.cache-write-tokens.gemini-3.8-flash-high"
 project = "change-tasks"
 tool = "jk"
@@ -158,6 +203,51 @@ date = "2026-11-21"
 commit = "389b6f0f1"
 host-id = "c9ab742f7b18"
 tasks = 3
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.questions.cache-write-tokens.gemini-4-neon-medium"
+project = "change-tasks"
+tool = "jk-agyrules"
+kind = "count"
+value = 0
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.questions.cache-write-tokens.gemini-4-neon-medium"
+project = "change-tasks"
+tool = "jk-graph"
+kind = "count"
+value = 0
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.questions.cache-write-tokens.gemini-4-neon-medium"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 0
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 9
 
 [[row]]
 dim = "agents"
@@ -236,6 +326,51 @@ tasks = 3
 
 [[row]]
 dim = "agents"
+subject = "agents.agy.questions.input-tokens.gemini-4-neon-medium"
+project = "change-tasks"
+tool = "jk-agyrules"
+kind = "count"
+value = 135679
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.questions.input-tokens.gemini-4-neon-medium"
+project = "change-tasks"
+tool = "jk-graph"
+kind = "count"
+value = 21166
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.questions.input-tokens.gemini-4-neon-medium"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 2246176
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 9
+
+[[row]]
+dim = "agents"
 subject = "agents.agy.questions.non-graph-nav"
 project = "change-tasks"
 tool = "jk"
@@ -274,6 +409,21 @@ value = 0.0
 unit = "share"
 band = 0.25
 runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.questions.non-graph-nav"
+project = "change-tasks"
+tool = "jk-agyrules"
+kind = "count"
+value = 0.0
+unit = "share"
+band = 0.25
+runs = 1
 date = "2026-11-04"
 commit = "1eb1c51d7"
 host-id = "c9ab742f7b18"
@@ -293,6 +443,36 @@ date = "2026-11-04"
 commit = "1eb1c51d7"
 host-id = "c9ab742f7b18"
 tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.questions.non-graph-nav"
+project = "change-tasks"
+tool = "jk-graph"
+kind = "count"
+value = 0.0
+unit = "share"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.questions.non-graph-nav"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 1.0
+unit = "share"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 9
 
 [[row]]
 dim = "agents"
@@ -386,6 +566,51 @@ tasks = 3
 
 [[row]]
 dim = "agents"
+subject = "agents.agy.questions.output-tokens.gemini-4-neon-medium"
+project = "change-tasks"
+tool = "jk-agyrules"
+kind = "count"
+value = 12747
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.questions.output-tokens.gemini-4-neon-medium"
+project = "change-tasks"
+tool = "jk-graph"
+kind = "count"
+value = 2595
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.questions.output-tokens.gemini-4-neon-medium"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 140683
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 9
+
+[[row]]
+dim = "agents"
 subject = "agents.agy.questions.tokens"
 project = "change-tasks"
 tool = "jk"
@@ -420,6 +645,21 @@ subject = "agents.agy.questions.tokens"
 project = "change-tasks"
 tool = "jk-agyrules"
 kind = "count"
+value = 354333
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.questions.tokens"
+project = "change-tasks"
+tool = "jk-agyrules"
+kind = "count"
 value = 4547397
 unit = "tokens"
 band = 0.25
@@ -443,6 +683,36 @@ date = "2026-11-04"
 commit = "1eb1c51d7"
 host-id = "c9ab742f7b18"
 tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.questions.tokens"
+project = "change-tasks"
+tool = "jk-graph"
+kind = "count"
+value = 59222
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.questions.tokens"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 18740184
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 9
 
 [[row]]
 dim = "agents"
@@ -495,6 +765,21 @@ subject = "agents.agy.questions.turns"
 project = "change-tasks"
 tool = "jk-agyrules"
 kind = "count"
+value = 35
+unit = "turns"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.questions.turns"
+project = "change-tasks"
+tool = "jk-agyrules"
+kind = "count"
 value = 116
 unit = "turns"
 band = 0.25
@@ -518,6 +803,36 @@ date = "2026-11-04"
 commit = "1eb1c51d7"
 host-id = "c9ab742f7b18"
 tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.questions.turns"
+project = "change-tasks"
+tool = "jk-graph"
+kind = "count"
+value = 7
+unit = "turns"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.questions.turns"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 142
+unit = "turns"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 9
 
 [[row]]
 dim = "agents"
@@ -656,6 +971,36 @@ tasks = 1
 
 [[row]]
 dim = "agents"
+subject = "agents.agy.renames.cache-read-tokens.gemini-4-neon-medium"
+project = "change-tasks"
+tool = "jk-agyrules"
+kind = "count"
+value = 131605
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.renames.cache-read-tokens.gemini-4-neon-medium"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 1182076
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 8
+
+[[row]]
+dim = "agents"
 subject = "agents.agy.renames.cache-write-tokens.gemini-3.8-flash-high"
 project = "change-tasks"
 tool = "jk"
@@ -773,6 +1118,36 @@ date = "2026-11-21"
 commit = "389b6f0f1"
 host-id = "c9ab742f7b18"
 tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.renames.cache-write-tokens.gemini-4-neon-medium"
+project = "change-tasks"
+tool = "jk-agyrules"
+kind = "count"
+value = 0
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.renames.cache-write-tokens.gemini-4-neon-medium"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 0
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 8
 
 [[row]]
 dim = "agents"
@@ -896,6 +1271,36 @@ tasks = 1
 
 [[row]]
 dim = "agents"
+subject = "agents.agy.renames.input-tokens.gemini-4-neon-medium"
+project = "change-tasks"
+tool = "jk-agyrules"
+kind = "count"
+value = 104064
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.renames.input-tokens.gemini-4-neon-medium"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 328649
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 8
+
+[[row]]
+dim = "agents"
 subject = "agents.agy.renames.output-tokens.gemini-3.8-flash-high"
 project = "change-tasks"
 tool = "jk"
@@ -1016,6 +1421,36 @@ tasks = 1
 
 [[row]]
 dim = "agents"
+subject = "agents.agy.renames.output-tokens.gemini-4-neon-medium"
+project = "change-tasks"
+tool = "jk-agyrules"
+kind = "count"
+value = 9163
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.renames.output-tokens.gemini-4-neon-medium"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 32099
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 8
+
+[[row]]
+dim = "agents"
 subject = "agents.agy.renames.tokens"
 project = "change-tasks"
 tool = "jk"
@@ -1028,6 +1463,21 @@ date = "2026-11-04"
 commit = "1eb1c51d7"
 host-id = "c9ab742f7b18"
 tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.renames.tokens"
+project = "change-tasks"
+tool = "jk-agyrules"
+kind = "count"
+value = 244832
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 8
 
 [[row]]
 dim = "agents"
@@ -1095,6 +1545,21 @@ subject = "agents.agy.renames.tokens"
 project = "change-tasks"
 tool = "jk-nograph"
 kind = "count"
+value = 1542824
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.renames.tokens"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
 value = 12373902.5
 unit = "tokens"
 band = 0.25
@@ -1148,6 +1613,21 @@ date = "2026-11-04"
 commit = "1eb1c51d7"
 host-id = "c9ab742f7b18"
 tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.renames.turns"
+project = "change-tasks"
+tool = "jk-agyrules"
+kind = "count"
+value = 31
+unit = "turns"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 8
 
 [[row]]
 dim = "agents"
@@ -1215,6 +1695,21 @@ subject = "agents.agy.renames.turns"
 project = "change-tasks"
 tool = "jk-nograph"
 kind = "count"
+value = 84
+unit = "turns"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.agy.renames.turns"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
 value = 310.0
 unit = "turns"
 band = 0.25
@@ -1253,6 +1748,51 @@ date = "2026-11-04"
 commit = "1eb1c51d7"
 host-id = "c9ab742f7b18"
 tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.questions.cache-read-tokens.claude-opus-5-5"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 270903
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 9
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.questions.cache-read-tokens.claude-opus-5-5"
+project = "change-tasks"
+tool = "jk-graph"
+kind = "count"
+value = 42499
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.questions.cache-read-tokens.claude-opus-5-5"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 3608374
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 10
 
 [[row]]
 dim = "agents"
@@ -1361,6 +1901,51 @@ tasks = 1
 
 [[row]]
 dim = "agents"
+subject = "agents.claude-code.questions.cache-write-tokens.claude-opus-5-5"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 46826
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 9
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.questions.cache-write-tokens.claude-opus-5-5"
+project = "change-tasks"
+tool = "jk-graph"
+kind = "count"
+value = 4211
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.questions.cache-write-tokens.claude-opus-5-5"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 349233
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 10
+
+[[row]]
+dim = "agents"
 subject = "agents.claude-code.questions.cache-write-tokens.claude-sonnet-5-5"
 project = "change-tasks"
 tool = "jk"
@@ -1463,6 +2048,51 @@ date = "2026-11-21"
 commit = "389b6f0f1"
 host-id = "c9ab742f7b18"
 tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.questions.input-tokens.claude-opus-5-5"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 74
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 9
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.questions.input-tokens.claude-opus-5-5"
+project = "change-tasks"
+tool = "jk-graph"
+kind = "count"
+value = 10
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.questions.input-tokens.claude-opus-5-5"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 248
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 10
 
 [[row]]
 dim = "agents"
@@ -1575,6 +2205,21 @@ subject = "agents.claude-code.questions.non-graph-nav"
 project = "change-tasks"
 tool = "jk"
 kind = "count"
+value = 0.333
+unit = "share"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 9
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.questions.non-graph-nav"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
 value = 0.0
 unit = "share"
 band = 0.25
@@ -1620,6 +2265,21 @@ subject = "agents.claude-code.questions.non-graph-nav"
 project = "change-tasks"
 tool = "jk-graph"
 kind = "count"
+value = 0.0
+unit = "share"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.questions.non-graph-nav"
+project = "change-tasks"
+tool = "jk-graph"
+kind = "count"
 value = 0.941
 unit = "share"
 band = 0.25
@@ -1628,6 +2288,21 @@ date = "2026-11-04"
 commit = "1eb1c51d7"
 host-id = "c9ab742f7b18"
 tasks = 5
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.questions.non-graph-nav"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 1.0
+unit = "share"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 10
 
 [[row]]
 dim = "agents"
@@ -1673,6 +2348,51 @@ date = "2026-11-04"
 commit = "1eb1c51d7"
 host-id = "c9ab742f7b18"
 tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.questions.output-tokens.claude-opus-5-5"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 8767
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 9
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.questions.output-tokens.claude-opus-5-5"
+project = "change-tasks"
+tool = "jk-graph"
+kind = "count"
+value = 808
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.questions.output-tokens.claude-opus-5-5"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 45765
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 10
 
 [[row]]
 dim = "agents"
@@ -1785,6 +2505,21 @@ subject = "agents.claude-code.questions.tokens"
 project = "change-tasks"
 tool = "jk"
 kind = "count"
+value = 326570
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 9
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.questions.tokens"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
 value = 341017
 unit = "tokens"
 band = 0.25
@@ -1830,6 +2565,21 @@ subject = "agents.claude-code.questions.tokens"
 project = "change-tasks"
 tool = "jk-graph"
 kind = "count"
+value = 47528
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.questions.tokens"
+project = "change-tasks"
+tool = "jk-graph"
+kind = "count"
 value = 887033.0
 unit = "tokens"
 band = 0.25
@@ -1838,6 +2588,21 @@ date = "2026-11-04"
 commit = "1eb1c51d7"
 host-id = "c9ab742f7b18"
 tasks = 5
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.questions.tokens"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 4003620
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 10
 
 [[row]]
 dim = "agents"
@@ -1890,6 +2655,21 @@ subject = "agents.claude-code.questions.turns"
 project = "change-tasks"
 tool = "jk"
 kind = "count"
+value = 40
+unit = "turns"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 9
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.questions.turns"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
 value = 27
 unit = "turns"
 band = 0.25
@@ -1935,6 +2715,21 @@ subject = "agents.claude-code.questions.turns"
 project = "change-tasks"
 tool = "jk-graph"
 kind = "count"
+value = 5
+unit = "turns"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.questions.turns"
+project = "change-tasks"
+tool = "jk-graph"
+kind = "count"
 value = 62.0
 unit = "turns"
 band = 0.25
@@ -1943,6 +2738,21 @@ date = "2026-11-04"
 commit = "1eb1c51d7"
 host-id = "c9ab742f7b18"
 tasks = 5
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.questions.turns"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 177
+unit = "turns"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 10
 
 [[row]]
 dim = "agents"
@@ -1988,6 +2798,36 @@ date = "2026-11-04"
 commit = "1eb1c51d7"
 host-id = "c9ab742f7b18"
 tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.renames.cache-read-tokens.claude-opus-5-5"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 156814
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.renames.cache-read-tokens.claude-opus-5-5"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 764716
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 8
 
 [[row]]
 dim = "agents"
@@ -2171,6 +3011,36 @@ tasks = 2
 
 [[row]]
 dim = "agents"
+subject = "agents.claude-code.renames.cache-write-tokens.claude-opus-5-5"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 21830
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.renames.cache-write-tokens.claude-opus-5-5"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 106376
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 8
+
+[[row]]
+dim = "agents"
 subject = "agents.claude-code.renames.cache-write-tokens.claude-sonnet-5-5"
 project = "change-tasks"
 tool = "jk"
@@ -2351,6 +3221,36 @@ tasks = 2
 
 [[row]]
 dim = "agents"
+subject = "agents.claude-code.renames.input-tokens.claude-opus-5-5"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 50
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.renames.input-tokens.claude-opus-5-5"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 130
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 8
+
+[[row]]
+dim = "agents"
 subject = "agents.claude-code.renames.input-tokens.claude-sonnet-5-5"
 project = "change-tasks"
 tool = "jk"
@@ -2528,6 +3428,36 @@ date = "2026-11-21"
 commit = "389b6f0f1"
 host-id = "c9ab742f7b18"
 tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.renames.output-tokens.claude-opus-5-5"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 5344
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.renames.output-tokens.claude-opus-5-5"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 24955
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 8
 
 [[row]]
 dim = "agents"
@@ -2715,6 +3645,21 @@ subject = "agents.claude-code.renames.tokens"
 project = "change-tasks"
 tool = "jk"
 kind = "count"
+value = 184038
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.renames.tokens"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
 value = 102502
 unit = "tokens"
 band = 0.25
@@ -2835,6 +3780,21 @@ subject = "agents.claude-code.renames.tokens"
 project = "change-tasks"
 tool = "jk-nograph"
 kind = "count"
+value = 896177
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.renames.tokens"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
 value = 552328
 unit = "tokens"
 band = 0.25
@@ -2888,6 +3848,21 @@ date = "2026-11-04"
 commit = "1eb1c51d7"
 host-id = "c9ab742f7b18"
 tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.renames.turns"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 31
+unit = "turns"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 8
 
 [[row]]
 dim = "agents"
@@ -3015,6 +3990,21 @@ subject = "agents.claude-code.renames.turns"
 project = "change-tasks"
 tool = "jk-nograph"
 kind = "count"
+value = 134
+unit = "turns"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.claude-code.renames.turns"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
 value = 100
 unit = "turns"
 band = 0.25
@@ -3101,6 +4091,51 @@ tasks = 7
 
 [[row]]
 dim = "agents"
+subject = "agents.codex.questions.cache-read-tokens.gpt-6.2-sol"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 1042816
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 9
+
+[[row]]
+dim = "agents"
+subject = "agents.codex.questions.cache-read-tokens.gpt-6.2-sol"
+project = "change-tasks"
+tool = "jk-graph"
+kind = "count"
+value = 76288
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.codex.questions.cache-read-tokens.gpt-6.2-sol"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 2467712
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 10
+
+[[row]]
+dim = "agents"
 subject = "agents.codex.questions.cache-write-tokens.gpt-6.1-terra"
 project = "change-tasks"
 tool = "jk"
@@ -3128,6 +4163,51 @@ date = "2026-11-21"
 commit = "389b6f0f1"
 host-id = "c9ab742f7b18"
 tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.codex.questions.cache-write-tokens.gpt-6.2-sol"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 0
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 9
+
+[[row]]
+dim = "agents"
+subject = "agents.codex.questions.cache-write-tokens.gpt-6.2-sol"
+project = "change-tasks"
+tool = "jk-graph"
+kind = "count"
+value = 0
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.codex.questions.cache-write-tokens.gpt-6.2-sol"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 0
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 10
 
 [[row]]
 dim = "agents"
@@ -3161,6 +4241,66 @@ tasks = 7
 
 [[row]]
 dim = "agents"
+subject = "agents.codex.questions.input-tokens.gpt-6.2-sol"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 149686
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 9
+
+[[row]]
+dim = "agents"
+subject = "agents.codex.questions.input-tokens.gpt-6.2-sol"
+project = "change-tasks"
+tool = "jk-graph"
+kind = "count"
+value = 9700
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.codex.questions.input-tokens.gpt-6.2-sol"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 349202
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 10
+
+[[row]]
+dim = "agents"
+subject = "agents.codex.questions.non-graph-nav"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 0.5
+unit = "share"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 9
+
+[[row]]
+dim = "agents"
 subject = "agents.codex.questions.non-graph-nav"
 project = "change-tasks"
 tool = "jk"
@@ -3173,6 +4313,36 @@ date = "2026-11-04"
 commit = "1eb1c51d7"
 host-id = "c9ab742f7b18"
 tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.codex.questions.non-graph-nav"
+project = "change-tasks"
+tool = "jk-graph"
+kind = "count"
+value = 0.667
+unit = "share"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.codex.questions.non-graph-nav"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 1.0
+unit = "share"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 10
 
 [[row]]
 dim = "agents"
@@ -3221,6 +4391,66 @@ tasks = 7
 
 [[row]]
 dim = "agents"
+subject = "agents.codex.questions.output-tokens.gpt-6.2-sol"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 3591
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 9
+
+[[row]]
+dim = "agents"
+subject = "agents.codex.questions.output-tokens.gpt-6.2-sol"
+project = "change-tasks"
+tool = "jk-graph"
+kind = "count"
+value = 246
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.codex.questions.output-tokens.gpt-6.2-sol"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 10443
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 10
+
+[[row]]
+dim = "agents"
+subject = "agents.codex.questions.tokens"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 1196093
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 9
+
+[[row]]
+dim = "agents"
 subject = "agents.codex.questions.tokens"
 project = "change-tasks"
 tool = "jk"
@@ -3233,6 +4463,36 @@ date = "2026-11-04"
 commit = "1eb1c51d7"
 host-id = "c9ab742f7b18"
 tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.codex.questions.tokens"
+project = "change-tasks"
+tool = "jk-graph"
+kind = "count"
+value = 86234
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.codex.questions.tokens"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 2827357
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 10
 
 [[row]]
 dim = "agents"
@@ -3255,6 +4515,21 @@ subject = "agents.codex.questions.turns"
 project = "change-tasks"
 tool = "jk"
 kind = "count"
+value = 41
+unit = "turns"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 9
+
+[[row]]
+dim = "agents"
+subject = "agents.codex.questions.turns"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
 value = 25
 unit = "turns"
 band = 0.25
@@ -3263,6 +4538,36 @@ date = "2026-11-04"
 commit = "1eb1c51d7"
 host-id = "c9ab742f7b18"
 tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.codex.questions.turns"
+project = "change-tasks"
+tool = "jk-graph"
+kind = "count"
+value = 5
+unit = "turns"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.codex.questions.turns"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 75
+unit = "turns"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 10
 
 [[row]]
 dim = "agents"
@@ -3311,6 +4616,36 @@ tasks = 7
 
 [[row]]
 dim = "agents"
+subject = "agents.codex.renames.cache-read-tokens.gpt-6.2-sol"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 621440
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.codex.renames.cache-read-tokens.gpt-6.2-sol"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 2882816
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 8
+
+[[row]]
+dim = "agents"
 subject = "agents.codex.renames.cache-write-tokens.gpt-6.1-terra"
 project = "change-tasks"
 tool = "jk"
@@ -3338,6 +4673,36 @@ date = "2026-11-21"
 commit = "389b6f0f1"
 host-id = "c9ab742f7b18"
 tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.codex.renames.cache-write-tokens.gpt-6.2-sol"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 0
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.codex.renames.cache-write-tokens.gpt-6.2-sol"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 0
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 8
 
 [[row]]
 dim = "agents"
@@ -3371,6 +4736,36 @@ tasks = 7
 
 [[row]]
 dim = "agents"
+subject = "agents.codex.renames.input-tokens.gpt-6.2-sol"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 87425
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.codex.renames.input-tokens.gpt-6.2-sol"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 198626
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 8
+
+[[row]]
+dim = "agents"
 subject = "agents.codex.renames.output-tokens.gpt-6.1-terra"
 project = "change-tasks"
 tool = "jk"
@@ -3401,6 +4796,51 @@ tasks = 7
 
 [[row]]
 dim = "agents"
+subject = "agents.codex.renames.output-tokens.gpt-6.2-sol"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 1525
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.codex.renames.output-tokens.gpt-6.2-sol"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 5079
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.codex.renames.tokens"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 710390
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 8
+
+[[row]]
+dim = "agents"
 subject = "agents.codex.renames.tokens"
 project = "change-tasks"
 tool = "jk"
@@ -3413,6 +4853,21 @@ date = "2026-11-04"
 commit = "1eb1c51d7"
 host-id = "c9ab742f7b18"
 tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.codex.renames.tokens"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 3086521
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 8
 
 [[row]]
 dim = "agents"
@@ -3435,6 +4890,21 @@ subject = "agents.codex.renames.turns"
 project = "change-tasks"
 tool = "jk"
 kind = "count"
+value = 22
+unit = "turns"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.codex.renames.turns"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
 value = 14
 unit = "turns"
 band = 0.25
@@ -3443,6 +4913,21 @@ date = "2026-11-04"
 commit = "1eb1c51d7"
 host-id = "c9ab742f7b18"
 tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.codex.renames.turns"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 60
+unit = "turns"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 8
 
 [[row]]
 dim = "agents"
@@ -3461,6 +4946,501 @@ tasks = 7
 
 [[row]]
 dim = "agents"
+subject = "agents.copilot.questions.cache-read-tokens.fusion"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 1263803
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.copilot.questions.cache-read-tokens.fusion"
+project = "change-tasks"
+tool = "jk-graph"
+kind = "count"
+value = 41472
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.copilot.questions.cache-read-tokens.fusion"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 4832255
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.copilot.questions.cache-write-tokens.fusion"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 17931
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.copilot.questions.cache-write-tokens.fusion"
+project = "change-tasks"
+tool = "jk-graph"
+kind = "count"
+value = 0
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.copilot.questions.cache-write-tokens.fusion"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 53972
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.copilot.questions.input-tokens.fusion"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 325399
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.copilot.questions.input-tokens.fusion"
+project = "change-tasks"
+tool = "jk-graph"
+kind = "count"
+value = 12753
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.copilot.questions.input-tokens.fusion"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 559948
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.copilot.questions.non-graph-nav"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 0.0
+unit = "share"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.copilot.questions.non-graph-nav"
+project = "change-tasks"
+tool = "jk-graph"
+kind = "count"
+value = 0.0
+unit = "share"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.copilot.questions.non-graph-nav"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 1.0
+unit = "share"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.copilot.questions.output-tokens.fusion"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 17893
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.copilot.questions.output-tokens.fusion"
+project = "change-tasks"
+tool = "jk-graph"
+kind = "count"
+value = 312
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.copilot.questions.output-tokens.fusion"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 78907
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.copilot.questions.tokens"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 1625026
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.copilot.questions.tokens"
+project = "change-tasks"
+tool = "jk-graph"
+kind = "count"
+value = 54537
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.copilot.questions.tokens"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 5525082
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.copilot.questions.turns"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 53
+unit = "turns"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.copilot.questions.turns"
+project = "change-tasks"
+tool = "jk-graph"
+kind = "count"
+value = 3
+unit = "turns"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.copilot.questions.turns"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 130
+unit = "turns"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.copilot.renames.cache-read-tokens.fusion"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 589129
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.copilot.renames.cache-read-tokens.fusion"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 1497409
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.copilot.renames.cache-write-tokens.fusion"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 15162
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.copilot.renames.cache-write-tokens.fusion"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 37001
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.copilot.renames.input-tokens.fusion"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 162891
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.copilot.renames.input-tokens.fusion"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 283837
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.copilot.renames.output-tokens.fusion"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 6466
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.copilot.renames.output-tokens.fusion"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 25405
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.copilot.renames.tokens"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 773648
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.copilot.renames.tokens"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 1843652
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.copilot.renames.turns"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 36
+unit = "turns"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.copilot.renames.turns"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 66
+unit = "turns"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 8
+
+[[row]]
+dim = "agents"
 subject = "agents.cursor.questions.cache-read-tokens.composer-2.5"
 project = "change-tasks"
 tool = "jk"
@@ -3473,6 +5453,21 @@ date = "2026-11-21"
 commit = "389b6f0f1"
 host-id = "c9ab742f7b18"
 tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.questions.cache-read-tokens.composer-2.5"
+project = "change-tasks"
+tool = "jk-cursorrules"
+kind = "count"
+value = 896256
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 9
 
 [[row]]
 dim = "agents"
@@ -3518,6 +5513,36 @@ date = "2026-11-21"
 commit = "389b6f0f1"
 host-id = "c9ab742f7b18"
 tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.questions.cache-read-tokens.composer-2.5"
+project = "change-tasks"
+tool = "jk-graph"
+kind = "count"
+value = 188352
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.questions.cache-read-tokens.composer-2.5"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 8407616
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 9
 
 [[row]]
 dim = "agents"
@@ -3574,6 +5599,21 @@ value = 0
 unit = "tokens"
 band = 0.25
 runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 9
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.questions.cache-write-tokens.composer-2.5"
+project = "change-tasks"
+tool = "jk-cursorrules"
+kind = "count"
+value = 0
+unit = "tokens"
+band = 0.25
+runs = 1
 date = "2026-11-21"
 commit = "389b6f0f1"
 host-id = "c9ab742f7b18"
@@ -3608,6 +5648,36 @@ date = "2026-11-21"
 commit = "389b6f0f1"
 host-id = "c9ab742f7b18"
 tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.questions.cache-write-tokens.composer-2.5"
+project = "change-tasks"
+tool = "jk-graph"
+kind = "count"
+value = 0
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.questions.cache-write-tokens.composer-2.5"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 0
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 9
 
 [[row]]
 dim = "agents"
@@ -3660,6 +5730,21 @@ subject = "agents.cursor.questions.input-tokens.composer-2.5"
 project = "change-tasks"
 tool = "jk-cursorrules"
 kind = "count"
+value = 229420
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 9
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.questions.input-tokens.composer-2.5"
+project = "change-tasks"
+tool = "jk-cursorrules"
+kind = "count"
 value = 94830
 unit = "tokens"
 band = 0.25
@@ -3698,6 +5783,36 @@ date = "2026-11-21"
 commit = "389b6f0f1"
 host-id = "c9ab742f7b18"
 tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.questions.input-tokens.composer-2.5"
+project = "change-tasks"
+tool = "jk-graph"
+kind = "count"
+value = 22375
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.questions.input-tokens.composer-2.5"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 1161391
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 9
 
 [[row]]
 dim = "agents"
@@ -3754,6 +5869,21 @@ value = 0.0
 unit = "share"
 band = 0.25
 runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 9
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.questions.non-graph-nav"
+project = "change-tasks"
+tool = "jk-cursorrules"
+kind = "count"
+value = 0.0
+unit = "share"
+band = 0.25
+runs = 1
 date = "2026-11-04"
 commit = "1eb1c51d7"
 host-id = "c9ab742f7b18"
@@ -3788,6 +5918,36 @@ date = "2026-11-04"
 commit = "1eb1c51d7"
 host-id = "c9ab742f7b18"
 tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.questions.non-graph-nav"
+project = "change-tasks"
+tool = "jk-graph"
+kind = "count"
+value = 0.5
+unit = "share"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.questions.non-graph-nav"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 0.991
+unit = "share"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 9
 
 [[row]]
 dim = "agents"
@@ -3840,6 +6000,21 @@ subject = "agents.cursor.questions.output-tokens.composer-2.5"
 project = "change-tasks"
 tool = "jk-cursorrules"
 kind = "count"
+value = 16713
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 9
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.questions.output-tokens.composer-2.5"
+project = "change-tasks"
+tool = "jk-cursorrules"
+kind = "count"
 value = 8493
 unit = "tokens"
 band = 0.25
@@ -3878,6 +6053,36 @@ date = "2026-11-21"
 commit = "389b6f0f1"
 host-id = "c9ab742f7b18"
 tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.questions.output-tokens.composer-2.5"
+project = "change-tasks"
+tool = "jk-graph"
+kind = "count"
+value = 2155
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.questions.output-tokens.composer-2.5"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 61199
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 9
 
 [[row]]
 dim = "agents"
@@ -3930,6 +6135,21 @@ subject = "agents.cursor.questions.tokens"
 project = "change-tasks"
 tool = "jk-cursorrules"
 kind = "count"
+value = 1142389
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 9
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.questions.tokens"
+project = "change-tasks"
+tool = "jk-cursorrules"
+kind = "count"
 value = 526715
 unit = "tokens"
 band = 0.25
@@ -3968,6 +6188,36 @@ date = "2026-11-04"
 commit = "1eb1c51d7"
 host-id = "c9ab742f7b18"
 tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.questions.tokens"
+project = "change-tasks"
+tool = "jk-graph"
+kind = "count"
+value = 212882
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.questions.tokens"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 9630206
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 9
 
 [[row]]
 dim = "agents"
@@ -4020,6 +6270,21 @@ subject = "agents.cursor.questions.turns"
 project = "change-tasks"
 tool = "jk-cursorrules"
 kind = "count"
+value = 46
+unit = "turns"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 9
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.questions.turns"
+project = "change-tasks"
+tool = "jk-cursorrules"
+kind = "count"
 value = 26
 unit = "turns"
 band = 0.25
@@ -4058,6 +6323,36 @@ date = "2026-11-04"
 commit = "1eb1c51d7"
 host-id = "c9ab742f7b18"
 tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.questions.turns"
+project = "change-tasks"
+tool = "jk-graph"
+kind = "count"
+value = 10
+unit = "turns"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.questions.turns"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 177
+unit = "turns"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 9
 
 [[row]]
 dim = "agents"
@@ -4110,6 +6405,21 @@ subject = "agents.cursor.renames.cache-read-tokens.composer-2.5"
 project = "change-tasks"
 tool = "jk-cursorrules"
 kind = "count"
+value = 460352
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.renames.cache-read-tokens.composer-2.5"
+project = "change-tasks"
+tool = "jk-cursorrules"
+kind = "count"
 value = 199296
 unit = "tokens"
 band = 0.25
@@ -4155,6 +6465,21 @@ subject = "agents.cursor.renames.cache-read-tokens.composer-2.5"
 project = "change-tasks"
 tool = "jk-nograph"
 kind = "count"
+value = 2289024
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.renames.cache-read-tokens.composer-2.5"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
 value = 1744864.0
 unit = "tokens"
 band = 0.25
@@ -4178,6 +6503,21 @@ date = "2026-11-21"
 commit = "389b6f0f1"
 host-id = "c9ab742f7b18"
 tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.renames.cache-write-tokens.composer-2.5"
+project = "change-tasks"
+tool = "jk-cursorrules"
+kind = "count"
+value = 0
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 8
 
 [[row]]
 dim = "agents"
@@ -4230,6 +6570,21 @@ subject = "agents.cursor.renames.cache-write-tokens.composer-2.5"
 project = "change-tasks"
 tool = "jk-nograph"
 kind = "count"
+value = 0
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.renames.cache-write-tokens.composer-2.5"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
 value = 0.0
 unit = "tokens"
 band = 0.25
@@ -4253,6 +6608,21 @@ date = "2026-11-21"
 commit = "389b6f0f1"
 host-id = "c9ab742f7b18"
 tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.renames.input-tokens.composer-2.5"
+project = "change-tasks"
+tool = "jk-cursorrules"
+kind = "count"
+value = 99957
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 8
 
 [[row]]
 dim = "agents"
@@ -4305,6 +6675,21 @@ subject = "agents.cursor.renames.input-tokens.composer-2.5"
 project = "change-tasks"
 tool = "jk-nograph"
 kind = "count"
+value = 297584
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.renames.input-tokens.composer-2.5"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
 value = 156470.5
 unit = "tokens"
 band = 0.25
@@ -4328,6 +6713,21 @@ date = "2026-11-21"
 commit = "389b6f0f1"
 host-id = "c9ab742f7b18"
 tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.renames.output-tokens.composer-2.5"
+project = "change-tasks"
+tool = "jk-cursorrules"
+kind = "count"
+value = 5918
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 8
 
 [[row]]
 dim = "agents"
@@ -4380,6 +6780,21 @@ subject = "agents.cursor.renames.output-tokens.composer-2.5"
 project = "change-tasks"
 tool = "jk-nograph"
 kind = "count"
+value = 20053
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.renames.output-tokens.composer-2.5"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
 value = 15839.5
 unit = "tokens"
 band = 0.25
@@ -4403,6 +6818,21 @@ date = "2026-11-04"
 commit = "1eb1c51d7"
 host-id = "c9ab742f7b18"
 tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.renames.tokens"
+project = "change-tasks"
+tool = "jk-cursorrules"
+kind = "count"
+value = 566227
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 8
 
 [[row]]
 dim = "agents"
@@ -4455,6 +6885,21 @@ subject = "agents.cursor.renames.tokens"
 project = "change-tasks"
 tool = "jk-nograph"
 kind = "count"
+value = 2606661
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.renames.tokens"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
 value = 1919746.0
 unit = "tokens"
 band = 0.25
@@ -4478,6 +6923,21 @@ date = "2026-11-04"
 commit = "1eb1c51d7"
 host-id = "c9ab742f7b18"
 tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.renames.turns"
+project = "change-tasks"
+tool = "jk-cursorrules"
+kind = "count"
+value = 23
+unit = "turns"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 8
 
 [[row]]
 dim = "agents"
@@ -4530,6 +6990,21 @@ subject = "agents.cursor.renames.turns"
 project = "change-tasks"
 tool = "jk-nograph"
 kind = "count"
+value = 94
+unit = "turns"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.cursor.renames.turns"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
 value = 69.5
 unit = "turns"
 band = 0.25
@@ -4538,6 +7013,21 @@ date = "2026-11-04"
 commit = "1eb1c51d7"
 host-id = "c9ab742f7b18"
 tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.questions.cache-read-tokens.grok-4.7"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 1512960
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 9
 
 [[row]]
 dim = "agents"
@@ -4564,10 +7054,40 @@ value = 17664
 unit = "tokens"
 band = 0.25
 runs = 3
-date = "2026-11-21"
-commit = "389b6f0f1"
+date = "2026-11-24"
+commit = "727a2d154"
 host-id = "c9ab742f7b18"
 tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.questions.cache-read-tokens.grok-4.7"
+project = "change-tasks"
+tool = "jk-graph"
+kind = "count"
+value = 54016
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.questions.cache-read-tokens.grok-4.7"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 8392064
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 7
 
 [[row]]
 dim = "agents"
@@ -4594,10 +7114,25 @@ value = 390144
 unit = "tokens"
 band = 0.25
 runs = 3
-date = "2026-11-21"
-commit = "389b6f0f1"
+date = "2026-11-24"
+commit = "727a2d154"
 host-id = "c9ab742f7b18"
 tasks = 4
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.questions.cache-write-tokens.grok-4.7"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 0
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 9
 
 [[row]]
 dim = "agents"
@@ -4624,10 +7159,40 @@ value = 0
 unit = "tokens"
 band = 0.25
 runs = 3
-date = "2026-11-21"
-commit = "389b6f0f1"
+date = "2026-11-24"
+commit = "727a2d154"
 host-id = "c9ab742f7b18"
 tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.questions.cache-write-tokens.grok-4.7"
+project = "change-tasks"
+tool = "jk-graph"
+kind = "count"
+value = 0
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.questions.cache-write-tokens.grok-4.7"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 0
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 7
 
 [[row]]
 dim = "agents"
@@ -4654,10 +7219,25 @@ value = 0
 unit = "tokens"
 band = 0.25
 runs = 3
-date = "2026-11-21"
-commit = "389b6f0f1"
+date = "2026-11-24"
+commit = "727a2d154"
 host-id = "c9ab742f7b18"
 tasks = 4
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.questions.input-tokens.grok-4.7"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 492493
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 9
 
 [[row]]
 dim = "agents"
@@ -4684,10 +7264,40 @@ value = 9355
 unit = "tokens"
 band = 0.25
 runs = 3
-date = "2026-11-21"
-commit = "389b6f0f1"
+date = "2026-11-24"
+commit = "727a2d154"
 host-id = "c9ab742f7b18"
 tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.questions.input-tokens.grok-4.7"
+project = "change-tasks"
+tool = "jk-graph"
+kind = "count"
+value = 74011
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.questions.input-tokens.grok-4.7"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 1351690
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 7
 
 [[row]]
 dim = "agents"
@@ -4714,10 +7324,25 @@ value = 108759
 unit = "tokens"
 band = 0.25
 runs = 3
-date = "2026-11-21"
-commit = "389b6f0f1"
+date = "2026-11-24"
+commit = "727a2d154"
 host-id = "c9ab742f7b18"
 tasks = 4
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.questions.non-graph-nav"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 0.5
+unit = "share"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 9
 
 [[row]]
 dim = "agents"
@@ -4744,10 +7369,40 @@ value = 0.0
 unit = "share"
 band = 0.25
 runs = 3
-date = "2026-11-04"
-commit = "1eb1c51d7"
+date = "2026-11-24"
+commit = "727a2d154"
 host-id = "c9ab742f7b18"
 tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.questions.non-graph-nav"
+project = "change-tasks"
+tool = "jk-graph"
+kind = "count"
+value = 0.4
+unit = "share"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.questions.non-graph-nav"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 0.952
+unit = "share"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 7
 
 [[row]]
 dim = "agents"
@@ -4774,10 +7429,25 @@ value = 0.7
 unit = "share"
 band = 0.25
 runs = 3
-date = "2026-11-04"
-commit = "1eb1c51d7"
+date = "2026-11-24"
+commit = "727a2d154"
 host-id = "c9ab742f7b18"
 tasks = 4
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.questions.output-tokens.grok-4.7"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 68216
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 9
 
 [[row]]
 dim = "agents"
@@ -4804,10 +7474,40 @@ value = 508
 unit = "tokens"
 band = 0.25
 runs = 3
-date = "2026-11-21"
-commit = "389b6f0f1"
+date = "2026-11-24"
+commit = "727a2d154"
 host-id = "c9ab742f7b18"
 tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.questions.output-tokens.grok-4.7"
+project = "change-tasks"
+tool = "jk-graph"
+kind = "count"
+value = 5117
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.questions.output-tokens.grok-4.7"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 134023
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 7
 
 [[row]]
 dim = "agents"
@@ -4834,10 +7534,25 @@ value = 20157
 unit = "tokens"
 band = 0.25
 runs = 3
-date = "2026-11-21"
-commit = "389b6f0f1"
+date = "2026-11-24"
+commit = "727a2d154"
 host-id = "c9ab742f7b18"
 tasks = 4
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.questions.tokens"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 2073669
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 9
 
 [[row]]
 dim = "agents"
@@ -4864,10 +7579,40 @@ value = 27527
 unit = "tokens"
 band = 0.25
 runs = 3
-date = "2026-11-04"
-commit = "1eb1c51d7"
+date = "2026-11-24"
+commit = "727a2d154"
 host-id = "c9ab742f7b18"
 tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.questions.tokens"
+project = "change-tasks"
+tool = "jk-graph"
+kind = "count"
+value = 133144
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.questions.tokens"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 9877777
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 7
 
 [[row]]
 dim = "agents"
@@ -4894,10 +7639,25 @@ value = 520506
 unit = "tokens"
 band = 0.25
 runs = 3
-date = "2026-11-04"
-commit = "1eb1c51d7"
+date = "2026-11-24"
+commit = "727a2d154"
 host-id = "c9ab742f7b18"
 tasks = 4
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.questions.turns"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 73
+unit = "turns"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 9
 
 [[row]]
 dim = "agents"
@@ -4924,10 +7684,40 @@ value = 4
 unit = "turns"
 band = 0.25
 runs = 3
-date = "2026-11-04"
-commit = "1eb1c51d7"
+date = "2026-11-24"
+commit = "727a2d154"
 host-id = "c9ab742f7b18"
 tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.questions.turns"
+project = "change-tasks"
+tool = "jk-graph"
+kind = "count"
+value = 7
+unit = "turns"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 1
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.questions.turns"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 191
+unit = "turns"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 7
 
 [[row]]
 dim = "agents"
@@ -4954,10 +7744,25 @@ value = 32
 unit = "turns"
 band = 0.25
 runs = 3
-date = "2026-11-04"
-commit = "1eb1c51d7"
+date = "2026-11-24"
+commit = "727a2d154"
 host-id = "c9ab742f7b18"
 tasks = 4
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.renames.cache-read-tokens.grok-4.7"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 220288
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 8
 
 [[row]]
 dim = "agents"
@@ -4984,8 +7789,8 @@ value = 54784
 unit = "tokens"
 band = 0.25
 runs = 3
-date = "2026-11-21"
-commit = "389b6f0f1"
+date = "2026-11-24"
+commit = "727a2d154"
 host-id = "c9ab742f7b18"
 tasks = 2
 
@@ -4999,8 +7804,8 @@ value = 1444992
 unit = "tokens"
 band = 0.25
 runs = 3
-date = "2026-11-21"
-commit = "389b6f0f1"
+date = "2026-11-24"
+commit = "727a2d154"
 host-id = "c9ab742f7b18"
 tasks = 3
 
@@ -5014,10 +7819,25 @@ value = 1810048
 unit = "tokens"
 band = 0.25
 runs = 3
-date = "2026-11-21"
-commit = "389b6f0f1"
+date = "2026-11-24"
+commit = "727a2d154"
 host-id = "c9ab742f7b18"
 tasks = 3
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.renames.cache-read-tokens.grok-4.7"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 3125504
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 8
 
 [[row]]
 dim = "agents"
@@ -5044,8 +7864,8 @@ value = 1487360
 unit = "tokens"
 band = 0.25
 runs = 3
-date = "2026-11-21"
-commit = "389b6f0f1"
+date = "2026-11-24"
+commit = "727a2d154"
 host-id = "c9ab742f7b18"
 tasks = 2
 
@@ -5059,10 +7879,25 @@ value = 1303552
 unit = "tokens"
 band = 0.25
 runs = 3
-date = "2026-11-21"
-commit = "389b6f0f1"
+date = "2026-11-24"
+commit = "727a2d154"
 host-id = "c9ab742f7b18"
 tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.renames.cache-write-tokens.grok-4.7"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 0
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 8
 
 [[row]]
 dim = "agents"
@@ -5089,8 +7924,8 @@ value = 0
 unit = "tokens"
 band = 0.25
 runs = 3
-date = "2026-11-21"
-commit = "389b6f0f1"
+date = "2026-11-24"
+commit = "727a2d154"
 host-id = "c9ab742f7b18"
 tasks = 2
 
@@ -5104,8 +7939,8 @@ value = 0
 unit = "tokens"
 band = 0.25
 runs = 3
-date = "2026-11-21"
-commit = "389b6f0f1"
+date = "2026-11-24"
+commit = "727a2d154"
 host-id = "c9ab742f7b18"
 tasks = 3
 
@@ -5119,10 +7954,25 @@ value = 0
 unit = "tokens"
 band = 0.25
 runs = 3
-date = "2026-11-21"
-commit = "389b6f0f1"
+date = "2026-11-24"
+commit = "727a2d154"
 host-id = "c9ab742f7b18"
 tasks = 3
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.renames.cache-write-tokens.grok-4.7"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 0
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 8
 
 [[row]]
 dim = "agents"
@@ -5149,8 +7999,8 @@ value = 0
 unit = "tokens"
 band = 0.25
 runs = 3
-date = "2026-11-21"
-commit = "389b6f0f1"
+date = "2026-11-24"
+commit = "727a2d154"
 host-id = "c9ab742f7b18"
 tasks = 2
 
@@ -5164,10 +8014,25 @@ value = 0
 unit = "tokens"
 band = 0.25
 runs = 3
-date = "2026-11-21"
-commit = "389b6f0f1"
+date = "2026-11-24"
+commit = "727a2d154"
 host-id = "c9ab742f7b18"
 tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.renames.input-tokens.grok-4.7"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 320142
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 8
 
 [[row]]
 dim = "agents"
@@ -5194,8 +8059,8 @@ value = 15275
 unit = "tokens"
 band = 0.25
 runs = 3
-date = "2026-11-21"
-commit = "389b6f0f1"
+date = "2026-11-24"
+commit = "727a2d154"
 host-id = "c9ab742f7b18"
 tasks = 2
 
@@ -5209,8 +8074,8 @@ value = 194918
 unit = "tokens"
 band = 0.25
 runs = 3
-date = "2026-11-21"
-commit = "389b6f0f1"
+date = "2026-11-24"
+commit = "727a2d154"
 host-id = "c9ab742f7b18"
 tasks = 3
 
@@ -5224,10 +8089,25 @@ value = 222521
 unit = "tokens"
 band = 0.25
 runs = 3
-date = "2026-11-21"
-commit = "389b6f0f1"
+date = "2026-11-24"
+commit = "727a2d154"
 host-id = "c9ab742f7b18"
 tasks = 3
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.renames.input-tokens.grok-4.7"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 835771
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 8
 
 [[row]]
 dim = "agents"
@@ -5254,8 +8134,8 @@ value = 129944
 unit = "tokens"
 band = 0.25
 runs = 3
-date = "2026-11-21"
-commit = "389b6f0f1"
+date = "2026-11-24"
+commit = "727a2d154"
 host-id = "c9ab742f7b18"
 tasks = 2
 
@@ -5269,10 +8149,25 @@ value = 140003
 unit = "tokens"
 band = 0.25
 runs = 3
-date = "2026-11-21"
-commit = "389b6f0f1"
+date = "2026-11-24"
+commit = "727a2d154"
 host-id = "c9ab742f7b18"
 tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.renames.output-tokens.grok-4.7"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 23102
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 8
 
 [[row]]
 dim = "agents"
@@ -5299,8 +8194,8 @@ value = 1517
 unit = "tokens"
 band = 0.25
 runs = 3
-date = "2026-11-21"
-commit = "389b6f0f1"
+date = "2026-11-24"
+commit = "727a2d154"
 host-id = "c9ab742f7b18"
 tasks = 2
 
@@ -5314,8 +8209,8 @@ value = 21883
 unit = "tokens"
 band = 0.25
 runs = 3
-date = "2026-11-21"
-commit = "389b6f0f1"
+date = "2026-11-24"
+commit = "727a2d154"
 host-id = "c9ab742f7b18"
 tasks = 3
 
@@ -5329,10 +8224,25 @@ value = 21192
 unit = "tokens"
 band = 0.25
 runs = 3
-date = "2026-11-21"
-commit = "389b6f0f1"
+date = "2026-11-24"
+commit = "727a2d154"
 host-id = "c9ab742f7b18"
 tasks = 3
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.renames.output-tokens.grok-4.7"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 72481
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 8
 
 [[row]]
 dim = "agents"
@@ -5359,8 +8269,8 @@ value = 15995
 unit = "tokens"
 band = 0.25
 runs = 3
-date = "2026-11-21"
-commit = "389b6f0f1"
+date = "2026-11-24"
+commit = "727a2d154"
 host-id = "c9ab742f7b18"
 tasks = 2
 
@@ -5374,10 +8284,25 @@ value = 19558
 unit = "tokens"
 band = 0.25
 runs = 3
-date = "2026-11-21"
-commit = "389b6f0f1"
+date = "2026-11-24"
+commit = "727a2d154"
 host-id = "c9ab742f7b18"
 tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.renames.tokens"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 563532
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 8
 
 [[row]]
 dim = "agents"
@@ -5404,8 +8329,8 @@ value = 71745
 unit = "tokens"
 band = 0.25
 runs = 3
-date = "2026-11-04"
-commit = "1eb1c51d7"
+date = "2026-11-24"
+commit = "727a2d154"
 host-id = "c9ab742f7b18"
 tasks = 2
 
@@ -5419,8 +8344,8 @@ value = 1668112
 unit = "tokens"
 band = 0.25
 runs = 3
-date = "2026-11-04"
-commit = "1eb1c51d7"
+date = "2026-11-24"
+commit = "727a2d154"
 host-id = "c9ab742f7b18"
 tasks = 3
 
@@ -5434,10 +8359,25 @@ value = 2064662
 unit = "tokens"
 band = 0.25
 runs = 3
-date = "2026-11-04"
-commit = "1eb1c51d7"
+date = "2026-11-24"
+commit = "727a2d154"
 host-id = "c9ab742f7b18"
 tasks = 3
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.renames.tokens"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 4033756
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 8
 
 [[row]]
 dim = "agents"
@@ -5464,8 +8404,8 @@ value = 1630887
 unit = "tokens"
 band = 0.25
 runs = 3
-date = "2026-11-04"
-commit = "1eb1c51d7"
+date = "2026-11-24"
+commit = "727a2d154"
 host-id = "c9ab742f7b18"
 tasks = 2
 
@@ -5479,10 +8419,25 @@ value = 1462964
 unit = "tokens"
 band = 0.25
 runs = 3
-date = "2026-11-04"
-commit = "1eb1c51d7"
+date = "2026-11-24"
+commit = "727a2d154"
 host-id = "c9ab742f7b18"
 tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.renames.turns"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 37
+unit = "turns"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 8
 
 [[row]]
 dim = "agents"
@@ -5509,8 +8464,8 @@ value = 10
 unit = "turns"
 band = 0.25
 runs = 3
-date = "2026-11-04"
-commit = "1eb1c51d7"
+date = "2026-11-24"
+commit = "727a2d154"
 host-id = "c9ab742f7b18"
 tasks = 2
 
@@ -5524,8 +8479,8 @@ value = 46
 unit = "turns"
 band = 0.25
 runs = 3
-date = "2026-11-04"
-commit = "1eb1c51d7"
+date = "2026-11-24"
+commit = "727a2d154"
 host-id = "c9ab742f7b18"
 tasks = 3
 
@@ -5539,10 +8494,25 @@ value = 49
 unit = "turns"
 band = 0.25
 runs = 3
-date = "2026-11-04"
-commit = "1eb1c51d7"
+date = "2026-11-24"
+commit = "727a2d154"
 host-id = "c9ab742f7b18"
 tasks = 3
+
+[[row]]
+dim = "agents"
+subject = "agents.grok.renames.turns"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 147
+unit = "turns"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 8
 
 [[row]]
 dim = "agents"
@@ -5569,8 +8539,8 @@ value = 35
 unit = "turns"
 band = 0.25
 runs = 3
-date = "2026-11-04"
-commit = "1eb1c51d7"
+date = "2026-11-24"
+commit = "727a2d154"
 host-id = "c9ab742f7b18"
 tasks = 2
 
@@ -5584,10 +8554,25 @@ value = 37
 unit = "turns"
 band = 0.25
 runs = 3
-date = "2026-11-04"
-commit = "1eb1c51d7"
+date = "2026-11-24"
+commit = "727a2d154"
 host-id = "c9ab742f7b18"
 tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.muse.questions.cache-read-tokens.muse-spark-1.3-contributor"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 7223349
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 8
 
 [[row]]
 dim = "agents"
@@ -5603,6 +8588,21 @@ date = "2026-11-21"
 commit = "389b6f0f1"
 host-id = "c9ab742f7b18"
 tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.muse.questions.cache-read-tokens.muse-spark-1.3-contributor"
+project = "change-tasks"
+tool = "jk-graph"
+kind = "count"
+value = 518115
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 1
 
 [[row]]
 dim = "agents"
@@ -5640,6 +8640,21 @@ subject = "agents.muse.questions.cache-read-tokens.muse-spark-1.3-contributor"
 project = "change-tasks"
 tool = "jk-nograph"
 kind = "count"
+value = 23266611
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.muse.questions.cache-read-tokens.muse-spark-1.3-contributor"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
 value = 22517543
 unit = "tokens"
 band = 0.25
@@ -5659,10 +8674,40 @@ value = 0
 unit = "tokens"
 band = 0.25
 runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.muse.questions.cache-write-tokens.muse-spark-1.3-contributor"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 0
+unit = "tokens"
+band = 0.25
+runs = 1
 date = "2026-11-21"
 commit = "389b6f0f1"
 host-id = "c9ab742f7b18"
 tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.muse.questions.cache-write-tokens.muse-spark-1.3-contributor"
+project = "change-tasks"
+tool = "jk-graph"
+kind = "count"
+value = 0
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 1
 
 [[row]]
 dim = "agents"
@@ -5704,9 +8749,39 @@ value = 0
 unit = "tokens"
 band = 0.25
 runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.muse.questions.cache-write-tokens.muse-spark-1.3-contributor"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 0
+unit = "tokens"
+band = 0.25
+runs = 1
 date = "2026-11-21"
 commit = "389b6f0f1"
 host-id = "c9ab742f7b18"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.muse.questions.input-tokens.muse-spark-1.3-contributor"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 744093
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
 tasks = 8
 
 [[row]]
@@ -5723,6 +8798,21 @@ date = "2026-11-21"
 commit = "389b6f0f1"
 host-id = "c9ab742f7b18"
 tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.muse.questions.input-tokens.muse-spark-1.3-contributor"
+project = "change-tasks"
+tool = "jk-graph"
+kind = "count"
+value = 37709
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 1
 
 [[row]]
 dim = "agents"
@@ -5760,6 +8850,21 @@ subject = "agents.muse.questions.input-tokens.muse-spark-1.3-contributor"
 project = "change-tasks"
 tool = "jk-nograph"
 kind = "count"
+value = 1004440
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.muse.questions.input-tokens.muse-spark-1.3-contributor"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
 value = 1394118
 unit = "tokens"
 band = 0.25
@@ -5767,6 +8872,21 @@ runs = 1
 date = "2026-11-21"
 commit = "389b6f0f1"
 host-id = "c9ab742f7b18"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.muse.questions.non-graph-nav"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 0.793
+unit = "share"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
 tasks = 8
 
 [[row]]
@@ -5783,6 +8903,21 @@ date = "2026-11-04"
 commit = "1eb1c51d7"
 host-id = "c9ab742f7b18"
 tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.muse.questions.non-graph-nav"
+project = "change-tasks"
+tool = "jk-graph"
+kind = "count"
+value = 0.167
+unit = "share"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 1
 
 [[row]]
 dim = "agents"
@@ -5824,9 +8959,39 @@ value = 1.0
 unit = "share"
 band = 0.25
 runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.muse.questions.non-graph-nav"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 1.0
+unit = "share"
+band = 0.25
+runs = 1
 date = "2026-11-04"
 commit = "1eb1c51d7"
 host-id = "c9ab742f7b18"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.muse.questions.output-tokens.muse-spark-1.3-contributor"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 89404
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
 tasks = 8
 
 [[row]]
@@ -5843,6 +9008,21 @@ date = "2026-11-21"
 commit = "389b6f0f1"
 host-id = "c9ab742f7b18"
 tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.muse.questions.output-tokens.muse-spark-1.3-contributor"
+project = "change-tasks"
+tool = "jk-graph"
+kind = "count"
+value = 6993
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 1
 
 [[row]]
 dim = "agents"
@@ -5880,6 +9060,21 @@ subject = "agents.muse.questions.output-tokens.muse-spark-1.3-contributor"
 project = "change-tasks"
 tool = "jk-nograph"
 kind = "count"
+value = 123538
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.muse.questions.output-tokens.muse-spark-1.3-contributor"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
 value = 238565
 unit = "tokens"
 band = 0.25
@@ -5887,6 +9082,21 @@ runs = 1
 date = "2026-11-21"
 commit = "389b6f0f1"
 host-id = "c9ab742f7b18"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.muse.questions.tokens"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 8056846
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
 tasks = 8
 
 [[row]]
@@ -5903,6 +9113,21 @@ date = "2026-11-04"
 commit = "1eb1c51d7"
 host-id = "c9ab742f7b18"
 tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.muse.questions.tokens"
+project = "change-tasks"
+tool = "jk-graph"
+kind = "count"
+value = 562817
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 1
 
 [[row]]
 dim = "agents"
@@ -5940,6 +9165,21 @@ subject = "agents.muse.questions.tokens"
 project = "change-tasks"
 tool = "jk-nograph"
 kind = "count"
+value = 24394589
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.muse.questions.tokens"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
 value = 24203115
 unit = "tokens"
 band = 0.25
@@ -5947,6 +9187,21 @@ runs = 1
 date = "2026-11-04"
 commit = "1eb1c51d7"
 host-id = "c9ab742f7b18"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.muse.questions.turns"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 147
+unit = "turns"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
 tasks = 8
 
 [[row]]
@@ -5963,6 +9218,21 @@ date = "2026-11-04"
 commit = "1eb1c51d7"
 host-id = "c9ab742f7b18"
 tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.muse.questions.turns"
+project = "change-tasks"
+tool = "jk-graph"
+kind = "count"
+value = 20
+unit = "turns"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 1
 
 [[row]]
 dim = "agents"
@@ -6000,6 +9270,21 @@ subject = "agents.muse.questions.turns"
 project = "change-tasks"
 tool = "jk-nograph"
 kind = "count"
+value = 236
+unit = "turns"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.muse.questions.turns"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
 value = 284
 unit = "turns"
 band = 0.25
@@ -6007,6 +9292,21 @@ runs = 1
 date = "2026-11-04"
 commit = "1eb1c51d7"
 host-id = "c9ab742f7b18"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.muse.renames.cache-read-tokens.muse-spark-1.3-contributor"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 2739565
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
 tasks = 8
 
 [[row]]
@@ -6060,6 +9360,21 @@ subject = "agents.muse.renames.cache-read-tokens.muse-spark-1.3-contributor"
 project = "change-tasks"
 tool = "jk-nograph"
 kind = "count"
+value = 18286923
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.muse.renames.cache-read-tokens.muse-spark-1.3-contributor"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
 value = 11020208
 unit = "tokens"
 band = 0.25
@@ -6068,6 +9383,21 @@ date = "2026-11-21"
 commit = "389b6f0f1"
 host-id = "c9ab742f7b18"
 tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.muse.renames.cache-write-tokens.muse-spark-1.3-contributor"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 0
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 8
 
 [[row]]
 dim = "agents"
@@ -6123,11 +9453,41 @@ kind = "count"
 value = 0
 unit = "tokens"
 band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.muse.renames.cache-write-tokens.muse-spark-1.3-contributor"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 0
+unit = "tokens"
+band = 0.25
 runs = 3
 date = "2026-11-21"
 commit = "389b6f0f1"
 host-id = "c9ab742f7b18"
 tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.muse.renames.input-tokens.muse-spark-1.3-contributor"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 356587
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 8
 
 [[row]]
 dim = "agents"
@@ -6180,6 +9540,21 @@ subject = "agents.muse.renames.input-tokens.muse-spark-1.3-contributor"
 project = "change-tasks"
 tool = "jk-nograph"
 kind = "count"
+value = 633394
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.muse.renames.input-tokens.muse-spark-1.3-contributor"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
 value = 655607
 unit = "tokens"
 band = 0.25
@@ -6188,6 +9563,21 @@ date = "2026-11-21"
 commit = "389b6f0f1"
 host-id = "c9ab742f7b18"
 tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.muse.renames.output-tokens.muse-spark-1.3-contributor"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 36696
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 8
 
 [[row]]
 dim = "agents"
@@ -6240,6 +9630,21 @@ subject = "agents.muse.renames.output-tokens.muse-spark-1.3-contributor"
 project = "change-tasks"
 tool = "jk-nograph"
 kind = "count"
+value = 59927
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.muse.renames.output-tokens.muse-spark-1.3-contributor"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
 value = 68538
 unit = "tokens"
 band = 0.25
@@ -6248,6 +9653,21 @@ date = "2026-11-21"
 commit = "389b6f0f1"
 host-id = "c9ab742f7b18"
 tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.muse.renames.tokens"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 3132848
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 8
 
 [[row]]
 dim = "agents"
@@ -6300,6 +9720,21 @@ subject = "agents.muse.renames.tokens"
 project = "change-tasks"
 tool = "jk-nograph"
 kind = "count"
+value = 18980244
+unit = "tokens"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 8
+
+[[row]]
+dim = "agents"
+subject = "agents.muse.renames.tokens"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
 value = 11767539
 unit = "tokens"
 band = 0.25
@@ -6308,6 +9743,21 @@ date = "2026-11-04"
 commit = "1eb1c51d7"
 host-id = "c9ab742f7b18"
 tasks = 7
+
+[[row]]
+dim = "agents"
+subject = "agents.muse.renames.turns"
+project = "change-tasks"
+tool = "jk"
+kind = "count"
+value = 74
+unit = "turns"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 8
 
 [[row]]
 dim = "agents"
@@ -6353,6 +9803,21 @@ date = "2026-11-04"
 commit = "1eb1c51d7"
 host-id = "c9ab742f7b18"
 tasks = 2
+
+[[row]]
+dim = "agents"
+subject = "agents.muse.renames.turns"
+project = "change-tasks"
+tool = "jk-nograph"
+kind = "count"
+value = 259
+unit = "turns"
+band = 0.25
+runs = 1
+date = "2026-11-24"
+commit = "727a2d154"
+host-id = "28b987533026"
+tasks = 8
 
 [[row]]
 dim = "agents"

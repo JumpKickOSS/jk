@@ -61,7 +61,7 @@ The measure is turns, tokens and wall time to green on broken builds, against Ma
 given the same agent tooling: [Agents reach green](#agents-reach-green).
 
 <!-- agents-claims:begin -->
-We asked coding agents from 6 vendors questions like "who calls this method?" With JumpKick's code graph, their answers cost **62–95% less**, $0.019–$0.079 a question instead of $0.056–$1.40 (an estimate at API list prices), and took **72–98% fewer tokens** and **66–91% fewer back-and-forth turns** than without it. Renaming a method everywhere it is used cost **71–86% less**, $0.008–$0.060 a rename instead of $0.029–$0.395, with **78–98% fewer tokens** and **75–91% fewer turns**. The graph pays off even on tiny projects: the smallest we tested, gs-multi-module, has just **83 lines of code**. ([The tables](#asking-about-the-code).)
+We asked coding agents from 7 vendors questions like "who calls this method?" With JumpKick's code graph, their answers cost **56–90% less**, $0.037–$0.311 a question instead of $0.112–$1.78 (an estimate at API list prices), and took **56–96% fewer tokens** and **41–78% fewer back-and-forth turns** than without it. Renaming a method everywhere it is used cost **66–79% less**, $0.020–$0.127 a rename instead of $0.082–$0.474, with **58–86% fewer tokens** and **45–77% fewer turns**. The graph pays off even on tiny projects: the smallest we tested, gs-multi-module, has just **83 lines of code**. ([The tables](#asking-about-the-code).)
 <!-- agents-claims:end -->
 
 ### 2. Never type `clean` again
@@ -373,33 +373,34 @@ tokens. The table is re-run each release ([Releases](../contributors/releases.md
 
 ### Asking about the code
 
-Before an agent changes a method it asks who calls it and what can end up running it. Seven such
-questions, on commons-lang and on JumpKick itself, two of them through dynamic dispatch, are graded
-against the compiler's answer: correct means an F1 of at least 0.9. Each agent ran JumpKick as installed,
+Before an agent changes a method it asks who calls it and what can end up running it. Nine such
+questions, on spring-petclinic, commons-lang and JumpKick itself, two of them through dynamic
+dispatch and one about what an older version of a dependency would break, are graded against the
+compiler's answer: correct means an F1 of at least 0.9. Each agent ran JumpKick as installed,
 whose default MCP list carries `usages`, and the same JumpKick with every graph tool removed
-([change tasks](../../bench/agent-loop/README.md#change-tasks), 3 or more runs per question and
+([change tasks](../../bench/agent-loop/README.md#change-tasks), one run per question and
 arm). Turns, tokens (input, output, cache read and write) and wall are the per-question medians
 summed over the questions each agent ran both ways:
 
 <!-- agents-questions:begin -->
 | Agent (questions) | Correct, JumpKick / without the graph | Turns | Tokens | Wall |
 |---|---|---|---|---|
-| Vendor A, mid-tier (8) | 8 of 8 / 39 of 40 | 27 / 133.5 | 341k / 2.3M | 98 / 377 s |
-| Vendor B, frontier (8) | 8 of 8 / 35 of 40 | 35 / 279.5 | 398k / 16.4M | 239 / 2,795 s |
-| Vendor C, fast (8) | 8 of 8 / 7 of 24 | 116 / 410 | 4.5M / 25.1M | 2,025 / 2,632 s |
-| Vendor D (8) | 8 of 8 / 33 of 37 | 26 / 277 | 527k / 15.0M | 199 / 787 s |
-| Vendor E (8) | 8 of 8 / 22 of 24 | 29 / 284 | 787k / 24.2M | 366 / 2,264 s |
-| Vendor F (8) | 8 of 8 / 19 of 24 | 25 / 74 | 783k / 2.7M | 194 / 301 s |
+| Vendor A, frontier (9) | 9 of 9 / 9 of 9 | 40 / 167 | 327k / 3.9M | 157 / 594 s |
+| Vendor B, frontier (9) | 9 of 9 / 6 of 9 | 73 / 331 | 2.1M / 23.6M | 1,017 / 3,128 s |
+| Vendor C, frontier (9) | 8 of 9 / 8 of 9 | 55 / 149 | 791k / 19.0M | 536 / 1,766 s |
+| Vendor D (9) | 9 of 9 / 8 of 9 | 46 / 161 | 1.1M / 8.3M | 431 / 688 s |
+| Vendor E (9) | 8 of 9 / 7 of 9 | 171 / 310 | 9.0M / 33.4M | 1,686 / 2,038 s |
+| Vendor F (9) | 9 of 9 / 9 of 9 | 41 / 69 | 1.2M / 2.7M | 228 / 354 s |
+| Vendor G (9) | 7 of 9 / 7 of 9 | 75 / 226 | 2.4M / 10.8M | 740 / 2,540 s |
 
-JumpKick is each agent as `jk agents` sets it up (Vendor C and D with JumpKick's rules file), one run per task on the current build; without the graph, three to five runs per task, the graph hidden from MCP and the shell alike. Medians per task, summed over the tasks each agent ran on both arms; results: `2026-11-01-change-tasks`, `2026-11-02-change-tasks`, `2026-11-04-change-tasks`.
+JumpKick is each agent as `jk agents` sets it up (Vendor C and D with JumpKick's rules file); without the graph, the graph hidden from MCP and the shell alike. One run per task on each, on the current build. Medians per task, summed over the tasks each agent ran on both arms; results: `2026-11-23-change-tasks`.
 <!-- agents-questions:end -->
 
 The answer is `usages` (`transitive=true` for everything that reaches the method): complete from
 the compiled classes, where grep finds names one file at a time and an agent then reads each file
 to rule out the overloads, the other types with a method of that name, and the calls through an
 interface. Java and Kotlin make that search long: dispatch, overloads, lambdas and method
-references hide the call from a text search. Without the graph the fast-tier agent hit its turn
-budget on most questions and missed them, so its row understates the gap.
+references hide the call from a text search.
 
 ### Changing code
 
@@ -411,14 +412,15 @@ and rebuilds until the compiler stops naming a site. Hidden acceptance tests che
 <!-- agents-renames:begin -->
 | Agent (renames) | Correct, JumpKick / without the graph | Turns | Tokens | Wall |
 |---|---|---|---|---|
-| Vendor A, mid-tier (7) | 7 of 7 / 35 of 35 | 14 / 100 | 103k / 552k | 97 / 276 s |
-| Vendor B, frontier (7) | 7 of 7 / 35 of 35 | 28 / 136 | 256k / 3.4M | 180 / 742 s |
-| Vendor C, fast (7) | 7 of 7 / 17 of 21 | 27 / 310 | 255k / 12.4M | 281 / 1,950 s |
-| Vendor D (7) | 7 of 7 / 28 of 28 | 14 / 69.5 | 263k / 1.9M | 155 / 294 s |
-| Vendor E (7) | 7 of 7 / 21 of 21 | 23 / 186 | 527k / 11.8M | 359 / 720 s |
-| Vendor F (7) | 7 of 7 / 21 of 21 | 14 / 56 | 334k / 1.5M | 154 / 661 s |
+| Vendor A, frontier (8) | 8 of 8 / 8 of 8 | 31 / 134 | 184k / 896k | 495 / 676 s |
+| Vendor B, frontier (8) | 8 of 8 / 8 of 8 | 37 / 147 | 564k / 4.0M | 455 / 1,293 s |
+| Vendor C, frontier (8) | 8 of 8 / 8 of 8 | 31 / 84 | 245k / 1.5M | 488 / 1,460 s |
+| Vendor D (8) | 8 of 8 / 8 of 8 | 23 / 94 | 566k / 2.6M | 766 / 391 s |
+| Vendor E (8) | 8 of 8 / 8 of 8 | 74 / 259 | 3.1M / 19.0M | 953 / 822 s |
+| Vendor F (8) | 8 of 8 / 8 of 8 | 22 / 60 | 710k / 3.1M | 183 / 1,057 s |
+| Vendor G (8) | 8 of 8 / 8 of 8 | 36 / 66 | 774k / 1.8M | 289 / 561 s |
 
-JumpKick is each agent as `jk agents` sets it up (Vendor C and D with JumpKick's rules file), one run per task on the current build; without the graph, three to five runs per task, the graph hidden from MCP and the shell alike. Medians per task, summed over the tasks each agent ran on both arms; results: `2026-11-01-change-tasks`, `2026-11-02-change-tasks`, `2026-11-04-change-tasks`.
+JumpKick is each agent as `jk agents` sets it up (Vendor C and D with JumpKick's rules file); without the graph, the graph hidden from MCP and the shell alike. One run per task on each, on the current build. Medians per task, summed over the tasks each agent ran on both arms; results: `2026-11-23-change-tasks`.
 <!-- agents-renames:end -->
 
 ### What it costs
@@ -426,61 +428,50 @@ JumpKick is each agent as `jk agents` sets it up (Vendor C and D with JumpKick's
 The same questions and renames in dollars:
 
 <!-- agents-dollars:begin -->
-With JumpKick's code graph a question cost the agents **$0.019–$0.079** per task, against **$0.056–$1.40** without it. A rename cost **$0.008–$0.060** per task, against **$0.029–$0.395**.
+With JumpKick's code graph a question cost the agents **$0.037–$0.311** per task, against **$0.112–$1.78** without it. A rename cost **$0.020–$0.127** per task, against **$0.082–$0.474**.
 
 | Agent | Per question, JumpKick / without the graph | Per rename |
 |---|---|---|
-| Vendor A, mid-tier | $0.046 / $0.200 | $0.016 / $0.088 |
-| Vendor B, frontier | $0.070 / $1.40 | $0.053 / $0.370 |
-| Vendor D | $0.019 / $0.414 | $0.011 / $0.067 |
-| Vendor E | $0.079 / $0.767 | $0.060 / $0.395 |
-| Vendor F | $0.021 / $0.056 | $0.008 / $0.029 |
+| Vendor A, frontier | $0.067 / $0.475 | $0.039 / $0.188 |
+| Vendor B, frontier | $0.239 / $1.78 | $0.111 / $0.459 |
+| Vendor C, frontier | $0.126 / $1.28 | $0.059 / $0.206 |
+| Vendor D | $0.037 / $0.240 | $0.020 / $0.082 |
+| Vendor E | $0.311 / $0.815 | $0.127 / $0.474 |
+| Vendor F | $0.049 / $0.112 | $0.032 / $0.092 |
 
-An API list-price estimate, not a bill: the tokens each agent reported in the runs above, priced at its vendor's published API list price for its model, read 2026-11-17 ([prices](../../shared/client-io/src/main/resources/cc/jumpkick/prices/prices.toml)). An agent on a subscription pays its plan instead. Each kind of token (input, output, cache read, cache write) is the median per task, summed over the tasks the agent ran both ways; the sum is priced, then divided by the number of tasks. Left out, with no price row for its model: Vendor C, fast.
+An API list-price estimate, not a bill: the tokens each agent reported in the runs above, priced at its vendor's published API list price for its model, read 2026-11-17 and 2026-11-22 ([prices](../../shared/client-io/src/main/resources/cc/jumpkick/prices/prices.toml)). An agent on a subscription pays its plan instead. Each kind of token (input, output, cache read, cache write) is the median per task, summed over the tasks the agent ran both ways; the sum is priced, then divided by the number of tasks. Left out, with no price row for its model: Vendor G.
 <!-- agents-dollars:end -->
 
 ### How small a repository
 
 On a small repository grep is cheap and an agent reads every file anyway, so the graph's per-turn
 cost could outweigh what it saves. The same rename on repositories from a two-module Spring guide
-to JumpKick itself, each with and without the graph (medians, 3 or more runs each):
+to JumpKick itself, each with and without the graph (one run each):
 
 <!-- agents-curve:begin -->
-| Repository | Lines | Rename | Vendor A, mid-tier: turns · tokens, JumpKick / without | Vendor D: turns · tokens, JumpKick / without |
+| Repository | Lines | Rename | Vendor A, frontier: turns · tokens, JumpKick / without | Vendor D: turns · tokens, JumpKick / without |
 |---|---:|---|---|---|
-| gs-multi-module | 83 | `MyService.message` | 2 / 7 · 12k / 20k | 2 / 7 · 35k / 109k |
-| gs-uploading-files | 416 | `StorageService.loadAsResource` | 2 / 8 · 12k / 29k | 2 / 5.5 · 35k / 89k |
-| spring-petclinic | 3,635 | `Owner.addVisit` | 2 / 6 · 12k / 20k | 2 / 8 · 35k / 120k |
-| commons-cli | 17,862 | `Util.stripLeadingHyphens` | 2 / 12 · 12k / 43k | 2 / 7.5 · 35k / 113k |
-| commons-lang | 188,332 | `CharSequenceUtils.indexOf` | 2 / 19 · 12k / 51k | 2 / 14 · 36k / 339k |
-| commons-lang | 188,332 | `Range.contains` | 2 / 40 · 13k / 285k | 2 / 18 · 36k / 862k |
-| JumpKick | 679,533 | `CodeGraph.between` | 2 / 8 · 29k / 103k | 2 / 9.5 · 51k / 288k |
+| gs-multi-module | 83 | `MyService.message` | 2 / 12 · 12k / 48k | 1 / 6 · 23k / 97k |
+| gs-uploading-files | 416 | `StorageService.loadAsResource` | 2 / 13 · 12k / 40k | 1 / 7 · 23k / 120k |
+| spring-petclinic | 3,635 | `Owner.addVisit` | 2 / 10 · 13k / 46k | 1 / 10 · 23k / 146k |
+| spring-petclinic | 3,635 | `telephone` | 8 / 21 · 49k / 129k | 3 / 12 · 49k / 242k |
+| commons-cli | 17,862 | `Util.stripLeadingHyphens` | 2 / 17 · 13k / 55k | 2 / 5 · 35k / 77k |
+| commons-lang | 188,332 | `CharSequenceUtils.indexOf` | 2 / 18 · 13k / 138k | 1 / 20 · 23k / 431k |
+| commons-lang | 188,332 | `Range.contains` | 2 / 25 · 13k / 221k | 2 / 23 · 35k / 1.0M |
+| JumpKick | 994,905 | `CodeGraph.between` | 11 / 18 · 60k / 219k | 12 / 11 · 353k / 445k |
 <!-- agents-curve:end -->
 
 ### Every model
 
 A vendor's top model reasons more, so it might need the graph less. The same tasks on each agent's
-default model and on its vendor's top model, with the graph:
+default model and on its vendor's top model, with the graph, run on the same day:
 
 <!-- agents-models-claim:begin -->
-On 5 agents' top models, the graph's runs took at most 1 more turn across 7 tasks than on each agent's default model, and tokens within 18%, every answer right: the gain does not depend on the model.
+_No runs on another model yet._
 <!-- agents-models-claim:end -->
 
 <!-- agents-models:begin -->
-| Agent (tasks) | Model | Correct | Turns | Tokens | Wall |
-|---|---|---|---|---|---|
-| Vendor A (7) | default | 7 of 7 | 18 | 170k | 94 s |
-| Vendor A (7) | top model | 7 of 7 | 17 | 154k | 74 s |
-| Vendor B (7) | default | 7 of 7 | 26 | 236k | 123 s |
-| Vendor B (7) | top model | 7 of 7 | 27 | 245k | 111 s |
-| Vendor D (7) | default | 7 of 7 | 17 | 326k | 163 s |
-| Vendor D (7) | top model | 7 of 7 | 17 | 318k | 281 s |
-| Vendor E (7) | default | 7 of 7 | 24 | 566k | 307 s |
-| Vendor E (7) | top model | 7 of 7 | 20 | 463k | 187 s |
-| Vendor F (7) | default | 7 of 7 | 17 | 471k | 157 s |
-| Vendor F (7) | top model | 7 of 7 | 17 | 531k | 92 s |
 
-Each agent with the graph as `jk agents` sets it up, on the same tasks, its default model against its vendor's top model (or, for Vendor B, its model at the highest reasoning effort). Medians per task, summed.
 <!-- agents-models:end -->
 
 ## Where it is going
