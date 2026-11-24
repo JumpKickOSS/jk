@@ -17,6 +17,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.function.Predicate;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -53,6 +54,39 @@ class SuiteLaunchNamesTest {
                         declared))
                 .as("as the forecast resolves the selection")
                 .containsExactly("test:integration", "test:test", "test:tree");
+    }
+
+    /**
+     * Each launch the forecast names selects only the classes its suites claim, by the tags their
+     * sources declare: a row of the integration suite's launch for a class the default suite runs is
+     * no class the run starts there.
+     */
+    @Test
+    void each_launch_selects_the_classes_its_suites_claim(@TempDir Path m) throws Exception {
+        source(m, "test", "ATest");
+        Path dir = m.resolve("src/test/java/demo");
+        Files.writeString(
+                dir.resolve("BTest.java"),
+                "package demo;\nimport org.junit.jupiter.api.Tag;\n@Tag(\"integration\")\nclass BTest {}\n");
+        Map<String, DeclaredSuite> declared = new LinkedHashMap<>();
+        declared.put(
+                "integration",
+                new DeclaredSuite(
+                        List.of(),
+                        List.of("integration"),
+                        List.of(),
+                        List.of(),
+                        new SuiteSettings(Map.of("A", "1"), List.of(), Map.of(), null),
+                        false));
+
+        Map<String, Predicate<String>> launches = TestSupport.launchClasses(
+                m,
+                false,
+                TestSelection.of(List.of(TestSuites.DEFAULT, "integration"), false, List.of(), List.of()),
+                declared);
+        assertThat(launches).containsOnlyKeys("test:integration", "test:test");
+        assertThat(launches.get("test:test")).accepts("demo.ATest").rejects("demo.BTest");
+        assertThat(launches.get("test:integration")).accepts("demo.BTest").rejects("demo.ATest");
     }
 
     @Test

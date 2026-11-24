@@ -8,6 +8,7 @@ import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.model.DeclaredSuite;
 import cc.jumpkick.model.SuiteSettings;
+import cc.jumpkick.orchestrator.ClassTags;
 import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.runtime.base.FilteredResources;
@@ -27,7 +28,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.TreeSet;
+import java.util.function.Function;
 import java.util.function.Predicate;
 import org.jspecify.annotations.Nullable;
 
@@ -293,14 +296,29 @@ record SuiteResources(Map<String, List<Path>> bySuite) {
      * launch by, so the forecast reads only the records of the launches this selection starts.
      */
     Set<String> launchNames(SuiteFilter suites) {
+        return launchClasses(suites).keySet();
+    }
+
+    /**
+     * {@link #launchNames}, each with the classes that launch selects of {@code suites}' ({@link
+     * SuiteFilter#acceptor}). A launch's rows outlive the selection that wrote them: a class retagged
+     * into another suite keeps its row in the launch it left, and a jk that recorded a split run's
+     * classes under the launch it planned last left rows in a launch that never ran them. The run
+     * never starts such a class there, so the forecast must not price it there either.
+     */
+    Map<String, Predicate<String>> launchClasses(SuiteFilter suites) {
         List<SuiteFilter.Launch> launches = suites.launches();
-        if (!split() && launches.size() == 1) return Set.of(ONE_LAUNCH);
-        Set<String> out = new TreeSet<>();
+        Map<String, Predicate<String>> out = new TreeMap<>();
+        if (!split() && launches.size() == 1) {
+            out.put(ONE_LAUNCH, suites.acceptor());
+            return out;
+        }
         for (String group : groups().keySet()) {
             SuiteFilter part = split() ? suites.part(group) : suites;
             if (part == null) continue;
             for (SuiteFilter.Launch shared : launches) {
-                if (launches.size() == 1 || part.only(shared.suites()) != null) out.add(launchName(group, shared));
+                SuiteFilter unit = launches.size() == 1 ? part : part.only(shared.suites());
+                if (unit != null) out.put(launchName(group, shared), unit.acceptor());
             }
         }
         return out;
@@ -312,11 +330,27 @@ record SuiteResources(Map<String, List<Path>> bySuite) {
      */
     static Set<String> launchNames(
             Path moduleDir, boolean compact, TestSelection selection, Map<String, DeclaredSuite> declared) {
+        return launchClasses(moduleDir, compact, selection, declared, name -> null)
+                .keySet();
+    }
+
+    /**
+     * {@link #launchClasses(SuiteFilter)} of a run of {@code selection} in the module at {@code
+     * moduleDir}, as {@link #launchNames(Path, boolean, TestSelection, Map)} resolves it, each class's
+     * tags read from {@code tags} (null for a class it cannot read, which every launch then selects).
+     */
+    static Map<String, Predicate<String>> launchClasses(
+            Path moduleDir,
+            boolean compact,
+            TestSelection selection,
+            Map<String, DeclaredSuite> declared,
+            Function<String, @Nullable ClassTags> tags) {
         var resolved = TestStampInputs.resolveSuites(selection, moduleDir, compact, declared);
         List<String> suites = resolved.ok() ? resolved.suites() : List.of(TestSuites.DEFAULT);
         List<String> compiled = TestSuites.compiled(moduleDir, compact, suites, declared);
         return of(moduleDir, compact, compiled, List.of())
-                .launchNames(SuiteFilter.of(moduleDir, compact, suites, declared));
+                .launchClasses(
+                        SuiteFilter.of(moduleDir, compact, suites, declared).withTags(tags));
     }
 
     /** The directory suites a run launches apart, by name: one group of every class when it does not split. */

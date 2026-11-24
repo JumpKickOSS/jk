@@ -891,7 +891,7 @@ final class TestSteps {
                 edits,
                 TestStampInputs.rebuildingWorkers(s.dir, s.project, s.dirtySiblings())
                         .values(),
-                SuiteResources.launchNames(
+                TestSupport.launchClasses(
                         s.dir,
                         prepared.parsed().compact(),
                         SessionContext.selectionFor(s.dir),
@@ -1077,7 +1077,7 @@ final class TestSteps {
                 stamp.extras(),
                 resources,
                 stampKey,
-                SuiteResources.launchNames(
+                TestSupport.launchClasses(
                         s.dir, compact, selection, s.project.build().runSuites()));
     }
 

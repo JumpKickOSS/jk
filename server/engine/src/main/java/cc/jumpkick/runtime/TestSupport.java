@@ -48,6 +48,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -57,6 +58,7 @@ import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.UnaryOperator;
 import java.util.regex.Matcher;
@@ -236,6 +238,37 @@ public final class TestSupport {
         List<String> discovered = TestSuites.available(moduleDir, compact, declared);
         var resolved = TestStampInputs.resolveSuites(selection, moduleDir, compact, declared);
         List<String> suites = resolved.ok() ? resolved.suites() : discovered;
+        Map<String, Path> byClass = sourcesByClass(moduleDir, compact, suites, declared);
+        // A suite that claims tags places a source by the tags its text declares.
+        Predicate<String> runs = SuiteFilter.of(moduleDir, compact, suites, declared)
+                .withTags(tagsOf(byClass))
+                .acceptor();
+        Map<String, Integer> out = new LinkedHashMap<>();
+        for (Map.Entry<String, Path> source : byClass.entrySet()) {
+            if (runs.test(source.getKey()))
+                out.put(
+                        source.getKey(),
+                        facts(source.getValue()).selected(selection.includeTags(), selection.excludeTags()));
+        }
+        return out;
+    }
+
+    /**
+     * The launches a run of {@code selection} may start, each with the classes it selects as their
+     * sources' tags place them ({@link SuiteResources#launchClasses}): a forecast reads a class's
+     * record only in a launch that would run that class.
+     */
+    static Map<String, Predicate<String>> launchClasses(
+            Path moduleDir, boolean compact, TestSelection selection, Map<String, DeclaredSuite> declared) {
+        var resolved = TestStampInputs.resolveSuites(selection, moduleDir, compact, declared);
+        List<String> suites = resolved.ok() ? resolved.suites() : TestSuites.available(moduleDir, compact, declared);
+        Map<String, Path> byClass = sourcesByClass(moduleDir, compact, suites, declared);
+        return SuiteResources.launchClasses(moduleDir, compact, selection, declared, tagsOf(byClass));
+    }
+
+    /** Each test source of the suites {@code suites} compile into, by the class it names. */
+    private static Map<String, Path> sourcesByClass(
+            Path moduleDir, boolean compact, List<String> suites, Map<String, DeclaredSuite> declared) {
         LinkedHashSet<Path> roots = new LinkedHashSet<>();
         for (String suite : TestSuites.compiled(moduleDir, compact, suites, declared)) {
             roots.addAll(TestSuites.javaRoots(moduleDir, compact, suite));
@@ -251,21 +284,20 @@ public final class TestSupport {
                 byClass.putIfAbsent(rel.substring(0, rel.lastIndexOf('.')).replace('/', '.'), file);
             }
         }
-        // A suite that claims tags places a source by the tags its text declares.
-        Predicate<String> runs = SuiteFilter.of(moduleDir, compact, suites, declared)
-                .withTags(name -> {
-                    Path file = byClass.get(name);
-                    return file == null ? null : sourceTags(file);
+        return byClass;
+    }
+
+    /**
+     * The tags the source of each class of {@code byClass} declares, each source read once; null for
+     * a class it does not hold.
+     */
+    private static Function<String, @Nullable ClassTags> tagsOf(Map<String, Path> byClass) {
+        Map<String, Optional<ClassTags>> read = new HashMap<>();
+        return name -> read.computeIfAbsent(name, n -> {
+                    Path file = byClass.get(n);
+                    return Optional.ofNullable(file == null ? null : sourceTags(file));
                 })
-                .acceptor();
-        Map<String, Integer> out = new LinkedHashMap<>();
-        for (Map.Entry<String, Path> source : byClass.entrySet()) {
-            if (runs.test(source.getKey()))
-                out.put(
-                        source.getKey(),
-                        facts(source.getValue()).selected(selection.includeTags(), selection.excludeTags()));
-        }
-        return out;
+                .orElse(null);
     }
 
     /** The module's {@code [test.suites]} declared suites; none when its manifest does not parse. */

@@ -33,6 +33,7 @@ import java.util.TreeSet;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
+import java.util.function.Predicate;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -54,8 +55,8 @@ final class SuiteDiscovery {
     }
 
     /**
-     * What a run of the suite at {@code moduleDir} under {@code selection}, in the launches named
-     * {@code launches}, replays under {@code [test] cache = "cone"}, for the forecast: the classes
+     * What a run of the suite at {@code moduleDir} under {@code selection}, in the launches {@code
+     * launches} names, each over the classes it selects, replays under {@code [test] cache = "cone"}, for the forecast: the classes
      * whose key, taken now, has not moved since they passed ({@link TestClassRecording#replayedNow}).
      */
     static TestClassRecording.Replayed replayedByCone(
@@ -66,7 +67,7 @@ final class SuiteDiscovery {
             List<String> stampExtras,
             List<Path> resourceDirs,
             @Nullable String stampKey,
-            Set<String> launches)
+            Map<String, Predicate<String>> launches)
             throws IOException {
         return TestClassRecording.replayedNow(
                 moduleDir,

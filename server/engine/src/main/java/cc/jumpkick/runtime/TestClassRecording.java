@@ -327,9 +327,10 @@ final class TestClassRecording {
     }
 
     /**
-     * For the forecast, what a run of the launches named {@code launches} replays, as {@link #unmoved}
+     * For the forecast, what a run of the launches {@code launches} names replays, as {@link #unmoved}
      * decides it, and the tests of the classes recorded under those launches it runs. The record
-     * keeps every launch's rows, an earlier selection's included, so only these launches' count.
+     * keeps every launch's rows, an earlier selection's included, so only the rows of these launches
+     * for a class the launch selects count ({@link SuiteResources#launchClasses}).
      */
     static Replayed replayedNow(
             Path moduleDir,
@@ -341,7 +342,7 @@ final class TestClassRecording {
             List<String> stampExtras,
             List<Path> resourceDirs,
             @Nullable String stampKey,
-            Set<String> launches)
+            Map<String, Predicate<String>> launches)
             throws IOException {
         Split split = split(
                 moduleDir,
@@ -383,12 +384,12 @@ final class TestClassRecording {
             return rows.size() * BYTES_PER_ROW;
         }
 
-        Split split(@Nullable Set<String> launches) {
+        Split split(@Nullable Map<String, Predicate<String>> launches) {
             Map<String, TestClassLedger.Entry> out = new TreeMap<>();
             Map<String, Long> replays = new HashMap<>();
             Map<String, Long> runs = new HashMap<>();
             for (Verdict v : rows) {
-                if (launches != null && !launches.contains(v.launch())) continue;
+                if (launches != null && !selects(launches, v.launch(), v.cls())) continue;
                 if (v.replays() == null) {
                     runs.merge(v.cls(), v.tests(), Long::sum);
                 } else {
@@ -432,7 +433,7 @@ final class TestClassRecording {
             List<String> stampExtras,
             List<Path> resourceDirs,
             @Nullable String stampKey,
-            @Nullable Set<String> launches)
+            @Nullable Map<String, Predicate<String>> launches)
             throws IOException {
         if (!TestTelemetry.shadow()) return Split.NONE;
         Path file = TestClassRecords.file(moduleDir);
@@ -579,7 +580,8 @@ final class TestClassRecording {
 
     /**
      * Before a compile an edit is waiting on, under {@code [test] cache = "cone"}: which of the
-     * suite's classes that passed last time in the launches named {@code launches} will replay, and
+     * suite's classes that passed last time in the launches {@code launches} names, each a class it
+     * selects, will replay, and
      * how many tests they hold, once {@code edits} are built, for the forecast to count only the rest. Each edit names the sources whose content moved in one
      * module (this one or a sibling on the suite's classpath) and whether their declarations kept.
      * A class replays when its last record passed, kept its key, reached no other host, fell back
@@ -603,7 +605,7 @@ final class TestClassRecording {
             List<Path> runtimeCp,
             List<SourceApiIndex.Hint> edits,
             Collection<Path> rebuildingJars,
-            Set<String> launches)
+            Map<String, Predicate<String>> launches)
             throws IOException {
         if (!TestTelemetry.shadow()) return null;
         for (SourceApiIndex.Hint e : edits) {
@@ -636,7 +638,7 @@ final class TestClassRecording {
             TestClassRecords.forEachRow(file, (key, row) -> {
                 String cls = TestClassRecords.className(Jsonl.strArray(row, "container"));
                 String launch = String.valueOf(Jsonl.str(row, "launch"));
-                if (!launches.contains(launch) || !index.contains(cls)) return;
+                if (!selects(launches, launch, cls) || !index.contains(cls)) return;
                 long tests = Jsonl.longValue(row, "tests", 0);
                 PoolAfter pool = pools.computeIfAbsent(launch, l -> PoolAfter.of(headers.get(l), jars, workspace));
                 boolean codeMoved = Jsonl.str(row, "fallback") == null
@@ -899,6 +901,15 @@ final class TestClassRecording {
                     ClassKeys.pooledFallback(ClassShadow.pooledOf(header)) != null,
                     pool != null && Jsonl.bool(pool, "codeMore", false));
         }
+    }
+
+    /**
+     * Whether {@code launches} names {@code launch} and that launch selects {@code cls}: a row of a
+     * launch for a class it no longer selects is no class the run starts there.
+     */
+    private static boolean selects(Map<String, Predicate<String>> launches, String launch, String cls) {
+        Predicate<String> selected = launches.get(launch);
+        return selected != null && selected.test(cls);
     }
 
     /** Each launch's pool, from the header its rows stand on ({@link TestClassRecords#headers}); nothing for a launch none names. */

@@ -21,10 +21,12 @@ import java.lang.constant.MethodTypeDesc;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.Predicate;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -214,7 +216,7 @@ class ConeForecastTest {
                 List.of(),
                 List.of(edit(SourceApiIndex.Kind.BODY_ONLY)),
                 List.of(),
-                Set.of(gate)));
+                every(gate)));
         assertThat(replayed.classes()).as("U, in the gate's launch alone").isEqualTo(1);
         assertThat(replayed.tests()).isEqualTo(40);
         assertThat(replayed.ran())
@@ -262,7 +264,7 @@ class ConeForecastTest {
                 List.of(),
                 List.of(edit(SourceApiIndex.Kind.BODY_ONLY)),
                 List.of(),
-                Set.of("")));
+                every("")));
         Map<String, Integer> selected = Map.of("demo.T", 3, "demo.U", 2, "demo.R", 9);
         assertThat(replayed.ran())
                 .as("T ran Dep; S and R are keyed by their module")
@@ -272,6 +274,60 @@ class ConeForecastTest {
                 .isEqualTo(12);
         assertThat(replayed.within(selected.keySet()).classes()).isEqualTo(1);
         assertThat(replayed.within(Set.of("demo.T")).recorded()).containsExactly("demo.T");
+    }
+
+    /**
+     * A row stands for its class only in a launch that selects that class: rows a jk left in the
+     * integration suite's launch for classes the default suite runs (it recorded a split run's
+     * classes under the launch it planned last) are never started there, so a body edit prices T by
+     * its default-suite row alone, and U's stale row, whose key moved, prices nothing.
+     */
+    @Test
+    void a_row_in_a_launch_that_does_not_select_its_class_is_not_priced(@TempDir Path ws) throws Exception {
+        BuildLayout layout = module(ws);
+        write(layout.classesDir(), "demo/Dep", dep());
+        write(layout.testClassesDir(), "demo/T", caller("demo.T"));
+        write(layout.testClassesDir(), "demo/U", plain("demo.U"));
+        String unit = "test:test";
+        String integration = "test:integration";
+        writeRows(
+                layout.moduleRoot(),
+                null,
+                row(unit, "T", 3, null),
+                row(unit, "U", 2, null),
+                row(integration, "T", 7, null),
+                Jsonl.append(
+                        row(integration, "U", 40, null),
+                        JsonFields.fields().string("fallback", "process git").body()));
+        Map<String, Predicate<String>> launches = Map.of(unit, cls -> true, integration, cls -> false);
+
+        TestClassRecording.Replayed replayed = Objects.requireNonNull(TestClassRecording.replayedAfter(
+                layout.moduleRoot(),
+                layout,
+                layout.testClassesDir(),
+                layout.classesDir(),
+                List.of(),
+                List.of(edit(SourceApiIndex.Kind.BODY_ONLY)),
+                List.of(),
+                launches));
+        assertThat(replayed.ran())
+                .as("T, which ran Dep, by its default-suite row")
+                .isEqualTo(3);
+        assertThat(replayed.tests()).as("U replays in the default suite").isEqualTo(2);
+        TestClassRecording.Replayed now = TestClassRecording.replayedNow(
+                layout.moduleRoot(),
+                layout,
+                TestSelection.DEFAULT,
+                layout.testClassesDir(),
+                layout.classesDir(),
+                List.of(),
+                List.of(),
+                List.of(),
+                "stamp-1",
+                launches);
+        assertThat(now.ran() + now.tests())
+                .as("before the edit too, only the default suite's rows are priced")
+                .isEqualTo(5);
     }
 
     /**
@@ -324,7 +380,7 @@ class ConeForecastTest {
                 List.of(),
                 List.of(edit(SourceApiIndex.Kind.BODY_ONLY)),
                 List.of(),
-                Set.of(integration)));
+                every(integration)));
         assertThat(gate.classes()).as("its own pool reached another host").isZero();
         assertThat(gate.ran()).isEqualTo(40);
     }
@@ -477,6 +533,13 @@ class ConeForecastTest {
                 .isEqualTo(3);
     }
 
+    /** Each of {@code launches}, selecting every class. */
+    private static Map<String, Predicate<String>> every(String... launches) {
+        Map<String, Predicate<String>> out = new HashMap<>();
+        for (String launch : launches) out.put(launch, cls -> true);
+        return out;
+    }
+
     /** The tests of the recorded classes a run of {@code launches} under {@code stampKey} runs, as the forecast prices them. */
     private static long ranNow(BuildLayout layout, String stampKey, Set<String> launches) throws Exception {
         return TestClassRecording.replayedNow(
@@ -489,7 +552,7 @@ class ConeForecastTest {
                         List.of(),
                         List.of(),
                         stampKey,
-                        launches)
+                        every(launches.toArray(String[]::new)))
                 .ran();
     }
 
@@ -513,7 +576,7 @@ class ConeForecastTest {
                 List.of(),
                 List.of(edit),
                 List.of(),
-                Set.of(""));
+                every(""));
         return replayed == null ? null : replayed.tests();
     }
 
@@ -527,7 +590,7 @@ class ConeForecastTest {
                 List.of(),
                 List.of(),
                 List.of(rebuilding),
-                Set.of(""));
+                every(""));
         return replayed == null ? null : replayed.tests();
     }
 
