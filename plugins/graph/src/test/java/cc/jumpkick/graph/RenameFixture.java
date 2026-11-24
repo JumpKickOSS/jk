@@ -125,6 +125,11 @@ final class RenameFixture {
         return ask("rename", List.of(address, to), budget, options);
     }
 
+    /** {@code usages address}, as the engine asks for it. */
+    String usages(String address) throws IOException {
+        return ask("usages", List.of(address), 8000);
+    }
+
     /** {@code delete address} with {@code options} ({@code key=value}), as the engine asks for it. */
     String delete(String address, String... options) throws IOException {
         return ask("delete", List.of(address), 8000, options);
