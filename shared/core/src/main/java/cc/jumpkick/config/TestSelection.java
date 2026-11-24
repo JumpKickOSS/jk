@@ -369,7 +369,14 @@ public record TestSelection(
                     + String.join("', '", missing)
                     + "' (available: "
                     + known
-                    + "; use --all for every suite)";
+                    + (missing.stream().allMatch(Resolved::className)
+                            ? "); a class runs with -S, MCP classes"
+                            : "; use --all for every suite)");
+        }
+
+        /** Whether {@code name} reads as a test class rather than a suite: qualified, or capitalized. */
+        private static boolean className(String name) {
+            return name.contains(".") || !name.isEmpty() && Character.isUpperCase(name.charAt(0));
         }
     }
 }

@@ -27,7 +27,7 @@ import org.jspecify.annotations.Nullable;
  * interface method (or {@link Object}'s) or assigns it to or from a variable of the same name; a
  * return type when every call's result is used that way or held by a switched variable. Neither is
  * switched where retyping would change an override, an overload, a method reference or a lambda's
- * target, nor a field another file reads.
+ * target, nor a field another file reads, nor in a method a framework annotation exposes.
  */
 final class InterfaceSwitch {
 
@@ -134,6 +134,12 @@ final class InterfaceSwitch {
                 ? Integer.compare(a.start(), b.start())
                 : a.file().rel.compareTo(b.file().rel));
         return out;
+    }
+
+    /** Whether {@code offset} in {@code code} is on its package or an import line, which names no variable. */
+    private static boolean header(String code, int offset) {
+        String line = JavaText.line(code, offset).stripLeading();
+        return line.startsWith("package ") || line.startsWith("import ");
     }
 
     /** Why the use at {@code [start, end)} is no declaration it could retype, or {@code null} when it declares a name. */
@@ -255,7 +261,11 @@ final class InterfaceSwitch {
             String shown = name.equals("<init>") ? "the constructor" : name + "()";
             int from = Math.max(
                     Math.max(f.text.lastIndexOf(';', at), f.text.lastIndexOf('{', at)), f.text.lastIndexOf('}', at));
-            if (f.text.substring(from + 1, at).contains("@Override")) return shown + " overrides a method";
+            String head = f.text.substring(from + 1, at);
+            if (head.contains("@Override")) return shown + " overrides a method";
+            for (String a : SafeDelete.annotations(List.of(), List.of(head.split("\n")))) {
+                if (!SafeDelete.inert(a)) return "@" + a + " on " + shown + ": a framework may call it by reflection";
+            }
             GraphNode type = types.get(owner);
             String kind = type == null ? "" : String.valueOf(Decl.kind(type));
             int body = ExtractInterface.bodyStart(f.text, at);
@@ -314,7 +324,7 @@ final class InterfaceSwitch {
             Matcher m = Pattern.compile("(?<![\\w$])" + Pattern.quote(name) + "(?![\\w$])")
                     .matcher(code);
             while (m.find()) {
-                if (declared.contains(m.start())) continue;
+                if (declared.contains(m.start()) || header(code, m.start())) continue;
                 int b = before(code, m.start());
                 if (b >= 0
                         && code.charAt(b) == '.'

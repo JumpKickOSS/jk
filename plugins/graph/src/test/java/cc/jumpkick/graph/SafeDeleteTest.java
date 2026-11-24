@@ -240,6 +240,52 @@ class SafeDeleteTest {
                 .contains("describeForAudit");
     }
 
+    static Map<String, String> texts(String users) {
+        return RenameFixture.files(DIR + "Texts.java", """
+                package org.acme.shop;
+
+                public class Texts {
+                    static boolean blank(String s) {
+                        return s == null || s.isBlank();
+                    }
+                }
+                """, DIR + "Docs.java", """
+                package org.acme.shop;
+
+                class Docs {
+                    // TODO use Strings#blank() once it exists
+                    /** Like {@link #blank(Object)} in another type. */
+                    static boolean empty(Object o) {
+                        return blank(o);
+                    }
+
+                    static boolean blank(Object o) {
+                        return o == null;
+                    }
+                }
+                """, DIR + "Users.java", users);
+    }
+
+    /** A doc link names the method only through its own type: another type's method of the name is no use. */
+    @Test
+    void aDocLinkToAnotherTypesMethodOfTheNameDoesNotKeepIt(@TempDir Path dir) throws IOException {
+        RenameFixture f = new RenameFixture(dir, texts("package org.acme.shop;\n\nclass Users {}\n"));
+
+        assertThat(f.delete("Texts.blank")).startsWith("Deleted Texts.blank(), lines 4-6 of " + DIR + "Texts.java");
+        assertThat(f.checkDelete()).isEqualTo("Proven: it compiles.");
+    }
+
+    @Test
+    void aDocLinkThroughTheMethodsOwnTypeKeepsIt(@TempDir Path dir) throws IOException {
+        RenameFixture f = new RenameFixture(
+                dir,
+                texts("package org.acme.shop;\n\n/** Checked with {@link Texts#blank(String)}. */\nclass Users {}\n"));
+
+        assertThat(f.delete("Texts.blank"))
+                .startsWith("Not deleted, nothing is written: Texts.blank() is still used.")
+                .contains(DIR + "Users.java:3");
+    }
+
     @Test
     void anUnusedFieldGoesWithItsDocComment(@TempDir Path dir) throws IOException {
         RenameFixture f = new RenameFixture(dir, shop());

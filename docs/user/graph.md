@@ -745,7 +745,9 @@ jk code extract-interface Book Priced --methods price,total  # Book implements i
 
 `delete` removes a method (every overload), a field or a type only when nothing uses it: no call or
 reference in the compiled classes, no anchor it maps to, no override, no framework annotation or entry
-point, no doc link or string naming it. Otherwise it writes nothing and lists the uses as `usages`
+point, no doc link or string naming it. A doc link counts when it names the member through its
+own type (`Order#label`), or bare (`#label`) in a file that names the type; `Optional#label` is
+another type's. Otherwise it writes nothing and lists the uses as `usages`
 does, and each framework annotation that keeps it at the `file:line` that writes it. `move` takes a
 static Java method (every overload) or static field to another class, enum or record and edits
 every use javac bound; `pull-up` takes an instance method or field to the class its type extends,
@@ -787,7 +789,9 @@ and return type of the class's type outside it that uses only the interface's me
 `Object`'s) is declared as the interface instead, with the imports that needs. A return type is
 switched only when every caller uses the result that way or keeps it in a switched variable. A
 place stays the class when retyping it could break or change an override, an overload, a method
-reference, a lambda's parameter, a record component or a field another file reads; constructor
+reference, a lambda's parameter, a record component or a field another file reads, or where a
+framework annotation on the method (`@ModelAttribute`, `@GetMapping`) means a framework calls it
+and reads its result by reflection; constructor
 calls, casts, type arguments and static calls stay too. Each place left is listed at `file:line`
 with its reason (`calls pages()`, `passed on`, `show() overrides a method`). `--no-switch` (MCP
 `switch: false`) creates the interface alone and lists the places that could take it. It refuses

@@ -420,6 +420,63 @@ class ExtractInterfaceTest {
         assertThat(ExtractInterface.typeParams("Box {", 3)).isEmpty();
     }
 
+    static final String CARD = "src/main/java/org/acme/card/";
+
+    /**
+     * A parameter named like the last part of its file's package still takes the interface: the
+     * package and import lines are no use of it. A method a framework annotation exposes keeps
+     * returning the class, though no source calls it: the framework reads the result as the class.
+     */
+    @Test
+    void thePackageNameIsNoUseAndAFrameworkMethodKeepsItsReturnType(@TempDir Path dir) throws IOException {
+        RenameFixture f = new RenameFixture(
+                dir,
+                RenameFixture.files(CARD + "Card.java", """
+                package org.acme.card;
+
+                public class Card {
+                    public String owner() {
+                        return "ann";
+                    }
+
+                    public int number() {
+                        return 1;
+                    }
+                }
+                """, CARD + "Exposed.java", """
+                package org.acme.card;
+
+                import java.lang.annotation.Retention;
+                import java.lang.annotation.RetentionPolicy;
+
+                @Retention(RetentionPolicy.RUNTIME)
+                @interface Exposed {
+                    String value();
+                }
+                """, CARD + "Labels.java", """
+                package org.acme.card;
+
+                final class Labels {
+                    static String label(Card card) {
+                        return card.owner();
+                    }
+
+                    @Exposed("card")
+                    public Card find() {
+                        return new Card();
+                    }
+                }
+                """));
+
+        assertThat(f.extract("Card", "Owned", "owner")).endsWith("""
+                Switched to Owned, calling only its methods (1 line):
+                  src/main/java/org/acme/card/Labels.java:4  static String label(Owned card) {
+                Left as Card (2 lines):
+                  src/main/java/org/acme/card/Labels.java:9  public Card find() {  (@Exposed on find(): a framework may call it by reflection)
+                  src/main/java/org/acme/card/Labels.java:10  return new Card();  (a constructor call)""");
+        assertThat(f.checkExtract()).isEqualTo("Proven: it compiles.");
+    }
+
     @Test
     void anInterfaceThatDoesNotCompileIsUndoneWithItsNewFile(@TempDir Path dir) throws IOException {
         RenameFixture f = new RenameFixture(dir, RenameFixture.files(SHOP + "Crate.java", """

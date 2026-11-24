@@ -4,6 +4,7 @@ package cc.jumpkick.graph;
 import cc.jumpkick.codegraph.Anchors;
 import cc.jumpkick.codegraph.Budget;
 import cc.jumpkick.codegraph.CodeGraph;
+import cc.jumpkick.codegraph.GraphNode;
 import cc.jumpkick.codegraph.GraphQuery;
 import cc.jumpkick.codegraph.GraphSnapshot;
 import cc.jumpkick.codegraph.GraphTools;
@@ -229,7 +230,7 @@ public final class GraphService {
         if ("extract-interface".equals(r.op())) return ExtractInterface.run(w, build.graph(), r);
         if ("usages".equals(r.op())) {
             CodeGraph g = build.graph();
-            Scope scope = Scope.of(r.scope(), r.modulePrefixes(), r.sourceSet(), g.modules());
+            Scope scope = scope(r, g);
             GraphTools tools = tools(w, g, scope);
             // An address written <kind>:<name> is an anchor's, never a symbol's: answered before the symbol readers.
             String address = GraphTools.address(arg(r.args(), 0, "a method"));
@@ -245,9 +246,25 @@ public final class GraphService {
         return Reply.of(w, said(w, build, r));
     }
 
+    /**
+     * The part of the workspace {@code r} reads. Paths that match no file of the graph are refused: a
+     * read through them would answer "nothing" for every symbol, a source set named as a path most often.
+     */
+    static Scope scope(Request r, CodeGraph g) {
+        String globs = r.scope();
+        if (globs != null && !globs.isBlank()) {
+            Scope paths = Scope.of(globs, List.of(), null, g.modules());
+            if (g.nodes().stream().map(GraphNode::sourceFile).noneMatch(paths::containsPath)) {
+                throw new IllegalArgumentException("scope '" + globs.strip() + "' matches no source file;"
+                        + " give paths from the workspace root (source_set picks main or test)");
+            }
+        }
+        return Scope.of(globs, r.modulePrefixes(), r.sourceSet(), g.modules());
+    }
+
     private static String said(Workspace w, GraphBuild.Result build, Request r) throws IOException {
         CodeGraph g = build.graph();
-        Scope scope = Scope.of(r.scope(), r.modulePrefixes(), r.sourceSet(), g.modules());
+        Scope scope = scope(r, g);
         GraphTools tools = tools(w, g, scope);
         List<String> a = r.args();
         return switch (r.op()) {

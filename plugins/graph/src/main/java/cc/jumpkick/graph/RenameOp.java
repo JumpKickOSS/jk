@@ -124,6 +124,9 @@ final class RenameOp {
             throws IOException {
         String kind = options.get("kind");
         if (kind == null || kind.isBlank()) kind = kindOf(c, graph, address);
+        if ((kind.equals("method") || kind.equals("field")) && to.contains(".") && qualified(to)) {
+            throw new RenameRefusal(moveInstead(address, to));
+        }
         if (kind.equals("method")) return GraphRename.rename(w, graph, address, to);
         String stale = GraphRename.edited(w.indexes());
         if (stale != null) throw new RenameRefusal(stale);
@@ -248,6 +251,19 @@ final class RenameOp {
                     "Not moved: package " + pkg + " is in " + String.join(", ", homes) + "; pass module=<directory>.");
         }
         return null;
+    }
+
+    /**
+     * The refusal of a qualified new name for a member: a rename keeps the member in its class, so
+     * the answer names the move that puts it in the class {@code to} names.
+     */
+    static String moveInstead(String address, String to) {
+        int paren = address.indexOf('(');
+        String member = paren < 0 ? address : address.substring(0, paren);
+        String owner = member.substring(0, Math.max(0, member.lastIndexOf('.')));
+        String target = to.substring(0, to.lastIndexOf('.'));
+        return "Not renamed: a rename keeps " + member + " in " + owner + "; to put it in " + target
+                + ", move it (jk code move, MCP move).";
     }
 
     static boolean qualified(String name) {

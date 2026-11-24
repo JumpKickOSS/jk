@@ -243,7 +243,7 @@ final class SafeDelete {
             t.also.add("  an entry point: the JVM runs main");
         }
         named(w, g, t, name, sites);
-        docLinks(w, g, t, name);
+        docLinks(w, g, t, ownerName(GraphQuery.clean(g.display(id))), name);
         t.strings.add(Pattern.compile("\"" + Pattern.quote(name) + "\""));
         t.literalOnly = true;
         return t;
@@ -502,20 +502,41 @@ final class SafeDelete {
                         .find();
     }
 
-    /** Doc comment links to {@code name} ({@code #name}, {@code Type#name}) in Java sources. */
-    private static void docLinks(GraphService.Workspace w, CodeGraph g, Target t, String name) {
-        Pattern link = Pattern.compile("#" + Pattern.quote(name) + "(?![\\w$])");
+    /** The simple name of the type that declares the method {@code display} shows ({@code Type.name(...)}). */
+    static String ownerName(String display) {
+        int paren = display.indexOf('(');
+        String member = paren < 0 ? display : display.substring(0, paren);
+        String owner = member.substring(0, Math.max(0, member.lastIndexOf('.')));
+        return owner.substring(owner.lastIndexOf('.') + 1);
+    }
+
+    /**
+     * Doc comment links to {@code name} of the type {@code owner} (its simple name) in Java sources:
+     * {@code owner#name}, or {@code #name} in a file that names the type, its own included. A link
+     * through another type ({@code Optional#name}), or bare in a file that never names it, is that
+     * type's member.
+     */
+    private static void docLinks(GraphService.Workspace w, CodeGraph g, Target t, String owner, String name) {
+        Pattern link = Pattern.compile("([\\w$.]*)#" + Pattern.quote(name) + "(?![\\w$])");
+        Pattern named = Pattern.compile("(?<![\\w$])" + Pattern.quote(owner) + "(?![\\w$])");
         for (String rel : sources(g)) {
             if (!rel.endsWith(".java")) continue;
             String text = RenameText.read(w.root(), rel);
             if (text == null || !text.contains("#" + name)) continue;
+            boolean bare =
+                    rel.equals(t.rel) || owner.isEmpty() || named.matcher(text).find();
             String[] lines = text.split("\n", -1);
             for (int i = 0; i < lines.length; i++) {
                 if (rel.equals(t.rel) && inside(t, i + 1)) continue;
                 String code = lines[i].strip();
                 if (!(code.startsWith("*") || code.startsWith("/*") || code.startsWith("//"))) continue;
-                if (link.matcher(lines[i]).find()) {
-                    t.also.add("  a doc link  " + rel + ":" + (i + 1) + "  " + quote(lines[i]));
+                Matcher m = link.matcher(lines[i]);
+                while (m.find()) {
+                    String type = m.group(1).substring(m.group(1).lastIndexOf('.') + 1);
+                    if (type.isEmpty() ? bare : type.equals(owner)) {
+                        t.also.add("  a doc link  " + rel + ":" + (i + 1) + "  " + quote(lines[i]));
+                        break;
+                    }
                 }
             }
         }

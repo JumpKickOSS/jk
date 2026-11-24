@@ -2,6 +2,7 @@
 package cc.jumpkick.graph;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.codegraph.Modules;
 import cc.jumpkick.guard.extract.FactsIndexing;
@@ -17,6 +18,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import javax.tools.ToolProvider;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -167,6 +169,11 @@ class GraphUsesTest {
     }
 
     private static String callers(Path root, String address, Set<String> stale) throws IOException {
+        return callers(root, address, stale, null);
+    }
+
+    private static String callers(Path root, String address, Set<String> stale, @Nullable String scope)
+            throws IOException {
         Path classes = root.resolve("target/classes");
         FactsIndexing.Ensured e =
                 FactsIndexing.ensure(classes, FactsIndexing.indexPath(root.resolve("target"), "main"));
@@ -185,8 +192,33 @@ class GraphUsesTest {
                 List.of(),
                 ModuleReach.UNKNOWN);
         GraphService.Request r = new GraphService.Request(
-                "usages", List.of(address), "bfs", 3, 4000, List.of(), false, 8, null, false, false);
+                "usages",
+                List.of(address),
+                "bfs",
+                3,
+                4000,
+                List.of(),
+                false,
+                8,
+                null,
+                false,
+                false,
+                scope,
+                List.of(),
+                null,
+                Map.of());
         return GraphService.run(w, r, GraphBuild.Progress.NONE).text();
+    }
+
+    /** Paths that match no file would make every answer "nothing uses it": they are refused instead. */
+    @Test
+    void aScopeThatMatchesNoFileIsRefusedNotAnsweredEmpty(@TempDir Path dir) throws IOException {
+        Path root = workspace(dir);
+        assertThatThrownBy(() -> callers(root, "Box.size", Set.of(), "main"))
+                .hasMessage("scope 'main' matches no source file; give paths from the workspace root"
+                        + " (source_set picks main or test)");
+        assertThat(callers(root, "Box.size", Set.of(), "src/main/java"))
+                .startsWith("Uses of Box.size (field): 5 in main sources");
     }
 
     @Test
