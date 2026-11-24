@@ -478,6 +478,61 @@ class ExtractInterfaceTest {
     }
 
     /**
+     * Each declaration keeps its own reason: a parameter of a method a framework exposes stays, and
+     * a local of the same name in another method of that file still takes the interface.
+     */
+    @Test
+    void sameNamedVariablesInOneFileEachKeepTheirOwnReason(@TempDir Path dir) throws IOException {
+        RenameFixture f = new RenameFixture(
+                dir, RenameFixture.files(CARD + "Card.java", """
+                package org.acme.card;
+
+                public class Card {
+                    public String owner() {
+                        return "ann";
+                    }
+
+                    public int number() {
+                        return 1;
+                    }
+                }
+                """, CARD + "Exposed.java", """
+                package org.acme.card;
+
+                import java.lang.annotation.Retention;
+                import java.lang.annotation.RetentionPolicy;
+
+                @Retention(RetentionPolicy.RUNTIME)
+                @interface Exposed {
+                    String value();
+                }
+                """, CARD + "Desk.java", """
+                package org.acme.card;
+
+                final class Desk {
+                    @Exposed("card")
+                    public String show(Card card) {
+                        return card.owner();
+                    }
+
+                    String label() {
+                        Card card = new Card();
+                        return card.owner();
+                    }
+                }
+                """));
+
+        String answer = f.extract("Card", "Owned", "owner");
+
+        assertThat(answer)
+                .contains("Switched to Owned, calling only its methods (1 line):\n"
+                        + "  src/main/java/org/acme/card/Desk.java:10  Owned card = new Card();\n")
+                .contains(
+                        "  src/main/java/org/acme/card/Desk.java  1 in a method a framework calls, 1 constructor call");
+        assertThat(f.checkExtract()).isEqualTo("Proven: it compiles.");
+    }
+
+    /**
      * Where only the class will do (a constructor call, a type argument, a cast), the places are
      * counted per file, so a class used widely still answers inside the MCP budget with every place
      * an agent could change listed at its line.

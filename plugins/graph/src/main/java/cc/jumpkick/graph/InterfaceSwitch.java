@@ -132,7 +132,7 @@ final class InterfaceSwitch {
             if (f == null) continue;
             String code = masked(f.text);
             Map<String, List<Typed>> vars = new LinkedHashMap<>();
-            Map<String, String> varReasons = new HashMap<>();
+            Map<Typed, String> varReasons = new HashMap<>();
             for (ReferenceIndex.Span s : f.spans) {
                 if (s.kind() != 'r' || !s.symbol().equals("T " + bin) || importLine(f.text, s.start())) continue;
                 int start = qualifierStart(code, s.start());
@@ -153,21 +153,26 @@ final class InterfaceSwitch {
                 Typed t = new Typed(s, start, m.group());
                 vars.computeIfAbsent(m.group(), k -> new ArrayList<>()).add(t);
                 String why = scan.declaration(f, code, t, m.start(), m.end());
-                if (why != null) varReasons.putIfAbsent(m.group(), why);
+                if (why != null) varReasons.put(t, why);
             }
             for (Map.Entry<String, List<Typed>> e : vars.entrySet()) {
-                String why = varReasons.get(e.getKey());
-                if (why == null) {
+                String misuse = null;
+                if (!varReasons.keySet().containsAll(e.getValue())) {
                     Set<Integer> names = new TreeSet<>();
                     for (Typed t : e.getValue()) {
                         names.add(pastTypeArgs(code, t.type().end()));
                     }
-                    why = scan.misuse(f, code, e.getKey(), names);
+                    misuse = scan.misuse(f, code, e.getKey(), names);
                 }
-                if (why == null)
-                    switched.computeIfAbsent(rel, k -> new TreeSet<>()).add(e.getKey());
-                for (Typed t : e.getValue())
+                boolean all = true;
+                for (Typed t : e.getValue()) {
+                    String mine = varReasons.get(t);
+                    String why = mine != null ? mine : misuse;
+                    all &= why == null;
                     out.add(new Place(f, t.start(), t.type().end(), why));
+                }
+                // A call's result is held by name: it counts as switched only if every such variable is.
+                if (all) switched.computeIfAbsent(rel, k -> new TreeSet<>()).add(e.getKey());
             }
         }
         for (Returning r : returns) {
