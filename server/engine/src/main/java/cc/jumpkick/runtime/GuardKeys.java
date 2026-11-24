@@ -399,6 +399,10 @@ final class GuardKeys {
     /**
      * {@link #suiteTokens} for the run: taken when asked, over the suite's last ledger read as
      * {@code mode} says, so a lookup sees the ledger before the run and a store the one it left.
+     *
+     * <p>{@code beforeIndexes} runs first only when no ledger stands for the suite, since only then
+     * does the key read the modules' facts indexes. A ledger that stands for every guard holds no
+     * guard that takes {@code Facts}, so its key reads no index and need not wait for one.
      */
     static EvalContext.IoSupplier<List<String>> suiteTokenSource(
             String suiteDigest,
@@ -406,9 +410,13 @@ final class GuardKeys {
             Path root,
             List<Path> workspaceModules,
             Path moduleDir,
-            LedgerReads.Mode mode) {
-        return () -> suiteTokens(
-                suiteDigest, declared, root, workspaceModules, moduleDir, ledgerReads(root, moduleDir, declared, mode));
+            LedgerReads.Mode mode,
+            EvalContext.IoRunnable beforeIndexes) {
+        return () -> {
+            String reads = ledgerReads(root, moduleDir, declared, mode);
+            if (reads == null) beforeIndexes.run();
+            return suiteTokens(suiteDigest, declared, root, workspaceModules, moduleDir, reads);
+        };
     }
 
     /** The file beside the report a suite's run is configured by ({@link GuardSuiteRunner}). */

@@ -44,6 +44,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
 
@@ -211,12 +212,20 @@ final class GuardSteps {
                     g.root(), ctx.get(MODULE).map(ModuleIdentity::project).orElse(null));
             boolean workspace = GuardSuites.anyWorkspace(declared);
             // A workspace guard judges every module's index: each must describe what this
-            // build compiled before the key is taken or the suite reads it.
-            if (workspace) awaitIndexed(ctx, g.root(), workspaceModules);
+            // build compiled before the suite reads it, or a key that reads it is taken. A key
+            // over a replayable ledger reads none, so a cached verdict waits for no compile.
+            EvalContext.IoRunnable indexesFirst =
+                    workspace ? indexesAwaited(ctx, g.root(), workspaceModules) : () -> {};
             // Looked up over what the guards read last run; stored over what this run read, taken
             // inside its turn, before another run can rewrite the ledger.
             suiteKey.lookup = GuardKeys.suiteTokenSource(
-                    suite.bodyDigest(), declared, g.root(), workspaceModules, moduleDir, LedgerReads.Mode.NOW);
+                    suite.bodyDigest(),
+                    declared,
+                    g.root(),
+                    workspaceModules,
+                    moduleDir,
+                    LedgerReads.Mode.NOW,
+                    indexesFirst);
             List<String> loadErrors = GuardSuites.loadErrors(declared, rules(g).rules());
             if (!loadErrors.isEmpty()) {
                 for (String e : loadErrors) ctx.error("guards", "GUARD suite  did not load\n  Observed: " + e);
@@ -225,52 +234,30 @@ final class GuardSteps {
             List<Rule> built = new ArrayList<>();
             for (GuardSuites.Declared d : declared) built.add(GuardSuites.rule(d, g.root(), module));
             suiteRules = built;
-            List<Path> factsIdx = new ArrayList<>();
-            List<Path> testIdx = new ArrayList<>();
-            List<Path> classDirs = new ArrayList<>();
-            if (workspace) {
-                // Every member's index as this jk reads it: one an older jk wrote is
-                // rebuilt from its classes rather than handed to a suite that cannot read it.
-                for (Path m : workspaceModules) {
-                    Path bd = BuildLayout.moduleTargetDir(m);
-                    FactsIndexing.readable(bd.resolve("classes"), FactsIndexing.indexPath(bd, "main"))
-                            .ifPresent(factsIdx::add);
-                    FactsIndexing.readable(bd.resolve("test-classes"), FactsIndexing.indexPath(bd, "test"))
-                            .ifPresent(testIdx::add);
-                    classDirs.add(bd.resolve("classes"));
-                }
-            } else {
-                factsIdx.add(FactsIndexing.indexPath(buildDir, "main"));
-                if (test != null) testIdx.add(FactsIndexing.indexPath(buildDir, "test"));
-                classDirs.add(mainClasses(ctx));
-            }
             Path library = GuardSuiteLibrary.locate(g.root(), cas).path();
             List<Path> runtimeCp = PlannerGuardSuite.classpath(
                     ctx.require(MODULE).project(),
                     ctx.require(MODULE).layout(),
                     ctx.require(CLASSPATHS).testRuntime(),
                     library);
-            GuardSuiteRunner.Inputs inputs = new GuardSuiteRunner.Inputs(
-                    g.root(),
-                    module,
-                    moduleDir,
-                    ctx.require(MODULE).layout(),
-                    ctx.require(JAVA_HOME),
-                    runtimeCp,
-                    in.cache(),
-                    factsIdx,
-                    testIdx,
-                    classDirs,
-                    workspace);
             // The fork and the evaluation share one turn on the report: a concurrent run
             // on this tree waits, so the report the test kind reads is this run's.
             withSuite = evaluate -> {
+                indexesFirst.run();
+                GuardSuiteRunner.Inputs inputs =
+                        suiteInputs(ctx, module, test != null, runtimeCp, workspace ? workspaceModules : null);
                 try {
                     return GuardSuiteRunner.takingTurn(GuardSuiteRunner.report(inputs), ctx::waiting, () -> {
                         for (String p : GuardSuiteRunner.run(inputs, workspaceModules))
                             ctx.error("guards", "GUARD suite  scanner-failed\n  Observed: " + p);
                         suiteKey.read = GuardKeys.suiteTokenSource(
-                                        suite.bodyDigest(), declared, g.root(), workspaceModules, moduleDir, RECORDED)
+                                        suite.bodyDigest(),
+                                        declared,
+                                        g.root(),
+                                        workspaceModules,
+                                        moduleDir,
+                                        RECORDED,
+                                        indexesFirst)
                                 .get();
                         return evaluate.get();
                     });
@@ -465,6 +452,67 @@ final class GuardSteps {
         executeLane(
                 ctx, env, Lane.TREE, ectx, tokens, ActionKey.qualifiedTaskId(TaskNames.GUARD_TREE, g.root()), false);
         ctx.progress(1);
+    }
+
+    /**
+     * What a run of the module's suite forks with: the facts indexes and class trees it judges, every
+     * member's when it reads the workspace ({@code workspaceModules}, null when it does not), else
+     * this module's, its test index when {@code testIndexed}.
+     */
+    private GuardSuiteRunner.Inputs suiteInputs(
+            TaskContext ctx,
+            String module,
+            boolean testIndexed,
+            List<Path> runtimeCp,
+            @Nullable List<Path> workspaceModules)
+            throws IOException {
+        Path buildDir = ctx.require(MODULE).layout().buildDir();
+        List<Path> factsIdx = new ArrayList<>();
+        List<Path> testIdx = new ArrayList<>();
+        List<Path> classDirs = new ArrayList<>();
+        if (workspaceModules != null) {
+            // Every member's index as this jk reads it: one an older jk wrote is
+            // rebuilt from its classes rather than handed to a suite that cannot read it.
+            for (Path m : workspaceModules) {
+                Path bd = BuildLayout.moduleTargetDir(m);
+                FactsIndexing.readable(bd.resolve("classes"), FactsIndexing.indexPath(bd, "main"))
+                        .ifPresent(factsIdx::add);
+                FactsIndexing.readable(bd.resolve("test-classes"), FactsIndexing.indexPath(bd, "test"))
+                        .ifPresent(testIdx::add);
+                classDirs.add(bd.resolve("classes"));
+            }
+        } else {
+            factsIdx.add(FactsIndexing.indexPath(buildDir, "main"));
+            if (testIndexed) testIdx.add(FactsIndexing.indexPath(buildDir, "test"));
+            classDirs.add(mainClasses(ctx));
+        }
+        return new GuardSuiteRunner.Inputs(
+                g.root(),
+                module,
+                in.dir(),
+                ctx.require(MODULE).layout(),
+                ctx.require(JAVA_HOME),
+                runtimeCp,
+                in.cache(),
+                factsIdx,
+                testIdx,
+                classDirs,
+                workspaceModules != null);
+    }
+
+    /** {@link #awaitIndexed}, as a step that waits once however often it is run. */
+    private EvalContext.IoRunnable indexesAwaited(TaskContext ctx, Path root, List<Path> modules) {
+        AtomicBoolean awaited = new AtomicBoolean();
+        return () -> {
+            if (awaited.get()) return;
+            try {
+                awaitIndexed(ctx, root, modules);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new IOException("interrupted waiting for the workspace's facts indexes", e);
+            }
+            awaited.set(true);
+        };
     }
 
     /**

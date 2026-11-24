@@ -6,8 +6,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.guard.api.runtime.GuardConfig;
+import cc.jumpkick.guard.api.runtime.LedgerReads;
+import cc.jumpkick.guard.eval.EvalContext;
 import cc.jumpkick.guard.eval.GuardSuites;
 import cc.jumpkick.guard.extract.FactsIndexing;
+import cc.jumpkick.guard.facts.FactsFormat;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.JkBuild;
@@ -19,6 +22,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.atomic.AtomicInteger;
 import javax.tools.JavaCompiler;
 import javax.tools.ToolProvider;
 import org.junit.jupiter.api.Test;
@@ -48,6 +52,67 @@ class GuardSuiteLedgerKeyTest {
                 }
             }
             """;
+
+    private static final String FACTS_SUITE = """
+            package fx;
+
+            import cc.jumpkick.guard.api.Facts;
+            import cc.jumpkick.guard.api.Guard;
+            import cc.jumpkick.guard.api.GuardSuite;
+            import cc.jumpkick.guard.api.Scope;
+            import cc.jumpkick.guard.api.Violations;
+
+            @GuardSuite(scope = Scope.WORKSPACE)
+            final class ReadsFacts {
+                @Guard(id = "reads-facts", why = "a verdict over every module's classes moves with them")
+                void readsFacts(Facts facts, Violations v) {
+                    v.population(0);
+                }
+            }
+            """;
+
+    @Test
+    void a_replayable_ledger_keys_the_suite_without_waiting_for_any_index(@TempDir Path tmp) throws Exception {
+        Path root = tree(tmp);
+        ledger(root, "ok");
+        AtomicInteger waits = new AtomicInteger();
+
+        source(root, waits).get();
+
+        assertThat(waits).as("the key read no index").hasValue(0);
+    }
+
+    @Test
+    void a_suite_with_no_ledger_to_stand_for_it_waits_for_the_indexes_before_its_key(@TempDir Path tmp)
+            throws Exception {
+        Path root = tree(tmp);
+        ledger(root, "threw");
+        AtomicInteger waits = new AtomicInteger();
+
+        source(root, waits).get();
+
+        assertThat(waits).hasValue(1);
+    }
+
+    @Test
+    void a_facts_change_moves_the_key_of_a_suite_that_reads_facts(@TempDir Path tmp) throws Exception {
+        Path root = tree(tmp, "ReadsFacts", FACTS_SUITE);
+        factsLedger(root);
+        AtomicInteger waits = new AtomicInteger();
+        List<String> before = source(root, waits).get();
+
+        BuildLayout layout = BuildLayout.of(root, JkBuildParser.parse(root.resolve("jk.toml")));
+        compile(
+                tmp.resolve("main-src-2"),
+                layout.classesDir(),
+                "app",
+                "Main",
+                "package app; public class Main { int body; }");
+        FactsIndexing.ensure(layout.classesDir(), FactsIndexing.indexPath(layout.buildDir(), "main"));
+
+        assertThat(source(root, waits).get()).isNotEqualTo(before);
+        assertThat(waits).as("a key over the facts waits for them").hasValue(2);
+    }
 
     @Test
     void an_edit_no_guard_read_keeps_the_suite_s_verdict(@TempDir Path tmp) throws Exception {
@@ -148,6 +213,33 @@ class GuardSuiteLedgerKeyTest {
                         + "\"globs\":{},\"files\":[0,1],\"memo\":{},\"line\":\"{}\"}\n");
     }
 
+    /**
+     * The ledger a run of the facts suite leaves: its one guard takes {@code Facts}, so its line
+     * cannot replay, as the runtime writes it.
+     */
+    private static void factsLedger(Path root) throws Exception {
+        ledger(root, "ok");
+        Path ledger = GuardSuites.report(BuildLayout.moduleTargetDir(root)).resolveSibling("ledger.jsonl");
+        Files.writeString(
+                ledger,
+                "{\"id\":\"reads-facts\",\"stamp\":\"s\",\"outcome\":\"ok\",\"replayable\":false,"
+                        + "\"globs\":{},\"files\":{},\"memo\":{},\"line\":\"{}\"}\n");
+    }
+
+    /**
+     * The run's lookup of the suite's key tokens, the module counted as the workspace's one member,
+     * each wait for the indexes counted in {@code waits}.
+     */
+    private static EvalContext.IoSupplier<List<String>> source(Path root, AtomicInteger waits) throws Exception {
+        BuildLayout layout = BuildLayout.of(root, JkBuildParser.parse(root.resolve("jk.toml")));
+        Path suiteIndex = FactsIndexing.indexPath(layout.buildDir(), "guard");
+        String digest =
+                FactsIndexing.freshDigest(layout.guardClassesDir(), suiteIndex).orElseThrow();
+        List<GuardSuites.Declared> declared = GuardSuites.declared(FactsFormat.read(suiteIndex));
+        return GuardKeys.suiteTokenSource(
+                digest, declared, root, List.of(root), root, LedgerReads.Mode.NOW, waits::incrementAndGet);
+    }
+
     private static GuardKeys.LaneProbe probe(Path root) throws Exception {
         BuildLayout layout = BuildLayout.of(root, JkBuildParser.parse(root.resolve("jk.toml")));
         var load = PlannerGuards.rules(PlannerGuards.detectAt(root));
@@ -172,12 +264,17 @@ class GuardSuiteLedgerKeyTest {
 
     /** A module with main classes and a guard suite that reads one file, both compiled and indexed. */
     private static Path tree(Path tmp) throws Exception {
+        return tree(tmp, "ReadsText", SUITE);
+    }
+
+    /** As {@link #tree(Path)}, with the suite class {@code suiteClass} of {@code suite}. */
+    private static Path tree(Path tmp, String suiteClass, String suite) throws Exception {
         Path root = Files.createDirectories(tmp.resolve("tree"));
         Files.writeString(root.resolve("jk.toml"), "group = \"t\"\nname = \"m\"\nversion = \"0.0.1\"\njava = 25\n");
         Files.createDirectories(root.resolve("src/main/java/app"));
         Files.writeString(root.resolve("src/main/java/app/Main.java"), "package app; public class Main {}\n");
         Files.createDirectories(root.resolve("src/guard/java/fx"));
-        Files.writeString(root.resolve("src/guard/java/fx/ReadsText.java"), SUITE);
+        Files.writeString(root.resolve("src/guard/java/fx/" + suiteClass + ".java"), suite);
         Files.createDirectories(root.resolve(".jk"));
         Files.writeString(root.resolve(".jk/notes.txt"), "one\n");
         Files.writeString(root.resolve(".jk/other.txt"), "one\n");
@@ -186,7 +283,7 @@ class GuardSuiteLedgerKeyTest {
 
         compile(tmp.resolve("main-src"), layout.classesDir(), "app", "Main", "package app; public class Main {}");
         FactsIndexing.ensure(layout.classesDir(), FactsIndexing.indexPath(layout.buildDir(), "main"));
-        compile(tmp.resolve("suite-src"), layout.guardClassesDir(), "fx", "ReadsText", SUITE);
+        compile(tmp.resolve("suite-src"), layout.guardClassesDir(), "fx", suiteClass, suite);
         FactsIndexing.ensure(layout.guardClassesDir(), FactsIndexing.indexPath(layout.buildDir(), "guard"));
         return root;
     }
