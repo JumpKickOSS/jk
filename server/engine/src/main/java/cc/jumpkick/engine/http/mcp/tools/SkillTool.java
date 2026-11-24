@@ -5,6 +5,8 @@ import cc.jumpkick.docs.JkSkill;
 import cc.jumpkick.engine.http.mcp.McpCall;
 import cc.jumpkick.engine.http.mcp.McpSchemas;
 import cc.jumpkick.engine.http.mcp.McpTool;
+import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.function.Function;
 import java.util.function.Predicate;
@@ -17,7 +19,14 @@ public final class SkillTool implements McpTool {
             "How to use jk: the loop and the verdict format. topic= one page (dependencies, tests, lockfile, …).";
 
     /** Tools whose usage a topic covers: asked for by the tool's name, the topic answers. */
-    static final Map<String, String> TOOL_PAGES = Map.of("usages", "code", "rename", "code", "flaky", "tests");
+    static final Map<String, String> TOOL_PAGES = Map.of(
+            "usages", "code",
+            "rename", "code",
+            "delete", "code",
+            "move", "code",
+            "pull_up", "code",
+            "extract_interface", "code",
+            "flaky", "tests");
 
     /** Another registered tool's description by name: agents ask for a tool's name as a topic. */
     private volatile Function<String, @Nullable String> tools = name -> null;
@@ -46,7 +55,7 @@ public final class SkillTool implements McpTool {
         String text = JkSkill.topic(topic);
         if (text != null) return in.text(text);
         // Not an error: an agent that guessed a topic gets its next move in the same answer.
-        String name = topic.strip();
+        String name = toolName(topic);
         String topics = "Topics: " + String.join(", ", JkSkill.TOPICS) + "; no topic gives the core.\n";
         String tool = tools.apply(name);
         if (tool != null) {
@@ -63,5 +72,19 @@ public final class SkillTool implements McpTool {
             return in.text("`" + name + "` is an MCP tool, not a topic: " + how + tool + "\n" + topics);
         }
         return in.text("No skill topic `" + name + "`. " + topics);
+    }
+
+    /**
+     * The tool a guessed topic means: {@code extract interface} and {@code pull-up} spell {@code
+     * extract_interface} and {@code pull_up}, and a first word alone ({@code extract}) names the one
+     * tool with a page that it starts. Anything else comes back stripped.
+     */
+    static String toolName(String topic) {
+        String name = topic.strip().toLowerCase(Locale.ROOT).replaceAll("[\\s-]+", "_");
+        if (TOOL_PAGES.containsKey(name)) return name;
+        List<String> starts = TOOL_PAGES.keySet().stream()
+                .filter(tool -> tool.startsWith(name + "_"))
+                .toList();
+        return starts.size() == 1 ? starts.getFirst() : topic.strip();
     }
 }

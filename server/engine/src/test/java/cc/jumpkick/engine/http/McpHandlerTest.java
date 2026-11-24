@@ -582,6 +582,18 @@ class McpHandlerTest {
                         "not your change",
                         "jk flaky list|show|issue|release")
                 .doesNotContain("call it directly", "\"isError\":true");
+        for (String guess : List.of("extract interface", "extract", "Extract-Interface")) {
+            String refactor = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":39,\"method\":\"tools/call\","
+                    + "\"params\":{\"name\":\"skill\",\"arguments\":{\"topic\":\"" + guess + "\"}}}");
+            assertThat(refactor)
+                    .as("a refactoring asked for in words, `%s`, answers with the code page and its row", guess)
+                    .contains(
+                            "`extract_interface` is an MCP tool: call it if your client lists it",
+                            "Its page, topic code:",
+                            "extract_interface(address=T, to=I)",
+                            "jk code extract-interface T I")
+                    .doesNotContain("No skill topic", "\"isError\":true");
+        }
         String none = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":36,\"method\":\"tools/call\","
                 + "\"params\":{\"name\":\"skill\",\"arguments\":{\"topic\":\"nope\"}}}");
         assertThat(none).contains("No skill topic `nope`", "Topics: code, dependencies");

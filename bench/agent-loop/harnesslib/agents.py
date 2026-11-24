@@ -939,9 +939,13 @@ def _agy_summary(events: list[dict]) -> list[dict]:
             continue
         if step.get("step_type") == "tool":
             info = step.get("tool_info") if isinstance(step.get("tool_info"), dict) else {}
+            params = info.get("parameters") if isinstance(info.get("parameters"), dict) else {}
+            # call_mcp_tool's Arguments come first in the stream; the names go ahead of them so the cut
+            # below keeps the tool the call names.
+            names = {k: params[k] for k in ("ServerName", "ToolName") if k in params}
             out.append({
                 "tool_use": step.get("tool_name"),
-                "input": json.dumps(info.get("parameters") or {})[:200],
+                "input": json.dumps({**names, **params})[:200],
             })
     for ev in events:
         step = ev.get("step_update") or {}

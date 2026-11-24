@@ -119,6 +119,12 @@ assert ct.code_tool({"kind": "question", "code_tool": "find"}, "jk") is None
 assert ct.code_tool({"kind": "question", "code_tool": "find"}, "jk-graph") == "find"
 assert ct.code_tool_calls(spine, "usages") == 2
 assert ct.code_tool_calls([{"tool_use": "Bash", "input": '{"command": "jk code pull-up A.b"}'}], "pull_up") == 1
+# agy's call_mcp_tool puts its Arguments first; the spine keeps the tool's name inside its 200 bytes.
+agy_step = {"event": "step_update", "step_update": {"state": "DONE", "step_type": "tool", "tool_name": "call_mcp_tool",
+            "tool_info": {"parameters": {"Arguments": {"address": "org.acme." + "x" * 200, "to": "Priced"},
+                                         "ServerName": "jk", "ToolName": "extract_interface"}}}}
+assert ct.code_tool_calls(ct.agents._agy_summary([agy_step]), "extract_interface") == 1
+assert ct.called({"tool_use": "use_tool", "input": '{"tool_name": "jk__move", "tool_input": {"address": "A.'}) == "jk__move"
 assert ct.tool_errors(Path(sys.argv[2]), "claude-code") == 3
 assert ct.tool_errors(Path(sys.argv[2]), "gemini") is None
 assert ct.tool_errors(Path(sys.argv[3]) / "grok.jsonl", "grok") == 1
