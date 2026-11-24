@@ -620,10 +620,8 @@ that fails `ClassKeysTest` (a condition dropped from `ClassKeys.replacedToken`),
 selection would have run 153, and the one class whose outcome changed was among them.
 
 **Selection.** `[test] cache = "cone"` (`TestCache.CONE`; a member takes the workspace root's when
-it says nothing). JumpKick's own root sets it. A release before it refuses `"cone"`, the pinned
-bootstrap release among them, so CI builds the tree with the bridge `.jk/ci/ci-bootstrap-reader`
-names, a commit that pin builds and whose JumpKick reads the value
-([bootstrap chain](self-host.md#the-bootstrap-chain)). Before a suite runs, `TestClassRecording.unmoved`
+it says nothing). JumpKick's own root sets it, so the bootstrap pin must be a release that reads
+the value ([bootstrap chain](self-host.md#the-bootstrap-chain)). Before a suite runs, `TestClassRecording.unmoved`
 walks the record file a row at a time and asks `ClassShadow.whyRun`, the shadow's own question, of
 each class over the cones as they are now; a class it would replay becomes a settled entry of the
 class ledger (`TestClassLedger.begin`), so the launcher leaves it out, its `class-finish` row says
