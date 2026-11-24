@@ -525,7 +525,7 @@ final class TestSteps {
                 selection,
                 keyed,
                 workers,
-                project.build().testNetworkAllowed(),
+                TestStampInputs.testNetworkAllowed(project, in.dir()),
                 affected == null,
                 project);
     }
@@ -1009,7 +1009,7 @@ final class TestSteps {
         // no marker, so its miss is that and not a stamp that moved.
         boolean network = !hit
                 && !red
-                && !s.project.build().testNetworkAllowed()
+                && !TestStampInputs.testNetworkAllowed(s.project, s.dir)
                 && SuiteReads.load(s.dir, SessionContext.selectionFor(s.dir)).network();
         Perf.note("forecast-test-stamp " + s.dir, "key", stampKey, "hit", hit, "red", red);
         if (hit)

@@ -390,6 +390,18 @@ public record TestStampInputs(
         return JkBuildParser.parseLocal(ManifestPaths.manifestIn(root)).build().testFastMethodBudgetMs();
     }
 
+    /**
+     * {@code [test] network = "allowed"}: the module's own, else its workspace root's, so one line at
+     * the root lets every member's suite that reaches past the host replay. The stamp, the live run
+     * and the forecast all read it here.
+     */
+    static boolean testNetworkAllowed(JkBuild module, Path moduleDir) throws IOException {
+        if (module.build().testNetworkAllowed()) return true;
+        Path root = WorkspaceScan.owningRoot(moduleDir).orElse(null);
+        if (root == null || root.normalize().equals(moduleDir.normalize())) return false;
+        return JkBuildParser.parseLocal(ManifestPaths.manifestIn(root)).build().testNetworkAllowed();
+    }
+
     /** Whether the module's suite reruns whole or not at all ({@code [test] cache = "module"}). */
     boolean cachesModule() throws IOException {
         return testCache(facts.project(), facts.dir()) == TestCache.MODULE;
@@ -544,7 +556,8 @@ public record TestStampInputs(
             JkBuild project,
             List<String> jvmArgs,
             Path moduleDir,
-            ClasspathFingerprint.EntryIdentity identity) {
+            ClasspathFingerprint.EntryIdentity identity)
+            throws IOException {
         BuildBlock build = project.build();
         List<String> extras = new ArrayList<>();
         extras.add("jk:" + KeyContract.SUITE.keyVersion());
@@ -575,7 +588,7 @@ public record TestStampInputs(
             extras.add("jvm-user-args:" + PortablePath.spelledText(String.join(" ", userArgs), workspace));
         // Whether a suite that reaches past the host may replay at all: a marker stored while it
         // could must not replay once it may not, or the suite never runs again until a file moves.
-        if (build.testNetworkAllowed()) extras.add("network:allowed");
+        if (testNetworkAllowed(project, moduleDir)) extras.add("network:allowed");
         // What the test JVM is handed of the environment changes what the suite sees, so it retests;
         // a value the caller's environment answered keys under this home's secret, and the result
         // stays here unless a remote cache's seed gives the key a shared form (SharedStampKeys).

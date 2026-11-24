@@ -636,6 +636,11 @@ add to its settings and nothing else:
 | `jvm-args` | Additive; the root's follow the member's, so the root wins a flag both set | A member adds flags only its test JVMs need |
 | `timeout` | The root's when it sets one, else the member's | One limit per tier where the root names it |
 
+Three `[test]` keys a member that does not set them takes from the root: `network`, so one
+`network = "allowed"` at the root lets every member's suite that reaches another host keep its green
+result (adding or removing the line reruns each member's suite once), `cache` and
+`fast-method-budget`.
+
 Everything else under `[test]` is per-module and is never inherited, including `extra-src`,
 `workers`, `assertions`, `jvm-args`, `system-properties` and `env`. This is not the `key.workspace = true` spelling that identity keys
 (`jdk`, `java`, `layout`, …) and dependency versions use — the tag filters describe the
@@ -1508,7 +1513,8 @@ so they rerun; [test] network = "allowed" caches them`. Under `[test] cache = "c
 replays the classes that did not reach it, and `jk explain` counts only the rest: `run tests ·
 tests use the network · ~2 tests · 40 classes replayed`. Serve what the test needs from a stub on
 loopback, move the test to a suite such as `network` that the gate does not run, or set `[test]
-network = "allowed"` when its result depends on nothing the remote can change. A file under JumpKick's own state directory
+network = "allowed"` (in the module, or at the workspace root for every member) when its result
+depends on nothing the remote can change. A file under JumpKick's own state directory
 (`~/.jk/state`: the engine's endpoint, pid and log files) is never keyed, since it changes with
 every engine restart; the build warns `tests read jk's own state, not keyed: <file>`, because a
 test that reads it is reaching past its sandbox.
