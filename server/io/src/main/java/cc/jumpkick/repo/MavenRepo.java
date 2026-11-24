@@ -853,6 +853,7 @@ public final class MavenRepo {
                     throw refused;
                 }
                 if (!placed.equals(stored.path())) deleteTemp(stored.path());
+                keep(relativePath, stored.sha256(), stored.kept());
                 verified.put(relativePath, stored.sha256());
             }
             return new Fetched(uri, placed, stored.sha256(), stored.size());
@@ -1017,8 +1018,9 @@ public final class MavenRepo {
      * The store's copy of {@code relativePath} when it may answer for {@code coord}: a copy whose
      * bytes verify as the pin, or — without one — as what its memo recorded ({@link
      * LocalMirrorVerifier#stored}); an unpinned artifact is then confirmed by the checksum the repository
-     * publishes ({@link #confirmed}), and so is a POM in the Maven local repository that jk never
-     * verified. A POM or metadata file jk wrote is served as stored.
+     * publishes ({@link #confirmed}), or by the copy of it its memo kept when it was first confirmed
+     * ({@link #keptConfirms}), and so is a POM in the Maven local repository that jk never verified,
+     * by the repository alone. A POM or metadata file jk wrote is served as stored.
      *
      * <p>A non-unique snapshot's unpinned copy, POM or artifact, answers only while its source still
      * holds those bytes: a file repository's file is compared with it ({@link #sourceHolds}), a
@@ -1040,6 +1042,7 @@ public final class MavenRepo {
                 return local;
             if (local.get().sha256().equalsIgnoreCase(verified.get(relativePath))) return local;
             if (moving && local()) return sourceHolds(relativePath, local.get());
+            if (!unvouched && !moving && !local() && keptConfirms(coord, relativePath, local.get(), leg)) return local;
             Optional<Fetched> answer =
                     confirmed(coord, relativePath, local.get(), leg, abort, unvouched || moving, unvouched);
             if (unvouched && answer.isPresent() && answer.get().sha256().equalsIgnoreCase(verified.get(relativePath))) {
@@ -1047,6 +1050,34 @@ public final class MavenRepo {
             }
             return answer;
         }
+    }
+
+    /**
+     * Whether the checksum this repository published for {@code local}'s bytes, kept in their memo
+     * when they were first confirmed ({@link #keep}), still matches them: a release is not
+     * republished in place, so a fresh lock pins it without asking the repository again. A
+     * repository on local disk is read again instead, since a file there is cheap to read and may
+     * be replaced in place.
+     */
+    private boolean keptConfirms(Coordinate coord, String relativePath, Fetched local, Leg leg) throws IOException {
+        Optional<String> kept = repoStore.publishedChecksum(relativePath, local.sha256());
+        if (kept.isEmpty()
+                || !download.confirmKept(
+                        coord,
+                        kept.get(),
+                        vouchFor(fetchBase.resolve(relativePath)).artifact(),
+                        local.cachePath(),
+                        local.sha256(),
+                        leg)) {
+            return false;
+        }
+        verified.put(relativePath, local.sha256());
+        return true;
+    }
+
+    /** Keep {@code published}, the repository's checksum of the bytes {@code sha256} names, in their memo. */
+    private void keep(String relativePath, String sha256, ChecksumSidecars.@Nullable Published published) {
+        if (published != null && !local()) repoStore.recordPublished(relativePath, sha256, published.kept());
     }
 
     /**
@@ -1127,15 +1158,17 @@ public final class MavenRepo {
     private Optional<Fetched> confirmedOnce(
             Coordinate coord, String relativePath, Fetched local, Leg leg, boolean requirePublished)
             throws IOException, InterruptedException {
-        if (download.confirmStored(
+        Optional<DownloadLeg.Confirmed> confirmed = download.confirmStored(
                 coord,
                 vouchFor(fetchBase.resolve(relativePath)),
                 relativePath,
                 local.cachePath(),
                 local.sha256(),
                 leg,
-                requirePublished)) {
+                requirePublished);
+        if (confirmed.isPresent()) {
             verified.put(relativePath, local.sha256());
+            keep(relativePath, local.sha256(), confirmed.get().kept());
             return Optional.of(local);
         }
         repoStore.evict(relativePath);

@@ -379,6 +379,15 @@ a pre-release belong on `jk update`.
    asked of nothing; a package no other repository serves then fails the lock naming it, with the
    same refusal. See [Repositories](repositories.md#transport-and-checksum-trust).
 
+The checksum that verified a release artifact is kept in its `.jk` memo in the store. A later
+fresh lock that finds the artifact there confirms it against that copy and asks the repository
+for no sidecar; a copy whose bytes no longer match it is checked against the repository again. A
+non-unique `-SNAPSHOT` is asked every time, since its repository replaces it in place, and so is a
+`file://` repository. Maven Central never lets a release be republished, so for Central this
+loses nothing. Another repository may let a release be overwritten in place (a Nexus or
+Artifactory repository that allows redeploy): a fresh lock no longer notices that, and keeps
+pinning the bytes it verified first. `jk repo refresh <coord>` fetches the coordinate again.
+
 After the lock exists, `jk sync` / builds enforce the **pinned hashes only** — they do not
 re-check upstream sidecars. A digest mismatch against the lock is a cache miss / refetch,
 not a silent accept. `jk repo refresh <coord>` re-fetches a coordinate on purpose.
