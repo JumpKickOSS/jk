@@ -14,6 +14,9 @@ import cc.jumpkick.guard.api.TextSite;
 import cc.jumpkick.guard.api.Violations;
 import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.jsonl.MiniJson;
+import java.io.ByteArrayOutputStream;
+import java.io.DataOutputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -25,6 +28,8 @@ import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Disabled;
@@ -443,5 +448,107 @@ class ReadLedgerTest {
         Files.writeString(jar, "jar v2");
         assertThat(ReadLedger.stamp(cp, "scope")).as("a library edit").isNotEqualTo(ruleEdited);
         assertThat(ReadLedger.stamp(cp, "other scope")).isNotEqualTo(ReadLedger.stamp(cp, "scope"));
+    }
+
+    @Test
+    void a_class_an_earlier_entry_defines_is_not_code_the_stamp_covers() throws Exception {
+        Path host = Files.createDirectories(root.resolve("host/cc/host"));
+        Files.writeString(host.resolve("Os.class"), "host v1");
+        Path store = Files.createDirectories(root.resolve("cas"));
+        Path runner =
+                jar(store.resolve("1.jar"), Map.of("cc/host/Os.class", "vendored v1", "cc/run/Main.class", "main v1"));
+        String before = ReadLedger.stamp(List.of(root.resolve("host"), runner), "scope");
+
+        Path moved =
+                jar(store.resolve("2.jar"), Map.of("cc/host/Os.class", "vendored v2", "cc/run/Main.class", "main v1"));
+        assertThat(ReadLedger.stamp(List.of(root.resolve("host"), moved), "scope"))
+                .as("a vendored class the earlier entry shadows, in a jar at another path")
+                .isEqualTo(before);
+
+        Path main =
+                jar(store.resolve("3.jar"), Map.of("cc/host/Os.class", "vendored v1", "cc/run/Main.class", "main v2"));
+        assertThat(ReadLedger.stamp(List.of(root.resolve("host"), main), "scope"))
+                .as("a runner class nothing shadows")
+                .isNotEqualTo(before);
+
+        Files.writeString(host.resolve("Os.class"), "host v2");
+        assertThat(ReadLedger.stamp(List.of(root.resolve("host"), runner), "scope"))
+                .as("the class the JVM loads")
+                .isNotEqualTo(before);
+
+        assertThat(ReadLedger.stamp(List.of(runner), "scope"))
+                .as("the vendored class, with nothing ahead of it")
+                .isNotEqualTo(ReadLedger.stamp(List.of(moved), "scope"));
+    }
+
+    @Test
+    void a_vendored_class_the_jar_s_entry_points_never_reach_is_not_code_the_stamp_covers() throws Exception {
+        Path host = Files.createDirectories(root.resolve("host/cc/host"));
+        Files.writeString(host.resolve("Os.class"), "host");
+        List<Path> cp = List.of(root.resolve("host"), runner("unused v1", "used v1", "provider v1"));
+        String before = ReadLedger.stamp(cp, "scope");
+
+        assertThat(ReadLedger.stamp(
+                        List.of(root.resolve("host"), runner("unused v2", "used v1", "provider v1")), "scope"))
+                .as("a class neither the Main-Class nor a service provider reaches")
+                .isEqualTo(before);
+        assertThat(ReadLedger.stamp(
+                        List.of(root.resolve("host"), runner("unused v1", "used v2", "provider v1")), "scope"))
+                .as("a class the Main-Class names in a descriptor")
+                .isNotEqualTo(before);
+        assertThat(ReadLedger.stamp(
+                        List.of(root.resolve("host"), runner("unused v1", "used v1", "provider v2")), "scope"))
+                .as("a service provider")
+                .isNotEqualTo(before);
+    }
+
+    private int runners;
+
+    /**
+     * A runner jar vendoring {@code cc/host/Os}, whose {@code Main-Class} names {@code cc/sdk/Used} and
+     * whose service provider is {@code cc.run.Provider}, beside {@code cc/sdk/Unused}; each body's text
+     * is the given version.
+     */
+    private Path runner(String unused, String used, String provider) throws Exception {
+        Map<String, byte[]> entries = new TreeMap<>();
+        entries.put(
+                "META-INF/MANIFEST.MF",
+                "Manifest-Version: 1.0\nMain-Class: cc.run.Main\n".getBytes(StandardCharsets.UTF_8));
+        entries.put("META-INF/services/cc.run.Plugin", "cc.run.Provider\n".getBytes(StandardCharsets.UTF_8));
+        entries.put("cc/host/Os.class", classNaming("cc/host/Os"));
+        entries.put("cc/run/Main.class", classNaming("cc/run/Main", "(Lcc/sdk/Used;)V"));
+        entries.put("cc/run/Provider.class", classNaming("cc/run/Provider", provider));
+        entries.put("cc/sdk/Used.class", classNaming("cc/sdk/Used", used));
+        entries.put("cc/sdk/Unused.class", classNaming("cc/sdk/Unused", unused));
+        return jar(Files.createDirectories(root.resolve("cas")).resolve(++runners + ".jar"), entries);
+    }
+
+    /** A class file's head whose constant pool holds {@code strings} as UTF-8 entries, which is all the stamp reads. */
+    private static byte[] classNaming(String... strings) throws Exception {
+        var bytes = new ByteArrayOutputStream();
+        try (var out = new DataOutputStream(bytes)) {
+            out.writeInt(0xCAFEBABE);
+            out.writeInt(69);
+            out.writeShort(strings.length + 1);
+            for (String s : strings) {
+                out.writeByte(1);
+                out.writeUTF(s);
+            }
+        }
+        return bytes.toByteArray();
+    }
+
+    private static Path jar(Path file, Map<String, ?> entries) throws Exception {
+        try (var out = new ZipOutputStream(Files.newOutputStream(file))) {
+            for (var e : new TreeMap<>(entries).entrySet()) {
+                out.putNextEntry(new ZipEntry(e.getKey()));
+                out.write(
+                        e.getValue() instanceof byte[] b
+                                ? b
+                                : String.valueOf(e.getValue()).getBytes(StandardCharsets.UTF_8));
+                out.closeEntry();
+            }
+        }
+        return file;
     }
 }

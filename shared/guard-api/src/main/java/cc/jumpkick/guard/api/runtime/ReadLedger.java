@@ -1,10 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.guard.api.runtime;
 
-import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Os;
-import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.jsonl.MiniJson;
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -32,9 +30,9 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>One JSON line per guard in {@code ledger.jsonl} beside the report: the guard's id, the run's
  * stamp, whether it may replay at all, each glob it listed with a digest of the match list, the
- * files it read, and its report line. The stamp covers what is not tree text: every class-path
- * entry's bytes (the suite, its libraries and this runtime), the JDK, the operating system and the
- * run's scope; a guard that takes the {@link cc.jumpkick.guard.api.Model} adds the model snapshot's bytes.
+ * files it read, and its report line. The stamp covers what is not tree text: the class-path code
+ * the JVM may load (the suite, its libraries and this runtime), the JDK, the operating system and
+ * the run's scope; a guard that takes the {@link cc.jumpkick.guard.api.Model} adds the model snapshot's bytes.
  * A guard replays only when its stamp is the same, every glob lists the same files, every file reads
  * the same, and its last outcome was a verdict ({@code ok}); a guard that takes {@code Facts} or
  * {@code Output}, or threw, skipped or found its owner missing, always runs.
@@ -109,35 +107,19 @@ final class ReadLedger implements TextView.Recorder {
     }
 
     /**
-     * The run's stamp: the bytes of every entry of {@code classpath} (a directory by every file
-     * under it but the compile's stamps, which carry a clock), the JDK's version, the operating
-     * system and {@code scope}, which names what the run judges.
+     * The run's stamp: the code {@code classpath} gives the JVM ({@link ClasspathCode}), the JDK's
+     * version, the operating system and {@code scope}, which names what the run judges.
      */
     static String stamp(List<Path> classpath, String scope) throws IOException {
         MessageDigest md = Hashing.newSha256();
         feed(md, "scope", scope);
         feed(md, "java", Runtime.version().toString());
         feed(md, "os", Os.name());
-        for (Path entry : classpath) {
-            Path abs = entry.toAbsolutePath().normalize();
-            feed(md, "entry", abs.toString());
-            if (Files.isDirectory(abs)) {
-                TreeMap<String, Path> files = new TreeMap<>();
-                PathUtil.forEachRegularFile(abs, d -> false, (f, attrs) -> {
-                    String rel = abs.relativize(f).toString().replace('\\', '/');
-                    if (!BuildStamps.isStampFile(rel)) files.put(rel, f);
-                });
-                for (var e : files.entrySet()) feed(md, e.getKey(), Hashing.sha256Hex(e.getValue()));
-            } else if (Files.isRegularFile(abs)) {
-                feed(md, "bytes", Hashing.sha256Hex(abs));
-            } else {
-                feed(md, "absent", "");
-            }
-        }
+        ClasspathCode.feed(md, classpath);
         return Hashing.hex(md.digest());
     }
 
-    private static void feed(MessageDigest md, String tag, String value) {
+    static void feed(MessageDigest md, String tag, String value) {
         md.update((tag + "\0" + value + "\0").getBytes(StandardCharsets.UTF_8));
     }
 
