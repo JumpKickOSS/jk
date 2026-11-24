@@ -202,7 +202,7 @@ final class SuiteDiscovery {
             // replayed read must stay in the list, or the next stamp keys none of it.
             Run run = ledger != null && ledger.leftClassesOut() ? partial() : this;
             String settled = SuiteDiscovery.settle(ctx, run, stampKey, rekey, env);
-            if (pending != null) pending.record(before, pending.suiteReads(selection));
+            if (pending != null) pending.record(before, pending.suiteReads(selection), env.ports());
             if (settled != null
                     && ledger != null
                     && SuiteEnvReads.localOnly(

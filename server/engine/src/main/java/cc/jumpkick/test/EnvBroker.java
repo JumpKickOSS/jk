@@ -99,6 +99,11 @@ public final class EnvBroker implements AutoCloseable {
         }
     }
 
+    /** The loopback port the broker listens on. */
+    public int port() {
+        return server.getLocalPort();
+    }
+
     /** What the run's JVMs were handed of the caller's environment so far. */
     public SuiteEnvReads.Record record() {
         return new SuiteEnvReads.Record(new TreeSet<>(read), listed, whole);

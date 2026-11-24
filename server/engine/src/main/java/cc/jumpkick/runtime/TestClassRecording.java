@@ -109,8 +109,11 @@ final class TestClassRecording {
             return readSet(moduleDir, selection, layout.workspaceRoot());
         }
 
-        /** Record the classes, {@code readsBefore} and {@code readsAfter} the suite's discovered inputs before and after settling. */
-        void record(ClassKeys.SuiteReadSet readsBefore, ClassKeys.SuiteReadSet readsAfter) {
+        /**
+         * Record the classes, {@code readsBefore} and {@code readsAfter} the suite's discovered inputs
+         * before and after settling, {@code ownPorts} the run's own loopback ports to its JVMs.
+         */
+        void record(ClassKeys.SuiteReadSet readsBefore, ClassKeys.SuiteReadSet readsAfter, Set<Integer> ownPorts) {
             if (!TestTelemetry.on() || ledger.recorded().isEmpty()) return;
             try {
                 ONE.acquire();
@@ -119,13 +122,14 @@ final class TestClassRecording {
                 return;
             }
             try {
-                recordHeld(readsBefore, readsAfter);
+                recordHeld(readsBefore, readsAfter, ownPorts);
             } finally {
                 ONE.release();
             }
         }
 
-        private void recordHeld(ClassKeys.SuiteReadSet readsBefore, ClassKeys.SuiteReadSet readsAfter) {
+        private void recordHeld(
+                ClassKeys.SuiteReadSet readsBefore, ClassKeys.SuiteReadSet readsAfter, Set<Integer> ownPorts) {
             long started = Clock.SYSTEM.nanos();
             try {
                 Path target = layout.moduleTargetDir();
@@ -150,7 +154,8 @@ final class TestClassRecording {
                                 javaHome,
                                 scratch,
                                 temp),
-                        launchOf(ran));
+                        launchOf(ran),
+                        new ClassReads.Handed(Set.copyOf(workerJars), ownPorts));
                 long attributedMs = (Clock.SYSTEM.nanos() - started) / 1_000_000;
                 TestClassRecords.Lookups lookups = TestClassRecords.Lookups.read(EnvReadReport.recordDir(moduleDir));
                 Path file = TestClassRecords.file(moduleDir);

@@ -107,10 +107,11 @@ public final class SuiteEnvDelivery implements AutoCloseable {
      * What one run's JVMs read of the caller's environment, whether a question went unanswered
      * because the client had gone ({@code lost}: such a run stores no marker, since what its tests
      * saw of a variable no one could answer for is not what the key would say), and whether a
-     * client sent the run at all ({@code attached}).
+     * client sent the run at all ({@code attached}), and the loopback ports the run's JVMs asked on
+     * ({@code ports}), whose traffic reaches no program a test started.
      */
-    public record Seen(SuiteEnvReads.Record record, boolean lost, boolean attached) {
-        public static final Seen NONE = new Seen(SuiteEnvReads.Record.NONE, false, false);
+    public record Seen(SuiteEnvReads.Record record, boolean lost, boolean attached, Set<Integer> ports) {
+        public static final Seen NONE = new Seen(SuiteEnvReads.Record.NONE, false, false, Set.of());
     }
 
     /**
@@ -119,9 +120,10 @@ public final class SuiteEnvDelivery implements AutoCloseable {
      */
     public Seen seen() {
         EnvBroker b = broker;
-        if (b != null) return new Seen(b.record(), b.lost(), b.attached());
+        if (b != null) return new Seen(b.record(), b.lost(), b.attached(), Set.of(b.port()));
         if (probe == null && !policy.strict())
-            return new Seen(new SuiteEnvReads.Record(Set.of(), false, true), caller.lost(), caller.attached());
+            return new Seen(
+                    new SuiteEnvReads.Record(Set.of(), false, true), caller.lost(), caller.attached(), Set.of());
         return Seen.NONE;
     }
 

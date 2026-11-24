@@ -153,8 +153,8 @@ bytes, whether or not it ran.
   `setsid` around a worker JVM: `ClassReads.EXTERNAL_PROGRAM`, `(external)` among its tools) or
   keyed by its module by every program the stamp keys (`proc:`), so an upgrade of `node` re-runs a
   class that started it; such a program's command keys the workspace files it names by content;
-- every worker jar the stamp keys, by content, for a class in whose JVM a program was started and
-  a class keyed by its module ([below](#nested-engines-and-worker-jars)).
+- every worker jar the stamp keys, by content, for a class marked as reaching a started program
+  and a class keyed by its module ([below](#nested-engines-and-worker-jars)).
 
 A class's first run has no record: it runs. The run records what it read, and the record is stored
 under the key that folds those reads in, once they are proved to have held still while it ran
@@ -174,17 +174,24 @@ open the jar.
 
 A worker jar keys a class when:
 
-- the class read it in its JVM: a code file, keyed by content from the first read on, so every
-  later class of the JVM holds it too and a class loader cached across classes hides nothing;
-- a program was started in the class's JVM before its window closed, by it or by a class before it
-  (`ClassReads.STARTED_PROGRAM`, `(started)` among its tools): the test JDK's own launcher, a
-  program the test wrote, a utility. What such a program runs is read in a process no recording
-  holds, and a long-lived one (a shared engine) serves the classes after the one that started it.
-  `git` in a repository a test made is no such program;
+- the class read it: in its window, or outside every window on a thread whose first read its
+  window held (a thread it started). The tests hash a worker jar, copy it into the sandbox home
+  and hand it to the programs they start; no loader of the test JVM keeps one open for a later
+  class, so a later class does not stand on it the way it stands on any other code file. A read
+  outside every window on a thread no window owns (the runner's own) keys every class whose window
+  had not closed by then, and the pool when it came after every window;
+- the class started a program in its window, or a program was started earlier in its JVM and the
+  class's window reached a local peer (`ClassReads.STARTED_PROGRAM`, `(started)` among its tools):
+  a loopback or Unix domain socket other than the run's own environment broker, or a pipe (a read
+  with no path). Those are the ways a class talks to a program it did not start, and what such a
+  program runs (the test JDK's own launcher, a program the test wrote, a utility, a shared engine)
+  is read in a process no recording holds. `git` in a repository a test made is no such program;
 - the class is keyed by its module, as it stands on every program the stamp keys.
 
-So a fast-tier class of such a suite replays after an engine edit outside its cone only when its
-JVM read no worker jar and started no program. jk-cli-e2e's engine extension materializes the
+So a class of such a suite replays after an engine edit outside its cone when it read no worker jar,
+started no program and talked to no local peer, whatever the classes before it in its JVM did. A
+program a class did not start can still reach it through a file the program wrote that the run
+removed before it ended; no recording holds that, and the soundness guard is what catches it. jk-cli-e2e's engine extension materializes the
 engine only where an engine may be started, never in a fast-tier JVM, and its fast classes start
 nothing: the ones that start Node, `git` outside their temp roots or an engine are `integration`,
 and the ones that need no engine at all are clients/cli's
@@ -248,13 +255,13 @@ result would differ, must run. Each known hole:
 | **Annotation processors and generated code** | Generated classes are classes in the main or test tree; the cone sees them as it sees any class. A processor's own change reaches the class bytes through the compile |
 | **Inlined constants** (a `static final` primitive or string copied into the caller's bytes) | The caller's bytes hold the value, so a change of value is a change of the caller's bytes, provided the compile recompiles every class that inlined it, which JumpKick's incremental compile does. The constant's class may be absent from the caller's constant pool; it is not needed, since the value is in the caller |
 | **Resources and classpath scanning of resources** | Suite resource roots are keyed whole in the suite part. A resource read from a sibling's jar is in the sibling's jar, keyed through the cone's classes of that sibling only if a cone class lives there: closed by keying every workspace jar a class read (observed) and, for the first-load hole, by the guard |
-| **State shared between test classes in one JVM** (a static cache filled from a file by one class and read by another; a singleton; a system property one class sets) | Code loads: a code file read in a JVM keys every class that ran in that JVM from then on, so a class loader cached across classes cannot hide a worker jar. Data: a read keys only the class in whose window it happened, and reads outside every window are pooled to every class of that JVM. A class that reads a cache another class filled is the residual hole; it is closed by the soundness guard, by the order-dependence report (below), and by `[test] cache = "module"` for a module that relies on such state |
+| **State shared between test classes in one JVM** (a static cache filled from a file by one class and read by another; a singleton; a system property one class sets) | Code loads: a code file read in a JVM keys every class that ran in that JVM from then on, so a class loader cached across classes cannot hide a jar it loaded. A worker jar is read, not loaded, and keys only the classes that read it (below). Data: a read keys only the class in whose window it happened, and reads outside every window are pooled to every class of that JVM. A class that reads a cache another class filled is the residual hole; it is closed by the soundness guard, by the order-dependence report (below), and by `[test] cache = "module"` for a module that relies on such state |
 | **Order dependence** (a class that passes only after, or only without, another) | A subset run puts different classes in each JVM. A class red in a subset run and green in the last full run under the same class key is reported as order-dependent, by name |
 | **Parameterized and dynamic tests** (`@ParameterizedTest`, `@TestFactory`, data from files) | The unit is the class: every invocation runs or none does. Data files read while generating cases are read in the class's window and keyed |
 | **Test fixtures** (`src/fixtures`, a sibling's fixtures) | They are workspace classes on the runtime classpath; the cone walks them |
 | **Tests that scan the repository** | Their reads land in their own window and key only them. A new file in a directory one of them read changes that directory's listing, keyed. A directory listed where nothing was read is unseen, as today |
 | **Programs started** (a test that execs a built jar, `git`, a nested `jk`) | What a child process reads is not recorded. A class that started a program that could run its JVM's workspace classes, or ran in a suite that started one outside every class's window, is unattributable and falls back to the module key: a command that names one of the test JVM's class trees or workspace jars, expands a variable or a command, hands over an argument file (`@args`), or runs a program the test wrote (`ClassPathCommands`). Any other program (`git` in the checkout, `node`, `setsid` around a worker JVM on a plugin jar) keeps the class's cone and keys it by every program the stamp keys and the workspace files its command names; a command that can read nothing its key does not hold (`git` in a repository the test made, a utility or a program the test wrote naming no file outside its temp roots, below) keys it by that program's identity alone. The test JDK's own launcher marks the class as having started a program, and on the test JVM's class path keys every class of its cone by its bytes (above), not only the classes its window ran. A checkout file a JumpKick test names through `RepoRoot.file`, a script it hands to `bash` say, is read once in the test JVM, so the suite's reads key it |
-| **Nested engines and worker jars** (jk-cli and jk-engine tests drive a real engine that loads plugin jars by path) | A worker jar keys a class that read it, as a code file, from then on in its JVM, so a class loader cached across classes keys every class after the first; a class in whose JVM a program was started (below); and a class keyed by its module. A class that did none of these never touched the jar's bytes ([below](#nested-engines-and-worker-jars)) |
+| **Nested engines and worker jars** (jk-cli and jk-engine tests drive a real engine that loads plugin jars by path) | A worker jar keys a class that read it, in its window or on a thread it started; a class that started a program, or talked to a local peer after one was started in its JVM (below); and a class keyed by its module. A class that did none of these never touched the jar's bytes. A cache an in-process engine filled from a worker jar for a later class is the shared-state hole above ([below](#nested-engines-and-worker-jars)) |
 | **Line numbers and source file names** (a test asserting a stack trace) | Bytes are hashed whole, debug attributes included |
 | **The network** | A suite that reached past the host stores no marker. A class that reached it never replays, and nor does any class of a suite whose pool reached it |
 | **A recording that did not finish** (a JVM killed, out of memory) | Every class of that JVM is unattributable for that run; no class record is stored for them |
@@ -308,7 +315,11 @@ classes whose window contains its start time, in that JVM:
   the pool, where they run every class of the launch. A class that sends a request on such a
   connection writes in its own window, and a write always goes by its time.
 - **Code files** (`.jar`, `.zip`, `.jmod`, a `.class` outside the workspace class trees): the class
-  in whose window it was read and every class that ran later in that JVM.
+  in whose window it was read and every class that ran later in that JVM. A worker jar the suite
+  was handed is not one of them: it keys the classes whose window read it, and outside every window
+  the class whose window held the reading thread's first read.
+- **A program started**: the class in whose window it started, and each later class of the JVM
+  whose window reached a local peer ([above](#nested-engines-and-worker-jars)).
 
 Pull workers run one class at a time per JVM, so a window is a class's alone in every run JumpKick starts
 unless the suite turns Jupiter parallelism on.

@@ -109,7 +109,7 @@ final class CliTestRules {
     @Guard(
             id = "cli-e2e-fast-starts-nothing",
             why =
-                    "e2e/cli's test JVMs are handed the engine assembly, and a program started in one keys that class and every later class of its JVM by the engine's bytes, so any engine edit runs them again",
+                    "e2e/cli's test JVMs are handed the engine assembly, and a program started in one keys that class, and every later class of its JVM that talks to a local peer, by the engine's bytes, so any engine edit runs them again",
             instead = "tag the class @Tag(\"integration\"), or move it to clients/cli when it needs no engine")
     void aFastCliE2eClassStartsNoProgram(Text text, Violations v) {
         List<String> tests = new ArrayList<>();
