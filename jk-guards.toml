@@ -1827,6 +1827,10 @@ in     = "cc.jumpkick.engine.DiskWatch#startThreads"
 reason = "engine-lifetime disk guard and cache collector: statfs and the cache's own files, never a session"
 
 [[guards.request-thread-carries-session.allow]]
+in     = "cc.jumpkick.engine.HeapPressure#pressed"
+reason = "engine-lifetime heap-pressure trim: empties process-wide memos, never reads a session"
+
+[[guards.request-thread-carries-session.allow]]
 in     = "cc.jumpkick.engine.plugin.WorkerAotCache#trainAsync"
 reason = "a startup-cache trainer belongs to the cache, not to the request that missed it; a cancel must not kill it"
 

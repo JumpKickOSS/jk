@@ -745,8 +745,10 @@ resolve memos: effective POMs, parsed store POMs, store sidecars, metadata bodie
 hits, version lists and Gradle module metadata — so an engine that has built many workspaces does
 not keep every one of their manifest trees or POM graphs. The workspace built last keeps its
 manifests and TOML files, so a first build after a pause on a large reactor re-reads nothing. It
-logs one `idle trim:` line with what came back, what was dropped and which root was kept. Between
-trims every memo is bounded — 4,096 manifests or TOML files, 16,384 repository hits; effective
+logs one `idle trim:` line with what came back, what was dropped and which root was kept. Sessions
+that keep jobs in flight back to back never let the engine idle, so the same memos are also
+emptied whenever a collection leaves more than 75% of the heap in use, at most once every 30
+seconds, with a `heap pressure at <n> MiB:` line naming what went. Between trims every memo is bounded — 4,096 manifests or TOML files, 16,384 repository hits; effective
 and parsed POMs by how many entries they declare, the least recently used going first — so a
 long session that locks many projects cannot hold every POM it built. A store file is read once
 while it is unchanged: the memos of POMs, `.jk` sidecars and metadata bodies check the file's

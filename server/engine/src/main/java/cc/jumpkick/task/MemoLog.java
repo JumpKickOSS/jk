@@ -42,7 +42,11 @@ final class MemoLog {
     static final int CHUNK_CHARS = 64 * 1_024;
 
     private final Path file;
-    /** Keys put since the last flush: what the next append writes. */
+    /**
+     * Keys put since the last flush: what the next append writes. Empty while a rewrite is due, since
+     * the rewrite writes every entry; so it never holds a key the map has dropped, and never more keys
+     * than the map holds, however long an engine that never idles goes between flushes.
+     */
     private final Set<String> pending = ConcurrentHashMap.newKeySet();
     /** The next flush rewrites the file whole rather than appending to it. */
     private volatile boolean compact;
@@ -79,12 +83,13 @@ final class MemoLog {
 
     /** {@code key}'s entry changed: the next flush writes it. */
     void changed(String key) {
-        pending.add(key);
+        if (!compact) pending.add(key);
     }
 
     /** Entries left the map without a line saying so: the next flush rewrites the file. */
     void dropped() {
         compact = true;
+        pending.clear();
     }
 
     /**
@@ -183,6 +188,11 @@ final class MemoLog {
                 if (channel != null) channel.close();
             }
         }
+    }
+
+    /** Test seam: keys the next append would write. */
+    int pending() {
+        return pending.size();
     }
 
     /** Test seam: lines the file is known to hold. */

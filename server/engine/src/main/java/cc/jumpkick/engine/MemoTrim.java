@@ -51,7 +51,7 @@ final class MemoTrim {
                 + ", repository hits " + resolve.repositoryHits()
                 + ", version lists " + resolve.versionLists()
                 + ", module metadata " + resolve.moduleMetadata()
-                + ", stamped entries " + joined
+                + ", other memo entries " + joined
                 + (keep == null ? "" : "; kept for " + keep);
     }
 }

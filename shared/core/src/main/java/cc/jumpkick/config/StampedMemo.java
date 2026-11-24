@@ -97,7 +97,7 @@ public final class StampedMemo<K, S, V extends @Nullable Object> implements Trim
      *
      * <p>Clear-on-overflow rather than eviction, deliberately: the readers that need a bound hold
      * values far larger than any bookkeeping an LRU would justify, and the cost of a clear is a
-     * re-read. {@code FileHashMemo} ranks victims instead, because its entries are ~200 B and it is
+     * re-read. {@code FileHashMemo} ranks victims instead, because its entries are ~450 B and it is
      * the one memo where the eviction order is worth paying for.
      */
     public static <K, S, V extends @Nullable Object> StampedMemo<K, S, V> bounded(int maxEntries) {

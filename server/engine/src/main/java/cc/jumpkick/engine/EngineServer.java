@@ -377,6 +377,8 @@ public final class EngineServer implements AutoCloseable {
     /** The disk guard (high priority) and the background cache collector (low priority). */
     private @Nullable DiskWatch diskWatch;
 
+    private @Nullable HeapPressure heapPressure;
+
     public EngineServer(
             EnginePaths.Paths paths, JkEngineConfig config, String version, @Nullable Consumer<String> log) {
         this(paths, config, null, version, BuildIdentity.buildId(), log);
@@ -807,6 +809,7 @@ public final class EngineServer implements AutoCloseable {
             reclaimInstallFiles();
         });
         diskWatch = DiskWatch.start(idle, log);
+        heapPressure = HeapPressure.start(log);
         changeNotices.start();
         // The first engine of a freshly installed version says so once, in the bell.
         UpdatedNotice.announce(notices, version, SelfUpdateState.file());
@@ -1191,6 +1194,10 @@ public final class EngineServer implements AutoCloseable {
         if (diskWatch != null) {
             diskWatch.close();
             diskWatch = null;
+        }
+        if (heapPressure != null) {
+            heapPressure.close();
+            heapPressure = null;
         }
         // The bound-URL file is shared with a successor; retire() drops it only while it is ours.
         http.close();

@@ -59,8 +59,8 @@ import org.jspecify.annotations.Nullable;
 public final class FileHashMemo {
 
     /**
-     * Entries one store keeps of what neither of the last two builds touched. Around 200 B each, so
-     * the cap is a heap bound before it is a disk one. It is soft: an entry the current or previous
+     * Entries one store keeps of what neither of the last two builds touched. Around 450 B each with
+     * a deep checkout's paths, so the cap is a heap bound before it is a disk one. It is soft: an entry the current or previous
      * build used is never evicted, so a workspace bigger than the cap holds its own footprint (two
      * builds' worth at most, up to {@link #HARD_ENTRIES}) rather than evicting, in build order, the
      * files the next build reads first and re-hashing every one of them.
@@ -74,7 +74,7 @@ public final class FileHashMemo {
     static final int TRIM_SLACK = MAX_ENTRIES / 4;
 
     /**
-     * The hard ceiling, protection or not: about 15 MB of entries, in an engine whose heap is a few
+     * The hard ceiling, protection or not: about 30 MB of entries, in an engine whose heap is a few
      * hundred. One build whose working set is larger than this — a workspace hashing more files than
      * any the cap was sized for, or a walk that strayed into trees it should not read — evicts the
      * least recently used even of its own entries, so the memo degrades to re-hashing rather than

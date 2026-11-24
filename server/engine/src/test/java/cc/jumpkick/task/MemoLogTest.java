@@ -157,4 +157,27 @@ class MemoLogTest {
 
         assertThat(read(new MemoLog(file))).containsExactly("b=2");
     }
+
+    @Test
+    void keys_waiting_for_a_flush_never_outnumber_the_map(@TempDir Path dir) throws IOException {
+        Path file = dir.resolve("memo.v1");
+        Map<String, String> map = new LinkedHashMap<>();
+        MemoLog log = new MemoLog(file);
+        // A capped map evicting as it goes, with no flush between: an engine that never sits idle.
+        for (int i = 0; i < 10_000; i++) {
+            String key = "k" + i;
+            map.put(key, "v" + i);
+            log.changed(key);
+            if (map.size() > 100) {
+                map.remove("k" + (i - 100));
+                log.dropped();
+            }
+            assertThat(log.pending()).isLessThanOrEqualTo(map.size());
+        }
+
+        log.flush(map, MemoLogTest::line);
+
+        assertThat(read(new MemoLog(file))).hasSize(100).contains("k9999=v9999").doesNotContain("k9899=v9899");
+        assertThat(log.pending()).isZero();
+    }
 }

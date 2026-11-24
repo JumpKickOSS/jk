@@ -3,6 +3,7 @@ package cc.jumpkick.guard.eval;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.config.TrimRegistry;
 import cc.jumpkick.guard.facts.FactsIndex;
 import cc.jumpkick.guard.rules.GuardRules;
 import cc.jumpkick.guard.rules.GuardsPresence;
@@ -117,5 +118,26 @@ class TextScanMemoTest {
 
         assertThat(reads(() -> sites(root, TODO))).isEqualTo(3);
         assertThat(TextEvaluator.MEMO.size()).isZero();
+    }
+
+    @Test
+    void the_engine_trims_drop_what_the_scans_kept(@TempDir Path root) throws Exception {
+        tree(root);
+        Settled.aheadForTests(Duration.ofSeconds(10));
+        sites(root, TODO);
+        int kept = TextEvaluator.MEMO.size();
+        assertThat(kept).isPositive();
+
+        TrimRegistry.trimAll(root.resolve("elsewhere"));
+        assertThat(TextEvaluator.MEMO.size())
+                .as("a trim that keeps another tree")
+                .isZero();
+
+        sites(root, TODO);
+        TrimRegistry.trimAll(root);
+        assertThat(TextEvaluator.MEMO.size()).as("a trim that keeps this tree").isEqualTo(kept);
+
+        TrimRegistry.trimAll(null);
+        assertThat(reads(() -> sites(root, TODO))).isEqualTo(3);
     }
 }

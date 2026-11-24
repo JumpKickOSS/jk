@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.guard.eval;
 
+import cc.jumpkick.config.TrimRegistry;
 import cc.jumpkick.host.Settled;
 import cc.jumpkick.host.StatIdentity;
 import java.io.IOException;
@@ -18,13 +19,14 @@ import org.jspecify.annotations.Nullable;
  * so a rewrite inside one timestamp tick is scanned again.
  *
  * <p>Bounded at {@link #MAX_ENTRIES}: past it, entries of other generations go first, then
- * everything. Losing an entry costs one scan.
+ * everything. It joins the {@link TrimRegistry}, so the engine's idle and heap-pressure trims empty
+ * it too. Losing an entry costs one scan.
  *
  * @param <V> one file's findings; must not change once recorded
  */
-final class ScanMemo<V> {
+final class ScanMemo<V> implements TrimRegistry.Trimmable {
 
-    /** Entries kept at most: a few workspaces' corpora, at a few hundred bytes each. */
+    /** Entries kept at most: a few workspaces' corpora, at up to a kilobyte each with their findings. */
     static final int MAX_ENTRIES = 32_768;
 
     private record Key(String generation, Path file) {}
@@ -32,6 +34,10 @@ final class ScanMemo<V> {
     private record Cached<V>(StatIdentity identity, V findings) {}
 
     private final Map<Key, Cached<V>> entries = new ConcurrentHashMap<>();
+
+    ScanMemo() {
+        TrimRegistry.join(this);
+    }
 
     /** The findings recorded for {@code f} under {@code generation}, or {@code null} when it must be scanned. */
     @Nullable
@@ -58,5 +64,13 @@ final class ScanMemo<V> {
     /** Forget every entry. */
     void clear() {
         entries.clear();
+    }
+
+    @Override
+    public int trimOutside(@Nullable Path keep) {
+        int before = entries.size();
+        if (keep == null) entries.clear();
+        else entries.keySet().removeIf(k -> !k.file().startsWith(keep));
+        return Math.max(0, before - entries.size());
     }
 }
