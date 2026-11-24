@@ -3,6 +3,7 @@ package cc.jumpkick.test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assumptions.assumeFalse;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import cc.jumpkick.host.GitCommand;
 import cc.jumpkick.host.Os;
@@ -688,6 +689,47 @@ class ClassReadsTest {
         assertThat(starter.tools()).containsExactly(ClassReads.STARTED_PROGRAM);
         assertThat(later.tools()).as("a class after it in the JVM").containsExactly(ClassReads.STARTED_PROGRAM);
         assertThat(first.tools()).doesNotContain(ClassReads.STARTED_PROGRAM);
+    }
+
+    /**
+     * The test JDK's own launcher run through {@code setsid} is the same launcher: on the test JVM's
+     * class tree it is a program the class started, but not one its key adds.
+     */
+    @Test
+    void the_test_jdk_launcher_behind_setsid_is_the_test_jdk(@TempDir Path tmp) throws Exception {
+        assumeFalse(Os.isWindows(), "setsid is a POSIX launcher");
+        Path setsid = Path.of("/usr/bin/setsid");
+        assumeTrue(Files.isExecutable(setsid), "no setsid on this host");
+        Path ws = Files.createDirectories(tmp.resolve("ws"));
+        Path classes = Files.createDirectories(ws.resolve("target/classes"));
+        Path temp = Files.createDirectories(tmp.resolve("temp"));
+        Path recordings = Files.createDirectories(tmp.resolve("rec"));
+        Path javaHome = Path.of(System.getProperty("java.home"));
+        String java = javaHome.resolve("bin").resolve("java").toString();
+
+        try (Recording r = new Recording()) {
+            r.enable("jdk.ProcessStart");
+            r.enable(ClassReads.WINDOW_EVENT).withThreshold(Duration.ZERO);
+            r.start();
+            Window plain = window("demo.PlainTest");
+            runIn(ws, List.of(java, "-cp", classes.toString(), "-version"));
+            plain.commit();
+            Window wrapped = window("demo.SetsidTest");
+            runIn(ws, List.of(setsid.toString(), java, "-cp", classes.toString(), "-version"));
+            wrapped.commit();
+            r.stop();
+            r.dump(recordings.resolve("one.jfr"));
+        }
+
+        ClassReads.Attributed seen = ClassReads.attribute(
+                recordings,
+                ws,
+                new ClassReads.Layout(List.of(classes), List.of(), Set.of(), ws, javaHome, List.of(), List.of(temp)));
+        ClassReads.Observation direct = Objects.requireNonNull(seen.classes().get("demo.PlainTest"));
+        ClassReads.Observation behind = Objects.requireNonNull(seen.classes().get("demo.SetsidTest"));
+        assertThat(direct.processes()).as("the JDK the key holds").isEmpty();
+        assertThat(behind.processes()).as("the same JDK behind setsid").isEmpty();
+        assertThat(behind.tools()).isEqualTo(direct.tools()).containsExactly(ClassReads.STARTED_PROGRAM);
     }
 
     /**

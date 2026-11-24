@@ -2,6 +2,7 @@
 package cc.jumpkick.test;
 
 import cc.jumpkick.config.BuildEnv;
+import cc.jumpkick.engine.plugin.HeapFlags;
 import cc.jumpkick.host.GitCommand;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.PathUtil;
@@ -1229,12 +1230,13 @@ public final class ClassReads {
         }
     }
 
-    /** The program of a recorded command line, as evidence a process started: its first word. */
+    /**
+     * The program of a recorded command line, as evidence a process started: its first word, or the
+     * second past a leading {@code setsid}.
+     */
     private static @Nullable String program(@Nullable String command) {
         if (command == null) return null;
-        String c = command.strip();
-        int space = c.indexOf(' ');
-        return space < 0 ? c : c.substring(0, space);
+        return HeapFlags.executable(List.of(command.strip().split("\\s+", 3)));
     }
 
     private static List<Path> withReal(List<Path> paths) {

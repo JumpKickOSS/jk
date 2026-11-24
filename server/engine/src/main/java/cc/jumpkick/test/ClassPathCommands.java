@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.test;
 
+import cc.jumpkick.engine.plugin.HeapFlags;
 import cc.jumpkick.host.Os;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
@@ -48,7 +49,7 @@ final class ClassPathCommands {
         if (dir == null) return true;
         String[] words = command.strip().split("\\s+");
         if (words.length == 0 || words[0].isEmpty()) return false;
-        Path program = resolved(dir, words[0]);
+        Path program = resolved(dir, HeapFlags.executable(List.of(words)));
         if (program != null && under(program, layout.temp())) return true;
         List<Path> classPath = classPath(layout);
         for (String word : words) {

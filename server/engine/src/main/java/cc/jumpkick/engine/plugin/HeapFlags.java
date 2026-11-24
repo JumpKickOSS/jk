@@ -123,7 +123,7 @@ public final class HeapFlags {
     }
 
     /** The program {@code command} execs, looking past a leading {@code setsid}. */
-    static String executable(List<String> command) {
+    public static String executable(List<String> command) {
         if (command.isEmpty()) return "";
         if (command.size() > 1 && setsid(command.get(0))) return command.get(1);
         return command.get(0);
