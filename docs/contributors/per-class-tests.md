@@ -300,6 +300,11 @@ classes whose window contains its start time, in that JVM:
   a repository a test made, a tool, where beside the home it was a program that keyed every class of
   jk-engine, jk-cli and jk-cli-e2e by its module.
 - **After a class finished**: never that class's. Its outcome was decided by then.
+- **A read from another host on a thread that reached one in a class's window**: that class's,
+  wherever the read falls. A connection a class leaves open is closed by the server minutes later,
+  and its closing reads would otherwise land in an unrelated class's window or, between windows, in
+  the pool, where they run every class of the launch. A class that sends a request on such a
+  connection writes in its own window, and a write always goes by its time.
 - **Code files** (`.jar`, `.zip`, `.jmod`, a `.class` outside the workspace class trees): the class
   in whose window it was read and every class that ran later in that JVM.
 

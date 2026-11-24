@@ -17,6 +17,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import jdk.jfr.consumer.RecordedEvent;
+import jdk.jfr.consumer.RecordedThread;
 import jdk.jfr.consumer.RecordingFile;
 import org.jspecify.annotations.Nullable;
 
@@ -172,7 +173,10 @@ public final class RecordingDump {
         return sb.toString();
     }
 
-    /** As {@link RecordingReader} renders a field: strings as they are, characters by code, the rest in decimal. */
+    /**
+     * As {@link RecordingReader} renders a field: strings as they are, characters by code, a thread by
+     * its id, the rest in decimal.
+     */
     static @Nullable String render(RecordedEvent e, String field) {
         if (!e.hasField(field)) return null;
         Object v = e.getValue(field);
@@ -180,6 +184,7 @@ public final class RecordingDump {
         if (v instanceof String s) return s;
         if (v instanceof Character c) return Integer.toString(c);
         if (v instanceof Boolean || v instanceof Number) return v.toString();
+        if (v instanceof RecordedThread t) return Long.toString(t.getId());
         return null;
     }
 

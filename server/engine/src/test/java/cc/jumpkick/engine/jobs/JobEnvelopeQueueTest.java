@@ -31,12 +31,12 @@ class JobEnvelopeQueueTest {
         }
     }
 
-    /** A heap whose committed size never moves: the gate's ledger alone decides. */
-    private static MemoryAdmission gateFor(long maxMib, long idleMib, long perJobMib) {
+    /** A heap {@code roomMib} past the reserve whose committed size never moves: the ledger alone decides. */
+    private static MemoryAdmission gateFor(long roomMib, long idleMib, long perJobMib) {
         MemoryAdmission.Heap heap = new MemoryAdmission.Heap() {
             @Override
             public long maxBytes() {
-                return maxMib << 20;
+                return (roomMib << 20) + MemoryAdmission.RESERVE_BYTES;
             }
 
             @Override
@@ -56,7 +56,7 @@ class JobEnvelopeQueueTest {
 
     /** As {@link #gateFor} on the test's own clock and timing, so a wait can be advanced by hand. */
     private static MemoryAdmission gateFor(
-            long maxMib,
+            long roomMib,
             long idleMib,
             long perJobMib,
             MemoryAdmission.Timing timing,
@@ -64,7 +64,7 @@ class JobEnvelopeQueueTest {
         MemoryAdmission.Heap heap = new MemoryAdmission.Heap() {
             @Override
             public long maxBytes() {
-                return maxMib << 20;
+                return (roomMib << 20) + MemoryAdmission.RESERVE_BYTES;
             }
 
             @Override
@@ -92,8 +92,8 @@ class JobEnvelopeQueueTest {
         Path a = dir.resolve("a");
         Path b = dir.resolve("b");
         FakeEnvelopeHost host = new FakeEnvelopeHost();
-        // 200 MiB heap, 40 idle, 32 reserved: one 100 MiB job fits, the next waits for it.
-        JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS, gateFor(200, 40, 100));
+        // 100 MiB of heap past the reserve, 40 idle: one 100 MiB job fits, the next waits for it.
+        JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS, gateFor(100, 40, 100));
         CountDownLatch firstMayFinish = new CountDownLatch(1);
         long first = env.submit(
                 request("build-request", a),
@@ -143,7 +143,7 @@ class JobEnvelopeQueueTest {
     @Test
     void a_plan_job_held_by_cache_maintenance_says_why_it_waits_then_runs(@TempDir Path dir) throws Exception {
         FakeEnvelopeHost host = new FakeEnvelopeHost();
-        JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS, gateFor(2_000, 40, 100));
+        JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS, gateFor(1_900, 40, 100));
         AtomicBoolean ran = new AtomicBoolean();
         StringWriter out = new StringWriter();
         // What the idle prune holds for its pass.
@@ -183,7 +183,7 @@ class JobEnvelopeQueueTest {
     @Test
     void a_plan_job_with_the_cache_free_sends_no_wait_line(@TempDir Path dir) throws Exception {
         FakeEnvelopeHost host = new FakeEnvelopeHost();
-        JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS, gateFor(2_000, 40, 100));
+        JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS, gateFor(1_900, 40, 100));
         StringWriter out = new StringWriter();
         ConnectedClient.submit(
                 env,
@@ -203,7 +203,7 @@ class JobEnvelopeQueueTest {
     void a_detached_job_short_of_memory_returns_its_jid_while_queued_and_cancels_by_it(@TempDir Path dir)
             throws Exception {
         FakeEnvelopeHost host = new FakeEnvelopeHost();
-        JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS, gateFor(200, 40, 100));
+        JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS, gateFor(100, 40, 100));
         CountDownLatch firstMayFinish = new CountDownLatch(1);
         env.submit(
                 request("build-request", dir.resolve("a")),
@@ -238,7 +238,7 @@ class JobEnvelopeQueueTest {
         Path a = dir.resolve("a");
         Path b = dir.resolve("b");
         FakeEnvelopeHost host = new FakeEnvelopeHost();
-        JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS, gateFor(200, 40, 100));
+        JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS, gateFor(100, 40, 100));
         CountDownLatch firstMayFinish = new CountDownLatch(1);
         env.submit(
                 request("build-request", a),
@@ -292,7 +292,7 @@ class JobEnvelopeQueueTest {
         Path lib = dir.resolve("lib");
         FakeEnvelopeHost host = new FakeEnvelopeHost();
         host.lastEventAt = 1_500L;
-        JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS, gateFor(200, 40, 100));
+        JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS, gateFor(100, 40, 100));
         CountDownLatch firstMayFinish = new CountDownLatch(1);
         long first = env.submit(
                 request("test-request", suite),
@@ -344,7 +344,7 @@ class JobEnvelopeQueueTest {
         FakeEnvelopeHost host = new FakeEnvelopeHost();
         MemoryAdmissionTest.FakeClock clock = new MemoryAdmissionTest.FakeClock();
         MemoryAdmission.Timing timing = new MemoryAdmission.Timing(Long.MAX_VALUE / 4, 120_000L, Long.MAX_VALUE / 4);
-        JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS, gateFor(200, 40, 100, timing, clock));
+        JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS, gateFor(100, 40, 100, timing, clock));
         CountDownLatch firstMayFinish = new CountDownLatch(1);
         long first = env.submit(
                 request("test-request", suite),

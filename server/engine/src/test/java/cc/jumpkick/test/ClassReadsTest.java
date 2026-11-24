@@ -13,6 +13,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import jdk.jfr.Event;
 import jdk.jfr.Name;
 import jdk.jfr.Recording;
@@ -359,6 +361,97 @@ class ClassReadsTest {
                 .as("what discovery read keys every class by content, not as all the suite read")
                 .isFalse();
         assertThat(seen.pooled().reads()).containsExactlyInAnyOrderElementsOf(templates);
+    }
+
+    /** A socket read, as the JDK's event names it. */
+    @Name("jdk.SocketRead")
+    @StackTrace(false)
+    static final class SocketRead extends Event {
+        @Nullable
+        String host;
+
+        @Nullable
+        String address;
+    }
+
+    /** A socket write, as the JDK's event names it. */
+    @Name("jdk.SocketWrite")
+    @StackTrace(false)
+    static final class SocketWrite extends Event {
+        @Nullable
+        String host;
+
+        @Nullable
+        String address;
+    }
+
+    /**
+     * A connection a class left open is read from when the server closes it, minutes later: the
+     * read is the class's that opened it, not the class whose window or the gap it falls in. A later
+     * class that sends a request on the same connection reached the host itself.
+     */
+    @Test
+    void a_read_on_a_connection_an_earlier_class_opened_is_that_classs(@TempDir Path tmp) throws Exception {
+        Path ws = Files.createDirectories(tmp.resolve("ws"));
+        Path recordings = Files.createDirectories(tmp.resolve("rec"));
+        ExecutorService client = Executors.newSingleThreadExecutor();
+        try (Recording r = new Recording()) {
+            r.enable("jdk.SocketRead").withThreshold(Duration.ZERO);
+            r.enable("jdk.SocketWrite").withThreshold(Duration.ZERO);
+            r.enable(ClassReads.WINDOW_EVENT).withThreshold(Duration.ZERO);
+            r.start();
+            Window opens = window("demo.OpensTest");
+            client.submit(() -> socket(true)).get();
+            client.submit(() -> socket(false)).get();
+            opens.commit();
+
+            Window bystander = window("demo.BystanderTest");
+            client.submit(() -> socket(false)).get();
+            bystander.commit();
+
+            client.submit(() -> socket(false)).get();
+
+            Window reuses = window("demo.ReusesTest");
+            client.submit(() -> socket(true)).get();
+            client.submit(() -> socket(false)).get();
+            reuses.commit();
+            r.stop();
+            r.dump(recordings.resolve("one.jfr"));
+        } finally {
+            client.shutdownNow();
+        }
+
+        ClassReads.Attributed seen =
+                ClassReads.attribute(recordings, ws, new ClassReads.Layout(List.of(), List.of(), Set.of(), ws, null));
+
+        assertThat(Objects.requireNonNull(seen.classes().get("demo.OpensTest")).hosts())
+                .containsExactly("repo.example");
+        assertThat(Objects.requireNonNull(seen.classes().get("demo.BystanderTest"))
+                        .hosts())
+                .as("the server closing an earlier class's connection in its window")
+                .isEmpty();
+        assertThat(seen.pooled().hosts())
+                .as("the server closing it between windows: no class of the launch runs for it")
+                .isEmpty();
+        assertThat(Objects.requireNonNull(seen.classes().get("demo.ReusesTest")).hosts())
+                .as("a request it sent on the connection")
+                .containsExactly("repo.example");
+    }
+
+    /** One socket event to a documentation address, on the calling thread. */
+    private static @Nullable Void socket(boolean write) {
+        if (write) {
+            SocketWrite w = new SocketWrite();
+            w.host = "repo.example";
+            w.address = "192.0.2.1";
+            w.commit();
+        } else {
+            SocketRead e = new SocketRead();
+            e.host = "repo.example";
+            e.address = "192.0.2.1";
+            e.commit();
+        }
+        return null;
     }
 
     @Test

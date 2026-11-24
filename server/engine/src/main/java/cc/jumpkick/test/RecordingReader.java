@@ -57,6 +57,9 @@ public final class RecordingReader {
     private static final long CHECKPOINT_TYPE = 1;
     private static final String EVENT_SUPER_TYPE = "jdk.jfr.Event";
 
+    /** A thread field's type: given as its pool key, which names one thread for the whole recording. */
+    private static final String THREAD = "java.lang.Thread";
+
     private RecordingReader() {}
 
     /**
@@ -139,8 +142,8 @@ public final class RecordingReader {
         /**
          * @param endNanos the start plus the event's duration; the start for an event without one
          * @param values the fields in the order {@link #read} was asked for them: a string field as
-         *     its value, a boolean as {@code "true"} or {@code "false"}, a number in decimal, a field
-         *     the event type does not have or that was null as {@code null}
+         *     its value, a boolean as {@code "true"} or {@code "false"}, a number in decimal, a thread
+         *     as its id in decimal, a field the event type does not have or that was null as {@code null}
          */
         void event(String name, long startNanos, long endNanos, @Nullable String[] values);
     }
@@ -277,6 +280,9 @@ public final class RecordingReader {
     }
 
     private static @Nullable String value(In in, Field f, Metadata meta, Map<Long, String> strings) throws IOException {
+        if (f.dimension == 0 && f.constantPool && THREAD.equals(meta.type(f.typeId).name)) {
+            return Long.toString(in.varLong());
+        }
         if (f.dimension > 0 || f.constantPool) {
             skip(in, f, meta);
             return null;

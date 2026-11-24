@@ -40,6 +40,8 @@ import org.jspecify.annotations.Nullable;
  *   <li>Outside every window (discovery, a static initialiser before the first class, a shutdown
  *       hook): pooled, which stands for every class the suite ran.
  *   <li>After a class finished: never that class's.
+ *   <li>A socket read on a thread whose first read or write of another host a class's window held:
+ *       that class's, wherever it falls. A server closes an idle connection minutes later.
  *   <li>A code file (a jar, a class file outside the class trees) the JVM read: the class in whose
  *       window it was read and every class that ran later in that JVM, since a class loader keeps
  *       what it loaded for whoever asks next.
@@ -246,6 +248,7 @@ public final class ClassReads {
             + POOLED_READS_KEPT * 200L
             + SUITE_CODE_KEPT * 200L
             + (ClassReads.WRITTEN_KEPT + ClassReads.CODE_FILES_KEPT + ClassReads.EXISTS_KEPT) * 200L
+            + ClassReads.NETWORK_THREADS_KEPT * 200L
             + ClassReads.VERDICTS_KEPT * 600L;
 
     /**
@@ -256,6 +259,12 @@ public final class ClassReads {
 
     /** The most distinct code files one JVM's join follows. */
     static final int CODE_FILES_KEPT = 2_048;
+
+    /**
+     * The most threads that reached another host one JVM's join follows; a read on a thread past it
+     * goes by its time.
+     */
+    static final int NETWORK_THREADS_KEPT = 8_192;
 
     /** How many answers to "is this file there" one JVM's join remembers. */
     static final int EXISTS_KEPT = 2_048;
@@ -689,9 +698,9 @@ public final class ClassReads {
             "jdk.NativeLibraryLoad",
             List.of("name", "success"),
             "jdk.SocketRead",
-            List.of("host", "address"),
+            List.of("host", "address", "eventThread"),
             "jdk.SocketWrite",
-            List.of("host", "address"),
+            List.of("host", "address", "eventThread"),
             USE_EVENT,
             List.of("className"));
 
@@ -830,7 +839,8 @@ public final class ClassReads {
                 join.accept(at, Kind.NATIVE, v[0]);
             }
             case "jdk.SocketRead", "jdk.SocketWrite" -> {
-                if (!local(v[1])) join.accept(at, Kind.HOST, DiscoveryRules.hostName(v[0], v[1]));
+                if (!local(v[1]))
+                    join.host(at, DiscoveryRules.hostName(v[0], v[1]), v[2], name.equals("jdk.SocketRead"));
             }
             default -> {}
         }
@@ -856,6 +866,12 @@ public final class ClassReads {
         private final Map<String, Observation> classes;
         /** What no window holds goes to each: the suite's pool, and its launch's where told. */
         private final List<Observation> pools;
+
+        /**
+         * Each thread that reached another host, by its id, with the classes whose window held its
+         * first such event; at most {@value #NETWORK_THREADS_KEPT}.
+         */
+        private final Map<String, List<Observation>> networkThreads = new HashMap<>();
 
         /** The uses no window of this JVM held, which every class it ran may have read the state of. */
         private final Observation unheldUses = Observation.empty();
@@ -917,6 +933,47 @@ public final class ClassReads {
                 reach[i] = Math.max(w.end(), i > 0 ? reach[i - 1] : Long.MIN_VALUE);
                 of(classes, w.testClass());
             }
+        }
+
+        /**
+         * A socket event to {@code host} on {@code thread}. A read on a thread whose first such event
+         * an earlier class's window held is that class's: a connection a class left open is read
+         * from when the server closes it, minutes later, in whichever window or gap is open then, and
+         * a class that sends a request on it writes in its own window. Every write goes by its time.
+         */
+        void host(long at, String host, @Nullable String thread, boolean read) {
+            if (thread == null) {
+                accept(at, Kind.HOST, host);
+                return;
+            }
+            List<Observation> first = networkThreads.get(thread);
+            if (first == null) {
+                List<Observation> held = held(at);
+                if (held != null && !held.isEmpty() && networkThreads.size() < NETWORK_THREADS_KEPT) {
+                    networkThreads.put(thread, held);
+                }
+            } else if (read && !first.equals(held(at))) {
+                events++;
+                first.forEach(o -> o.addHost(host));
+                return;
+            }
+            accept(at, Kind.HOST, host);
+        }
+
+        /**
+         * The observations of the classes whose window holds {@code at}, empty when every one of them
+         * is past the suite's bound; null when no window holds it.
+         */
+        private @Nullable List<Observation> held(long at) {
+            List<Observation> held = null;
+            for (int i = lastStartingBy(starts, at); i >= 0 && reach[i] >= at; i--) {
+                Window w = windows.get(i);
+                if (w.end() < at) continue;
+                if (held == null) held = new ArrayList<>(1);
+                Observation o = classes.get(w.testClass());
+                if (o != null) held.add(o);
+            }
+            return held;
         }
 
         void accept(long at, Kind kind, @Nullable String value) {

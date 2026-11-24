@@ -41,8 +41,8 @@ class RecordingCompatTest {
             "jdk.FileRead", List.of("path", "bytesRead", "endOfFile"),
             "jdk.FileWrite", List.of("path", "bytesWritten"),
             "jdk.ProcessStart", List.of("pid", "directory", "command"),
-            "jdk.SocketRead", List.of("host", "address", "port", "bytesRead", "endOfStream"),
-            "jdk.SocketWrite", List.of("host", "address", "port", "bytesWritten"));
+            "jdk.SocketRead", List.of("host", "address", "port", "bytesRead", "endOfStream", "eventThread"),
+            "jdk.SocketWrite", List.of("host", "address", "port", "bytesWritten", "eventThread"));
 
     /** The program each JDK runs, from source so one file serves every major. */
     private static final String PROGRAM = """
