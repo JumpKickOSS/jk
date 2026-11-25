@@ -364,12 +364,11 @@ final class ParityRules {
 
     private static final Pattern COMMIT_SHA = Pattern.compile("[0-9a-f]{40}");
     /** The tiers a nightly run owns: each is one `jk test` invocation the workflow must spell. */
-    private static final List<String> NIGHTLY_TIERS = List.of(
-            "jk test -s integration",
-            "jk test -s slow",
-            "jk test -s network",
-            "jk test -s bench",
-            "jk test --coverage");
+    private static final List<String> NIGHTLY_TIERS =
+            List.of("jk test -s slow", "jk test -s network", "jk test -s bench", "jk test --coverage");
+
+    /** The tier the merge queue runs whole before main moves; a pull request runs its curated lane. */
+    private static final String INTEGRATION_TIER = "jk test -s integration";
 
     /** The tier the release tag's CI run owns: the self-host job must spell it. */
     private static final String RELEASE_TIER = "jk test -s release";
@@ -387,7 +386,7 @@ final class ParityRules {
     @Guard(
             id = "ci-cadence",
             why =
-                    "nightly CI runs each tier's suite, every other suite is the push gate's (guard-suites), the coverage ratchet, the product smoke and the JVM client on a runner without GraalVM; the branch gate keeps the self-host job that is the only evidence jk still builds jk, bootstrapped from the hosted release "
+                    "nightly CI runs the slow, network and bench suites, the coverage ratchet, the product smoke and the JVM client on a runner without GraalVM; ci.yml runs in the merge queue with the whole integration suite, and keeps the self-host job that is the only evidence jk still builds jk, bootstrapped from the hosted release "
                             + BOOTSTRAP_PIN + " pins and judged by the checkout's own jk, and runs the release tier",
             instead =
                     "restore the job, step, script or pin the detail names — a workflow that stops running a gate leaves the claim in the docs with nothing behind it")
@@ -420,6 +419,12 @@ final class ParityRules {
                         NIGHTLY
                                 + "'s jvm-client job must run scripts/ci-product-smoke.sh with `JK_BIN=jk-jvm` — a sample built through the installed engine by the JVM client");
         }
+        if (!branch.contains("merge_group"))
+            problems.add(
+                    CI + " must run on merge_group — main moves only through the merge queue, which needs its check");
+        if (!branch.contains(INTEGRATION_TIER))
+            problems.add(CI + " must run the whole `" + INTEGRATION_TIER
+                    + "` — the merge queue's run of it is what keeps main green");
         if (branch.contains("--coverage") || branch.contains("-s bench"))
             problems.add(CI + " must not run coverage or benches (they are nightly, non-gating)");
         Map<String, String> jobs = jobs(branch);
@@ -489,7 +494,7 @@ final class ParityRules {
 
     /**
      * Each root {@code [test.suites.<name>]} that {@code --all} runs, named by no workflow's {@code jk
-     * test -s <name>} and absent from {@code [test] guard-suites} (the push gate, {@code jk test -g}):
+     * test -s <name>} and absent from {@code [test] guard-suites} ({@code jk test -g}):
      * a suite nothing runs is a tier whose tests never execute. An {@code explicit} suite runs on
      * demand, so it needs neither.
      */
@@ -1240,11 +1245,11 @@ final class ParityRules {
             v.add(
                     new TextSite(CI, 0, LANE),
                     CI + " must run " + LANE + " — a registry no pull request executes is documentation, not a gate");
-        if (!HouseRules.owner(text, NIGHTLY).contains("jk test -s integration"))
+        if (!HouseRules.owner(text, CI).contains(INTEGRATION_TIER))
             v.add(
-                    new TextSite(NIGHTLY, 0, "integration"),
-                    NIGHTLY
-                            + " must still run the full `jk test -s integration`; the curated lane is a subset, never a replacement");
+                    new TextSite(CI, 0, "integration"),
+                    CI + " must still run the full `" + INTEGRATION_TIER
+                            + "`; the curated lane is a subset, never a replacement");
         String doc = text(text, TIERS_DOC);
         if (!doc.contains(REGISTRY))
             v.add(new TextSite(TIERS_DOC, 0, "registry"), TIERS_DOC + " must name " + REGISTRY);

@@ -8,7 +8,7 @@
 #
 #   gate    — the CI run was green and its ref is a tag on the commit it tested.
 #   build   — the native client and engine of every platform, built by jk (tests skipped: CI ran them):
-#             Linux first, then Windows, then macOS, each only once the one before has built.
+#             every platform at once.
 #             Windows Authenticode-signs jk.exe via Azure Artifact Signing (OIDC; the
 #             `artifact-signing` environment) before assemble.
 #   merge   — one version tree from the platforms, the SBOM and the notes. No secrets.
@@ -118,8 +118,7 @@ jobs:
           fi
           echo "release=true" >> "$GITHUB_OUTPUT"
 
-  # One job per OS, each platform built only after the cheaper ones have: Linux (both
-  # architectures), then Windows, then macOS (guard workflow-runners-in-cost-order). The steps are
+  # One job per OS, all at once: Linux (both architectures), Windows and macOS. The steps are
   # .github/actions/release-build. One row per platform jumpkick.build serves a native client for at
   # the release .jk/ci/ci-bootstrap-version pins; jk is installed the way a user installs it, the
   # same bootstrap as ci.yml's self-host job, and builds this commit's dist. macOS on Intel has no
@@ -153,7 +152,7 @@ jobs:
   # Signing); id-token: write is only for that exchange.
   build-windows:
     name: windows-x86_64
-    needs: [gate, build-linux]
+    needs: gate
     if: ${{ needs.gate.outputs.release == 'true' }}
     runs-on: windows-2022
     environment: artifact-signing
@@ -174,7 +173,7 @@ jobs:
 
   build-macos:
     name: macos-aarch64
-    needs: [gate, build-windows]
+    needs: gate
     if: ${{ needs.gate.outputs.release == 'true' }}
     runs-on: macos-14
     steps:

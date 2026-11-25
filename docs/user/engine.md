@@ -164,7 +164,7 @@ older JumpKick on one side), the WSL engine does not pair, keeps its own dashboa
 its log names the side to update.
 
 The front door is also the machine's one notifier. A decision a WSL engine would notify you about
-is raised by the front door instead, named for that engine ("WSL Ubuntu-26.10 on BocaMiniPC: …"),
+is raised by the front door instead, named for that engine ("WSL Ubuntu-26.10 on MY-PC: …"),
 and clicking it opens the decision under that engine's dashboard; the notification goes once the
 decision is settled anywhere. The engine raises nothing itself while the front door relays for it;
 when the front door stops, or an older one relays nothing, the engine notifies for itself again. A
@@ -231,7 +231,7 @@ unanswered, is remembered, so no later build asks. `jk doctor --fix` in the dist
 `jk self setup-windows` installs without asking. `[windows] fix` in `~/.jk/config.toml` answers in
 advance there as on Windows (`apply` installs, `never` declines).
 
-`jk engine status` names the engine and its id (`Engine.....: WSL Ubuntu on Daybreak (id
+`jk engine status` names the engine and its id (`Engine.....: WSL Ubuntu on MY-PC (id
 3819973a207a)`) and prints its URL; give bookmarks and MCP configs the URL `jk web` prints there
 (`jk web -O jsonl` prints `url` and `engineId`, and `token` with `--with-token`). The id stays the same across restarts and
 differs per machine, guest and JumpKick home: it is derived from the OS, the WSL distro or container

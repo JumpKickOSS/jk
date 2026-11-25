@@ -434,7 +434,8 @@ run_installer "$WORK/home-templates" JK_STORE_DIR= JK_VERSION=1.0.0 JK_ARCHIVE_U
   cat "$WORK/last-install.log" >&2; echo "an install with a working git clone failed" >&2; exit 1; }
 [[ "$(cat "$tmpl_cache/marker" 2>/dev/null)" == "fresh" ]] || {
   echo "a successful templates clone did not replace the cache" >&2; exit 1; }
-if compgen -G "$WORK/home-templates/store/templates/.*.*" >/dev/null; then
+# .?*.* and not .*.*: bash 3.2 (stock macOS) matches .. against .*.*
+if compgen -G "$WORK/home-templates/store/templates/.?*.*" >/dev/null; then
   ls -la "$WORK/home-templates/store/templates" >&2; echo "the templates clone left its stage behind" >&2; exit 1
 fi
 rm -rf "$WORK/clone-bin"

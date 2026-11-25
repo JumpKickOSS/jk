@@ -169,8 +169,8 @@ class CommandModeGuardTest {
 
     /**
      * The limit on one run, under the fast tier's 20 s per method so that a hung command fails here,
-     * naming itself, rather than at the tier's limit. The slowest single run on the budget Windows host
-     * (bocaminipc) takes about a second.
+     * naming itself, rather than at the tier's limit. The slowest single run on a budget Windows host
+     * takes about a second.
      */
     static final int RUN_SECONDS = 15;
 

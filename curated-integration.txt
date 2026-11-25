@@ -1,10 +1,10 @@
-# The integration classes CI's self-host job runs on every run of ci.yml, and the merge queue's
-# Queue tier runs in every module a batch did not change.
+# The integration classes CI's self-host job runs on every pull request.
 #
-# `jk test -s integration` runs more than a hundred classes; a dispatch of CI on a branch does not
-# run them all unless asked, so the self-host job runs this subset (scripts/curated-integration.sh)
-# and the full suite runs on the release tag and nightly. A class that caught a real regression in
-# the Full tier which the Queue tier missed joins this list (docs/contributors/test-suite-tiers.md).
+# `jk test -s integration` runs more than a hundred classes, which the merge queue runs before main
+# moves; a pull request runs this subset (scripts/curated-integration.sh) for an early verdict. A
+# class that caught a real regression in the merge queue which the pull request missed joins this
+# list (docs/contributors/test-suite-tiers.md).
+#
 # Membership is a duplicate execution policy, not a JUnit tag: every class named here carries
 # `@Tag("integration")` and runs in the full suite too, so nothing is reclassified to make the gate
 # pass.

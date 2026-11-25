@@ -28,7 +28,7 @@ import org.jspecify.annotations.Nullable;
 /**
  * Starts the engine outside the Windows job its client runs in. An ssh session on Windows runs in a
  * job that kills every process in it when the session ends ({@code JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE},
- * seen on bocaminipc's OpenSSH), and a child joins its parent's job, so an engine an agent, a CI step
+ * seen with Windows OpenSSH), and a child joins its parent's job, so an engine an agent, a CI step
  * or a remote shell started died with that shell. {@link ProcessBuilder} cannot ask {@code
  * CreateProcess} to break away, so a client in a job starts the engine itself: {@code
  * CREATE_BREAKAWAY_FROM_JOB}, no window, the builder's command, environment and directory, its

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Fixture test for scripts/release-lane.sh, network-free: a throwaway checkout tagged v9.8.7 whose
-# bootstrap, green check, takeover, repo stage and assembly are stubs, and a jk on PATH that writes a
+# bootstrap, takeover, repo stage and assembly are stubs, and a jk on PATH that writes a
 # dist. A lane whose every step succeeds reports itself done; a lane whose assembly fails after
 # writing part of its tree must fail, never print "== lane … done", and name the log.
 set -euo pipefail
@@ -21,7 +21,7 @@ REPO="$WORK/repo"
 mkdir -p "$REPO/scripts" "$WORK/bin"
 cp "$ROOT/scripts/release-lane.sh" "$ROOT/scripts/release-version.sh" "$REPO/scripts/"
 printf 'version = "%s"\n' "$V" >"$REPO/jk.toml"
-for s in ci-bootstrap ci-takeover release-session release-green; do printf '#!/usr/bin/env bash\necho "%s ok $*"\n' "$s" >"$REPO/scripts/$s.sh"; done
+for s in ci-bootstrap ci-takeover release-session; do printf '#!/usr/bin/env bash\necho "%s ok $*"\n' "$s" >"$REPO/scripts/$s.sh"; done
 # The repo stage: one jar.
 cat >"$REPO/scripts/publish-maven-repo.sh" <<'SH'
 #!/usr/bin/env bash
@@ -63,6 +63,8 @@ case "${1:-}" in -s) echo Linux ;; -m) echo x86_64 ;; *) echo Linux ;; esac
 SH
 chmod +x "$REPO"/scripts/*.sh "$WORK/bin/jk" "$WORK/bin/uname"
 g init -q -b main && g add -A && g commit -q -m "release $V" && g tag -a "v$V" -m "jk $V"
+# The tag is on origin's main.
+git init -q --bare "$WORK/origin.git" && g remote add origin "$WORK/origin.git" && g push -q origin main
 
 lane() { (cd "$REPO" && env PATH="$WORK/bin:$PATH" "$@" bash scripts/release-lane.sh "$WORK/lane") >"$WORK/out.log" 2>&1; }
 
@@ -87,5 +89,11 @@ if grep -q "== lane .* done" "$WORK/lane/lane.log"; then fail "a lane whose asse
 grep -q "release-lane: linux-x86_64 failed" "$WORK/out.log" || fail "the failed lane did not say so"
 grep -q "14 bullets" "$WORK/out.log" || fail "the failed lane did not show the cause"
 echo "ok   a lane whose assembly fails stops there and fails"
+
+# A tag that is not on origin's main: origin's main moves to another history.
+g checkout -q --orphan elsewhere && g commit -q -m elsewhere && g push -q -f origin elsewhere:main && g checkout -q "v$V"
+if lane; then fail "a lane whose tag is not on origin/main exited 0"; fi
+grep -q "v$V is not on origin/main's history" "$WORK/out.log" || fail "the lane did not say the tag is off main"
+echo "ok   a tag that is not on origin/main fails the lane"
 
 echo "test-release-lane: ok"

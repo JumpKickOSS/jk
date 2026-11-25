@@ -147,7 +147,7 @@ public final class EngineProbe {
             long drainDeadlineMillis,
             /** Every live and queued job, live first; empty when none or when the engine did not report. */
             List<Job> jobs,
-            /** The engine's own name for itself ({@code Windows on BocaMiniPC}); null when not reported. */
+            /** The engine's own name for itself ({@code Windows on Workstation}); null when not reported. */
             @Nullable String engineLabel,
             /** The engine's stable instance id; null when not reported. */
             @Nullable String engineId,

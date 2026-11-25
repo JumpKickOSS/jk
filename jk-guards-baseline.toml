@@ -1924,9 +1924,6 @@ population = { files = 204 }
 population = { examined = 3 }
 scope-reason = "the wall-measure workflow is gone: the scoreboard's night tier measures on the reference host"
 
-[workflow-runners-in-cost-order]
-population = { examined = 5 }
-
 [workflow-suites-under-checkout-jk]
 population = { examined = 5 }
 

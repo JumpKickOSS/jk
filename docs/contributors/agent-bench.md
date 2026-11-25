@@ -48,7 +48,7 @@ bench/agent-loop/screen-ff --series 33 --task petclinic-rename-addvisit …   # 
 bench/agent-loop/screen-ff --series 33 --confirm --task …                  # rerun only what surprised
 ```
 
-A night on the gate host runs the tiers in order, every step to its end, with the merge queue paused:
+A night on an otherwise idle host runs the tiers in order, every step to its end:
 `scripts/bench-night.sh` ([README](../../bench/agent-loop/README.md#a-night-of-benches)). Its `--until`
 is a soft deadline: past it the night logs what is done and left and its estimate for the rest, and
 `scripts/bench-night.sh status` says the same at any time. A new agent goes first and alone through

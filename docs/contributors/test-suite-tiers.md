@@ -1,7 +1,7 @@
 # Test suite tiers (one tier per tag)
 
-**Goal:** keep the merge gate under **~5 minutes**, the gate that blocks a push under **10**, and
-run the full e2e behind the push, nightly and on every release, not once per merge.
+**Goal:** keep the local loop under **~5 minutes** and a pull request's CI run under **10**, and
+run the whole integration tier in the merge queue and on every release, not on every push.
 
 ## Commands
 
@@ -12,9 +12,9 @@ over every subset of the tag vocabulary, that each is run by exactly one suite, 
 ([self-host](self-host.md#test-tiers)).
 
 `jk build` runs every module's fast tier (the default suite: what no suite claims); `jk install`,
-which is that same build plus the reinstall, gates every local merge into `main`; `jk install -g`,
+which is that same build plus the reinstall, runs before every push of a code change; `jk install -g`,
 which runs `[test] guard-suites = ["test", "integration", "e2e", "tree"]` against the JumpKick it installs, is
-the heart of the Full tier ([gate tiers](#gate-tiers)). The house rules run under `jk build` and `jk guard`
+the local spelling of what the merge queue adds ([gate tiers](#gate-tiers)). The house rules run under `jk build` and `jk guard`
 ([self-host](self-host.md#house-rule-gate)).
 
 <!-- test-tiers:start -->
@@ -34,10 +34,10 @@ the heart of the Full tier ([gate tiers](#gate-tiers)). The house rules run unde
 **Suites are scope, tags are cost.** A suite that claims a tag takes its tests from every test
 source a module has: `jk test -s integration` runs `e2e/cli`'s `src/e2e` integration test
 (`E2eSuiteEngineTest`) beside every `src/test` integration class, and the `jk test -s integration`
-step of `ci.yml` (release tag) and `ci-nightly.yml` is its CI run. A directory suite keeps what no
-tag suite claims, and `e2e` is in `guard-suites`, so the Full tier (`jk install -g`) runs whatever `src/e2e` holds untagged. The
+job of `ci.yml` (the merge queue, a release tag) is its CI run. A directory suite keeps what no
+tag suite claims, and `e2e` is in `guard-suites`, so `jk install -g` runs whatever `src/e2e` holds untagged. The
 ci-cadence guard holds that every suite `--all` runs is run by a CI step (`jk test -s <name>`) or is
-one of the `guard-suites` the Full tier runs. Members carry no `[test.suites.*]` of their own for these tiers: the root's tables
+one of the `guard-suites`. Members carry no `[test.suites.*]` of their own for these tiers: the root's tables
 are the only routing, and a member may only add settings to them.
 
 Tag new heavy tests at class level:
@@ -46,11 +46,11 @@ Tag new heavy tests at class level:
 @Tag("integration") // engine/e2e / Jk.execute / workers
 @Tag("slow")        // Android / multi-minute / large downloads / waits out a real clock for 1s or more
 @Tag("network")     // talks to a real remote (Maven Central, a forge)
-@Tag("release")     // too slow for every queue batch, run before each release: a real browser, a multi-minute end-to-end (the Full tier, CI on the release tag)
+@Tag("release")     // a real browser, a multi-minute end-to-end a release must pass (the self-host job, every pull request)
 @Tag("live")        // writes to this machine's own services (the OS keychain); desktop, on demand
 @Tag("bench")       // microbench only (never PR)
-@Tag("docs")        // walks the doc tree (docs/, the root Markdown); every gate tier runs it alone
-@Tag("tree")        // scans every module's production sources; the Branch, Queue and Full tiers run it
+@Tag("docs")        // walks the doc tree (docs/, the root Markdown); every pull request runs it alone
+@Tag("tree")        // scans every module's production sources; every pull request runs it
 ```
 
 **A test that scans the whole tree runs in the tree suite.** A suite is keyed on every file its
@@ -62,7 +62,7 @@ outside its module stays where it is.
 
 **The fast tier reads nothing that names the checkout or the host.** The same key is why: a read of
 the checkout's `.git` (in a linked worktree, a file naming that worktree) or of `/etc/passwd`
-keys the suite on which checkout or host ran it, so no other worktree, box or queue runner reuses
+keys the suite on which checkout or host ran it, so no other worktree, machine or CI runner reuses
 its result. `HermeticReads` tells the checkout's git directories from a stat and the common
 directory's `worktrees` list, never by reading `.git`; it points JGit's user configuration and its
 own settings (`jgit/config`) into the sandbox, so neither `~/.gitconfig` nor `~/.config/jgit` is
@@ -77,7 +77,7 @@ by letting a real second pass carries `@Tag("slow")` on that method, so it runs 
 suite (`jk test -s slow`) and not in the gates a landing waits on.
 
 **A slow-tier failure the host caused says so.** On a box whose memory cgroup is smaller than the
-slow tier's peak (a 10 GiB fleet box running a native link beside other suites' engines), the
+slow tier's peak (a 10 GiB machine running a native link beside other suites' engines), the
 kernel kills a forked worker and the build fails with an error that names neither memory nor the
 kernel. A test that builds through workers takes `MemoryKills.mark()` before the work and, once
 the work has failed, calls `abortIfAny(what)`: when the cgroup's `oom_kill` counter moved in
@@ -142,112 +142,39 @@ that the marked table above matches it.
 
 ## Gate tiers
 
-Five tiers judge a change on its way to a release, each cheaper and narrower than the next. The
-first two block: a branch does not reach the queue without the Branch tier, and `origin/main`
-does not move without the Queue tier. The Full tier blocks a release, which is cut from `green`,
-the last commit it passed.
+Four places judge a change on its way to `main` and a release, each wider than the one before.
 
-| Tier | Command | What runs | When | Blocks |
-|------|---------|-----------|------|--------|
-| Branch | `scripts/queue/branch-tier.sh` | `jk guard`, then `jk test --exclusive` over the modules `--affected-since <merge-base>` selects: the fast tier of the modules the branch changed and their dependents (every module when a file outside them changed). The modules they build on compile but their suites do not run, and no native client is built; the Queue tier runs both. Then `jk test -s tree`, and `scripts/gate/docs-only.sh check` as a warning. It also warns, and its pass line says so, when no shellcheck runs on the machine (`scripts/shellcheck.sh --runner`), since `jk guard` stays green when it skips the shellcheck guard and only names the skip | Before a branch is submitted to the merge queue | The submission |
-| Queue | `GATE_TIER=queue scripts/gate/run.sh <n> <sha>` | `jk guard`; `jk install -S` (the reinstall without tests, so every test runs under the batch's own engine); one `jk install -c` (every module's fast tier, then the reinstall); the integration classes ranked highest, within a budget, in each module the batch changed (`scripts/gate/changed-modules.sh`, [ranking](#the-queue-tier-runs-the-classes-a-batch-ranks-highest)); the [curated lane](#the-curated-integration-lane)'s classes in every other module; `jk test -s docs`; `jk test -s tree`; the shell fixtures | Every batch the merge queue gates | The push to `origin/main` |
-| Full | `scripts/gate/full-loop.sh`, each cycle `GATE_TIER=full scripts/gate/gate.sh <n> <sha>` | `jk guard`; `jk install -S`; `jk install -g -c` (the fast tier once, with every `integration`, `e2e` and `tree` class); `jk test -s docs`; `jk test -s release`; `jk test -s slow` when a plugin (a member under `plugins/`) or a root build file changed since `green` (`GATE_BASE`); the shell fixtures; the release notes | Back to back on the newest `main`, on a host of its own that shares no lock with the queue ([the Full tier loop](self-host.md#the-full-tier-loop)) | A release: it is cut from `green`. `main` may be red on it for a cycle or two: a confirmed culprit commit is reverted through the queue, and after two red cycles the queue lands only the fix |
-| Windows, macOS | `scripts/gate/platform-loop.sh windows` and `macos`, each run `scripts/gate/platform-run.sh` on the host | In a checkout and home of their own on Daybreak (Git Bash) and bocamacmini: `jk install -S`; every module's fast tier; each fast or integration test class with an OS condition; the product smoke | Each tip the Full loop takes, beside its Linux gate; a busy platform skips to the newest ([Windows and macOS](self-host.md#windows-and-macos)) | Nothing at first: a red run files a ticket. Once a platform has been green for a week, `green` moves only to tips it passed too |
-| Nightly | `ci-nightly.yml` | `integration`, `slow`, `network`, `bench`, the coverage ratchet, the examples | Its schedule, when the workflow is enabled | Nothing |
-| Release | `ci.yml` on the release tag | The fast tier, `docs`, the curated lane, `release`, the whole `integration` tier, Windows and macOS | `jk release` pushes a tag | The release |
+| Where | Started by | What runs | Blocks |
+|-------|------------|-----------|--------|
+| Local | you, before every commit and push | `jk guard` (or `jk guard docs` for a docs-only commit), the narrow `-m` / `--class` tests of what you changed, `jk install` (every module's fast tier, then the reinstall); `jk install -g` for a change that reaches far | Your push |
+| Pull request | every push to a pull request (`ci.yml`) | everything but the whole integration tier: the authorship scan, the workflow lint, the shell fixtures on Linux and macOS, the self-host job (`jk guard`, `jk test`, `jk test -s docs`, `jk test -s tree`, the [curated lane](#the-curated-integration-lane), `jk test -s release`, the unchanged lock, `jk audit`), the VS Code extension on three OSes, the Windows installer and Node.js checks, and the Windows and macOS build-and-test jobs | Entering the merge queue |
+| Merge queue | `gh pr merge --auto` (`merge_group`) | every pull-request job again, plus `jk test -s integration`, the whole tier | `main`: it moves only to a commit that passed every job |
+| Nightly | `ci-nightly.yml` on its schedule | `slow`, `network`, `bench`, the coverage ratchet, the heap guard, the examples, the audit at `LOW`, the macOS product smoke, the JVM client | Nothing |
 
-**What the Queue tier calls a changed module.** `changed-modules.sh` maps every file the batch
-changed since `origin/main` onto the workspace member that holds it (the deepest one, so a rule
-pack is not its parent). A file under `docs/`, `scripts/`, `.github/` or `bench/`, or a Markdown
-file at the root, selects no module: guard, the fast tier and the shell fixtures read those. Any
-other file outside every member (the root `jk.toml`, `jk-lock.toml`, `.jk/`, `templates/`)
-selects them all, and the Queue tier runs the whole `integration` suite. Otherwise its integration
-step is one `jk test -s integration -c --exclusive`: each changed module as a plain `-m`, with the
-classes the [ranking](#the-queue-tier-runs-the-classes-a-batch-ranks-highest) picks qualified
-when it leaves any for the Full tier, and each other module the curated lane names with its classes
-qualified (`-m server/engine -S server/engine:<class>`), so they run alone there. A module's
-dependents are not run, which is what the curated lane is for, and no class runs twice.
+Every job of a run starts at once, on every OS. One aggregate job, `CI`, needs all the others and
+is the only check `main`'s ruleset requires ([self-host](self-host.md#the-merge-queue)). A release
+tag runs `ci.yml` too, the whole integration tier included, and the release workflow starts only
+on a green run of it.
 
-### The Queue tier runs the classes a batch ranks highest
+**The Windows and macOS jobs** run the product smoke and then `scripts/ci-platform-tests.sh`:
+every module's fast tier, and each fast or integration test class whose source names an OS
+(`@EnabledOnOs`, `OS.WINDOWS`, `os.name`, …). Nothing runs the slow tier on Windows.
 
-A batch that changes `server/engine` or `e2e/cli` would otherwise run a suite of some 2,000 to 2,500
-seconds of class wall, several minutes even across every core. `scripts/gate/rank-integration.sh`
-ranks the integration classes of each changed module by how likely the batch is to break them, and
-the Queue tier runs them from the top while they fit the budget:
-
-1. **Must run:** a class whose own source the batch changed, and a class the curated lane names.
-   These run whatever the budget says.
-2. **Met the change when it last ran:** `jk test -e <base> -s integration -O jsonl` ranks the
-   module's classes from the record JumpKick kept of each one's last run on the gate host: its code ran
-   a class compiled from a changed source (`cone-ran:<class>`), or it read a changed file
-   (`reads:<path>`). A class with no record ranks here when its bytecode uses a changed type
-   (`abi-import:<type>` and the like). A class with a record that met nothing is not near the
-   change, whatever its source names.
-3. **Near the change, or failed recently:** a class whose recorded cone only reaches a changed
-   class (`cone:<class>`); a failure or a pass only on a re-run in `jk flaky list -O jsonl` (the
-   class's last 20 runs on the gate host), or a `FAILED` or `FLAKY … passed on` line in the
-   newest 100 gate logs.
-4. **The rest**, cheapest first, so that as many classes as fit run.
-
-Where JumpKick cannot rank a module (it refuses: a `jk.toml` changed, too many types or modules), rank 2
-is the classes whose source names a type whose source file the batch changed, and the gate log
-says so. JumpKick keeps the records of each checkout apart, so the Queue tier also reads those of
-the [Full tier](self-host.md#the-full-tier-loop), which runs every class: after each gate the Full
-loop ships its checkout's records to `full-records/` in the queue's repository, and before ranking
-`scripts/gate/class-records.sh import` adds to the queue checkout's records the rows of each class
-it has none of. A shipped row loses its key, so JumpKick ranks by it but never replays the class on
-it, and a row JumpKick wrote in the queue checkout always wins. The gate log says, for each changed
-module, how many of its classes have a record and how many of those have only rows the Full tier
-shipped
-(`rank-integration: <module>: <n> of <m> classes have a record, <k> of them from the Full tier`). A
-class neither checkout has run has no record and ranks by its bytecode.
-
-Within a rank the cheaper class comes first. A class's cost is its recorded wall, the `time` of its
-newest `target/failsafe-reports/TEST-<class>.xml` in the gate's checkout; a class with none counts
-as the median of the others. The suite's classes are the module's test sources tagged
-`integration` and no tag the integration suite excludes.
-
-**The budget** is 900 seconds of recorded class wall across every changed module
-(`GATE_INTEG_BUDGET`; `0` runs the changed modules' whole suites). A class that does not fit is
-deferred and the next one is tried. A class longer than 90 seconds (`GATE_INTEG_POLE`) is deferred
-unless it must run, since the step lasts at least as long as its longest class. A module none of
-whose classes was deferred runs its whole suite. A root build file change runs every module's whole
-suite, unranked.
-
-**Deferred, never dropped.** The gate log names each class left out on a `DEFERRED <module>
-<class> (<why>)` line and counts each changed module on an `INTEG_RANKED <module> ran <r> of <n>
-classes` line; the full ranking is `g<n>-ranking.txt` beside it. The Full tier runs every class
-(`jk install -g`), so a break in a deferred class turns the next Full cycle red, which blames the
-batch as for any other red ([the Full tier loop](self-host.md#the-full-tier-loop)).
-
-**The slowest end-to-ends wait for the Full tier.** The Queue tier's integration step runs the
-integration suites of up to three heavy modules side by side, and its wall is set by their total
-CPU. A class of a minute or more that a release must pass, but that a batch rarely breaks, carries
-`@Tag("release")` instead: the Helidon scaffolds served end to end (`HelidonTemplatesE2eTest`,
+**The slowest end-to-ends carry `@Tag("release")`.** A class of a minute or more that a release must
+pass but a change rarely breaks: the Helidon scaffolds served end to end (`HelidonTemplatesE2eTest`,
 `HelidonQuickstartE2eTest`), publish and release against a local repository (`PublishCommandTest`,
 `ReleaseCommandTest`), the cross-host key proof (`CrossHostKeyEqualityTest`), the forecast-against-run
 matrix (`ForecastRunParityMatrixTest`), the mirror and group-root walks (`UserConfigMirrorTest`,
-`GroupRootE2eTest`). The Full tier runs them on every cycle, so a break blocks the next release, not
-the batch.
+`GroupRootE2eTest`), the dashboard's new-project wizard in Playwright's Chromium
+(`NewProjectWizardE2eTest`). The self-host job runs them after the curated lane on every pull
+request; the tier may fetch (the browser, the dashboard's CDN, Maven Central).
 
-**A docs-only batch skips the Queue tier.** When every file a batch changed is a doc that no test
-reads but those of the docs suite ([docs-only](self-host.md#docs-only-changes)), the queue gates
-it with `GATE_TIER=docs`: `jk guard`, `bench/scoreboard --render --check` and `jk test -s docs`, no
-install and no other test. The Full tier still runs everything on it.
+**The docs suite runs on every pull request.** `jk test -s docs` holds the tests that walk the doc
+tree and hold the docs to the code. The self-host job runs it alone after the fast tier, since a
+run of several suites records what they read as one ([docs suite](self-host.md#the-docs-suite)).
 
-**The docs suite runs in every gate tier.** `jk test -s docs` holds the tests that walk the doc tree.
-They hold the docs to the code, so the Queue tier runs them after its integration runs, the Full tier
-beside the release suite, and CI's self-host job after the fast tier; each runs the suite alone,
-since a run of several suites records what they read as one
-([docs suite](self-host.md#docs-only-changes)).
-
-**Quarantine and re-run.** The gate uses JumpKick's own quarantine: a run red only in classes
-`.jk/test/quarantine.toml` holds passes, in every tier, and every tier still runs them. A run of the
-Queue or Full tier red in other classes, and in nothing but classes, runs once more under the same
-inputs, which runs only those classes: it passes when they pass there, JumpKick records them as
-flaky, and the gate's log names each with a `FLAKY` line.
-The gate files a ticket for each class JumpKick quarantines and submits the file to the merge queue
-([flaky tests](self-host.md#flaky-tests)).
+**Quarantine.** A run red only in classes `.jk/test/quarantine.toml` holds passes, and every run
+still runs them ([flaky tests](self-host.md#flaky-tests)).
 
 ## The shared-cache proof
 
@@ -262,19 +189,17 @@ from two roots through the production task id. A key factory that hashes a locat
 
 The fast tier runs no integration class, and the full suite is too slow to gate on, so a wire,
 spawn, worker, workspace, install or lock regression could merge with a deterministic integration
-test — sitting in the nightly suite run — that would have caught it.
+test — run only in the merge queue — that would have caught it.
 
 `scripts/curated-integration.sh` closes that gap. It reads `curated-integration.txt` at the
 checkout root and runs one `jk test -s integration -c -X -m <module> -S <module>:<class> …` over
 every module the registry names, as a step of the self-host job on every run of `ci.yml`; a module
-none of whose classes matched fails the run. The Queue tier runs the same command (`--print`), with
-`--with <module>` adding each module the batch changed as a plain `-m`, so that module's whole
-integration suite runs in the same call and its curated classes are not named. Guard G63 fails on
-an entry whose class is renamed or deleted, so the lane does not quietly shrink.
+none of whose classes matched fails the run; `--print` prints the command instead of running it.
+Guard G63 fails on an entry whose class is renamed or deleted, so the lane does not quietly shrink.
 
 **Curated membership is a duplicate execution policy, not a tag.** Every listed class is
-`@Tag("integration")` and still runs in the nightly suite run; nothing is reclassified to make the
-branch gate cheap, and the lane never replaces `jk test -s integration`.
+`@Tag("integration")` and still runs in the merge queue's whole-tier run; nothing is reclassified
+to make a pull request cheap, and the lane never replaces `jk test -s integration`.
 
 The registry has one line per class:
 
@@ -290,7 +215,7 @@ Six surfaces have to stay covered — `wire`, `spawn`, `workers`, `workspace`, `
 each with at least one `success` and one `failure` entry. Guard **G63** (`curated-integration`)
 rejects an entry that is missing, renamed, untagged, tagged into a nightly tier, or claims a
 failure path the class does not show; it also fails when a surface loses a path, when the lane
-script or its step in `ci.yml` is gone, or when the nightly stops running the full suite. The
+script or its step in `ci.yml` is gone, or when CI stops running the full suite. The
 registry's `integration-floor` line states the smallest `@Tag("integration")` population the
 guard accepts from its scan; under it the guard refuses to judge, because a lane carved out of a
 tier that shrank is not the coverage it claims.
@@ -303,14 +228,14 @@ compiled and the budget is the lane alone; the step prints its elapsed seconds i
 so the budget is checked against a measurement.
 
 Over budget, the answer is to **drop or split an entry**, never to raise the number: the lane
-exists because the full tier is what a branch gate cannot afford, and a lane that grows toward the
+exists because the full tier is what a pull request cannot afford, and a lane that grows toward the
 full tier has stopped being a lane. Adding a class is fine when it buys a surface a path it does
 not have; adding a second class for a path a surface already covers is what the budget is there to
 refuse.
 
-**A regression the Queue tier missed is the exception.** When the Full tier, nightly or a release
-catches a real regression (not a flake) with an integration class that the Queue tier did not run,
-because the batch changed some other module, that class joins the lane in the same change that
+**A regression a pull request missed is the exception.** When the merge queue or a release
+catches a real regression (not a flake) with an integration class that the pull request's run did
+not reach, because the change was in some other module, that class joins the lane in the same change that
 fixes the regression, under the surface it guards, whatever that surface already holds. Its `why`
 says which change outside its own module breaks it. If the lane then runs over budget, split it or
 drop a class that never caught anything; never the one that did.
@@ -381,37 +306,24 @@ Measured profiling of a full `integrationTest` is expensive; use this as a **man
 
 ## CI
 
-Which tier runs where. GitHub minutes are spent nightly and on a release, never on a push or a
-pull request:
+Which tier runs where ([gate tiers](#gate-tiers) has the summary):
 
 | Run | Started by | Tiers |
 |-----|------------|-------|
-| Merge gate | a developer, on their own machine | `jk install` (fast tier) |
-| Queue and Full tiers | the merge queue's gate host | the Queue tier on every batch; the Full tier behind it ([gate tiers](#gate-tiers)) |
-| No workflow | a push to `main`, a pull request | — |
-| `ci.yml` | a release tag, or a dispatch | fast tier, curated lane, `release`; the whole `integration` tier on a tag and on `main`, and on another branch when the dispatch's `integration` input is on |
-| `ci-nightly.yml` | its schedule, when the workflow is enabled | `integration`, `slow`, `network`, `bench`, coverage, the audit at `LOW` |
+| Local | a developer, on their own machine | `jk guard`, narrow tests, `jk install` (fast tier) |
+| `ci.yml` on a pull request | every push to it | fast tier, `docs`, `tree`, curated lane, `release`, Windows and macOS fast tiers and OS-specific classes |
+| `ci.yml` in the merge queue | `gh pr merge --auto` | the pull request's jobs plus the whole `integration` tier |
+| `ci.yml` on a release tag, a dispatch | `jk release`, a person | the same jobs; the whole `integration` tier on a tag, on a dispatch of `main`, and on a dispatch whose `integration` input is on |
+| `ci-nightly.yml` | its schedule, when the workflow is enabled | `slow`, `network`, `bench`, coverage, the audit at `LOW` |
 
-A commit that reaches `main` has passed the Queue tier; whatever only the Full tier runs judges it
-when the Full tier next runs, or the next nightly or release run. `main` has no required GitHub
-check, since no workflow runs on a push: the merge queue is its only writer. A `ci.yml` run on
-`main` always includes the whole `integration` tier, so a commit there that fails an integration
-test cannot show a green CI run. Nothing runs the integration or slow tier on Windows.
-
-- **Release (`ci.yml` on the release tag):** the self-host job (`jk install`, which builds, then
-  `jk guard`, `jk test`: the fast tier and every house-rule lane, run by the checkout's own `jk`;
-  then the curated integration lane and `jk audit -s HIGH` over the lock), the shell fixtures, the
-  workflow lint and the commit-authorship scan. No coverage, no benches. After the curated lane, the
-  self-host job runs `jk test -s release`: the tests a release must pass that are too slow or too
-  heavy for a queue batch, such as the dashboard's new-project wizard in Playwright's Chromium
-  (`NewProjectWizardE2eTest`); the Full tier runs them every cycle. The tier may fetch (the browser,
-  the dashboard's CDN, Maven Central). Beside it the
-  `integration` job runs `jk test -s integration --continue`, and the Windows and macOS jobs wait
-  for it. A red job stops the release.
-- **Nightly (`ci-nightly.yml`):** `jk test -s integration`, `-s slow`,
-  `-s network`, `-s bench`, the coverage ratchet (`jk test --coverage`, `jk guard`),
-  the heap guard, the nightly [jk-examples](https://github.com/JumpKickOSS/jk-examples)
-  scenarios and the audit at `LOW` on Linux; the product smoke on macOS.
+- **Self-host job (`ci.yml`):** `jk install` (which builds), then `jk guard`, `jk test`: the fast
+  tier and every house-rule lane, run by the checkout's own `jk`; then the docs and tree suites, the
+  curated integration lane, `jk test -s release` and `jk audit -s HIGH` over the lock. Beside it the
+  shell fixtures, the workflow lint and the commit-authorship scan. No coverage, no benches.
+- **Nightly (`ci-nightly.yml`):** `jk test -s slow`, `-s network`, `-s bench`, the coverage ratchet
+  (`jk test --coverage`, `jk guard`), the heap guard, the nightly
+  [jk-examples](https://github.com/JumpKickOSS/jk-examples) scenarios and the audit at `LOW` on
+  Linux; the product smoke on macOS.
 - **Examples job:** every
   jk-examples scenario whose `scenario.toml` says `cadence = "nightly"` (or `pr`) is relocked and
   checked from a clean checkout with the commands its manifest lists
@@ -424,8 +336,8 @@ test cannot show a green CI run. Nothing runs the integration or slow tier on Wi
   checkout: `../jk-examples/scripts/scenarios.py check <scenario>`,
   `scripts/example-dev-smoke.sh --examples ../jk-examples` and
   `scripts/examples-lock-drift.sh ../jk-examples`.
-- Local gate: `jk guard` (it formats what changed), `jk install` (the build plus the reinstall), `jk install -g`;
-  `scripts/curated-integration.sh` runs the curated lane, as the release CI and the Queue tier do.
+- Local: `jk guard` (it formats what changed), `jk install` (the build plus the reinstall), `jk install -g`;
+  `scripts/curated-integration.sh` runs the curated lane, as the self-host job does.
 - Never the `network` or `bench` suite as a merge gate.
 
 ## Measuring integration wall time

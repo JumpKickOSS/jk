@@ -18,7 +18,7 @@ class BandPortTest {
     @Test
     void aGuestStartsFromItsIdentityAndKeepsWhatItBound() throws Exception {
         Path file = tmp.resolve("engine").resolve(BandPort.FILE);
-        String id = EngineIdentity.idOf("linux", UBUNTU_26_04, "BocaMiniPC", "/home/me/.jk");
+        String id = EngineIdentity.idOf("linux", UBUNTU_26_04, "Workstation", "/home/me/.jk");
 
         int first = BandPort.preferred(file, id);
         assertThat(first).isBetween(BandPort.FIRST, BandPort.LAST).isEqualTo(BandPort.preferred(file, id));
@@ -51,12 +51,12 @@ class BandPortTest {
 
     @Test
     void twoDistrosOnOneWindowsHostGetTwoIdsAndTwoFirstPorts() {
-        String a = EngineIdentity.idOf("linux", UBUNTU_26_04, "Daybreak", "/home/bsant/.jk");
-        String b = EngineIdentity.idOf("linux", UBUNTU_26_10, "Daybreak", "/home/bsant/.jk");
+        String a = EngineIdentity.idOf("linux", UBUNTU_26_04, "Desk", "/home/bsant/.jk");
+        String b = EngineIdentity.idOf("linux", UBUNTU_26_10, "Desk", "/home/bsant/.jk");
 
         assertThat(a).isNotEqualTo(b);
         assertThat(BandPort.preferred(tmp.resolve("a"), a)).isNotEqualTo(BandPort.preferred(tmp.resolve("b"), b));
-        assertThat(EngineIdentity.idOf("linux", UBUNTU_26_04, "Daybreak", "/home/bsant/.jk"))
+        assertThat(EngineIdentity.idOf("linux", UBUNTU_26_04, "Desk", "/home/bsant/.jk"))
                 .as("the same distro after a restart")
                 .isEqualTo(a);
     }
@@ -66,37 +66,37 @@ class BandPortTest {
         Guest container = new Guest(Guest.Kind.CONTAINER, "docker", false, "4f2c" + "0".repeat(60));
         Guest otherContainer = new Guest(Guest.Kind.CONTAINER, "docker", false, "9a1b" + "0".repeat(60));
         List<String> ids = List.of(
-                EngineIdentity.idOf("windows", Guest.NONE, "Daybreak", "C:\\Users\\bsant\\.jk"),
-                EngineIdentity.idOf("windows", Guest.NONE, "Daybreak", "D:\\jk-home"),
-                EngineIdentity.idOf("linux", UBUNTU_26_04, "Daybreak", "/home/bsant/.jk"),
-                EngineIdentity.idOf("linux", UBUNTU_26_10, "Daybreak", "/home/bsant/.jk"),
-                EngineIdentity.idOf("linux", container, "Daybreak", "/root/.jk"),
-                EngineIdentity.idOf("linux", otherContainer, "Daybreak", "/root/.jk"),
-                EngineIdentity.idOf("linux", Guest.NONE, "Daybreak", "/root/.jk"));
+                EngineIdentity.idOf("windows", Guest.NONE, "Desk", "C:\\Users\\bsant\\.jk"),
+                EngineIdentity.idOf("windows", Guest.NONE, "Desk", "D:\\jk-home"),
+                EngineIdentity.idOf("linux", UBUNTU_26_04, "Desk", "/home/bsant/.jk"),
+                EngineIdentity.idOf("linux", UBUNTU_26_10, "Desk", "/home/bsant/.jk"),
+                EngineIdentity.idOf("linux", container, "Desk", "/root/.jk"),
+                EngineIdentity.idOf("linux", otherContainer, "Desk", "/root/.jk"),
+                EngineIdentity.idOf("linux", Guest.NONE, "Desk", "/root/.jk"));
 
         assertThat(ids).doesNotHaveDuplicates().allMatch(id -> id.matches("[0-9a-f]{12}"));
     }
 
     @Test
     void theIdentityNamesTheEngineAndIsStable() {
-        String id = EngineIdentity.idOf("windows", Guest.NONE, "BocaMiniPC", "C:/Users/me/.jk");
+        String id = EngineIdentity.idOf("windows", Guest.NONE, "Workstation", "C:/Users/me/.jk");
         assertThat(id)
                 .hasSize(12)
-                .isEqualTo(EngineIdentity.idOf("windows", Guest.NONE, "BocaMiniPC", "C:/Users/me/.jk"));
-        assertThat(id).isNotEqualTo(EngineIdentity.idOf("linux", Guest.NONE, "BocaMiniPC", "C:/Users/me/.jk"));
+                .isEqualTo(EngineIdentity.idOf("windows", Guest.NONE, "Workstation", "C:/Users/me/.jk"));
+        assertThat(id).isNotEqualTo(EngineIdentity.idOf("linux", Guest.NONE, "Workstation", "C:/Users/me/.jk"));
 
-        EngineIdentity host = new EngineIdentity(id, "windows", Guest.NONE, "BocaMiniPC", "C:/Users/me/.jk", "1.0");
-        assertThat(host.label()).isEqualTo("Windows on BocaMiniPC");
+        EngineIdentity host = new EngineIdentity(id, "windows", Guest.NONE, "Workstation", "C:/Users/me/.jk", "1.0");
+        assertThat(host.label()).isEqualTo("Windows on Workstation");
         assertThat(host.role()).isEqualTo("host");
 
         EngineIdentity wsl = new EngineIdentity(
                 id,
                 "linux",
                 new Guest(Guest.Kind.WSL, "Ubuntu-26.10", true, "machine-id=36d2"),
-                "BocaMiniPC",
+                "Workstation",
                 "/home/me/.jk",
                 "1.0");
-        assertThat(wsl.label()).isEqualTo("WSL Ubuntu-26.10 on BocaMiniPC");
+        assertThat(wsl.label()).isEqualTo("WSL Ubuntu-26.10 on Workstation");
         assertThat(wsl.toMap(8933)).containsEntry("role", "guest").containsEntry("port", 8933);
     }
 }
