@@ -386,6 +386,11 @@ jobs:
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # Defender's real-time scan makes every PowerShell start on a hosted runner take seconds, and
+      # the wrapper's bootstrap starts about ten: off, its cases run in a fraction of their budget.
+      - name: Real-time malware scan off
+        shell: powershell
+        run: Set-MpPreference -DisableRealtimeMonitoring $true
       - uses: ./.github/actions/product-smoke
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
