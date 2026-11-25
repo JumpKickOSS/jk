@@ -78,7 +78,7 @@ on a release tag and on a dispatch. Every job starts at once, on Linux, Windows 
 | VS Code extension | the extension's build and tests on Linux, Windows and macOS |
 | PowerShell installer, Node.js toolchain | `install.ps1` under Windows PowerShell 5.1, and the Node.js toolchain on Windows |
 | Integration suite | `jk test -s integration`, the whole tier: in the merge queue, on a release tag, and on a dispatch of `main` or one whose `integration` input is on |
-| CI | the aggregate: green when every other job passed or was skipped by its own condition |
+| CI | the aggregate: green when every other job but the two build-and-test jobs passed or was skipped by its own condition |
 
 A pull request runs everything but the whole integration tier; the merge queue runs the group
 again with it, so `main` only moves to a commit that passed every job. `CI` is the one required
@@ -93,6 +93,10 @@ runs the product smoke, then `scripts/ci-platform-tests.sh`: every module's fast
 fast or integration test class whose source names an OS (`@EnabledOnOs`, `OS.WINDOWS`, `os.name`,
 …), by module. A JUnit 3 class (one that extends a `*TestCase`, as IntelliJ's headless tests do) is
 not one the JUnit Platform can select, so the module's test classes that name it run in its place.
+
+The two jobs are not in the `CI` check yet: some fast-tier tests assume a host that GitHub's
+runners are not (the system drive, a non-administrator user, a faster machine). They join it once
+they pass there.
 
 ## CI
 

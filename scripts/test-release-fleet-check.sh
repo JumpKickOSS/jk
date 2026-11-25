@@ -60,14 +60,17 @@ check "the stored logins survive" test "$(cat "$home/creds/forge/github.com" "$h
   = "$(printf 'creds/forge/github.com\ncreds/repo/central')"
 
 idle_of() { bash "$ROOT/scripts/release-fleet-check.sh" --idle-only "$1"; }
-quiet='"running":true,"activeRequests":2,"queuedBuildPlans":0,"jobs":[],"mcpActiveConnections":0'
-check "an engine with connections only is idle" test "$(idle_of "{$quiet,\"engines\":[]}")" = idle
+# Each status line is written out whole: bash 3.2 (stock macOS) splits a "$(…)" whose command
+# holds \" escapes or a ${var/pattern/…} with brackets.
+q='"running":true,"activeRequests":2'
+check "an engine with connections only is idle" \
+  test "$(idle_of "{$q"',"queuedBuildPlans":0,"jobs":[],"mcpActiveConnections":0,"engines":[]}')" = idle
 check "an engine with a job is busy" \
-  test "$(idle_of "{${quiet/\"jobs\":[]/\"jobs\":[{\"id\":\"j1\"\}]},\"engines\":[]}")" = busy
+  test "$(idle_of "{$q"',"queuedBuildPlans":0,"jobs":[{"id":"j1"}],"mcpActiveConnections":0,"engines":[]}')" = busy
 check "an engine with a queued build is busy" \
-  test "$(idle_of "{${quiet/\"queuedBuildPlans\":0/\"queuedBuildPlans\":1},\"engines\":[]}")" = busy
+  test "$(idle_of "{$q"',"queuedBuildPlans":1,"jobs":[],"mcpActiveConnections":0,"engines":[]}')" = busy
 check "an engine with an agent session is busy" \
-  test "$(idle_of "{${quiet/\"mcpActiveConnections\":0/\"mcpActiveConnections\":1},\"engines\":[]}")" = busy
+  test "$(idle_of "{$q"',"queuedBuildPlans":0,"jobs":[],"mcpActiveConnections":1,"engines":[]}')" = busy
 check "no engine of this home is stopped, another home's engine aside" \
   test "$(idle_of '{"running":false,"engines":[{"pid":7,"otherHome":true}]}')" = stopped
 check "a draining engine of this home is not stopped" \

@@ -151,8 +151,8 @@ Four places judge a change on its way to `main` and a release, each wider than t
 | Merge queue | `gh pr merge --auto` (`merge_group`) | every pull-request job again, plus `jk test -s integration`, the whole tier | `main`: it moves only to a commit that passed every job |
 | Nightly | `ci-nightly.yml` on its schedule | `slow`, `network`, `bench`, the coverage ratchet, the heap guard, the examples, the audit at `LOW`, the macOS product smoke, the JVM client | Nothing |
 
-Every job of a run starts at once, on every OS. One aggregate job, `CI`, needs all the others and
-is the only check `main`'s ruleset requires ([self-host](self-host.md#the-merge-queue)). A release
+Every job of a run starts at once, on every OS. One aggregate job, `CI`, needs all the others but the Windows and
+macOS build-and-test jobs, and is the only check `main`'s ruleset requires ([self-host](self-host.md#the-merge-queue)). A release
 tag runs `ci.yml` too, the whole integration tier included, and the release workflow starts only
 on a green run of it.
 
