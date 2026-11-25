@@ -249,24 +249,6 @@
         }
       }
     },
-    "library": {
-      "type": "object",
-      "additionalProperties": false,
-      "description": "[library] table: what a library ships beyond its thin jar. A module declares [library] or [application], never both.",
-      "properties": {
-        "assembly": {
-          "type": "boolean",
-          "description": "Package a fat (assembly) jar beside the thin jar."
-        },
-        "relocate": {
-          "type": "object",
-          "additionalProperties": {
-            "type": "string"
-          },
-          "description": "Package relocation in the fat jar: source package prefix to shaded package prefix. Implies assembly; workspace siblings compile and run against the relocating -all.jar."
-        }
-      }
-    },
     "native": {
       "type": "object",
       "description": "[native]: build a GraalVM native image of the module with jk native, and with jk build when enabled = \"always\" (docs/user/native.md). The table alone enables it.",

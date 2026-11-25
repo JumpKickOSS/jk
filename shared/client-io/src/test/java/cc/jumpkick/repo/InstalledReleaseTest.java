@@ -47,6 +47,12 @@ class InstalledReleaseTest {
         Path jar = put(m2, RELEASE, "release");
         Path pom = m2.resolve(MavenLayout.pomPath(RELEASE));
         Files.writeString(jar.resolveSibling(jar.getFileName() + ".sha1"), "x");
+        Path sources = jar.resolveSibling("lib-1.4.7-sources.jar");
+        Files.writeString(sources, "sources");
+        Files.writeString(sources.resolveSibling(sources.getFileName() + ".sha1"), Hashing.fileHex("SHA-1", sources));
+        Files.write(
+                jar.resolveSibling("_remote.repositories"),
+                List.of(M2InstallMemo.REMOTE_REPOSITORIES_HEADER, sources.getFileName() + ">="));
         Path memo = M2InstallMemo.file(store, m2, RELEASE);
 
         InstalledRelease.Withdrawn foreign = InstalledRelease.withdraw(store, m2, List.of(RELEASE));
@@ -59,5 +65,6 @@ class InstalledReleaseTest {
         assertThat(jar.getParent()).doesNotExist();
         assertThat(memo).doesNotExist();
         assertThat(ours.foreign()).isEmpty();
+        assertThat(ours.removed()).contains(sources);
     }
 }

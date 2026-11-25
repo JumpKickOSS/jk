@@ -29,9 +29,6 @@ class WorkspaceMergeRootTablesTest {
                 [workspace]
                 modules = ["a"]
 
-                [library]
-                assembly = true
-
                 [publish]
                 url = "https://example.com/root"
 

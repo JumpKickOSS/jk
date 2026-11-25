@@ -323,8 +323,6 @@ public final class PomImporter {
         if (helidon != null) tests = helidon.tests(tests);
         MigrationPlugins.report(em.model(), report);
         PackagingPlugins.Packaging packaging = PackagingPlugins.map(em, mainClass, report);
-        // The fat jar is the application's when the module has a main; a shaded library — neo4j's
-        // lucene9-shaded, nacos's client — ships it under [library], relocations included.
         JkBuild.Application application = mainClass != null
                 ? new JkBuild.Application(
                         mainClass,
@@ -336,8 +334,6 @@ public final class PomImporter {
                         List.of(),
                         helidon == null ? libDir.libDir() : helidon.libDir(libDir.libDir()))
                 : null;
-        JkBuild.Library library =
-                mainClass == null && packaging.fatJar() ? new JkBuild.Library(true, packaging.relocate()) : null;
         JkBuild.Builder builder = JkBuild.builder(project)
                 // The workspace root's [format] is the one jk reads; a member inherits the plugin, not the table.
                 .format(
@@ -349,7 +345,6 @@ public final class PomImporter {
                 .features(profileFeatures)
                 .profiles(toProfiles(profiles.profiles()))
                 .application(application)
-                .library(library)
                 .nativeConfig(packaging.nativeConfig())
                 .image(packaging.image())
                 .pluginConfig(packaging.springBoot())

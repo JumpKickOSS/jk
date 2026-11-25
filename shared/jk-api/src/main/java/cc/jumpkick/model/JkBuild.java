@@ -45,12 +45,7 @@ public record JkBuild(
          */
         @Nullable PomMetadata publish,
         /** {@code [image]}: the OCI image the module builds; {@link ImageTable#EMPTY} when the table is absent. */
-        ImageTable image,
-        /**
-         * {@code [library]}: what a library ships beyond its thin jar — a fat {@code -all.jar}, with
-         * the packages it relocates. {@code null} when the table is absent.
-         */
-        @Nullable Library library) {
+        ImageTable image) {
 
     public JkBuild {
         Objects.requireNonNull(project, "project");
@@ -94,8 +89,7 @@ public record JkBuild(
                 Variants.EMPTY,
                 null,
                 null,
-                ImageTable.EMPTY,
-                null);
+                ImageTable.EMPTY);
     }
 
     /** Project + deps + repos; anything richer uses {@link #builder(Project)}. */
@@ -117,8 +111,7 @@ public record JkBuild(
                 Variants.EMPTY,
                 null,
                 null,
-                ImageTable.EMPTY,
-                null);
+                ImageTable.EMPTY);
     }
 
     /** {@code [application].main}, or {@code null} when {@code [application]} is absent or unset. */
@@ -161,23 +154,9 @@ public record JkBuild(
         return Optional.ofNullable(application);
     }
 
-    public Optional<Library> libraryOpt() {
-        return Optional.ofNullable(library);
-    }
-
-    /**
-     * The package relocations the fat jar applies, source package to shaded package in
-     * declaration order: {@code [application] relocate} or {@code [library] relocate}, whichever
-     * table the module declares; empty for a fat jar that bundles classes under their own names.
-     */
+    /** Package relocations applied by the application's assembly. */
     public Map<String, String> relocate() {
-        if (application != null) return application.relocate();
-        return library == null ? Map.of() : library.relocate();
-    }
-
-    /** True when the module's fat jar moves packages: its consumers read the {@code -all.jar}, not the classes tree. */
-    public boolean relocates() {
-        return !relocate().isEmpty();
+        return application == null ? Map.of() : application.relocate();
     }
 
     public Optional<NativeConfig> nativeConfigOpt() {
@@ -280,9 +259,9 @@ public record JkBuild(
     /** The built-in micronaut plugin's id / table name. */
     public static final String MICRONAUT_ID = "micronaut";
 
-    /** True when a fat jar is requested: {@code [application] assembly} (implied by {@link #minified()}) or {@code [library] assembly}. */
+    /** True when a fat jar is requested: {@code [application] assembly} (implied by {@link #minified()}). */
     public boolean assembly() {
-        return (application != null && application.assembly()) || (library != null && library.assembly());
+        return application != null && application.assembly();
     }
 
     /** True when an R8-minified jar is requested alongside the fat jar. */
@@ -385,8 +364,7 @@ public record JkBuild(
                 .variants(variants)
                 .install(install)
                 .publish(publish)
-                .image(image)
-                .library(library);
+                .image(image);
         for (PluginConfig config : pluginConfigs.values()) {
             b.pluginConfig(config);
         }
@@ -412,7 +390,6 @@ public record JkBuild(
         private @Nullable Install install;
         private @Nullable PomMetadata publish;
         private ImageTable image = ImageTable.EMPTY;
-        private @Nullable Library library;
 
         private Builder(Project project) {
             this.project = project;
@@ -499,11 +476,6 @@ public record JkBuild(
             return this;
         }
 
-        public Builder library(@Nullable Library library) {
-            this.library = library;
-            return this;
-        }
-
         public JkBuild build() {
             return new JkBuild(
                     project,
@@ -522,8 +494,7 @@ public record JkBuild(
                     variants,
                     install,
                     publish,
-                    image,
-                    library);
+                    image);
         }
     }
 
@@ -682,24 +653,6 @@ public record JkBuild(
         /** Convenience: no config template. */
         public Application(String main, boolean assembly, boolean minified, boolean nativeImage) {
             this(main, assembly, minified, nativeImage, null);
-        }
-    }
-
-    /**
-     * {@code [library]} block: what a library ships beyond its thin jar. A library has no main and
-     * is never run, but it may publish a fat jar — a shaded library moves the packages it bundles
-     * so consumers see them under its own names. Relocation is a fact of the fat jar, so a table
-     * that relocates implies {@code assembly}.
-     *
-     * @param assembly build a fat {@code -all.jar} beside the thin jar
-     * @param relocate package prefixes the fat jar moves, source package to shaded package in
-     *     declaration order, as {@link Application#relocate}
-     */
-    public record Library(boolean assembly, Map<String, String> relocate) {
-
-        public Library {
-            relocate = relocate == null ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap<>(relocate));
-            if (!relocate.isEmpty()) assembly = true;
         }
     }
 

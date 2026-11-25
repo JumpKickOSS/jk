@@ -173,6 +173,11 @@ public final class WorkspacePreflightPhase {
         List<String> selectionErrors = selectionErrors(units, request);
         if (!selectionErrors.isEmpty()) return completed(false, Exit.CONFIG, selectionErrors);
 
+        Predicate<Path> selected = selection(request);
+        Map<Path, JkBuild> manifests = manifests(units);
+        List<String> refused = ReleaseSet.refusals(request, manifests, selected);
+        if (!refused.isEmpty()) return completed(false, Exit.FAILURE, refused);
+
         WorkspaceSyncPhase.Synced synced = WorkspaceSyncPhase.run(request, listener, clock, landedBefore);
         if (synced.failed()) return completed(false, Exit.FAILURE, synced.errors());
         // `jk sync` is this far and no further: the lock and the sync are the whole goal.
@@ -210,10 +215,6 @@ public final class WorkspacePreflightPhase {
                 forecastStart);
 
         Set<Path> scheduled = scheduled(units, forecast.dirty(), forecast.restoreNeeded());
-        Predicate<Path> selected = selection(request);
-        Map<Path, JkBuild> manifests = manifests(units);
-        List<String> refused = ReleaseSet.refusals(request, manifests, selected);
-        if (!refused.isEmpty()) return completed(false, Exit.FAILURE, refused);
         String skipped = ReleaseSet.note(request, manifests, selected);
         if (skipped != null) listener.onNote(skipped);
         scheduled = withStaleInstallJars(request, graph, units, scheduled, listener);

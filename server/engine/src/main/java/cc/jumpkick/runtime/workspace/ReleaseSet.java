@@ -38,7 +38,23 @@ final class ReleaseSet {
      * ships with it.
      */
     static List<String> refusals(WorkspaceRequest request, Map<Path, JkBuild> units, Predicate<Path> selected) {
-        List<String> refused = new ArrayList<>(installRefusals(request, units, selected));
+        List<String> refused = new ArrayList<>();
+        WorkspaceTarget target = request.target();
+        WorkspaceSpec spec = request.spec() == null ? WorkspaceSpec.DEFAULT : request.spec();
+        if (target == WorkspaceTarget.PUBLISH
+                || target == WorkspaceTarget.INSTALL
+                || target == WorkspaceTarget.RESHELVE) {
+            for (Map.Entry<Path, JkBuild> unit : units.entrySet()) {
+                Path dir = unit.getKey();
+                JkBuild manifest = unit.getValue();
+                if (!selected.test(dir) || ModuleJar.shippedStep(manifest, dir) == null) continue;
+                if (target != WorkspaceTarget.PUBLISH
+                        && !InstallPlans.installsToM2(manifest, dir, spec.installDestination())) continue;
+                String reason = ModuleJar.mavenRefusal(manifest, dir);
+                if (reason != null) refused.add(reason);
+            }
+        }
+        refused.addAll(installRefusals(request, units, selected));
         refused.addAll(skippedDependencies(request, units, selected));
         return refused;
     }

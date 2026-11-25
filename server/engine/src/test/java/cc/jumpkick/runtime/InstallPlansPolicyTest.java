@@ -20,6 +20,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
+import java.util.List;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -96,6 +97,36 @@ class InstallPlansPolicyTest {
         assertThat(tmp.resolve("store/repos/jk-local"))
                 .as("nothing is written to the private repository")
                 .doesNotExist();
+    }
+
+    @Test
+    void maven_local_installs_library_attachments_beside_the_thin_jar() throws Exception {
+        JkBuild project = project("1.0.0");
+        BuildLayout layout = built(project, "THIN");
+        install(project, layout);
+        Files.writeString(layout.sourcesJar(), "SOURCES");
+        Files.writeString(layout.javadocJar(), "JAVADOC");
+        Files.writeString(layout.assemblyJar(), "ASSEMBLY");
+        Files.writeString(layout.minifiedJar(), "MINIFIED");
+
+        assertThat(InstallPlans.installedShas(project, layout, cache, m2Dir, InstallDestination.M2))
+                .isNull();
+        install(project, layout);
+
+        Path jar = slotJar("1.0.0");
+        assertThat(Files.readString(jar)).isEqualTo("THIN");
+        for (Path source : List.of(layout.sourcesJar(), layout.javadocJar())) {
+            Path installed = jar.resolveSibling(source.getFileName());
+            assertThat(Files.mismatch(source, installed)).isEqualTo(-1);
+            assertThat(installed.resolveSibling(installed.getFileName() + ".sha1"))
+                    .exists();
+            assertThat(installed.resolveSibling(installed.getFileName() + ".md5"))
+                    .exists();
+        }
+        assertThat(jar.resolveSibling(layout.assemblyJar().getFileName())).doesNotExist();
+        assertThat(jar.resolveSibling(layout.minifiedJar().getFileName())).doesNotExist();
+        assertThat(InstallPlans.installedShas(project, layout, cache, m2Dir, InstallDestination.M2))
+                .isNotNull();
     }
 
     @Test

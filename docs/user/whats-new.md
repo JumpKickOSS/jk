@@ -14,6 +14,9 @@ JumpKick shows you this page's new entries after it updates itself.
   bell ([Web](web.md)).
 - **`extract-interface` keeps each declaration's own reason** when a file reuses a variable name
   ([Code graph](graph.md)).
+- **Maven repositories get the thin main jar.** Assembly jars and other runnable artifacts
+  ship through the release lane. Import reports Maven Shade and Gradle Shadow relocations on
+  libraries. [Publishing](publish.md)
 
 ## 0.60.0
 

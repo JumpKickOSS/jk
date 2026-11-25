@@ -44,13 +44,6 @@ import org.jspecify.annotations.Nullable;
  * packages, tests or builds its native tail; everything that runs the sibling — packaging,
  * tests, a native image — reads the jar, which carries the resources and the plugin-contributed
  * classes the tree alone does not.
- *
- * <p>A sibling whose fat jar relocates packages ({@code relocate} under {@code [library]} or
- * {@code [application]}) is the exception: what its consumers see — its own classes and the
- * libraries it bundles, under the shaded names — exists only in its {@code -all.jar}, so that jar
- * is the sibling in both views, a consumer's compile is admitted once the sibling has packaged
- * it, and neither the sibling's own lock rows nor its own workspace edges ride along, since the
- * jar already carries them.
  */
 public final class WorkspaceClasspath {
 
@@ -141,7 +134,6 @@ public final class WorkspaceClasspath {
             Path siblingJar = siblingJarByModule.get(module);
             if (siblingJar == null) continue;
             Path siblingClasses = Objects.requireNonNull(siblingClassesByModule.get(module), "sibling classes");
-            boolean relocating = sib.relocating().contains(module);
             // The full declared closure, whether or not the sibling is built yet —
             // an IDE module graph depends on declared edges, not on compiled
             // artifacts (IntelliJ compiles the modules itself), and an action key on
@@ -153,9 +145,7 @@ public final class WorkspaceClasspath {
                     && (!Files.exists(siblingJar) || !Files.exists(siblingClasses))
                     && !hasAnySource(missingSibDir.resolve("src"));
             String missingLabel = module + " (expected at " + siblingJar + ")";
-            String missingClassesLabel = relocating
-                    ? module + " (expected its relocating jar at " + siblingClasses + ")"
-                    : module + " (expected classes at " + siblingClasses + ")";
+            String missingClassesLabel = module + " (expected classes at " + siblingClasses + ")";
             if (sourceless) {
                 // Name the real cause: the sibling was never going to compile anything — its
                 // outputs only appear once the module is scheduled and packages empty.
@@ -233,8 +223,6 @@ public final class WorkspaceClasspath {
 
     /**
      * Every other build unit in the workspace, by {@code group:name} coord, with its layout paths.
-     * For a coord in {@code relocating} both {@code jarByModule} and {@code classesByModule} name
-     * the unit's {@code -all.jar}.
      */
     private record Siblings(
             Map<String, Path> dirByModule,
@@ -243,8 +231,7 @@ public final class WorkspaceClasspath {
             Map<String, Path> testClassesByModule,
             Map<String, Path> fixturesByModule,
             Map<String, JkBuild> manifestByCoord,
-            Map<String, String> coordByName,
-            Set<String> relocating) {
+            Map<String, String> coordByName) {
 
         /** This index seen by the unit {@code coord} (named {@code name}): every unit but itself, no copy. */
         Siblings without(String coord, String name) {
@@ -255,8 +242,7 @@ public final class WorkspaceClasspath {
                     Excluding.map(testClassesByModule, coord),
                     Excluding.map(fixturesByModule, coord),
                     Excluding.map(manifestByCoord, coord),
-                    coord.equals(coordByName.get(name)) ? Excluding.map(coordByName, name) : coordByName,
-                    Excluding.set(relocating, coord));
+                    coord.equals(coordByName.get(name)) ? Excluding.map(coordByName, name) : coordByName);
         }
     }
 
@@ -292,26 +278,6 @@ public final class WorkspaceClasspath {
                             return all.size() - 1;
                         }
                     };
-                }
-            };
-        }
-
-        static Set<String> set(Set<String> all, String gone) {
-            if (!all.contains(gone)) return all;
-            return new AbstractSet<>() {
-                @Override
-                public boolean contains(Object o) {
-                    return !gone.equals(o) && all.contains(o);
-                }
-
-                @Override
-                public Iterator<String> iterator() {
-                    return all.stream().filter(e -> !gone.equals(e)).iterator();
-                }
-
-                @Override
-                public int size() {
-                    return all.size() - 1;
                 }
             };
         }
@@ -370,13 +336,11 @@ public final class WorkspaceClasspath {
         Map<String, Path> siblingFixturesByModule = new HashMap<>();
         Map<String, JkBuild> siblingManifestByCoord = new HashMap<>();
         Map<String, String> siblingCoordByName = new HashMap<>(); // name → full coord
-        Set<String> relocating = new HashSet<>();
         Map<Path, Unit> byDir = new HashMap<>();
         for (Unit unit : units(root, rootManifest)) {
             byDir.put(unit.normDir(), unit);
             String coord = unit.coord();
             siblingDirByModule.put(coord, unit.dir());
-            if (unit.relocates()) relocating.add(coord);
             siblingJarByModule.put(coord, unit.jar());
             siblingClassesByModule.put(coord, unit.classes());
             siblingTestClassesByModule.put(coord, unit.testClasses());
@@ -391,8 +355,7 @@ public final class WorkspaceClasspath {
                 Map.copyOf(siblingTestClassesByModule),
                 Map.copyOf(siblingFixturesByModule),
                 Map.copyOf(siblingManifestByCoord),
-                Map.copyOf(siblingCoordByName),
-                Set.copyOf(relocating));
+                Map.copyOf(siblingCoordByName));
         return new Index(all, Map.copyOf(byDir));
     }
 
@@ -402,7 +365,6 @@ public final class WorkspaceClasspath {
             Path normDir,
             JkBuild manifest,
             String coord,
-            boolean relocates,
             Path jar,
             Path classes,
             Path testClasses,
@@ -458,11 +420,7 @@ public final class WorkspaceClasspath {
             BuildLayout layout = BuildLayout.of(root, unitDir, unit);
             Path jar;
             Path classes;
-            if (unit.relocates()) {
-                // The shaded names exist only in the fat jar: it is the sibling in both views.
-                jar = layout.assemblyJar();
-                classes = layout.assemblyJar();
-            } else if (NodeShape.kind(unit, unitDir) == NodeShape.Kind.MODULE) {
+            if (NodeShape.kind(unit, unitDir) == NodeShape.Kind.MODULE) {
                 // A node module compiles nothing; its resource jar is the sibling in both views.
                 jar = layout.mainJar();
                 classes = layout.mainJar();
@@ -475,7 +433,6 @@ public final class WorkspaceClasspath {
                     unitDir.toAbsolutePath().normalize(),
                     unit,
                     coord,
-                    unit.relocates(),
                     jar,
                     classes,
                     layout.testClassesDir(),
@@ -534,10 +491,6 @@ public final class WorkspaceClasspath {
             String coord = queue.poll();
             JkBuild sibBuild = sib.manifestByCoord().get(coord);
             if (sibBuild == null) continue;
-            // A relocating sibling's fat jar bundles its whole graph, its own workspace edges
-            // included: the consumer sees that jar alone, as Maven's dependency-reduced POM
-            // declares nothing.
-            if (sib.relocating().contains(coord)) continue;
             // MAIN and EXPORT propagate transitively: a sibling's exported deps
             // (api semantics) ride along to anything that depends on it, and MAIN
             // deps stay visible down the workspace chain (io→core→model).
@@ -577,7 +530,7 @@ public final class WorkspaceClasspath {
         while (!members.isEmpty()) {
             String coord = members.poll();
             JkBuild sibBuild = sib.manifestByCoord().get(coord);
-            if (sibBuild == null || sib.relocating().contains(coord)) continue;
+            if (sibBuild == null) continue;
             for (Scope scope : SIBLING_MODULE_SCOPES) {
                 for (Dependency dep : sibBuild.dependencies().of(scope)) {
                     if (dep.optional()) continue;
@@ -619,8 +572,7 @@ public final class WorkspaceClasspath {
      *     classes, test resources and fixtures of the direct edges that select them
      * @param siblingCoords full {@code group:name} coords of workspace siblings in this resolve
      * @param siblingClosureClasses the declared compile view: {@link BuildLayout#classesDir} per
-     *     sibling in place of its jar — its {@link BuildLayout#assemblyJar} for a sibling that
-     *     relocates packages — then the same test classes, test resources and fixtures. A compile
+     *     sibling in place of its jar, then the same test classes, test resources and fixtures. A compile
      *     classpath, and the key that fingerprints it, read this list
      * @param missingSiblingClasses the siblings whose classes tree is not on disk, each named with
      *     its cause — the main compile's concern, and the only sibling absence it has to fail on

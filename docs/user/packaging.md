@@ -1,8 +1,9 @@
 # Packaging
 
-JumpKick writes **additive** artifacts. The thin jar is always produced. Extra flags add jars
-beside it; they do not replace it. Framework plugins that own the product shape (Spring Boot,
-Quarkus, Grails) still own it — a Boot jar is not “thin plus extras.”
+The package step writes the main jar. Assembly, minification and other deliverables are
+additional build outputs. Maven repositories receive the thin main jar and its library files.
+Framework packagers such as Spring Boot, Quarkus and Grails own their main artifact, which
+ships through the release lane. See [Publish](publish.md).
 
 R8 minification is **opt-in**, never the default.
 
@@ -417,22 +418,8 @@ provider lines. A rule matches whole package segments (`org.apache.lucene` moves
 wins, in declaration order. The thin jar is untouched — relocation is a fact of the `-all.jar`
 alone. The rules are part of the fat jar's action key.
 
-A library ships a shaded jar too — neo4j's `lucene9-shaded`, nacos's `client` — and a library
-has no main, so its fat jar lives under `[library]`:
-
-```toml
-[library]
-relocate = { "org.apache.lucene" = "org.neo4j.shaded.lucene9" }   # implies assembly = true
-```
-
-`[library] assembly = true` alone is a fat jar that keeps every name. A module declares
-`[library]` or `[application]`, never both. A workspace sibling that depends on a relocating
-module compiles and runs against its `-all.jar` — the shaded names exist nowhere else — and is
-scheduled after that jar is packaged; see
-[Workspaces § Shaded siblings](workspaces.md#shaded-siblings).
-
-This is Maven Shade's `<relocation>` and Gradle Shadow's `relocate`: `jk import` writes a
-relocation as a `relocate` entry wherever the whole-package rule agrees with it on every class — a
+For applications, `jk import` maps Maven Shade and Gradle Shadow relocations to `relocate` entries
+wherever the whole-package rule agrees on every class — a
 plain relocation and one spelled as a path (`org/apache/lucene`), an `a.b.**` include as the rule
 for `a.b`, an exclude another relocation lands in the same place (the Shade idiom of excluding a
 package only to relocate it by a second entry to the same name), an include naming a class the
@@ -571,9 +558,8 @@ tags it ([Releasing](release.md)).
 
 The install writes the thin jar and POM once, to JumpKick's private `repos/jk-local`, where every
 JumpKick project on the machine finds it. `jk install --destination m2` writes them to the Maven
-local repository (`~/.m2/repository`) instead, with Maven's checksum sidecars, so Maven and Gradle
-builds on the machine see the artifact; nothing goes into `~/.m2` unasked. An
-application then also gets a launcher: a native binary in `~/.jk/bin` if one exists, else a
+local repository (`~/.m2/repository`) with the build's sources and javadoc jars and Maven checksums.
+An application also gets a launcher: a native binary in `~/.jk/bin` if one exists, else a
 minified/fat jar under `~/.jk/lib/<name>/` plus a `java -jar` script, else a thin `java -cp` script
 over the repo jars. The settle line names the coordinate and where it went. Another JumpKick project on the
 machine depends on it by pinning that version, with no repository to declare:

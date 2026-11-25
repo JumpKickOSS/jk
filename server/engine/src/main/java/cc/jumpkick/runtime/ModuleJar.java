@@ -41,6 +41,13 @@ public final class ModuleJar {
         return skipsRelease(project) ? null : packagingStep(project, moduleDir);
     }
 
+    /** A replacement packager owns the main artifact, so this module has no Maven jar. */
+    public static @Nullable String mavenRefusal(JkBuild project, Path moduleDir) {
+        return ActivePlugins.packager(project, moduleDir)
+                .map(plugin -> plugin.manifest().table() + ": use the release lane for packaged apps")
+                .orElse(null);
+    }
+
     /** {@code [publish] skip = true}: the module builds and tests, and no release ships it. */
     public static boolean skipsRelease(JkBuild project) {
         return project.pomMetadata().skip();

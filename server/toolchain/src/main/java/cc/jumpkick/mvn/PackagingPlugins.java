@@ -22,15 +22,7 @@ import org.apache.maven.model.PluginExecution;
 import org.codehaus.plexus.util.xml.Xpp3Dom;
 import org.jspecify.annotations.Nullable;
 
-/**
- * The plugins that shape the artifact. Shade and {@code jar-with-dependencies} are the fat jar —
- * {@code [application] assembly = true} on a module with a main, {@code [library] assembly = true}
- * on one without; a shade {@code <relocation>} of a package is the assembly's {@code relocate}
- * rule, and a filter, a transformer or a relocation shape jk's rules do not cover is a row. {@code spring-boot-maven-plugin} is the {@code [spring-boot]} table at the Boot
- * version the chain resolves; {@code quarkus-maven-plugin} is the {@code [quarkus]} table at the
- * platform version; {@code native-maven-plugin} is {@code [native]}. Jib's and the Docker plugins'
- * base and target images are the {@code [image]} table, and {@code war} packaging is {@code [war]}.
- */
+/** Maps Maven plugins that shape the packaged artifact. */
 final class PackagingPlugins {
 
     /**
@@ -69,7 +61,7 @@ final class PackagingPlugins {
     static Packaging map(EffectiveModel em, @Nullable String mainClass, ImportReport.Builder report) {
         Model model = em.model();
         Map<String, String> relocate = new LinkedHashMap<>();
-        boolean fatJar = mapShade(em, relocate, report) | mapAssembly(em, report);
+        boolean fatJar = mapShade(em, mainClass != null, relocate, report) | mapAssembly(em, mainClass != null, report);
         PluginConfig springBoot = PluginFacts.plugin(model, SPRING_BOOT)
                 .filter(boot -> repackages(boot, mainClass, report))
                 .map(boot -> mapSpringBoot(boot, model, report))
@@ -204,11 +196,20 @@ final class PackagingPlugins {
      * RelocationRules}) are written into {@code relocate}, and what the rules do not express is a
      * row per construct.
      */
-    private static boolean mapShade(EffectiveModel em, Map<String, String> relocate, ImportReport.Builder report) {
+    private static boolean mapShade(
+            EffectiveModel em, boolean application, Map<String, String> relocate, ImportReport.Builder report) {
         Model model = em.model();
         Optional<Plugin> shade = active(em, SHADE, "no fat jar", report);
         if (shade.isEmpty()) return false;
-        RelocationRules.Mapped mapped = RelocationRules.map(relocations(model));
+        List<RelocationRules.Relocation> rules = relocations(model);
+        if (!application) {
+            report.warning("maven-shade-plugin: library jars ship thin");
+            for (RelocationRules.Relocation rule : rules) {
+                report.warning("maven-shade-plugin <relocation> " + rule.pattern() + ": use [application] to relocate");
+            }
+            return false;
+        }
+        RelocationRules.Mapped mapped = RelocationRules.map(rules);
         relocate.putAll(mapped.rules());
         List<String> partial = mapped.unmapped();
         List<String> filters = new ArrayList<>();
@@ -277,7 +278,7 @@ final class PackagingPlugins {
     }
 
     /** {@code jar-with-dependencies} is the fat jar; any other descriptor is a row. */
-    private static boolean mapAssembly(EffectiveModel em, ImportReport.Builder report) {
+    private static boolean mapAssembly(EffectiveModel em, boolean application, ImportReport.Builder report) {
         Optional<Plugin> assembly = active(em, ASSEMBLY, "no fat jar", report);
         if (assembly.isEmpty()) return false;
         boolean fatJar = false;
@@ -303,7 +304,10 @@ final class PackagingPlugins {
             report.warning("maven-assembly-plugin descriptors " + String.join(", ", other)
                     + ": skipped; only jar-with-dependencies maps (to the fat jar)");
         }
-        return fatJar;
+        if (fatJar && !application) {
+            report.warning("maven-assembly-plugin jar-with-dependencies: library jars ship thin");
+        }
+        return fatJar && application;
     }
 
     /**

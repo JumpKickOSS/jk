@@ -48,7 +48,6 @@ public final class PublishTail {
                 a.repoUrl(),
                 a.region(),
                 a.endpoint(),
-                a.jar(),
                 a.allowSnapshot(),
                 a.dryRun(),
                 a.keyFile(),

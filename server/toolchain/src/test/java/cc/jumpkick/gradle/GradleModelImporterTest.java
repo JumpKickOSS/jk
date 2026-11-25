@@ -474,9 +474,8 @@ class GradleModelImporterTest {
         assertThat(messages(result.report())).anyMatch(m -> m.contains("org.other:util written as util-2"));
     }
 
-    /** The shadowJar task's relocators travel in the model; a project with no main ships them under [library]. */
     @Test
-    void shadow_relocators_in_the_model_are_the_librarys_rules_and_the_plugin_is_no_row() {
+    void shadow_relocations_on_a_library_model_are_reported() {
         String shaded = """
                 {"gradle":"9.5.1","rootName":"lucene9-shaded","settingsRepositories":[],"projects":[
                   {"path":":","projectName":"lucene9-shaded","dir":"","group":"org.demo","version":"2.1.0",
@@ -494,12 +493,9 @@ class GradleModelImporterTest {
 
         JkBuild root = result.root();
         assertThat(root.applicationOpt()).isEmpty();
-        assertThat(root.libraryOpt()).isPresent();
-        assertThat(root.assembly()).isTrue();
-        assertThat(root.relocate()).containsExactly(Map.entry("org.apache.lucene", "org.demo.shaded.lucene9"));
+        assertThat(root.relocate()).isEmpty();
         assertThat(messages(result.report()))
-                .noneMatch(m -> m.contains("relocate"))
-                .noneMatch(m -> m.contains("com.gradleup.shadow"));
+                .contains("Shadow relocate org.apache.lucene: use [application] to relocate");
     }
 
     @Test

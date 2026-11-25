@@ -473,6 +473,7 @@ public final class JkBuildParser {
         JkBuildParseException groupRoot = WorkspaceGroup.asProject(result);
         if (groupRoot != null) throw groupRoot;
         RetiredKeys.refuse(result);
+        ManifestTables.rejectLibrary(result);
         // Workspace roots keep concrete project defaults; members may omit fields and inherit.
         boolean workspaceRoot = hasWorkspaceModules(result);
         Project project = ManifestProject.parseProject(result, workspaceRoot);
@@ -506,7 +507,6 @@ public final class JkBuildParser {
                 PluginContributions.libDirImpliedBy(project, nativeDeclared, pluginConfigs, installedManifests);
         JkBuild.Application application =
                 ManifestTables.parseApplication(result, libDirImpliedBy != null).orElse(null);
-        JkBuild.Library library = ManifestTables.parseLibrary(result).orElse(null);
         if (application != null && PluginModule.isWorker(moduleDir)) {
             throw new JkBuildParseException(
                     "[application] does not apply to a plugin worker; drop the [application] table");
@@ -602,8 +602,7 @@ public final class JkBuildParser {
                 variants,
                 install,
                 publish,
-                ManifestImage.parse(result),
-                library);
+                ManifestImage.parse(result));
         for (EnvRead read : EnvRead.of(parsed)) {
             if (read instanceof EnvRead.PluginValue value) {
                 ManifestEnv.refuseWithheld(value.name(), "a plugin table's " + EnvRead.PLUGIN_PREFIX + value.name());

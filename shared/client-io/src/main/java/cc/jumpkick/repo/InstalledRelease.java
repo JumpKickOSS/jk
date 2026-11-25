@@ -62,11 +62,18 @@ public final class InstalledRelease {
                 foreign.add(slot(m2Repository, c));
                 continue;
             }
-            for (Path file : List.of(jar, pom)) {
+            List<Path> files = new ArrayList<>(List.of(jar, pom));
+            for (String classifier : List.of("sources", "javadoc")) {
+                Coordinate attachment = new Coordinate(c.group(), c.artifact(), c.version(), classifier, "jar");
+                Path path = MavenLayout.safeResolve(m2Repository, MavenLayout.artifactPath(attachment));
+                if (M2InstallMemo.installedByJk(path)) files.add(path);
+            }
+            for (Path file : files) {
                 for (String suffix : CHECKSUMS) {
                     Path p = file.resolveSibling(file.getFileName() + suffix);
                     if (Files.deleteIfExists(p)) removed.add(p);
                 }
+                M2Clean.forgetRemote(file);
             }
             Files.deleteIfExists(memoFile);
             deleteIfEmpty(slot(m2Repository, c));

@@ -97,9 +97,7 @@ final class ModuleRoots {
      * transitively over their own export and main edges: each sibling's non-optional
      * {@code [export-dependencies]} and {@code [dependencies]}, its {@code [runtime-dependencies]}
      * as well when {@code scopes} is a runtime view ({@link #inheritedScopes}), the optional
-     * dependencies its path dependencies' features activate, and its language runtime. A sibling
-     * whose fat jar relocates passes nothing on: the jar carries its graph. Empty outside a
-     * workspace.
+     * dependencies its path dependencies' features activate, and its language runtime. Empty outside a workspace.
      */
     static Set<String> inherited(
             JkBuild module, @Nullable Path moduleDir, Set<Scope> scopes, List<Lockfile.Artifact> rows) {
@@ -114,7 +112,6 @@ final class ModuleRoots {
         Set<String> roots = new LinkedHashSet<>();
         for (Map.Entry<Path, JkBuild> sibling : siblings.entrySet()) {
             JkBuild build = sibling.getValue();
-            if (build.relocates()) continue;
             for (Scope scope : passed) {
                 for (Dependency dep : build.dependencies().of(scope)) {
                     if (!dep.optional()) addDeclared(roots, dep, sibling.getKey(), rows);

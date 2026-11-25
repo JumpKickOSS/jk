@@ -57,7 +57,6 @@ public sealed interface TailArgs {
             @Nullable URI repoUrl,
             @Nullable String region,
             @Nullable String endpoint,
-            @Nullable Path jar,
             boolean allowSnapshot,
             boolean dryRun,
             @Nullable Path keyFile,

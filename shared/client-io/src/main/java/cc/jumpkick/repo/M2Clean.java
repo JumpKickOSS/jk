@@ -201,7 +201,7 @@ public final class M2Clean {
     }
 
     /** Drop {@code artifact}'s line from its directory's {@code _remote.repositories}; the file goes with its last one. */
-    private static void forgetRemote(Path artifact) throws IOException {
+    static void forgetRemote(Path artifact) throws IOException {
         Path hint = artifact.resolveSibling("_remote.repositories");
         if (!Files.isRegularFile(hint)) return;
         String own = artifact.getFileName() + ">";

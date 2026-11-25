@@ -320,14 +320,8 @@ public final class IdeOps {
         for (int i = 0; i < dirs.size(); i++) {
             Path dir = dirs.get(i);
             JkBuild module = Objects.requireNonNull(allModules.get(dir), "module");
-            SiblingEdges siblings = siblingEdges(dir, module, modules);
-            for (String[] mr : siblings.moduleRefs()) {
+            for (String[] mr : siblingEdges(dir, module, modules)) {
                 siblingRefs.add(i + "|" + mr[0] + "|" + mr[1]);
-            }
-            // A relocating sibling's -all.jar is a library the consumer reads, defined once.
-            siblings.libDefs().forEach(allLibs::putIfAbsent);
-            for (String[] le : siblings.libEntries()) {
-                libEntries.add(i + "|" + le[0] + "|" + le[1]);
             }
             for (String[] le : moduleLibEntries(dir, module, modules, allLibs)) {
                 libEntries.add(i + "|" + le[0] + "|" + le[1]);
@@ -548,45 +542,24 @@ public final class IdeOps {
     // =========================================================================
 
     /**
-     * What one module's workspace edges are to an IDE: {@code moduleRefs} as {@code {name, scope}}
-     * in the {@link IdeWireModel} scope vocabulary, and, for a sibling whose fat jar relocates
-     * packages, a library entry on its {@code -all.jar} ({@code libEntries} as {@code {libName,
-     * SCOPE}}, {@code libDefs} as {@code libName → {fileName, jar, sources|null}}) — the IDE then
-     * resolves the shaded names jk compiles against, where a module edge would hand it the
-     * unshaded sources.
-     */
-    public record SiblingEdges(List<String[]> moduleRefs, List<String[]> libEntries, Map<String, String[]> libDefs) {}
-
-    /**
      * Workspace siblings this module directly depends on. Tests-kind scopes are Mill
      * testModuleDeps / Maven test-jar ({@code kind = "tests"}) — IDE generators must also put the
      * sibling's test classes on the test classpath. At most one row per sibling.
      */
-    public static SiblingEdges siblingEdges(Path moduleDir, JkBuild module, Map<Path, JkBuild> modules)
+    private static List<String[]> siblingEdges(Path moduleDir, JkBuild module, Map<Path, JkBuild> modules)
             throws IOException {
         List<String[]> result = new ArrayList<>();
-        List<String[]> shadedEntries = new ArrayList<>();
-        Map<String, String[]> shadedDefs = new LinkedHashMap<>();
         WorkspaceClasspath.Result mainCp =
                 WorkspaceClasspath.resolve(moduleDir, module, WorkspaceClasspath.COMPILE_SCOPES);
         WorkspaceClasspath.Result testCp =
                 WorkspaceClasspath.resolve(moduleDir, module, EnumSet.of(Scope.TEST, Scope.TEST_DEV));
 
-        // Map jar → module name for all workspace siblings; a relocating sibling's -all.jar → its library.
         Map<Path, String> jarToModule = new LinkedHashMap<>();
-        Map<Path, String> jarToShadedLib = new LinkedHashMap<>();
         Map<String, Path> nameToDir = new LinkedHashMap<>();
         for (Map.Entry<Path, JkBuild> me : modules.entrySet()) {
             BuildLayout layout = BuildLayout.of(me.getKey(), me.getValue());
             String name = me.getValue().project().name();
             jarToModule.put(layout.mainJar(), name);
-            if (me.getValue().relocates()) {
-                String libName = shadedLibName(me.getValue());
-                jarToShadedLib.put(layout.assemblyJar(), libName);
-                shadedDefs.put(
-                        libName,
-                        new String[] {libFileName(libName), layout.assemblyJar().toString(), null});
-            }
             nameToDir.put(name, me.getKey());
         }
 
@@ -595,40 +568,16 @@ public final class IdeOps {
         // IDE couldn't resolve any cross-module classes. The IDE compiles the modules itself; the
         // edge is what matters, not the artifact.
         Set<String> added = new LinkedHashSet<>();
-        Map<String, String[]> usedDefs = new LinkedHashMap<>();
         for (Path sj : mainCp.siblingClosureJars()) {
             String name = jarToModule.get(sj);
             if (name != null && added.add(name)) result.add(new String[] {name, IdeWireModel.SCOPE_COMPILE});
-            shadedEntry(sj, Scope.MAIN, jarToShadedLib, shadedDefs, added, shadedEntries, usedDefs);
         }
         for (Path sj : testCp.siblingClosureJars()) {
             String name = jarToModule.get(sj);
             if (name != null && added.add(name)) result.add(new String[] {name, IdeWireModel.SCOPE_TEST});
-            shadedEntry(sj, Scope.TEST, jarToShadedLib, shadedDefs, added, shadedEntries, usedDefs);
         }
         upgradeTestsKinds(module, nameToDir, modules, result, added);
-        return new SiblingEdges(result, shadedEntries, usedDefs);
-    }
-
-    /** The IDE library name of a relocating module's fat jar: its coordinate with the {@code -all} suffix. */
-    private static String shadedLibName(JkBuild module) {
-        return module.project().group() + ":" + module.project().name() + ":"
-                + module.project().version() + "-all";
-    }
-
-    /** One library entry for {@code jar} when it is a relocating sibling's -all.jar not yet entered. */
-    private static void shadedEntry(
-            Path jar,
-            Scope scope,
-            Map<Path, String> jarToShadedLib,
-            Map<String, String[]> shadedDefs,
-            Set<String> added,
-            List<String[]> entries,
-            Map<String, String[]> usedDefs) {
-        String libName = jarToShadedLib.get(jar);
-        if (libName == null || !added.add(libName)) return;
-        entries.add(new String[] {libName, scope.name()});
-        usedDefs.put(libName, Objects.requireNonNull(shadedDefs.get(libName), "shaded lib def"));
+        return result;
     }
 
     /**

@@ -48,7 +48,7 @@ class GradleImporterShadowTest {
     }
 
     @Test
-    void shadow_on_a_script_with_no_main_is_the_librarys_fat_jar_and_an_uncovered_exclude_is_a_row() {
+    void shadow_relocations_on_a_library_script_are_reported() {
         GradleImporter.Result result = GradleImporter.importFromString("""
                 plugins {
                     id 'java-library'
@@ -64,12 +64,11 @@ class GradleImporterShadowTest {
 
         JkBuild build = result.jkBuild();
         assertThat(build.applicationOpt()).isEmpty();
-        assertThat(build.libraryOpt()).isPresent();
-        assertThat(build.assembly()).isTrue();
-        assertThat(build.relocate()).containsExactly(Map.entry("org.apache.lucene", "org.demo.shaded.lucene9"));
+        assertThat(build.assembly()).isFalse();
         assertThat(result.report().issues())
                 .extracting(ImportReport.Issue::message)
-                .anyMatch(m -> m.startsWith("Shadow relocate org.apache.commons.io → org.demo.shaded.commons.io"
-                        + " (excludes org.apache.commons.io.input.*) not written"));
+                .contains(
+                        "Shadow relocate org.apache.lucene: use [application] to relocate",
+                        "Shadow relocate org.apache.commons.io: use [application] to relocate");
     }
 }

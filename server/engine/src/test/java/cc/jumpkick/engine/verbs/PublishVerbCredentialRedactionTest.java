@@ -90,7 +90,6 @@ class PublishVerbCredentialRedactionTest {
                 URI.create("https://nexus.example.com/repo/"),
                 null,
                 null,
-                null,
                 false,
                 true,
                 null,

@@ -76,7 +76,6 @@ public final class TailArgsJson {
                         "repoUrl", p.repoUrl() == null ? null : p.repoUrl().toString())
                 .optionalNonBlankString("region", p.region())
                 .optionalNonBlankString("endpoint", p.endpoint())
-                .optionalNonBlankString("jar", p.jar() == null ? null : p.jar().toString())
                 .optionalTrue("allowSnapshot", p.allowSnapshot())
                 .optionalTrue("dryRun", p.dryRun())
                 .optionalNonBlankString(
@@ -125,7 +124,6 @@ public final class TailArgsJson {
                         uri(Jsonl.str(json, "repoUrl")),
                         Jsonl.str(json, "region"),
                         Jsonl.str(json, "endpoint"),
-                        path(Jsonl.str(json, "jar")),
                         Jsonl.bool(json, "allowSnapshot", false),
                         Jsonl.bool(json, "dryRun", false),
                         path(Jsonl.str(json, "keyFile")),

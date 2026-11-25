@@ -357,6 +357,10 @@ public final class InstallPlans {
         return declared != null ? declared : JkInstallConfig.resolve().destination();
     }
 
+    public static boolean installsToM2(JkBuild project, Path dir, @Nullable InstallDestination override) {
+        return destinationOf(project, dir, override) == InstallDestination.M2;
+    }
+
     /**
      * Install the built thin jar and POM into one place: the Maven local repository (Maven's checksum
      * sidecars beside each file, for Maven and Gradle builds next to jk), or {@code repos/jk-local/}
@@ -389,12 +393,22 @@ public final class InstallPlans {
             return new ModuleOutcome.Installed(coord.toGav(), jarSha, pomSha, destination, change);
         }
 
+        String reason = ModuleJar.mavenRefusal(project, layout.moduleRoot());
+        if (reason != null) throw new Refusal(reason);
         Path m2Root = M2Dirs.repository(m2Dir);
         Path m2Jar = m2Root.resolve(jarRelPath);
         Path m2Pom = m2Root.resolve(pomRelPath);
         String jarSha = Hashing.sha256Hex(jar);
         String pomSha = Hashing.sha256Hex(pomBytes);
         ModuleOutcome.Installed.Change change = checkSlot(coord, m2Root, jarSha, pomSha);
+        List<Path> attachments = m2Attachments(layout);
+        for (Path source : attachments) {
+            Path dest = m2Jar.resolveSibling(source.getFileName());
+            if (!Files.exists(dest) || Files.mismatch(dest, source) == -1) continue;
+            Path slot = Objects.requireNonNull(m2Jar.getParent());
+            if (!M2InstallMemo.installedByJk(dest)) throw new Refusal(foreignSlot(coord, slot));
+            if (!isSnapshot(coord.version())) throw new Refusal(releaseSlot(coord, slot));
+        }
         if (change != ModuleOutcome.Installed.Change.UNCHANGED) {
             M2CompatWriter.MavenHashes jarH =
                     HeldOpen.replace(m2Jar, () -> M2CompatWriter.copyToM2AndHash(jar, m2Jar, m2Root));
@@ -408,6 +422,19 @@ public final class InstallPlans {
             M2CompatWriter.writeRemoteRepositories(slot, "", m2Jar.getFileName().toString());
             M2CompatWriter.writeRemoteRepositories(slot, "", m2Pom.getFileName().toString());
         }
+        for (Path source : attachments) {
+            Path dest = m2Jar.resolveSibling(source.getFileName());
+            if (Files.exists(dest) && Files.mismatch(dest, source) == -1 && M2InstallMemo.installedByJk(dest)) {
+                continue;
+            }
+            M2CompatWriter.MavenHashes hashes =
+                    HeldOpen.replace(dest, () -> M2CompatWriter.copyToM2AndHash(source, dest, m2Root));
+            M2CompatWriter.writeMavenSidecars(dest, hashes.sha1(), hashes.md5());
+            M2CompatWriter.writeRemoteRepositories(
+                    Objects.requireNonNull(dest.getParent()),
+                    "",
+                    dest.getFileName().toString());
+        }
         recordOwnership(m2Root, coord, jarSha, pomSha);
         return new ModuleOutcome.Installed(coord.toGav(), jarSha, pomSha, destination, change);
     }
@@ -418,7 +445,7 @@ public final class InstallPlans {
      * slot still holds what jk wrote; a slot jk did not write is never replaced. With no memo (the
      * store that keeps it was wiped, or another jk home did the install) the slot's files speak for
      * themselves: each still bears the sidecar and {@code _remote.repositories} line jk install writes
-     * ({@link M2CompatWriter#installedByJk}).
+     * ({@link M2InstallMemo#installedByJk}).
      *
      * @return {@code NEW} to write, {@code UNCHANGED} when both files already hold these bytes,
      *     {@code REPLACED} to overwrite a snapshot slot jk owns
@@ -436,8 +463,8 @@ public final class InstallPlans {
                     .orElse(null);
             boolean owned = memo != null
                     ? memo.owns(jarOnDisk, pomOnDisk)
-                    : (jarOnDisk == null || M2CompatWriter.installedByJk(m2Jar))
-                            && (pomOnDisk == null || M2CompatWriter.installedByJk(m2Pom));
+                    : (jarOnDisk == null || M2InstallMemo.installedByJk(m2Jar))
+                            && (pomOnDisk == null || M2InstallMemo.installedByJk(m2Pom));
             Path dir = Objects.requireNonNull(m2Jar.getParent());
             if (!owned) throw new Refusal(foreignSlot(coord, dir));
             if (!isSnapshot(coord.version())) throw new Refusal(releaseSlot(coord, dir));
@@ -600,7 +627,9 @@ public final class InstallPlans {
                         && local.locate(pomRel, pomHex).isPresent();
             } else {
                 Path m2 = M2Dirs.repository(m2Dir);
-                held = sameBytes(m2.resolve(jarRel), jarHex) && sameBytes(m2.resolve(pomRel), pomHex);
+                held = sameBytes(m2.resolve(jarRel), jarHex)
+                        && sameBytes(m2.resolve(pomRel), pomHex)
+                        && m2AttachmentsInstalled(layout, m2.resolve(jarRel));
             }
             return held
                     ? new ModuleOutcome.Installed(
@@ -609,6 +638,20 @@ public final class InstallPlans {
         } catch (RuntimeException | IOException e) {
             return null;
         }
+    }
+
+    private static List<Path> m2Attachments(BuildLayout layout) {
+        return List.of(layout.sourcesJar(), layout.javadocJar()).stream()
+                .filter(Files::isRegularFile)
+                .toList();
+    }
+
+    private static boolean m2AttachmentsInstalled(BuildLayout layout, Path mainJar) throws IOException {
+        for (Path source : m2Attachments(layout)) {
+            Path installed = mainJar.resolveSibling(source.getFileName());
+            if (!Files.isRegularFile(installed) || Files.mismatch(installed, source) != -1) return false;
+        }
+        return true;
     }
 
     private static boolean sameBytes(Path file, String sha256Hex) throws IOException {
