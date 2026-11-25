@@ -18,6 +18,11 @@ rem %VAR% inside a block when it parses the block, so a variable set inside one 
 rem PowerShell 5.1 can wait for EOF on inherited stdin even with -NonInteractive.
 setlocal enabledelayedexpansion
 
+rem Only bootstrap PowerShell needs the system modules. The trailing dot keeps PowerShell
+rem 5.1 from recognizing its default path and inserting the all-users modules directory.
+set "JK_WRAPPER_MODULE_PATH=!PSModulePath!"
+set "PSModulePath=%SystemRoot%\System32\WindowsPowerShell\v1.0\Modules\."
+
 rem Bin dir resolution mirrors install.ps1 / JkDirs, which is now one answer rather than a
 rem cascade - the wrapper must not invent its own layout.
 if not "%JK_HOME%"=="" (
@@ -185,6 +190,7 @@ rem writes bin\jk.bat over the JDK checked above and parks a leftover jk.exe. It
 rem engine on first use, as a downloaded native client does.
 :install_jvm
 powershell -NoProfile -NonInteractive -Command "$lib=Join-Path $env:JK_WRAPPER_HOME 'lib\jk'; $f=$env:JK_WRAPPER_FILE; $src=Join-Path $env:JK_WRAPPER_TMP $f; $dest=Join-Path $lib $f; [void](New-Item -ItemType Directory -Force -Path $lib); try{[IO.File]::Copy($src,$dest,$true)}catch{if((Get-FileHash -LiteralPath $dest).Hash -ne (Get-FileHash -LiteralPath $src).Hash){exit 1}}; Get-ChildItem -LiteralPath $lib -Filter 'jk-*.jar' -File -ErrorAction SilentlyContinue | Where-Object {$_.FullName -ne $dest} | ForEach-Object {try{Remove-Item -LiteralPath $_.FullName -Force}catch{}}" <nul || goto fail
+set "PSModulePath=!JK_WRAPPER_MODULE_PATH!"
 "!JK_WRAPPER_JAVA!" --enable-native-access=ALL-UNNAMED -jar "!JK_WRAPPER_HOME!\lib\jk\!FILE!" self write-launcher <nul >nul || goto launcher_failed
 set "RUN=%BIN_DIR%\jk.bat"
 
@@ -196,6 +202,8 @@ if defined JK_WRAPPER_LOCK_HELD rmdir /s /q "!JK_WRAPPER_LOCK!" 2>nul
 
 rem A .bat client runs in place of this script, as exec does in ./jk.
 :run
+set "PSModulePath=!JK_WRAPPER_MODULE_PATH!"
+set "JK_WRAPPER_MODULE_PATH="
 "%RUN%" %*
 exit /b %ERRORLEVEL%
 

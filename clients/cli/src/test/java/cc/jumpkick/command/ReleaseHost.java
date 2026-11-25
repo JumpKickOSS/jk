@@ -51,6 +51,21 @@ final class ReleaseHost implements AutoCloseable {
         this.certificate = certificate;
     }
 
+    /** Make the downloader trust this host and check that PowerShell searches only system modules. */
+    void configureBatDownloader(Path bat) throws IOException {
+        String command = "powershell -NoProfile -NonInteractive -Command \"$ErrorActionPreference='Stop'; ";
+        String text = Files.readString(bat);
+        assertThat(text).contains(command);
+        Files.writeString(
+                bat,
+                text.replace(
+                        command,
+                        command + "if ([IO.Path]::GetFullPath($env:PSModulePath) -ine "
+                                + "[IO.Path]::Combine($PSHOME,'Modules')){throw 'Unexpected bootstrap module path'}; "
+                                + "[Net.ServicePointManager]::ServerCertificateValidationCallback="
+                                + "{param($a,$c,$h,$e) $c.GetCertHashString() -eq '" + thumbprint + "'}; "));
+    }
+
     static ReleaseHost start(Path root, Path tmp) throws Exception {
         Path store = Files.createDirectories(tmp.resolve("tls")).resolve("host.p12");
         char[] password = "fixture".toCharArray();

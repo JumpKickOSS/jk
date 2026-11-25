@@ -672,7 +672,10 @@ class WrapperTemplateTest {
         String releases = host.url("/files");
         Path empty = Files.createDirectories(tmp.resolve("empty-path"));
         Path home = Files.createDirectories(tmp.resolve("home"));
+        String modulePath = "C:\\User Modules!;%custom%&more";
         Map<String, String> env = Map.of(
+                "PSModulePath",
+                modulePath,
                 "JK_RELEASES_URL",
                 releases,
                 "PROCESSOR_ARCHITECTURE",
@@ -684,15 +687,15 @@ class WrapperTemplateTest {
         assertThat(first.exit()).as(first.stderr()).isZero();
         assertThat(first.stderr())
                 .contains("publishes no native windows-" + arch + " client; installing the JVM client");
-        assertThat(first.stdout()).contains("jvm jk: --version");
+        assertThat(first.stdout().lines()).contains("jvm jk: --version", "PSModulePath=" + modulePath);
         assertThat(home.resolve("lib/jk/jk-1.0.0.jar")).isRegularFile();
         assertThat(home.resolve("bin/VERSION")).content().isEqualToIgnoringWhitespace("1.0.0");
         assertThat(home.resolve("bin/.jk-wrapper.lock")).doesNotExist();
 
-        Run second = finish(startBat(repo, tmp, empty.toString(), home, env));
+        Run second = finish(startBat(repo, tmp, empty.toString(), home, Map.of("JK_RELEASES_URL", releases)));
         assertThat(second.exit()).isZero();
         assertThat(second.stderr()).doesNotContain("fetching");
-        assertThat(second.stdout()).contains("jvm jk: --version");
+        assertThat(second.stdout()).contains("jvm jk: --version", "PSModulePath is unset");
         assertThat(home.resolve("launchers-written")).content().isEqualTo("x");
     }
 
@@ -730,7 +733,7 @@ class WrapperTemplateTest {
         // Keep the pipe open and unwritten until the bootstrap and client have exited.
         Run run = finish(wrapper);
         assertThat(run.exit()).as(run.stderr()).isZero();
-        assertThat(run.stdout()).contains("jvm jk: --version");
+        assertThat(run.stdout().lines()).contains("jvm jk: --version", "PSModulePath is unset");
         assertThat(home.resolve("lib/jk/jk-1.0.0.jar")).isRegularFile();
         assertThat(host.plainRequests).hasValue(0);
     }
@@ -974,6 +977,12 @@ class WrapperTemplateTest {
         env.put("TEMP", temp.toString());
         env.put("TMP", temp.toString());
         env.put("USERPROFILE", home.toString());
+        env.put(
+                "LOCALAPPDATA",
+                Files.createDirectories(home.resolve("AppData/Local")).toString());
+        env.put(
+                "APPDATA",
+                Files.createDirectories(home.resolve("AppData/Roaming")).toString());
         env.put("JK_HOME", home.toString());
         env.putAll(extra);
         return pb.start();
@@ -1036,22 +1045,9 @@ class WrapperTemplateTest {
         return dir;
     }
 
-    /**
-     * The Windows wrapper trusting {@code key} as the release key and {@code host}'s
-     * certificate by its SHA-1 thumbprint in the downloader.
-     */
     private static Path materializeBat(Path dir, KeyPair key, ReleaseHost host) throws Exception {
         materializeBat(dir, key);
-        Path bat = dir.resolve("jk.bat");
-        String command = "powershell -NoProfile -NonInteractive -Command \"$ErrorActionPreference='Stop'; ";
-        String text = Files.readString(bat);
-        assertThat(text).contains(command);
-        Files.writeString(
-                bat,
-                text.replace(
-                        command,
-                        command + "[Net.ServicePointManager]::ServerCertificateValidationCallback="
-                                + "{param($a,$c,$h,$e) $c.GetCertHashString() -eq '" + host.thumbprint + "'}; "));
+        host.configureBatDownloader(dir.resolve("jk.bat"));
         return dir;
     }
 

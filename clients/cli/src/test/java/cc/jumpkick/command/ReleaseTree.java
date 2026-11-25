@@ -69,7 +69,9 @@ final class ReleaseTree {
                         if (args.length == 2 && args[0].equals("self") && args[1].equals("write-launcher")) {
                             Path home = Path.of(System.getenv("JK_HOME"));
                             Files.createDirectories(home.resolve("bin"));
-                            Files.writeString(home.resolve("bin/jk.bat"), "@echo jvm jk: %*\\r\\n");
+                            Files.writeString(home.resolve("bin/jk.bat"),
+                                    "@echo jvm jk: %*\\r\\n"
+                                    + "@if defined PSModulePath (set PSModulePath) else (echo PSModulePath is unset)\\r\\n");
                             Path sh = home.resolve("bin/jk");
                             Files.writeString(sh, "#!/bin/sh\\necho \\"jvm jk: $*\\"\\n");
                             sh.toFile().setExecutable(true);
