@@ -3,6 +3,7 @@ package cc.jumpkick.test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.host.PathUtil;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Collections;
@@ -59,12 +60,16 @@ class EnvProbeJarTest {
             out.write(new byte[] {(byte) 0xca, (byte) 0xfe});
             out.closeEntry();
         }
-        Path relativeCache = Path.of("").toAbsolutePath().relativize(tmp.resolve("cache"));
+        Path cwd = Path.of("").toAbsolutePath();
+        Path cache = Files.createTempDirectory(cwd, "probe-cache-");
+        try {
+            String flag = EnvProbeJar.flag(runner, cwd.relativize(cache), tmp.resolve("reads"));
 
-        String flag = EnvProbeJar.flag(runner, relativeCache, tmp.resolve("reads"));
-
-        String jar = flag.substring("-javaagent:".length(), flag.indexOf('='));
-        assertThat(Path.of(jar)).isAbsolute().exists();
+            String jar = flag.substring("-javaagent:".length(), flag.indexOf('='));
+            assertThat(Path.of(jar)).isAbsolute().exists().startsWith(cache);
+        } finally {
+            PathUtil.deleteRecursively(cache);
+        }
     }
 
     /** The workspace rides the argument with its length, as the probe reads it back. */

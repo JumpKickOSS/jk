@@ -14,6 +14,7 @@ import cc.jumpkick.command.toolchain.ToolInstallCommand;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.TestQuarantine;
+import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.wire.protocol.ProjectInfo;
@@ -182,7 +183,8 @@ class TestCommandOptionsTest {
     @Test
     void install_parses_the_jdks_dir_it_hands_the_pre_flight_and_the_engine() throws Exception {
         Invocation in = ArgParser.parse(new ToolInstallCommand(), List.of("--jdks-dir", "/opt/jdks", "--skip-tests"));
-        assertThat(CommonOpts.jdksDirValue(in)).isEqualTo(Path.of("/opt/jdks").toAbsolutePath());
+        assertThat(CommonOpts.jdksDirValue(in))
+                .isEqualTo(WorkingDirectory.current().getRoot().resolve("opt/jdks"));
     }
 
     /** One flag, one meaning, on every verb that builds through the test stage. */

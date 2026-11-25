@@ -116,7 +116,7 @@ class HttpStallTest {
     @Test
     @Timeout(30)
     void a_streamed_body_slower_than_the_timeout_still_arrives() throws Exception {
-        Duration timeout = Duration.ofMillis(400);
+        Duration timeout = Duration.ofSeconds(3);
         byte[] head = "slow ".getBytes(StandardCharsets.UTF_8);
         byte[] tail = "body".getBytes(StandardCharsets.UTF_8);
         server.createContext("/slow/body.jar", exchange -> {

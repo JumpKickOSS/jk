@@ -33,6 +33,7 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.condition.DisabledOnOs;
 import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
@@ -466,6 +467,7 @@ class OfficialTemplatesFreshenTest {
      * concurrent one must not delete the clone and clone it again while a scaffold reads it.
      */
     @Test
+    @Timeout(120)
     void concurrent_refreshes_of_one_clone_never_take_a_template_file_away() throws Exception {
         Path official = tmp.resolve("official");
         Path main = Path.of("java/app.g8/src/main/g8/src/main/java/Main.java");
@@ -498,6 +500,7 @@ class OfficialTemplatesFreshenTest {
             }
             while (refreshes.stream().anyMatch(f -> !f.isDone())) {
                 if (!Files.isRegularFile(watched)) gone.set(true);
+                Thread.sleep(1);
             }
             for (Future<?> f : refreshes) f.get(2, TimeUnit.MINUTES);
         } finally {

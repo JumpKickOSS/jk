@@ -963,7 +963,9 @@ class WrapperTemplateTest {
         env.put("USERPROFILE", home.toString());
         env.put("JK_HOME", home.toString());
         env.putAll(extra);
-        return pb.start();
+        Process child = pb.start();
+        child.getOutputStream().close();
+        return child;
     }
 
     private static Run finish(Process p) throws Exception {
@@ -974,9 +976,10 @@ class WrapperTemplateTest {
             var outReader = CompletableFuture.supplyAsync(() -> readAll(stdout));
             var errReader = CompletableFuture.supplyAsync(() -> readAll(stderr));
             if (!p.waitFor(120, TimeUnit.SECONDS)) {
+                p.descendants().forEach(ProcessHandle::destroyForcibly);
                 p.destroyForcibly();
-                throw new AssertionError(
-                        "the wrapper did not finish in 120s — it is running itself or never got the lock");
+                String diagnostics = new String(errReader.get(10, TimeUnit.SECONDS), StandardCharsets.UTF_8);
+                throw new AssertionError("the wrapper did not finish in 120s: " + diagnostics);
             }
             out = outReader.get();
             err = errReader.get();

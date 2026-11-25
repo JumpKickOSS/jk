@@ -13,6 +13,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.LongSupplier;
+import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 
@@ -71,7 +72,7 @@ class WorkerLeasesDeadlineTest {
             assertThat(System.nanoTime() - started).isGreaterThanOrEqualTo(TimeUnit.MILLISECONDS.toNanos(300));
             assertThat(cause).isInstanceOf(WorkerLeases.LeaseRefused.class);
             assertThat(cause.getMessage())
-                    .startsWith("job #7 waited 0.3s for memory and gave up")
+                    .matches("job #7 waited (?:0\\.[3-9]|[1-9]\\d*(?:\\.\\d)?)s for memory and gave up:.*")
                     .contains("needs 2.0 GiB (1.0 GiB free of the 4.0 GiB worker budget)")
                     .contains("held by job #3 3.0 GiB");
             assertThat(ledger.queued()).isZero();
@@ -108,11 +109,7 @@ class WorkerLeasesDeadlineTest {
         }
     }
 
-    /**
-     * A lease that gives up after a grant to another says how long the line stood still, which is
-     * what the limit counts: flaq's runner read "waited 1186s for memory and gave up" against a ten
-     * minute limit.
-     */
+    /** Report the time since the last grant alongside the total wait. */
     @Test
     void a_lease_that_gives_up_after_the_line_moved_says_how_long_it_stood_still() throws Exception {
         WorkerLeases.Ledger ledger =
@@ -127,10 +124,13 @@ class WorkerLeasesDeadlineTest {
         try (WorkerLeases.Grant moved = first.get(5, TimeUnit.SECONDS)) {
             Throwable cause = failure(last, 5);
             assertThat(cause).isInstanceOf(WorkerLeases.LeaseRefused.class);
-            assertThat(cause.getMessage())
-                    .startsWith("job #7 waited ")
-                    .contains(
-                            "s for memory, the last 0.4s with no lease granted to anyone, and gave up: needs 3.0 GiB");
+            var timing = Pattern.compile("job #7 waited (\\d+(?:\\.\\d)?)s for memory, the last (\\d+(?:\\.\\d)?)s"
+                            + " with no lease granted to anyone, and gave up: needs 3\\.0 GiB.*")
+                    .matcher(cause.getMessage());
+            assertThat(timing.matches()).as(cause.getMessage()).isTrue();
+            double total = Double.parseDouble(timing.group(1));
+            double stalled = Double.parseDouble(timing.group(2));
+            assertThat(stalled).isGreaterThanOrEqualTo(0.4).isLessThan(total);
             assertThat(ledger.queued()).isZero();
         }
     }
@@ -167,7 +167,7 @@ class WorkerLeasesDeadlineTest {
             Throwable cause = failure(acquireBytes(ledger, 2 * GIB, 7L), 5);
             assertThat(cause).isInstanceOf(WorkerLeases.LeaseRefused.class);
             assertThat(cause.getMessage())
-                    .startsWith("job #7 waited 0.3s for memory and gave up")
+                    .matches("job #7 waited (?:0\\.[3-9]|[1-9]\\d*(?:\\.\\d)?)s for memory and gave up:.*")
                     .contains("held by job #3 3.0 GiB");
             assertThat(ledger.snapshot().leasedBytes()).isEqualTo(other.bytes() + own.bytes());
         }

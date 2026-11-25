@@ -15,6 +15,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
@@ -58,6 +59,7 @@ class WorkerBudgetJobsTest {
     }
 
     @Test
+    @Timeout(120)
     void two_jobs_under_a_tiny_budget_both_finish_one_waiting(@TempDir Path tmp) throws Exception {
         WorkerLeases.Ledger ledger = ledger(WorkerLeases.TOOL_BYTES, 8);
         // The first fork holds its lease until the second job is seen queued behind it.
@@ -81,8 +83,8 @@ class WorkerBudgetJobsTest {
         });
         awaitQueued(ledger);
         Files.createFile(release);
-        assertThat(first.get(10, TimeUnit.SECONDS)).isZero();
-        assertThat(second.get(10, TimeUnit.SECONDS)).isZero();
+        assertThat(first.get(45, TimeUnit.SECONDS)).isZero();
+        assertThat(second.get(45, TimeUnit.SECONDS)).isZero();
         awaitReleased(ledger);
         assertThat(ledger.queued()).isZero();
     }

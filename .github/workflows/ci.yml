@@ -467,9 +467,7 @@ jobs:
 
   # The one check the main branch's ruleset requires, so a job added here gates merges without a
   # settings change: green when every job passed or was skipped by its own condition, red when any
-  # failed or was cancelled. The Windows and macOS build-and-test jobs run on every pull request but
-  # are not in it until their fast tiers pass on hosted runners.
-  # TODO(JK-HYBD5): add platform-windows and platform-macos to needs once they pass.
+  # failed or was cancelled.
   ci:
     name: CI
     if: ${{ always() }}
@@ -482,6 +480,8 @@ jobs:
       - integration
       - vscode-extension-linux
       - vscode-extension-windows
+      - platform-windows
+      - platform-macos
       - installer-windows
       - node-windows
       - fixtures-macos
