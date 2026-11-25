@@ -4,6 +4,17 @@ The highlights of each JumpKick release, newest first: the improvements and fixe
 Every release's full list of changes is on its [GitHub Release](https://github.com/JumpKickOSS/jk/releases).
 JumpKick shows you this page's new entries after it updates itself.
 
+## 0.61.0
+
+- **The engine stays small under memory pressure.** It trims its caches when the heap runs low, so
+  a long session holds its size ([Engine](engine.md)).
+- **A workspace's `[test] network = "allowed"` holds for every member** that does not set its own
+  ([Test](test.md)).
+- **A command at a terminal stays quiet about read usage.** The tip shows only as the dashboard's
+  bell ([Web](web.md)).
+- **`extract-interface` keeps each declaration's own reason** when a file reuses a variable name
+  ([Code graph](graph.md)).
+
 ## 0.60.0
 
 - **Ask about your code and refactor it with `jk code`.** `jk code usages` lists every use of a
