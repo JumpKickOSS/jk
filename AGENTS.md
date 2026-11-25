@@ -218,7 +218,8 @@ work on something else and read answers with `ka inbox`. Stopping without finish
   the shell fixtures, the audit and the product smoke.
 - **Merge queue** — `main` moves only through GitHub's merge queue. It runs the same jobs plus the
   whole integration tier on the commit that becomes `main`, and the one required check, `CI`,
-  passes only when every job did. A red group drops the pull request from the queue with the
+  passes only when every job did (the Windows and macOS build-and-test jobs report beside it until
+  they pass on hosted runners). A red group drops the pull request from the queue with the
   failing job.
 - **Nightly** — `.github/workflows/ci-nightly.yml`: the slow, network and bench tiers, the coverage
   ratchet, the jk-examples scenarios. It blocks nothing.
