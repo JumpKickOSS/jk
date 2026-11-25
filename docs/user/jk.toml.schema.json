@@ -1125,6 +1125,7 @@
         "sign": { "type": "boolean", "description": "Sign the release as `jk publish --sign` does. Default false." },
         "key-file": { "type": "string", "description": "The signing key file, relative to the module or ~/-prefixed. The passphrase never goes here (JK_GPG_PASSPHRASE)." },
         "skip": { "type": "boolean", "description": "When true, jk publish and jk install leave this module out (a test harness, an example, a site tool); it still builds and tests. Never inherited from the workspace root. A shipped module may not depend on a skipped one outside its test tables." },
+        "assembly": { "type": "boolean", "description": "When true, jk publish attaches the module's fat jar (-all.jar) under the `all` classifier beside the thin main jar. Default false; never inherited from the workspace root. Requires [application] assembly = true or [library] assembly = true." },
         "licenses": {
           "type": "array",
           "items": {

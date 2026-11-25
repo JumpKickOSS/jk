@@ -364,8 +364,8 @@ public final class ManifestTables {
         return Optional.of(new BuildBlock.War(name, webapp == null ? BuildBlock.War.DEFAULT_WEBAPP : webapp));
     }
 
-    static final List<String> PUBLISH_KEYS =
-            List.of("name", "url", "licenses", "developers", "scm", "repository", "sign", "key-file", "skip");
+    static final List<String> PUBLISH_KEYS = List.of(
+            "name", "url", "licenses", "developers", "scm", "repository", "sign", "key-file", "skip", "assembly");
 
     /** Keys that would hold a secret: refused with where a secret does belong. */
     static final List<String> PUBLISH_SECRET_KEYS =
@@ -443,6 +443,7 @@ public final class ManifestTables {
         rejectUnknownKeys(publish, PUBLISH_KEYS, "[publish]");
         boolean sign = Boolean.TRUE.equals(optionalBool(publish, "sign", "[publish] sign"));
         boolean skip = Boolean.TRUE.equals(optionalBool(publish, "skip", "[publish] skip"));
+        boolean assembly = Boolean.TRUE.equals(optionalBool(publish, "assembly", "[publish] assembly"));
         List<PomMetadata.License> licenses = new ArrayList<>();
         for (TomlTable t : tables(publish, "licenses", "publish.licenses")) {
             rejectUnknownKeys(t, PUBLISH_LICENSE_KEYS, "[publish] licenses");
@@ -487,7 +488,8 @@ public final class ManifestTables {
                 optionalString(publish, "repository", "publish.repository"),
                 sign,
                 optionalString(publish, "key-file", "publish.key-file"),
-                skip));
+                skip,
+                assembly));
     }
 
     private static List<TomlTable> tables(TomlTable parent, String key, String displayPath) {

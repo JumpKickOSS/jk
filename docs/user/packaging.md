@@ -1,8 +1,10 @@
 # Packaging
 
-JumpKick writes **additive** artifacts. The thin jar is always produced. Extra flags add jars
-beside it; they do not replace it. Framework plugins that own the product shape (Spring Boot,
-Quarkus, Grails) still own it — a Boot jar is not “thin plus extras.”
+JumpKick writes **additive** artifacts. The thin jar is always produced, and it is the artifact
+`jk publish` uploads as the module's Maven coordinate. Extra flags add jars beside it; they do not
+replace it. To also publish a module's fat jar (`-all.jar`) under the `all` classifier, opt in with
+`[publish] assembly = true` ([Publish](publish.md#maven-central)). Framework plugins that own the
+product shape (Spring Boot, Quarkus, Grails) still own it — a Boot jar is not “thin plus extras.”
 
 R8 minification is **opt-in**, never the default.
 

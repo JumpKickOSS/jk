@@ -8,14 +8,18 @@ import cc.jumpkick.plugin.ProtocolWriter;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
 import cc.jumpkick.plugin.protocol.SpecWriter;
 import cc.jumpkick.plugin.publish.testkit.GpgTestFixture;
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.UnaryOperator;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -206,5 +210,135 @@ class PublisherDryRunTest {
                 .as(buffer.toString(StandardCharsets.UTF_8))
                 .isZero();
         return dir.resolve("target/publish");
+    }
+
+    @Test
+    void central_dry_run_for_assembly_app_ships_thin_jar_and_no_fat_jar_by_default(@TempDir Path dir) throws Exception {
+        Map<String, byte[]> entries = centralAssemblyDryRun(dir, false);
+        String stem = "com/example/cli/1.0.0/cli-1.0.0";
+
+        assertThat(entries.keySet())
+                .hasSize(16)
+                .contains(stem + ".jar", stem + ".pom", stem + "-sources.jar", stem + "-javadoc.jar")
+                .noneMatch(e -> e.contains("-all.jar"));
+        assertThat(entries.get(stem + ".jar")).isEqualTo("THIN".getBytes(StandardCharsets.UTF_8));
+        assertThat(new String(entries.get(stem + ".pom"), StandardCharsets.UTF_8))
+                .contains("<artifactId>slf4j-api</artifactId>");
+    }
+
+    @Test
+    void central_dry_run_with_publish_assembly_attaches_fat_jar_under_all_classifier(@TempDir Path dir)
+            throws Exception {
+        Map<String, byte[]> entries = centralAssemblyDryRun(dir, true);
+        String stem = "com/example/cli/1.0.0/cli-1.0.0";
+
+        assertThat(entries.keySet())
+                .hasSize(20)
+                .contains(
+                        stem + ".jar",
+                        stem + ".pom",
+                        stem + "-sources.jar",
+                        stem + "-javadoc.jar",
+                        stem + "-all.jar",
+                        stem + "-all.jar.asc",
+                        stem + "-all.jar.md5",
+                        stem + "-all.jar.sha1");
+        assertThat(entries.get(stem + ".jar")).isEqualTo("THIN".getBytes(StandardCharsets.UTF_8));
+        assertThat(entries.get(stem + "-all.jar")).isEqualTo("FAT-ASSEMBLY".getBytes(StandardCharsets.UTF_8));
+        assertThat(new String(entries.get(stem + ".pom"), StandardCharsets.UTF_8))
+                .contains("<artifactId>slf4j-api</artifactId>");
+    }
+
+    @Test
+    void publish_assembly_fails_when_fat_jar_is_missing(@TempDir Path dir) throws Exception {
+        Files.writeString(dir.resolve("jk.toml"), """
+                group   = "com.example"
+                name    = "cli"
+                version = "1.0.0"
+
+                [application]
+                main     = "com.example.Main"
+                assembly = true
+
+                [publish]
+                assembly = true
+                """);
+        Path thin = Files.createDirectories(dir.resolve("target")).resolve("cli-1.0.0.jar");
+        Files.writeString(thin, "THIN");
+
+        Path spec = dir.resolve("publish.spec");
+        Files.write(
+                spec,
+                new SpecWriter()
+                        .op(PluginProtocol.OP_PUBLISH, null, "jk-publisher")
+                        .configString("repoAuthType", "anonymous")
+                        .configBool("dryRun", true)
+                        .artifact(thin)
+                        .layout(Map.of("moduleDir", dir))
+                        .lines());
+
+        var buffer = new ByteArrayOutputStream();
+        ProtocolWriter out = new ProtocolWriter(new PrintStream(buffer, true, StandardCharsets.UTF_8), "##JKPU:");
+        assertThat(new Publisher().run(List.of(spec.toString()), out)).isEqualTo(1);
+        assertThat(buffer.toString(StandardCharsets.UTF_8))
+                .contains("[publish] assembly = true, but fat jar not found");
+    }
+
+    private static Map<String, byte[]> centralAssemblyDryRun(Path dir, boolean publishAssembly) throws Exception {
+        var key = GpgTestFixture.generate(Files.createDirectories(dir.resolve("key")), "pass");
+        Files.writeString(dir.resolve("jk.toml"), """
+                group       = "com.example"
+                name        = "cli"
+                version     = "1.0.0"
+                description = "A CLI"
+
+                [application]
+                main     = "com.example.Main"
+                assembly = true
+
+                [dependencies]
+                slf4j-api = { group = "org.slf4j", name = "slf4j-api", version = "2.0.17" }
+
+                [publish]
+                url = "https://example.com/cli"
+                licenses = [{ name = "Apache-2.0", url = "https://www.apache.org/licenses/LICENSE-2.0" }]
+                developers = [{ id = "ada", name = "Ada Lovelace" }]
+                scm = { url = "https://github.com/example/cli", connection = "scm:git:https://github.com/example/cli.git", developer-connection = "scm:git:ssh://git@github.com/example/cli.git" }
+                """ + (publishAssembly ? "assembly = true\n" : ""));
+        Path target = Files.createDirectories(dir.resolve("target"));
+        Path thin = Files.writeString(target.resolve("cli-1.0.0.jar"), "THIN");
+        Files.writeString(target.resolve("cli-1.0.0-all.jar"), "FAT-ASSEMBLY");
+        Files.writeString(target.resolve("cli-1.0.0-sources.jar"), "SOURCES");
+        Files.writeString(target.resolve("cli-1.0.0-javadoc.jar"), "JAVADOC");
+
+        Path spec = dir.resolve("publish.spec");
+        Files.write(
+                spec,
+                new SpecWriter()
+                        .op(PluginProtocol.OP_PUBLISH, null, "jk-publisher")
+                        .configString("repoAuthType", "anonymous")
+                        .configBool("dryRun", true)
+                        .configBool("centralPortal", true)
+                        .configBool("signGpg", true)
+                        .configString("gpgKeyFile", key.secretKeyFile().toString())
+                        .secret("gpgPassphrase", "pass")
+                        .artifact(thin)
+                        .layout(Map.of("moduleDir", dir))
+                        .lines());
+
+        var buffer = new ByteArrayOutputStream();
+        ProtocolWriter out = new ProtocolWriter(new PrintStream(buffer, true, StandardCharsets.UTF_8), "##JKPU:");
+        assertThat(new Publisher().run(List.of(spec.toString()), out))
+                .as(buffer.toString(StandardCharsets.UTF_8))
+                .isZero();
+
+        Path zip = dir.resolve("target/publish/central-bundle.zip");
+        Map<String, byte[]> entries = new LinkedHashMap<>();
+        try (ZipInputStream in = new ZipInputStream(new ByteArrayInputStream(Files.readAllBytes(zip)))) {
+            for (ZipEntry e = in.getNextEntry(); e != null; e = in.getNextEntry()) {
+                entries.put(e.getName(), in.readAllBytes());
+            }
+        }
+        return entries;
     }
 }

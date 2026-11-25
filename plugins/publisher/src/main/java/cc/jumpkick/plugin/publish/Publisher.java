@@ -187,6 +187,15 @@ public final class Publisher implements Plugin, PublishExtension {
 
         boolean central = c.bool("centralPortal", false);
         libraryArtifacts(ctx, project, projectDir, layout, publishDir, central, artifacts);
+        if (project.pomMetadata().assembly()) {
+            Path assemblyOnDisk = layout.assemblyJar();
+            if (!Files.isRegularFile(assemblyOnDisk)) {
+                throw new IOException("[publish] assembly = true, but fat jar not found at " + assemblyOnDisk
+                        + "; set [application] assembly = true or [library] assembly = true");
+            }
+            artifacts.add(new MavenPublisher.Artifact("-all.jar", assemblyOnDisk));
+            ctx.label("artifact " + assemblyOnDisk.getFileName() + " (" + Files.size(assemblyOnDisk) + " bytes)");
+        }
 
         // The key loads before anything is rendered: it signs the provenance as well as every file.
         GpgSigner gpg = c.bool("signGpg", false)

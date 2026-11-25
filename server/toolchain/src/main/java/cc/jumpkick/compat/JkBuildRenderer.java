@@ -786,12 +786,12 @@ public final class JkBuildRenderer {
         if (publish.keyFile() != null)
             sb.append("key-file = ").append(quote(publish.keyFile())).append('\n');
         if (publish.skip()) sb.append("skip = true\n");
+        if (publish.assembly()) sb.append("assembly = true\n");
     }
 
     private static void renderRepositories(StringBuilder sb, List<RepositorySpec> repos) {
         if (repos.isEmpty()) return;
-        sb.append('\n');
-        sb.append("[repositories]\n");
+        sb.append("\n[repositories]\n");
         for (RepositorySpec r : repos) {
             sb.append(safeKey(r.name())).append(" = ");
             if (r.releases()

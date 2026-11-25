@@ -224,4 +224,42 @@ class ManifestPublishTest {
         assertThat(JkBuildParser.parse(jmh.resolve("jk.toml")).pomMetadata().skip())
                 .isTrue();
     }
+
+    /** A member opts into attaching its fat jar; the root's word is not a member's, and setting it alone keeps root metadata. */
+    @Test
+    void assembly_is_read_refused_when_not_a_boolean_and_never_inherited_from_the_root() throws Exception {
+        assertThat(parse("[publish]\nassembly = true\n").pomMetadata().assembly())
+                .isTrue();
+        assertThat(parse(TABLE).pomMetadata().assembly()).isFalse();
+        assertThat(parse("[publish]\nassembly = true\n").pomMetadata().isEmpty())
+                .isFalse();
+        assertThatThrownBy(() -> parse("[publish]\nassembly = \"yes\"\n"))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("[publish] assembly must be true or false");
+
+        Path root = Files.createDirectories(tmp.resolve("ws-assembly"));
+        Files.writeString(root.resolve("jk.toml"), """
+                name = "ws"
+                group = "com.example"
+                version = "1.0"
+
+                [workspace]
+                modules = ["lib", "cli"]
+                """ + TABLE + "assembly = true\n");
+        Path lib = Files.createDirectories(root.resolve("lib"));
+        Files.writeString(lib.resolve("jk.toml"), "name = \"lib\"\n");
+        Path cli = Files.createDirectories(root.resolve("cli"));
+        Files.writeString(cli.resolve("jk.toml"), "name = \"cli\"\n\n[publish]\nassembly = true\n");
+
+        JkBuild libBuild = JkBuildParser.parse(lib.resolve("jk.toml"));
+        assertThat(libBuild.pomMetadata().url()).as("the root's other keys").isEqualTo("https://example.com/widget");
+        assertThat(libBuild.pomMetadata().assembly()).as("the root's assembly").isFalse();
+
+        JkBuild cliBuild = JkBuildParser.parse(cli.resolve("jk.toml"));
+        assertThat(cliBuild.pomMetadata().assembly()).isTrue();
+        assertThat(cliBuild.pomMetadata().url())
+                .as("member setting only assembly = true still inherits root metadata")
+                .isEqualTo("https://example.com/widget");
+        assertThat(cliBuild.pomMetadata().licenses()).hasSize(1);
+    }
 }

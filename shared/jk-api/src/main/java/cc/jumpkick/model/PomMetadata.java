@@ -14,8 +14,9 @@ import org.jspecify.annotations.Nullable;
  * {@code [repositories.<name>]} entry, or {@code central}), whether it is {@code sign}ed and the
  * {@code keyFile} that signs it — never a secret. A workspace root's table applies to every member
  * that declares none. {@code skip} keeps the module out of {@code jk publish} and {@code jk install}
- * (a test harness, an example, a site generator); it is the module's own word and is never
- * inherited from the root.
+ * (a test harness, an example, a site generator); {@code assembly} attaches the module's fat jar
+ * ({@code -all.jar}) under the {@code all} classifier beside the thin main jar. Both are the
+ * module's own word and are never inherited from the root.
  */
 public record PomMetadata(
         @Nullable String name,
@@ -27,9 +28,10 @@ public record PomMetadata(
         @Nullable String repository,
         boolean sign,
         @Nullable String keyFile,
-        boolean skip) {
+        boolean skip,
+        boolean assembly) {
 
-    /** A table that does not say {@code skip}. */
+    /** A table that says neither {@code skip} nor {@code assembly}. */
     public PomMetadata(
             @Nullable String name,
             @Nullable String description,
@@ -40,7 +42,7 @@ public record PomMetadata(
             @Nullable String repository,
             boolean sign,
             @Nullable String keyFile) {
-        this(name, description, url, licenses, developers, scm, repository, sign, keyFile, false);
+        this(name, description, url, licenses, developers, scm, repository, sign, keyFile, false, false);
     }
 
     public PomMetadata {
@@ -81,12 +83,20 @@ public record PomMetadata(
                 && repository == null
                 && !sign
                 && keyFile == null
-                && !skip;
+                && !skip
+                && !assembly;
     }
 
     /** This table with {@code skip} set to {@code value}. */
     public PomMetadata withSkip(boolean value) {
-        return new PomMetadata(name, description, url, licenses, developers, scm, repository, sign, keyFile, value);
+        return new PomMetadata(
+                name, description, url, licenses, developers, scm, repository, sign, keyFile, value, assembly);
+    }
+
+    /** This table with {@code assembly} set to {@code value}. */
+    public PomMetadata withAssembly(boolean value) {
+        return new PomMetadata(
+                name, description, url, licenses, developers, scm, repository, sign, keyFile, skip, value);
     }
 
     /**

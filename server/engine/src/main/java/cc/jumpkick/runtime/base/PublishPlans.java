@@ -137,13 +137,15 @@ public final class PublishPlans {
                                         + "` tracks a git branch; pin a tag, rev or released version");
                         throw new RuntimeException("branch git dependency refused");
                     }
+                    if (project.pomMetadata().assembly() && !project.assembly()) {
+                        ctx.error(
+                                "publish-assembly",
+                                "[publish] assembly = true needs [application] assembly = true or [library]"
+                                        + " assembly = true");
+                        throw new RuntimeException("publish assembly without assembly jar");
+                    }
                     BuildLayout layout = BuildLayout.of(projectDir, project);
-                    // A assembly project's self-contained artifact IS the fat jar (a build plugin,
-                    // say, shades jk-plugin-sdk in) — publish that as the coordinate, not the thin
-                    // main jar a consumer couldn't fork. An explicit --jar still wins.
-                    Path jar = req.jarPath() != null
-                            ? req.jarPath()
-                            : project.assembly() ? layout.assemblyJar() : layout.mainJar();
+                    Path jar = req.jarPath() != null ? req.jarPath() : layout.mainJar();
                     ctx.put(PROJECT, project);
                     ctx.put(JAR, jar);
                     ctx.progress(1);

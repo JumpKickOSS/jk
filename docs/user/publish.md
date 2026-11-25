@@ -177,9 +177,25 @@ is the loop; `jk release` is the end of it.
 
 ## Maven Central
 
-`jk publish -c` publishes through the Sonatype Central Portal: one signed bundle — jar,
+`jk publish -c` publishes through the Sonatype Central Portal: one signed bundle — thin jar,
 POM, sources jar, javadoc jar, a detached GPG `.asc` on each, `.md5` and `.sha1` beside each — is
 uploaded to the Portal's API, and JumpKick polls the deployment until the Portal rules.
+
+The repository artifact is always the thin jar (`<name>-<version>.jar`), even for a module with
+`[application] assembly = true` or `[library] assembly = true`; the fat jar (`-all.jar`) is for
+`java -jar`, `jk install` and release archives, while the POM declares the module's dependencies.
+To also publish the fat jar — for example, a shaded plugin that consumers fetch as one jar — opt in
+on `[publish]`:
+
+```toml
+[publish]
+assembly = true   # attach <name>-<version>-all.jar under classifier "all"
+```
+
+The main artifact stays the thin jar and the POM keeps its declared dependencies; consumers that
+want the fat jar request classifier `all`. Like `skip`, `assembly` belongs to the module that
+writes it and is never inherited from the workspace root (a member whose `[publish]` sets only
+`assembly = true` still inherits the root's POM metadata and target).
 
 ```bash
 # once: the Portal user token (central.sonatype.com → account → Generate User Token)

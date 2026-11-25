@@ -243,6 +243,91 @@ class PublishCentralCommandTest {
     }
 
     @Test
+    void an_assembly_app_dry_run_publishes_the_thin_jar_by_default_and_attaches_all_only_when_opted_in(
+            @TempDir Path dir) throws Exception {
+        var key = GpgTestFixture.generate(dir, "pass");
+        Path app = Files.createDirectories(dir.resolve("app"));
+        Files.createDirectories(app.resolve("src/main/java/com/example"));
+        Files.writeString(app.resolve("src/main/java/com/example/Main.java"), """
+                package com.example;
+                public class Main {
+                    public static void main(String[] args) {}
+                }
+                """);
+        String manifest = """
+                group       = "com.example"
+                name        = "widget"
+                version     = "1.0.0"
+                description = "A widget CLI"
+                java        = 25
+                sources     = "always"
+
+                [application]
+                main     = "com.example.Main"
+                assembly = true
+
+                [publish]
+                url = "https://example.com/widget"
+                licenses = [{ name = "Apache-2.0", url = "https://www.apache.org/licenses/LICENSE-2.0" }]
+                developers = [{ id = "ada", name = "Ada Lovelace" }]
+                scm = { url = "https://github.com/example/widget", connection = "scm:git:https://github.com/example/widget.git", developer-connection = "scm:git:ssh://git@github.com/example/widget.git" }
+                """;
+        Files.writeString(app.resolve("jk.toml"), manifest);
+
+        assertThat(run(
+                        "publish",
+                        "--no-ansi",
+                        "-C",
+                        app.toString(),
+                        "--central",
+                        "--dry-run",
+                        "--sign",
+                        "--key-file",
+                        key.secretKeyFile().toString(),
+                        "--key-passphrase",
+                        "pass"))
+                .isEqualTo(0);
+
+        Path zip = app.resolve("target/publish/central-bundle.zip");
+        List<String> defaultEntries = zipEntries(Files.readAllBytes(zip));
+        assertThat(defaultEntries)
+                .hasSize(16)
+                .contains(STEM + ".jar", STEM + ".pom", STEM + "-sources.jar", STEM + "-javadoc.jar")
+                .noneMatch(e -> e.contains("-all.jar"));
+        assertThat(app.resolve("target/widget-1.0.0-all.jar"))
+                .as("the fat jar is still built on disk")
+                .exists();
+
+        Files.writeString(app.resolve("jk.toml"), manifest + "assembly = true\n");
+        assertThat(run(
+                        "publish",
+                        "--no-ansi",
+                        "-C",
+                        app.toString(),
+                        "--central",
+                        "--dry-run",
+                        "--sign",
+                        "--key-file",
+                        key.secretKeyFile().toString(),
+                        "--key-passphrase",
+                        "pass"))
+                .isEqualTo(0);
+
+        List<String> optInEntries = zipEntries(Files.readAllBytes(zip));
+        assertThat(optInEntries)
+                .hasSize(20)
+                .contains(
+                        STEM + ".jar",
+                        STEM + ".pom",
+                        STEM + "-sources.jar",
+                        STEM + "-javadoc.jar",
+                        STEM + "-all.jar",
+                        STEM + "-all.jar.asc",
+                        STEM + "-all.jar.md5",
+                        STEM + "-all.jar.sha1");
+    }
+
+    @Test
     void central_without_a_signing_key_is_refused_with_the_flags_that_fix_it(@TempDir Path dir) throws Exception {
         writeLibrary(dir);
         String err = Capture.stderr(
