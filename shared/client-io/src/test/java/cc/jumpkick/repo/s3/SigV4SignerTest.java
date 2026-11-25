@@ -23,6 +23,7 @@ class SigV4SignerTest {
 
         String emptyPayloadHash = SigV4Signer.sha256Hex(new byte[0]);
         String auth = SigV4Signer.authorization(
+                SigV4Signer.Dialect.AWS,
                 "GET",
                 URI.create("https://example.amazonaws.com/"),
                 headers,
@@ -39,6 +40,51 @@ class SigV4SignerTest {
                         + "Credential=AKIDEXAMPLE/20150830/us-east-1/service/aws4_request, "
                         + "SignedHeaders=host;x-amz-date, "
                         + "Signature=5fa00fa31553b73ebf1942676e86291e8372ff2a2260956d9b8aae1d763fbf31");
+    }
+
+    @Test
+    void multipart_completion_signs_the_create_condition_and_upload_id() {
+        String auth = SigV4Signer.authorization(
+                SigV4Signer.Dialect.AWS,
+                "POST",
+                URI.create("https://s3.example/bucket/key?uploadId=id%2B%2F%3D"),
+                Map.of("Host", "s3.example", "If-None-Match", "*", "X-Amz-Date", DATE),
+                SigV4Signer.sha256Hex(new byte[0]),
+                AK,
+                SK,
+                "us-east-1",
+                "s3",
+                DATE);
+        assertThat(auth)
+                .endsWith("SignedHeaders=host;if-none-match;x-amz-date, "
+                        + "Signature=aea3e402dcc28f7acf9f90cc21be0f270df2972e87e3200dd801bceb38f6ce21");
+    }
+
+    @Test
+    void google_signs_the_generation_and_etag_preconditions() {
+        String auth = SigV4Signer.authorization(
+                SigV4Signer.Dialect.GOOGLE,
+                "PUT",
+                URI.create("https://storage.googleapis.com/bucket/key"),
+                Map.of(
+                        "Host",
+                        "storage.googleapis.com",
+                        "If-Match",
+                        "\"etag\"",
+                        "X-Goog-Date",
+                        DATE,
+                        "X-Goog-If-Generation-Match",
+                        "123"),
+                SigV4Signer.sha256Hex(new byte[0]),
+                AK,
+                SK,
+                "auto",
+                "storage",
+                DATE);
+        assertThat(auth)
+                .startsWith("GOOG4-HMAC-SHA256 Credential=AKIDEXAMPLE/20150830/auto/storage/goog4_request")
+                .endsWith("SignedHeaders=host;if-match;x-goog-date;x-goog-if-generation-match, "
+                        + "Signature=304bb0239d5846b7bfa9077f7a10304a7603f07280e022975d983c85a4533363");
     }
 
     @Test

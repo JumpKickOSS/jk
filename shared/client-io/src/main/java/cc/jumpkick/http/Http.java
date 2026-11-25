@@ -772,33 +772,34 @@ public final class Http {
      */
     public HttpResponse<byte[]> put(URI uri, byte[] body, Map<String, String> headers)
             throws IOException, InterruptedException {
-        checkOffline(uri);
-        HttpRequest.Builder builder = HttpRequest.newBuilder(uri)
-                .PUT(HttpRequest.BodyPublishers.ofByteArray(body))
-                .timeout(Duration.ofMinutes(15)); // large artifacts on slow links
-        for (Map.Entry<String, String> e : headers.entrySet()) {
-            builder.header(e.getKey(), e.getValue());
-        }
-        HttpRequest request = withProxyAuthorization(builder, uri).build();
-        return sendWithRetry("PUT", uri, request, cappedBytes(uri), null);
+        return put(uri, HttpRequest.BodyPublishers.ofByteArray(body), headers);
     }
 
-    /**
-     * As {@link #put}, the body streamed from {@code file} with its size as {@code Content-Length},
-     * so an upload holds a fixed buffer and never the file: the upload primitive for blobs too large
-     * for the heap (a fat jar, a native image). A retry reads the file again from its start, and the
-     * file is closed however the upload ends ({@link FileBody}).
-     */
+    /** PUT with a repeatable body, including a streamed file range. */
+    public HttpResponse<byte[]> put(URI uri, HttpRequest.BodyPublisher body, Map<String, String> headers)
+            throws IOException, InterruptedException {
+        return sendUpload("PUT", uri, body, headers);
+    }
+
+    /** As {@link #put}, the body streamed from {@code file} with a fixed Content-Length. */
     public HttpResponse<byte[]> putFile(URI uri, Path file, Map<String, String> headers)
+            throws IOException, InterruptedException {
+        return put(uri, FileBody.of(file), headers);
+    }
+
+    /** DELETE with caller-supplied headers and the standard retry policy. */
+    public HttpResponse<byte[]> delete(URI uri, Map<String, String> headers) throws IOException, InterruptedException {
+        return sendUpload("DELETE", uri, HttpRequest.BodyPublishers.noBody(), headers);
+    }
+
+    private HttpResponse<byte[]> sendUpload(
+            String method, URI uri, HttpRequest.BodyPublisher body, Map<String, String> headers)
             throws IOException, InterruptedException {
         checkOffline(uri);
         HttpRequest.Builder builder =
-                HttpRequest.newBuilder(uri).PUT(FileBody.of(file)).timeout(Duration.ofMinutes(15));
-        for (Map.Entry<String, String> e : headers.entrySet()) {
-            builder.header(e.getKey(), e.getValue());
-        }
-        HttpRequest request = withProxyAuthorization(builder, uri).build();
-        return sendWithRetry("PUT", uri, request, cappedBytes(uri), null);
+                HttpRequest.newBuilder(uri).method(method, body).timeout(Duration.ofMinutes(15));
+        headers.forEach(builder::header);
+        return sendWithRetry(method, uri, withProxyAuthorization(builder, uri).build(), cappedBytes(uri), null);
     }
 
     /**

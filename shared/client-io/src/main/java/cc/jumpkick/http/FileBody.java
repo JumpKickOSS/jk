@@ -18,23 +18,30 @@ import org.jspecify.annotations.Nullable;
  * when its last byte is sent, when the read fails and when the request cancels the body. {@link
  * HttpRequest.BodyPublishers#ofFile} closes its file only at end of file, so a request that fails
  * before then holds it open, and Windows refuses to delete or overwrite a file another handle holds.
- * Each subscription, a retry's included, reads the file again from its start.
+ * Each subscription, including retries, starts at the same file offset.
  */
 public final class FileBody implements HttpRequest.BodyPublisher {
 
     private static final int CHUNK = 64 * 1024;
 
     private final Path file;
+    private final long offset;
     private final long length;
 
-    private FileBody(Path file, long length) {
+    private FileBody(Path file, long offset, long length) {
         this.file = file;
+        this.offset = offset;
         this.length = length;
     }
 
     /** A body of {@code file}'s bytes, its {@code Content-Length} the file's size now. */
     public static FileBody of(Path file) throws IOException {
-        return new FileBody(file, Files.size(file));
+        return range(file, 0, Files.size(file));
+    }
+
+    /** A fixed-length region of a file, streamed from {@code offset} on each subscription. */
+    public static FileBody range(Path file, long offset, long length) {
+        return new FileBody(file, offset, length);
     }
 
     @Override
@@ -112,7 +119,10 @@ public final class FileBody implements HttpRequest.BodyPublisher {
                         subscriber.onComplete();
                         return;
                     }
-                    if (channel == null) channel = FileChannel.open(file, StandardOpenOption.READ);
+                    if (channel == null) {
+                        channel = FileChannel.open(file, StandardOpenOption.READ);
+                        channel.position(offset);
+                    }
                     ByteBuffer chunk = ByteBuffer.allocate((int) Math.min(CHUNK, length - sent));
                     if (channel.read(chunk) < 0) {
                         throw new IOException(file + " shrank while it was sent: " + sent + " of " + length + " bytes");
