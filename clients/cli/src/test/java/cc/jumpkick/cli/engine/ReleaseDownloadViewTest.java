@@ -6,13 +6,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.testing.Capture;
 import cc.jumpkick.cli.testing.NoAnsi;
+import cc.jumpkick.host.WorkingDirectory;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 
 /** A release artifact's download renders as the JDK's does: a phase line and a done line, on the right stream. */
 class ReleaseDownloadViewTest {
 
-    private static final Path JAR = Path.of("/opt/jk/lib/jk-engine/jk-engine-1.2.3.jar");
+    private static final Path JAR =
+            WorkingDirectory.current().getRoot().resolve("opt/jk/lib/jk-engine/jk-engine-1.2.3.jar");
 
     @Test
     void plain_mode_says_the_download_as_a_line_then_the_done_line() throws Exception {
@@ -26,7 +28,7 @@ class ReleaseDownloadViewTest {
         }));
         assertThat(out)
                 .contains("Engine > Downloading build engine 1.2.3 - working...")
-                .contains("build engine 1.2.3 has been downloaded to " + JAR.toAbsolutePath());
+                .contains("build engine 1.2.3 has been downloaded to " + JAR);
         assertThat(out.indexOf("Downloading")).isLessThan(out.indexOf("has been downloaded"));
     }
 

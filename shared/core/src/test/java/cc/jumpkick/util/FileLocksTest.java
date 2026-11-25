@@ -23,6 +23,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
@@ -69,8 +71,8 @@ class FileLocksTest {
     }
 
     /**
-     * Four threads take one file in turn while this thread drops idle entries as fast as it can, so
-     * the file's entry is retired and made again between takes. No two bodies ever overlap.
+     * Four threads contend for the same lock. Between rounds the idle entry is retired; no two
+     * lock bodies overlap across the rounds.
      */
     @Test
     void a_file_stays_exclusive_while_entries_are_dropped_around_it(@TempDir Path dir) throws Exception {
@@ -78,28 +80,39 @@ class FileLocksTest {
         AtomicInteger inside = new AtomicInteger();
         AtomicInteger most = new AtomicInteger();
         Queue<Throwable> failures = new ConcurrentLinkedQueue<>();
+        CyclicBarrier round = new CyclicBarrier(5);
         List<Thread> takers = new ArrayList<>();
         for (int t = 0; t < 4; t++) {
-            takers.add(Thread.ofPlatform().start(() -> {
+            takers.add(Thread.ofPlatform().daemon().start(() -> {
                 try {
-                    for (int i = 0; i < 300; i++) {
-                        FileLocks.withLock(hot, () -> {
-                            most.accumulateAndGet(inside.incrementAndGet(), Math::max);
-                            Thread.yield();
-                            inside.decrementAndGet();
-                        });
+                    for (int batch = 0; batch < 3; batch++) {
+                        for (int i = 0; i < 100; i++) {
+                            FileLocks.withLock(hot, () -> {
+                                most.accumulateAndGet(inside.incrementAndGet(), Math::max);
+                                Thread.yield();
+                                inside.decrementAndGet();
+                            });
+                        }
+                        round.await(15, TimeUnit.SECONDS);
+                        round.await(15, TimeUnit.SECONDS);
                     }
-                } catch (IOException | RuntimeException e) {
+                } catch (Exception e) {
                     failures.add(e);
                 }
             }));
         }
         int retired = 0;
-        while (takers.stream().anyMatch(Thread::isAlive)) {
+        for (int batch = 0; batch < 3; batch++) {
+            long deadline = System.nanoTime() + Duration.ofSeconds(10).toNanos();
+            while (round.getNumberWaiting() < takers.size() && System.nanoTime() < deadline) {
+                retired += FileLocks.dropIdle();
+                Thread.yield();
+            }
+            round.await(15, TimeUnit.SECONDS);
             retired += FileLocks.dropIdle();
-            Thread.yield();
+            round.await(15, TimeUnit.SECONDS);
         }
-        assertThat(retired).as("entries retired while the takers ran").isPositive();
+        assertThat(retired).as("idle entries were retired during the test").isPositive();
         for (Thread t : takers) assertThat(t.join(Duration.ofSeconds(10))).isTrue();
 
         assertThat(failures).as("takers that failed").isEmpty();

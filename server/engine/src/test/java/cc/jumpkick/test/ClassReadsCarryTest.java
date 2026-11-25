@@ -182,30 +182,31 @@ class ClassReadsCarryTest {
         Path library = Files.write(Files.createDirectories(ws.resolve("libs")).resolve("lib.jar"), new byte[] {6});
         Path data = Files.writeString(ws.resolve("data.txt"), "x");
         Path recordings = Files.createDirectories(tmp.resolve("rec"));
-        ExecutorService background = Executors.newSingleThreadExecutor();
-
-        try (Recording r = new Recording()) {
+        try (ExecutorService background = Executors.newSingleThreadExecutor();
+                ExecutorService unowned = Executors.newSingleThreadExecutor();
+                Recording r = new Recording()) {
             r.enable("jdk.FileRead").withThreshold(Duration.ZERO);
             r.enable(ClassReads.WINDOW_EVENT).withThreshold(Duration.ZERO);
             r.start();
-            // This thread's first read is outside every window: no class owns it.
-            Files.readAllBytes(data);
             Window reader = window("demo.ReaderTest");
             for (Path w : workers) Files.readAllBytes(w);
             Files.readAllBytes(library);
             background.submit(() -> Files.readAllBytes(data)).get();
             reader.commit();
             background.submit(() -> Files.readAllBytes(lingering)).get();
-            Files.readAllBytes(between);
+            // This thread only reads outside class windows.
+            long outside = unowned.submit(() -> {
+                        Files.readAllBytes(between);
+                        return Thread.currentThread().threadId();
+                    })
+                    .get();
             Window later = window("demo.LaterTest");
             later.commit();
-            Files.readAllBytes(last);
+            unowned.submit(() -> Files.readAllBytes(last)).get();
             r.stop();
             long worker =
                     background.submit(() -> Thread.currentThread().threadId()).get();
-            dumpOwn(r, tmp, recordings, Set.of(Thread.currentThread().threadId(), worker));
-        } finally {
-            background.shutdownNow();
+            dumpOwn(r, tmp, recordings, Set.of(Thread.currentThread().threadId(), worker, outside));
         }
 
         Set<Path> handed = new HashSet<>(workers);

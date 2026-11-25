@@ -10,6 +10,7 @@ import cc.jumpkick.cli.testing.Capture;
 import cc.jumpkick.cli.testing.ForcedAnsi;
 import cc.jumpkick.cli.testing.NoAnsi;
 import cc.jumpkick.cli.theme.StreamCaps;
+import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.jdk.InstalledJdk;
 import java.nio.file.Path;
 import java.util.List;
@@ -19,7 +20,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 @ExtendWith(ForcedAnsi.class)
 class JdkInstallViewTest {
 
-    private static final Path HOME = Path.of("/opt/jdks/temurin-21.0.12");
+    private static final Path HOME = WorkingDirectory.current().getRoot().resolve("opt/jdks/temurin-21.0.12");
 
     @Test
     void plain_mode_says_each_phase_as_a_line_then_the_done_line() throws Exception {
@@ -37,7 +38,7 @@ class JdkInstallViewTest {
                 .contains("app/jk.toml pins JDK temurin-21 -- installing it")
                 .contains("JDK > Downloading Temurin 21 - working...")
                 .contains("JDK > Installing Temurin 21 - working...")
-                .contains("Temurin 21 has been installed to " + HOME.toAbsolutePath());
+                .contains("Temurin 21 has been installed to " + HOME);
         assertThat(out.indexOf("pins JDK")).isLessThan(out.indexOf("Downloading"));
         assertThat(out.indexOf("Downloading")).isLessThan(out.indexOf("Installing"));
         assertThat(out.indexOf("Installing")).isLessThan(out.indexOf("has been installed"));
@@ -96,7 +97,7 @@ class JdkInstallViewTest {
         assertThat(TestAnsi.strip(after))
                 .as("the bar repaints below the warning and the done line settles last")
                 .contains("Downloading Temurin 21")
-                .contains("Temurin 21 has been installed to " + HOME.toAbsolutePath());
+                .contains("Temurin 21 has been installed to " + HOME);
         assertThat(TestAnsi.strip(after).indexOf("Downloading"))
                 .isLessThan(TestAnsi.strip(after).indexOf("has been installed"));
     }
@@ -110,7 +111,7 @@ class JdkInstallViewTest {
             }
         }));
         assertThat(out).doesNotContain("why").doesNotContain("Downloading");
-        assertThat(out).contains("Temurin 21 is already installed at " + HOME.toAbsolutePath());
+        assertThat(out).contains("Temurin 21 is already installed at " + HOME);
     }
 
     @Test
@@ -132,15 +133,14 @@ class JdkInstallViewTest {
 
     @Test
     void the_event_name_refines_the_label() throws Exception {
+        Path home = WorkingDirectory.current().getRoot().resolve("opt/jdks/graalvm-25.0.1");
         String out = NoAnsi.forced(() -> Capture.stdout(() -> {
             CliOutput.beginCommand(false);
             try (JdkInstallView view = new JdkInstallView("JDK")) {
                 view.onDownloadStart("GraalVM 25", 0);
-                view.onInstalled(new InstalledJdk("graalvm-25.0.1", Path.of("/opt/jdks/graalvm-25.0.1")));
+                view.onInstalled(new InstalledJdk("graalvm-25.0.1", home));
             }
         }));
-        assertThat(out)
-                .contains("GraalVM 25 has been installed to "
-                        + Path.of("/opt/jdks/graalvm-25.0.1").toAbsolutePath());
+        assertThat(out).contains("GraalVM 25 has been installed to " + home);
     }
 }

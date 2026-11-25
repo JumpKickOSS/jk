@@ -59,8 +59,19 @@ class HttpStallTest {
             }
             exchange.close();
         });
-        Http http = new Http(Http.standardClient(), new Duration[] {Duration.ofMillis(10), Duration.ofMillis(10)})
-                .withRequestTimeout(Duration.ofMillis(500));
+        server.createContext("/ready", exchange -> {
+            exchange.sendResponseHeaders(204, -1);
+            exchange.close();
+        });
+        try (var client = Http.loopbackClientBuilder().build()) {
+            URI ready = base.resolve("/ready");
+            Http http = new Http(client, new Duration[] {Duration.ofMillis(10), Duration.ofMillis(10)});
+            assertThat(http.get(ready).statusCode()).isEqualTo(204);
+            assertSilentRequest(http.withRequestTimeout(Duration.ofSeconds(2)), calls);
+        }
+    }
+
+    private void assertSilentRequest(Http http, AtomicInteger calls) throws Exception {
         URI uri = base.resolve("/never/answers.pom");
 
         AtomicReference<Throwable> failure = new AtomicReference<>();
@@ -71,8 +82,6 @@ class HttpStallTest {
                 failure.set(t);
             }
         });
-        // The entry is the client's own, written as the request goes out, so it is read here rather
-        // than from the server's handler, which a loaded host may schedule after the client gave up.
         String inFlight = awaitInFlight(uri);
         assertThat(inFlight)
                 .as("while the read is parked the URL is what the process says it waits on")
@@ -83,8 +92,7 @@ class HttpStallTest {
         assertThat(failure.get())
                 .isInstanceOf(IOException.class)
                 .hasMessageContaining(uri.toString())
-                .hasMessageContaining("got no answer within 500 ms");
-        awaitCalls(calls);
+                .hasMessageContaining("got no answer within 2 s");
         assertThat(calls.get()).as("a silent server is not asked again").isEqualTo(1);
         assertThat(InFlightRequests.waitingOn())
                 .as("the entry ends with the request")
@@ -102,12 +110,6 @@ class HttpStallTest {
         return InFlightRequests.waitingOn();
     }
 
-    /** The request was sent, so the server sees it; how soon is the scheduler's business. */
-    private static void awaitCalls(AtomicInteger calls) throws InterruptedException {
-        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
-        while (calls.get() == 0 && System.nanoTime() < deadline) Thread.sleep(5);
-    }
-
     /**
      * The timeout bounds the response headers; a body that trickles past it still arrives whole.
      * The headers go out at once and the body waits out the whole timeout before it finishes, so the
@@ -116,7 +118,7 @@ class HttpStallTest {
     @Test
     @Timeout(30)
     void a_streamed_body_slower_than_the_timeout_still_arrives() throws Exception {
-        Duration timeout = Duration.ofMillis(400);
+        Duration timeout = Duration.ofSeconds(3);
         byte[] head = "slow ".getBytes(StandardCharsets.UTF_8);
         byte[] tail = "body".getBytes(StandardCharsets.UTF_8);
         server.createContext("/slow/body.jar", exchange -> {

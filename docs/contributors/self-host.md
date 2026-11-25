@@ -94,9 +94,7 @@ fast or integration test class whose source names an OS (`@EnabledOnOs`, `OS.WIN
 …), by module. A JUnit 3 class (one that extends a `*TestCase`, as IntelliJ's headless tests do) is
 not one the JUnit Platform can select, so the module's test classes that name it run in its place.
 
-The two jobs are not in the `CI` check yet: some fast-tier tests assume a host that GitHub's
-runners are not (the system drive, a non-administrator user, a faster machine). They join it once
-they pass there.
+Both jobs are required by the aggregate `CI` check.
 
 ## CI
 

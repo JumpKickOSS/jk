@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.PluginTuning;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.testing.FakeClock;
 import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
@@ -13,6 +14,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.LongSupplier;
+import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 
@@ -71,7 +73,7 @@ class WorkerLeasesDeadlineTest {
             assertThat(System.nanoTime() - started).isGreaterThanOrEqualTo(TimeUnit.MILLISECONDS.toNanos(300));
             assertThat(cause).isInstanceOf(WorkerLeases.LeaseRefused.class);
             assertThat(cause.getMessage())
-                    .startsWith("job #7 waited 0.3s for memory and gave up")
+                    .matches("job #7 waited (?:0\\.[3-9]|[1-9]\\d*(?:\\.\\d)?)s for memory and gave up:.*")
                     .contains("needs 2.0 GiB (1.0 GiB free of the 4.0 GiB worker budget)")
                     .contains("held by job #3 3.0 GiB");
             assertThat(ledger.queued()).isZero();
@@ -85,52 +87,54 @@ class WorkerLeasesDeadlineTest {
     /** The deadline counts from the line's last grant: a long wait in a moving line is not a stall. */
     @Test
     void a_lease_in_a_line_that_keeps_moving_outlasts_the_deadline() throws Exception {
+        FakeClock clock = new FakeClock();
         WorkerLeases.Ledger ledger =
-                ledger(() -> 4 * GIB, OverbookSignals.off()).waitAtMost(Duration.ofMillis(400));
+                ledger(() -> 4 * GIB, OverbookSignals.off()).withClock(clock).waitAtMost(Duration.ofMillis(400));
         WorkerLeases.Grant held = ledger.acquireBytes(3 * GIB, true, 3L);
         CompletableFuture<WorkerLeases.Grant> first = acquireBytes(ledger, 3 * GIB, 4L);
         awaitQueued(ledger, 1);
         CompletableFuture<WorkerLeases.Grant> second = acquireBytes(ledger, 3 * GIB, 5L);
         awaitQueued(ledger, 2);
-        long started = System.nanoTime();
+        long started = clock.nanos();
         CompletableFuture<WorkerLeases.Grant> last = acquireBytes(ledger, 3 * GIB, 7L);
         awaitQueued(ledger, 3);
         for (CompletableFuture<WorkerLeases.Grant> next : List.of(first, second)) {
-            Thread.sleep(250);
+            clock.advance(Duration.ofMillis(250));
             held.close();
             held = next.get(5, TimeUnit.SECONDS);
         }
-        Thread.sleep(250);
+        clock.advance(Duration.ofMillis(250));
         held.close();
         try (WorkerLeases.Grant grant = last.get(5, TimeUnit.SECONDS)) {
             assertThat(grant.bytes()).isEqualTo(3 * GIB);
-            assertThat(System.nanoTime() - started).isGreaterThan(TimeUnit.MILLISECONDS.toNanos(600));
+            assertThat(clock.nanos() - started).isGreaterThan(TimeUnit.MILLISECONDS.toNanos(600));
         }
     }
 
-    /**
-     * A lease that gives up after a grant to another says how long the line stood still, which is
-     * what the limit counts: flaq's runner read "waited 1186s for memory and gave up" against a ten
-     * minute limit.
-     */
+    /** Report the time since the last grant alongside the total wait. */
     @Test
     void a_lease_that_gives_up_after_the_line_moved_says_how_long_it_stood_still() throws Exception {
+        FakeClock clock = new FakeClock();
         WorkerLeases.Ledger ledger =
-                ledger(() -> 4 * GIB, OverbookSignals.off()).waitAtMost(Duration.ofMillis(400));
+                ledger(() -> 4 * GIB, OverbookSignals.off()).withClock(clock).waitAtMost(Duration.ofMillis(400));
         WorkerLeases.Grant held = ledger.acquireBytes(3 * GIB, true, 3L);
         CompletableFuture<WorkerLeases.Grant> first = acquireBytes(ledger, 3 * GIB, 4L);
         awaitQueued(ledger, 1);
         CompletableFuture<WorkerLeases.Grant> last = acquireBytes(ledger, 3 * GIB, 7L);
         awaitQueued(ledger, 2);
-        Thread.sleep(250);
+        clock.advance(Duration.ofMillis(250));
         held.close();
         try (WorkerLeases.Grant moved = first.get(5, TimeUnit.SECONDS)) {
+            clock.advance(Duration.ofMillis(400));
             Throwable cause = failure(last, 5);
             assertThat(cause).isInstanceOf(WorkerLeases.LeaseRefused.class);
-            assertThat(cause.getMessage())
-                    .startsWith("job #7 waited ")
-                    .contains(
-                            "s for memory, the last 0.4s with no lease granted to anyone, and gave up: needs 3.0 GiB");
+            var timing = Pattern.compile("job #7 waited (\\d+(?:\\.\\d)?)s for memory, the last (\\d+(?:\\.\\d)?)s"
+                            + " with no lease granted to anyone, and gave up: needs 3\\.0 GiB.*")
+                    .matcher(cause.getMessage());
+            assertThat(timing.matches()).as(cause.getMessage()).isTrue();
+            double total = Double.parseDouble(timing.group(1));
+            double stalled = Double.parseDouble(timing.group(2));
+            assertThat(stalled).isGreaterThanOrEqualTo(0.4).isLessThan(total);
             assertThat(ledger.queued()).isZero();
         }
     }
@@ -167,7 +171,7 @@ class WorkerLeasesDeadlineTest {
             Throwable cause = failure(acquireBytes(ledger, 2 * GIB, 7L), 5);
             assertThat(cause).isInstanceOf(WorkerLeases.LeaseRefused.class);
             assertThat(cause.getMessage())
-                    .startsWith("job #7 waited 0.3s for memory and gave up")
+                    .matches("job #7 waited (?:0\\.[3-9]|[1-9]\\d*(?:\\.\\d)?)s for memory and gave up:.*")
                     .contains("held by job #3 3.0 GiB");
             assertThat(ledger.snapshot().leasedBytes()).isEqualTo(other.bytes() + own.bytes());
         }

@@ -34,14 +34,8 @@ import org.jspecify.annotations.Nullable;
  * hunting a JVM in Task Manager, which is not a reasonable thing to expect of anyone. So every stop
  * here <em>verifies</em> the process is gone and escalates when it is not.
  *
- * <h2>How a process is identified as an engine</h2>
- *
- * In descending order of evidence: it answers jk's protocol on jk's socket naming its own pid; its
- * command line names {@code EngineMain} or the engine lib directory; jk's own pid file names it and
- * it is alive. Only the first two can find an engine no pointer records, which is why the command
- * line matters at all — and why {@link WindowsCommandLines} exists, since the JDK supplies none on
- * Windows. Where that snapshot is unavailable there, discovery of <em>untracked</em> engines is not
- * possible and this class reports the ones jk recorded rather than guessing at the rest.
+ * A protocol reply or a pid file identifies a tracked engine. The process scan uses the Java
+ * main class or a dedicated engine binary in the installation directory.
  */
 public final class EngineFleet {
 
@@ -194,7 +188,7 @@ public final class EngineFleet {
             }
         }
         addGenerationPids(stateDir, known, out);
-        out.addAll(untracked(known, otherHomes, scanned));
+        out.addAll(untracked(stateDir, known, otherHomes, scanned));
         return List.copyOf(out);
     }
 
@@ -236,29 +230,22 @@ public final class EngineFleet {
     }
 
     /**
-     * Resident engine JVMs this user owns that no on-disk pointer named. Match is the engine
-     * main class or {@code /lib/jk-engine/} on the command line. Other users' processes are
-     * excluded. {@code otherHomes} says whether other {@code JK_HOME}s are listed, and whether
-     * their state is read (status) or only their process is named (stop, which leaves them up).
-     *
-     * <p>A process whose command line cannot be read is never claimed here: this pass has no
-     * jk-owned state corroborating it, so the executable alone ({@code java.exe} — every Gradle
-     * daemon on the machine) would be a licence to kill unrelated JVMs.
+     * Discover same-user engines by their executable and launch arguments. Only inspect state
+     * directories of the homes the caller intends to probe.
      */
-    private static List<Member> untracked(Set<Long> known, OtherHomes otherHomes, Predicate<ProcessHandle> scanned) {
+    private static List<Member> untracked(
+            Path state, Set<Long> known, OtherHomes otherHomes, Predicate<ProcessHandle> scanned) {
         long self = ProcessHandle.current().pid();
         String me = ProcessHandle.current().info().user().orElse("");
         Path home = JkDirs.home();
-        Path state = JkDirs.state();
         List<Member> out = new ArrayList<>();
-        WindowsCommandLines.Scan scan = new WindowsCommandLines.Scan();
         try {
             ProcessHandle.allProcesses().forEach(h -> {
                 long pid = h.pid();
                 if (pid == self || known.contains(pid) || !scanned.test(h) || !h.isAlive()) return;
-                if (!sameUser(me, h)) return;
-                String cmd = commandLineOf(h, scan);
-                if (!isResidentEngineProcess(h, cmd)) return;
+                if (!isEngineExecutable(h) || !sameUser(me, h)) return;
+                String cmd = commandLineOf(h);
+                if (!isResidentEngine(cmd) || !h.isAlive()) return;
                 boolean ours = belongsToThisHome(cmd, home, state);
                 if (otherHomes == OtherHomes.LEFT_OUT && !ours) return;
                 out.add(memberForProcess(pid, cmd, !ours, ours || otherHomes == OtherHomes.PROBED));
@@ -269,76 +256,103 @@ public final class EngineFleet {
         return out;
     }
 
-    /**
-     * True when {@code commandLine} names a path inside this home or state dir: the home inferred
-     * from the jar, the state dir read off the heap-dump flag, or any other path on the line. Paths
-     * compare by whole segments, so a test JVM under {@code target/test-jk-home} does not match the
-     * developer's {@code ~/.jk} engine, and {@code ~/.jk} does not claim {@code ~/.jk-other}'s.
-     */
+    /** An installed jar identifies the home; a classpath engine identifies it by its state. */
     static boolean belongsToThisHome(String commandLine, Path homeDir, @Nullable Path state) {
-        if (commandLine == null || commandLine.isBlank() || homeDir == null) return false;
         Path home = WorkingDirectory.resolve(homeDir);
-        Path ownState = state == null ? null : WorkingDirectory.resolve(state);
         Path inferred = homeFromCommandLine(commandLine);
-        if (inferred != null && WorkingDirectory.resolve(inferred).equals(home)) return true;
+        if (inferred != null) return WorkingDirectory.resolve(inferred).equals(home);
         Path engineState = stateFromCommandLine(commandLine);
-        if (engineState != null
-                && (engineState.startsWith(home) || (ownState != null && engineState.startsWith(ownState)))) {
-            return true;
-        }
-        return namesPathUnder(commandLine, home) || (ownState != null && namesPathUnder(commandLine, ownState));
+        return engineState != null && state != null && engineState.equals(WorkingDirectory.resolve(state));
     }
 
-    /**
-     * Whether {@code dir}, or a path under it, appears on {@code commandLine} as a whole path: the
-     * match starts a token (or a classpath / flag value) and ends at a separator, so {@code /h/.jk}
-     * matches {@code /h/.jk/lib/x.jar} but not {@code /h/.jk-other/lib/x.jar}.
-     */
-    static boolean namesPathUnder(String commandLine, Path dir) {
-        String cmd = commandLine.replace('\\', '/');
-        String needle = dir.toString().replace('\\', '/');
-        if (needle.isEmpty()) return false;
-        for (int at = cmd.indexOf(needle); at >= 0; at = cmd.indexOf(needle, at + 1)) {
-            int end = at + needle.length();
-            boolean starts = at == 0 || isPathBoundary(cmd.charAt(at - 1));
-            boolean ends = end == cmd.length() || cmd.charAt(end) == '/' || isPathBoundary(cmd.charAt(end));
-            if (starts && ends) return true;
-        }
-        return false;
-    }
-
-    private static boolean isPathBoundary(char c) {
-        return Character.isWhitespace(c) || c == '"' || c == '\'' || c == '=' || c == ':' || c == ';' || c == ',';
-    }
-
-    /**
-     * Best-effort <em>home root</em> from a spawn line ({@code …/<home>/lib/jk-engine/<jar>}). Null
-     * when the command line is not that shape.
-     */
+    /** Home of the installed jar or dedicated engine executable named by the launcher. */
     static @Nullable Path homeFromCommandLine(String commandLine) {
-        if (commandLine == null || commandLine.isBlank()) return null;
-        String norm = commandLine.replace('\\', '/');
-        int marker = norm.indexOf("/lib/jk-engine/");
-        if (marker <= 0) return null;
-        int start = quotedTokenStart(norm, marker, '"');
-        if (start < 0) start = quotedTokenStart(norm, marker, '\'');
-        if (start < 0) {
-            start = marker;
-            while (start > 0 && !Character.isWhitespace(norm.charAt(start - 1))) start--;
+        List<String> args = launchArguments(commandLine);
+        if (args.isEmpty()) return null;
+        String executable = args.getFirst();
+        if (!WindowsCommandLines.isJvmExecutable(executable)) return installedHome(executable);
+        int main = mainArgument(args);
+        if (main < 0 || !ENGINE_MAIN.equals(args.get(main))) return null;
+        Path home = null;
+        for (int i = 1; i + 1 < main; i++) {
+            if (classPathOption(args.get(i))) {
+                String classpath = args.get(++i);
+                home = classpath.endsWith(".jar") ? installedHome(classpath) : null;
+            }
         }
-        String parent = norm.substring(start, marker);
-        return parent.isBlank() ? null : Path.of(parent);
+        return home;
     }
 
-    private static int quotedTokenStart(String commandLine, int before, char quote) {
-        boolean inside = false;
-        int opening = -1;
-        for (int i = 0; i < before; i++) {
-            if (commandLine.charAt(i) != quote) continue;
-            inside = !inside;
-            opening = inside ? i : -1;
+    private static @Nullable Path installedHome(String artifact) {
+        String normalized = artifact.replace('\\', '/');
+        int marker = normalized.lastIndexOf("/lib/jk-engine/");
+        if (marker <= 0 || normalized.indexOf('/', marker + "/lib/jk-engine/".length()) >= 0) return null;
+        try {
+            return Path.of(normalized.substring(0, marker));
+        } catch (IllegalArgumentException ignored) {
+            return null;
         }
-        return inside ? opening + 1 : -1;
+    }
+
+    private static final String ENGINE_MAIN = "cc.jumpkick.engine.EngineMain";
+
+    private static boolean classPathOption(String arg) {
+        return arg.equals("-cp") || arg.equals("-classpath") || arg.equals("--class-path");
+    }
+
+    /** The first application argument of a JVM launched with the engine's JVM options. */
+    private static int mainArgument(List<String> args) {
+        for (int i = 1; i < args.size(); i++) {
+            String arg = args.get(i);
+            if (classPathOption(arg)) {
+                i++;
+            } else if (arg.startsWith("-X")
+                    || arg.startsWith("-D")
+                    || arg.startsWith("--enable-native-access=")
+                    || arg.startsWith("--add-opens=")) {
+                continue;
+            } else {
+                return arg.startsWith("-") ? -1 : i;
+            }
+        }
+        return -1;
+    }
+
+    /** Split a Windows launch line, including backslashes before quotes in JVM property values. */
+    private static List<String> launchArguments(@Nullable String line) {
+        if (line == null) return List.of();
+        List<String> args = new ArrayList<>();
+        StringBuilder arg = new StringBuilder();
+        boolean quoted = false;
+        boolean started = false;
+        int slashes = 0;
+        for (int i = 0; i < line.length(); i++) {
+            char c = line.charAt(i);
+            if (c == '\\') {
+                slashes++;
+                started = true;
+                continue;
+            }
+            if (c == '"') {
+                arg.append("\\".repeat(slashes / 2));
+                if (slashes % 2 == 0) quoted = !quoted;
+                else arg.append(c);
+                started = true;
+            } else {
+                arg.append("\\".repeat(slashes));
+                if (!quoted && (c == ' ' || c == '\t')) {
+                    if (started) args.add(arg.toString());
+                    arg.setLength(0);
+                    started = false;
+                } else {
+                    arg.append(c);
+                    started = true;
+                }
+            }
+            slashes = 0;
+        }
+        if (started) args.add(arg.append("\\".repeat(slashes)).toString());
+        return quoted ? List.of() : args;
     }
 
     private static Member memberForProcess(long pid, String cmd, boolean otherHome, boolean probe) {
@@ -388,98 +402,66 @@ public final class EngineFleet {
         return out;
     }
 
-    /**
-     * The state dir an engine was spawned under: every spawn line names the engine's own directory,
-     * {@code <state>/engine}, as {@code -XX:HeapDumpPath=} ({@link EnginePaths#heapDumpDir}). The
-     * value runs to the next {@code " -"} so a path with a space survives a space-joined argv. Null
-     * when the line carries no such flag.
-     */
+    /** State directory named by the engine's JVM heap-dump option. */
     static @Nullable Path stateFromCommandLine(String commandLine) {
-        if (commandLine == null) return null;
+        List<String> args = launchArguments(commandLine);
+        if (args.isEmpty()) return null;
+        int end = WindowsCommandLines.isJvmExecutable(args.getFirst()) ? mainArgument(args) : args.size();
         String flag = "-XX:HeapDumpPath=";
-        int at = commandLine.indexOf(flag);
-        if (at < 0) return null;
-        int start = at + flag.length();
-        int end = commandLine.indexOf(" -", start);
-        String value = (end < 0 ? commandLine.substring(start) : commandLine.substring(start, end)).strip();
-        if (value.length() > 1 && value.startsWith("\"") && value.endsWith("\"")) {
-            value = value.substring(1, value.length() - 1);
+        for (int i = end - 1; i > 0; i--) {
+            String arg = args.get(i);
+            if (!arg.startsWith(flag) || classPathOption(args.get(i - 1))) continue;
+            try {
+                Path dump = Path.of(arg.substring(flag.length()));
+                return dump.isAbsolute() && dump.endsWith("engine")
+                        ? dump.normalize().getParent()
+                        : null;
+            } catch (IllegalArgumentException ignored) {
+                return null;
+            }
         }
-        if (value.isEmpty()) return null;
-        try {
-            Path state = Path.of(value).getParent();
-            return state != null && state.isAbsolute() ? state.normalize() : null;
-        } catch (RuntimeException e) {
-            return null;
-        }
+        return null;
     }
 
-    /** True when {@code commandLine} is a resident engine JVM. */
-    static boolean isResidentEngine(String commandLine) {
-        if (commandLine == null || commandLine.isBlank()) return false;
-        return commandLine.contains("cc.jumpkick.engine.EngineMain") || commandLine.contains("/lib/jk-engine/");
+    /** True when the launcher actually runs the resident engine. */
+    static boolean isResidentEngine(@Nullable String commandLine) {
+        List<String> args = launchArguments(commandLine);
+        if (args.isEmpty()) return false;
+        if (!WindowsCommandLines.isJvmExecutable(args.getFirst())) return installedHome(args.getFirst()) != null;
+        int main = mainArgument(args);
+        return main >= 0 && ENGINE_MAIN.equals(args.get(main));
     }
 
-    /**
-     * True when this <em>process</em> is a resident engine: its command line names one <em>and</em>
-     * it is the kind of program that can host one.
-     *
-     * <p>The command line alone is a substring match, so it says yes to anything that merely
-     * mentions the engine — the shell that ran {@code jk engine status}, a {@code grep} over this
-     * source tree, an editor with the file open. Those are not engines, and {@code stop --all}
-     * hard-kills what this returns; a fleet that lists the user's own terminal is one keystroke
-     * from killing it.
-     */
     static boolean isResidentEngineProcess(ProcessHandle handle, String commandLine) {
-        return isResidentEngine(commandLine) && isEngineExecutable(handle);
+        return isEngineExecutable(handle) && isResidentEngine(commandLine);
     }
 
-    /**
-     * Whether the process's own executable can host an engine: a JVM launcher, or a binary inside
-     * the engine lib directory ({@code JK_ENGINE_EXE}). An engine behind a wrapper elsewhere is
-     * still found by the pointer and pid-file passes above — this only bounds who may be claimed
-     * from a bare process scan.
-     */
     private static boolean isEngineExecutable(ProcessHandle handle) {
         String exe = handle.info().command().orElse("");
-        return WindowsCommandLines.isJvmExecutable(exe)
-                || exe.replace('\\', '/').contains("/lib/jk-engine/");
+        return WindowsCommandLines.isJvmExecutable(exe) || installedHome(exe) != null;
     }
 
     static String commandLineOf(ProcessHandle handle) {
-        return commandLineOf(handle, new WindowsCommandLines.Scan());
-    }
-
-    /**
-     * As {@link #commandLineOf(ProcessHandle)}, reading Windows command lines through {@code scan}.
-     * On Windows the JDK reports only the executable, never the arguments, so a CIM snapshot with
-     * no row answers {@code ""} rather than a bare {@code java.exe} that no predicate can read.
-     */
-    static String commandLineOf(ProcessHandle handle, WindowsCommandLines.Scan scan) {
-        // /proc is the full argv; ProcessHandle.commandLine() is sometimes only the executable.
-        String proc = procCmdline(handle.pid());
-        if (!proc.isBlank()) return proc;
-        if (Os.isWindows()) return scan.of(handle.pid());
+        if (Os.isWindows()) return WindowsCommandLines.of(handle.pid());
         var info = handle.info();
-        String cmd = info.command().orElse("");
-        String args = info.arguments().map(a -> String.join(" ", a)).orElse("");
-        String joined = (cmd + " " + args).trim();
-        if (!joined.isBlank()) return joined;
-        return info.commandLine().orElse("");
-    }
-
-    /** {@code /proc/<pid>/cmdline} with NULs turned into spaces; empty off Linux or if unreadable. */
-    static String procCmdline(long pid) {
-        Path file = Path.of("/proc", Long.toString(pid), "cmdline");
-        try {
-            byte[] raw = Files.readAllBytes(file);
-            for (int i = 0; i < raw.length; i++) {
-                if (raw[i] == 0) raw[i] = (byte) ' ';
+        if (Os.isLinux() && info.arguments().isEmpty()) {
+            // ProcessHandle caps its Linux argv read at one page.
+            try {
+                Path cmdline = Path.of("/proc", Long.toString(handle.pid()), "cmdline");
+                String raw = new String(Files.readAllBytes(cmdline), StandardCharsets.UTF_8);
+                return JobBreakaway.commandLine(List.of(raw.split("\0")));
+            } catch (IOException ignored) {
+                return "";
             }
-            return new String(raw, StandardCharsets.UTF_8).trim();
-        } catch (IOException e) {
-            return "";
         }
+        return info.arguments()
+                .map(args -> {
+                    List<String> command = new ArrayList<>(args.length + 1);
+                    command.add(info.command().orElse(""));
+                    command.addAll(List.of(args));
+                    return JobBreakaway.commandLine(command);
+                })
+                .orElse("");
     }
 
     private static boolean sameUser(String me, ProcessHandle them) {
@@ -488,26 +470,14 @@ public final class EngineFleet {
         return other.isEmpty() || me.equals(other);
     }
 
-    /**
-     * Whether {@code pid} — named by one of jk's own pid files — is still an engine rather than a
-     * pid the OS recycled onto something else. That guard is what keeps a stale pid file from
-     * putting an innocent process in the fleet, where {@code stop --all} would kill it.
-     *
-     * <p>A command line settles it. When none is available (Windows with the CIM snapshot
-     * unavailable — a blocked or absent PowerShell), the corroboration left is jk's own pid file
-     * plus a JVM launcher as the executable, which is the same evidence
-     * {@link EngineProcessControl#unresponsiveHolderPid} acts on. It narrows recycling to "recycled onto
-     * another JVM" rather than ruling it out; the alternative is to stop listing engines jk itself
-     * recorded, and a fleet that hides its own engines is the failure this class exists for.
-     */
+    /** Corroborate a pid from an engine pid file with the live process's launch information. */
     static boolean isEnginePid(long pid) {
         return ProcessHandle.of(pid)
-                .map(h -> looksLikeEngine(h, new WindowsCommandLines.Scan()))
+                .map(h -> looksLikeEngine(h, commandLineOf(h)))
                 .orElse(false);
     }
 
-    static boolean looksLikeEngine(ProcessHandle handle, WindowsCommandLines.Scan scan) {
-        String cmd = commandLineOf(handle, scan);
+    static boolean looksLikeEngine(ProcessHandle handle, String cmd) {
         if (!cmd.isBlank()) return isResidentEngineProcess(handle, cmd);
         return isEngineExecutable(handle);
     }
@@ -643,6 +613,7 @@ public final class EngineFleet {
         List<StopResult> results = new ArrayList<>();
         for (Member member : candidates) {
             String commandLine = ProcessHandle.of(member.pid())
+                    .filter(EngineFleet::isEngineExecutable)
                     .map(EngineFleet::commandLineOf)
                     .orElse("");
             if (!isRetiredDefaultEngine(commandLine, currentHome, retired)) continue;

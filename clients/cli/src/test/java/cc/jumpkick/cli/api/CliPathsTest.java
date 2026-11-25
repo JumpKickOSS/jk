@@ -17,9 +17,8 @@ class CliPathsTest {
     }
 
     @Test
-    void absolute_flags_pass_through_normalized() {
-        // Absolute + normalize — on Windows "/tmp/…" becomes drive-qualified (C:\tmp\…).
+    void rooted_flags_use_the_invocations_root_and_are_normalized() {
         assertThat(CliPaths.abs("/tmp/a/../b"))
-                .isEqualTo(Path.of("/tmp/a/../b").toAbsolutePath().normalize());
+                .isEqualTo(WorkingDirectory.current().getRoot().resolve("tmp/b"));
     }
 }

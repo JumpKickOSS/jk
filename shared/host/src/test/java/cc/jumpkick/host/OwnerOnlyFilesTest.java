@@ -111,12 +111,11 @@ class OwnerOnlyFilesTest {
     @EnabledOnOs(OS.WINDOWS)
     void an_existing_acl_of_the_user_system_and_administrators_is_left_alone(@TempDir Path tmp) throws IOException {
         Path dir = Files.createDirectories(tmp.resolve("home"));
-        String root = System.getenv("SystemRoot");
         AclFileAttributeView view = Files.getFileAttributeView(dir, AclFileAttributeView.class);
         view.setAcl(List.of(
                 fullControl(me()),
-                fullControl(Files.getOwner(Path.of(root).getRoot().resolve("ProgramData"))),
-                fullControl(Files.getOwner(Path.of(root, "System32", "drivers", "etc", "hosts")))));
+                fullControl(windowsPrincipal("NT AUTHORITY\\SYSTEM")),
+                fullControl(windowsPrincipal("BUILTIN\\Administrators"))));
         Path file = Files.writeString(dir.resolve("config.toml"), "x");
         List<AclEntry> dirAcl = view.getAcl();
         List<AclEntry> fileAcl =
@@ -130,18 +129,17 @@ class OwnerOnlyFilesTest {
                 .isEqualTo(fileAcl);
     }
 
-    /** On this machine SYSTEM owns {@code ProgramData} and Administrators owns {@code hosts}. */
     @Test
     @EnabledOnOs(OS.WINDOWS)
     void system_and_administrators_are_recognised_on_this_host() throws IOException {
-        String root = System.getenv("SystemRoot");
-
         OwnerOnlyAcl.WellKnown known = OwnerOnlyAcl.WellKnown.onThisHost();
 
-        assertThat(known.system())
-                .isEqualTo(Files.getOwner(Path.of(root).getRoot().resolve("ProgramData")));
-        assertThat(known.administrators())
-                .isEqualTo(Files.getOwner(Path.of(root, "System32", "drivers", "etc", "hosts")));
+        assertThat(known.system()).isEqualTo(windowsPrincipal("NT AUTHORITY\\SYSTEM"));
+        assertThat(known.administrators()).isEqualTo(windowsPrincipal("BUILTIN\\Administrators"));
+    }
+
+    private static UserPrincipal windowsPrincipal(String name) throws IOException {
+        return FileSystems.getDefault().getUserPrincipalLookupService().lookupPrincipalByName(name);
     }
 
     @Test

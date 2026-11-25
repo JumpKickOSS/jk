@@ -3,6 +3,7 @@ package cc.jumpkick.command.toolchain;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.host.WorkingDirectory;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -176,7 +177,11 @@ class ShellTest {
         Path home = Path.of("/home/u");
         // /tmp is an allowed non-home root on POSIX; still must stay absolute, not $HOME-relative.
         Path jk = Path.of("/tmp/jk/bin/jk");
-        String jkSlash = jk.toAbsolutePath().normalize().toString().replace('\\', '/');
+        String jkSlash = WorkingDirectory.current()
+                .getRoot()
+                .resolve("tmp/jk/bin/jk")
+                .toString()
+                .replace('\\', '/');
         assertThat(new ZshShell().activationLine(new ZshShell().commandExpr(jk, home)))
                 .isEqualTo("eval \"$(\"" + jkSlash + "\" activate zsh)\"");
     }
@@ -205,9 +210,9 @@ class ShellTest {
     void shell_path_expr_prefers_home() {
         Path home = Path.of("/home/u");
         assertThat(ShellPathExpr.posix(home.resolve(".jk/bin"), home)).isEqualTo("$HOME/.jk/bin");
-        String outsideSlash = Path.of("/tmp/elsewhere/bin")
-                .toAbsolutePath()
-                .normalize()
+        String outsideSlash = WorkingDirectory.current()
+                .getRoot()
+                .resolve("tmp/elsewhere/bin")
                 .toString()
                 .replace('\\', '/');
         assertThat(ShellPathExpr.posix(Path.of("/tmp/elsewhere/bin"), home)).isEqualTo(outsideSlash);

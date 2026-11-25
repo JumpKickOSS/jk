@@ -7,7 +7,7 @@ import cc.jumpkick.config.PluginTuning;
 import cc.jumpkick.config.Request;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.testing.Sleepers;
-import java.nio.file.Files;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Objects;
@@ -15,7 +15,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.api.Timeout;
 
 /**
  * Two jobs in one engine, under a budget that holds one fork: both finish, and the second waits
@@ -58,33 +58,35 @@ class WorkerBudgetJobsTest {
     }
 
     @Test
-    void two_jobs_under_a_tiny_budget_both_finish_one_waiting(@TempDir Path tmp) throws Exception {
+    @Timeout(120)
+    void two_jobs_under_a_tiny_budget_both_finish_one_waiting() throws Exception {
         WorkerLeases.Ledger ledger = ledger(WorkerLeases.TOOL_BYTES, 8);
-        // The first fork holds its lease until the second job is seen queued behind it.
-        Path release = tmp.resolve("release");
-        CompletableFuture<Integer> first = new CompletableFuture<>();
-        Thread.ofVirtual().start(() -> {
-            try {
-                first.complete(run(ledger, 1L, Sleepers.waitsFor(release)));
-            } catch (RuntimeException e) {
-                first.completeExceptionally(e);
+        Process first = new WorkerScope(1L)
+                .call(() ->
+                        JobWorkers.start(Sleepers.stdinGate().redirectOutput(ProcessBuilder.Redirect.DISCARD), ledger));
+        try {
+            CompletableFuture<Integer> second = new CompletableFuture<>();
+            Thread.ofVirtual().start(() -> {
+                try {
+                    second.complete(run(ledger, 2L, Sleepers.sleeper(0).command()));
+                } catch (RuntimeException e) {
+                    second.completeExceptionally(e);
+                }
+            });
+            awaitQueued(ledger);
+            try (var input = first.getOutputStream()) {
+                input.write(("release" + System.lineSeparator()).getBytes(StandardCharsets.US_ASCII));
             }
-        });
-        awaitLeased(ledger);
-        CompletableFuture<Integer> second = new CompletableFuture<>();
-        Thread.ofVirtual().start(() -> {
-            try {
-                second.complete(run(ledger, 2L, Sleepers.sleeper(0).command()));
-            } catch (RuntimeException e) {
-                second.completeExceptionally(e);
-            }
-        });
-        awaitQueued(ledger);
-        Files.createFile(release);
-        assertThat(first.get(10, TimeUnit.SECONDS)).isZero();
-        assertThat(second.get(10, TimeUnit.SECONDS)).isZero();
-        awaitReleased(ledger);
-        assertThat(ledger.queued()).isZero();
+            assertThat(first.waitFor(45, TimeUnit.SECONDS))
+                    .as("first worker %d finished after stdin closed (alive: %s)", first.pid(), first.isAlive())
+                    .isTrue();
+            assertThat(first.exitValue()).isZero();
+            assertThat(second.get(45, TimeUnit.SECONDS)).isZero();
+            awaitReleased(ledger);
+            assertThat(ledger.queued()).isZero();
+        } finally {
+            if (first.isAlive()) JobWorkers.destroyTree(first);
+        }
     }
 
     @Test
@@ -165,14 +167,6 @@ class WorkerBudgetJobsTest {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
         while (ledger.queued() <= 0) {
             if (System.nanoTime() > deadline) throw new AssertionError("nothing queued: " + ledger.snapshot());
-            Thread.sleep(5);
-        }
-    }
-
-    private static void awaitLeased(WorkerLeases.Ledger ledger) throws InterruptedException {
-        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
-        while (ledger.snapshot().leasedBytes() <= 0) {
-            if (System.nanoTime() > deadline) throw new AssertionError("no lease taken");
             Thread.sleep(5);
         }
     }

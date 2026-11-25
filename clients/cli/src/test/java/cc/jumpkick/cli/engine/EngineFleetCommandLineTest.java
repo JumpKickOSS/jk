@@ -4,6 +4,7 @@ package cc.jumpkick.cli.engine;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -40,14 +41,46 @@ class EngineFleetCommandLineTest {
     }
 
     @Test
+    void arguments_that_only_mention_the_engine_do_not_identify_a_resident_engine() {
+        assertThat(EngineFleet.isResidentEngine(
+                        "java -cp /home/u/.jk/lib/jk-engine/engine.jar org.junit.Main cc.jumpkick.engine.EngineMain"))
+                .isFalse();
+        assertThat(EngineFleet.isResidentEngine("java -jar app.jar cc.jumpkick.engine.EngineMain"))
+                .isFalse();
+        assertThat(EngineFleet.isResidentEngine(
+                        "java -Dnote=\"some text cc.jumpkick.engine.EngineMain\" org.junit.Main"))
+                .isFalse();
+        assertThat(EngineFleet.isResidentEngine(
+                        "bash -c \"java -cp /tmp/lib/jk-engine/e.jar cc.jumpkick.engine.EngineMain\""))
+                .isFalse();
+    }
+
+    @Test
+    void a_foreign_engine_can_use_a_jdk_and_store_under_this_home(@TempDir Path tmp) {
+        Path home = tmp.resolve("our home");
+        Path foreign = tmp.resolve("their home");
+        String command = JobBreakaway.commandLine(List.of(
+                home.resolve("jdks/jdk/bin/java.exe").toString(),
+                "-Djk.env.JK_STORE_DIR=" + home.resolve("store"),
+                "-XX:HeapDumpPath=" + foreign.resolve("state/engine"),
+                "-cp",
+                foreign.resolve("lib/jk-engine/engine.jar").toString(),
+                "cc.jumpkick.engine.EngineMain"));
+        assertThat(EngineFleet.isResidentEngine(command)).isTrue();
+        assertThat(EngineFleet.belongsToThisHome(command, foreign, foreign.resolve("state")))
+                .isTrue();
+        assertThat(EngineFleet.belongsToThisHome(command, home, home.resolve("state")))
+                .isFalse();
+    }
+
+    @Test
     void stop_scope_is_this_home_not_a_foreign_jk_home() {
         // Under JK_HOME=/tmp/test-jk-home the engine jar lives at <JK_HOME>/lib/jk-engine/.
         Path home = Path.of("/tmp/test-jk-home");
         Path state = Path.of("/tmp/test-jk-home/state");
         String local = "java -cp /tmp/test-jk-home/lib/jk-engine/jk-engine-0.12.0.jar cc.jumpkick.engine.EngineMain";
-        String production = "java -cp /home/u/.jk/lib/jk-engine/jk-engine-0.12.0.jar"
-                + " -Xmx512m"
-                + " cc.jumpkick.engine.EngineMain";
+        String production =
+                "java -cp /home/u/.jk/lib/jk-engine/jk-engine-0.12.0.jar" + " cc.jumpkick.engine.EngineMain";
         assertThat(EngineFleet.belongsToThisHome(local, home, state)).isTrue();
         assertThat(EngineFleet.belongsToThisHome(production, home, state)).isFalse();
     }
@@ -75,20 +108,22 @@ class EngineFleetCommandLineTest {
                 .isTrue();
         assertThat(EngineFleet.belongsToThisHome(
                         "java -cp classes:" + home.resolve("lib/extra.jar") + main, home, state))
-                .as("a classpath entry under this home")
-                .isTrue();
+                .as("an incidental classpath entry under this home")
+                .isFalse();
     }
 
     /** An engine under any JK_STATE_DIR is found by its heap-dump path, which is its own directory. */
     @Test
     void state_dir_is_parsed_from_the_heap_dump_path_on_the_command_line(@TempDir Path tmp) {
         Path state = tmp.resolve("scratch dir").resolve("state");
-        String line = "java -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=" + state.resolve("engine")
-                + " -Xss512k -cp /home/u/.jk/lib/jk-engine/jk-engine-0.15.3.jar cc.jumpkick.engine.EngineMain";
+        String line = "java -XX:+HeapDumpOnOutOfMemoryError \"-XX:HeapDumpPath=" + state.resolve("engine")
+                + "\" -Xss512k -cp /home/u/.jk/lib/jk-engine/jk-engine-0.15.3.jar cc.jumpkick.engine.EngineMain";
         assertThat(EngineFleet.stateFromCommandLine(line)).isEqualTo(state);
-        assertThat(EngineFleet.stateFromCommandLine("java -XX:HeapDumpPath=\"" + state.resolve("engine") + "\" -cp x"))
+        assertThat(EngineFleet.stateFromCommandLine("java -XX:HeapDumpPath=\"" + state.resolve("engine")
+                        + "\" -cp x cc.jumpkick.engine.EngineMain"))
                 .isEqualTo(state);
-        assertThat(EngineFleet.stateFromCommandLine("java -XX:HeapDumpPath=relative/engine -cp x"))
+        assertThat(EngineFleet.stateFromCommandLine(
+                        "java -XX:HeapDumpPath=relative/engine -cp x cc.jumpkick.engine.EngineMain"))
                 .isNull();
         assertThat(EngineFleet.stateFromCommandLine("java -jar other.jar")).isNull();
     }
@@ -99,7 +134,8 @@ class EngineFleetCommandLineTest {
         assertThat(EngineFleet.homeFromCommandLine("java -cp /tmp/test-jk-home/lib/jk-engine/"
                         + "jk-engine-0.12.0.jar cc.jumpkick.engine.EngineMain"))
                 .isEqualTo(Path.of("/tmp/test-jk-home"));
-        assertThat(EngineFleet.homeFromCommandLine("java -cp /home/u/.jk/lib/jk-engine/jk-engine-0.12.0.jar"))
+        assertThat(EngineFleet.homeFromCommandLine(
+                        "java -cp /home/u/.jk/lib/jk-engine/jk-engine-0.12.0.jar cc.jumpkick.engine.EngineMain"))
                 .isEqualTo(Path.of("/home/u/.jk"));
         assertThat(EngineFleet.homeFromCommandLine(
                         "java -cp \"C:\\Users\\Bryan Sant\\AppData\\Local\\jk\\data\\lib\\jk-engine\\engine.jar\""

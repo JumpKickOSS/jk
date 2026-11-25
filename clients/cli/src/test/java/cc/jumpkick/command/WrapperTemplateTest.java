@@ -5,6 +5,7 @@ import static cc.jumpkick.command.ReleaseTree.jvmClientRelease;
 import static cc.jumpkick.command.ReleaseTree.signedPointer;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cli.engine.WindowsCommandLines;
 import cc.jumpkick.command.toolchain.WrapperCommand;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.Processes;
@@ -32,7 +33,9 @@ import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.regex.Pattern;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Tag;
@@ -143,8 +146,8 @@ class WrapperTemplateTest {
         assertThat(bat).contains(":find_lock").contains("if !LOCK_DEPTH! lss 24 goto find_lock");
         assertThat(bat).doesNotContain("\"jk = \"").doesNotContain("sha256 = ");
         // The JVM client's launcher counts as installed, and a jk on PATH is tried before a download.
-        assertThat(bat).contains("%BIN_DIR%\\jk.bat").contains("'where jk 2^>nul'");
-        assertThat(bat.indexOf("'where jk 2^>nul'")).isLessThan(bat.indexOf(":bootstrap"));
+        assertThat(bat).contains("%BIN_DIR%\\jk.bat").contains("'where jk ^<nul 2^>nul'");
+        assertThat(bat.indexOf("'where jk ^<nul 2^>nul'")).isLessThan(bat.indexOf(":bootstrap"));
         assertThat(bat).contains("%BIN_DIR%\\jk.exe").contains("%USERPROFILE%\\.jk");
         assertThat(bat).doesNotContain("JK_BIN_DIR").doesNotContain("JK_INSTALL_DIR");
         // Windows wrapper matches install.ps1: .zip (no system xz). Not .exe.zip.
@@ -213,7 +216,8 @@ class WrapperTemplateTest {
         Pattern spliced = Pattern.compile(
                 "[%!](VERSION|FLOOR|INSTALLED|FILE|JK_WRAPPER_TMP|JK_WRAPPER_PTMP|JK_RELEASES_URL)[%!]");
         for (String line : bat.split("\\R")) {
-            if (!line.contains("powershell")) continue;
+            if (!line.contains("powershell -")) continue;
+            assertThat(line).contains(line.contains("`powershell ") ? "\" ^<nul`)" : "\" <nul");
             assertThat(spliced.matcher(line).find())
                     .as("a wrapper variable is spliced into PowerShell text: %s", line)
                     .isFalse();
@@ -668,7 +672,10 @@ class WrapperTemplateTest {
         String releases = host.url("/files");
         Path empty = Files.createDirectories(tmp.resolve("empty-path"));
         Path home = Files.createDirectories(tmp.resolve("home"));
+        String modulePath = "C:\\User Modules!;%custom%&more";
         Map<String, String> env = Map.of(
+                "PSModulePath",
+                modulePath,
                 "JK_RELEASES_URL",
                 releases,
                 "PROCESSOR_ARCHITECTURE",
@@ -680,15 +687,15 @@ class WrapperTemplateTest {
         assertThat(first.exit()).as(first.stderr()).isZero();
         assertThat(first.stderr())
                 .contains("publishes no native windows-" + arch + " client; installing the JVM client");
-        assertThat(first.stdout()).contains("jvm jk: --version");
+        assertThat(first.stdout().lines()).contains("jvm jk: --version", "PSModulePath=" + modulePath);
         assertThat(home.resolve("lib/jk/jk-1.0.0.jar")).isRegularFile();
         assertThat(home.resolve("bin/VERSION")).content().isEqualToIgnoringWhitespace("1.0.0");
         assertThat(home.resolve("bin/.jk-wrapper.lock")).doesNotExist();
 
-        Run second = finish(startBat(repo, tmp, empty.toString(), home, env));
+        Run second = finish(startBat(repo, tmp, empty.toString(), home, Map.of("JK_RELEASES_URL", releases)));
         assertThat(second.exit()).isZero();
         assertThat(second.stderr()).doesNotContain("fetching");
-        assertThat(second.stdout()).contains("jvm jk: --version");
+        assertThat(second.stdout()).contains("jvm jk: --version", "PSModulePath is unset");
         assertThat(home.resolve("launchers-written")).content().isEqualTo("x");
     }
 
@@ -711,7 +718,7 @@ class WrapperTemplateTest {
         host.redirect("/moved/1.0.0/jk-1.0.0.jar", authority + "/files/1.0.0/jk-1.0.0.jar");
         Path home = Files.createDirectories(tmp.resolve("home"));
 
-        Run run = finish(startBat(
+        Process wrapper = startBatWithStdinPipe(
                 repo,
                 tmp,
                 tmp.resolve("empty-path").toString(),
@@ -722,9 +729,11 @@ class WrapperTemplateTest {
                         "JK_CLIENT",
                         "jvm",
                         "JK_JAVA_HOME",
-                        System.getProperty("java.home"))));
+                        System.getProperty("java.home")));
+        // Keep the pipe open and unwritten until the bootstrap and client have exited.
+        Run run = finish(wrapper);
         assertThat(run.exit()).as(run.stderr()).isZero();
-        assertThat(run.stdout()).contains("jvm jk: --version");
+        assertThat(run.stdout().lines()).contains("jvm jk: --version", "PSModulePath is unset");
         assertThat(home.resolve("lib/jk/jk-1.0.0.jar")).isRegularFile();
         assertThat(host.plainRequests).hasValue(0);
     }
@@ -948,6 +957,13 @@ class WrapperTemplateTest {
      */
     private static Process startBat(Path dir, Path tmp, String onPath, Path home, Map<String, String> extra)
             throws IOException {
+        Process child = startBatWithStdinPipe(dir, tmp, onPath, home, extra);
+        child.getOutputStream().close();
+        return child;
+    }
+
+    private static Process startBatWithStdinPipe(
+            Path dir, Path tmp, String onPath, Path home, Map<String, String> extra) throws IOException {
         String root = System.getenv().getOrDefault("SystemRoot", "C:\\Windows");
         Path temp = Files.createDirectories(tmp.resolve("cmd-temp"));
         ProcessBuilder pb = new ProcessBuilder("cmd.exe", "/d", "/c", ".\\jk.bat", "--version").directory(dir.toFile());
@@ -961,6 +977,12 @@ class WrapperTemplateTest {
         env.put("TEMP", temp.toString());
         env.put("TMP", temp.toString());
         env.put("USERPROFILE", home.toString());
+        env.put(
+                "LOCALAPPDATA",
+                Files.createDirectories(home.resolve("AppData/Local")).toString());
+        env.put(
+                "APPDATA",
+                Files.createDirectories(home.resolve("AppData/Roaming")).toString());
         env.put("JK_HOME", home.toString());
         env.putAll(extra);
         return pb.start();
@@ -969,19 +991,46 @@ class WrapperTemplateTest {
     private static Run finish(Process p) throws Exception {
         byte[] out;
         byte[] err;
-        try (var stdout = p.getInputStream();
+        try (var stdin = p.getOutputStream();
+                var stdout = p.getInputStream();
                 var stderr = p.getErrorStream()) {
             var outReader = CompletableFuture.supplyAsync(() -> readAll(stdout));
             var errReader = CompletableFuture.supplyAsync(() -> readAll(stderr));
             if (!p.waitFor(120, TimeUnit.SECONDS)) {
-                p.destroyForcibly();
-                throw new AssertionError(
-                        "the wrapper did not finish in 120s — it is running itself or never got the lock");
+                ProcessHandle wrapper = p.toHandle();
+                List<ProcessHandle> descendants =
+                        wrapper.isAlive() ? wrapper.descendants().toList() : List.of();
+                // The original root must survive enumeration for the snapshot to belong to it.
+                if (!wrapper.isAlive()) descendants = List.of();
+                StringBuilder processes = new StringBuilder();
+                try {
+                    appendCommandLine(processes, wrapper);
+                    for (ProcessHandle child : descendants) appendCommandLine(processes, child);
+                } finally {
+                    descendants.forEach(ProcessHandle::destroyForcibly);
+                    p.destroyForcibly();
+                }
+                String message = "the wrapper did not finish in 120s" + processes;
+                try {
+                    String diagnostics = new String(errReader.get(10, TimeUnit.SECONDS), StandardCharsets.UTF_8);
+                    throw new AssertionError(message + "\nstderr:\n" + diagnostics);
+                } catch (ExecutionException | TimeoutException e) {
+                    throw new AssertionError(message, e);
+                }
             }
             out = outReader.get();
             err = errReader.get();
         }
         return new Run(p.exitValue(), new String(out, StandardCharsets.UTF_8), new String(err, StandardCharsets.UTF_8));
+    }
+
+    private static void appendCommandLine(StringBuilder lines, ProcessHandle process) {
+        if (!process.isAlive()) return;
+        ProcessHandle.Info info = process.info();
+        String command = WindowsCommandLines.of(process.pid());
+        if (command.isEmpty())
+            command = info.commandLine().orElseGet(() -> info.command().orElse("<unknown>"));
+        lines.append("\n  PID ").append(process.pid()).append(": ").append(command);
     }
 
     /** The Windows wrapper trusting {@code key} as the release key. */
@@ -996,22 +1045,9 @@ class WrapperTemplateTest {
         return dir;
     }
 
-    /**
-     * The Windows wrapper trusting {@code key} as the release key and {@code host}'s
-     * certificate, by its SHA-1 thumbprint, in every PowerShell it starts; nothing else changes.
-     */
     private static Path materializeBat(Path dir, KeyPair key, ReleaseHost host) throws Exception {
         materializeBat(dir, key);
-        Path bat = dir.resolve("jk.bat");
-        String command = "powershell -NoProfile -Command \"";
-        String text = Files.readString(bat);
-        assertThat(text).contains(command);
-        Files.writeString(
-                bat,
-                text.replace(
-                        command,
-                        command + "[Net.ServicePointManager]::ServerCertificateValidationCallback="
-                                + "{param($a,$c,$h,$e) $c.GetCertHashString() -eq '" + host.thumbprint + "'}; "));
+        host.configureBatDownloader(dir.resolve("jk.bat"));
         return dir;
     }
 

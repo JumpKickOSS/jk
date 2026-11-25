@@ -48,7 +48,7 @@ class UnresponsiveHolderTest {
     @Test
     void a_live_silent_engine_named_by_the_pid_file_is_the_holder() throws Exception {
         Path socket = tempDirs.create().resolve("gen1.sock");
-        Process wedge = SleepMain.spawn(60_000, ENGINE_MAIN);
+        Process wedge = SleepMain.spawnEngine(60_000);
         try {
             Files.writeString(EnginePaths.pidFor(socket), Long.toString(wedge.pid()));
             assertThat(EngineProcessControl.unresponsiveHolderPid(socket)).isEqualTo(wedge.pid());
@@ -58,9 +58,6 @@ class UnresponsiveHolderTest {
         }
     }
 
-    /** On the sleeper's command line, so it reads as a resident engine. */
-    private static final String ENGINE_MAIN = "cc.jumpkick.engine.EngineMain";
-
     @Test
     void a_recycled_pid_is_no_holder_and_a_stop_leaves_it_alive() throws Exception {
         Path socket = tempDirs.create().resolve("gen1.sock");
@@ -69,9 +66,7 @@ class UnresponsiveHolderTest {
         Process engineLike = null;
         try {
             Files.writeString(pidFile, Long.toString(jvm.pid()));
-            // Only its command line tells this JVM from an engine. A host that cannot read one (a
-            // Windows PowerShell query too slow under load) falls back to the pid file and a JVM
-            // launcher, which the start-time check below is what keeps off recycled pids.
+            // The start-time check also rejects recycled pids when arguments are unreadable.
             if (!EngineFleet.commandLineOf(jvm.toHandle()).isBlank()) {
                 assertThat(EngineProcessControl.unresponsiveHolderPid(socket))
                         .as("a JVM that is not an engine")
@@ -83,7 +78,7 @@ class UnresponsiveHolderTest {
             }
 
             // An engine-looking process started well after the file was written took over its pid.
-            engineLike = SleepMain.spawn(60_000, ENGINE_MAIN);
+            engineLike = SleepMain.spawnEngine(60_000);
             Files.writeString(pidFile, Long.toString(engineLike.pid()));
             Files.setLastModifiedTime(pidFile, FileTime.from(Instant.now().minus(Duration.ofHours(1))));
             assertThat(EngineProcessControl.unresponsiveHolderPid(socket)).isZero();

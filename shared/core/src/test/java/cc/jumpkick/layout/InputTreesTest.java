@@ -477,11 +477,13 @@ class InputTreesTest {
         inRequest(() -> {
             assertThat(InputTrees.moduleSources(dir, ".java"))
                     .containsExactly(a.toAbsolutePath().normalize());
-            long walks = PathUtil.walks();
             write(a, "class A {\n}\n");
             InputTrees.rewritten(List.of(a));
             assertThat(InputTrees.changedSinceWalk(10)).isEmpty();
-            InputTrees.FileRef ref = InputTrees.of(src).files().stream()
+            long walks = PathUtil.walks();
+            InputTrees.Snapshot nested = InputTrees.of(src);
+            assertThat(nested).isInstanceOf(InputTrees.Listing.class);
+            InputTrees.FileRef ref = nested.files().stream()
                     .filter(f -> f.name().equals("A.java"))
                     .findFirst()
                     .orElseThrow();

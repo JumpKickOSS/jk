@@ -469,46 +469,33 @@ class WireWriterTest {
     @Test
     @Timeout(30)
     void a_send_to_a_client_that_does_not_read_fails_within_the_idle_bound() throws Exception {
-        Pipe pipe = Pipe.open();
-        BufferedWriter writer = new BufferedWriter(
-                new OutputStreamWriter(Channels.newOutputStream(pipe.sink()), StandardCharsets.UTF_8));
-        WireWriter.bind(writer, 300, spillDir, WireWriter.MAX_SPILL_BYTES, bytes -> true);
-        // Enough to fill any pipe buffer, so the writer thread is blocked in the socket.
-        String line = line(0, 0);
-        for (int i = 0; i < 2_000; i++) WireWriter.sendQuiet(writer, line);
-
-        long started = System.nanoTime();
-        assertThatThrownBy(() -> WireWriter.send(writer, line))
-                .isInstanceOf(IOException.class)
-                .hasMessageContaining("stopped reading");
-        long waitedMs = (System.nanoTime() - started) / 1_000_000;
-        assertThat(waitedMs).as("bounded by the idle bound, not by the client").isLessThan(5_000);
-        Await.until(Duration.ofSeconds(5), () -> !pipe.sink().isOpen());
+        assertIdleBound(300, false);
     }
 
-    /**
-     * A connection's bound moves with its phase: bound loose for request/reply, then given the job's
-     * stream-idle bound once a job owns it — or the other way round — and the lines that follow are
-     * held to the bound in force when they wait.
-     */
     @Test
     @Timeout(30)
     void the_idle_bound_of_a_bound_stream_moves_with_the_connections_phase() throws Exception {
-        Pipe pipe = Pipe.open();
-        BufferedWriter writer = new BufferedWriter(
-                new OutputStreamWriter(Channels.newOutputStream(pipe.sink()), StandardCharsets.UTF_8));
-        WireWriter.bind(writer, 0, spillDir, WireWriter.MAX_SPILL_BYTES, bytes -> true);
-        WireWriter.idleBound(writer, 300);
-        String line = line(0, 0);
-        for (int i = 0; i < 2_000; i++) WireWriter.sendQuiet(writer, line);
+        assertIdleBound(0, true);
+    }
 
-        long started = System.nanoTime();
-        assertThatThrownBy(() -> WireWriter.send(writer, line))
-                .isInstanceOf(IOException.class)
-                .hasMessageContaining("stopped reading");
-        long waitedMs = (System.nanoTime() - started) / 1_000_000;
-        assertThat(waitedMs).as("bounded by the bound set after binding").isLessThan(5_000);
-        Await.until(Duration.ofSeconds(5), () -> !pipe.sink().isOpen());
+    private void assertIdleBound(long initialBound, boolean changeBound) throws Exception {
+        GatedSink sink = new GatedSink("blocked");
+        BufferedWriter writer = new BufferedWriter(sink);
+        WireWriter.bind(writer, initialBound, spillDir, WireWriter.MAX_SPILL_BYTES, bytes -> true);
+        if (changeBound) WireWriter.idleBound(writer, 300);
+        WireWriter.sendQuiet(writer, "blocked");
+        sink.awaitHeld("blocked");
+        try {
+            long started = System.nanoTime();
+            assertThatThrownBy(() -> WireWriter.send(writer, "next"))
+                    .isInstanceOf(IOException.class)
+                    .hasMessageContaining("stopped reading");
+            long waitedMs = (System.nanoTime() - started) / 1_000_000;
+            assertThat(waitedMs).as("bounded by the stream idle timeout").isLessThan(5_000);
+        } finally {
+            sink.release("blocked");
+        }
+        Await.until(Duration.ofSeconds(5), sink::closed);
     }
 
     /**
