@@ -146,8 +146,8 @@ class WrapperTemplateTest {
         assertThat(bat).contains(":find_lock").contains("if !LOCK_DEPTH! lss 24 goto find_lock");
         assertThat(bat).doesNotContain("\"jk = \"").doesNotContain("sha256 = ");
         // The JVM client's launcher counts as installed, and a jk on PATH is tried before a download.
-        assertThat(bat).contains("%BIN_DIR%\\jk.bat").contains("'where jk 2^>nul'");
-        assertThat(bat.indexOf("'where jk 2^>nul'")).isLessThan(bat.indexOf(":bootstrap"));
+        assertThat(bat).contains("%BIN_DIR%\\jk.bat").contains("'where jk ^<nul 2^>nul'");
+        assertThat(bat.indexOf("'where jk ^<nul 2^>nul'")).isLessThan(bat.indexOf(":bootstrap"));
         assertThat(bat).contains("%BIN_DIR%\\jk.exe").contains("%USERPROFILE%\\.jk");
         assertThat(bat).doesNotContain("JK_BIN_DIR").doesNotContain("JK_INSTALL_DIR");
         // Windows wrapper matches install.ps1: .zip (no system xz). Not .exe.zip.
@@ -216,7 +216,8 @@ class WrapperTemplateTest {
         Pattern spliced = Pattern.compile(
                 "[%!](VERSION|FLOOR|INSTALLED|FILE|JK_WRAPPER_TMP|JK_WRAPPER_PTMP|JK_RELEASES_URL)[%!]");
         for (String line : bat.split("\\R")) {
-            if (!line.contains("powershell")) continue;
+            if (!line.contains("powershell -")) continue;
+            assertThat(line).contains(line.contains("`powershell ") ? "\" ^<nul`)" : "\" <nul");
             assertThat(spliced.matcher(line).find())
                     .as("a wrapper variable is spliced into PowerShell text: %s", line)
                     .isFalse();
@@ -714,7 +715,7 @@ class WrapperTemplateTest {
         host.redirect("/moved/1.0.0/jk-1.0.0.jar", authority + "/files/1.0.0/jk-1.0.0.jar");
         Path home = Files.createDirectories(tmp.resolve("home"));
 
-        Run run = finish(startBat(
+        Process wrapper = startBatWithStdinPipe(
                 repo,
                 tmp,
                 tmp.resolve("empty-path").toString(),
@@ -725,7 +726,9 @@ class WrapperTemplateTest {
                         "JK_CLIENT",
                         "jvm",
                         "JK_JAVA_HOME",
-                        System.getProperty("java.home"))));
+                        System.getProperty("java.home")));
+        // Keep the pipe open and unwritten until the bootstrap and client have exited.
+        Run run = finish(wrapper);
         assertThat(run.exit()).as(run.stderr()).isZero();
         assertThat(run.stdout()).contains("jvm jk: --version");
         assertThat(home.resolve("lib/jk/jk-1.0.0.jar")).isRegularFile();
@@ -951,6 +954,13 @@ class WrapperTemplateTest {
      */
     private static Process startBat(Path dir, Path tmp, String onPath, Path home, Map<String, String> extra)
             throws IOException {
+        Process child = startBatWithStdinPipe(dir, tmp, onPath, home, extra);
+        child.getOutputStream().close();
+        return child;
+    }
+
+    private static Process startBatWithStdinPipe(
+            Path dir, Path tmp, String onPath, Path home, Map<String, String> extra) throws IOException {
         String root = System.getenv().getOrDefault("SystemRoot", "C:\\Windows");
         Path temp = Files.createDirectories(tmp.resolve("cmd-temp"));
         ProcessBuilder pb = new ProcessBuilder("cmd.exe", "/d", "/c", ".\\jk.bat", "--version").directory(dir.toFile());
@@ -966,15 +976,14 @@ class WrapperTemplateTest {
         env.put("USERPROFILE", home.toString());
         env.put("JK_HOME", home.toString());
         env.putAll(extra);
-        Process child = pb.start();
-        child.getOutputStream().close();
-        return child;
+        return pb.start();
     }
 
     private static Run finish(Process p) throws Exception {
         byte[] out;
         byte[] err;
-        try (var stdout = p.getInputStream();
+        try (var stdin = p.getOutputStream();
+                var stdout = p.getInputStream();
                 var stderr = p.getErrorStream()) {
             var outReader = CompletableFuture.supplyAsync(() -> readAll(stdout));
             var errReader = CompletableFuture.supplyAsync(() -> readAll(stderr));
