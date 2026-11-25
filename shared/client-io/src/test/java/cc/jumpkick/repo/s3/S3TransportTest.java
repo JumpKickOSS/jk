@@ -3,26 +3,40 @@ package cc.jumpkick.repo.s3;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.groups.Tuple.tuple;
 
 import cc.jumpkick.credential.RepoCredential;
+import cc.jumpkick.host.DomXml;
+import cc.jumpkick.host.Hashing;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.model.ObjectStoreConfig;
+import cc.jumpkick.run.JkThreads;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
+import java.io.RandomAccessFile;
 import java.net.InetSocketAddress;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.DigestInputStream;
 import java.time.Instant;
 import java.util.Arrays;
+import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 class S3TransportTest {
 
@@ -32,6 +46,7 @@ class S3TransportTest {
     @BeforeEach
     void start() throws IOException {
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.setExecutor(JkThreads.platform());
         server.start();
         endpoint = URI.create("http://127.0.0.1:" + server.getAddress().getPort());
     }
@@ -176,6 +191,183 @@ class S3TransportTest {
         assertThat(contentSha.get()).isEqualTo(SigV4Signer.sha256Hex(payload));
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"complete", "conflict", "embedded conflict", "completion error", "part error"})
+    void multipart_splits_streams_and_aborts_unsuccessful_uploads(String outcome, @TempDir Path dir) throws Exception {
+        long partSize = 16L * 1024 * 1024;
+        Path file = dir.resolve("large.jar");
+        try (var sparse = new RandomAccessFile(file.toFile(), "rw")) {
+            for (int i = 0; i < 5; i++) {
+                sparse.seek(i * partSize);
+                sparse.write(i + 1);
+            }
+        }
+
+        var firstBatch = new CountDownLatch(4);
+        Map<Integer, Long> sizes = new ConcurrentHashMap<>();
+        Map<Integer, Integer> firstBytes = new ConcurrentHashMap<>();
+        Map<Integer, String> hashes = new ConcurrentHashMap<>();
+        var completion = new AtomicReference<String>();
+        var completionAuth = new AtomicReference<String>();
+        var condition = new AtomicReference<String>();
+        var aborted = new AtomicBoolean();
+        server.createContext("/bucket/large.jar", exchange -> {
+            try (exchange) {
+                String query = exchange.getRequestURI().getRawQuery();
+                String method = exchange.getRequestMethod();
+                if ("uploads".equals(query) && "POST".equals(method)) {
+                    byte[] response = "<InitiateMultipartUploadResult><UploadId>id+/=</UploadId>"
+                            .concat("</InitiateMultipartUploadResult>")
+                            .getBytes(StandardCharsets.UTF_8);
+                    exchange.sendResponseHeaders(200, response.length);
+                    exchange.getResponseBody().write(response);
+                } else if (query != null
+                        && query.startsWith("uploadId=id%2B%2F%3D&partNumber=")
+                        && "PUT".equals(method)) {
+                    int part = Integer.parseInt(query.substring(query.indexOf("partNumber=") + "partNumber=".length()));
+                    firstBatch.countDown();
+                    try {
+                        if (!firstBatch.await(10, TimeUnit.SECONDS)) {
+                            exchange.sendResponseHeaders(400, -1);
+                            return;
+                        }
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        throw new IOException(e);
+                    }
+                    var digest = Hashing.newSha256();
+                    try (var input = new DigestInputStream(exchange.getRequestBody(), digest)) {
+                        firstBytes.put(part, input.read());
+                        sizes.put(part, 1 + input.transferTo(OutputStream.nullOutputStream()));
+                    }
+                    hashes.put(
+                            part,
+                            Hashing.hex(digest.digest())
+                                            .equals(exchange.getRequestHeaders().getFirst("x-amz-content-sha256"))
+                                    ? "match"
+                                    : "mismatch");
+                    exchange.getResponseHeaders().set("ETag", "\"etag-" + part + "\"");
+                    exchange.sendResponseHeaders(outcome.equals("part error") && part == 2 ? 403 : 200, -1);
+                } else if ("uploadId=id%2B%2F%3D".equals(query) && "POST".equals(method)) {
+                    completion.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+                    completionAuth.set(exchange.getRequestHeaders().getFirst("Authorization"));
+                    condition.set(exchange.getRequestHeaders().getFirst("If-None-Match"));
+                    String xml =
+                            switch (outcome) {
+                                case "completion error" -> "<Error><Code>InternalError</Code></Error>";
+                                case "embedded conflict" -> "<Error><Code>PreconditionFailed</Code></Error>";
+                                default -> "<CompleteMultipartUploadResult/>";
+                            };
+                    byte[] response = xml.getBytes(StandardCharsets.UTF_8);
+                    exchange.sendResponseHeaders(outcome.equals("conflict") ? 412 : 200, response.length);
+                    exchange.getResponseBody().write(response);
+                } else if ("uploadId=id%2B%2F%3D".equals(query) && "DELETE".equals(method)) {
+                    aborted.set(true);
+                    exchange.sendResponseHeaders(204, -1);
+                } else {
+                    exchange.sendResponseHeaders(400, -1);
+                }
+            }
+        });
+
+        var transport = signed();
+        URI uri = URI.create("s3://bucket/large.jar");
+        if (outcome.equals("completion error") || outcome.equals("part error")) {
+            assertThatThrownBy(() -> transport.putFile(uri, file, "application/java-archive", RepoCredential.ANONYMOUS))
+                    .isInstanceOf(IOException.class)
+                    .hasMessageContaining(outcome.equals("completion error") ? "InternalError" : "returned 403");
+        } else {
+            assertThat(transport.putFile(uri, file, "application/java-archive", RepoCredential.ANONYMOUS))
+                    .isEqualTo(outcome.equals("complete") ? 200 : 412);
+        }
+        assertThat(aborted.get()).isEqualTo(!outcome.equals("complete"));
+        if (outcome.equals("part error")) {
+            assertThat(completion.get()).isNull();
+            assertThat(sizes).hasSize(4);
+            return;
+        }
+        assertThat(sizes).isEqualTo(Map.of(1, partSize, 2, partSize, 3, partSize, 4, partSize, 5, 1L));
+        assertThat(firstBytes).isEqualTo(Map.of(1, 1, 2, 2, 3, 3, 4, 4, 5, 5));
+        assertThat(hashes.values()).hasSize(5).containsOnly("match");
+        assertThat(condition.get()).isEqualTo("*");
+        assertThat(completionAuth.get()).contains("SignedHeaders=content-type;host;if-none-match;");
+        var manifest = DomXml.parse(completion.get()).getDocumentElement();
+        assertThat(DomXml.childElements(manifest, "Part"))
+                .extracting(part -> DomXml.childText(part, "PartNumber"), part -> DomXml.childText(part, "ETag"))
+                .containsExactly(
+                        tuple("1", "\"etag-1\""),
+                        tuple("2", "\"etag-2\""),
+                        tuple("3", "\"etag-3\""),
+                        tuple("4", "\"etag-4\""),
+                        tuple("5", "\"etag-5\""));
+    }
+
+    @Test
+    void gcs_large_artifact_uses_one_generation_guarded_put(@TempDir Path dir) throws Exception {
+        Path file = dir.resolve("large.jar");
+        long length = 64L * 1024 * 1024;
+        try (var sparse = new RandomAccessFile(file.toFile(), "rw")) {
+            sparse.setLength(length);
+        }
+        var request = new AtomicReference<String>();
+        server.createContext("/bucket/large.jar", exchange -> {
+            try (exchange) {
+                var headers = exchange.getRequestHeaders();
+                long received = exchange.getRequestBody().transferTo(OutputStream.nullOutputStream());
+                request.set(exchange.getRequestMethod() + " " + received + " "
+                        + headers.getFirst("If-None-Match") + " " + headers.getFirst("x-goog-if-generation-match")
+                        + " " + headers.getFirst("Authorization"));
+                exchange.sendResponseHeaders(200, -1);
+            }
+        });
+        URI uri = URI.create("gs://bucket/large.jar");
+        var config = new ObjectStoreConfig(null, endpoint.toString(), "GOOGAK", "secret", null);
+        var gcs = S3Transport.forGcs(new Http(), uri, config, new AwsCredentialChain(k -> null, dir), k -> null);
+        assertThat(gcs.putFile(uri, file, "application/java-archive", RepoCredential.ANONYMOUS))
+                .isEqualTo(200);
+        assertThat(request.get())
+                .startsWith("PUT " + length + " * 0 GOOG4-HMAC-SHA256 ")
+                .contains("SignedHeaders=content-type;host;if-none-match;x-goog-content-sha256;x-goog-date;"
+                        + "x-goog-if-generation-match");
+    }
+
+    @Test
+    void gcs_replaces_metadata_using_the_generation_and_etag_from_the_same_read(@TempDir Path dir) throws Exception {
+        var condition = new AtomicReference<String>();
+        var generation = new AtomicReference<String>();
+        var authorization = new AtomicReference<String>();
+        server.createContext("/bucket/maven-metadata.xml", exchange -> {
+            try (exchange) {
+                if ("GET".equals(exchange.getRequestMethod())) {
+                    byte[] body = "<metadata/>".getBytes(StandardCharsets.UTF_8);
+                    exchange.getResponseHeaders().set("ETag", "\"etag\"");
+                    exchange.getResponseHeaders().set("x-goog-generation", "123");
+                    exchange.sendResponseHeaders(200, body.length);
+                    exchange.getResponseBody().write(body);
+                } else {
+                    var headers = exchange.getRequestHeaders();
+                    condition.set(headers.getFirst("If-Match"));
+                    generation.set(headers.getFirst("x-goog-if-generation-match"));
+                    authorization.set(headers.getFirst("Authorization"));
+                    exchange.getRequestBody().transferTo(OutputStream.nullOutputStream());
+                    exchange.sendResponseHeaders(200, -1);
+                }
+            }
+        });
+        URI uri = URI.create("gs://bucket/maven-metadata.xml");
+        var config = new ObjectStoreConfig(null, endpoint.toString(), "GOOGAK", "secret", null);
+        var gcs = S3Transport.forGcs(new Http(), uri, config, new AwsCredentialChain(k -> null, dir), k -> null);
+        var previous = gcs.readRevision(uri, RepoCredential.ANONYMOUS);
+        assertThat(previous).isPresent();
+        assertThat(gcs.putRevision(uri, new byte[] {1}, "application/xml", RepoCredential.ANONYMOUS, previous))
+                .isEqualTo(200);
+        assertThat(condition.get()).isEqualTo("\"etag\"");
+        assertThat(generation.get()).isEqualTo("123");
+        assertThat(authorization.get())
+                .contains("SignedHeaders=content-type;host;if-match;x-goog-content-sha256;")
+                .contains("x-goog-if-generation-match");
+    }
+
     @Test
     void gcs_via_endpoint_override_signs_with_auto_region() throws Exception {
         AtomicReference<String> auth = new AtomicReference<>();
@@ -202,8 +394,7 @@ class S3TransportTest {
 
         var body = gcs.fetch(URI.create("gs://gcs-bucket/maven/x.jar"), RepoCredential.ANONYMOUS);
         assertThat(body).isPresent();
-        // GCS V4 interop scope: region "auto", service "s3".
-        assertThat(auth.get()).contains("/auto/s3/aws4_request");
+        assertThat(auth.get()).startsWith("GOOG4-HMAC-SHA256 ").contains("/auto/storage/goog4_request");
     }
 
     @Test

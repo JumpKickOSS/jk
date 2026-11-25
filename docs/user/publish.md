@@ -110,6 +110,13 @@ A published file never changes. Publishing a version again uploads only what the
 not hold yet, so a run that stopped half way finishes on the next try (`16 files, 4 already
 there`); a file the repository holds with other bytes stops the run and says to raise the version.
 
+### Publishing to object storage
+
+For `s3://` and `gs://` targets, each artifact and its sidecars are created only if the key
+is absent. Concurrent publishers retry updates to Maven metadata against the latest version
+list or snapshot build. Artifacts of 64 MiB or more use multipart uploads on S3. Google
+Cloud Storage uses a single streamed upload with a generation precondition.
+
 ### Keeping a member out of a release
 
 A workspace publishes every member with a jar. A member that must never ship (a test harness, a

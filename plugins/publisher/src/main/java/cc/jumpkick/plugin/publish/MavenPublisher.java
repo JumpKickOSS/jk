@@ -7,10 +7,13 @@ import cc.jumpkick.model.ObjectStoreConfig;
 import cc.jumpkick.model.Project;
 import cc.jumpkick.pom.PomXml;
 import cc.jumpkick.repo.MavenMetadata;
+import cc.jumpkick.repo.ObjectStoreTransport;
+import cc.jumpkick.repo.ObjectStoreTransport.Revision;
 import cc.jumpkick.repo.RepoTransport;
 import cc.jumpkick.repo.transport.RepoTransports;
 import cc.jumpkick.sigstore.Dsse;
 import cc.jumpkick.sigstore.SigstoreSigner;
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
@@ -21,20 +24,23 @@ import java.time.Clock;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Uploads jar/pom/sources + checksums to a Maven HTTP repository via PUT. Auth via {@link
- * RepoCredential}; GPG/Sigstore/SLSA/SBOM layered by signing options.
+ * Publishes Maven artifacts, metadata, checksums and optional signatures.
  */
 public final class MavenPublisher {
 
@@ -143,13 +149,6 @@ public final class MavenPublisher {
         }
     }
 
-    /** Whether the repository holds a file, and if so whether it holds these bytes. */
-    private enum Presence {
-        ABSENT,
-        SAME,
-        DIFFERENT
-    }
-
     /**
      * Upload {@code artifacts} for {@code project} with no signing — every artifact gets its four
      * checksum files but no {@code .asc} or {@code .sigstore} sidecar. See {@link
@@ -176,19 +175,17 @@ public final class MavenPublisher {
 
         for (Artifact a : artifacts) {
             String relPath = prefix + stem + a.filenameSuffix();
-            // A published file never changes: one the repository already holds at these bytes is left
-            // alone and so is each sidecar already beside it, which makes a re-run after a partial
-            // publish (or one that adds signing) upload exactly what is missing; one it holds at
-            // other bytes is a version somebody already used.
             boolean kept = a.envelope() && keepHeldEnvelope(relPath, a);
             Checksums.Set sums = Checksums.of(a.file());
-            boolean there = a.envelope() ? kept : presence(relPath, sums.sha1()) == Presence.SAME;
-            if (there) {
-                alreadyThere.add(relPath);
+            boolean there;
+            if (!(transport instanceof ObjectStoreTransport)
+                    && (a.envelope() ? kept : alreadyPublished(relPath, sums.sha1()))) {
+                there = true;
                 putMissingChecksums(relPath, sums, results, bytes);
             } else {
-                putFileWithChecksums(relPath, a.file(), sums, contentType(a.filenameSuffix()), results, bytes);
+                there = putFileWithChecksums(relPath, a.file(), sums, contentType(a.filenameSuffix()), results, bytes);
             }
+            if (there) alreadyThere.add(relPath);
             if (signing.gpg() != null) {
                 GpgSigner gpg = signing.gpg();
                 putSignature(relPath + ".asc", there, () -> gpg.signArmored(a.file()), results, bytes);
@@ -204,6 +201,8 @@ public final class MavenPublisher {
         publishMetadata(project, groupPath, results, bytes);
         return new Result(results, bytes[0], alreadyThere);
     }
+
+    private static final int METADATA_RETRIES = 5;
 
     private static final String SNAPSHOT = "-SNAPSHOT";
 
@@ -231,6 +230,30 @@ public final class MavenPublisher {
         String groupPath = project.group().replace('.', '/');
         String prefix = groupPath + "/" + project.name() + "/" + project.version() + "/";
         String metadataPath = prefix + "maven-metadata.xml";
+        if (transport instanceof ObjectStoreTransport store) {
+            List<Artifact> files = new ArrayList<>();
+            artifacts.forEach(files::add);
+            int minimumBuild = 1;
+            for (int attempt = 0; attempt <= METADATA_RETRIES; attempt++) {
+                Optional<Revision> previous = store.readRevision(repoBase.resolve(metadataPath), credential);
+                SnapshotMetadata snapshot = SnapshotMetadata.read(previous, repoBase.resolve(metadataPath));
+                int build = Math.max(minimumBuild, snapshot.build() + 1);
+                try {
+                    byte[] body =
+                            uploadSnapshot(project, prefix, files, signing, build, snapshot.entries(), results, bytes);
+                    if (putMetadataRevision(store, metadataPath, body, previous, results, bytes)) {
+                        publishMetadataChecksums(store, metadataPath, results, bytes);
+                        publishMetadata(project, groupPath, results, bytes);
+                        return new Result(results, bytes[0], Set.of());
+                    }
+                } catch (PublishedBytesConflict conflict) {
+                    minimumBuild = build + 1;
+                }
+                if (attempt < METADATA_RETRIES) backoff(attempt);
+            }
+            throw concurrentMetadata(metadataPath);
+        }
+
         int build = 1;
         try {
             Optional<byte[]> previous = transport.fetch(repoBase.resolve(metadataPath), credential);
@@ -244,12 +267,28 @@ public final class MavenPublisher {
                             + " build: " + unreadable.getMessage(),
                     unreadable);
         }
+        byte[] body = uploadSnapshot(project, prefix, artifacts, signing, build, new LinkedHashMap<>(), results, bytes);
+        putWithChecksums(metadataPath, body, "application/xml", results, bytes);
+        publishMetadata(project, groupPath, results, bytes);
+        return new Result(results, bytes[0], Set.of());
+    }
+
+    private byte[] uploadSnapshot(
+            Project project,
+            String prefix,
+            Iterable<Artifact> artifacts,
+            SigningOptions signing,
+            int build,
+            Map<SnapshotMetadata.Key, SnapshotMetadata.Entry> entries,
+            Map<String, Integer> results,
+            long[] bytes)
+            throws IOException, InterruptedException {
         ZonedDateTime now = ZonedDateTime.now(clock.withZone(ZoneOffset.UTC));
         String timestamp = STAMP.format(now);
         String stamped = project.version().substring(0, project.version().length() - SNAPSHOT.length()) + "-"
                 + timestamp + "-" + build;
         String stem = project.name() + "-" + stamped;
-        StringBuilder entries = new StringBuilder();
+        String updated = timestamp.replace(".", "");
         for (Artifact a : artifacts) {
             String relPath = prefix + stem + a.filenameSuffix();
             putFileWithChecksums(
@@ -266,41 +305,22 @@ public final class MavenPublisher {
             if (sigstoreBundle != null) {
                 putWithChecksums(relPath + ".sigstore", sigstoreBundle, contentType(".sigstore"), results, bytes);
             }
-            String classifier = a.classifier();
-            entries.append("      <snapshotVersion>\n");
-            if (!classifier.isEmpty())
-                entries.append("        <classifier>")
-                        .append(PomXml.escape(classifier))
-                        .append("</classifier>\n");
-            entries.append("        <extension>")
-                    .append(PomXml.escape(a.extension()))
-                    .append("</extension>\n        <value>")
-                    .append(PomXml.escape(stamped))
-                    .append("</value>\n        <updated>")
-                    .append(timestamp.replace(".", ""))
-                    .append("</updated>\n      </snapshotVersion>\n");
+            entries.put(
+                    new SnapshotMetadata.Key(a.classifier(), a.extension()),
+                    new SnapshotMetadata.Entry(stamped, updated));
         }
         String metadata = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<metadata modelVersion=\"1.1.0\">\n  <groupId>"
                 + PomXml.escape(project.group()) + "</groupId>\n  <artifactId>" + PomXml.escape(project.name())
                 + "</artifactId>\n  <version>" + PomXml.escape(project.version())
                 + "</version>\n  <versioning>\n    <snapshot>\n      <timestamp>" + timestamp
                 + "</timestamp>\n      <buildNumber>" + build + "</buildNumber>\n    </snapshot>\n"
-                + "    <lastUpdated>" + timestamp.replace(".", "") + "</lastUpdated>\n    <snapshotVersions>\n"
-                + entries + "    </snapshotVersions>\n  </versioning>\n</metadata>\n";
-        putWithChecksums(metadataPath, metadata.getBytes(StandardCharsets.UTF_8), "application/xml", results, bytes);
-        publishMetadata(project, groupPath, results, bytes);
-        return new Result(results, bytes[0], Set.of());
+                + "    <lastUpdated>" + updated + "</lastUpdated>\n    <snapshotVersions>\n"
+                + SnapshotMetadata.renderEntries(entries) + "    </snapshotVersions>\n  </versioning>\n</metadata>\n";
+        return metadata.getBytes(StandardCharsets.UTF_8);
     }
 
-    /**
-     * Whether {@code relPath} is in the repository, and at the bytes whose SHA-1 is {@code local}: the
-     * {@code .sha1} beside it when there is one, else the file itself, streamed. A repository that
-     * will not answer a read (no read permission, a write-only drop) reads as {@link
-     * Presence#ABSENT}: the upload that follows is the authority, and says so if the file is there.
-     *
-     * @throws IOException when the repository holds the file at other bytes
-     */
-    private Presence presence(String relPath, String local) throws IOException, InterruptedException {
+    /** Check a Maven repo's SHA-1 sidecar or stream the artifact when it has none. */
+    private boolean alreadyPublished(String relPath, String local) throws IOException, InterruptedException {
         String remote;
         try {
             Optional<byte[]> sidecar = transport.fetch(repoBase.resolve(relPath + ".sha1"), credential);
@@ -311,57 +331,124 @@ public final class MavenPublisher {
                         .toLowerCase(Locale.ROOT);
             } else {
                 Optional<InputStream> raw = transport.fetchStream(repoBase.resolve(relPath), credential);
-                if (raw.isEmpty()) return Presence.ABSENT;
+                if (raw.isEmpty()) return false;
                 remote = Checksums.sha1Hex(raw.get());
             }
         } catch (IOException unreadable) {
-            return Presence.ABSENT;
+            return false;
         }
-        if (remote.equals(local)) return Presence.SAME;
+        if (remote.equals(local)) return true;
         throw new IOException(repoBase.resolve(relPath)
                 + " is already published with other bytes; raise the version in jk.toml"
                 + "\n  repository sha1 " + remote + ", this build " + local);
     }
 
-    /**
-     * Write the artifact-level {@code maven-metadata.xml}.
-     *
-     * <p>Without it a resolver cannot enumerate an artifact's versions, so a published artifact is
-     * unresolvable from a plain {@code file://} / static HTTP / object-store repo — even for an
-     * exact version pin. Real repository managers synthesize this server-side, which is why the gap
-     * only shows up on the simple targets jk advertises ({@code s3://}, {@code gs://}, {@code
-     * file://}).
-     *
-     * <p>Existing remote versions are merged rather than clobbered, so publishing 0.2.0 after 0.1.0
-     * leaves both listed.
-     *
-     * <p><b>Absent and unreadable are opposite cases.</b> {@link RepoTransport#fetch} already models
-     * "no metadata yet" as an empty {@link java.util.Optional} and throws only on a genuine
-     * transport failure, so a thrown read means we do <em>not</em> know the existing version list —
-     * and a document that arrives but will not parse says exactly the same thing. Writing one
-     * anyway would erase every previously published version from a repository that cannot
-     * un-publish, so either failure aborts the publish <em>before</em> the destructive PUT. The
-     * per-version artifacts are already uploaded and immutable, so re-running publish is the whole
-     * recovery.
-     */
     private void publishMetadata(Project project, String groupPath, Map<String, Integer> results, long[] bytes)
             throws IOException, InterruptedException {
         String relPath = groupPath + "/" + project.name() + "/maven-metadata.xml";
         URI uri = repoBase.resolve(relPath);
-        MavenMetadata existing;
-        try {
-            existing = transport
-                    .fetch(uri, credential)
-                    .map(body -> MavenMetadata.parse(body, project.group(), project.name()))
-                    .orElseGet(() -> MavenMetadata.empty(project.group(), project.name()));
-        } catch (IOException | IllegalArgumentException e) {
-            throw new IOException(
-                    "could not read " + uri + ": " + e.getMessage()
-                            + "\n  left it unchanged; re-run publish to add " + project.version()
-                            + " to the version list",
-                    e);
+        if (transport instanceof ObjectStoreTransport store) {
+            for (int attempt = 0; attempt <= METADATA_RETRIES; attempt++) {
+                Optional<Revision> previous = store.readRevision(uri, credential);
+                byte[] body = mergeVersions(project, uri, previous.map(Revision::body));
+                if (putMetadataRevision(store, relPath, body, previous, results, bytes)) {
+                    publishMetadataChecksums(store, relPath, results, bytes);
+                    return;
+                }
+                if (attempt < METADATA_RETRIES) backoff(attempt);
+            }
+            throw concurrentMetadata(relPath);
         }
-        putWithChecksums(relPath, existing.withVersion(project.version()).render(), "application/xml", results, bytes);
+
+        Optional<byte[]> previous;
+        try {
+            previous = transport.fetch(uri, credential);
+        } catch (IOException e) {
+            throw metadataReadFailure(project, uri, e);
+        }
+        putWithChecksums(relPath, mergeVersions(project, uri, previous), "application/xml", results, bytes);
+    }
+
+    private static byte[] mergeVersions(Project project, URI uri, Optional<byte[]> previous) throws IOException {
+        try {
+            return previous.map(body -> MavenMetadata.parse(body, project.group(), project.name()))
+                    .orElseGet(() -> MavenMetadata.empty(project.group(), project.name()))
+                    .withVersion(project.version())
+                    .render();
+        } catch (IllegalArgumentException e) {
+            throw metadataReadFailure(project, uri, e);
+        }
+    }
+
+    private static IOException metadataReadFailure(Project project, URI uri, Exception cause) {
+        return new IOException(
+                "could not read " + uri + ": " + cause.getMessage() + "\n  left it unchanged; re-run publish to add "
+                        + project.version() + " to the version list",
+                cause);
+    }
+
+    private boolean putMetadataRevision(
+            ObjectStoreTransport store,
+            String path,
+            byte[] body,
+            Optional<Revision> previous,
+            Map<String, Integer> results,
+            long[] bytes)
+            throws IOException, InterruptedException {
+        URI uri = repoBase.resolve(path);
+        int status = store.putRevision(uri, body, "application/xml", credential, previous);
+        if (revisionChanged(status, previous)) return false;
+        record(path, uri, status, body.length, results, bytes);
+        return true;
+    }
+
+    private static boolean revisionChanged(int status, Optional<Revision> previous) {
+        return status == 412 || status == 409 || (status == 404 && previous.isPresent());
+    }
+
+    /** Repair checksums from the current metadata if another publisher advances it mid-write. */
+    private void publishMetadataChecksums(
+            ObjectStoreTransport store, String path, Map<String, Integer> results, long[] bytes)
+            throws IOException, InterruptedException {
+        URI uri = repoBase.resolve(path);
+        for (int attempt = 0; attempt <= METADATA_RETRIES; attempt++) {
+            Revision current = metadataRevision(store, uri);
+            boolean stable = true;
+            for (String[] sidecar : sidecars(Checksums.of(current.body()))) {
+                String sidePath = path + sidecar[0];
+                URI sideUri = repoBase.resolve(sidePath);
+                byte[] body = sidecar[1].getBytes(StandardCharsets.US_ASCII);
+                Optional<Revision> previous = store.readRevision(sideUri, credential);
+                if (previous.isPresent() && Arrays.equals(previous.get().body(), body)) continue;
+                if (!current.validator().equals(metadataRevision(store, uri).validator())) {
+                    stable = false;
+                    break;
+                }
+                int status = store.putRevision(sideUri, body, "text/plain", credential, previous);
+                if (revisionChanged(status, previous)) {
+                    stable = false;
+                    break;
+                }
+                record(sidePath, sideUri, status, body.length, results, bytes);
+            }
+            if (stable
+                    && current.validator().equals(metadataRevision(store, uri).validator())) return;
+            if (attempt < METADATA_RETRIES) backoff(attempt);
+        }
+        throw concurrentMetadata(path);
+    }
+
+    private Revision metadataRevision(ObjectStoreTransport store, URI uri) throws IOException, InterruptedException {
+        return store.readRevision(uri, credential).orElseThrow(() -> new IOException(uri + ": missing metadata"));
+    }
+
+    private IOException concurrentMetadata(String path) {
+        return new IOException(repoBase.resolve(path) + ": concurrent updates; re-run publish");
+    }
+
+    private static void backoff(int attempt) throws InterruptedException {
+        long delay = 10L << attempt;
+        Thread.sleep(ThreadLocalRandom.current().nextLong(delay, 2 * delay));
     }
 
     /**
@@ -401,7 +488,12 @@ public final class MavenPublisher {
             throws IOException, InterruptedException {
         Optional<byte[]> held = bodyThere ? readable(relPath) : Optional.empty();
         if (held.isPresent()) {
-            putMissingChecksums(relPath, Checksums.of(held.get()), results, bytes);
+            Checksums.Set sums = Checksums.of(held.get());
+            if (transport instanceof ObjectStoreTransport) {
+                putChecksums(relPath, sums, results, bytes);
+            } else {
+                putMissingChecksums(relPath, sums, results, bytes);
+            }
         } else {
             putWithChecksums(
                     relPath, signer.sign(), contentType(relPath.substring(relPath.lastIndexOf('.'))), results, bytes);
@@ -441,7 +533,7 @@ public final class MavenPublisher {
     }
 
     /** As {@link #putWithChecksums}, the body streamed from {@code file} whose digests are {@code sums}. */
-    private void putFileWithChecksums(
+    private boolean putFileWithChecksums(
             String relPath,
             Path file,
             Checksums.Set sums,
@@ -450,8 +542,17 @@ public final class MavenPublisher {
             long[] bytes)
             throws IOException, InterruptedException {
         URI uri = repoBase.resolve(relPath);
-        record(relPath, uri, transport.putFile(uri, file, contentType, credential), Files.size(file), results, bytes);
+        int status = transport.putFile(uri, file, contentType, credential);
+        boolean there = status == 412 && transport instanceof ObjectStoreTransport;
+        if (there) {
+            try (InputStream local = Files.newInputStream(file)) {
+                requireSameBytes(uri, local);
+            }
+        } else {
+            record(relPath, uri, status, Files.size(file), results, bytes);
+        }
         putChecksums(relPath, sums, results, bytes);
+        return there;
     }
 
     private void putChecksums(String relPath, Checksums.Set sums, Map<String, Integer> results, long[] bytes)
@@ -464,16 +565,39 @@ public final class MavenPublisher {
     private void put(String relPath, byte[] body, String contentType, Map<String, Integer> out, long[] bytes)
             throws IOException, InterruptedException {
         URI uri = repoBase.resolve(relPath);
-        record(relPath, uri, transport.put(uri, body, contentType, credential), body.length, out, bytes);
+        int status = transport.put(uri, body, contentType, credential);
+        if (status == 412 && transport instanceof ObjectStoreTransport) {
+            try (InputStream local = new ByteArrayInputStream(body)) {
+                requireSameBytes(uri, local);
+            }
+        } else {
+            record(relPath, uri, status, body.length, out, bytes);
+        }
     }
 
-    /**
-     * Note one upload's status and size, and throw when it failed. The transport carries the offline
-     * guard, auth header, and retry policy. The guard is real inside this worker because
-     * Publisher.run installs the spec's offline decision onto the worker JVM's session before
-     * anything reaches here; Publisher.publish also refuses up front, so this is the backstop, not
-     * the only check.
-     */
+    private void requireSameBytes(URI uri, InputStream local) throws IOException, InterruptedException {
+        try (InputStream held = transport
+                .fetchStream(uri, credential)
+                .orElseThrow(() -> new IOException(uri + ": missing after write conflict"))) {
+            byte[] expected = new byte[64 * 1024];
+            byte[] actual = new byte[expected.length];
+            int count;
+            do {
+                count = local.readNBytes(expected, 0, expected.length);
+                if (held.readNBytes(actual, 0, actual.length) != count
+                        || !Arrays.equals(expected, 0, count, actual, 0, count)) {
+                    throw new PublishedBytesConflict(uri);
+                }
+            } while (count == expected.length);
+        }
+    }
+
+    private static final class PublishedBytesConflict extends IOException {
+        PublishedBytesConflict(URI uri) {
+            super(uri + " is already published with other bytes; raise the version in jk.toml");
+        }
+    }
+
     private static void record(String relPath, URI uri, int status, long size, Map<String, Integer> out, long[] bytes)
             throws IOException {
         out.put(relPath, status);

@@ -13,18 +13,31 @@ import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 
 /**
- * AWS SigV4 signing ({@code Authorization: AWS4-HMAC-SHA256}) over JDK crypto — used by {@link
- * S3Transport} for S3-compatible stores.
+ * HMAC Signature Version 4 for Amazon S3 and Google Cloud Storage.
  */
 public final class SigV4Signer {
 
-    private static final String ALGORITHM = "AWS4-HMAC-SHA256";
+    enum Dialect {
+        AWS("AWS4", "aws4_request", "x-amz-"),
+        GOOGLE("GOOG4", "goog4_request", "x-goog-");
+
+        private final String keyPrefix;
+        private final String requestType;
+        final String headerPrefix;
+
+        Dialect(String keyPrefix, String requestType, String headerPrefix) {
+            this.keyPrefix = keyPrefix;
+            this.requestType = requestType;
+            this.headerPrefix = headerPrefix;
+        }
+    }
 
     private SigV4Signer() {}
 
     /**
      * Compute the {@code Authorization} header value for a request.
      *
+     * @param dialect signing algorithm and credential scope
      * @param method HTTP method (GET, PUT, …)
      * @param uri full request URI (host taken from it; path/query signed)
      * @param signedHeaders headers to include in the signature — MUST contain {@code host}; callers
@@ -38,7 +51,8 @@ public final class SigV4Signer {
      * @param service e.g. {@code s3}
      * @param amzDate ISO basic timestamp {@code yyyyMMdd'T'HHmmss'Z'}
      */
-    public static String authorization(
+    static String authorization(
+            Dialect dialect,
             String method,
             URI uri,
             Map<String, String> signedHeaders,
@@ -72,8 +86,9 @@ public final class SigV4Signer {
                 + payloadHashHex;
 
         String dateStamp = amzDate.substring(0, 8);
-        String scope = dateStamp + "/" + region + "/" + service + "/aws4_request";
-        String stringToSign = ALGORITHM
+        String scope = dateStamp + "/" + region + "/" + service + "/" + dialect.requestType;
+        String algorithm = dialect.keyPrefix + "-HMAC-SHA256";
+        String stringToSign = algorithm
                 + "\n"
                 + amzDate
                 + "\n"
@@ -81,10 +96,10 @@ public final class SigV4Signer {
                 + "\n"
                 + sha256Hex(canonicalRequest.getBytes(StandardCharsets.UTF_8));
 
-        byte[] signingKey = signingKey(secretKey, dateStamp, region, service);
+        byte[] signingKey = signingKey(dialect, secretKey, dateStamp, region, service);
         String signature = Hashing.hex(hmac(signingKey, stringToSign.getBytes(StandardCharsets.UTF_8)));
 
-        return ALGORITHM
+        return algorithm
                 + " Credential="
                 + accessKeyId
                 + "/"
@@ -133,12 +148,14 @@ public final class SigV4Signer {
         return Hashing.sha256Hex(data);
     }
 
-    private static byte[] signingKey(String secretKey, String dateStamp, String region, String service) {
-        byte[] kDate =
-                hmac(("AWS4" + secretKey).getBytes(StandardCharsets.UTF_8), dateStamp.getBytes(StandardCharsets.UTF_8));
+    private static byte[] signingKey(
+            Dialect dialect, String secretKey, String dateStamp, String region, String service) {
+        byte[] kDate = hmac(
+                (dialect.keyPrefix + secretKey).getBytes(StandardCharsets.UTF_8),
+                dateStamp.getBytes(StandardCharsets.UTF_8));
         byte[] kRegion = hmac(kDate, region.getBytes(StandardCharsets.UTF_8));
         byte[] kService = hmac(kRegion, service.getBytes(StandardCharsets.UTF_8));
-        return hmac(kService, "aws4_request".getBytes(StandardCharsets.UTF_8));
+        return hmac(kService, dialect.requestType.getBytes(StandardCharsets.UTF_8));
     }
 
     private static byte[] hmac(byte[] key, byte[] data) {
