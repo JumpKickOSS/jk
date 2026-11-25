@@ -90,7 +90,7 @@ class RepoGroupTest {
     }
 
     @Test
-    void a_pinned_fetch_that_matches_the_memo_is_served_from_it(@TempDir Path tmp) throws Exception {
+    void a_pinned_fetch_reuses_the_verified_store_file(@TempDir Path tmp) throws Exception {
         Coordinate coord = Coordinate.of("com.example", "lib", "1.0");
         Path repoDir = tmp.resolve("repo");
         Path jar = repoDir.resolve(MavenLayout.artifactPath(coord));
@@ -108,6 +108,7 @@ class RepoGroupTest {
         Optional<RepoGroup.RepoFetched> warm = group.tryFetchArtifact(coord);
         Optional<RepoGroup.RepoFetched> pinned = group.tryFetchArtifact(coord, Hashing.sha256Hex(bytes));
         assertThat(pinned).isPresent();
-        assertThat(pinned.get()).isSameAs(warm.orElseThrow());
+        assertThat(pinned.orElseThrow().fetched().cachePath())
+                .isEqualTo(warm.orElseThrow().fetched().cachePath());
     }
 }

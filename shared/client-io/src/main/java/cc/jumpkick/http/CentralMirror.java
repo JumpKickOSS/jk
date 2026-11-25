@@ -238,11 +238,6 @@ public final class CentralMirror {
         return at != null && !at.plus(MISS_MEMORY).isBefore(Clock.SYSTEM.instant());
     }
 
-    /** True when {@code uri} is a Maven Central request, using the canonical host. */
-    public static boolean isCentral(URI uri) {
-        return uri != null && CENTRAL_HOST.equalsIgnoreCase(uri.getHost());
-    }
-
     /**
      * True when {@code status} and {@code headers} are Cloudflare blocking the requesting host: a 403
      * whose {@code Server} is {@code cloudflare} or that carries {@code cf-mitigated}. A 403 from

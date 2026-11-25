@@ -68,6 +68,11 @@ public record RepositorySpec(
     public static final RepositorySpec MAVEN_CENTRAL =
             releasesOnly(new RepositorySpec(CENTRAL, URI.create("https://repo.maven.apache.org/maven2/")));
 
+    /** True for either host that serves Maven Central directly. */
+    public static boolean isCentralHost(@Nullable String host) {
+        return MAVEN_CENTRAL.url().getHost().equalsIgnoreCase(host) || "repo1.maven.org".equalsIgnoreCase(host);
+    }
+
     /**
      * Synthetic first-party install store under {@code repos/jk-local/} (workers, {@code jk
      * install}). Not a remote — reserved in {@code [repositories]}; lockfile file-deps use the bare

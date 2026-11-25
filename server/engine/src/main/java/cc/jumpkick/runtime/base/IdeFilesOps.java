@@ -48,14 +48,7 @@ public final class IdeFilesOps {
      * the SDK registrar writes under ({@code null}: the host's real IDE config directories).
      */
     public static Result generate(
-            Path startDir,
-            Path cache,
-            @Nullable Path jdksDir,
-            @Nullable Path ideConfigDir,
-            Set<IdeTarget> targets,
-            boolean preview,
-            ProvidedJars provided) {
-        IdeWireModel wire = IdeOps.ideModel(startDir, cache, jdksDir, true, provided);
+            IdeWireModel wire, @Nullable Path ideConfigDir, Set<IdeTarget> targets, boolean preview) {
         if (wire.error() != null) return Result.error(wire.error());
         try {
             IdeModel model = IdeModel.fromWire(wire, ideConfigDir);

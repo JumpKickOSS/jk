@@ -376,7 +376,7 @@ public final class WorkspaceMerge {
      * layout is asked with either way ({@link RepositorySpec#normalizedUrl}) — because a reactor's
      * POMs spell the same repository several ways.
      */
-    static List<RepositorySpec> joinRepositories(JkBuild root, Collection<JkBuild> modules) {
+    public static List<RepositorySpec> joinRepositories(JkBuild root, Collection<JkBuild> modules) {
         Map<String, RepositorySpec> byId = new LinkedHashMap<>();
         Map<String, String> declaredIn = new HashMap<>();
         String rootCoord = coordinate(root);

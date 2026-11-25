@@ -316,7 +316,13 @@ public final class RepoGroupBuilder {
             bindings.add(List.copyOf(bound));
         }
         maybeWarnMultiRepoWithoutBindings(asked, bindings);
-        return new RepoGroup(repos, exclusiveGroups, routedGroups).withBlocked(blocked);
+        Set<String> builtIns = new LinkedHashSet<>();
+        for (RepositorySpec spec : defaultRemoteRepos()) {
+            if (!byName.containsKey(spec.name())) builtIns.add(spec.name());
+        }
+        return new RepoGroup(repos, exclusiveGroups, routedGroups)
+                .withBlocked(blocked)
+                .withBuiltIns(builtIns);
     }
 
     /**

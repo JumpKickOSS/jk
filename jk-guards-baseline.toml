@@ -1724,7 +1724,7 @@ reason = "the runtime packages as the coupling guard first measured them"
 
 [runtime-static-holder-fan-in]
 [runtime-static-holder-fan-in.populations]
-"server/engine" = { classes = 290, edges = 1062 }
+"server/engine" = { classes = 315, edges = 1155 }
 [[runtime-static-holder-fan-in.entries]]
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.BuildGraph"
@@ -1753,7 +1753,7 @@ reason = "the runtime packages as the coupling guard first measured them"
 [[runtime-static-holder-fan-in.entries]]
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.RepoGroupBuilder"
-value  = 27
+value  = 26
 reason = "the runtime packages as the coupling guard first measured them"
 [[runtime-static-holder-fan-in.entries]]
 in     = "server/engine"

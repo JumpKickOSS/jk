@@ -6,8 +6,25 @@ an engine that overbooks worker leases cautiously: more free memory kept, a lowe
 Linux a pressure reading required. Inside a container the free memory is the container's own
 limit less its working set — see [Engine](engine.md#worker-memory).
 
+## Caching in CI
+
+Cache the artifact store by the committed lockfile's hash. A fresh runner that
+restores a complete store for that lock can build without asking Maven Central
+for its locked dependencies.
+
 ```yaml
-- uses: actions/cache@v4
+- uses: actions/cache@v6
+  with:
+    path: ~/.jk/store
+    key: jk-store-${{ runner.os }}-${{ hashFiles('jk-lock.toml') }}
+- run: jk build
+```
+
+Include the action cache and learned worker heaps if the job also needs to
+reuse build outputs and test results.
+
+```yaml
+- uses: actions/cache@v6
   with:
     path: |
       ~/.jk/cache

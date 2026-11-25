@@ -48,8 +48,8 @@ public final class IdeTool implements McpTool {
         Path root = PathUtil.resolveUserPath(in.requiredDir());
         String kind = kind(in.str("kind"));
         boolean preview = in.flag("preview");
-        IdeFilesOps.Result result = IdeFilesOps.generate(
-                root, JkDirs.cache(), null, null, targets(kind), preview, IdeModels.providedJars());
+        IdeFilesOps.Result result =
+                IdeFilesOps.generate(IdeModels.hosted(root, JkDirs.cache(), null, true), null, targets(kind), preview);
 
         Map<String, Object> m = new LinkedHashMap<>();
         if (result.error() != null) {

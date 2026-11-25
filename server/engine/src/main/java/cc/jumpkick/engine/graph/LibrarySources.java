@@ -3,11 +3,15 @@ package cc.jumpkick.engine.graph;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.StampedMemo;
+import cc.jumpkick.config.UserConfigParseException;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.repo.ArtifactLocator;
 import cc.jumpkick.resolver.CacheSync;
+import cc.jumpkick.runtime.LockPipeline;
+import cc.jumpkick.runtime.RepoGroupBuilder;
+import cc.jumpkick.runtime.workspace.SyncPlans;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -108,20 +112,29 @@ final class LibrarySources {
     }
 
     /**
-     * {@code row}'s sources jar, fetched from the repository the lock took it from when this machine
-     * holds none; {@code null} when that repository publishes none or cannot be reached. A repository
-     * that answered it has none is not asked again for an hour.
+     * Fetch the row's sources jar on demand. An unpinned sources jar missing from its
+     * repository is remembered for an hour.
      */
-    static @Nullable Path fetch(Cas cas, boolean m2, Lockfile locked, Lockfile.Artifact row, ArtifactLocator locator) {
+    static @Nullable Path fetch(
+            Path root, Cas cas, boolean m2, Lockfile locked, Lockfile.Artifact row, ArtifactLocator locator) {
         return UNPUBLISHED
-                .get(row.source() + "\t" + row.displayCoord(), Boolean.TRUE, () -> sync(cas, m2, locked, row, locator))
+                .get(
+                        row.source() + "\t" + row.displayCoord(),
+                        Boolean.TRUE,
+                        () -> sync(root, cas, m2, locked, row, locator))
                 .sources();
     }
 
-    private static Fetched sync(Cas cas, boolean m2, Lockfile locked, Lockfile.Artifact row, ArtifactLocator locator) {
+    private static Fetched sync(
+            Path root, Cas cas, boolean m2, Lockfile locked, Lockfile.Artifact row, ArtifactLocator locator) {
         AtomicBoolean none = new AtomicBoolean();
         try {
+            var project = SyncPlans.parseBuildIfPresent(root);
+            var repos = project == null
+                    ? RepoGroupBuilder.buildDefault(cas)
+                    : LockPipeline.repositoriesForLock(project, root, null, cas);
             new CacheSync(cas, new Http(), m2)
+                    .withRepositories(repos)
                     .syncSources(locked.withArtifacts(List.of(row)), new CacheSync.ProgressObserver() {
                         @Override
                         public void skipped(Lockfile.Artifact pkg) {
@@ -136,6 +149,8 @@ final class LibrarySources {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             return new Fetched(null, false);
+        } catch (UserConfigParseException invalid) {
+            throw invalid;
         } catch (IOException | RuntimeException unreachable) {
             Log.debug("graph: no sources for " + row.displayCoord(), unreachable);
             return new Fetched(null, false);

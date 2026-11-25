@@ -4,7 +4,6 @@ package cc.jumpkick.runtime.workspace;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.compat.NodeProvisioning;
-import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.UserConfigParseException;
@@ -34,6 +33,7 @@ import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.BuildForks;
 import cc.jumpkick.runtime.JdkInstallNotice;
+import cc.jumpkick.runtime.LockPipeline;
 import cc.jumpkick.runtime.PlannerNodeSetup;
 import cc.jumpkick.runtime.PluginBuild;
 import cc.jumpkick.runtime.RepoGroupBuilder;
@@ -113,7 +113,7 @@ public final class SyncPlans {
                 .addTask(ensureJdkStep(dir, jdksDir, allowJdkInstall))
                 .addTask(ensureNodeStep())
                 .addTask(syncCasStep(dir, cache, repoUrl, preScanDenominator, label, totalFetched, totalUpToDate))
-                .addTask(syncSourcesStep(sources))
+                .addTask(syncSourcesStep(dir, repoUrl, sources))
                 .addTask(syncPluginsStep(dir, cache, repoUrl))
                 .addTask(syncToolsStep(dir))
                 .addTask(syncForksStep(dir))
@@ -196,9 +196,7 @@ public final class SyncPlans {
                     ctx.label("fetch deps");
 
                     Cas cas = JkStores.storeCas();
-                    Http http = new Http();
                     JkBuild build = ctx.get(BUILD).orElse(null);
-                    boolean mirrorToM2 = mirrorsToM2(lock, build);
                     var observer = new CacheSync.ProgressObserver() {
                         @Override
                         public void fetched(Lockfile.Artifact pkg) {
@@ -225,11 +223,7 @@ public final class SyncPlans {
                         }
                     };
                     boolean refresh = SessionContext.current().config().forceOr(false);
-                    CacheSync sync = new CacheSync(cas, http, mirrorToM2);
-                    if (build != null) {
-                        sync.withRepositories(RepoGroupBuilder.buildFor(build, repoUrl, cas, BuildEnv.forModule(dir)));
-                    }
-                    var report = sync.sync(lock, observer, refresh);
+                    var report = cacheSync(dir, repoUrl, lock, build, cas).sync(lock, observer, refresh);
                     ctx.put(CAS_REPORT, report);
                     if (report.hasErrors()) {
                         throw new RuntimeException("dep fetch had errors");
@@ -272,7 +266,7 @@ public final class SyncPlans {
                     Cas cas = JkStores.storeCas();
                     JkBuild build = ctx.get(BUILD).orElse(null);
                     if (build == null) build = JkBuildParser.parse(ManifestPaths.manifestIn(dir));
-                    RepoGroup repos = RepoGroupBuilder.buildFor(build, repoUrl, cas);
+                    RepoGroup repos = LockPipeline.repositoriesForLock(build, dir, repoUrl, cas);
                     syncPluginEntries(ctx, dir, build, pluginEntries, repos, cas);
                     // Extract the fetched jars' manifests so the very next parse validates
                     // the plugins' tables (and applies their contributions).
@@ -428,23 +422,9 @@ public final class SyncPlans {
                 continue;
             }
             try {
-                var r = repos.tryFetchArtifact(coord, hex);
+                var r = LockPipeline.fetchLocked(
+                        repos, coord, hex, pe.source(), cas, build.project().m2integration(), dir);
                 if (r.isPresent()) {
-                    // Pin is law: these bytes become worker code under the pinned hash, and
-                    // the CAS put below names the file by it without hashing it again. The
-                    // fetch layer's digest is the file's (MavenRepo.Fetched): a store copy is
-                    // served only once it verifies as the pin, so a digest that is not the pin
-                    // means the remote itself serves different bytes than the lock pins.
-                    String got = r.get().fetched().sha256();
-                    if (got == null || !got.equalsIgnoreCase(hex)) {
-                        ctx.error(
-                                "plugin",
-                                pe.coordinate() + ":" + pe.version() + ": repository sends sha256 " + shortSha(got)
-                                        + ", the lock pins " + shortSha(hex)
-                                        + "; if it was republished, run jk lock -F");
-                        ctx.progress(1);
-                        continue;
-                    }
                     cas.putFile(r.get().fetched().cachePath(), hex);
                     // Worker classpath needs the sibling POM next to the jar.
                     if (pack == null) ensureSiblingPom(ctx, repos, coord);
@@ -460,7 +440,7 @@ public final class SyncPlans {
     }
 
     /** {@code --sources}: every Maven row's {@code -sources.jar}, for the editor; a library that publishes none is skipped. */
-    private static Task syncSourcesStep(boolean sources) {
+    private static Task syncSourcesStep(Path dir, @Nullable URI repoUrl, boolean sources) {
         return Task.builder(TaskNames.SYNC_SOURCES)
                 .kind(TaskKind.IO)
                 .requires(TaskNames.PARSE_LOCK)
@@ -499,12 +479,21 @@ public final class SyncPlans {
                         }
                     };
                     try {
-                        new CacheSync(cas, new Http()).syncSources(lock, observer);
+                        cacheSync(dir, repoUrl, lock, ctx.get(BUILD).orElse(null), cas)
+                                .syncSources(lock, observer);
                     } catch (Exception e) {
                         ctx.warn("sources", "sources sync failed: " + e.getMessage());
                     }
                 })
                 .build();
+    }
+
+    private static CacheSync cacheSync(Path dir, @Nullable URI repoUrl, Lockfile lock, @Nullable JkBuild build, Cas cas)
+            throws IOException {
+        RepoGroup repos = build == null
+                ? RepoGroupBuilder.buildDefault(repoUrl, cas)
+                : LockPipeline.repositoriesForLock(build, dir, repoUrl, cas);
+        return new CacheSync(cas, new Http(), mirrorsToM2(lock, build)).withRepositories(repos);
     }
 
     /**

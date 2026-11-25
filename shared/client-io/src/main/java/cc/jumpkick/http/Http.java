@@ -1031,9 +1031,7 @@ public final class Http {
     private <T> HttpResponse<T> send(
             HttpRequest request, HttpResponse.BodyHandler<T> handler, @Nullable BodyDrain<T> drain)
             throws IOException, InterruptedException {
-        checkDenied(request.uri());
-        checkAddress(request.uri());
-        HttpResponse<T> response = client.send(request, handler);
+        HttpResponse<T> response = sendToHost(request, handler);
         for (int hops = 0; Redirects.followed(response.statusCode()); hops++) {
             URI target = Redirects.target(request.uri(), response);
             if (drain != null) drain.handle(response);
@@ -1043,9 +1041,7 @@ public final class Http {
             if (refused != null) throw new RedirectRefusedException(refused);
             request = Redirects.hop(reissue(request, Objects.requireNonNull(target)), request, response.statusCode())
                     .build();
-            checkDenied(request.uri());
-            checkAddress(request.uri());
-            response = client.send(request, handler);
+            response = sendToHost(request, handler);
         }
         int status = response.statusCode();
         if (status >= 300 && status < 400 && status != 304) {
@@ -1054,6 +1050,16 @@ public final class Http {
                     + " is a redirect this client does not follow");
         }
         return response;
+    }
+
+    private <T> HttpResponse<T> sendToHost(HttpRequest request, HttpResponse.BodyHandler<T> handler)
+            throws IOException, InterruptedException {
+        URI uri = request.uri();
+        checkDenied(uri);
+        checkAddress(uri);
+        if (RepositorySpec.isCentralHost(uri.getHost()))
+            SessionContext.current().io().centralRequest();
+        return client.send(request, handler);
     }
 
     /**

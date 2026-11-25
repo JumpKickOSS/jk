@@ -33,8 +33,10 @@ class GuardPackFetchTest {
         Path store = Files.createDirectories(tmp.resolve("store"));
         List<String> asked = new ArrayList<>();
 
-        List<String> fetched = GuardPackFetch.fetchMissing(root, store, (c, sha) -> {
-            assertThat(sha).as("the fetch is pinned to the lock's digest").isEqualTo(SHA);
+        List<String> fetched = GuardPackFetch.fetchMissing(root, store, (c, pin) -> {
+            assertThat(pin.sha256Hex())
+                    .as("the fetch is pinned to the lock's digest")
+                    .isEqualTo(SHA);
             asked.add(c.gav());
             shelve(store, c);
             return true;
@@ -42,7 +44,7 @@ class GuardPackFetchTest {
 
         assertThat(fetched).containsExactly(PACK.gav());
         assertThat(GuardPacks.ensure(root, store)).isEmpty();
-        assertThat(GuardPackFetch.fetchMissing(root, store, (c, sha) -> {
+        assertThat(GuardPackFetch.fetchMissing(root, store, (c, pin) -> {
                     asked.add(c.gav());
                     return true;
                 }))
@@ -56,7 +58,7 @@ class GuardPackFetchTest {
         Path root = project(tmp, true);
         Path store = Files.createDirectories(tmp.resolve("store"));
 
-        assertThat(GuardPackFetch.fetchMissing(root, store, (c, sha) -> false)).isEmpty();
+        assertThat(GuardPackFetch.fetchMissing(root, store, (c, pin) -> false)).isEmpty();
 
         assertThat(GuardPacks.ensure(root, store)).singleElement().asString().contains(PACK.gav());
     }
@@ -66,7 +68,7 @@ class GuardPackFetchTest {
         Path root = project(tmp, false);
         Path store = Files.createDirectories(tmp.resolve("store"));
 
-        assertThat(GuardPackFetch.fetchMissing(root, store, (c, sha) -> {
+        assertThat(GuardPackFetch.fetchMissing(root, store, (c, pin) -> {
                     throw new AssertionError("fetched an unpinned pack");
                 }))
                 .isEmpty();
@@ -82,7 +84,7 @@ class GuardPackFetchTest {
         Path store = Files.createDirectories(tmp.resolve("store"));
         shelve(store, PACK);
 
-        assertThat(GuardPackFetch.fetchMissing(root, store, (c, sha) -> {
+        assertThat(GuardPackFetch.fetchMissing(root, store, (c, pin) -> {
                     throw new AssertionError("fetched a pack the lock pins no bytes for");
                 }))
                 .isEmpty();

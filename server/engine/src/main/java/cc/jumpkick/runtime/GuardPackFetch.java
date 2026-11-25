@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import cc.jumpkick.cache.Cas;
+import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.guard.rules.GuardPacks;
 import cc.jumpkick.host.JkDirs;
@@ -13,6 +15,7 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -30,7 +33,7 @@ final class GuardPackFetch {
     /** Downloads one pack with the digest {@code sha256} into the store; false when no repository has it. */
     @FunctionalInterface
     interface Fetcher {
-        boolean fetch(GuardPacks.Coordinate pack, String sha256) throws IOException, InterruptedException;
+        boolean fetch(GuardPacks.Coordinate pack, Lockfile.PluginEntry pin) throws IOException, InterruptedException;
     }
 
     /** Fetch every pack {@code root} pins that is neither unpacked nor in {@code store}. */
@@ -54,7 +57,7 @@ final class GuardPackFetch {
                 Lockfile.PluginEntry pin = GuardPacks.pin(root, c);
                 String hex = pin == null ? null : pin.sha256Hex();
                 if (pin == null || hex == null || present(root, c, pin, store)) continue;
-                if (fetcher.fetch(c, hex)) fetched.add(c.gav());
+                if (fetcher.fetch(c, pin)) fetched.add(c.gav());
             } catch (IOException e) {
                 Log.debug("rule pack " + c.gav() + ": fetch failed", e);
             } catch (InterruptedException e) {
@@ -76,19 +79,31 @@ final class GuardPackFetch {
     private static final class RepoFetcher implements Fetcher {
         private final Path root;
         private @Nullable RepoGroup repos;
+        private boolean m2integration;
 
         RepoFetcher(Path root) {
             this.root = root;
         }
 
         @Override
-        public boolean fetch(GuardPacks.Coordinate pack, String sha256) throws IOException, InterruptedException {
+        public boolean fetch(GuardPacks.Coordinate pack, Lockfile.PluginEntry pin)
+                throws IOException, InterruptedException {
+            Cas cas = JkStores.storeCas();
             RepoGroup group = repos;
             if (group == null) {
-                group = RepoGroupBuilder.buildFor(JkBuildParser.parse(ManifestPaths.manifestIn(root)));
+                var build = JkBuildParser.parse(ManifestPaths.manifestIn(root));
+                m2integration = build.project().m2integration();
+                group = LockPipeline.repositoriesForLock(build, root, null, cas);
                 repos = group;
             }
-            return group.tryFetchArtifact(Coordinate.of(pack.group(), pack.artifact(), pack.version()), sha256)
+            return LockPipeline.fetchLocked(
+                            group,
+                            Coordinate.of(pack.group(), pack.artifact(), pack.version()),
+                            Objects.requireNonNull(pin.sha256Hex()),
+                            pin.source(),
+                            cas,
+                            m2integration,
+                            root)
                     .isPresent();
         }
     }

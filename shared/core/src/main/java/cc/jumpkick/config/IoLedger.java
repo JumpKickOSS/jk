@@ -6,11 +6,15 @@ import cc.jumpkick.task.TransferBoard;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Set;
+import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.atomic.LongAdder;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Per-run byte accounting: how much this invocation moved over the network ({@code remote}) and
+ * Per-run I/O accounting: how much this invocation moved over the network ({@code remote}) and
  * through the local build cache ({@code local}), split by direction.
  *
  * <p><strong>Direction.</strong> {@code up} is bytes leaving the workspace — published to a remote
@@ -30,7 +34,7 @@ import org.jspecify.annotations.Nullable;
  * request a session gets its own detached ledger and the numbers are simply discarded. Deep code meters through the
  * session it already has: {@code SessionContext.current().io().remoteDown(size)}.
  *
- * <p>Thread-safe: four {@link LongAdder}s under concurrent module builds and parallel fetches.
+ * <p>Thread-safe across concurrent module builds and parallel fetches.
  * Best-effort by design — a failed {@code stat} contributes 0 rather than failing the build.
  *
  * <p>Not metered: git-source clones (the {@code git} subprocess owns that transfer) and the engine's
@@ -46,6 +50,31 @@ public final class IoLedger {
     private final LongAdder cacheDown = new LongAdder();
     private final LongAdder cacheRecordsNotStored = new LongAdder();
     private final LongAdder cacheBlobsNotStored = new LongAdder();
+
+    private final LongAdder centralRequests = new LongAdder();
+    private final LongAdder alternateLockedFiles = new LongAdder();
+    private final Set<String> lockNotes = new ConcurrentSkipListSet<>();
+
+    public void centralRequest() {
+        centralRequests.increment();
+    }
+
+    public void alternateLockedFile() {
+        alternateLockedFiles.increment();
+    }
+
+    public void lockNote(String message) {
+        lockNotes.add(message);
+    }
+
+    public List<String> lockNotes() {
+        List<String> notes = new ArrayList<>(lockNotes);
+        long requests = centralRequests.sum();
+        if (requests > 0) notes.add(requests + " requests to Maven Central");
+        long alternate = alternateLockedFiles.sum();
+        if (alternate > 0) notes.add(alternate + " locked files fetched from another repository");
+        return List.copyOf(notes);
+    }
 
     /** This run's downloads as they stream, for a live display; see {@link TransferBoard}. */
     private final TransferBoard transfers;

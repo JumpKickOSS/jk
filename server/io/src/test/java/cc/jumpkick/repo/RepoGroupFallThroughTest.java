@@ -192,6 +192,26 @@ class RepoGroupFallThroughTest {
     }
 
     @Test
+    void a_pinned_fetch_tries_another_repository_when_the_source_drops_the_connection(@TempDir Path tmp)
+            throws Exception {
+        Cas cas = new Cas(tmp.resolve("cas"));
+        Coordinate coord = Coordinate.of("com.example", "lib", "1.0");
+        Path good = tmp.resolve("good");
+        Path jar = good.resolve(MavenLayout.artifactPath(coord));
+        byte[] bytes = "locked bytes".getBytes(StandardCharsets.UTF_8);
+        Files.createDirectories(jar.getParent());
+        Files.write(jar, bytes);
+        try (DeadEndpoint dead = DeadEndpoint.open()) {
+            MavenRepo source = remote(dead, cas);
+            RepoGroup group = new RepoGroup(List.of(new MavenRepo("good", good.toUri(), new Http(), cas)));
+            var fetched = group.tryFetchPinned(coord, Hashing.sha256Hex(bytes), source, () -> false)
+                    .orElseThrow();
+            assertThat(fetched.repo()).isSameAs(source);
+            assertThat(fetched.fetched().cachePath()).hasBinaryContent(bytes);
+        }
+    }
+
+    @Test
     void when_no_repository_is_known_to_hold_the_pom_a_remotes_failure_is_still_the_answer(@TempDir Path tmp)
             throws Exception {
         Path good = tmp.resolve("good");

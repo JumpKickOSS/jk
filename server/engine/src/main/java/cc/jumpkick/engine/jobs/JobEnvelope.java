@@ -16,6 +16,7 @@ import cc.jumpkick.engine.api.InFlightBuilds;
 import cc.jumpkick.engine.api.JsonOut;
 import cc.jumpkick.engine.api.WireWriter;
 import cc.jumpkick.engine.journal.BuildAccumulator;
+import cc.jumpkick.engine.journal.JkResultsLockNotesSection;
 import cc.jumpkick.engine.journal.RunSource;
 import cc.jumpkick.engine.listen.EventRedaction;
 import cc.jumpkick.engine.listen.SseFrame;
@@ -779,6 +780,9 @@ public final class JobEnvelope {
                 if (thrown != null) thrown.addEscapedThrow(t);
                 reportDeadJob(eventRequestId, eventDir, writer, t);
             }
+            for (String note : io.lockNotes()) {
+                publishWarning(eventRequestId, eventDir, writer, JkResultsLockNotesSection.CODE, note, true);
+            }
             a.bodyDone().set(true);
             // The one success law: the body's verdict is stamped here, nowhere else. A
             // declined verdict leaves the journal to the accumulated facts.
@@ -881,11 +885,15 @@ public final class JobEnvelope {
      * thread noticed — the wire writer, the SSE hub and the accumulator all take concurrent writers.
      */
     private void publishNotice(long id, String dir, @Nullable BufferedWriter writer, String code, String message) {
+        publishWarning(id, dir, writer, RunNotices.CODE, message, !BuildAccumulator.INPUTS_CHANGED.equals(code));
+    }
+
+    private void publishWarning(
+            long id, String dir, @Nullable BufferedWriter writer, String recordCode, String message, boolean record) {
         String redacted = EventRedaction.redactEnv(dir, message);
         String safe = redacted == null ? message : redacted;
         BuildAccumulator acc = host.accumulatorOf(id);
-        if (acc != null && !BuildAccumulator.INPUTS_CHANGED.equals(code))
-            acc.addWarning(null, null, RunNotices.CODE, safe);
+        if (acc != null && record) acc.addWarning(null, null, recordCode, safe);
         if (writer != null) WireWriter.sendQuiet(writer, ProtoEvents.warn(dir, "", RunNotices.CODE, safe));
         host.publishEvent(
                 "warn",
@@ -895,7 +903,7 @@ public final class JobEnvelope {
                         .put("jid", id)
                         .put("dir", dir)
                         .put("step", "")
-                        .put("code", RunNotices.CODE)
+                        .put("code", recordCode)
                         .put("message", safe));
     }
 
