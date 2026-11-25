@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.repo;
 
+import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.credential.RepoCredential;
+import cc.jumpkick.http.Http;
+import cc.jumpkick.lock.RepoSource;
 import cc.jumpkick.m2.MavenSettings;
 import cc.jumpkick.model.MirrorOf;
 import cc.jumpkick.model.RepositoryMirror;
@@ -33,6 +36,25 @@ import org.jspecify.annotations.Nullable;
 public final class RepoMirrors {
 
     private RepoMirrors() {}
+
+    /** Reuse the configured source, or reconstruct a source recorded by the lock. */
+    public static MavenRepo lockedSource(
+            String source,
+            List<MavenRepo> configured,
+            Http http,
+            Cas cas,
+            RepoCredentialResolver creds,
+            boolean m2integration) {
+        RepoSource parsed = RepoSource.parse(source);
+        String name = parsed.name();
+        if (name == null) throw new IllegalArgumentException("invalid repository source: " + source);
+        URI url = URI.create(parsed.url());
+        for (MavenRepo repo : configured) {
+            if (repo.name().equals(name) && repo.baseUrl().equals(url)) return repo;
+        }
+        var cred = creds.resolve(name, url, Optional.empty());
+        return apply(new MavenRepo(name, url, http, cas, cred, m2integration));
+    }
 
     /** The mirror that stands in for a repository, whichever file declared it. */
     private record Chosen(

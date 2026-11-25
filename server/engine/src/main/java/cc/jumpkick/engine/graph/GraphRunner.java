@@ -1042,7 +1042,7 @@ public final class GraphRunner {
                     && !SessionContext.current().offline()) {
                 Lockfile.Artifact wanted = LibrarySources.declaring(jars, read);
                 if (wanted != null && sources.get(wanted) == null) {
-                    sources.put(wanted, LibrarySources.fetch(cas, m2, locked, wanted, locator));
+                    sources.put(wanted, LibrarySources.fetch(root, cas, m2, locked, wanted, locator));
                 }
             }
             jars.forEach((artifact, jar) -> {

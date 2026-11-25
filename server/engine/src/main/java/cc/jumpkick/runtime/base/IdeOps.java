@@ -11,7 +11,6 @@ import cc.jumpkick.config.WorkspaceLocator;
 import cc.jumpkick.discovery.ToolHealth;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.Log;
-import cc.jumpkick.http.Http;
 import cc.jumpkick.jdk.IntellijJdkDir;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkEnsure;
@@ -61,7 +60,7 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>The dependency <em>sync</em> is not here: {@code jk ide} runs one hosted {@code jk sync}
  * (client-rendered) before requesting the model; a caller with no hosted sync in front of it (a
- * test, the MCP tool, the HTTP model) passes {@code fetchMissing} for the in-line fetch of jars and
+ * test, the MCP tool, the HTTP model) passes a {@link DependencySync} for the in-line fetch of jars and
  * their sources, so both paths build the same model.
  *
  * <p>{@link StableJdkPointer#ensure} writes under the jk home — the engine and client share it, so
@@ -71,17 +70,30 @@ public final class IdeOps {
 
     private IdeOps() {}
 
+    @FunctionalInterface
+    public interface DependencySync {
+        CacheSync forProject(Path root, JkBuild project, Cas cas) throws IOException;
+    }
+
     public static IdeWireModel ideModel(
-            Path startDir, Path cache, @Nullable Path jdksDir, boolean fetchMissing, ProvidedJars provided) {
+            Path startDir,
+            Path cache,
+            @Nullable Path jdksDir,
+            @Nullable DependencySync dependencySync,
+            ProvidedJars provided) {
         try {
-            return build(startDir, cache, jdksDir, fetchMissing, provided);
+            return build(startDir, cache, jdksDir, dependencySync, provided);
         } catch (IOException | RuntimeException e) {
             return IdeWireModel.error(Errors.text(e));
         }
     }
 
     private static IdeWireModel build(
-            Path startDir, Path cache, @Nullable Path jdksDir, boolean fetchMissing, ProvidedJars provided)
+            Path startDir,
+            Path cache,
+            @Nullable Path jdksDir,
+            @Nullable DependencySync dependencySync,
+            ProvidedJars provided)
             throws IOException {
         Cas cas = JkStores.storeCas();
 
@@ -99,10 +111,11 @@ public final class IdeOps {
         if (modules.isEmpty()) allModules.put(wsRoot, rootBuild);
         else allModules.putAll(modules);
 
+        CacheSync sync = dependencySync == null ? null : dependencySync.forProject(wsRoot, rootBuild, cas);
         // Library definitions across every module: name → (fileName, jar, sources).
         Map<String, String[]> allLibs = new LinkedHashMap<>(); // libName → {fileName, jar, sources|null}
         for (Map.Entry<Path, JkBuild> me : allModules.entrySet()) {
-            collectLibDefs(me.getKey(), me.getValue(), modules, cas, allLibs, fetchMissing);
+            collectLibDefs(me.getKey(), me.getValue(), modules, cas, allLibs, sync);
         }
         // A battery's provided jars are libraries too, provided scope (test scope when only the
         // test classpaths carry them), one per jar as the lock's rows are.
@@ -484,7 +497,7 @@ public final class IdeOps {
 
     /**
      * Collect all external (non-workspace) dep library definitions for one module as {@code
-     * libName → {fileName, jarPath, sourcesPath|null}}. {@code fetchMissing} fetches missing JARs
+     * libName → {fileName, jarPath, sourcesPath|null}}. {@code sync} fetches missing JARs
      * in-line, for callers with no hosted workspace sync in front of them.
      */
     private static void collectLibDefs(
@@ -493,15 +506,14 @@ public final class IdeOps {
             Map<Path, JkBuild> modules,
             Cas cas,
             Map<String, String[]> allLibs,
-            boolean fetchMissing)
+            @Nullable CacheSync sync)
             throws IOException {
         Path lockFile = LockPaths.lockFile(moduleDir);
         if (!Files.exists(lockFile)) return;
         Lockfile lock = MemberRows.view(LockfileReader.read(lockFile), lockFile, moduleDir);
 
-        if (fetchMissing) {
+        if (sync != null) {
             try {
-                CacheSync sync = new CacheSync(cas, new Http());
                 sync.sync(lock, CacheSync.ProgressObserver.NOOP);
                 // Source attachments too, as jk ide's pre-model sync -s fetches them.
                 sync.syncSources(lock, CacheSync.ProgressObserver.NOOP);

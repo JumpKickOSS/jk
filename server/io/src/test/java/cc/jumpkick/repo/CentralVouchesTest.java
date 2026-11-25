@@ -5,6 +5,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.config.IoLedger;
+import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.host.Hashing;
@@ -104,6 +106,28 @@ class CentralVouchesTest {
         assertThat(board().artifactsLanded() - landedBefore)
                 .as("the lock rejected the mirror's bytes: one file landed, Central's")
                 .isEqualTo(1);
+    }
+
+    @Test
+    void only_requests_sent_to_centrals_own_hosts_are_counted(@TempDir Path tmp) throws Exception {
+        IoLedger io = new IoLedger();
+        try (RoutedCentral routed = new RoutedCentral(tmp)) {
+            Http http = ProxiedCentral.http(routed.server.getAddress(), routed.window, tmp.resolve("cooldown"));
+            SessionContext.where(Session.defaults().withIo(io), () -> {
+                assertThat(http.get(URI.create(ROUTED_MIRROR + JAR)).statusCode())
+                        .isEqualTo(404);
+                assertThat(io.lockNotes()).isEmpty();
+                assertThat(http.get(URI.create("http://repo.maven.apache.org/maven2/" + JAR))
+                                .statusCode())
+                        .isEqualTo(404);
+                assertThat(http.get(URI.create("http://repo1.maven.org/maven2/" + JAR))
+                                .statusCode())
+                        .isEqualTo(404);
+                return null;
+            });
+            assertThat(routed.requests).hasSize(3);
+        }
+        assertThat(io.lockNotes()).containsExactly("2 requests to Maven Central");
     }
 
     /** Central's .sha1 is read the same way for either source, so a failed read is not a reason to ask Central for the body. */

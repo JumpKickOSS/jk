@@ -4,11 +4,15 @@ package cc.jumpkick.resolver;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.config.IoLedger;
+import cc.jumpkick.config.Session;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.m2.MavenSettings;
+import cc.jumpkick.repo.ArtifactLocator;
 import cc.jumpkick.repo.DownloadSlots;
 import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.RepoArtifactStore;
@@ -27,6 +31,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
@@ -495,6 +500,68 @@ class CacheSyncTest {
                 .as("the repository is never asked at its own URL")
                 .isEmpty();
         assertThat(report.fetched()).isEqualTo(1);
+    }
+
+    @Test
+    void a_pinned_file_tries_the_source_then_configured_repositories_then_built_ins(@TempDir Path tempDir)
+            throws Exception {
+        String path = "/com/foo/leaf/1.0/leaf-1.0.jar";
+        byte[] jar = "locked file".getBytes(StandardCharsets.UTF_8);
+        String pin = Hashing.sha256Hex(jar);
+        http.serve("/wrong" + path, "different file");
+        http.served().put("/built-in" + path, jar);
+        http.served().put("/unused" + path, jar);
+
+        Cas cas = new Cas(tempDir.resolve("cache"));
+        MavenRepo source = repository("source", cas);
+        RepoGroup repos = new RepoGroup(
+                        List.of(
+                                repository("built-in", cas),
+                                repository("wrong", cas),
+                                source,
+                                repository("unused", cas)),
+                        List.of(List.of(), List.of("com.foo")))
+                .withBuiltIns(Set.of("built-in", "unused"));
+        var row = new Lockfile.Artifact(
+                "com.foo:leaf", "1.0", "source+" + source.baseUrl(), "sha256:" + pin, null, List.of());
+        CacheSync sync = new CacheSync(cas, Http.failFast(), false).withRepositories(repos);
+        IoLedger io = new IoLedger();
+        var report = SessionContext.where(Session.defaults().withIo(io), () -> sync.sync(lockOf(row)));
+
+        assertThat(report.errors()).isEmpty();
+        assertThat(report.fetched()).isEqualTo(1);
+        assertThat(http.requested()).containsExactly("/source" + path, "/wrong" + path, "/built-in" + path);
+        assertThat(new ArtifactLocator(cas.root()).locate(row))
+                .hasValueSatisfying(file -> assertThat(file).hasBinaryContent(jar));
+        assertThat(io.lockNotes())
+                .containsExactly(
+                        "com.foo:leaf:1.0 from wrong: checksum mismatch",
+                        "1 locked files fetched from another repository");
+        assertThat(sync.sync(lockOf(row)).upToDate()).isEqualTo(1);
+        assertThat(http.requested()).hasSize(3);
+    }
+
+    @Test
+    void unpinned_sources_are_requested_only_from_their_source(@TempDir Path tempDir) throws Exception {
+        String path = "/com/foo/leaf/1.0/leaf-1.0-sources.jar";
+        http.serve("/other" + path, "other sources");
+        Cas cas = new Cas(tempDir.resolve("cache"));
+        MavenRepo source = repository("source", cas);
+        var row = new Lockfile.Artifact(
+                "com.foo:leaf", "1.0", "source+" + source.baseUrl(), "sha256:aa", null, List.of());
+        CacheSync sync = new CacheSync(cas, Http.failFast(), false)
+                .withRepositories(new RepoGroup(List.of(repository("other", cas), source)));
+
+        assertThat(sync.syncSources(lockOf(row), CacheSync.ProgressObserver.NOOP))
+                .isZero();
+        assertThat(http.requested())
+                .contains("/source" + path)
+                .allMatch(request -> request.startsWith("/source" + path));
+    }
+
+    private MavenRepo repository(String name, Cas cas) {
+        return new MavenRepo(
+                name, http.base().resolve("/" + name + "/"), Http.failFast(), cas, RepoCredential.ANONYMOUS, false);
     }
 
     private CacheSync newSync(Path tempDir, boolean mirrorToM2) {

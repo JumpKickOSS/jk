@@ -52,7 +52,7 @@ class ProjectModelJsonTest {
                 """);
 
         Map<String, Object> body =
-                ProjectModelJson.of(IdeOps.ideModel(ws, tmp.resolve("cache"), jdks, false, ProvidedJars.NONE));
+                ProjectModelJson.of(IdeOps.ideModel(ws, tmp.resolve("cache"), jdks, null, ProvidedJars.NONE));
 
         assertThat(body).doesNotContainKey("error").containsEntry("workspace", true);
         List<?> projects = (List<?>) Objects.requireNonNull(body.get("projects"));
@@ -99,7 +99,7 @@ class ProjectModelJsonTest {
     @Test
     void a_folder_without_jk_toml_is_an_error(@TempDir Path tmp) {
         Map<String, Object> body =
-                ProjectModelJson.of(IdeOps.ideModel(tmp, tmp.resolve("cache"), tmp, false, ProvidedJars.NONE));
+                ProjectModelJson.of(IdeOps.ideModel(tmp, tmp.resolve("cache"), tmp, null, ProvidedJars.NONE));
         assertThat(body).containsOnlyKeys("error");
         assertThat(String.valueOf(body.get("error"))).contains("no jk.toml");
     }

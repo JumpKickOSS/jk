@@ -33,7 +33,7 @@ import org.jspecify.annotations.Nullable;
 /**
  * Ordered {@link MavenRepo}s with try-each / first-hit-wins semantics, plus two kinds of group
  * binding. An <em>exclusive</em> binding is a dependency-confusion defense: a claimed group is
- * discovered and fetched from the claiming repos alone, and their miss is the answer. A
+ * discovered and fetched without a pin from the claiming repos alone. A
  * <em>routed</em> binding is a precedence rule between public repositories that share a
  * namespace: the claiming repos are asked first and alone when they answer, and every other
  * repository is asked when they all miss ({@code com.google.firebase} holds the Firebase Android
@@ -165,6 +165,8 @@ public final class RepoGroup {
      */
     private final int localInstalls;
 
+    private final Set<String> builtIns;
+
     public RepoGroup(List<MavenRepo> repos) {
         this(repos, null);
     }
@@ -194,7 +196,7 @@ public final class RepoGroup {
             @Nullable List<List<String>> exclusiveGroups,
             @Nullable List<List<String>> routedGroups,
             int priorityCount) {
-        this(repos, exclusiveGroups, routedGroups, priorityCount, List.of(), 0);
+        this(repos, exclusiveGroups, routedGroups, priorityCount, List.of(), 0, Set.of());
     }
 
     private RepoGroup(
@@ -203,7 +205,8 @@ public final class RepoGroup {
             @Nullable List<List<String>> routedGroups,
             int priorityCount,
             List<RepositorySpec> blocked,
-            int localInstalls) {
+            int localInstalls,
+            Set<String> builtIns) {
         Objects.requireNonNull(repos, "repos");
         if (repos.isEmpty()) {
             throw new IllegalArgumentException("RepoGroup must contain at least one repo");
@@ -214,6 +217,7 @@ public final class RepoGroup {
         this.priorityCount = priorityCount;
         this.blocked = List.copyOf(blocked);
         this.localInstalls = localInstalls;
+        this.builtIns = Set.copyOf(builtIns);
         // Bindings and the priority prefix change which repos are eligible for a coordinate, so
         // they are part of the question every memo answers — two groups with the same URLs but
         // different bindings must never share memo entries. Each repository is named by the URL its
@@ -240,7 +244,12 @@ public final class RepoGroup {
     /** This group with {@code blocked} as the repositories it knows of and never asks. */
     public RepoGroup withBlocked(List<RepositorySpec> blocked) {
         if (blocked.isEmpty()) return this;
-        return new RepoGroup(repos, exclusiveGroups, routedGroups, priorityCount, blocked, localInstalls);
+        return new RepoGroup(repos, exclusiveGroups, routedGroups, priorityCount, blocked, localInstalls, builtIns);
+    }
+
+    /** Automatically supplied repositories, tried after configured repositories for pinned files. */
+    public RepoGroup withBuiltIns(Set<String> names) {
+        return new RepoGroup(repos, exclusiveGroups, routedGroups, priorityCount, blocked, localInstalls, names);
     }
 
     /** The repositories declared {@code blocked = true}: never asked, named when nothing else serves a package. */
@@ -265,7 +274,8 @@ public final class RepoGroup {
                 padded(leading.size(), routedGroups, 0),
                 leading.size() + priorityCount,
                 blocked,
-                localInstalls);
+                localInstalls,
+                builtIns);
     }
 
     /**
@@ -287,7 +297,8 @@ public final class RepoGroup {
                 padded(0, routedGroups.subList(0, declared), trailing.size() + localInstalls),
                 priorityCount,
                 blocked,
-                localInstalls);
+                localInstalls,
+                builtIns);
     }
 
     /**
@@ -315,7 +326,8 @@ public final class RepoGroup {
                 padded(0, routedGroups, added.size()),
                 priorityCount,
                 blocked,
-                localInstalls + added.size());
+                localInstalls + added.size(),
+                builtIns);
     }
 
     /** True when {@code repo} is one of this machine's installs ({@link #withLocalInstalls}). */
@@ -459,13 +471,7 @@ public final class RepoGroup {
      */
     public Optional<RepoFetched> tryFetchArtifact(Coordinate coord, BooleanSupplier abort)
             throws IOException, InterruptedException {
-        String key = repoIdentity
-                + "|"
-                + coord.toGav()
-                + "\0"
-                + (coord.type() == null ? "" : coord.type())
-                + "\0"
-                + (coord.classifier() == null ? "" : coord.classifier());
+        String key = artifactKey(coord);
         boolean memo = memoizes(coord);
         RepoFetched hit = memo ? liveHit(ARTIFACT_HIT_CACHE, key) : null;
         if (hit != null) return Optional.of(hit);
@@ -493,47 +499,91 @@ public final class RepoGroup {
         return pom == null ? null : pom.repo();
     }
 
-    /**
-     * As {@link #tryFetchArtifact(Coordinate)} but pinned: a warm hit — process memo, local
-     * mirror — is used only when its digest matches {@code expectedSha256Hex}, and the network
-     * leg goes through {@link MavenRepo#fetchArtifact(Coordinate, String, BooleanSupplier)}, which
-     * evicts a stale mirror copy instead of returning it and refuses bytes whose digest is not the
-     * pin with a {@link MavenRepo.ChecksumMismatchException} before anything places them. A present
-     * answer therefore always carries the pinned digest; a remote that serves different bytes than
-     * the lock pins is an exception here, never a value.
-     */
-    public Optional<RepoFetched> tryFetchArtifact(Coordinate coord, @Nullable String expectedSha256Hex)
-            throws IOException, InterruptedException {
-        if (expectedSha256Hex == null) return tryFetchArtifact(coord);
-        String key = repoIdentity
+    private String artifactKey(Coordinate coord) {
+        return repoIdentity
                 + "|"
                 + coord.toGav()
                 + "\0"
                 + (coord.type() == null ? "" : coord.type())
                 + "\0"
                 + (coord.classifier() == null ? "" : coord.classifier());
-        RepoFetched hit = liveHit(ARTIFACT_HIT_CACHE, key);
-        if (hit != null) {
-            if (expectedSha256Hex.equalsIgnoreCase(hit.fetched().sha256())) return Optional.of(hit);
-            // The memo describes bytes the pin no longer accepts. The re-fetch below evicts and
-            // replaces the file at the same path, and a memo left in place would then answer the
-            // next unpinned fetch with the old digest for the new bytes — which the lock records,
-            // and every later sync fails against.
-            ARTIFACT_HIT_CACHE.remove(key, hit);
+    }
+
+    /** Fetch an artifact under its SHA-256 pin, preferring the POM's repository when known. */
+    public Optional<RepoFetched> tryFetchArtifact(Coordinate coord, @Nullable String expectedSha256Hex)
+            throws IOException, InterruptedException {
+        if (expectedSha256Hex == null) return tryFetchArtifact(coord);
+        return tryFetchPinned(coord, expectedSha256Hex, null, NO_ABORT);
+    }
+
+    /** Fetch a pinned file from its recorded source first and store it under that source. */
+    public Optional<RepoFetched> tryFetchPinned(
+            Coordinate coord, String expectedSha256Hex, @Nullable MavenRepo source, BooleanSupplier abort)
+            throws IOException, InterruptedException {
+        Objects.requireNonNull(expectedSha256Hex, "sha256 pin");
+        String key = artifactKey(coord);
+        RepoFetched memo = ARTIFACT_HIT_CACHE.get(key);
+        if (memo != null && !expectedSha256Hex.equalsIgnoreCase(memo.fetched().sha256())) {
+            ARTIFACT_HIT_CACHE.remove(key, memo);
         }
-        Optional<RepoFetched> found = tryFetch(
-                coord,
-                (repo, c) -> repo.tryLocalArtifact(c, expectedSha256Hex, NO_ABORT),
-                (repo, c) -> repo.fetchArtifact(c, expectedSha256Hex, NO_ABORT),
-                NO_ABORT,
-                pomHolder(coord),
-                false);
-        if (found.isPresent() && memoizes(coord)) {
-            admit(ARTIFACT_HIT_CACHE, HIT_CACHE_MAX);
-            // put, not putIfAbsent: a pinned fetch is the authority on what is on disk now.
-            ARTIFACT_HIT_CACHE.put(key, found.get());
+
+        MavenRepo holder = source == null ? pomHolder(coord) : source;
+        List<MavenRepo> candidates = new ArrayList<>();
+        if (holder != null) candidates.add(holder);
+        for (boolean builtIn : List.of(false, true)) {
+            for (MavenRepo repo : repos) {
+                if (builtIns.contains(repo.name()) == builtIn
+                        && !isLocalInstall(repo)
+                        && repo.serves(coord.version())
+                        && (holder == null || !sameSource(holder, repo))) {
+                    candidates.add(repo);
+                }
+            }
         }
-        return found;
+
+        if (source == null) {
+            for (MavenRepo repo : repos.subList(repos.size() - localInstalls, repos.size())) {
+                if (holder == null || !sameSource(holder, repo)) candidates.add(repo);
+            }
+        }
+
+        FetchFanOut failures = new FetchFanOut(coord, source == null ? holder : null);
+        IOException mismatch = null;
+        for (MavenRepo repo : candidates) {
+            if (abort.getAsBoolean()) throw new MavenRepo.FetchAbortedException("fetch aborted for " + coord);
+            MavenRepo.Fetched fetched;
+            try {
+                fetched = RepoLegs.await(
+                        RepoLegs.legs(List.of(repo), r -> r.fetchArtifact(coord, expectedSha256Hex, abort))
+                                .getFirst()
+                                .future());
+            } catch (MavenRepo.ChecksumMismatchException wrongBytes) {
+                if (mismatch == null) mismatch = wrongBytes;
+                MavenRepo.notePinnedMismatch(coord, repo.name());
+                continue;
+            } catch (MavenRepo.ArtifactNotFoundException missing) {
+                failures.notFound(repo);
+                continue;
+            } catch (MavenRepo.FetchAbortedException | HeldOpen.Held stopped) {
+                throw stopped;
+            } catch (IOException transport) {
+                failures.failed(repo, transport);
+                continue;
+            }
+            if (source != null && repo != source) {
+                fetched = source.placePinnedFallback(coord, fetched, expectedSha256Hex);
+                SessionContext.current().io().alternateLockedFile();
+                return Optional.of(new RepoFetched(source, fetched));
+            }
+            return Optional.of(new RepoFetched(repo, fetched));
+        }
+        if (mismatch != null) throw mismatch;
+        failures.settle();
+        return Optional.empty();
+    }
+
+    private static boolean sameSource(MavenRepo a, MavenRepo b) {
+        return a.name().equals(b.name()) && a.baseUrl().equals(b.baseUrl());
     }
 
     /**
@@ -880,7 +930,7 @@ public final class RepoGroup {
      * @param holder the repository whose answer settles {@code coord} — the one that served its POM —
      *     or null when none is known, in which case every candidate's answer counts
      * @param resolve true on the resolve leg, where a repository nothing answers at stops the work;
-     *     false for pinned bytes, which fall through it
+     *     false on the artifact leg, where the POM holder settles a miss
      */
     private Optional<RepoFetched> tryFetch(
             Coordinate coord,
@@ -1019,8 +1069,7 @@ public final class RepoGroup {
                     // Nothing answers at this repository's address. On the resolve leg the next
                     // candidate is not asked: a lock computed without a configured repository is not
                     // the lock that was asked for, so the resolve stops here naming it — unless the
-                    // repository is passable, which is then a miss like a blocked one. Pinned bytes
-                    // still fall through — the lock's sha256 says what is accepted.
+                    // repository is passable, which is then a miss like a blocked one.
                     MavenRepo repo = wave.get(i);
                     if (resolve && repo.passedOver()) {
                         passOver(repo);
@@ -1032,9 +1081,6 @@ public final class RepoGroup {
                     // This machine's copy cannot be replaced; no other repository changes that.
                     throw held;
                 } catch (IOException transport) {
-                    // A failed remote falls through to the next candidate silently: the artifact that
-                    // arrives is still checked against the lock's sha256, so where it came from does
-                    // not change what is accepted. If nobody answers, the fan-out settles on the failure.
                     fanOut.failed(wave.get(i), transport);
                 }
             }

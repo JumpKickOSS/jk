@@ -243,7 +243,7 @@ unchecked for the lock to report.
 ## Exclusive groups (your internals)
 
 When you declare an **internal** repository next to a public one, bind *your* Maven
-namespaces so those coordinates are **never** fetched from other remotes:
+namespaces so the resolver only considers those repositories for new pins:
 
 ```toml
 [repositories.central]
@@ -259,8 +259,9 @@ groups = ["com.acme", "com.acme.*"]
 - **Unbound group** → general remotes in declared order; first repo advertising any
   version answers. Only when every general remote misses does JumpKick fall back to
   non-claiming specialists.
-- **Already locked** artifacts keep their lockfile source pin until you re-resolve that
-  line (`jk update`).
+- **Already locked** artifacts keep their recorded source and SHA-256 until you re-resolve
+  them. Exclusive `groups` bindings apply during resolution. A locked fetch can use any
+  configured or built-in repository that serves bytes matching the pin.
 - Multiple repositories **without** any `groups` → JumpKick **warns once** per lock (still
   resolves). Add exclusive bindings for internal namespaces.
 
@@ -339,15 +340,20 @@ declares:
 vendor = { url = "https://vendor.example/maven/", optional = true }
 ```
 
-A remote that accepts and then drops a request is that request's failure
-alone; the remaining repositories are still asked. Pinned bytes are another matter: a build
-whose lock names an unreachable repository still takes the artifact from any repository that
-serves the same sha256 — and pays the retry ladder once, not once per artifact: an address that
-answered nothing through a whole ladder is remembered for a minute, and every later request to
-it, from any repository entry or thread, is refused before it dials and falls through to the
-next repository at once. A forced session (`jk lock -F`, `jk sync -F`, `jk build -F`)
-forgets that memory on both its legs, so a repository that came back inside the minute is asked
-again at once.
+A remote that accepts and then drops a request is that request's failure alone. The
+remaining repositories are still asked.
+
+For a file locked to a SHA-256, JumpKick tries the recorded `source` first, through its
+configured mirror or Central's download mirror where applicable. On a miss, a
+transport failure, or a checksum mismatch, it tries the other configured repositories
+in resolve order, then the built-ins. It discards mismatched bytes with a lock note.
+Exclusive `groups` bindings apply to resolution. Any repository in the fetch order
+can serve bytes that match the pin. The lock still records the repository that vouched
+for the file, and the store keeps the file under that source for offline use.
+
+When a repository answers nothing through a whole retry ladder, JumpKick remembers
+its address for a minute and skips further attempts. A forced session
+(`jk lock -F`, `jk sync -F`, or `jk build -F`) forgets that memory.
 
 When a repository has opted out, the lock summary says so — `Resolved 42 dependencies ·
 2 unverified (allowed) · insecure (allowed): mirror` — so the count is visible on every lock

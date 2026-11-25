@@ -12,6 +12,7 @@ import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.JkM2Config;
 import cc.jumpkick.config.RunNotices;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.config.WorkspaceModules;
 import cc.jumpkick.engine.plugin.BuiltInPluginJars;
 import cc.jumpkick.groovy.GroovyResolver;
@@ -19,6 +20,7 @@ import cc.jumpkick.guard.rules.GuardPacks;
 import cc.jumpkick.guard.rules.GuardsPresence;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Log;
+import cc.jumpkick.http.Http;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkEnsure;
 import cc.jumpkick.jdk.JdkRegistry;
@@ -34,6 +36,7 @@ import cc.jumpkick.lock.LockRewriteGuard;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileModules;
 import cc.jumpkick.lock.LockfileReader;
+import cc.jumpkick.lock.RepoSource;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.JkBuild.NativeConfig;
@@ -44,6 +47,7 @@ import cc.jumpkick.model.PluginDeclaration;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.ToolchainSpec;
 import cc.jumpkick.model.VersionSelector;
+import cc.jumpkick.model.WorkspaceMerge;
 import cc.jumpkick.node.NodeCatalog;
 import cc.jumpkick.node.NodePlatform;
 import cc.jumpkick.node.NodeResolver;
@@ -57,7 +61,9 @@ import cc.jumpkick.repo.MavenMetadataCache;
 import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.RepoArtifactResolver;
 import cc.jumpkick.repo.RepoArtifactStore;
+import cc.jumpkick.repo.RepoCredentialResolver;
 import cc.jumpkick.repo.RepoGroup;
+import cc.jumpkick.repo.RepoMirrors;
 import cc.jumpkick.resolve.ResolveProfile;
 import cc.jumpkick.resolver.ConditionalDependencies;
 import cc.jumpkick.resolver.LanguageRuntimeInject;
@@ -996,6 +1002,37 @@ public final class LockPipeline {
         }
     }
 
+    /** The repository set used by the workspace lock, in declaration order. */
+    public static RepoGroup repositoriesForLock(JkBuild project, Path dir, @Nullable URI overrideUrl, Cas cas)
+            throws IOException {
+        if (overrideUrl == null && project.isWorkspaceRoot()) {
+            project = project.withRepositories(WorkspaceMerge.joinRepositories(
+                    project, WorkspaceLoader.loadModules(dir, project).values()));
+        }
+        return RepoGroupBuilder.buildFor(project, overrideUrl, cas, BuildEnv.forModule(dir));
+    }
+
+    /** Fetch a named lock source with the module's repository settings and store policy. */
+    public static Optional<RepoGroup.RepoFetched> fetchLocked(
+            RepoGroup repos,
+            Coordinate coord,
+            String sha256,
+            @Nullable String source,
+            Cas cas,
+            boolean m2integration,
+            Path dir)
+            throws IOException, InterruptedException {
+        if (source == null || RepoSource.parse(source).name() == null) return repos.tryFetchArtifact(coord, sha256);
+        MavenRepo origin = RepoMirrors.lockedSource(
+                source,
+                repos.repos(),
+                new Http(),
+                cas,
+                RepoCredentialResolver.withEnv(BuildEnv.forModule(dir)),
+                m2integration);
+        return repos.tryFetchPinned(coord, sha256, origin, () -> false);
+    }
+
     /**
      * The project's repositories that offline still reads, those on this machine's disk ({@link
      * MavenRepo#local}): a locked artifact the store lacks is fetched from one of them, under its
@@ -1022,7 +1059,15 @@ public final class LockPipeline {
                     any = repos.repos().stream().anyMatch(r -> r.local() && !built.isLocalInstall(r));
                     if (!any) return false;
                 }
-                return repos.tryFetchArtifact(pkg.coordinate(), sha256Hex).isPresent();
+                return fetchLocked(
+                                repos,
+                                pkg.coordinate(),
+                                sha256Hex,
+                                pkg.source(),
+                                cas,
+                                effective.project().m2integration(),
+                                lockDir)
+                        .isPresent();
             } catch (IOException | RuntimeException e) {
                 Log.debug("offline gate: no local repository serves " + pkg.name() + ":" + pkg.version(), e);
                 return false;

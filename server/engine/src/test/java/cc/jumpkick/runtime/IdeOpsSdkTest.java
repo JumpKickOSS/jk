@@ -58,7 +58,7 @@ class IdeOpsSdkTest {
                 jdk = { version = "21" }
                 """);
 
-        IdeWireModel model = IdeOps.ideModel(ws, tmp.resolve("cache"), jdks, false, ProvidedJars.NONE);
+        IdeWireModel model = IdeOps.ideModel(ws, tmp.resolve("cache"), jdks, null, ProvidedJars.NONE);
         assertThat(model.error()).isNull();
 
         int legacy = model.names().indexOf("legacy");
@@ -115,7 +115,7 @@ class IdeOpsSdkTest {
                 suggested-version = "25.0.1"
                 """);
 
-        IdeWireModel model = IdeOps.ideModel(ws, tmp.resolve("cache"), jdks, false, ProvidedJars.NONE);
+        IdeWireModel model = IdeOps.ideModel(ws, tmp.resolve("cache"), jdks, null, ProvidedJars.NONE);
         assertThat(model.error()).isNull();
         int b = model.names().indexOf("b");
         assertThat(model.sdkNames().get(b)).isEqualTo("jk-temurin-21");

@@ -888,6 +888,25 @@ public final class MavenRepo {
         }
     }
 
+    static void notePinnedMismatch(Coordinate coord, String repository) {
+        SessionContext.current().io().lockNote(coord + " from " + repository + ": checksum mismatch");
+    }
+
+    /** Store an alternate repository's bytes in the locked origin's tree. */
+    Fetched placePinnedFallback(Coordinate coord, Fetched fetched, String expectedSha256)
+            throws IOException, InterruptedException {
+        String relativePath = MavenLayout.artifactPath(coord);
+        try (var snapshot = MovingSnapshots.hold(coord, repoStore.root(), relativePath);
+                var write = StoreWriteGate.write()) {
+            Cas.Stored copy = cas.putFile(fetched.cachePath());
+            if (!copy.sha256().equalsIgnoreCase(expectedSha256)) {
+                throw new ChecksumMismatchException(coord + ": checksum changed during store copy");
+            }
+            Path placed = placeArtifact(coord, relativePath, copy.path(), copy.sha256());
+            return new Fetched(fetched.url(), placed, copy.sha256(), copy.size());
+        }
+    }
+
     /** One download of {@code uri}, from {@code primary} first when that is Central's mirror. */
     private DownloadLeg.Downloaded download(
             Coordinate coord,
@@ -909,10 +928,12 @@ public final class MavenRepo {
                 // preference from becoming a dependency.
                 if (primary.equals(uri)) throw e;
                 if (e instanceof ChecksumMismatchException) {
-                    // Central's releases do not change, so bytes that fail the check are the
-                    // mirror's fault; Central's copy is what the check is for.
-                    download.note(coord + " from " + name + ": the mirror's " + relativePath
-                            + " failed verification; downloaded from Maven Central instead");
+                    if (expectedSha256 == null) {
+                        download.note(coord + " from " + name + ": the mirror's " + relativePath
+                                + " failed verification; downloaded from Maven Central instead");
+                    } else {
+                        notePinnedMismatch(coord, primary.getHost());
+                    }
                 }
                 return download.run(coord, uri, relativePath, vouch, leg, expectedSha256, abort);
             }

@@ -722,6 +722,35 @@ class JobEnvelopeTest {
         host.awaitSettled();
     }
 
+    @Test
+    void repository_counts_are_reported_once_as_lock_notes(@TempDir Path dir) {
+        FakeEnvelopeHost host = new FakeEnvelopeHost();
+        host.accumulator = new BuildAccumulator("sync", dir.toString(), null, "cli");
+        JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS);
+        StringWriter out = new StringWriter();
+        ConnectedClient.submit(
+                env,
+                buildRequest(dir),
+                JobRequest.plan("sync", "jk-test-", (line, tok, w) -> {
+                    var io = Session.defaults().io();
+                    io.centralRequest();
+                    io.centralRequest();
+                    io.alternateLockedFile();
+                    return JobOutcome.ok();
+                }),
+                out);
+        assertThat(out.toString())
+                .contains(
+                        "\"code\":\"notice\"",
+                        "2 requests to Maven Central",
+                        "1 locked files fetched from another repository");
+        assertThat(host.accumulator.toRecord(0, false, 0, "sync", null).diagnostics())
+                .extracting(BuildRecord.Diag::code, BuildRecord.Diag::message)
+                .containsExactly(
+                        tuple("lock-note", "2 requests to Maven Central"),
+                        tuple("lock-note", "1 locked files fetched from another repository"));
+    }
+
     /**
      * The run-notice sink joins the request before the body runs and leaves in the finally — a
      * leaked sink would attribute a later run's notices to this request's stream.

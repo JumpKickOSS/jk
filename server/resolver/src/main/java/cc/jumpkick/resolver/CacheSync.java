@@ -8,7 +8,6 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.http.ConnectFaults;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.lock.Lockfile;
-import cc.jumpkick.lock.RepoSource;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.repo.ArtifactLocator;
 import cc.jumpkick.repo.DownloadSlots;
@@ -21,13 +20,11 @@ import cc.jumpkick.repo.RepoMirrors;
 import cc.jumpkick.run.JkThreads;
 import cc.jumpkick.task.TransferBoard;
 import java.io.IOException;
-import java.net.URI;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
@@ -79,14 +76,14 @@ public final class CacheSync {
     }
 
     /** The project's configured repositories, which a lock row's source is matched against first. */
-    private List<MavenRepo> configured = List.of();
+    private @Nullable RepoGroup configured;
 
     /**
      * Fetch each row through the project's own repository of the same name and URL when it has one,
      * so its mirror, credential, object-store settings and policy apply as they do to the resolve.
      */
     public CacheSync withRepositories(RepoGroup repos) {
-        this.configured = List.copyOf(repos.repos());
+        this.configured = repos;
         return this;
     }
 
@@ -345,14 +342,16 @@ public final class CacheSync {
         }
     }
 
-    private static FetchResult fetchSources(PendingFetch p, AtomicBoolean aborted) {
+    private FetchResult fetchSources(PendingFetch p, AtomicBoolean aborted) {
         Coordinate sourcesCoord =
                 new Coordinate(p.pkg.moduleGroup(), p.pkg.moduleArtifact(), p.pkg.version(), "sources", "jar");
         try {
-            // Pinned: the lock's sources checksum is the authority, as for the main artifact.
-            MavenRepo.Fetched f = p.repo.fetchArtifact(sourcesCoord, p.expectedHex, aborted::get);
-            if (p.expectedHex != null && !f.sha256().equals(p.expectedHex)) {
-                return FetchResult.failure(p.pkg.name() + " sources: checksum mismatch");
+            if (p.expectedHex == null) {
+                p.repo.fetchArtifact(sourcesCoord, aborted::get);
+            } else if (repositories(p.repo)
+                    .tryFetchPinned(sourcesCoord, p.expectedHex, p.repo, aborted::get)
+                    .isEmpty()) {
+                return FetchResult.failure(p.pkg.name() + " sources: not found in any repository");
             }
             return FetchResult.ok();
         } catch (MavenRepo.ArtifactNotFoundException e) {
@@ -420,23 +419,14 @@ public final class CacheSync {
         }
     }
 
-    private static FetchResult fetch(PendingFetch p, AtomicBoolean aborted) {
-        Coordinate coord = toCoord(p.pkg);
+    private FetchResult fetch(PendingFetch p, AtomicBoolean aborted) {
+        Coordinate coord = p.pkg.coordinate();
         try {
-            // Rate limit lives in MavenRepo.fetch (network leg only). Wrapping again deadlocks the
-            // non-reentrant HostRateLimiter once concurrent fetchers hold all permits.
-            // Pass the pin so a stale local-mirror copy that no longer matches (republished GAV +
-            // re-lock) is evicted and re-fetched, rather than dead-ending in a checksum mismatch that
-            // never touches the network.
-            MavenRepo.Fetched f = p.repo.fetchArtifact(coord, p.expectedHex, aborted::get);
-            if (!f.sha256().equals(p.expectedHex)) {
-                return FetchResult.failure(p.pkg.name()
-                        + " v"
-                        + p.pkg.version()
-                        + ": checksum mismatch — lock says "
-                        + p.expectedHex
-                        + ", got "
-                        + f.sha256());
+            String pin = Objects.requireNonNull(p.expectedHex);
+            if (repositories(p.repo)
+                    .tryFetchPinned(coord, pin, p.repo, aborted::get)
+                    .isEmpty()) {
+                return FetchResult.failure(coord + ": not found in any repository");
             }
             return FetchResult.ok();
         } catch (IOException e) {
@@ -457,34 +447,15 @@ public final class CacheSync {
                 + LocalInstallNotes.SEE;
     }
 
-    private MavenRepo repoFor(String source, Map<String, MavenRepo> cache) {
-        MavenRepo existing = cache.get(source);
-        if (existing != null) return existing;
-        RepoSource rs = RepoSource.parse(source);
-        String name = rs.name();
-        if (name == null) {
-            throw new IllegalArgumentException("lockfile package source must be '<name>+<url>', got: " + source);
-        }
-        URI url = URI.create(rs.url());
-        MavenRepo repo = null;
-        for (MavenRepo candidate : configured) {
-            if (candidate.name().equals(name) && candidate.baseUrl().equals(url)) {
-                repo = candidate;
-                break;
-            }
-        }
-        if (repo == null) {
-            // A repository a POM declared, or one the manifest no longer lists: still behind the
-            // mirror this machine routes it through, never asked at its own URL in the mirror's place.
-            var cred = creds.resolve(name, url, Optional.empty());
-            repo = RepoMirrors.apply(new MavenRepo(name, url, http, cas, cred, m2integration));
-        }
-        cache.put(source, repo);
-        return repo;
+    private RepoGroup repositories(MavenRepo source) {
+        return configured == null ? RepoGroup.of(source) : configured;
     }
 
-    private static Coordinate toCoord(Lockfile.Artifact pkg) {
-        return pkg.coordinate();
+    private MavenRepo repoFor(String source, Map<String, MavenRepo> cache) {
+        return cache.computeIfAbsent(
+                source,
+                key -> RepoMirrors.lockedSource(
+                        key, configured == null ? List.of() : configured.repos(), http, cas, creds, m2integration));
     }
 
     /** A package whose jar is missing on disk and needs to be fetched. */
