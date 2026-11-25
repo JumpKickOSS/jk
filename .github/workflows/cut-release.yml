@@ -9,8 +9,9 @@
 # AFTER the release (patch by default). A dirty tree, an existing tag, a -SNAPSHOT version or a
 # version the publish repository already holds is refused before anything is built.
 #
-# A push made with the job's GITHUB_TOKEN starts no workflow, so the last step dispatches CI on the
-# new tag explicitly.
+# main moves only through the merge queue, so the job pushes with the write deploy key the
+# `cut-release` environment holds (JK_RELEASE_PUSH_KEY), the one actor main's ruleset lets push. A
+# push made with that key starts workflows, so the tag push itself starts CI on the tag.
 
 name: Cut release
 
@@ -38,15 +39,14 @@ jobs:
     name: Tag the declared version and start the next
     runs-on: ubuntu-latest
     timeout-minutes: 150
-    permissions:
-      contents: write   # push the bump commit and the tag
-      actions: write    # start CI on the tag
+    environment: cut-release
     env:
       JK_HOME: ${{ github.workspace }}/../jk-home
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          ssh-key: ${{ secrets.JK_RELEASE_PUSH_KEY }}
 
       - uses: graalvm/setup-graalvm@d6eca2595046623d69d636041513c80abf745406 # v1.6.9
         with:
@@ -71,13 +71,3 @@ jobs:
         env:
           NEXT: ${{ inputs.next }}
         run: jk release "--${NEXT}" --skip-tests --push --no-ansi
-
-      # The version just released is the tag on the commit before the bump.
-      - name: Start CI on the release tag
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          tag="$(git describe --tags --abbrev=0 --match 'v[0-9]*' HEAD^)"
-          echo "released $tag"
-          gh workflow run ci.yml --ref "$tag"

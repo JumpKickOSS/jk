@@ -1,8 +1,8 @@
 # CD: build, sign and publish a release that CI has already passed. It re-runs no test.
 #
 # Trigger: the CI workflow (ci.yml) finishing green on a release tag vX.Y.Z, whether the tag push
-# started it or a dispatch on the tag did (the Cut release workflow dispatches it, since a push made
-# with GITHUB_TOKEN starts no workflow). A red CI run starts nothing. The tag is a request; the root
+# started it or a dispatch on the tag did (the Cut release workflow pushes the tag with a deploy key,
+# which starts CI). A red CI run starts nothing. The tag is a request; the root
 # jk.toml version at the tagged commit is the answer, and a request that differs from it fails before
 # anything is built (scripts/release-version.sh). The chain:
 #
