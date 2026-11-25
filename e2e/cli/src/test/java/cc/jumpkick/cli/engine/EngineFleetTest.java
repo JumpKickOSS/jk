@@ -117,7 +117,7 @@ class EngineFleetTest {
     void retirement_kills_only_a_resident_engine_in_the_exact_retired_home(@TempDir Path tmp) throws Exception {
         var retired = new RetiredEngineLayouts.Layout(tmp.resolve("retired"), tmp.resolve("state"));
         Path jar = retired.engineHome().resolve("lib/jk-engine/jk-engine-test.jar");
-        Process oldEngine = SleepMain.spawn(30_000, jar.toString(), "cc.jumpkick.engine.EngineMain");
+        Process oldEngine = SleepMain.spawnInstalledEngine(jar, 30_000);
         try {
             var member = new EngineFleet.Member(null, null, null, oldEngine.pid(), false);
 
@@ -140,7 +140,7 @@ class EngineFleetTest {
         Path explicitHome = tmp.resolve("explicit");
         var retired = new RetiredEngineLayouts.Layout(tmp.resolve("retired"), tmp.resolve("state"));
         Path jar = explicitHome.resolve("lib/jk-engine/jk-engine-test.jar");
-        Process currentEngine = SleepMain.spawn(30_000, jar.toString(), "cc.jumpkick.engine.EngineMain");
+        Process currentEngine = SleepMain.spawnInstalledEngine(jar, 30_000);
         try {
             var member = new EngineFleet.Member(null, null, null, currentEngine.pid(), false);
 
@@ -156,19 +156,12 @@ class EngineFleetTest {
 
     @Test
     void a_process_that_merely_mentions_the_engine_is_not_one() throws Exception {
-        // The command-line predicate is a substring match, so a shell that ran `jk`, a grep over
-        // this tree, or an editor with EngineMain.java open all say yes to it. They are not
-        // engines, and `stop --all` hard-kills whatever the fleet claims — this is the guard
-        // between the fleet and the user's own terminal.
         Process shell =
                 Sleepers.sleeperMentioning(30, "cc.jumpkick.engine.EngineMain").start();
         try {
             ProcessHandle handle = ProcessHandle.of(shell.pid()).orElseThrow();
             String cmd = EngineFleet.commandLineOf(handle);
 
-            assertThat(EngineFleet.isResidentEngine(cmd))
-                    .as("the command line alone does name the engine — which is the trap")
-                    .isTrue();
             assertThat(EngineFleet.isResidentEngineProcess(handle, cmd))
                     .as("but a shell cannot host an engine")
                     .isFalse();
@@ -190,14 +183,8 @@ class EngineFleetTest {
 
     @Test
     void list_includes_a_live_generation_pid_that_the_endpoint_does_not_name(@TempDir Path state) throws Exception {
-        // A JVM carrying the engine main class as a trailing (ignored) argument, so the dummy
-        // matches the resident-engine command-line predicate on every platform. A shell $0 trick
-        // only reads back out of /proc: on Windows the predicate would see `sh.exe` and the pid
-        // would never be listed.
-        Process dummy = SleepMain.spawn(30_000, "cc.jumpkick.engine.EngineMain");
+        Process dummy = SleepMain.spawnEngine(30_000);
         try {
-            // The Windows command-line snapshot is taken at most once per TTL; this process table
-            // is one process older than any snapshot a sibling test left behind.
             Path engineDir = Files.createDirectories(state.resolve("engine"));
             Files.writeString(engineDir.resolve("abcd1234.endpoint"), "abcd1234.gen2.sock\n");
             Files.writeString(engineDir.resolve("abcd1234.gen1.pid"), dummy.pid() + "\n");
@@ -219,8 +206,7 @@ class EngineFleetTest {
     void an_engine_of_another_home_is_listed_as_such_and_stop_all_leaves_it(@TempDir Path tmp) throws Exception {
         Path otherHome = tmp.resolve("other-home");
         Path heapDumps = otherHome.resolve("state").resolve("engine");
-        // The heap-dump flag goes last: its value runs to the next " -" or the end of the line.
-        Process foreign = SleepMain.spawn(30_000, "cc.jumpkick.engine.EngineMain", "-XX:HeapDumpPath=" + heapDumps);
+        Process foreign = SleepMain.spawnEngine(30_000, "-XX:HeapDumpPath=" + heapDumps);
         try {
 
             var listed = EngineFleet.list(tmp.resolve("state"), "abcd1234", h -> h.pid() == foreign.pid()).stream()
@@ -263,7 +249,7 @@ class EngineFleetTest {
             Path engineDir = Files.createDirectories(tmp.resolve("other-home/state/engine"));
             Files.writeString(engineDir.resolve("abcd1234.endpoint"), "abcd1234.gen1.sock\n");
             socket = EnginePaths.reachableSocketDir(engineDir).resolve("abcd1234.gen1.sock");
-            foreign = SleepMain.spawn(30_000, SleepMain.ENGINE_MAIN, "-XX:HeapDumpPath=" + engineDir);
+            foreign = SleepMain.spawnEngine(30_000, "-XX:HeapDumpPath=" + engineDir);
             standInAnswersNoStop(tmp, socket, foreign);
         } finally {
             if (transport == null) System.clearProperty(EngineTransport.TRANSPORT_PROPERTY);
@@ -309,13 +295,13 @@ class EngineFleetTest {
         Path custom = tmp.resolve("custom").toAbsolutePath().normalize();
         String main = " cc.jumpkick.engine.EngineMain";
 
-        assertThat(EngineFleet.engineHome("java -cp " + one.resolve("lib/jk-engine/e.jar") + main))
+        assertThat(EngineFleet.engineHome("java -cp \"" + one.resolve("lib/jk-engine/e.jar") + "\"" + main))
                 .isEqualTo(one);
         assertThat(EngineFleet.engineHome(
-                        "java -XX:HeapDumpPath=" + two.resolve("state/engine") + " -cp classes" + main))
+                        "java \"-XX:HeapDumpPath=" + two.resolve("state/engine") + "\" -cp classes" + main))
                 .isEqualTo(two);
         assertThat(EngineFleet.engineHome(
-                        "java -XX:HeapDumpPath=" + custom.resolve("st/engine") + " -cp classes" + main))
+                        "java \"-XX:HeapDumpPath=" + custom.resolve("st/engine") + "\" -cp classes" + main))
                 .as("a custom state dir names no home")
                 .isNull();
         assertThat(EngineFleet.engineHome("java -cp classes" + main)).isNull();

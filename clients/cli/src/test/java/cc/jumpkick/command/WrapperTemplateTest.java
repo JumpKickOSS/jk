@@ -979,10 +979,14 @@ class WrapperTemplateTest {
             var outReader = CompletableFuture.supplyAsync(() -> readAll(stdout));
             var errReader = CompletableFuture.supplyAsync(() -> readAll(stderr));
             if (!p.waitFor(120, TimeUnit.SECONDS)) {
-                List<ProcessHandle> descendants = p.descendants().toList();
+                ProcessHandle wrapper = p.toHandle();
+                List<ProcessHandle> descendants =
+                        wrapper.isAlive() ? wrapper.descendants().toList() : List.of();
+                // The original root must survive enumeration for the snapshot to belong to it.
+                if (!wrapper.isAlive()) descendants = List.of();
                 StringBuilder processes = new StringBuilder();
                 try {
-                    appendCommandLine(processes, p.toHandle());
+                    appendCommandLine(processes, wrapper);
                     for (ProcessHandle child : descendants) appendCommandLine(processes, child);
                 } finally {
                     descendants.forEach(ProcessHandle::destroyForcibly);
