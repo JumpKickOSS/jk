@@ -1006,7 +1006,7 @@ class WrapperTemplateTest {
     private static Path materializeBat(Path dir, KeyPair key, ReleaseHost host) throws Exception {
         materializeBat(dir, key);
         Path bat = dir.resolve("jk.bat");
-        String command = "powershell -NoProfile -Command \"";
+        String command = "powershell -NoProfile -NonInteractive -Command \"";
         String text = Files.readString(bat);
         assertThat(text).contains(command);
         Files.writeString(

@@ -452,8 +452,8 @@ public final class EngineFleet {
 
     /**
      * As {@link #commandLineOf(ProcessHandle)}, reading Windows command lines through {@code scan}.
-     * On Windows the JDK reports only the executable, never the arguments, so a CIM snapshot with
-     * no row answers {@code ""} rather than a bare {@code java.exe} that no predicate can read.
+     * On Windows the JDK reports only the executable, never the arguments, so a native query with
+     * no result answers {@code ""} rather than a bare {@code java.exe} that no predicate can read.
      */
     static String commandLineOf(ProcessHandle handle, WindowsCommandLines.Scan scan) {
         // /proc is the full argv; ProcessHandle.commandLine() is sometimes only the executable.
@@ -493,7 +493,7 @@ public final class EngineFleet {
      * pid the OS recycled onto something else. That guard is what keeps a stale pid file from
      * putting an innocent process in the fleet, where {@code stop --all} would kill it.
      *
-     * <p>A command line settles it. When none is available (Windows with the CIM snapshot
+     * <p>A command line settles it. When none is available (Windows with the native query
      * unavailable — a blocked or absent PowerShell), the corroboration left is jk's own pid file
      * plus a JVM launcher as the executable, which is the same evidence
      * {@link EngineProcessControl#unresponsiveHolderPid} acts on. It narrows recycling to "recycled onto

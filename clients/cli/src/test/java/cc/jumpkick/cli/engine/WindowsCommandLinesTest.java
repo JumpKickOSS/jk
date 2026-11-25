@@ -4,50 +4,49 @@ package cc.jumpkick.cli.engine;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.host.Os;
-import java.util.Map;
+import java.lang.foreign.Arena;
+import java.lang.foreign.MemorySegment;
+import java.lang.foreign.ValueLayout;
+import java.nio.charset.StandardCharsets;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledOnOs;
 import org.junit.jupiter.api.condition.OS;
 
-/**
- * The Windows command-line snapshot: the parse contract everywhere, the live query where there is
- * a Windows to query.
- */
+/** The native command-line buffer contract and live Windows lookups. */
 class WindowsCommandLinesTest {
 
     @Test
-    void rows_are_pid_tab_command_line() {
-        Map<Long, String> parsed = WindowsCommandLines.parse(
-                "1234\tC:\\jdk\\bin\\java.exe -cp x cc.jumpkick.engine.EngineMain\r\n" + "56\tsihost.exe\r\n");
-
-        assertThat(parsed).hasSize(2);
-        assertThat(parsed.get(1234L)).isEqualTo("C:\\jdk\\bin\\java.exe -cp x cc.jumpkick.engine.EngineMain");
-        assertThat(parsed.get(56L)).isEqualTo("sihost.exe");
+    void reads_the_counted_utf16_command_line() {
+        String command = "java.exe -Dnote=日本語";
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment buffer = commandBuffer(arena, command + "extra", command.length() * 2);
+            assertThat(WindowsCommandLines.decode(buffer)).isEqualTo(command);
+        }
     }
 
     @Test
-    void a_row_that_is_not_pid_tab_something_is_skipped_rather_than_guessed_at() {
-        // A command line can carry an embedded newline; the continuation must not be read as a row,
-        // and no line may be attributed to a pid it does not name.
-        Map<Long, String> parsed = WindowsCommandLines.parse("1234\tjava.exe -Dnote=first\n"
-                + "second line of that same argument\n"
-                + "\tno pid at all\n"
-                + "notanumber\twhatever\n"
-                + "99\t\n"
-                + "\n"
-                + "77\tjavaw.exe");
-
-        assertThat(parsed).containsOnlyKeys(1234L, 77L);
-        assertThat(parsed.get(1234L)).isEqualTo("java.exe -Dnote=first");
+    void rejects_a_command_line_that_points_past_the_query_buffer() {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment buffer = commandBuffer(arena, "java.exe", 512);
+            assertThat(WindowsCommandLines.decode(buffer)).isEmpty();
+        }
     }
 
     @Test
-    // The null output is deliberate: a snapshot command that produced nothing.
-    @SuppressWarnings("NullAway")
-    void empty_and_null_output_are_an_empty_snapshot() {
-        assertThat(WindowsCommandLines.parse(null)).isEmpty();
-        assertThat(WindowsCommandLines.parse("")).isEmpty();
-        assertThat(WindowsCommandLines.parse("   \n  ")).isEmpty();
+    void an_empty_command_line_is_unknown() {
+        try (Arena arena = Arena.ofConfined()) {
+            assertThat(WindowsCommandLines.decode(commandBuffer(arena, "", 0))).isEmpty();
+        }
+    }
+
+    private static MemorySegment commandBuffer(Arena arena, String command, int length) {
+        byte[] encoded = command.getBytes(StandardCharsets.UTF_16LE);
+        int header = 16;
+        MemorySegment buffer = arena.allocate(header + encoded.length, 8);
+        buffer.set(ValueLayout.JAVA_SHORT, 0, (short) length);
+        buffer.set(ValueLayout.ADDRESS, ValueLayout.ADDRESS.byteAlignment(), buffer.asSlice(header));
+        buffer.asSlice(header).copyFrom(MemorySegment.ofArray(encoded));
+        return buffer;
     }
 
     @Test
@@ -96,7 +95,7 @@ class WindowsCommandLinesTest {
     }
 
     /**
-     * When the snapshot has no row (PowerShell blocked, or too slow on a loaded host), the command
+     * When the snapshot has no row (the process cannot be queried), the command
      * line is unknown rather than the bare executable, so a JVM jk's pid file names still reads as
      * an engine and a JVM no state names is still not claimed by its command line.
      */

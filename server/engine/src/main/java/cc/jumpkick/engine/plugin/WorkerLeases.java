@@ -214,6 +214,7 @@ public final class WorkerLeases {
         private final LongPredicate ended;
         private final OverbookSignals.Source signals;
         private final WorkerRss.Source rss;
+        private Clock clock = Clock.SYSTEM;
         private final Object lock = new Object();
         private final ArrayDeque<LeaseWaiter> queue = new ArrayDeque<>();
         private final LinkedHashSet<LeaseWaiter> held = new LinkedHashSet<>();
@@ -274,6 +275,12 @@ public final class WorkerLeases {
             this.ended = ended;
             this.signals = Objects.requireNonNull(signals, "signals");
             this.rss = Objects.requireNonNull(rss, "rss");
+        }
+
+        /** Set the clock before acquiring any leases. */
+        Ledger withClock(Clock clock) {
+            this.clock = clock;
+            return this;
         }
 
         /**
@@ -623,7 +630,7 @@ public final class WorkerLeases {
         private Grant acquire(LeaseWaiter waiter) throws InterruptedException {
             @Nullable Long requestId = waiter.requestId;
             waiter.scope = waiter.resident == null ? StepScope.current() : null;
-            long arrived = Clock.SYSTEM.nanos();
+            long arrived = clock.nanos();
             long deadlineNanos;
             boolean head;
             refresh();
@@ -658,7 +665,7 @@ public final class WorkerLeases {
                         grantQueued();
                         granted = waiter.granted;
                         if (!granted) {
-                            long now = Clock.SYSTEM.nanos();
+                            long now = clock.nanos();
                             if (heldByItsOwnForks(waiter)) ownForksHeld = now;
                             long since = Math.max(Math.max(arrived, lastGrant), ownForksHeld);
                             long still = now - since;
@@ -677,10 +684,10 @@ public final class WorkerLeases {
                     }
                     if (granted) {
                         if (!confirm(waiter)) continue;
-                        wait.granted(Clock.SYSTEM.nanos());
+                        wait.granted(clock.nanos());
                         break;
                     }
-                    wait.waiting(reason, need, free, Clock.SYSTEM.nanos());
+                    wait.waiting(reason, need, free, clock.nanos());
                 }
             } catch (InterruptedException | LeaseRefused e) {
                 synchronized (lock) {
@@ -694,7 +701,7 @@ public final class WorkerLeases {
             } finally {
                 wait.close();
             }
-            return finish(waiter, Clock.SYSTEM.nanos() - arrived, wait.memoryNanos(), wait.heldNanos());
+            return finish(waiter, clock.nanos() - arrived, wait.memoryNanos(), wait.heldNanos());
         }
 
         /**
@@ -1001,7 +1008,7 @@ public final class WorkerLeases {
             held.add(waiter);
             leased += waiter.demand.bytes();
             spent.count(waiter);
-            lastGrant = Clock.SYSTEM.nanos();
+            lastGrant = clock.nanos();
             if (waiter.demand.cpuSlot()) jvmRunning++;
             waiter.granted = true;
         }

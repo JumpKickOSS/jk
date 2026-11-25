@@ -100,7 +100,7 @@ set /a LOCK_WAITED+=1
 goto acquire_lock
 :lock_acquired
 set "JK_WRAPPER_LOCK_HELD=1"
-powershell -NoProfile -Command "$p=(Get-CimInstance Win32_Process -Filter ('ProcessId=' + $PID)).ParentProcessId; $c=Get-Process -Id $p; [IO.File]::WriteAllText((Join-Path $env:JK_WRAPPER_LOCK 'owner'), ([string]$p + ' ' + $c.StartTime.ToUniversalTime().Ticks))" >nul 2>&1
+powershell -NoProfile -NonInteractive -Command "$p=(Get-CimInstance Win32_Process -Filter ('ProcessId=' + $PID) -OperationTimeoutSec 5).ParentProcessId; $c=Get-Process -Id $p; [IO.File]::WriteAllText((Join-Path $env:JK_WRAPPER_LOCK 'owner'), ([string]$p + ' ' + $c.StartTime.ToUniversalTime().Ticks))" >nul 2>&1
 rem The wrapper this one waited on may have installed a client that now satisfies the floor.
 call :installed_client && goto unlock_and_run
 
@@ -113,9 +113,9 @@ mkdir "!JK_WRAPPER_PTMP!"
 set "JK_WRAPPER_BASE=!JK_RELEASES_URL!/latest/"
 call :fetch_https JK_WRAPPER_PTMP LATEST || goto latest_unreadable
 set "VERSION="
-powershell -NoProfile -Command "$b=[IO.File]::ReadAllBytes((Join-Path $env:JK_WRAPPER_PTMP 'LATEST')); foreach($x in $b){if($x -gt 127){exit 1}}; $t=[Text.Encoding]::ASCII.GetString($b); if(-not ($t -match '^version ([0-9]+\.[0-9]+\.[0-9]+(?:[-.][A-Za-z0-9]+)*)\nissued ([0-9]{1,18})\nsignature ([A-Za-z0-9+/]+={0,2})\n$')){exit 1}; $s=('version '+$Matches[1]+\"`n\"+'issued '+$Matches[2]+\"`n\"); [IO.File]::WriteAllBytes((Join-Path $env:JK_WRAPPER_PTMP 'LATEST.body'),[Text.Encoding]::ASCII.GetBytes($s)); [IO.File]::WriteAllText((Join-Path $env:JK_WRAPPER_PTMP 'LATEST.body.sig'),($Matches[3]+\"`n\"),[Text.Encoding]::ASCII)" || goto pointer_checked
+powershell -NoProfile -NonInteractive -Command "$b=[IO.File]::ReadAllBytes((Join-Path $env:JK_WRAPPER_PTMP 'LATEST')); foreach($x in $b){if($x -gt 127){exit 1}}; $t=[Text.Encoding]::ASCII.GetString($b); if(-not ($t -match '^version ([0-9]+\.[0-9]+\.[0-9]+(?:[-.][A-Za-z0-9]+)*)\nissued ([0-9]{1,18})\nsignature ([A-Za-z0-9+/]+={0,2})\n$')){exit 1}; $s=('version '+$Matches[1]+\"`n\"+'issued '+$Matches[2]+\"`n\"); [IO.File]::WriteAllBytes((Join-Path $env:JK_WRAPPER_PTMP 'LATEST.body'),[Text.Encoding]::ASCII.GetBytes($s)); [IO.File]::WriteAllText((Join-Path $env:JK_WRAPPER_PTMP 'LATEST.body.sig'),($Matches[3]+\"`n\"),[Text.Encoding]::ASCII)" || goto pointer_checked
 call :verify_signature JK_WRAPPER_PTMP LATEST.body || goto pointer_checked
-for /f "usebackq delims=" %%V in (`powershell -NoProfile -Command "$m=[IO.File]::ReadAllBytes((Join-Path $env:JK_WRAPPER_PTMP 'LATEST.body')); foreach($x in $m){if($x -gt 127){exit 1}}; $t=[Text.Encoding]::ASCII.GetString($m); if($t -notmatch '^version ([0-9]+\.[0-9]+\.[0-9]+(?:[-.][A-Za-z0-9]+)*)\nissued [0-9]{1,18}\n$'){exit 1}; Write-Output $Matches[1]"`) do set "VERSION=%%V"
+for /f "usebackq delims=" %%V in (`powershell -NoProfile -NonInteractive -Command "$m=[IO.File]::ReadAllBytes((Join-Path $env:JK_WRAPPER_PTMP 'LATEST.body')); foreach($x in $m){if($x -gt 127){exit 1}}; $t=[Text.Encoding]::ASCII.GetString($m); if($t -notmatch '^version ([0-9]+\.[0-9]+\.[0-9]+(?:[-.][A-Za-z0-9]+)*)\nissued [0-9]{1,18}\n$'){exit 1}; Write-Output $Matches[1]"`) do set "VERSION=%%V"
 :pointer_checked
 if not defined VERSION goto pointer_refused
 call :require_version_token VERSION "the latest release VERSION" || goto fail
@@ -137,7 +137,7 @@ rem This host as a release names its native client, jk-windows-<arch>-<version>.
 rem sums say whether this release has one. The full sums check runs on the file downloaded below.
 set "HOST_ARCH="
 set "LISTED=0"
-for /f "usebackq tokens=1,2" %%A in (`powershell -NoProfile -Command "$a=$env:PROCESSOR_ARCHITEW6432; if(-not $a){$a=$env:PROCESSOR_ARCHITECTURE}; if($a -eq 'AMD64'){$a='x86_64'}elseif($a -eq 'ARM64'){$a='aarch64'}else{$a=([string]$a).ToLowerInvariant() -replace '[^a-z0-9_]','_'}; if(-not $a){$a='unknown'}; $n='jk-windows-'+$a+'-'+$env:JK_WRAPPER_VERSION+'.zip'; $hit=0; foreach($l in [IO.File]::ReadAllText((Join-Path $env:JK_WRAPPER_TMP 'SHA256SUMS')).Split([char]10)){if($l.Length -gt 66 -and $l.Substring(64,2) -eq '  ' -and $l.Substring(66) -ceq $n){$hit=1}}; Write-Output ($a+' '+$hit)"`) do (
+for /f "usebackq tokens=1,2" %%A in (`powershell -NoProfile -NonInteractive -Command "$a=$env:PROCESSOR_ARCHITEW6432; if(-not $a){$a=$env:PROCESSOR_ARCHITECTURE}; if($a -eq 'AMD64'){$a='x86_64'}elseif($a -eq 'ARM64'){$a='aarch64'}else{$a=([string]$a).ToLowerInvariant() -replace '[^a-z0-9_]','_'}; if(-not $a){$a='unknown'}; $n='jk-windows-'+$a+'-'+$env:JK_WRAPPER_VERSION+'.zip'; $hit=0; foreach($l in [IO.File]::ReadAllText((Join-Path $env:JK_WRAPPER_TMP 'SHA256SUMS')).Split([char]10)){if($l.Length -gt 66 -and $l.Substring(64,2) -eq '  ' -and $l.Substring(66) -ceq $n){$hit=1}}; Write-Output ($a+' '+$hit)"`) do (
   set "HOST_ARCH=%%A"
   set "LISTED=%%B"
 )
@@ -156,16 +156,22 @@ goto download
 set "FILE=jk-!VERSION!.jar"
 rem The JVM client runs on a JDK 25 or newer (with javac: the engine compiles on it) that the user
 rem provides: JK_JAVA_HOME, else JAVA_HOME, else java on PATH - the order install.ps1 reads.
-powershell -NoProfile -NonInteractive -Command "$j=$null; if($env:JK_JAVA_HOME){$j=Join-Path $env:JK_JAVA_HOME 'bin\java.exe'} elseif($env:JAVA_HOME){$j=Join-Path $env:JAVA_HOME 'bin\java.exe'} else {$c=@(Get-Command java.exe -CommandType Application -ErrorAction SilentlyContinue); if($c.Count -gt 0){$j=$c[0].Source}}; if(-not $j -or -not (Test-Path -LiteralPath $j -PathType Leaf)){exit 1}; $o=@(& $j -XshowSettings:properties -version 2>&1 | ForEach-Object {[string]$_}); $v=@($o -match '^\S+ version .(\d+)'); if($v.Count -eq 0 -or -not ($v[0] -match 'version .(\d+)')){exit 1}; if([int]$Matches[1] -lt 25){exit 1}; $h=@($o -match '^\s*java\.home = '); if($h.Count -gt 0 -and -not (Test-Path -LiteralPath (Join-Path ($h[0] -replace '^\s*java\.home = ','').Trim() 'bin\javac.exe'))){exit 1}; [IO.File]::WriteAllText((Join-Path $env:JK_WRAPPER_TMP 'java.txt'),$j)" <nul || goto no_jdk
-for /f "usebackq delims=" %%J in ("!JK_WRAPPER_TMP!\java.txt") do set "JK_WRAPPER_JAVA=%%J"
+set "JK_WRAPPER_JAVA="
+if defined JK_JAVA_HOME set "JK_WRAPPER_JAVA=!JK_JAVA_HOME!\bin\java.exe"
+if not defined JK_WRAPPER_JAVA if defined JAVA_HOME set "JK_WRAPPER_JAVA=!JAVA_HOME!\bin\java.exe"
+if not defined JK_WRAPPER_JAVA for /f "usebackq delims=" %%J in (`powershell -NoProfile -NonInteractive -Command "(Get-Command java.exe -CommandType Application -ErrorAction SilentlyContinue).Source"`) do if not defined JK_WRAPPER_JAVA set "JK_WRAPPER_JAVA=%%J"
+if not defined JK_WRAPPER_JAVA goto no_jdk
+rem Redirect in cmd so Windows PowerShell never owns the Java child's input or error pipes.
+"!JK_WRAPPER_JAVA!" -XshowSettings:properties -version <nul >"!JK_WRAPPER_TMP!\java-version.txt" 2>&1 || goto no_jdk
+powershell -NoProfile -NonInteractive -Command "$o=[IO.File]::ReadAllText((Join-Path $env:JK_WRAPPER_TMP 'java-version.txt')); if($o -notmatch '(?m)^\S+ version .(\d+)' -or [int]$Matches[1] -lt 25){exit 1}; if($o -notmatch '(?m)^\s*java\.home = ([^\r\n]+)'){exit 1}; if(-not (Test-Path -LiteralPath (Join-Path $Matches[1].Trim() 'bin\javac.exe') -PathType Leaf)){exit 1}" || goto no_jdk
 
 :download
 set "JK_WRAPPER_FILE=!FILE!"
 call :fetch_https JK_WRAPPER_TMP "!FILE!" || goto release_unreadable
-powershell -NoProfile -Command "$d=$env:JK_WRAPPER_TMP; $f=$env:JK_WRAPPER_FILE; $m=[IO.File]::ReadAllBytes((Join-Path $d 'SHA256SUMS')); try{$text=(New-Object -TypeName Text.UTF8Encoding -ArgumentList @($false,$true)).GetString($m)}catch{exit 1}; $seen=@{}; $want=$null; $count=0; $lines=$text.Split([char]10); for($i=0;$i -lt $lines.Length;$i++){$line=$lines[$i]; if($line.Length -eq 0 -and $i -eq $lines.Length-1){continue}; if($line -notmatch '^([0-9A-Fa-f]{64})  ([A-Za-z0-9][A-Za-z0-9._-]*)$'){exit 1}; $n=$Matches[2]; if($seen.ContainsKey($n)){exit 1}; $seen[$n]=$true; if($n -ceq $f){$count++;$want=$Matches[1].ToLowerInvariant()}}; if($count -ne 1){exit 1}; $got=(Get-FileHash -Algorithm SHA256 (Join-Path $d $f)).Hash.ToLowerInvariant(); if($got -cne $want){exit 1}" || goto release_refused
+powershell -NoProfile -NonInteractive -Command "$d=$env:JK_WRAPPER_TMP; $f=$env:JK_WRAPPER_FILE; $m=[IO.File]::ReadAllBytes((Join-Path $d 'SHA256SUMS')); try{$text=(New-Object -TypeName Text.UTF8Encoding -ArgumentList @($false,$true)).GetString($m)}catch{exit 1}; $seen=@{}; $want=$null; $count=0; $lines=$text.Split([char]10); for($i=0;$i -lt $lines.Length;$i++){$line=$lines[$i]; if($line.Length -eq 0 -and $i -eq $lines.Length-1){continue}; if($line -notmatch '^([0-9A-Fa-f]{64})  ([A-Za-z0-9][A-Za-z0-9._-]*)$'){exit 1}; $n=$Matches[2]; if($seen.ContainsKey($n)){exit 1}; $seen[$n]=$true; if($n -ceq $f){$count++;$want=$Matches[1].ToLowerInvariant()}}; if($count -ne 1){exit 1}; $got=(Get-FileHash -Algorithm SHA256 (Join-Path $d $f)).Hash.ToLowerInvariant(); if($got -cne $want){exit 1}" || goto release_refused
 if /i "!CLIENT_KIND!"=="jvm" goto install_jvm
 
-powershell -NoProfile -Command "Expand-Archive (Join-Path $env:JK_WRAPPER_TMP $env:JK_WRAPPER_FILE) $env:JK_WRAPPER_TMP" || goto fail
+powershell -NoProfile -NonInteractive -Command "Expand-Archive (Join-Path $env:JK_WRAPPER_TMP $env:JK_WRAPPER_FILE) $env:JK_WRAPPER_TMP" || goto fail
 for /f "delims=" %%F in ('dir /b /s "!JK_WRAPPER_TMP!\*.exe"') do set "CLIENT=%%F"
 if exist "%BIN%" move /y "%BIN%" "%BIN%.old" >nul 2>&1
 copy /y "!CLIENT!" "%BIN%" >nul
@@ -177,7 +183,7 @@ rem The jar goes under <home>\lib\jk, as JvmClientInstall lays it out; the clien
 rem writes bin\jk.bat over the JDK checked above and parks a leftover jk.exe. It fetches its own
 rem engine on first use, as a downloaded native client does.
 :install_jvm
-powershell -NoProfile -Command "$lib=Join-Path $env:JK_WRAPPER_HOME 'lib\jk'; $f=$env:JK_WRAPPER_FILE; $src=Join-Path $env:JK_WRAPPER_TMP $f; $dest=Join-Path $lib $f; [void](New-Item -ItemType Directory -Force -Path $lib); try{[IO.File]::Copy($src,$dest,$true)}catch{if((Get-FileHash -LiteralPath $dest).Hash -ne (Get-FileHash -LiteralPath $src).Hash){exit 1}}; Get-ChildItem -LiteralPath $lib -Filter 'jk-*.jar' -File -ErrorAction SilentlyContinue | Where-Object {$_.FullName -ne $dest} | ForEach-Object {try{Remove-Item -LiteralPath $_.FullName -Force}catch{}}" || goto fail
+powershell -NoProfile -NonInteractive -Command "$lib=Join-Path $env:JK_WRAPPER_HOME 'lib\jk'; $f=$env:JK_WRAPPER_FILE; $src=Join-Path $env:JK_WRAPPER_TMP $f; $dest=Join-Path $lib $f; [void](New-Item -ItemType Directory -Force -Path $lib); try{[IO.File]::Copy($src,$dest,$true)}catch{if((Get-FileHash -LiteralPath $dest).Hash -ne (Get-FileHash -LiteralPath $src).Hash){exit 1}}; Get-ChildItem -LiteralPath $lib -Filter 'jk-*.jar' -File -ErrorAction SilentlyContinue | Where-Object {$_.FullName -ne $dest} | ForEach-Object {try{Remove-Item -LiteralPath $_.FullName -Force}catch{}}" || goto fail
 "!JK_WRAPPER_JAVA!" --enable-native-access=ALL-UNNAMED -jar "!JK_WRAPPER_HOME!\lib\jk\!FILE!" self write-launcher >nul || goto launcher_failed
 set "RUN=%BIN_DIR%\jk.bat"
 
@@ -261,7 +267,7 @@ exit /b %ERRORLEVEL%
 rem Remove the lock when its owner process (pid and start time, written by its holder) is gone,
 rem or it is older than ten minutes. A lock with no owner record yet is being taken.
 :break_stale_lock
-powershell -NoProfile -Command "try{$l=$env:JK_WRAPPER_LOCK; if(-not (Test-Path -LiteralPath $l)){exit 0}; $stale=((Get-Date) - (Get-Item -LiteralPath $l).CreationTime).TotalMinutes -gt 10; $f=Join-Path $l 'owner'; if(-not $stale -and (Test-Path -LiteralPath $f)){$t=([IO.File]::ReadAllText($f)).Trim().Split(' '); if($t.Length -eq 2){$p=Get-Process -Id ([int]$t[0]) -ErrorAction SilentlyContinue; $stale=($null -eq $p) -or ($p.StartTime.ToUniversalTime().Ticks -ne [long]$t[1])}}; if($stale){$s=$l + '.stale-' + [guid]::NewGuid().ToString('N'); [IO.Directory]::Move($l,$s); Remove-Item -LiteralPath $s -Recurse -Force}}catch{}; exit 0" >nul 2>&1
+powershell -NoProfile -NonInteractive -Command "try{$l=$env:JK_WRAPPER_LOCK; if(-not (Test-Path -LiteralPath $l)){exit 0}; $stale=((Get-Date) - (Get-Item -LiteralPath $l).CreationTime).TotalMinutes -gt 10; $f=Join-Path $l 'owner'; if(-not $stale -and (Test-Path -LiteralPath $f)){$t=([IO.File]::ReadAllText($f)).Trim().Split(' '); if($t.Length -eq 2){$p=Get-Process -Id ([int]$t[0]) -ErrorAction SilentlyContinue; $stale=($null -eq $p) -or ($p.StartTime.ToUniversalTime().Ticks -ne [long]$t[1])}}; if($stale){$s=$l + '.stale-' + [guid]::NewGuid().ToString('N'); [IO.Directory]::Move($l,$s); Remove-Item -LiteralPath $s -Recurse -Force}}catch{}; exit 0" >nul 2>&1
 exit /b 0
 
 rem Download JK_WRAPPER_BASE plus %2 into <dir>\%2, where %1 names the variable holding <dir>;
@@ -273,7 +279,7 @@ rem TLS 1.2 is turned on because .NET Framework on older Windows offers only 1.0
 :fetch_https
 set "JK_WRAPPER_URL=!JK_WRAPPER_BASE!%~2"
 set "JK_WRAPPER_OUT=!%~1!\%~2"
-powershell -NoProfile -Command "[Net.ServicePointManager]::SecurityProtocol=[Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12; $u=$null; if(-not [Uri]::TryCreate($env:JK_WRAPPER_URL,[UriKind]::Absolute,[ref]$u) -or $u.Scheme -cne 'https'){[Console]::Error.WriteLine('jk wrapper: not an HTTPS URL: '+$env:JK_WRAPPER_URL); exit 1}; for($hop=0;;$hop++){$q=[Net.HttpWebRequest]::Create($u); $q.AllowAutoRedirect=$false; $q.UserAgent='jk-wrapper'; try{$r=$q.GetResponse()}catch{$e=$_.Exception; while($e -and $e -isnot [Net.WebException]){$e=$e.InnerException}; if(-not $e){$e=$_.Exception}; [Console]::Error.WriteLine('jk wrapper: '+$u+': '+$e.Message); exit 1}; try{$s=[int]$r.StatusCode; if($s -ge 200 -and $s -lt 300){$b=$r.GetResponseStream(); $f=[IO.File]::Create($env:JK_WRAPPER_OUT); try{$b.CopyTo($f)}finally{$f.Dispose(); $b.Dispose()}; exit 0}; $l=$r.Headers['Location']; if($s -lt 300 -or $s -ge 400 -or -not $l){[Console]::Error.WriteLine('jk wrapper: '+$u+' answered '+$s+' '+$r.StatusDescription); exit 1}; if($hop -ge 10){[Console]::Error.WriteLine('jk wrapper: '+$env:JK_WRAPPER_URL+' redirects more than 10 times'); exit 1}; $n=New-Object -TypeName Uri -ArgumentList @($u,$l); if($n.Scheme -cne 'https'){[Console]::Error.WriteLine('jk wrapper: '+$u+' redirects to '+$n+', which is not HTTPS'); exit 1}; $u=$n}finally{$r.Dispose()}}"
+powershell -NoProfile -NonInteractive -Command "[Net.ServicePointManager]::SecurityProtocol=[Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12; $u=$null; if(-not [Uri]::TryCreate($env:JK_WRAPPER_URL,[UriKind]::Absolute,[ref]$u) -or $u.Scheme -cne 'https'){[Console]::Error.WriteLine('jk wrapper: not an HTTPS URL: '+$env:JK_WRAPPER_URL); exit 1}; for($hop=0;;$hop++){$q=[Net.HttpWebRequest]::Create($u); $q.AllowAutoRedirect=$false; $q.Timeout=15000; $q.ReadWriteTimeout=15000; $q.UserAgent='jk-wrapper'; try{$r=$q.GetResponse()}catch{$e=$_.Exception; while($e -and $e -isnot [Net.WebException]){$e=$e.InnerException}; if(-not $e){$e=$_.Exception}; [Console]::Error.WriteLine('jk wrapper: '+$u+': '+$e.Message); exit 1}; try{$s=[int]$r.StatusCode; if($s -ge 200 -and $s -lt 300){$b=$r.GetResponseStream(); $f=[IO.File]::Create($env:JK_WRAPPER_OUT); try{$b.CopyTo($f)}finally{$f.Dispose(); $b.Dispose()}; exit 0}; $l=$r.Headers['Location']; if($s -lt 300 -or $s -ge 400 -or -not $l){[Console]::Error.WriteLine('jk wrapper: '+$u+' answered '+$s+' '+$r.StatusDescription); exit 1}; if($hop -ge 10){[Console]::Error.WriteLine('jk wrapper: '+$env:JK_WRAPPER_URL+' redirects more than 10 times'); exit 1}; $n=New-Object -TypeName Uri -ArgumentList @($u,$l); if($n.Scheme -cne 'https'){[Console]::Error.WriteLine('jk wrapper: '+$u+' redirects to '+$n+', which is not HTTPS'); exit 1}; $u=$n}finally{$r.Dispose()}}"
 exit /b %ERRORLEVEL%
 
 rem Exit 0 when the release key's RSA/SHA-256 signature in <dir>\%2.sig covers the exact bytes
@@ -284,7 +290,7 @@ rem variables like every other value.
 :verify_signature
 set "JK_WRAPPER_SIGNED=!%~1!\%~2"
 set "JK_WRAPPER_SIG=!%~1!\%~2.sig"
-powershell -NoProfile -Command "$m=[IO.File]::ReadAllBytes($env:JK_WRAPPER_SIGNED); $st=[Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes($env:JK_WRAPPER_SIG)); if($st -notmatch '^[A-Za-z0-9+/]+={0,2}\r?\n?$'){exit 1}; try{$sig=[Convert]::FromBase64String($st.TrimEnd([char[]]\"`r`n\"))}catch{exit 1}; if($sig.Length -ne 384){exit 1}; $p=New-Object Security.Cryptography.RSAParameters; $p.Modulus=[Convert]::FromBase64String($env:RELEASE_RSA_MODULUS); $p.Exponent=[Convert]::FromBase64String($env:RELEASE_RSA_EXPONENT); $r=[Security.Cryptography.RSA]::Create(); $r.ImportParameters($p); if(-not $r.VerifyData($m,$sig,[Security.Cryptography.HashAlgorithmName]::SHA256,[Security.Cryptography.RSASignaturePadding]::Pkcs1)){exit 1}"
+powershell -NoProfile -NonInteractive -Command "$m=[IO.File]::ReadAllBytes($env:JK_WRAPPER_SIGNED); $st=[Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes($env:JK_WRAPPER_SIG)); if($st -notmatch '^[A-Za-z0-9+/]+={0,2}\r?\n?$'){exit 1}; try{$sig=[Convert]::FromBase64String($st.TrimEnd([char[]]\"`r`n\"))}catch{exit 1}; if($sig.Length -ne 384){exit 1}; $p=New-Object Security.Cryptography.RSAParameters; $p.Modulus=[Convert]::FromBase64String($env:RELEASE_RSA_MODULUS); $p.Exponent=[Convert]::FromBase64String($env:RELEASE_RSA_EXPONENT); $r=[Security.Cryptography.RSA]::Create(); $r.ImportParameters($p); if(-not $r.VerifyData($m,$sig,[Security.Cryptography.HashAlgorithmName]::SHA256,[Security.Cryptography.RSASignaturePadding]::Pkcs1)){exit 1}"
 exit /b %ERRORLEVEL%
 
 rem Take CANDIDATE, one `where jk` answer, as PATH_JK unless it is in the rejected install's
@@ -324,5 +330,5 @@ rem suffixes compare by their numeric core. Both reach PowerShell as environment
 :version_ge
 set "JK_WRAPPER_A=!%~1!"
 set "JK_WRAPPER_B=!%~2!"
-powershell -NoProfile -Command "if ([version]($env:JK_WRAPPER_A -replace '-.*','') -ge [version]($env:JK_WRAPPER_B -replace '-.*','')) { exit 0 } else { exit 1 }"
+powershell -NoProfile -NonInteractive -Command "if ([version]($env:JK_WRAPPER_A -replace '-.*','') -ge [version]($env:JK_WRAPPER_B -replace '-.*','')) { exit 0 } else { exit 1 }"
 exit /b %ERRORLEVEL%
