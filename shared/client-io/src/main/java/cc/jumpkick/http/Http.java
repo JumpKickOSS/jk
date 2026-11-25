@@ -957,30 +957,25 @@ public final class Http {
                     | DeniedHostException
                     | AddressRefusedException e) {
                 throw e; // a policy answer, not a network fault: the same answer would come back
-            } catch (HttpConnectTimeoutException e) {
-                lastIo = e; // the connection never came up: the next attempt is cheap and may land
-                if (!retriesSilence) break;
-            } catch (HttpTimeoutException e) {
-                // The server accepted and said nothing for the whole timeout. Central gets one more
-                // chance on the mirror, asked at once as an extra attempt of this loop, so the
-                // mirror's own refusals and faults are read as any host's; anyone else has
-                // answered, and the URL is named.
-                URI mirrored = centralMirror.enabled() && centralMirror.matches(request.uri())
-                        ? centralMirror.toMirror(request.uri())
-                        : request.uri();
-                if (mirrored.equals(request.uri())) throw noAnswerWithin(verb, uri, request, e);
-                request = reissue(request, mirrored).build();
-                detour = "Maven Central did not answer";
-                rerouted = true;
-                attempt--;
             } catch (IOException e) {
-                // A body over the limit is an answer, and the same body would come back; a body
-                // that stopped arriving is not asked for again, as silence before the headers is not.
                 BodyTooLargeException tooLarge = Errors.inChain(e, BodyTooLargeException.class);
                 if (tooLarge != null) throw tooLarge;
                 StalledBodyGuard.Stalled stalled = Errors.inChain(e, StalledBodyGuard.Stalled.class);
                 if (stalled != null) throw stalled;
-                lastIo = e;
+                HttpTimeoutException timeout = Errors.inChain(e, HttpTimeoutException.class);
+                if (timeout != null && !(timeout instanceof HttpConnectTimeoutException)) {
+                    // Give Central one immediate attempt on the mirror when it times out awaiting headers.
+                    URI mirrored = centralMirror.enabled() && centralMirror.matches(request.uri())
+                            ? centralMirror.toMirror(request.uri())
+                            : request.uri();
+                    if (mirrored.equals(request.uri())) throw noAnswerWithin(verb, uri, request, timeout);
+                    request = reissue(request, mirrored).build();
+                    detour = "Maven Central did not answer";
+                    rerouted = true;
+                    attempt--;
+                    continue;
+                }
+                lastIo = timeout == null ? e : noAnswerWithin(verb, uri, request, timeout);
                 if (!retriesSilence) break;
             }
         }
@@ -992,6 +987,7 @@ public final class Http {
             // address is remembered and asked nothing more until the memory lapses.
             String fault = ConnectFaults.describe(lastIo);
             if (fault != null) ConnectFaults.noteRefusing(dialled(request.uri()), fault);
+            if (lastIo instanceof NoAnswerException noAnswer) throw noAnswer;
             throw new NoAnswerException(
                     verb + " " + shown + " failed after " + (retriesSilence ? backoffs.length + 1 : 1) + " attempts",
                     lastIo);
@@ -1008,6 +1004,10 @@ public final class Http {
     /** The failure of a request that met silence for its whole timeout, naming the timeout it had. */
     NoAnswerException noAnswerWithin(String verb, URI uri, HttpRequest request, HttpTimeoutException e) {
         Duration timeout = request.timeout().orElse(requestTimeout);
+        if (e instanceof HttpConnectTimeoutException) {
+            Duration connectBudget = client.connectTimeout().orElse(timeout);
+            if (connectBudget.compareTo(timeout) < 0) timeout = connectBudget;
+        }
         return new NoAnswerException(
                 verb + " " + SafeUri.forMessage(uri) + " got no answer within " + spoken(timeout), e);
     }

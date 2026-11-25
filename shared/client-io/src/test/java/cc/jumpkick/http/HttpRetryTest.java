@@ -9,11 +9,15 @@ import com.sun.net.httpserver.HttpExchange;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.net.Authenticator;
+import java.net.CookieHandler;
 import java.net.InetAddress;
+import java.net.ProxySelector;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.URI;
 import java.net.http.HttpClient;
+import java.net.http.HttpConnectTimeoutException;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.net.http.HttpTimeoutException;
@@ -21,7 +25,12 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicInteger;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLParameters;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -188,6 +197,23 @@ class HttpRetryTest {
         assertThat(ConnectFaults.refusing("127.0.0.1:" + port)).isNull();
     }
 
+    @Test
+    void a_request_that_times_out_during_connect_names_its_budget() {
+        var timeout = new HttpConnectTimeoutException("HTTP connect timed out");
+        for (IOException failure : new IOException[] {timeout, new IOException(timeout)}) {
+            Http http =
+                    new Http(new FailingClient(failure), new Duration[0]).withRequestTimeout(Duration.ofMillis(300));
+            URI uri = central.base().resolve("/connect/headers.jar");
+
+            assertThatThrownBy(() -> http.getStream(uri))
+                    .isInstanceOf(Http.NoAnswerException.class)
+                    .hasMessageContaining(uri.toString())
+                    .hasMessageContaining("got no answer within 300 ms")
+                    .hasRootCause(timeout);
+            ConnectFaults.forget();
+        }
+    }
+
     /** A request with a timeout of its own is named with that timeout when it meets silence. */
     @Test
     void the_no_answer_message_names_the_request_s_own_timeout() {
@@ -225,5 +251,77 @@ class HttpRetryTest {
                 HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build(),
                 new Duration[] {Duration.ofMillis(1), Duration.ofMillis(1)},
                 m);
+    }
+
+    private static final class FailingClient extends HttpClient {
+        private final IOException failure;
+
+        FailingClient(IOException failure) {
+            this.failure = failure;
+        }
+
+        @Override
+        public <T> HttpResponse<T> send(HttpRequest request, HttpResponse.BodyHandler<T> handler) throws IOException {
+            throw failure;
+        }
+
+        @Override
+        public Optional<CookieHandler> cookieHandler() {
+            return Optional.empty();
+        }
+
+        @Override
+        public Optional<Duration> connectTimeout() {
+            return Optional.of(Duration.ofSeconds(5));
+        }
+
+        @Override
+        public Redirect followRedirects() {
+            return Redirect.NEVER;
+        }
+
+        @Override
+        public Optional<ProxySelector> proxy() {
+            return Optional.empty();
+        }
+
+        @Override
+        public SSLContext sslContext() {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public SSLParameters sslParameters() {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public Optional<Authenticator> authenticator() {
+            return Optional.empty();
+        }
+
+        @Override
+        public Version version() {
+            return Version.HTTP_1_1;
+        }
+
+        @Override
+        public Optional<Executor> executor() {
+            return Optional.empty();
+        }
+
+        @Override
+        public <T> CompletableFuture<HttpResponse<T>> sendAsync(
+                HttpRequest request, HttpResponse.BodyHandler<T> handler) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public <T> CompletableFuture<HttpResponse<T>> sendAsync(
+                HttpRequest request,
+                HttpResponse.BodyHandler<T> handler,
+                HttpResponse.PushPromiseHandler<T> pushHandler) {
+            throw new UnsupportedOperationException();
+        }
     }
 }
