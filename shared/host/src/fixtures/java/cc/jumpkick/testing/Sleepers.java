@@ -36,15 +36,11 @@ public final class Sleepers {
                 : List.of("/bin/sh", "-c", "echo " + text + " > '" + out + "'");
     }
 
-    /** A process that polls until a file exists at {@code file}, then exits 0. */
-    public static List<String> waitsFor(Path file) {
+    /** A process that reads stdin to EOF and exits 0 if it received a line containing release. */
+    public static ProcessBuilder stdinGate() {
         return windows()
-                ? List.of(
-                        "powershell.exe",
-                        "-NoProfile",
-                        "-Command",
-                        "while (-not (Test-Path -LiteralPath '" + file + "')) { Start-Sleep -Milliseconds 10 }")
-                : List.of("/bin/sh", "-c", "while [ ! -e \"$0\" ]; do sleep 0.01; done", file.toString());
+                ? new ProcessBuilder("findstr.exe", "/x", "release")
+                : new ProcessBuilder("grep", "-x", "release");
     }
 
     /** A process that exits {@code code} at once, writing nothing. */

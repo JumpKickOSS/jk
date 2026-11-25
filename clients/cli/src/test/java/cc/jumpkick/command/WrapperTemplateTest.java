@@ -5,6 +5,7 @@ import static cc.jumpkick.command.ReleaseTree.jvmClientRelease;
 import static cc.jumpkick.command.ReleaseTree.signedPointer;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cli.engine.WindowsCommandLines;
 import cc.jumpkick.command.toolchain.WrapperCommand;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.Processes;
@@ -32,7 +33,9 @@ import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.regex.Pattern;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Tag;
@@ -976,15 +979,36 @@ class WrapperTemplateTest {
             var outReader = CompletableFuture.supplyAsync(() -> readAll(stdout));
             var errReader = CompletableFuture.supplyAsync(() -> readAll(stderr));
             if (!p.waitFor(120, TimeUnit.SECONDS)) {
-                p.descendants().forEach(ProcessHandle::destroyForcibly);
-                p.destroyForcibly();
-                String diagnostics = new String(errReader.get(10, TimeUnit.SECONDS), StandardCharsets.UTF_8);
-                throw new AssertionError("the wrapper did not finish in 120s: " + diagnostics);
+                List<ProcessHandle> descendants = p.descendants().toList();
+                StringBuilder processes = new StringBuilder();
+                try {
+                    appendCommandLine(processes, p.toHandle());
+                    for (ProcessHandle child : descendants) appendCommandLine(processes, child);
+                } finally {
+                    descendants.forEach(ProcessHandle::destroyForcibly);
+                    p.destroyForcibly();
+                }
+                String message = "the wrapper did not finish in 120s" + processes;
+                try {
+                    String diagnostics = new String(errReader.get(10, TimeUnit.SECONDS), StandardCharsets.UTF_8);
+                    throw new AssertionError(message + "\nstderr:\n" + diagnostics);
+                } catch (ExecutionException | TimeoutException e) {
+                    throw new AssertionError(message, e);
+                }
             }
             out = outReader.get();
             err = errReader.get();
         }
         return new Run(p.exitValue(), new String(out, StandardCharsets.UTF_8), new String(err, StandardCharsets.UTF_8));
+    }
+
+    private static void appendCommandLine(StringBuilder lines, ProcessHandle process) {
+        if (!process.isAlive()) return;
+        ProcessHandle.Info info = process.info();
+        String command = WindowsCommandLines.of(process.pid());
+        if (command.isEmpty())
+            command = info.commandLine().orElseGet(() -> info.command().orElse("<unknown>"));
+        lines.append("\n  PID ").append(process.pid()).append(": ").append(command);
     }
 
     /** The Windows wrapper trusting {@code key} as the release key. */
@@ -1001,12 +1025,12 @@ class WrapperTemplateTest {
 
     /**
      * The Windows wrapper trusting {@code key} as the release key and {@code host}'s
-     * certificate, by its SHA-1 thumbprint, in every PowerShell it starts; nothing else changes.
+     * certificate by its SHA-1 thumbprint in the downloader.
      */
     private static Path materializeBat(Path dir, KeyPair key, ReleaseHost host) throws Exception {
         materializeBat(dir, key);
         Path bat = dir.resolve("jk.bat");
-        String command = "powershell -NoProfile -NonInteractive -Command \"";
+        String command = "powershell -NoProfile -NonInteractive -Command \"$ErrorActionPreference='Stop'; ";
         String text = Files.readString(bat);
         assertThat(text).contains(command);
         Files.writeString(

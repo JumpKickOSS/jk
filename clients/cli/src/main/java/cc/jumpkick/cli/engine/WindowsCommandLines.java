@@ -22,7 +22,7 @@ import java.util.Map;
 import org.jspecify.annotations.Nullable;
 
 /** Windows command lines, which {@link ProcessHandle.Info} does not expose. */
-final class WindowsCommandLines {
+public final class WindowsCommandLines {
 
     /** One query serves a whole command: {@code jk engine status} enumerates the fleet three times. */
     private static volatile @Nullable Snapshot snapshot;
@@ -47,7 +47,7 @@ final class WindowsCommandLines {
      * This process's command line, or {@code ""} — off Windows, unknown, or the query failed. A pid
      * that started after the snapshot is looked up again.
      */
-    static String of(long pid) {
+    public static String of(long pid) {
         return new Scan().of(pid);
     }
 
