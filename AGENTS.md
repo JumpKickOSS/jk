@@ -8,7 +8,7 @@ Guidance for anyone (human or agent) working in this repository.
 
 Product docs: [README.md](README.md), [docs/user/](docs/user/README.md) (end users + coding agents), [docs/contributors/](docs/contributors/README.md) (this codebase). Build/layout: [CONTRIBUTING.md](CONTRIBUTING.md). Internal design records live in the KanArtist `jk` store ([KanArtist/jk](https://github.com/KanArtist/jk)) under `projects/jk/docs/`, not here.
 
-**Out-of-tree black-box suite / adopter examples:** [JumpKickOSS/jk-examples](https://github.com/JumpKickOSS/jk-examples) (sibling checkout `../jk-examples`). Real multi-module and plugin scenarios used to validate and benchmark product changes and to show idiomatic JumpKick to early adopters. Not a substitute for the merge and push gates (`jk install`, the Queue tier) — re-run the scenarios that touch surfaces you change (workspaces, Boot, Kotlin, packaging, resolve, …).
+**Out-of-tree black-box suite / adopter examples:** [JumpKickOSS/jk-examples](https://github.com/JumpKickOSS/jk-examples) (sibling checkout `../jk-examples`). Real multi-module and plugin scenarios used to validate and benchmark product changes and to show idiomatic JumpKick to early adopters. Not a substitute for `jk install` and CI — re-run the scenarios that touch surfaces you change (workspaces, Boot, Kotlin, packaging, resolve, …).
 
 ## Pre-release (override your training)
 
@@ -137,7 +137,7 @@ one run per cell, fail fast.
 
 Build with the installed JumpKick (`jk build`; a GraalVM-capable JDK for the native client — see CONTRIBUTING). Use a **separate worktree** for parallel work; the resident engine serializes the builds of one workspace. **One heavy run per machine:** JumpKick's full integration tier and an uncached full `jk build` of this tree start nested engines with their own worker pools, so do not run two at once or alongside a benchmark (`bench/`, jk-examples `bench/`), which also needs an otherwise idle host. Editing and narrow `-m` / `--class` tests in parallel worktrees are fine ([details](docs/contributors/test-suite-tiers.md#one-heavy-run-per-machine)).
 
-**Several sessions on one host share one installed JumpKick and one resident engine.** JumpKick coordinates them itself with a host install lock ([engine](docs/user/engine.md#sessions-sharing-one-install)): `jk test`, `guard`, `build` and `explain` hold it shared, and an install of JumpKick itself (`jk install`), `jk self update` and `jk engine stop` hold it exclusively, each waiting for the other and naming the holder; `jk engine status` lists who holds or waits. The lock covers one command, so a gate that must run against the build it just installed (`jk install`, then `jk install -g`) checks that `jk engine status`'s `Source` row still names its checkout before trusting the result.
+**Several sessions on one host share one installed JumpKick and one resident engine.** JumpKick coordinates them itself with a host install lock ([engine](docs/user/engine.md#sessions-sharing-one-install)): `jk test`, `guard`, `build` and `explain` hold it shared, and an install of JumpKick itself (`jk install`), `jk self update` and `jk engine stop` hold it exclusively, each waiting for the other and naming the holder; `jk engine status` lists who holds or waits. The lock covers one command, so a run that must use the build it just installed (`jk install`, then `jk install -g`) checks that `jk engine status`'s `Source` row still names its checkout before trusting the result.
 
 ## Reinstall from this checkout
 
@@ -173,7 +173,7 @@ jk engine status          # engine answers, no version-skew crash; `Source` name
 jk new smoke-app -l java && cd smoke-app && jk build
 ```
 
-Needs a GraalVM-capable JDK for the native client (see [CONTRIBUTING.md](CONTRIBUTING.md)). Module and class filters are fine mid-ticket; the merge gate (`jk guard`, `jk install`) and the reinstall smoke are required **before merging a code-changing ticket into local `main`**; the Queue tier is the push gate, which the merge queue runs before it moves `origin/main`, and `jk install -g` is the Full tier behind it.
+Needs a GraalVM-capable JDK for the native client (see [CONTRIBUTING.md](CONTRIBUTING.md)). Module and class filters are fine mid-ticket; `jk guard`, `jk install` and the reinstall smoke are required **before opening or updating a pull request that changes code**; CI and the merge queue then run everything else (see [Done criteria](#done-criteria)).
 
 ## Planning / tickets (KanArtist — not this repo)
 
@@ -197,8 +197,8 @@ ka show JK-3B0SH                        # description, acceptance items, decisio
 # work in this repo on a branch (prefer worktree)
 ka comment JK-3B0SH --type progress -m "…"   # at milestones; --type decision for choices others must respect
 ka check-item JK-3B0SH 0                # tick an acceptance item as it passes
-# … implement, meet Done criteria below …
-ka move JK-3B0SH done -m "what changed and where"   # only after product acceptance + Done criteria
+# … implement, meet Done criteria below, open a pull request …
+ka move JK-3B0SH done -m "what changed and where"   # once the pull request has merged
 ```
 
 Prefer a small WIP limit (a few claimed tickets). Blocked on a person: `ka ask <ID> -m "…"`, then
@@ -207,111 +207,70 @@ work on something else and read answers with `ka inbox`. Stopping without finish
 
 ### Done criteria
 
-**Two gates** (keep the merge loop under ~5 minutes; details: [docs/contributors/test-suite-tiers.md](docs/contributors/test-suite-tiers.md)):
+**Local checks, then CI** (details: [docs/contributors/test-suite-tiers.md](docs/contributors/test-suite-tiers.md)):
 
-- **Merge gate** — before every local merge into `main`: `jk guard` (it formats what changed), then
-  `jk install` (`jk build` plus the reinstall; never run `jk build` before it).
-- **Push gate** — the Queue tier, on the exact commit that becomes `origin/main`. The merge queue
-  on bocabox runs it, as `scripts/gate/gate.sh` with `GATE_TIER=queue`, on each batch of submitted
-  branches under the host's gate lock; nobody else pushes `main` (see
-  [Landing on `origin/main`](#landing-on-originmain)). The Queue tier: `jk guard`, `jk install -S` (the
-  reinstall without tests, so the tests run under the batch's own engine), one `jk install` (every
-  module's fast tier, then the reinstall), the integration classes each module the batch changed
-  ranks highest within a budget ([ranking](docs/contributors/test-suite-tiers.md#the-queue-tier-runs-the-classes-a-batch-ranks-highest);
-  the Full tier runs the classes it defers) and the [curated lane](docs/contributors/test-suite-tiers.md#the-curated-integration-lane)
-  in the others, and the shell fixtures; a failure only in a quarantined class does not block it.
-- **Full tier** — `scripts/gate/gate.sh` with `GATE_TIER=full`: `jk guard`, `jk install -S` (the
-  reinstall without tests), `jk install -g` (the fast tier once, with every integration and e2e
-  class, against the JumpKick it installed), the release suite, the slow tier when a plugin changed
-  since `green`, and the shell fixtures. It does not
-  block a push, so `main` may be red on it for a cycle or two; a class that fails and passes on
-  re-run leaves the gate green, is recorded, and past a threshold quarantined with a ticket
-  ([self-host](docs/contributors/self-host.md#the-gate)). `scripts/gate/full-loop.sh` runs it back
-  to back on the newest `main` and moves origin's `green` branch to each commit that passes;
-  releases are cut from `green`. A red cycle names the batch that caused it on its tickets; when
-  the failing classes fail with one of its commits and pass without it, the loop submits that
-  commit's revert to the queue and reopens its ticket, and after two red cycles alike the queue lands
-  only the fix
-  ([Full tier loop](docs/contributors/self-host.md#the-full-tier-loop)).
-- **Branch tier** — before a branch is submitted to the queue: `scripts/queue/branch-tier.sh`,
-  which runs `jk guard` and the fast tier of the modules the branch changed and of their
-  dependents (no native client, no suites of the modules they build on), and records the pass
-  that `scripts/queue/submit.sh` requires. `jk guard` stays green when it has to skip a guard (its
-  verdict line names the skip), so the Branch tier warns when this machine has no runnable shellcheck: the shell scripts are then
-  linted first by the queue's gate.
+- **Before every push** of a branch that changes code: `jk guard` (it formats what changed), then
+  `jk install` (`jk build` plus the reinstall, every module's fast tier included; never run
+  `jk build` before it). A docs-only change runs `jk guard docs`.
+- **Pull request** — CI (`.github/workflows/ci.yml`) runs every job at once on Linux, Windows and
+  macOS: the house rules, every module's fast tier on each OS, the docs, tree and release suites,
+  the [curated integration lane](docs/contributors/test-suite-tiers.md#the-curated-integration-lane),
+  the shell fixtures, the audit and the product smoke.
+- **Merge queue** — `main` moves only through GitHub's merge queue. It runs the same jobs plus the
+  whole integration tier on the commit that becomes `main`, and the one required check, `CI`,
+  passes only when every job did. A red group drops the pull request from the queue with the
+  failing job.
+- **Nightly** — `.github/workflows/ci-nightly.yml`: the slow, network and bench tiers, the coverage
+  ratchet, the jk-examples scenarios. It blocks nothing.
 - **Prove it cheaply first** — before any run that takes more than a few minutes, however it is
-  spelled (a gate, a whole suite, an integration or slow tier, an uncached build of this tree),
-  run the tests that can fail it, one module and one class at a time: every class an earlier run
-  of that gate failed, the tests of the code you changed, and the tests of whatever you merged or
-  rebased in. On the host that will run the gate, first make the installed JumpKick match the tree (the
-  reinstall without tests, seconds when the build is cached): narrow end-to-end runs use the
-  installed JumpKick's workers and fail falsely against an older install. Read each class's counts in
-  the test reports, not only the exit code. Start the long run once those pass; a long run that
-  fails on what a one-minute run would have caught has held the host for nothing.
+  spelled (a whole suite, an integration or slow tier, an uncached build of this tree, a push that
+  starts CI), run the tests that can fail it, one module and one class at a time: every class an
+  earlier run failed, the tests of the code you changed, and the tests of whatever you merged or
+  rebased in. First make the installed JumpKick match the tree (the reinstall without tests, seconds
+  when the build is cached): narrow end-to-end runs use the installed JumpKick's workers and fail
+  falsely against an older install. Read each class's counts in the test reports, not only the exit
+  code.
 
 | Command | What runs | When |
 |---------|-----------|------|
-| `jk guard` | Formats every changed source, then every house-rule lane, the tree lane and the fixture proofs included | Every commit that touches code, and every local merge |
+| `jk guard` | Formats every changed source, then every house-rule lane, the tree lane and the fixture proofs included | Every commit that touches code |
 | `jk guard docs` | The text rules that read Markdown, no build | A docs-only commit |
-| `jk test -s docs` | The tests that walk the doc tree (`@Tag("docs")`): `-O json` callers, plugin defaults a page quotes | A commit that changes a doc or a command's machine output; every gate tier |
-| `jk test -s tree` | The tests that scan every module's production sources (`@Tag("tree")`), kept out of each module's fast tier so an edit re-runs only them | The Branch, Queue and Full tiers |
-| `jk install` | Exactly what `jk build` runs (every module compiled and packaged, its fast tier, the model/module/workspace/output lanes), then the reinstall | Every local merge |
-| `scripts/queue/branch-tier.sh` | `jk guard`, then the fast tier of the modules the branch changed and their dependents, then the tree suite | Before submitting a branch to the merge queue |
-| `GATE_TIER=queue scripts/gate/run.sh <n> <sha>` | The Queue tier: guard, the reinstall without tests, one install, the changed modules' integration classes ranked highest within a budget, the curated lane, the docs suite, the tree suite, the shell fixtures | Every batch the merge queue lands (the push gate) |
-| `jk install -g` | Engine/CLI e2e, workers, install, lock: every integration class | The Full tier, back to back behind the queue (`scripts/gate/full-loop.sh`) |
-| `jk test -s slow` | Framework and language e2e (Android, Grails, Scala, KSP, Protobuf) | Before submitting a plugin or toolchain change; the Full tier when a plugin changed since `green`; nightly |
+| `jk test -s docs` | The tests that walk the doc tree (`@Tag("docs")`): `-O json` callers, plugin defaults a page quotes | A commit that changes a doc or a command's machine output; every CI run |
+| `jk test -s tree` | The tests that scan every module's production sources (`@Tag("tree")`), kept out of each module's fast tier so an edit re-runs only them | Every CI run |
+| `jk install` | Exactly what `jk build` runs (every module compiled and packaged, its fast tier, the model/module/workspace/output lanes), then the reinstall | Before every push of a code change |
+| `jk test -s integration` | Engine/CLI e2e, workers, install, lock: every integration class | The merge queue; locally by module and class |
+| `jk install -g` | `jk install` with every integration and e2e class | On demand, one heavy run per machine |
+| `jk test -s slow` | Framework and language e2e (Android, Grails, Scala, KSP, Protobuf) | Before a pull request that changes a plugin or toolchain; nightly |
 
 Tag new heavy tests with `@Tag("integration")` (or `slow` / `bench`). Do **not** put multi-minute e2e in the default `test` task.
 
 **Docs-only / non-Java** tickets (markdown, comments-only, pure config with no runtime impact): ticket acceptance met is enough — no reinstall required. Still run any tests that would catch doc-linked fixtures if you touched them.
 
-**Any ticket that changes Java (or other runtime) code** must **not** merge into local `main` or move to `done` on the board until all of the following pass:
+**Any ticket that changes Java (or other runtime) code** must **not** open a pull request or move to `done` on the board until all of the following pass:
 
-1. **Tests (required, non-negotiable)** — prove the change did not break the build:
-   - **Merge gate:** a clean `jk guard` (it formats what changed, then every house-rule lane, the tree lane included) and a green `jk install` (every module's fast tier, then the reinstall).
-   - Mid-ticket, and before every long run, test by module and by class as **Prove it cheaply first** (under Two gates) says; never the full integration suite per merge.
-   - Do not merge into local `main` with a red or un-run fast gate. A broken local `main` is a stop-the-line defect: fix it first, then resume tickets.
-2. **Reinstall** — done by the merge gate's `jk install`. Never run `jk build` and then `jk install`; the install is the build.
+1. **Tests (required, non-negotiable)** — a clean `jk guard` and a green `jk install` locally, then a green `CI` check on the pull request. Mid-ticket, test by module and by class as **Prove it cheaply first** says; never the full integration suite per push.
+2. **Reinstall** — done by `jk install`. Never run `jk build` and then `jk install`; the install is the build.
 3. **Engine smoke** — `jk engine status` succeeds (engine up or able to start; no immediate failure).
 4. **Project smoke** — a simple project builds with the reinstalled binary, e.g. `jk init … && jk build` (or equivalent lock/build path the ticket affects).
 
-Record failures on the ticket (`ka comment <ID> --type progress`, or `ka move <ID> blocked`); do not mark done on green unit tests alone if dist/install/dogfood is broken.
+Record failures on the ticket (`ka comment <ID> --type progress`, or `ka move <ID> blocked`); do not mark done on green unit tests alone if dist/install/dogfood is broken. A ticket is `done` once its pull request has merged.
 
 ### Landing on `origin/main`
 
-The merge queue on bocabox (`scripts/queue/loop.sh`) is the only writer to `origin/main`. Every
-session, an orchestrator's integration branch included, submits a branch instead of pushing `main`:
+Every change reaches `main` through a pull request and the merge queue; nobody pushes `main`.
 
 ```bash
-scripts/queue/branch-tier.sh     # jk guard + the fast tier of the changed modules and their dependents + the tree suite; records the pass
-scripts/queue/submit.sh          # the current branch (or name one) waits in the queue
-scripts/queue/status.sh          # waiting, gating in batch <n>, landed as <sha>, or ejected and why
+git push -u origin w/JK-3B0SH                          # the branch, named for its ticket
+gh pr create --fill --base main                        # CI starts on the pull request
+gh pr merge --auto --rebase                            # joins the merge queue once CI is green
+gh pr checks --watch                                   # follow the run
 ```
 
-A branch that touches a framework or language plugin passes `jk test -s slow` before it is
-submitted. The queue applies everything waiting on top of `origin/main`, runs the Queue tier on
-that commit and fast-forwards `origin/main` to it; it never force-pushes.
-
-**When `origin/main` moved** under a gate, a green verdict survives a rebase over docs-only commits
-and nothing else: the queue lands the batch on the new `origin/main` without gating it again when
-everything that came in is docs-only, and applies and gates it again otherwise. A change is
-**docs-only** when every file it touches is a doc (under `docs/` or `hosting/`, or Markdown at the
-root) that no test reads but those of the docs suite (`jk test -s docs`, the tests that scan the
-doc tree). The docs tests read are `scripts/gate/test-reads.txt`, written by
-`scripts/gate/docs-only.sh write` from what the suites were seen reading; the Full tier is red while
-a read is missing from it. It counts only the suites a gate runs whole, never a `--class` or `-I`
-run, so a scratch test that reads the whole checkout does not land in it. A docs-only batch skips
-the Queue tier and runs the docs checks alone (`GATE_TIER=docs`: `jk guard`, which holds the link
-check, `bench/scoreboard --render --check` and the docs suite); every code batch runs the docs suite
-too, and the Full tier still runs everything. A new test that walks a directory of docs is tagged
-`@Tag("docs")`.
-
-A branch that conflicts, or that is
-red alone, is ejected with the reason and the failing classes, which the queue also writes on its
-ticket (the one the branch is named for, `w/<ticket>`): fix it, run the Branch tier again and
-resubmit. A flake does not eject: the Queue tier runs failed classes once more and records them. Closing the ticket stays with whoever reviewed it.
-Never `git push` to `main` yourself, not even after a green gate of your own
-([self-host](docs/contributors/self-host.md#the-merge-queue)).
+A pull request that touches a framework or language plugin passes `jk test -s slow` locally first.
+The merge queue rebases each pull request onto `main` as it stands, runs CI with the whole
+integration tier on the result and fast-forwards `main` to it. A pull request whose group goes red
+leaves the queue: fix it, push, and it rejoins once CI is green. Closing the ticket stays with
+whoever reviewed it.
 
 ## Comments and Javadoc
 
@@ -422,7 +381,7 @@ Java), and under CI it fails naming each file that is not formatted. There is no
 - **Run `jk guard` before every commit that touches code** (commit, amend, or any equivalent) and let it
   finish green. A docs-only commit (Markdown, no source) runs `jk guard docs` instead: the text rules
   that read Markdown, in seconds, with no build.
-  It is the merge gate's first half too. Unformatted source must not enter git history.
+  Unformatted source must not enter git history.
 - **Trust what it rewrites.** Long-hand FQCNs and similar agent noise are why it exists.
 - **Unrelated files may change. Keep them.** A file someone changed without a guard run is formatted
   on yours. Do not `git restore` those diffs or treat them as a reason to skip the commit. When the
@@ -432,9 +391,8 @@ Java), and under CI it fails naming each file that is not formatted. There is no
 
 ## Git workflow
 
-- **Trivial** fixes (typos, one-liner comment, obvious bug with no ticket): commit on `main` is fine.
-- **Everything else:** work on a **dedicated branch** (prefer a **git worktree** so `main` stays clean and other agents can coordinate). Name branches after the ticket when possible, e.g. `JK-1044-build-logic-spi` (legacy `ticket-NNNN-…` names are fine for older branches).
-- **No pull requests:** merge into local `main` when the work passes the merge gate (see **Done criteria** above; ticket acceptance met) and move the ticket on the board (`ka move`). Batch merges from several worktrees, then **submit** the branch to the merge queue, which lands it on `origin/main` ([Landing on `origin/main`](#landing-on-originmain)); never push `main` yourself. Submit often enough that `origin` does not lag local `main` by more than a working session.
+- Work on a **dedicated branch** (prefer a **git worktree** so `main` stays clean and other agents can coordinate), named for its ticket, e.g. `w/JK-3B0SH`.
+- **Pull requests:** open one when the branch passes the local checks (see **Done criteria** above), and let the merge queue land it ([Landing on `origin/main`](#landing-on-originmain)); never push `main` yourself. Move the ticket on the board (`ka move`) once it has merged.
 - Do not leave half-finished tickets on `main`. Do not rewrite published history on `main` without an explicit human request.
 - Every commit compiles and passes on its own: a file rename lands in the same commit as the class rename it carries, and a signature change lands with its callers. `git bisect` must never stop on a tree that cannot build.
 - Author commits as a normal human contributor. No tool or model co-author trailers, no “generated by …” attribution, and no third-party AI product or model brand names in commits, comments, Javadoc, or user-facing docs. Local guard: `jk guard hooks install` writes the `commit-msg` hook that refuses such a trailer (the `no-agent-trailers` rule) and the `pre-commit` hook that protects the guard baseline.

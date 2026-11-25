@@ -1,14 +1,13 @@
-# The slow tiers, the coverage ratchet, the doc examples and the product smoke, on Linux and macOS.
-# Unit tests, the curated integration lane and the whole integration tier run again in ci.yml on the
-# release tag; no workflow runs on a push or a pull request.
+# The slow, network and bench tiers, the coverage ratchet, the doc examples and the product smoke
+# with network, nightly. The fast tier, the curated lane and the whole integration tier run in
+# ci.yml, on every pull request and merge-queue group.
 # Manual re-run: Actions → "CI (nightly)" → Run workflow.
 #
 # Every job bootstraps the way ci.yml's self-host job does: the hosted release
 # .jk/ci/ci-bootstrap-version pins installs the checkout (building it), which hands the isolated JK_HOME
 # to the checkout's own client, engine and workers, so each tier is run by the commit's jk.
 #
-# Runners are spent in order, cheapest first: the Linux jobs, then Windows once the Linux jobs that
-# build and test jk have passed, then macOS once Windows has (guard workflow-runners-in-cost-order).
+# Every job starts at once, on every OS.
 name: CI (nightly)
 
 on:
@@ -30,43 +29,6 @@ env:
   TERM: xterm-256color
 
 jobs:
-  # The whole integration suite. The branch gate runs the curated subset (curated-integration.txt);
-  # this is the complete tier, and the curated lane is never a replacement for it.
-  integration:
-    name: Integration suite
-    runs-on: ubuntu-latest
-    env:
-      JK_HOME: ${{ github.workspace }}/../jk-home
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - uses: graalvm/setup-graalvm@d6eca2595046623d69d636041513c80abf745406 # v1.6.9
-        with:
-          java-version: '25'
-          distribution: 'graalvm'
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Bootstrap jk from the hosted release
-        shell: bash
-        run: bash scripts/ci-bootstrap.sh
-
-      - name: The checkout's own jk takes over
-        run: bash scripts/ci-takeover.sh --install-only
-
-      # A red class is a verdict about its module; --continue reports every module's.
-      - name: Integration suite
-        run: jk test -s integration --continue --no-ansi
-
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: always()
-        with:
-          name: integration-results
-          path: |
-            **/target/surefire-reports/
-            **/target/failsafe-reports/
-          if-no-files-found: warn
-          retention-days: 14
-
   # @Tag("slow") lives here: framework and language e2e — Android, Grails, Scala, KSP, Protobuf,
   # Groovy, Minified. What it asserts moves when a plugin or a toolchain moves, not when the change
   # under review does, so paying it on every merge bought coverage the change could not affect.
@@ -353,29 +315,12 @@ jobs:
       - name: A relock may move first-party plugin checksums and nothing else; an npm lock may not move
         run: scripts/examples-lock-drift.sh jk-examples
 
-  # ---- Windows: once the Linux jobs that build and test jk itself have passed ---------------------
-  # integration and coverage: both install the checkout and run its suites, so a green pair proves the
-  # Linux build. The advisory and environment jobs (audit, templates drift, bench, network, examples,
-  # the heap guard, slow's framework e2e) do not hold Windows back: their red hides no Windows signal.
-
-  # Product smoke on the OSes the PR gate does not run (steps in .github/actions/product-smoke).
-  # windows-2022 while the hosted bootstrap predates the engine passing the developer prompt's
-  # INCLUDE and LIB through: native-image locates Visual Studio 2022 on its own.
-  os-smoke-windows:
-    name: Product smoke (windows-2022)
-    needs: [integration, coverage]
-    runs-on: windows-2022
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: ./.github/actions/product-smoke
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+  # ---- Windows -----------------------------------------------------------------------------------
 
   # The Node.js toolchain on Windows with the suites that fetch real generators from npm, which the
-  # push gate's row of the same name leaves out.
+  # ci.yml job of the same name leaves out.
   node-windows-network:
     name: Node.js toolchain with network (Windows)
-    needs: [integration, coverage]
     # windows-2022 for the reason the product smoke gives.
     runs-on: windows-2022
     steps:
@@ -408,11 +353,12 @@ jobs:
         shell: bash
         run: bash scripts/ci-node-windows.sh --network
 
-  # ---- macOS: once the Windows jobs have passed ---------------------------------------------------
+  # ---- macOS -------------------------------------------------------------------------------------
 
+  # The native client's watch on macOS. ci.yml's macOS job runs the product smoke and the fast tier
+  # on every pull request; this adds the slow watch class, which needs that install.
   os-smoke-macos:
-    name: Product smoke (macos-latest)
-    needs: [os-smoke-windows, node-windows-network]
+    name: Native watch (macos-latest)
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

@@ -142,18 +142,16 @@ modules = [
 # Tags are cost, not place: a suite that claims a tag takes its tests from every test source of a
 # module (src/test, and src/e2e where there is one).
 #
-#   jk test                fast tier: the default suite, what no suite claims. The merge gate
-#                          (`jk install`) runs it.
-#   jk test -g             test + integration + e2e + tree (guard-suites). The Full tier
-#                          (`jk install -g`) runs them.
-#   jk test -s docs        tests that scan the doc tree. The docs, Queue and Full tiers run it on
-#                          its own, so what it reads stays out of scripts/gate/test-reads.txt.
-#   jk test -s tree        tests that scan every module's sources. The Branch and Queue tiers run
-#                          it; the Full tier runs it with the guard suites.
+#   jk test                fast tier: the default suite, what no suite claims. `jk install` and
+#                          every CI run run it.
+#   jk test -g             test + integration + e2e + tree (guard-suites); `jk install -g`.
+#   jk test -s docs        tests that scan the doc tree. CI runs it on its own, so what it reads
+#                          is recorded apart from the other suites.
+#   jk test -s tree        tests that scan every module's sources. Every CI run.
 #   jk test -s slow        framework and language e2e. Nightly, never gating.
 #   jk test -s network     talks to a real remote. Nightly, never gating.
-#   jk test -s release     a real browser, or an end-to-end too slow for every queue batch. The
-#                          Full tier runs it every cycle; CI on the tag.
+#   jk test -s release     a real browser, or an end-to-end too slow for the fast tier. Every CI
+#                          run.
 #   jk test -s live        talks to this machine's own services (the OS keychain). On demand.
 #   jk test -s bench       microbenchmarks. On demand, gates nothing.
 #   jk test --all          every suite but live and bench (explicit).
@@ -168,12 +166,12 @@ fast-method-budget = "5s"
 # value, so CI builds the tree with the bridge .jk/ci/ci-bootstrap-reader names.
 cache = "cone"
 
-# The Queue tier runs it in the modules a batch changed, before the merge queue moves origin/main;
-# the Full tier runs all of it. Walled off from the release site: a test that
+# The merge queue runs all of it before main moves; a pull request runs the curated lane
+# (curated-integration.txt). Walled off from the release site: a test that
 # needs a published jk release is a `network` test, since the version under test is not published
 # until it ships.
 #
-# A hung test fails instead of stalling the gate: every test and lifecycle method stops at 5m, five
+# A hung test fails instead of stalling the run: every test and lifecycle method stops at 5m, five
 # times the slowest integration method on a loaded host (about 1m), and well inside the worker's
 # 10m idle watchdog. The method runs on a separate thread, so the failure is reported even when the
 # hang ignores interrupts (a blocking read); the thread dump printed first names where it hung.
@@ -185,8 +183,7 @@ timeout = "5m"
 env = { JK_HTTP_DENY_HOSTS = "jumpkick.build" }
 
 # The tests that scan the doc tree (every page under docs/, the root Markdown): what they read is
-# the doc tree itself, so a docs-only change runs this suite and nothing else, and a doc only it reads
-# is docs-only (scripts/gate/docs-only.sh). A test that reads a few named docs stays where it is.
+# the doc tree itself. A test that reads a few named docs stays where it is.
 # Off guard-suites: a run of several suites records their reads as one, so it runs alone.
 [test.suites.docs]
 tags = ["docs"]
@@ -213,9 +210,9 @@ exclude-tags = ["network", "release", "live", "bench"]
 tags = ["network"]
 exclude-tags = ["release", "live", "bench"]
 
-# Before every release, never in a queue batch: the Full tier runs it every cycle, and CI's self-host
-# job on the release tag, after the fast tier and the curated lane, so a red run stops the release.
-# For a test too slow or too heavy for every batch that a release must still pass: the dashboard
+# Out of the fast tier; CI's self-host job runs it on every pull request, merge-queue group and
+# release tag, after the fast tier and the curated lane. For a test too slow or too heavy for the
+# fast tier that a release must still pass: the dashboard
 # driven in a real browser, the Helidon scaffolds served end to end, publish and release against a
 # local repository, the cross-host key proof, the forecast-against-run matrix. It may fetch.
 [test.suites.release]

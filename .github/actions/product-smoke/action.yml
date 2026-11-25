@@ -1,7 +1,7 @@
-# Product smoke, written once for the OSes the nightly runs it on (a job per OS, so macOS starts only
-# after Windows passed). Bootstraps the hosted client the way a user installs it (the native client on
-# macOS, jk.exe on Windows), hands the home to the checkout's own jk, and drives a fresh project end
-# to end. The job checks out the repository first.
+# Product smoke, written once for the Windows and macOS jobs of ci.yml and the nightly. Bootstraps
+# the hosted client the way a user installs it (the native client on macOS, jk.exe on Windows),
+# hands the home to the checkout's own jk, and drives a fresh project end to end. The job checks
+# out the repository first.
 name: Product smoke
 description: Bootstrap, take over, and drive a fresh project through the checkout's jk.
 inputs:

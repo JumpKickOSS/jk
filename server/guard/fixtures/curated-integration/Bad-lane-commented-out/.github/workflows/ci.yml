@@ -1,5 +1,5 @@
 name: ci
-on: [pull_request]
+on: [pull_request, merge_group]
 jobs:
   self-host:
     runs-on: ubuntu-latest
@@ -9,3 +9,9 @@ jobs:
       - name: Curated integration lane
         timeout-minutes: 8
         run: echo "lane paused" # scripts/curated-integration.sh
+
+  integration:
+    if: ${{ github.event_name == 'merge_group' }}
+    runs-on: ubuntu-latest
+    steps:
+      - run: jk test -s integration --no-ansi

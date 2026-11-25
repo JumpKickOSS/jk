@@ -33,7 +33,7 @@ class FrontDoorRelayTest {
 
     private static final String GUEST = "3fcc9b6aa600";
     private static final FrontDoorRelay.Target TARGET =
-            new FrontDoorRelay.Target(GUEST, 8995, "guest-token", "WSL fd3-ubuntu on BocaMiniPC");
+            new FrontDoorRelay.Target(GUEST, 8995, "guest-token", "WSL fd3-ubuntu on Workstation");
 
     @TempDir
     Path home;
@@ -95,7 +95,7 @@ class FrontDoorRelayTest {
         assertThat(launched).as("raised once").hasSize(1);
         String argv = String.join(" ", launched.getFirst());
         assertThat(argv)
-                .contains("WSL fd3-ubuntu on BocaMiniPC: Clean JumpKick's cache?")
+                .contains("WSL fd3-ubuntu on Workstation: Clean JumpKick's cache?")
                 .contains("http://127.0.0.1:8910/engines/" + GUEST + "/#decision/" + d.id() + "?t=front-token")
                 .doesNotContain("guest-token");
 
@@ -117,7 +117,7 @@ class FrontDoorRelayTest {
         relay.frame(TARGET, "notice", """
                 {"change":"seen","seenUpTo":2,"unseen":0}""");
         assertThat(bell.list()).singleElement().satisfies(n -> {
-            assertThat(n.text()).isEqualTo("WSL fd3-ubuntu on BocaMiniPC: installed Temurin 25");
+            assertThat(n.text()).isEqualTo("WSL fd3-ubuntu on Workstation: installed Temurin 25");
             assertThat(n.href()).isEqualTo("/engines/" + GUEST + "/#activity");
         });
     }

@@ -15,7 +15,7 @@ import org.jspecify.annotations.Nullable;
  * it. A resident engine outlives the terminal or ssh session that started it; once that session has
  * ended, its socket still accepts and its relay still runs, but the Windows side is gone: a Windows
  * program started through it never begins, and the Linux side waits past any timeout's signal
- * (observed on bocaminipc for {@code cmd.exe}, {@code jk.exe} and {@code powershell.exe} from a WSL
+ * (observed for {@code cmd.exe}, {@code jk.exe} and {@code powershell.exe} from a WSL
  * engine started over ssh). The distro's own server, {@code /run/WSL/1_interop}, lives as long as
  * the distro, so every engine-side start of a Windows program goes through it.
  */

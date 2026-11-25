@@ -1,31 +1,26 @@
-# CI: every test and gate a release has to pass, run once, on the release tag. A release is cut by
-# `jk release` (the Cut release workflow runs it, or a developer does with --push): it tags the
-# commit and moves jk.toml to the next version, and the tag it pushes starts this workflow. The
-# release workflow (CD) starts only when this one finishes green and re-runs none of it; a red run
-# here is the end of that release. Day-to-day pushes and pull requests start nothing; the merge gate
-# (jk format, jk guard, jk install) and the push gate (jk install -g) run on the
-# developer's machine. A workflow_dispatch re-runs the gate on any ref; on a release tag, a green
-# dispatch releases it like the tag push would. The whole integration tier runs on every release
-# tag and every run on main, dispatches included, so no run here is green on a commit of main that
-# fails an integration test; on any other ref it runs only when the `integration` input asks: it is
-# most of an hour of runner time.
+# CI: every pull request, every merge-queue group and every release tag. A pull request runs every
+# job but the whole integration tier; the merge queue runs all of it on the commit that becomes main,
+# so main only moves to a commit that passed. A release tag runs it all again before the release
+# workflow (CD) starts, which re-runs none of it. A workflow_dispatch re-runs the gate on any ref;
+# on a release tag, a green dispatch releases it like the tag push would.
 #
-# Runners are spent in order, cheapest first: every Linux job, then the Windows jobs once all of
-# those passed, then the macOS jobs once the Windows ones passed. A build already broken on Linux
-# never starts a Windows or macOS runner, and one broken on Windows never starts a macOS runner
-# (guard workflow-runners-in-cost-order). Steps shared by several OSes are written once, in a
-# composite action under .github/actions/, and each OS is a job of its own, since `needs` orders
-# jobs and not the rows of one matrix.
+# Every job starts at once, on every OS: nothing waits for another job. The `ci` job is the one
+# check the main branch's ruleset requires; it fails unless every other job passed or was skipped
+# by its own condition. Steps shared by several OSes are written once, in a composite action under
+# .github/actions/.
 
 name: CI
 
 on:
+  pull_request:
+    branches: [main]
+  merge_group:
   push:
     tags: ["v[0-9]*"]
   workflow_dispatch:
     inputs:
       integration:
-        description: Run the whole integration tier (always on a release tag and on main)
+        description: Run the whole integration tier (always in the merge queue, on a tag and on main)
         type: boolean
         default: false
 
@@ -34,8 +29,9 @@ on:
 permissions:
   contents: read
 
+# A new push to a pull request cancels its previous run; each merge-queue group has a ref of its own.
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 env:
@@ -65,16 +61,25 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-      # The commits this release brings: those since the previous release tag. History is fixed
-      # once pushed, and a trailer that landed before this check existed would fail every run
-      # forever. A run that is not on a tag scans the commit it was started on.
+      # The commits the run brings: a pull request's or a merge-queue group's since its base, or a
+      # release's since the previous release tag. History is fixed once pushed, and a trailer that
+      # landed before this check existed would fail every run forever. Any other run scans the
+      # commit it was started on.
       - name: Scan commit messages
         env:
           HEAD_SHA: ${{ github.sha }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          GROUP_BASE: ${{ github.event.merge_group.base_sha }}
+          REF_TYPE: ${{ github.ref_type }}
         run: |
           set -euo pipefail
-          previous="$(git describe --tags --abbrev=0 --match 'v[0-9]*' "$HEAD_SHA^" 2>/dev/null || true)"
-          if [[ -n "$previous" ]]; then
+          if [[ -n "$PR_BASE" ]]; then
+            range="$PR_BASE..$PR_HEAD"
+          elif [[ -n "$GROUP_BASE" ]]; then
+            range="$GROUP_BASE..$HEAD_SHA"
+          elif [[ "$REF_TYPE" == tag ]] \
+            && previous="$(git describe --tags --abbrev=0 --match 'v[0-9]*' "$HEAD_SHA^" 2>/dev/null)"; then
             range="$previous..$HEAD_SHA"
           else
             range="$HEAD_SHA^!"
@@ -221,10 +226,15 @@ jobs:
       - name: Docs test suite
         run: jk test -s docs --no-ansi
 
+      # The tests that scan every module's production sources, kept out of each module's fast tier
+      # so an edit re-runs only them.
+      - name: Tree test suite
+        run: jk test -s tree --no-ansi
+
       # The boundary lane: the integration classes curated-integration.txt names, in one jk test over
       # their modules, under the same engine, workers and home the fast tier just ran with. The full
-      # integration suite is nightly; this subset is the only integration coverage a pull request
-      # gets, so guard G63 owns the registry's integrity and this step's existence.
+      # integration suite runs in the merge queue; this subset is the integration coverage a pull
+      # request gets, so guard G63 owns the registry's integrity and this step's existence.
       #
       # Budget: 8 minutes wall clock. Over it, drop or split an entry — raising the number turns the
       # lane back into the full suite the branch gate cannot afford. The elapsed seconds land in
@@ -238,9 +248,9 @@ jobs:
           echo "curated integration lane: $((SECONDS - start))s of an 8 minute budget" \
             >> "$GITHUB_STEP_SUMMARY"
 
-      # The release tier: tests too slow for every queue batch that a release must pass, such as the
-      # dashboard's new-project wizard driven through Playwright's Chromium; the Full tier runs it
-      # too. They may fetch (the browser, the dashboard's CDN, Maven Central), which this job can.
+      # The release tier: tests a release must pass that the fast tier leaves out, such as the
+      # dashboard's new-project wizard driven through Playwright's Chromium. They may fetch (the
+      # browser, the dashboard's CDN, Maven Central), which this job can.
       - name: Release test tier
         run: jk test -s release --no-ansi
 
@@ -284,15 +294,16 @@ jobs:
         if: failure() && steps.audit.outcome == 'failure'
         run: scripts/ci-audit-annotate.sh target/jk-audit.jsonl HIGH
 
-  # The whole integration tier, as the nightly's integration job runs it: a commit can reach main
-  # without the push gate, and the curated lane is a subset. On main it always runs, so a dispatch
-  # there cannot come back green over a red integration test. A red class is a verdict about its
-  # module; --continue reports every module's. The release workflow starts only on a green CI run,
-  # so a red tier here stops the release. The nightly's run of the tier took 48 minutes on
-  # ubuntu-latest, bootstrap and install included.
+  # The whole integration tier: the curated lane is the subset a pull request runs, and the merge
+  # queue runs all of it, so main only moves to a commit that passed it. On a release tag and on
+  # main it always runs too. A red class is a verdict about its module; --continue reports every
+  # module's. The release workflow starts only on a green CI run, so a red tier here stops the
+  # release.
   integration:
     name: Integration suite
-    if: ${{ github.ref_type == 'tag' || github.ref == 'refs/heads/main' || inputs.integration }}
+    if: >-
+      ${{ github.event_name == 'merge_group' || github.ref_type == 'tag'
+      || github.ref == 'refs/heads/main' || inputs.integration }}
     runs-on: ubuntu-latest
     timeout-minutes: 120
     env:
@@ -342,13 +353,10 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
-  # ---- Windows: only once every Linux job has passed -------------------------------------------
+  # ---- Windows -----------------------------------------------------------------------------------
 
   vscode-extension-windows:
     name: VS Code extension (windows-latest)
-    needs: [tag, authorship, workflows, fixtures, vscode-extension-linux, self-host, integration]
-    # The tag check is skipped off a tag: run unless a Linux job failed or the run was cancelled.
-    if: ${{ !cancelled() && !failure() }}
     runs-on: windows-latest
     timeout-minutes: 20
     steps:
@@ -359,9 +367,6 @@ jobs:
 
   installer-windows:
     name: PowerShell 5.1 installer verification
-    needs: [tag, authorship, workflows, fixtures, vscode-extension-linux, self-host, integration]
-    # The tag check is skipped off a tag: run unless a Linux job failed or the run was cancelled.
-    if: ${{ !cancelled() && !failure() }}
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -370,15 +375,30 @@ jobs:
         shell: powershell
         run: .\scripts\test-installer-verification.ps1
 
+  # jk builds jk on Windows: the hosted client installs the checkout, the checkout's jk takes the
+  # home over and drives a fresh project (.github/actions/product-smoke), then every module's fast
+  # tier and each test class that names an OS run under it (scripts/ci-platform-tests.sh).
+  # windows-2022 for the reason the product smoke gives: the checkout's install links a native
+  # client, and native-image locates Visual Studio 2022 on its own.
+  platform-windows:
+    name: Build and test (Windows)
+    runs-on: windows-2022
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/product-smoke
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Fast tier and OS-conditioned classes
+        shell: bash
+        run: bash scripts/ci-platform-tests.sh
+
   # The Node.js toolchain on Windows: provisioning from the win-x64 zip, `jk node`, and the node
   # build e2e, under the checkout's own jk. The runner image's Node.js serves the suites that run
   # on the host's. windows-2022 for the reason the product smoke gives: the checkout's install links
   # a native client.
   node-windows:
     name: Node.js toolchain (Windows)
-    needs: [tag, authorship, workflows, fixtures, vscode-extension-linux, self-host, integration]
-    # The tag check is skipped off a tag: run unless a Linux job failed or the run was cancelled.
-    if: ${{ !cancelled() && !failure() }}
     runs-on: windows-2022
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -411,12 +431,10 @@ jobs:
         shell: bash
         run: bash scripts/ci-node-windows.sh
 
-  # ---- macOS: only once every Windows job has passed --------------------------------------------
+  # ---- macOS -------------------------------------------------------------------------------------
 
   fixtures-macos:
     name: Shell fixtures (installer, wrapper, publish, release, curated lane) on macOS
-    needs: [vscode-extension-windows, installer-windows, node-windows]
-    if: ${{ !cancelled() && !failure() }}
     runs-on: macos-latest
     timeout-minutes: 15
     steps:
@@ -425,8 +443,6 @@ jobs:
 
   vscode-extension-macos:
     name: VS Code extension (macos-latest)
-    needs: [vscode-extension-windows, installer-windows, node-windows]
-    if: ${{ !cancelled() && !failure() }}
     runs-on: macos-latest
     timeout-minutes: 20
     steps:
@@ -434,3 +450,49 @@ jobs:
       - uses: ./.github/actions/vscode-extension
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
+
+  platform-macos:
+    name: Build and test (macOS)
+    runs-on: macos-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/product-smoke
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Fast tier and OS-conditioned classes
+        run: bash scripts/ci-platform-tests.sh
+
+  # ---- The required check ------------------------------------------------------------------------
+
+  # The one check the main branch's ruleset requires, so a job added here gates merges without a
+  # settings change: green when every job passed or was skipped by its own condition, red when any
+  # failed or was cancelled.
+  ci:
+    name: CI
+    if: ${{ always() }}
+    needs:
+      - tag
+      - authorship
+      - fixtures
+      - workflows
+      - self-host
+      - integration
+      - vscode-extension-linux
+      - vscode-extension-windows
+      - installer-windows
+      - platform-windows
+      - node-windows
+      - fixtures-macos
+      - vscode-extension-macos
+      - platform-macos
+    runs-on: ubuntu-latest
+    steps:
+      - name: Every job passed or was skipped
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "job results: $RESULTS"
+          for r in $RESULTS; do
+            case "$r" in success | skipped) ;; *) exit 1 ;; esac
+          done

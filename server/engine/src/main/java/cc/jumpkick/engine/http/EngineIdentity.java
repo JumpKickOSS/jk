@@ -65,7 +65,7 @@ public record EngineIdentity(String id, String os, Guest guest, String hostname,
         return guest.guest() ? "guest" : "host";
     }
 
-    /** One line naming this engine: {@code Windows on BocaMiniPC}, {@code WSL Ubuntu on BocaMiniPC}. */
+    /** One line naming this engine: {@code Windows on Workstation}, {@code WSL Ubuntu on Workstation}. */
     public String label() {
         String what =
                 switch (guest.kind()) {

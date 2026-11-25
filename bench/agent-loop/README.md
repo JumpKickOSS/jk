@@ -31,7 +31,7 @@ than the latest GA, or a latest-GA check that cannot reach the network, refuses 
 one recorded (`java_home` and the first line of `java -version`). Every results row and the
 table header carry a host block and a host id (sha256 of cpu model, logical CPUs, RAM GiB
 rounded, and the OS id from `/etc/os-release`, first 12 hex; `JK_BENCH_HOST` overrides it).
-Rows written with no host id are host `bocabox`. Medians compare only the current host; other
+Rows written with no host id count as one legacy host (`LEGACY_HOST` in `bench/benchtools.py`). Medians compare only the current host; other
 hosts are a separate section.
 
 ## What a scenario is
@@ -372,7 +372,7 @@ would have cost), each as tokens times the API calls that carried them.
 
 ## A night of benches
 
-`scripts/bench-night.sh` runs what the agent bench owes on the gate host, in order, every step to its end,
+`scripts/bench-night.sh` runs what the agent bench owes on an otherwise idle host, in order, every step to its end,
 every agent on its pinned model and effort, one run per cell and no repetitions. Its plan is
 `night-plan plan`, in the tiers of [agent-bench.md](../../docs/contributors/agent-bench.md#the-standard):
 tier 0 is `smoke-test`, tier 1 the screen (`night-plan`'s `TIER1`: a caller and an impact question, a
@@ -393,10 +393,8 @@ library question's `find`); "no-code-tools" is `jk-nograph`.
 scripts/bench-night.sh prepare                          # every corpus repository at its pin, built (no agent)
 scripts/bench-night.sh smoke                            # tier 0 now, every agent, one PASS or FAIL line each
 scripts/bench-night.sh run --until 07:00 --dry-run      # every cell, minutes per step, when it ends
-scripts/bench-night.sh pause                            # the merge queue and Full loops start no gate
 scripts/bench-night.sh run --until 07:00                # the night, under systemd-inhibit
 scripts/bench-night.sh status                           # from another shell: done, running, left, ETA, tables
-scripts/bench-night.sh resume                           # both loops start gates again
 ```
 
 `--until` is read in the host's time zone; name another one when it differs (`--until "01:00 MST"`).
@@ -420,8 +418,7 @@ to its own harness (`smoke-test --check`, `change-tasks --check`: one invocation
 parsed as the run would, nothing started) and refuses to start when a harness refuses one, naming the cell:
 an arm, driver or task the harness does not know is a fix before the night, not a night of error rows.
 A real run refuses when the installed jk is not the tree's version or lacks
-an MCP tool a step calls, when the loops are not paused, or when a gate holds the gate lock, which it then holds to
-the end. Rows land in `results/<date>-change-tasks/`, where the scoreboard reads them; nothing is
+an MCP tool a step calls. Rows land in `results/<date>-change-tasks/`, where the scoreboard reads them; nothing is
 banked or rendered: that is a separate, reviewed step.
 
 The night ends with its tables, from `night-summary --since <the night's date>`, computed from its rows
@@ -433,18 +430,5 @@ code tool and hit, wall, turns, tokens by kind, dollars, first tool, code-tool c
 text after the tool, tool errors, turn cap), then, when any is, the void cells per agent with the
 first one's reason. A void cell counts in no green and no hit rate. Dollars are the tokens at the API
 list prices of `prices.toml`, whose `published` date the header names. A no-code-tools cell's hit is `n/a`.
-
-`pause` writes the merge queue's pause file, `~/src/jk-queue.git/pause` (`QUEUE_REPO`), with its
-reason on the first line: while it exists the queue and Full loops keep running but start no batch
-or Full cycle, however long the night, and say once that they are paused and why. It then waits for
-the gate lock (`/var/tmp/fleet-gate.lock`), so a batch or cycle in flight finishes before it returns.
-`resume` removes the file, and each loop starts its next gate at its next look. By hand, on the gate
-host:
-
-```bash
-echo "bench night" >~/src/jk-queue.git/pause                  # pause
-exec 9>>/var/tmp/fleet-gate.lock && flock 9 && exec 9>&-      # wait for a gate in flight
-rm ~/src/jk-queue.git/pause                                   # resume
-```
 
 `bench/jar-size/` is the neighbouring bench; this one measures the loop, that one the artefact.

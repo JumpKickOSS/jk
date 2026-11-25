@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# A night of agent benches on the gate host, every step run to its end, with the merge queue and the
-# Full loop paused. Every agent runs its pinned model and effort, one run a cell. The plan is
+# A night of agent benches on an otherwise idle host, every step run to its end. Every agent runs its pinned model and effort, one run a cell. The plan is
 # bench/agent-loop/night-plan's, in tiers (0 smoke-test, 1 a screen, 2 a sliver of the claims' tasks):
 # step 1 the new agent ($NIGHT_FIRST, copilot) alone through tiers 0, 1 and 2 with JumpKick's code
 # tools; step 2 every agent without them (no-code-tools, arm jk-nograph) on every task of tiers 1 and 2;
@@ -17,8 +16,6 @@
 #   scripts/bench-night.sh run --until 01:00 [--dry-run]   # the night; --dry-run lists it, runs no agent
 #   scripts/bench-night.sh status                          # the night's done, running, left, ETA and tables
 #   scripts/bench-night.sh smoke                           # tier 0 for every agent now, one line each
-#   scripts/bench-night.sh pause                           # the queue and Full loops start no gate
-#   scripts/bench-night.sh resume                          # they start gates again
 #   scripts/bench-night.sh prepare                         # set up and build the corpus repositories
 #
 # The dry run prints each step's cells and minutes, when the night would end, and the cells that would
@@ -29,32 +26,22 @@
 # `run`, the dry run too, first puts every cell's arguments to its harness (smoke-test or change-tasks
 # --check), which parses them as the cell would, and refuses to start when a harness refuses one: an
 # arm, driver or task it does not know. It then checks, and refuses a real run on any failure: the
-# installed jk is this tree's version and lists every MCP tool a step calls; the queue and Full loops
-# are paused; no gate holds the gate lock (which it then holds to the end). It names every agent CLI
+# installed jk is this tree's version and lists every MCP tool a step calls. It names every agent CLI
 # that is not logged in and every corpus repository not set up, and skips their cells; it never logs
 # in. An agent whose two cells in a row end in an error row (a preflight that failed) is skipped for the
 # rest of the step. A void cell is one that did not run: its agent spent no tokens because its CLI
 # refused it for a login or a usage limit (outcome `void`, neither green nor red). An agent whose two
 # cells in a row are void is skipped for the rest of the night, and the log says why.
 #
-# `pause` writes the queue's pause file, <QUEUE_REPO>/pause, with its reason: while it exists the
-# loops keep running but start no batch or Full cycle, however long the night. It then waits for the
-# gate lock, so a batch or cycle in flight finishes before it returns. `resume` removes the file, and
-# each loop starts its next gate at its next look. No process is stopped or started.
-#
-#   QUEUE_REPO      the merge queue's repository, which holds the pause file (default ~/src/jk-queue.git)
 #   NIGHT_STATE     the night's progress and its log (default /var/tmp/jk-bench-night)
 #   NIGHT_EXTRA     step 4's file of commands, run from this tree (default none)
 #   NIGHT_HARNESS   the directory of smoke-test and change-tasks, from this tree (default bench/agent-loop)
-#   GATE_LOCK       the lock every gate on this host takes (default /var/tmp/fleet-gate.lock)
 #   NIGHT_DRIVERS, NIGHT_FIRST, NIGHT_SKIP, NIGHT_NOGRAPH, NIGHT_MAX_MINUTES, NIGHT_RESULTS
 #                   the plan's (bench/agent-loop/night-plan)
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-PAUSE="${QUEUE_REPO:-$HOME/src/jk-queue.git}/pause"
 STATE="${NIGHT_STATE:-/var/tmp/jk-bench-night}"
-LOCK="${GATE_LOCK:-/var/tmp/fleet-gate.lock}"
 PLAN="$ROOT/bench/agent-loop/night-plan"
 NIGHT="$STATE/night"
 RESULTS="${NIGHT_RESULTS:-$ROOT/bench/agent-loop/results}"
@@ -107,27 +94,6 @@ login() {
       ;;
     *) command -v "$1" >/dev/null || echo "$1 is not on PATH" ;;
   esac
-}
-
-pause() {
-  { mkdir -p "$(dirname "$PAUSE")" &&
-    echo "bench night: scripts/bench-night.sh pause on $(hostname), $(date '+%F %H:%M %Z')" >"$PAUSE.tmp" &&
-    mv "$PAUSE.tmp" "$PAUSE"; } || die "cannot write the pause file $PAUSE"
-  echo "the queue and Full loops are paused: they start no gate until scripts/bench-night.sh resume ($PAUSE)"
-  exec 9>>"$LOCK" || die "cannot open the gate lock $LOCK"
-  echo "waiting for the gate lock $LOCK (a batch or Full cycle in flight finishes first)"
-  flock -w "${NIGHT_PAUSE_WAIT:-10800}" 9 || die "a gate still holds $LOCK; the loops stay paused"
-  flock -u 9
-  echo "no gate runs"
-}
-
-resume() {
-  if [ ! -f "$PAUSE" ]; then
-    echo "the queue and Full loops are not paused ($PAUSE)"
-    return 0
-  fi
-  rm -f "$PAUSE" || die "cannot remove the pause file $PAUSE"
-  echo "the queue and Full loops are resumed: each starts its next gate at its next look"
 }
 
 # prepare: every corpus repository a cell needs, checked out at its pin and built by this jk. A repository
@@ -209,10 +175,6 @@ run() {
   if [ -n "$installed" ]; then
     line="$("$PLAN" tools 2>&1)" || problems+=("$line")
   fi
-  [ -f "$PAUSE" ] || problems+=("the queue and Full loops are not paused: scripts/bench-night.sh pause")
-  exec 9>>"$LOCK" || die "cannot open the gate lock $LOCK"
-  flock -n 9 || problems+=("a gate holds $LOCK")
-  [ "$dry" -eq 1 ] && flock -u 9
 
   local plan refused
   plan="$("$PLAN" plan)" || die "night-plan failed"
@@ -453,8 +415,6 @@ extra() {
 case "${1:-}" in
   run) shift; run "$@" ;;
   smoke) smoke ;;
-  pause) pause ;;
-  resume) resume ;;
   prepare) prepare ;;
   status) status ;;
   *) sed -n '2,/^set -uo/p' "$0" | sed '$d' | sed 's/^# \{0,1\}//' >&2; exit 2 ;;

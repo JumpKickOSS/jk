@@ -124,7 +124,7 @@ class that filled the cache marks it in its own window, so the hole is a cache t
 derived from it.
 
 Keying each class over the uses of every window that started before its own in its JVM would close
-the hole, and was priced in shadow and turned down. On bocabox (24 CPUs, 30 GiB, shared, load
+the hole, and was priced in shadow and turned down. On a 24-CPU host (30 GiB, shared, load
 average near 50), the shadow keyed jk-engine's 958 fast-tier classes both ways in forced runs
 (`jk test -m jk-engine -X -r`), each after the one before had left its records:
 
@@ -167,7 +167,7 @@ native client and every first-party plugin jar by path (`-Djk.engine.jar=…`); 
 test-plugin-jars` entry is handed the same way. The suite's stamp keys each by content (`worker:`),
 so any engine edit misses the suite marker, but the class key leaves them to the observed part: a
 body-only edit of an engine class moves the fat jar's bytes, and in the suite part it moved the key
-of every class of those suites, whatever its cone held. On bocabox-1, after a green default suite,
+of every class of those suites, whatever its cone held. On a shared Linux host, after a green default suite,
 a body-only edit of `SelfHostEngine` ran all 11 fast-tier classes of jk-cli-e2e (9 by a moved key, 2
 by the module) and all 3 of jk-engine-e2e (by a moved key), most of which start nothing and never
 open the jar.
@@ -200,7 +200,7 @@ and the ones that need no engine at all are clients/cli's
 **What the nested engine could record (not built).** The engine is another JVM, so no recording
 says which engine classes a test class ran. The environment probe in the engine the CLI spawns
 (`EngineSpawn.jarCommand`), marking the classes of its fat jar, would: its `jk.ClassUse` events
-joined to the spawning test JVM's class windows by wall time. Measured on bocabox-2 over 52
+joined to the spawning test JVM's class windows by wall time. Measured on a Linux host over 52
 jk-cli-e2e integration classes on one test JVM:
 
 - A class with isolated roots gets an engine of its own, and its attribution is exact. The tier's
@@ -463,7 +463,7 @@ on a jk-cli subset and on hotel-reservations, reporting the median and spread of
 step's own time, the recording's size and the attribution pass's time. Computing the cone is engine
 time, memoized per class tree content, and is measured the same way in shadow mode.
 
-**The use marks** were measured on their own on bocamacmini (10 CPUs, 16 GiB): an engine built from
+**The use marks** were measured on their own on a macOS host (10 CPUs, 16 GiB): an engine built from
 the tree under a private `JK_HOME`, `jk test -m <module> -X -r` with the test JVMs pinned (`-w`),
 marks on (`cache = "cone"`) and off (`"class"`, which leaves the shadow and the attribution pass
 running), alternating, caches warm. The host was shared (load average 10 to 30 through the runs)
@@ -484,7 +484,7 @@ the layout's roots), though one test JVM reads a few thousand distinct paths a h
 times; it now keeps a verdict per path for the suite (`PathVerdicts`), and the recording reader
 fills each field's slot by index and skips the attributes of metadata it does not keep. Replayed
 in-process over one jk-engine fast-tier run's 24 recordings (981k events, 968 classes) on
-bocabox-host2 (24 CPUs, shared, load average 3 to 5), old and new alternating, three runs each,
+a 24-CPU shared host (load average 3 to 5), old and new alternating, three runs each,
 six timed passes a run after one warm-up: **1.53 s before, 0.59 s after** (median of 18; ranges
 1.52 to 1.59 s and 0.58 to 0.69 s), the same observations for every class. The records and the
 shadow were not re-measured; they need an engine built from the tree.
@@ -572,7 +572,7 @@ What the shadow showed on real runs of jk-engine (940 classes) and what closed e
   anywhere. The key feeds the identity the suite's stamp gives each tool by name (`proc:git=<what it
   says to --version>`, `ClassKeys.programs`); a stamp that names no git yet reads `unstamped`, so the
   next run's stamp moves the key and the class runs once more. 97 classes fell back for `git` on
-  bocabox-1; after, 1 (a template-store refresh run from the workspace with `--git-dir`).
+  a shared Linux host; after, 1 (a template-store refresh run from the workspace with `--git-dir`).
 
 - A utility that reads only what its command names, or a program the test wrote in its temp root,
   stands on its identity too (`OwnPrograms`). The program is one of `OwnPrograms.UTILITIES` or the
@@ -592,15 +592,15 @@ What the shadow showed on real runs of jk-engine (940 classes) and what closed e
   names, `ShortTempDirs`; a watcher loaded by name) joins its cone, up to 8 of them, rather than
   keying it by its module ([above](#static-cone-and-observed-cone)).
 
-Still keyed by the module before the last two, on bocaminipc-2 after a body-only edit of `SelfHostEngine`
+Still keyed by the module before the last two, on a WSL host after a body-only edit of `SelfHostEngine`
 (134 of jk-engine's 941 classes, 522 before the suite's code files): a class that starts a program,
 whose reads no recording holds (`git` 98, a program the test wrote in its own temp directory 9,
 `setsid` 8, `sleep` 4, a shell or `env` 8, `node` 2, a second JDK's `java` 1), and a class that
-loaded a workspace class its cone does not name (4). On bocabox-1, replaying one full jk-engine run's
+loaded a workspace class its cone does not name (4). On a shared Linux host, replaying one full jk-engine run's
 recordings through the attribution and the fallback: 143 module-keyed before `GitRuns` (`git` 97),
 53 after (`git` 1, a workspace class loaded outside the cone 17, other programs 35).
 
-The integration tier replayed nothing after an engine edit. On bocabox-2 (10 CPUs, 10 GiB), under an
+The integration tier replayed nothing after an engine edit. On a Linux host (10 CPUs, 10 GiB), under an
 engine from before `GitRuns` and the `StoreCasGc` fix above, with `cache = "cone"` set at the root,
 the same body-only edit of `SelfHostEngine` ran every integration class of the three suites an
 engine change gates, each after a run that left its records: jk-engine 199 of 199 (the shadow, of
@@ -610,10 +610,10 @@ module-keyed classes start the CLI, an engine, `git` or a build, or load code pa
 neither later change replays a class that starts the CLI or an engine. Under an engine with both
 (main at 7709bc7c5, same box, same edit, each suite after a forced run): jk-engine replayed 47 of
 197, 129 of its 1,386 class-seconds, the run-tests step 256 s against 245 s; jk-cli-e2e replayed 0
-of 130. The classes that replay are the cheap ones, so selection takes little off the Queue tier's
+of 130. The classes that replay are the cheap ones, so selection takes little off a CI run's
 integration step.
 
-With uses marked, on bocaminipc-2 after the same body-only edit of `SelfHostEngine`: 158 of
+With uses marked, on a WSL host after the same body-only edit of `SelfHostEngine`: 158 of
 jk-engine's 942 fast-tier classes run (849 before), 23 because a class whose code they ran moved and 135 keyed
 by the module; the probe run took 1m 07s against 1m 59s. With selection off after a body-only edit
 that fails `ClassKeysTest` (a condition dropped from `ClassKeys.replacedToken`), all 942 ran,

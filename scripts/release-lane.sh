@@ -7,7 +7,7 @@
 # Usage:
 #   scripts/release-lane.sh <work-dir>
 # The version is the checkout's jk.toml version, and HEAD must be its tag v<version>, on the history of
-# origin's green branch (scripts/release-green.sh). The platform is the host's. Leaves:
+# origin's main. The platform is the host's. Leaves:
 #   <work-dir>/out/release-<version>-<os>-<arch>/   assemble-release-dir.sh's tree, unsigned
 #   <work-dir>/out/repo/                             linux-x86_64 only: the repository staged for repo/
 #   <work-dir>/lane.log                              everything the lane printed
@@ -40,8 +40,12 @@ if [[ "$(git -C "$ROOT" rev-parse HEAD)" != "$(git -C "$ROOT" rev-parse -q --ver
   echo "release-lane: HEAD is not $TAG; check out the release tag (git fetch --tags && git checkout $TAG)" >&2
   exit 2
 fi
-# A release is cut from the commit the Full tier passed; the tag is on green's history.
-bash "$ROOT/scripts/release-green.sh" --reached "$TAG" >/dev/null || exit 2
+# A release is cut from main, which only moves to a commit the merge queue passed.
+git -C "$ROOT" fetch -q origin main
+git -C "$ROOT" merge-base --is-ancestor "$TAG" origin/main || {
+  echo "release-lane: $TAG is not on origin/main's history; cut releases from main" >&2
+  exit 2
+}
 
 # The Build-Commit of a jar's manifest: unzip where there is one, else Python, else PowerShell (Git Bash).
 build_commit() {

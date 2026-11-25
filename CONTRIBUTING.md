@@ -146,19 +146,18 @@ The client never embeds the engine. Spawning uses
 ```bash
 jk guard                                     # before every commit: formats what changed, then every house-rule lane
 jk install                                   # every module built, fast tier included, then the reinstall
-jk install -g                                # every integration and e2e class: the Full tier's tests
+jk install -g                                # every integration and e2e class, against the JumpKick it installs
 ```
 
-The first two are the merge gate, run before every local merge into `main`. A branch reaches
-`origin/main` through the merge queue, whose Queue tier is the push gate: guard, the reinstall
-without tests, one install, the integration suites of the modules the batch changed, the curated
-lane, the docs and tree suites and the shell fixtures. `jk install -g` (the default suite, `integration` and `e2e`, against the JumpKick it
-installs) is the Full tier's, which runs behind it. The fleet's gate hosts run either as `scripts/gate/run.sh <n> <sha>`
-([self-host](docs/contributors/self-host.md#the-gate),
+Run the first two, and the narrow `-m` / `--class` tests of what you changed, before you push. A
+branch reaches `main` through a pull request and GitHub's merge queue: open the pull request,
+then `gh pr merge --auto`. CI runs every job but the whole integration tier on the pull request,
+and the merge queue runs them again with `jk test -s integration`, so `main` only moves to a commit
+that passed everything ([self-host](docs/contributors/self-host.md#the-merge-queue),
 [tiers](docs/contributors/test-suite-tiers.md#gate-tiers)).
 
 On Windows the same gate is expected to pass, so a red test there is a finding, not the platform.
-The Full tier is long; to chase a failure, run its suites a module at a time
+The whole integration tier is long; to chase a failure, run its suites a module at a time
 (`jk test -g -m jk-engine`, `-m jk-cli-e2e`, …, with `--continue` past a dependency's failure). A failure that only one checkout reproduces is
 usually its stale test sandbox under `~/.jk/test-homes/`: delete that slot and it is reseeded.
 Tests stay portable through `cc.jumpkick.testing`: `Sleepers` for stand-in processes (never a
@@ -169,11 +168,10 @@ paths.
 
 | Lane | When | What |
 |---|---|---|
-| **Release CI** (`ci.yml`) | A pushed release tag `vX.Y.Z` (made by `jk release`, or the **Cut release** workflow, which dispatches it) + manual `workflow_dispatch` | The tag matches `jk.toml`; commit-authorship scan since the previous tag; the shell fixtures (on Linux and macOS); the self-host job: `jk build`, `jk install`, `jk guard`, `jk test`, the curated integration lane, the lock diff; the whole integration tier (`jk test -s integration`) on a tag and on `main` |
-| **Nightly** (`ci-nightly.yml`) | Daily cron + manual `workflow_dispatch` | `jk test -s integration`, `slow`, `network`, `bench`; the coverage ratchet (`jk test --coverage`, `jk guard`); heap guard; doc examples. macOS: product smoke (`scripts/ci-product-smoke.sh`). |
+| **CI** (`ci.yml`) | Every pull request, every merge-queue group, a pushed release tag `vX.Y.Z` (made by `jk release`, or the **Cut release** workflow, which dispatches it) + manual `workflow_dispatch` | Every job at once on Linux, Windows and macOS: commit-authorship scan; workflow lint; the shell fixtures (on Linux and macOS); the self-host job: `jk install`, `jk guard`, `jk test`, the docs and tree suites, the curated integration lane, `jk test -s release`, the lock diff, `jk audit`; the VS Code extension; the Windows installer and Node.js checks; Windows and macOS build and test. The whole integration tier (`jk test -s integration`) in the merge queue and on a tag. The aggregate `CI` job is the one required check |
+| **Nightly** (`ci-nightly.yml`) | Daily cron + manual `workflow_dispatch` | `slow`, `network`, `bench`; the coverage ratchet (`jk test --coverage`, `jk guard`); heap guard; doc examples. macOS: product smoke (`scripts/ci-product-smoke.sh`). |
 
-Pushes to `main` and pull requests start no workflow: the merge gate runs on the developer's machine
-and the push gate on the merge queue's host ([AGENTS.md](AGENTS.md)). **Cut release** (`cut-release.yml`, manual) runs
+**Cut release** (`cut-release.yml`, manual) runs
 `jk release --push`, which tests and tags the declared version and starts the next one; its tag push
 starts the lane above; when it is green, **release** (`release.yml`, CD) builds every platform
 without re-running a test, then signs and publishes behind the `release` environment's approval. Coverage is a
@@ -212,7 +210,7 @@ spawn it from the assembly the same step names (`-Djk.engine.jar`), in an isolat
 pure unit tier (TUI/args/jsonl) with no engine spawn.
 
 Use `-m` and `--class` mid-ticket (`jk test -m e2e/cli -S cc.jumpkick.cli.engine.EngineClientTest -s integration`);
-the Full tier's tests are the whole of `jk install -g`. Tier model:
+`jk install -g` runs every integration and e2e class. Tier model:
 [docs/contributors/test-suite-tiers.md](docs/contributors/test-suite-tiers.md).
 
 Refresh locks after dependency changes: `jk lock` (commit the workspace-root `jk-lock.toml`).
