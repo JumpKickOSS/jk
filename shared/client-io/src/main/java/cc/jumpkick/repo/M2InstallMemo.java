@@ -31,6 +31,27 @@ public record M2InstallMemo(String coordinate, String jarSha256, String pomSha25
 
     private static final String TREE = "m2-installs";
 
+    /** The first line of every {@code _remote.repositories} jk writes; Maven Resolver's opens with its own note. */
+    static final String REMOTE_REPOSITORIES_HEADER = "#NOTE: This is a jk-written provenance hint for Maven tooling.";
+
+    /**
+     * True when {@code file} in a Maven local repository is as a jk install left it: its {@code .sha1}
+     * sidecar matches its bytes, and its directory's {@code _remote.repositories} is jk's and names
+     * it with no repository. A Maven or Gradle install over it, or any edit since, fails one of the two.
+     */
+    public static boolean installedByJk(Path file) throws IOException {
+        Path sidecar = file.resolveSibling(file.getFileName() + ".sha1");
+        Path remotes = file.resolveSibling("_remote.repositories");
+        if (!Files.isRegularFile(file) || !Files.isRegularFile(sidecar) || !Files.isRegularFile(remotes)) return false;
+        List<String> lines = Files.readAllLines(remotes, StandardCharsets.UTF_8);
+        if (lines.isEmpty() || !lines.get(0).strip().equals(REMOTE_REPOSITORIES_HEADER)) return false;
+        String installed = file.getFileName() + ">=";
+        if (lines.stream().noneMatch(line -> line.strip().equals(installed))) return false;
+        return Files.readString(sidecar, StandardCharsets.UTF_8)
+                .strip()
+                .equalsIgnoreCase(Hashing.fileHex("SHA-1", file));
+    }
+
     public M2InstallMemo {
         Objects.requireNonNull(coordinate, "coordinate");
         jarSha256 = jarSha256.strip().toLowerCase(Locale.ROOT);

@@ -298,11 +298,6 @@ class JkTomlSchemaTest {
     }
 
     @Test
-    void library_properties_are_exactly_the_parser_s_library_keys() throws Exception {
-        assertClosedTable("library", ManifestTables.LIBRARY_KEYS);
-    }
-
-    @Test
     void resources_properties_are_exactly_the_parser_s_resources_keys() throws Exception {
         assertClosedTable("resources", ManifestResources.KEYS);
     }

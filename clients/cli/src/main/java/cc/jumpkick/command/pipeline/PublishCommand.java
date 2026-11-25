@@ -82,7 +82,6 @@ public final class PublishCommand implements CliCommand {
                 Opt.value("<pass>", "HTTP Basic password (PUBLISH_PASSWORD env).", "-P", "--password"),
                 Opt.value("<REGION>", "Object-store region for s3:// / gs://.", "-E", "--region"),
                 Opt.value("<URL>", "Object-store endpoint override for s3://.", "-e", "--endpoint"),
-                Opt.value("<file>", "Override the main jar path.", "-A", "--jar"),
                 Opt.flag("Permit publishing -SNAPSHOT versions.", "-s", "--allow-snapshot"),
                 Opt.flag("Print the upload plan; no HTTP requests.", "-U", "--dry-run"),
                 Opt.flag("Detached .asc GPG signature per artifact.", "-I", "--sign"),
@@ -111,9 +110,6 @@ public final class PublishCommand implements CliCommand {
 
     @Nullable
     String endpoint;
-
-    @Nullable
-    Path jarPath;
 
     boolean allowSnapshot;
     boolean dryRun;
@@ -175,7 +171,6 @@ public final class PublishCommand implements CliCommand {
         this.password = in.value("password").orElse(null);
         this.region = in.value("region").orElse(null);
         this.endpoint = in.value("endpoint").orElse(null);
-        this.jarPath = in.value("jar").map(CliPaths::abs).orElse(null);
         this.allowSnapshot = in.isSet("allow-snapshot");
         this.dryRun = in.isSet("dry-run");
         this.sign = in.isSet("sign");
@@ -253,7 +248,6 @@ public final class PublishCommand implements CliCommand {
                 repoUrl,
                 region,
                 endpoint,
-                jarPath,
                 allowSnapshot,
                 dryRun,
                 sign ? keyFile : null,

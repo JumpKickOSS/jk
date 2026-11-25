@@ -31,11 +31,10 @@ final class InstallFreshness {
 
     /**
      * Why {@code module}'s jar must not be installed as it is, or {@code null} when it holds every
-     * class its classes tree does, byte for byte. A module with no jar or no classes tree yet, or one
-     * that relocates its classes into the jar, has nothing to compare and passes.
+     * class its classes tree does, byte for byte. A module with no jar or no classes tree yet has nothing
+     * to compare.
      */
     static @Nullable String stale(Path moduleDir, JkBuild module) {
-        if (module.relocates()) return null;
         BuildLayout layout = BuildLayout.of(moduleDir, module);
         Path jar = layout.mainJar();
         Path classes = layout.classesDir();

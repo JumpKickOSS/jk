@@ -55,7 +55,6 @@ public final class PublishPlans {
             @Nullable URI repoUrl,
             @Nullable String region,
             @Nullable String endpoint,
-            @Nullable Path jarPath,
             boolean allowSnapshot,
             boolean dryRun,
             @Nullable Path keyFile,
@@ -138,12 +137,7 @@ public final class PublishPlans {
                         throw new RuntimeException("branch git dependency refused");
                     }
                     BuildLayout layout = BuildLayout.of(projectDir, project);
-                    // A assembly project's self-contained artifact IS the fat jar (a build plugin,
-                    // say, shades jk-plugin-sdk in) — publish that as the coordinate, not the thin
-                    // main jar a consumer couldn't fork. An explicit --jar still wins.
-                    Path jar = req.jarPath() != null
-                            ? req.jarPath()
-                            : project.assembly() ? layout.assemblyJar() : layout.mainJar();
+                    Path jar = layout.mainJar();
                     ctx.put(PROJECT, project);
                     ctx.put(JAR, jar);
                     ctx.progress(1);
@@ -165,7 +159,7 @@ public final class PublishPlans {
                     ctx.put(DRY_RUN, req.dryRun());
                     Path jar = ctx.require(JAR);
                     if (!Files.exists(jar)) {
-                        ctx.error("missing-jar", "jar not found at " + jar + "; pass --jar to name another");
+                        ctx.error("missing-jar", "main jar: missing at " + jar);
                         throw new RuntimeException("missing jar");
                     }
                     ctx.label(

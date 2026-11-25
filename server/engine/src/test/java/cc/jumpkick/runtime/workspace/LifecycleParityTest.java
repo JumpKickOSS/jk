@@ -236,7 +236,6 @@ class LifecycleParityTest {
                                         null,
                                         null,
                                         null,
-                                        null,
                                         false,
                                         true,
                                         null,

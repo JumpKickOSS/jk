@@ -71,6 +71,7 @@ class PomPackagingImportTest {
                   <modelVersion>4.0.0</modelVersion>
                   <groupId>com.alibaba.nacos</groupId>
                   <artifactId>nacos-client</artifactId>
+                  <properties><start-class>com.alibaba.nacos.Main</start-class></properties>
                   <version>3.0.0</version>
                   <build><plugins><plugin>
                     <groupId>org.apache.maven.plugins</groupId>
@@ -99,9 +100,6 @@ class PomPackagingImportTest {
                 """);
 
         JkBuild build = result.jkBuild();
-        assertThat(build.libraryOpt())
-                .as("a shaded module with no main is a library assembly")
-                .isPresent();
         assertThat(build.relocate())
                 .containsExactly(
                         Map.entry("io.grpc", "com.alibaba.nacos.shaded.io.grpc"),
@@ -116,8 +114,9 @@ class PomPackagingImportTest {
                 <project>
                   <modelVersion>4.0.0</modelVersion>
                   <groupId>com.ex</groupId>
-                  <artifactId>lib</artifactId>
+                  <artifactId>tool</artifactId>
                   <version>1.0.0</version>
+                  <properties><start-class>com.ex.Main</start-class></properties>
                   <build><plugins><plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-shade-plugin</artifactId>
@@ -152,7 +151,7 @@ class PomPackagingImportTest {
     }
 
     @Test
-    void a_fat_jar_without_a_main_class_is_the_librarys(@TempDir Path tempDir) throws Exception {
+    void shade_relocation_on_a_library_is_reported(@TempDir Path tempDir) throws Exception {
         PomImporter.Result result = TestImporters.importXml(tempDir, """
                 <project>
                   <modelVersion>4.0.0</modelVersion>
@@ -163,15 +162,18 @@ class PomPackagingImportTest {
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-shade-plugin</artifactId>
                     <version>3.6.0</version>
+                    <configuration><relocations><relocation>
+                      <pattern>com.google</pattern>
+                      <shadedPattern>com.ex.shaded.google</shadedPattern>
+                    </relocation></relocations></configuration>
                   </plugin></plugins></build>
                 </project>
                 """);
         assertThat(result.jkBuild().applicationOpt()).isEmpty();
-        assertThat(result.jkBuild().libraryOpt()).isPresent();
-        assertThat(result.jkBuild().assembly()).isTrue();
-        assertThat(TestImporters.messages(result)).noneMatch(m -> m.contains("no `<mainClass>`"));
-        String rendered = JkBuildRenderer.render(result.jkBuild());
-        assertThat(rendered).doesNotContain("[application]").contains("[library]\nassembly = true");
+        assertThat(result.jkBuild().assembly()).isFalse();
+        assertThat(TestImporters.messages(result))
+                .contains("maven-shade-plugin <relocation> com.google: use [application] to relocate");
+        assertThat(JkBuildRenderer.render(result.jkBuild())).doesNotContain("relocate", "assembly");
     }
 
     @Test

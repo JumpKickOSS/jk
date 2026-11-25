@@ -7,6 +7,7 @@ import cc.jumpkick.compat.ImportReport;
 import cc.jumpkick.compat.RelocationRules;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
@@ -29,14 +30,21 @@ final class ShadowRelocations {
     private ShadowRelocations() {}
 
     /** The rules the script's relocations agree with, the rest reported as one row. */
-    static RelocationRules.Mapped map(String script, ImportReport.Builder report) {
-        List<RelocationRules.Relocation> relocations = parse(script);
+    static Map<String, String> map(List<RelocationRules.Relocation> relocations, ImportReport.Builder report) {
         RelocationRules.Mapped mapped = RelocationRules.map(relocations);
         if (!mapped.unmapped().isEmpty()) {
             report.warning("Shadow relocate " + String.join(", ", mapped.unmapped())
                     + " not written; those classes keep their own names");
         }
-        return mapped;
+        return mapped.rules();
+    }
+
+    static void reportLibrary(
+            boolean shadow, List<RelocationRules.Relocation> relocations, ImportReport.Builder report) {
+        if (shadow) report.warning("Shadow shadowJar: library jars ship thin");
+        for (RelocationRules.Relocation relocation : relocations) {
+            report.warning("Shadow relocate " + relocation.pattern() + ": use [application] to relocate");
+        }
     }
 
     /** Every {@code relocate} call in {@code script}, in order, with its block's includes and excludes. */

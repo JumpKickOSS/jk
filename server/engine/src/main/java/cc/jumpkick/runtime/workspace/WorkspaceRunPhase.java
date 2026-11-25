@@ -112,7 +112,6 @@ final class WorkspaceRunPhase {
                                             () -> "admitted a unit with no prepared plan: " + unit.dir()),
                                     listener,
                                     testClassesConsumed.contains(unit.dir()),
-                                    unit.manifest().relocates(),
                                     // A module with Kotlin consumers has its classes tree snapshotted for
                                     // them before they are admitted, so their compile keys are memo lookups.
                                     KotlinAbiWarmup.before(
@@ -250,7 +249,6 @@ final class WorkspaceRunPhase {
             ModulePlan module,
             WorkspaceBuildListener listener,
             boolean testClassesConsumed,
-            boolean relocates,
             KotlinAbiWarmup.Warmup warmup,
             SiblingArtifacts siblings,
             Consumer<Path> classesPublished,
@@ -258,7 +256,7 @@ final class WorkspaceRunPhase {
         BuildPlanListener moduleListener = listener.onModuleStart(module);
         if (moduleListener != null) module.plan().addListener(moduleListener);
         Runnable admit = warmup.publish();
-        watchClassesSteps(module.plan(), relocates, () -> {
+        watchClassesSteps(module.plan(), () -> {
             siblings.compiled(module.dir());
             admit.run();
             classesPublished.accept(module.dir());
@@ -370,11 +368,10 @@ final class WorkspaceRunPhase {
      * build-info}, which writes its properties files into the tree after the compile, and the
      * {@code before-package} scripts, whose output merges into it: a tree published before them
      * would move under a dependent that read it, and the build's memo of sealed trees would
-     * answer for the old one. A module that {@code relocates} packages is compiled
-     * against through its {@code -all.jar}, so its {@code package-assembly} joins the set. A plan
+     * answer for the old one. A plan
      * with none of these (a sourceless root) publishes on completion.
      */
-    static Set<String> classesWaitSet(BuildPlan plan, boolean relocates) {
+    static Set<String> classesWaitSet(BuildPlan plan) {
         Set<String> present = new HashSet<>();
         for (Task step : plan.steps()) present.add(step.name());
         Set<String> wait = new HashSet<>();
@@ -390,15 +387,14 @@ final class WorkspaceRunPhase {
                 TaskNames.BUILD_LOGIC_BEFORE_PACKAGE)) {
             if (present.contains(step)) wait.add(step);
         }
-        if (relocates && present.contains(TaskNames.PACKAGE_ASSEMBLY)) wait.add(TaskNames.PACKAGE_ASSEMBLY);
         // A node module's resource jar is what its dependents compile against.
         if (present.contains(TaskNames.NODE_PACKAGE)) wait.add(TaskNames.NODE_PACKAGE);
         return wait;
     }
 
     /** Admit dependents once every step that writes what they compile against is terminal-successful. */
-    static void watchClassesSteps(BuildPlan plan, boolean relocates, Runnable publish) {
-        watchSteps(plan, classesWaitSet(plan, relocates), publish);
+    static void watchClassesSteps(BuildPlan plan, Runnable publish) {
+        watchSteps(plan, classesWaitSet(plan), publish);
     }
 
     /**

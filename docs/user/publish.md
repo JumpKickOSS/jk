@@ -19,9 +19,17 @@ Export a lock scope as a Maven BOM: `jk export bom` — [Platforms](platforms.md
 
 `jk publish` builds the project first, with the same steps and tests as `jk build` (`-S` skips
 the tests), then uploads what that build produced; a refused publish (a SNAPSHOT version, a
-branch-tracked git dependency) fails before anything compiles. A library's release set is jar,
-POM, `-sources.jar` and `-javadoc.jar`; Maven Central refuses a release missing either classifier
-jar. The publish build writes the javadoc jar of every library that does not say `javadoc =
+branch-tracked git dependency) fails before anything compiles. Maven repositories receive the
+thin main jar, POM, sources and javadoc jars, plus checksums and any requested signatures, SBOM
+and provenance sidecars. Maven Central requires both classifier jars.
+
+Assembly and minified jars, native binaries, jlink images, lib-dir trees, WARs and framework
+runnable jars belong in the release lane. A module with an assembly can publish its ordinary main
+jar. A framework packager that replaces the main artifact is refused before compilation.
+`jk install --destination m2` uses the same main jar rule and installs the sources and javadoc
+jars produced by the build, with Maven checksums.
+
+The publish build writes the javadoc jar of every library that does not say `javadoc =
 false`, even though a plain `jk build` leaves it out. A Kotlin library's javadoc jar is Dokka's output, so the bundle
 carries real API docs rather than an empty jar.
 See [Packaging: library artefacts](packaging.md#library-artefacts-sources-and-javadoc-jars).
@@ -184,7 +192,7 @@ is the loop; `jk release` is the end of it.
 
 ## Maven Central
 
-`jk publish -c` publishes through the Sonatype Central Portal: one signed bundle — jar,
+`jk publish -c` publishes through the Sonatype Central Portal: one signed bundle — thin jar,
 POM, sources jar, javadoc jar, a detached GPG `.asc` on each, `.md5` and `.sha1` beside each — is
 uploaded to the Portal's API, and JumpKick polls the deployment until the Portal rules.
 

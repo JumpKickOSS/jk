@@ -81,20 +81,7 @@ class TailForecastTest {
     @Test
     void publish_and_train_run_their_tail_on_a_clean_tree() throws Exception {
         TailArgs.Publish dryRun = new TailArgs.Publish(
-                null,
-                null,
-                null,
-                null,
-                false,
-                true,
-                null,
-                null,
-                false,
-                false,
-                false,
-                RepoCredential.ANONYMOUS,
-                false,
-                null);
+                null, null, null, false, true, null, null, false, false, false, RepoCredential.ANONYMOUS, false, null);
         assertThat(scheduled(WorkspaceSpec.publish(Set.of(lib), dryRun))).containsExactly(lib);
         assertThat(scheduled(WorkspaceSpec.train(Set.of(app), Map.of(), null, false)))
                 .containsExactly(app);

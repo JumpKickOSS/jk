@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.credential.RepoCredential;
+import cc.jumpkick.model.InstallDestination;
 import cc.jumpkick.runtime.BuildGraph;
 import cc.jumpkick.runtime.ModuleJar;
 import cc.jumpkick.wire.runtime.TailArgs;
@@ -86,20 +87,7 @@ class ReleaseSetTest {
 
     private static TailArgs.Publish publishArgs() {
         return new TailArgs.Publish(
-                null,
-                null,
-                null,
-                null,
-                false,
-                true,
-                null,
-                null,
-                false,
-                false,
-                false,
-                RepoCredential.ANONYMOUS,
-                false,
-                null);
+                null, null, null, false, true, null, null, false, false, false, RepoCredential.ANONYMOUS, false, null);
     }
 
     @Test
@@ -140,6 +128,20 @@ class ReleaseSetTest {
                 .isEmpty();
         assertThat(refusals(request(WorkspaceSpec.install(Set.of(tmp.resolve("examples/demo")), Map.of(), null, null))))
                 .as("a selection that ships no member naming kit")
+                .isEmpty();
+    }
+
+    @Test
+    void a_framework_packager_is_refused_for_maven_repositories() throws Exception {
+        workspace("""
+                [spring-boot]
+                version = "4.0.0"
+                """);
+        assertThat(refusals(request(WorkspaceSpec.publish(Set.of(), publishArgs()))))
+                .containsExactly("spring-boot: use the release lane for packaged apps");
+        assertThat(refusals(request(WorkspaceSpec.install(Set.of(), Map.of(), null, InstallDestination.M2))))
+                .containsExactly("spring-boot: use the release lane for packaged apps");
+        assertThat(refusals(request(WorkspaceSpec.install(Set.of(), Map.of(), null, InstallDestination.JK))))
                 .isEmpty();
     }
 

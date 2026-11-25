@@ -65,7 +65,6 @@ class TailArgsJsonTest {
                 URI.create("https://repo.example/releases/"),
                 "eu-west-1",
                 "https://s3.example",
-                Path.of("/w/target/app.jar"),
                 true,
                 false,
                 Path.of("/keys/release.asc"),

@@ -20,9 +20,7 @@ import java.util.function.Predicate;
 
 /**
  * Runtime jars for one module: its runtime classpath from the lock ({@link
- * ClasspathResolver#classpathFor(Lockfile, Set, boolean, JkBuild, Path)}) plus sibling thin jars —
- * a relocating sibling's fat jar in place of both its thin jar and its externals. Shared by
- * packaging (assembly) and thin-worker install.
+ * ClasspathResolver#classpathFor(Lockfile, Set, boolean, JkBuild, Path)}) plus sibling main jars.
  */
 public final class ModuleRuntimeClasspath {
 

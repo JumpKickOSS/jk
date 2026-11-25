@@ -257,19 +257,17 @@ public final class GradleImporter {
                 .kotlin(kotlin)
                 .description(description)
                 .build();
-        // Shadow is the fat jar: the application's when the script names a main, the library's
-        // otherwise; its `relocate` calls are the assembly's rules where the rules agree with them.
         boolean shadow = applied.keySet().stream().anyMatch(SHADOW_PLUGINS::contains);
-        RelocationRules.Mapped relocations = ShadowRelocations.map(stripped, report);
+        List<RelocationRules.Relocation> relocations = ShadowRelocations.parse(stripped);
         JkBuild.Application application = mainClass != null
-                ? new JkBuild.Application(mainClass, shadow, false, false, null, relocations.rules())
+                ? new JkBuild.Application(
+                        mainClass, shadow, false, false, null, ShadowRelocations.map(relocations, report))
                 : null;
-        JkBuild.Library library = mainClass == null && shadow ? new JkBuild.Library(true, relocations.rules()) : null;
+        if (mainClass == null) ShadowRelocations.reportLibrary(shadow, relocations, report);
         JkBuild.Builder builder = JkBuild.builder(project)
                 .dependencies(new JkBuild.Dependencies(deps))
                 .repositories(repos)
                 .application(application)
-                .library(library)
                 .build(BuildBlock.EMPTY.withBuildInfo(buildInfo).withDokka(dokkaTable));
         for (PluginConfig config : pluginConfigs) {
             builder.pluginConfig(config);

@@ -788,24 +788,19 @@ public final class ManifestTables {
                 ManifestLibDir.parse(application, libDirImplied)));
     }
 
-    /**
-     * The optional {@code [library]} table: what a library ships beyond its thin jar. {@code
-     * Optional.empty} when the table is absent. A module declares {@code [library]} or {@code
-     * [application]}, never both — an application's fat jar is already the application's.
-     */
-    static Optional<JkBuild.Library> parseLibrary(TomlTable root) {
-        TomlTable library = optionalTable(root, "library", "`library`");
-        if (library == null) return Optional.empty();
-        if (root.contains("application")) {
-            throw new JkBuildParseException("[library] and [application] cannot both be set; drop [library]");
+    static void rejectLibrary(TomlTable root) {
+        if (!root.contains("library")) return;
+        if (root.isTable("library")) {
+            TomlTable library = Objects.requireNonNull(root.getTable("library"));
+            for (String key : List.of("relocate", "assembly")) {
+                if (library.contains(key)) {
+                    throw new JkBuildParseException(
+                            "library." + key + ": library jars ship thin; use [application] to relocate");
+                }
+            }
         }
-        rejectUnknownKeys(library, LIBRARY_KEYS, "[library]");
-        return Optional.of(new JkBuild.Library(
-                artifactFlag(library, "assembly", "[library]"), parseRelocate(library, "[library]")));
+        throw new JkBuildParseException("[library]: library jars ship thin; relocation is for [application]");
     }
-
-    /** Every key that belongs to {@code [library]}. */
-    static final List<String> LIBRARY_KEYS = List.of("assembly", "relocate");
 
     /**
      * {@code relocate}: a table of package prefix to shaded package prefix, declaration order kept.
@@ -869,9 +864,7 @@ public final class ManifestTables {
             // ([application] native = true declares the artifact; [native] enabled = true tunes
             // the build) — a bare scalar could be aiming at either, so the error names both.
             String alsoATable = key.equals("native") || key.equals("config") ? ", or use the [" + key + "] table" : "";
-            String orLibrary = LIBRARY_KEYS.contains(key) ? " or [library]" : "";
-            throw new JkBuildParseException(
-                    "top-level `" + key + "` belongs under [application]" + orLibrary + alsoATable);
+            throw new JkBuildParseException("top-level `" + key + "` belongs under [application]" + alsoATable);
         }
     }
 

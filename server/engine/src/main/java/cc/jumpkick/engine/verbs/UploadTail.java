@@ -66,6 +66,6 @@ final class UploadTail {
             passphrase = BuildEnv.get("JK_GPG_PASSPHRASE");
         }
         return new TailArgs.Publish(
-                url, null, null, null, false, false, keyFile, passphrase, false, false, false, credential, false, null);
+                url, null, null, false, false, keyFile, passphrase, false, false, false, credential, false, null);
     }
 }

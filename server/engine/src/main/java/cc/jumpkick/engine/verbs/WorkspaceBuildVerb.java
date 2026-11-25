@@ -26,6 +26,7 @@ import cc.jumpkick.jdk.GraalInstall;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.layout.NativePreflight;
 import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.model.InstallDestination;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.run.SourceLocation;
@@ -155,7 +156,6 @@ public final class WorkspaceBuildVerb implements HostedVerb {
                                 ? UploadTail.of(entryDir)
                                 : new TailArgs.Publish(
                                         URI.create("https://publish.invalid/"),
-                                        null,
                                         null,
                                         null,
                                         false,
@@ -397,7 +397,12 @@ public final class WorkspaceBuildVerb implements HostedVerb {
                             .collect(Collectors.toUnmodifiableSet());
                 }
             }
-            Session session = forTarget(ReleaseSession.sessionOf(requestLine, cancelToken), target);
+            Session baseSession = forTarget(ReleaseSession.sessionOf(requestLine, cancelToken), target);
+            Session session = target == WorkspaceTarget.INSTALL
+                            && body.tail() instanceof TailArgs.Install install
+                            && install.destination() == InstallDestination.M2
+                    ? baseSession.withJavadoc(true)
+                    : baseSession;
             WorkspaceBuildListener listener = host.workspaceListener(writer, entryDirStr);
             // The client found a GraalVM home for each module whose build links a native image, or
             // decided one is installed: that install is the run's, here, under the request's session

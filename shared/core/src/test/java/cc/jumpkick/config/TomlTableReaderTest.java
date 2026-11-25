@@ -67,7 +67,6 @@ class TomlTableReaderTest {
                 "profiles = 1; `profiles` must be a table",
                 "features = 1; `features` must be a table",
                 "application = 1; `application` must be a table",
-                "library = 1; `library` must be a table",
                 "workspace = 1; `workspace` must be a table",
                 "test = 1; `test` must be a table",
                 "dependencies = 1; [dependencies] must be a table",

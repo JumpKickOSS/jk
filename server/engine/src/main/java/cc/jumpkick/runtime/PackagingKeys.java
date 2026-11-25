@@ -231,7 +231,7 @@ public final class PackagingKeys {
         return new Keyed(taskId, tokens, asmKey);
     }
 
-    /** The module's {@code relocate} rules — {@code [application]}'s or {@code [library]}'s — source to shaded package in declaration order. */
+    /** The application assembly's package relocations. */
     public static Map<String, String> relocate(JkBuild project) {
         return project.relocate();
     }

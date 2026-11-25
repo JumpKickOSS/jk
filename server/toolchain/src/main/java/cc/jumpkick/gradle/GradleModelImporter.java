@@ -4,7 +4,6 @@ package cc.jumpkick.gradle;
 import cc.jumpkick.compat.ImportReport;
 import cc.jumpkick.compat.ImportedKotlin;
 import cc.jumpkick.compat.NodeImportMapping;
-import cc.jumpkick.compat.RelocationRules;
 import cc.jumpkick.config.UserConfigEditor;
 import cc.jumpkick.groovy.GroovyResolver;
 import cc.jumpkick.host.PathUtil;
@@ -426,23 +425,22 @@ final class GradleModelImporter {
             build = build.withDokka(
                     new BuildBlock.Dokka(VersionSelector.parse(dokka), BuildBlock.Dokka.Format.JAVADOC));
         }
-        // Shadow is the fat jar — the application's with a main, the library's without — and the
-        // shadowJar task's relocators are its rules where the rules agree with them.
         boolean shadow = applied.stream().anyMatch(GradleImporter.SHADOW_PLUGINS::contains)
                 || !p.relocations().isEmpty();
-        RelocationRules.Mapped relocations = RelocationRules.map(p.relocations());
-        if (!relocations.unmapped().isEmpty()) {
-            local.warning("Shadow relocate " + String.join(", ", relocations.unmapped())
-                    + " not written; those classes keep their own names");
-        }
+        if (mainClass == null) ShadowRelocations.reportLibrary(shadow, p.relocations(), local);
         JkBuild.Builder builder = JkBuild.builder(project.build())
                 .dependencies(new JkBuild.Dependencies(deps))
                 .repositories(repos)
                 .application(
                         mainClass == null
                                 ? null
-                                : new JkBuild.Application(mainClass, shadow, false, false, null, relocations.rules()))
-                .library(mainClass == null && shadow ? new JkBuild.Library(true, relocations.rules()) : null)
+                                : new JkBuild.Application(
+                                        mainClass,
+                                        shadow,
+                                        false,
+                                        false,
+                                        null,
+                                        ShadowRelocations.map(p.relocations(), local)))
                 .build(build);
         for (PluginConfig config : plugins) builder.pluginConfig(config);
         JkBuild jkBuild = builder.build();
