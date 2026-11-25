@@ -11,12 +11,24 @@ set -u
 cd "$(dirname "$0")/.." || exit 2
 red=""
 
+# On Windows, a line a minute with free memory and the processes holding the most memory and handles,
+# so a run that starves the runner leaves a trend in the log before the runner goes silent.
+if [ "${OS:-}" = Windows_NT ]; then
+  (
+    while sleep 60; do
+      # shellcheck disable=SC2016 # PowerShell's own variables
+      powershell -NoProfile -NonInteractive -Command '$os=Get-CimInstance Win32_OperatingSystem; $top=Get-Process | Sort-Object WorkingSet64 -Descending | Select-Object -First 4 | ForEach-Object { "{0}({1}) {2}MB h{3}" -f $_.ProcessName,$_.Id,[int]($_.WorkingSet64/1MB),$_.HandleCount }; $h=Get-Process | Sort-Object HandleCount -Descending | Select-Object -First 2 | ForEach-Object { "{0}({1}) h{2}" -f $_.ProcessName,$_.Id,$_.HandleCount }; "monitor {0} free {1}MB procs {2} | {3} | {4}" -f (Get-Date -Format HH:mm),[int]($os.FreePhysicalMemory/1KB),(Get-Process).Count,($top -join ", "),($h -join ", ")' </dev/null 2>/dev/null
+    done
+  ) &
+  monitor=$!
+fi
+
 jk test -c --no-ansi || red="${red:+$red, }fast tier"
 
 junit3='class[[:space:]]+[[:alnum:]_]+([[:space:]]+extends[[:space:]]+|[[:space:]]*:[[:space:]]*)[[:alnum:]_.]*TestCase([^[:alnum:]_]|$)'
 untiered() { xargs grep -LE '@Tag\("(live|slow|network|bench)"\)' 2>/dev/null; }
 classes="$(mktemp)"
-trap 'rm -f "$classes"' EXIT
+trap 'kill "${monitor:-}" 2>/dev/null; rm -f "$classes"' EXIT
 git ls-files '*/src/test/*.java' '*/src/test/*.kt' '*/src/test/*.groovy' \
   | xargs grep -lE '@(Enabled|Disabled)OnOs|OS\.(WINDOWS|MAC|LINUX)|IS_OS_|isWindows|isMac|os\.name' 2>/dev/null \
   | grep -E '(Test|Tests|IT)\.(java|kt|groovy)$' | untiered \
