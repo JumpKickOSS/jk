@@ -285,12 +285,15 @@ public final class ProjectInfoPlans {
         }
     }
 
-    /** The URL of the repository {@code [publish] repository} names, {@code central}, or the name as written; empty when none. */
+    /**
+     * Where the repository {@code [publish] repository} names is published to (its {@code
+     * publish-url}, else its url), {@code central}, or the name as written; empty when none.
+     */
     private static String publishRepository(JkBuild build) {
         String name = build.pomMetadata().repository();
         if (name == null || name.isBlank()) return "";
         for (var declared : build.repositories()) {
-            if (declared.name().equals(name)) return declared.url().toString();
+            if (declared.name().equals(name)) return declared.publishTarget().toString();
         }
         return name;
     }

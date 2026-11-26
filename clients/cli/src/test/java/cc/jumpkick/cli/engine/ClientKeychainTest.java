@@ -61,11 +61,11 @@ class ClientKeychainTest {
         var forge = new SecretVault.Pointer("bus", "forge/github.com");
         List<SecretVault.Pointer> pointers = ClientKeychain.pointers(
                 List.of(
-                        new RepoCredentialStore.Login("nexus", "bearer", URI.create("https://n"), nexus),
-                        new RepoCredentialStore.Login("locked", "bearer", URI.create("https://l"), locked),
-                        new RepoCredentialStore.Login("gone", "bearer", URI.create("https://g"), gone),
-                        new RepoCredentialStore.Login("mac", "bearer", URI.create("https://m"), elsewhere),
-                        new RepoCredentialStore.Login("plain", "bearer", URI.create("https://p"), null)),
+                        new RepoCredentialStore.Login("nexus", "bearer", List.of(URI.create("https://n")), nexus),
+                        new RepoCredentialStore.Login("locked", "bearer", List.of(URI.create("https://l")), locked),
+                        new RepoCredentialStore.Login("gone", "bearer", List.of(URI.create("https://g")), gone),
+                        new RepoCredentialStore.Login("mac", "bearer", List.of(URI.create("https://m")), elsewhere),
+                        new RepoCredentialStore.Login("plain", "bearer", List.of(URI.create("https://p")), null)),
                 List.of(new TokenStore.Login("github.com", forge)));
 
         ClientKeychain.Carried carried = ClientKeychain.read(vault, pointers);

@@ -41,8 +41,8 @@ import org.jspecify.annotations.Nullable;
  * project could declare {@code ossrh = "https://attacker.example/"} and collect whatever this
  * machine holds under that name. A name-keyed credential therefore reaches a repository only when
  * something the project does not control binds the name to the repository's origin (scheme, host,
- * port): the origin {@code jk repo login} recorded, a {@code [repositories.<id>]} declaration in
- * the user's own {@code ~/.jk/config.toml}, a {@code <mirror>} or active-profile {@code
+ * port): the origins {@code jk repo login} recorded, a {@code [repositories.<id>]} declaration in
+ * the user's own {@code ~/.jk/config.toml} (its url's origin or its publish-url's), a {@code <mirror>} or active-profile {@code
  * <repository>} with that id in the user's {@code settings.xml}, a {@code JK_REPO_<ID>_HOST}
  * variable from the caller's shell, or an id that is itself the host. Anything else is refused with a warning that names the
  * repository, the origin and the source that was not sent. A binding that names no scheme does not
@@ -207,19 +207,22 @@ public final class RepoCredentialResolver {
                 refuse(repoId, url, envVarPrefix(repoId) + "TOKEN", binding);
             }
 
-            // 3. jk repo credential store — bound by the origin the login recorded when it has one
+            // 3. jk repo credential store — bound by the origins the login recorded when it has any
             Optional<RepoCredentialStore.Entry> stored = store.read(repoId);
             if (stored.isPresent()) {
                 RepoCredentialStore.Entry entry = stored.get();
-                URI origin = entry.origin();
-                if (origin != null) {
-                    if (url != null && RepositorySpec.sameOrigin(origin, url)) return entry.credential();
+                List<URI> origins = entry.origins();
+                if (!origins.isEmpty()) {
+                    if (url != null && origins.stream().anyMatch(o -> RepositorySpec.sameOrigin(o, url))) {
+                        return entry.credential();
+                    }
                     refuse(
                             repoId,
                             url,
                             "jk repo login",
-                            Binding.mismatch("it was stored for " + origin + "; if the repository moved, run"
-                                    + " jk repo login " + repoId + " -U " + SafeUri.forMessage(url)));
+                            Binding.mismatch("it was stored for " + RepoCredentialStore.spelled(origins)
+                                    + "; if the repository moved, run jk repo login " + repoId + " -U "
+                                    + SafeUri.forMessage(url)));
                 } else if (binding.bound()) {
                     return entry.credential();
                 } else {
@@ -326,7 +329,7 @@ public final class RepoCredentialResolver {
     public Optional<RepositorySpec> userDeclaration(@Nullable String repoId, @Nullable URI url) {
         if (repoId == null || repoId.isBlank() || url == null || url.getHost() == null) return Optional.empty();
         for (RepositorySpec spec : userRepositories.get()) {
-            if (spec.name().equals(repoId) && RepositorySpec.sameOrigin(spec.url(), url)) return Optional.of(spec);
+            if (spec.name().equals(repoId) && atOrigin(spec, url)) return Optional.of(spec);
         }
         return Optional.empty();
     }
@@ -401,7 +404,7 @@ public final class RepoCredentialResolver {
         if (url == null || url.getHost() == null) return Binding.UNBOUND;
         for (RepositorySpec spec : userRepositories.get()) {
             if (!spec.name().equals(repoId)) continue;
-            if (RepositorySpec.sameOrigin(spec.url(), url)) return Binding.BOUND;
+            if (atOrigin(spec, url)) return Binding.BOUND;
             return Binding.mismatch("~/.jk/config.toml declares `" + repoId + "` at " + originText(spec.url())
                     + ", not " + originText(url));
         }
@@ -425,6 +428,12 @@ public final class RepoCredentialResolver {
             return Binding.BOUND;
         }
         return Binding.UNBOUND;
+    }
+
+    /** True when {@code url} is on the origin of {@code spec}'s url or of its publish-url: one name, both origins. */
+    private static boolean atOrigin(RepositorySpec spec, URI url) {
+        return RepositorySpec.sameOrigin(spec.url(), url)
+                || (spec.publishUrl() != null && RepositorySpec.sameOrigin(spec.publishUrl(), url));
     }
 
     /**

@@ -3,6 +3,7 @@ package cc.jumpkick.runtime.base;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.credential.RepoCredential;
@@ -12,6 +13,7 @@ import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildStage;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskNames;
+import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -100,6 +102,44 @@ class PublishPlansTest {
         assertThat(signing.pgpKey()).isNull();
         assertThat(signing.keyless()).isFalse();
         assertThat(signing.unsigned()).isFalse();
+    }
+
+    private static final String PUBLISH_URL_PROJECT = """
+            group   = "com.example"
+            name    = "lib"
+            version = "1.0.0"
+
+            [repositories.acme]
+            url         = "https://maven.acme.dev/"
+            publish-url = "s3://acme-maven/releases/"
+            region      = "eu-west-1"
+
+            [publish]
+            repository = "acme"
+            """;
+
+    /** The [publish] target a named repository resolves to is where it writes, never the URL resolvers read. */
+    @Test
+    void a_publish_url_is_the_target_the_project_summary_names(@TempDir Path dir) throws Exception {
+        Files.writeString(dir.resolve("jk.toml"), PUBLISH_URL_PROJECT);
+
+        assertThat(ProjectInfoPlans.projectInfo(dir).publishRepository()).isEqualTo("s3://acme-maven/releases/");
+    }
+
+    /** The table's object-store settings follow the publish to its publish-url, and the run names it as the destination. */
+    @Test
+    void a_publish_to_the_publish_url_takes_the_table_s_object_store_and_names_it(@TempDir Path dir) throws Exception {
+        Files.writeString(dir.resolve("jk.toml"), PUBLISH_URL_PROJECT);
+        var project = JkBuildParser.parse(dir.resolve("jk.toml"));
+        URI target = URI.create("s3://acme-maven/releases/");
+
+        assertThat(PublishPlans.objectStore(project, target)).isNotNull().satisfies(store -> assertThat(store.region())
+                .isEqualTo("eu-west-1"));
+        assertThat(PublishPlans.objectStore(project, URI.create("s3://other-bucket/")))
+                .isNull();
+        assertThat(PublishPlans.destination(
+                        new PublishPlans.Request(target, false, true, null, null, RepoCredential.ANONYMOUS, false)))
+                .isEqualTo("s3://acme-maven/releases/");
     }
 
     private static PublishPlans.Request request() {

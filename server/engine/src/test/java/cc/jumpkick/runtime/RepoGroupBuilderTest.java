@@ -21,6 +21,8 @@ import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.RepoCredentialResolver;
 import cc.jumpkick.repo.RepoCredentialStore;
 import cc.jumpkick.repo.RepoGroup;
+import cc.jumpkick.testing.LoopbackHttp;
+import cc.jumpkick.testing.MavenStub;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.net.URI;
@@ -36,9 +38,16 @@ import java.util.function.UnaryOperator;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.io.TempDir;
 
 class RepoGroupBuilderTest {
+
+    @RegisterExtension
+    final LoopbackHttp readSide = new LoopbackHttp();
+
+    @RegisterExtension
+    final LoopbackHttp writeSide = new LoopbackHttp();
 
     @BeforeEach
     @AfterEach
@@ -131,6 +140,38 @@ class RepoGroupBuilderTest {
         } finally {
             System.clearProperty("jk.env.JK_HOME");
         }
+    }
+
+    /** A resolve reads a repository at its url alone; the publish-url beside it is never asked. */
+    @Test
+    void a_resolve_reads_the_url_and_never_the_publish_url(@TempDir Path tmp) throws Exception {
+        new MavenStub(readSide).leaf("com.acme", "lib", "1.0");
+        new MavenStub(writeSide).leaf("com.acme", "lib", "1.0");
+        Files.writeString(tmp.resolve("jk.toml"), """
+                group = "demo"
+                name = "demo"
+                version = "1.0.0"
+
+                [repositories.acme]
+                url = "%s"
+                publish-url = "%s"
+                groups = ["com.acme"]
+                """.formatted(readSide.baseUrl(), writeSide.baseUrl()));
+        var project = JkBuildParser.parse(tmp.resolve("jk.toml"));
+
+        RepoGroup group = RepoGroupBuilder.buildFor(project, null, new Cas(tmp.resolve("store")), name -> null);
+        MavenRepo acme = group.repos().stream()
+                .filter(r -> r.name().equals("acme"))
+                .findFirst()
+                .orElseThrow();
+        Coordinate lib = Coordinate.of("com.acme", "lib", "1.0");
+        acme.availableVersions(lib);
+        acme.fetchPom(lib);
+
+        assertThat(RepositorySpec.normalizedUrl(acme.baseUrl()))
+                .isEqualTo(RepositorySpec.normalizedUrl(readSide.base()));
+        assertThat(readSide.requested()).isNotEmpty();
+        assertThat(writeSide.requested()).isEmpty();
     }
 
     @Test

@@ -29,11 +29,40 @@ import org.jspecify.annotations.Nullable;
  */
 public final class RepositoriesScan {
 
-    /** One {@code [repositories]} entry: name, url, and the inline credential when present. */
-    public record Repo(String name, String url, @Nullable RepoCredential credential) {
+    /**
+     * One {@code [repositories]} entry: name, url, the inline credential and the {@code
+     * publish-url} when present.
+     */
+    public record Repo(
+            String name,
+            String url,
+            @Nullable RepoCredential credential,
+            @Nullable String publishUrl) {
         public Optional<RepoCredential> credentialOpt() {
             return Optional.ofNullable(credential);
         }
+
+        /** Where {@code jk publish} writes and reads back: the {@code publish-url} when set, else the url. */
+        public String publishTarget() {
+            return publishUrl != null ? publishUrl : url;
+        }
+
+        /** True when {@code target} is this repository's url or publish-url, or lies under either. */
+        boolean holds(String target) {
+            return under(target, url) || (publishUrl != null && under(target, publishUrl));
+        }
+
+        private static boolean under(String target, String base) {
+            return target.equals(base) || target.startsWith(base.endsWith("/") ? base : base + "/");
+        }
+    }
+
+    /** The first of {@code repos} whose url or publish-url {@code target} is, or lies under; null when none. */
+    public static @Nullable Repo holding(List<Repo> repos, String target) {
+        for (Repo repo : repos) {
+            if (repo.holds(target)) return repo;
+        }
+        return null;
     }
 
     private static final Pattern PAIR = Pattern.compile("([A-Za-z0-9_-]+)\\s*=\\s*\"((?:[^\"\\\\]|\\\\.)*)\"");
@@ -53,6 +82,7 @@ public final class RepositoriesScan {
         String section = "";
         String entryName = null; // the [repositories.<name>] being collected
         String url = null;
+        String publishUrl = null;
         String token = null;
         String username = null;
         String password = null;
@@ -60,9 +90,9 @@ public final class RepositoriesScan {
             String line = raw.strip();
             if (line.isEmpty() || line.startsWith("#")) continue;
             if (line.startsWith("[")) {
-                commit(out, entryName, url, token, username, password);
+                commit(out, entryName, url, publishUrl, token, username, password);
                 entryName = null;
-                url = token = username = password = null;
+                url = publishUrl = token = username = password = null;
                 int close = line.indexOf(']');
                 if (close <= 1) continue;
                 section = line.substring(line.startsWith("[[") ? 2 : 1, close)
@@ -81,6 +111,7 @@ public final class RepositoriesScan {
                 String value = TomlScan.scalar(rest);
                 switch (key) {
                     case "url" -> url = value;
+                    case RepositoryToml.PUBLISH_URL -> publishUrl = value;
                     case "token" -> token = value;
                     case "username" -> username = value;
                     case "password" -> password = value;
@@ -92,6 +123,7 @@ public final class RepositoriesScan {
                 if (rest.startsWith("{")) {
                     // single-line inline table: name = { url = "…", username = "…", … }
                     String u = null;
+                    String pu = null;
                     String t = null;
                     String us = null;
                     String pw = null;
@@ -100,6 +132,7 @@ public final class RepositoriesScan {
                         String v = MinimalToml.unquote('"' + m.group(2) + '"');
                         switch (m.group(1)) {
                             case "url" -> u = v;
+                            case RepositoryToml.PUBLISH_URL -> pu = v;
                             case "token" -> t = v;
                             case "username" -> us = v;
                             case "password" -> pw = v;
@@ -108,13 +141,13 @@ public final class RepositoriesScan {
                             }
                         }
                     }
-                    commit(out, key, u, t, us, pw);
+                    commit(out, key, u, pu, t, us, pw);
                 } else {
-                    commit(out, key, TomlScan.scalar(rest), null, null, null);
+                    commit(out, key, TomlScan.scalar(rest), null, null, null, null);
                 }
             }
         }
-        commit(out, entryName, url, token, username, password);
+        commit(out, entryName, url, publishUrl, token, username, password);
         return out;
     }
 
@@ -122,6 +155,7 @@ public final class RepositoriesScan {
             List<Repo> out,
             @Nullable String name,
             @Nullable String url,
+            @Nullable String publishUrl,
             @Nullable String token,
             @Nullable String username,
             @Nullable String password) {
@@ -134,6 +168,7 @@ public final class RepositoriesScan {
                                 RepositoryToml.interpolate(token, STRICT, where),
                                 RepositoryToml.interpolate(username, STRICT, where),
                                 RepositoryToml.interpolate(password, STRICT, where))
-                        .orElse(null)));
+                        .orElse(null),
+                publishUrl == null || publishUrl.isBlank() ? null : publishUrl));
     }
 }

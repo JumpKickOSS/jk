@@ -212,9 +212,17 @@ public final class RepositoryToml {
         return new MirrorOf(tokens);
     }
 
+    /** The key naming where {@code jk publish} writes, when that is not {@code url}. */
+    public static final String PUBLISH_URL = "publish-url";
+
+    /** The built-in repositories, which take no {@code publish-url}. */
+    private static final List<String> BUILT_INS =
+            List.of(RepositorySpec.CENTRAL, RepositorySpec.GOOGLE, RepositorySpec.JUMPKICK_NAME);
+
     /** Every key a {@code [repositories.<name>]} table may carry; any other key fails the entry. */
     public static final List<String> REPOSITORY_KEYS = List.of(
             "url",
+            PUBLISH_URL,
             "token",
             "username",
             "password",
@@ -235,6 +243,7 @@ public final class RepositoryToml {
     private static @Nullable RepositorySpec entry(String name, @Nullable Object value, VarPolicy vars, OnBad onBad) {
         String where = "repositories." + name;
         String url;
+        String publishUrl = null;
         Optional<RepoCredential> credential = Optional.empty();
         Optional<ObjectStoreConfig> objectStore = Optional.empty();
         List<String> groups = List.of();
@@ -260,6 +269,12 @@ public final class RepositoryToml {
                 if (onBad == OnBad.SKIP) return null;
                 throw new JkBuildParseException(where + " requires a string `url` field");
             }
+            Object rawPublish = t.get(PUBLISH_URL);
+            if (rawPublish != null && !(rawPublish instanceof String)) {
+                if (onBad == OnBad.SKIP) return null;
+                throw new JkBuildParseException(where + "." + PUBLISH_URL + " must be a URL string");
+            }
+            publishUrl = (String) rawPublish;
             Function<@Nullable String, @Nullable String> interp = raw -> interpolate(raw, vars, where);
             credential = credential(t, interp);
             objectStore = objectStore(t, interp);
@@ -283,6 +298,11 @@ public final class RepositoryToml {
             // ~ is this machine's home: the user's config means it, a project's cannot.
             if (onBad == OnBad.REJECT) throw new JkBuildParseException(homeInProject(where, url));
             url = expandHome(url);
+        }
+        if (publishUrl != null && BUILT_INS.contains(name)) {
+            if (onBad == OnBad.SKIP) return null;
+            throw new JkBuildParseException(
+                    where + "." + PUBLISH_URL + ": not allowed on a built-in repository; declare your own");
         }
         if (RepositorySpec.CENTRAL.equals(name) && (allowInsecure || allowUnverified)) {
             if (onBad == OnBad.SKIP) return null;
@@ -309,6 +329,24 @@ public final class RepositoryToml {
             throw new JkBuildParseException(
                     where + " serves neither releases nor snapshots: nothing would be asked of it");
         }
+        URI publishUri = null;
+        if (publishUrl != null) {
+            String pwhere = where + "." + PUBLISH_URL;
+            if (homeRelative(publishUrl)) {
+                if (onBad == OnBad.REJECT) throw new JkBuildParseException(homeInProject(pwhere, publishUrl));
+                publishUrl = expandHome(publishUrl);
+            }
+            try {
+                publishUri = URI.create(publishUrl);
+            } catch (IllegalArgumentException e) {
+                if (onBad == OnBad.SKIP) return null;
+                throw new JkBuildParseException(pwhere + " has malformed URL: " + publishUrl, e);
+            }
+            if ("http".equalsIgnoreCase(publishUri.getScheme()) && !allowInsecure && !loopback(publishUri.getHost())) {
+                if (onBad == OnBad.SKIP) return null;
+                throw new JkBuildParseException(plaintextRefusal(pwhere, publishUrl));
+            }
+        }
         return new RepositorySpec(
                 name,
                 uri,
@@ -320,7 +358,8 @@ public final class RepositoryToml {
                 releases,
                 snapshots,
                 blocked,
-                optional);
+                optional,
+                publishUri);
     }
 
     /**

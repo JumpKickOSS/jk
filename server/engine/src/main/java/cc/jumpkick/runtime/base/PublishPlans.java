@@ -318,16 +318,21 @@ public final class PublishPlans {
         return WorkerEnv.strict().with(identity);
     }
 
-    /** The object-store settings of the declared repository {@code repoUrl} falls under, if any. */
-    private static @Nullable ObjectStoreConfig objectStore(JkBuild project, @Nullable URI repoUrl) {
+    /** The object-store settings of the declared repository whose url or publish-url {@code repoUrl} falls under, if any. */
+    static @Nullable ObjectStoreConfig objectStore(JkBuild project, @Nullable URI repoUrl) {
         if (repoUrl == null) return null;
         String target = repoUrl.toString();
         for (RepositorySpec repo : project.repositories()) {
-            String base = repo.url().toString();
-            String prefix = base.endsWith("/") ? base : base + "/";
-            if (target.equals(base) || target.startsWith(prefix)) return repo.objectStore();
+            if (under(target, repo.url()) || (repo.publishUrl() != null && under(target, repo.publishUrl()))) {
+                return repo.objectStore();
+            }
         }
         return null;
+    }
+
+    private static boolean under(String target, URI base) {
+        String b = base.toString();
+        return target.equals(b) || target.startsWith(b.endsWith("/") ? b : b + "/");
     }
 
     private static Path writeSpec(Path projectDir, Path jar, JkBuild project, Request req, Signing signing)

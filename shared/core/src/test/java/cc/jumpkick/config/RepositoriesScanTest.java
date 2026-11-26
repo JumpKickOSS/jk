@@ -51,4 +51,28 @@ class RepositoriesScanTest {
         Files.writeString(toml, "name = \"demo\"\n");
         assertThat(RepositoriesScan.scan(toml)).isEmpty();
     }
+
+    @Test
+    void reads_publish_url_and_finds_the_repository_either_url_holds(@TempDir Path dir) throws Exception {
+        Path toml = dir.resolve("jk.toml");
+        Files.writeString(toml, """
+                [repositories]
+                inline = { url = "https://read.inline.example/", publish-url = "https://write.inline.example/" }
+
+                [repositories.acme]
+                url = "https://maven.acme.dev/"
+                publish-url = "s3://acme-maven/releases"
+                """);
+        var repos = RepositoriesScan.scan(toml);
+
+        assertThat(repos.get(0).publishTarget()).isEqualTo("https://write.inline.example/");
+        var acme = repos.get(1);
+        assertThat(acme.url()).isEqualTo("https://maven.acme.dev/");
+        assertThat(acme.publishTarget()).isEqualTo("s3://acme-maven/releases");
+        assertThat(RepositoriesScan.holding(repos, "s3://acme-maven/releases")).isEqualTo(acme);
+        assertThat(RepositoriesScan.holding(repos, "https://maven.acme.dev/com/acme/"))
+                .isEqualTo(acme);
+        assertThat(RepositoriesScan.holding(repos, "s3://acme-maven/releases-other"))
+                .isNull();
+    }
 }

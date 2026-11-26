@@ -360,6 +360,36 @@ When a repository has opted out, the lock summary says so — `Resolved 42 depen
 instead of scrolling past as a warning. After the lock, builds enforce the pinned sha256 as
 usual.
 
+## Publishing to another URL
+
+A repository has one `url`, which resolvers read and the lock records. When uploads go somewhere
+else, such as a bucket served through a CDN or a Nexus or Artifactory hosted repository behind the
+group consumers read, `publish-url` names that place:
+
+```toml
+[repositories.acme]
+url         = "https://maven.acme.dev/"     # resolvers read this; the lock records it
+publish-url = "s3://acme-maven/"            # where jk publish writes
+
+[publish]
+repository = "acme"
+```
+
+- `jk publish` writes to `publish-url` and does every check there too: which files are already
+  published, the `maven-metadata.xml` merge, snapshot metadata, and `jk release`'s check that the
+  version is not taken. A CDN in front of `url` can serve stale copies, so none of these reads
+  goes to `url`. `--dry-run` and the MCP `publish` tool name `publish-url` as the destination.
+- Resolving, locking, `jk sync`, `jk why` and plugin downloads never read `publish-url`. The
+  lock's `source` stays `acme+https://maven.acme.dev/`, and consumers need no write credentials.
+- It takes the same schemes as `url`: `https://`, `s3://`, `gs://` or `file://`. Plain `http://`
+  needs `allow-insecure`, except on loopback. The table's `region` and `endpoint` apply to it.
+- It works in `jk.toml` and in `~/.jk/config.toml`. It is refused on a `mirror-of` table and on
+  `central`, `google` and `jumpkick`.
+- One name binds its credential to both origins: see
+  [A name is not a destination](#a-name-is-not-a-destination). The usual case is an anonymous
+  read side and a credentialed write side. An `s3://` or `gs://` `publish-url` takes the
+  object-store credential chain, as an object-store `url` does.
+
 ## Credentials
 
 Sources, in order — the first that yields a credential wins:
@@ -611,8 +641,8 @@ something the project cannot edit binds the name to:
 
 | Binding | Where it comes from |
 |---------|---------------------|
-| the URL `jk repo login <id>` recorded | the login itself. Run inside a project it binds to the URL `~/.jk/config.toml` or that project's `jk.toml` declares for the id (printed on login); `--url <url>` binds explicitly; a host-shaped id (`ghcr.io`, `127.0.0.1:5000`) binds to `https://<id>` |
-| `[repositories.<id>]` in `~/.jk/config.toml` | your own config; its origin must match the project's |
+| the URL `jk repo login <id>` recorded | the login itself. Run inside a project it binds to the URL `~/.jk/config.toml` or that project's `jk.toml` declares for the id, and to its `publish-url` too when that is http(s) (both printed on login); `--url <url>` binds explicitly; a host-shaped id (`ghcr.io`, `127.0.0.1:5000`) binds to `https://<id>` |
+| `[repositories.<id>]` in `~/.jk/config.toml` | your own config; the project's origin must be the origin of its `url` or of its `publish-url` |
 | `JK_REPO_<ID>_HOST=<host[:port]>` (or a full URL) | your shell or CI variables. A project's `.env` cannot supply it |
 | the id *is* the host | container registries and other repositories addressed by host |
 

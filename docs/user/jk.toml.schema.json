@@ -136,6 +136,7 @@
         "type": ["string", "object"],
         "properties": {
           "url": { "type": "string", "description": "Base URL: https://, s3://, gs://, or file://. Plaintext http:// needs allow-insecure." },
+          "publish-url": { "type": "string", "description": "Where jk publish writes and reads back, when not url (a bucket behind a CDN, a hosted repository behind a group). Same schemes as url. Resolvers and the lock never use it. Refused on central, google and jumpkick." },
           "token": { "type": "string", "description": "Bearer token; ${VAR} expands when the repository is used." },
           "username": { "type": "string", "description": "Basic-auth user; ${VAR} expands when the repository is used." },
           "password": { "type": "string", "description": "Basic-auth password; ${VAR} expands when the repository is used." },
