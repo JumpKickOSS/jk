@@ -143,8 +143,7 @@ class PublishCentralCommandTest {
         String results = MarkdownReports.strip(Files.readString(dir.resolve("target/jk-results.md")));
         assertThat(results)
                 .contains("## Publish")
-                .contains("- destination: Central Portal")
-                .contains("- files: 16")
+                .contains("| library | Central Portal | 16 | published |")
                 .contains("- Central bundle: 16 files, ")
                 .contains("- deployment: `dep-1234` · **PUBLISHED**");
     }
@@ -205,7 +204,7 @@ class PublishCentralCommandTest {
                 .contains("    " + STEM + ".jar")
                 .contains("    " + STEM + "-sources.jar.asc");
         assertThat(MarkdownReports.strip(Files.readString(dir.resolve("target/jk-results.md"))))
-                .contains("- destination: Central Portal (dry run)")
+                .contains("| library | Central Portal | 16 | dry run |")
                 .contains("- Central bundle: 16 files, ")
                 .contains("- bundle (16 entries):");
     }

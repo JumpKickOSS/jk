@@ -12,6 +12,7 @@ import cc.jumpkick.wire.runtime.ReleaseOutcome;
 import cc.jumpkick.wire.runtime.WorkspaceResult;
 import java.io.BufferedWriter;
 import java.util.List;
+import java.util.Locale;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -80,7 +81,13 @@ final class WorkspaceTerminal {
                         rid,
                         new BuildRecord.Publish(
                                 List.of(new BuildRecord.Publish.Lane(
-                                        PublishLane.LIBRARY.word(), p.destination(), p.files(), p.dryRun(), "")),
+                                        PublishLane.LIBRARY.word(),
+                                        p.destination(),
+                                        p.bundle().isEmpty()
+                                                ? p.files()
+                                                : p.bundle().size(),
+                                        p.dryRun(),
+                                        libraryState(p))),
                                 p.deploymentId(),
                                 p.deploymentState(),
                                 p.deploymentErrors(),
@@ -116,6 +123,13 @@ final class WorkspaceTerminal {
             }
         }
         return outcome;
+    }
+
+    /** The library row's state: the Central deployment's, else what an upload did; a dry run has none. */
+    private static String libraryState(ModuleOutcome.Published p) {
+        if (p.dryRun()) return "";
+        if (p.deploymentState() != null) return p.deploymentState().toLowerCase(Locale.ROOT);
+        return p.existing() > 0 ? "uploaded, " + p.existing() + " already there" : "uploaded";
     }
 
     /** The release lane's row of the results file: where, how many files this run sent, and how it ended. */
