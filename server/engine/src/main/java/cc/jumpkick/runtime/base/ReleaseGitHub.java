@@ -48,7 +48,10 @@ import org.jspecify.annotations.Nullable;
  */
 public final class ReleaseGitHub implements ReleaseStore {
 
-    /** Overrides the REST API root; GitHub Actions sets it to the repository's own server. */
+    /**
+     * Overrides the REST API root; GitHub Actions sets it to the repository's own server. Read from
+     * the shell that ran {@code jk}, which forwards it ({@code RequestEnvNames.PUBLISH}).
+     */
     public static final String API_ENV = "GITHUB_API_URL";
 
     /** The line a 403 or 404 from the API stands for. */

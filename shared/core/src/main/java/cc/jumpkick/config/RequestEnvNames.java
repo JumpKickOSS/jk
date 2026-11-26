@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.config;
 
+import cc.jumpkick.publish.CiIdentity;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
@@ -16,7 +17,8 @@ import java.util.stream.Stream;
  * forge repositories authenticate, the proxy — has to come from the shell that ran the command,
  * not the one that started it. These are those names, each with something in the engine that
  * reads it: the machine, the terminal, the toolchains, the CI run ({@link #CI_RUN}), git and its
- * ssh agent, the repository credentials ({@link #CREDENTIALS}) and every {@code JK_*} setting. A
+ * ssh agent, the repository credentials ({@link #CREDENTIALS}), what a publish reads ({@link
+ * #PUBLISH}) and every {@code JK_*} setting. A
  * prefix is forwarded whole only where the engine reads under it ({@link #PREFIX_READERS}); a CI
  * server's, a cloud SDK's or a tool's prefix also holds its secrets ({@code GITHUB_*} holds {@code
  * GITHUB_APP_PRIVATE_KEY}, {@code BUILDKITE*} the agent's token, {@code HOMEBREW_*} a GitHub token),
@@ -110,6 +112,16 @@ public final class RequestEnvNames {
             "AWS_DEFAULT_REGION",
             "AWS_ENDPOINT_URL");
 
+    /**
+     * What {@code jk publish} reads for itself, by exact name: the REST API a GitHub release is
+     * written through ({@code GITHUB_API_URL}, which GitHub Actions sets, on Enterprise Server
+     * too) and the CI identity a keyless signature requests its token with ({@link
+     * CiIdentity#VARIABLES}). The engine files the identity with the redactor and hands it only to
+     * the signing worker.
+     */
+    public static final List<String> PUBLISH = Stream.concat(Stream.of("GITHUB_API_URL"), CiIdentity.VARIABLES.stream())
+            .toList();
+
     /** A prefix forwarded whole, and what in the engine reads under it. */
     public record Prefix(String prefix, String readBy) {}
 
@@ -194,7 +206,7 @@ public final class RequestEnvNames {
             "CIRCLE_PULL_REQUEST");
 
     private static final Set<String> NAMES_SET = Set.copyOf(
-            Stream.of(NAMES, CREDENTIALS, CI_RUN).flatMap(List::stream).toList());
+            Stream.of(NAMES, CREDENTIALS, CI_RUN, PUBLISH).flatMap(List::stream).toList());
     private static final Set<String> NAMES_UPPER = Set.copyOf(upper(NAMES_SET.stream()));
     private static final List<String> PREFIXES_UPPER =
             PREFIXES.stream().map(p -> p.toUpperCase(Locale.ROOT)).toList();
@@ -202,8 +214,8 @@ public final class RequestEnvNames {
     private RequestEnvNames() {}
 
     /**
-     * Whether the engine reads {@code name} for itself: one of {@link #NAMES}, {@link #CREDENTIALS}
-     * or {@link #CI_RUN}, under one of {@link #PREFIXES}, the proxy, display, container, JDK-root and front-end variables
+     * Whether the engine reads {@code name} for itself: one of {@link #NAMES}, {@link #CREDENTIALS},
+     * {@link #CI_RUN} or {@link #PUBLISH}, under one of {@link #PREFIXES}, the proxy, display, container, JDK-root and front-end variables
      * {@link BuildEnv} forwards, or a framework's public prefix. {@code caseInsensitive} on Windows,
      * whose variable names are.
      */
