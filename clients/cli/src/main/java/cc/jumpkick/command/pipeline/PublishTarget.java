@@ -66,24 +66,33 @@ record PublishTarget(
     /**
      * Resolve the target of {@code info}'s publish. {@code override} is {@code --repository}: a
      * declared repository's name, {@code central}, or a URL; it replaces {@code [publish]
-     * repository}. A dry run may name no repository and needs no credential. A run without the
-     * library lane ({@code library} false) resolves only the signing key, which the release lane
-     * signs with too.
+     * repository}. A snapshot goes to {@code [publish] snapshot-repository} when set; a release never
+     * does. A dry run may name no repository and needs no credential. A run without the library
+     * lane ({@code library} false) resolves only the signing key, which the release lane signs with
+     * too.
      */
     static Resolution resolve(
             ProjectInfo info,
             Path projectDir,
             Path manifest,
             @Nullable String override,
+            boolean snapshot,
             boolean dryRun,
             boolean library,
             Function<String, @Nullable String> env) {
         boolean central = false;
         URI repoUrl = null;
-        String repository = !library ? "" : override != null ? override : info.publishRepository();
-        String source = override != null ? "--repository" : "[publish] repository";
+        String repository = !library ? "" : override != null ? override : info.publishRepositoryFor(snapshot);
+        boolean snapshotTarget = library
+                && override == null
+                && snapshot
+                && !info.publishSnapshotRepository().isEmpty();
+        String source = override != null
+                ? "--repository"
+                : snapshotTarget ? "[publish] snapshot-repository" : "[publish] repository";
         if (!repository.isEmpty()) {
             if (RepositorySpec.CENTRAL.equals(repository)) {
+                if (snapshot) return Resolution.refused("Maven Central takes no -SNAPSHOT; name another repository");
                 central = true;
                 String portal = env.apply(PORTAL_ENV);
                 repoUrl = portal == null || portal.isBlank() ? CENTRAL_PORTAL : URI.create(portal);

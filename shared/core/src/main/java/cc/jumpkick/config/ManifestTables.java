@@ -374,6 +374,7 @@ public final class ManifestTables {
             "scm",
             "repository",
             "release",
+            "snapshot-repository",
             "sign",
             "key-file",
             "skip",
@@ -487,6 +488,10 @@ public final class ManifestTables {
         String release = optionalString(publish, "release", "publish.release");
         String releaseRefusal = release == null ? null : ReleaseTarget.refusal(release);
         if (releaseRefusal != null) throw new JkBuildParseException("[publish] release: " + releaseRefusal);
+        String snapshotRepository = optionalString(publish, "snapshot-repository", "publish.snapshot-repository");
+        if (RepositorySpec.CENTRAL.equals(snapshotRepository)) {
+            throw new JkBuildParseException("[publish] snapshot-repository: Maven Central takes no -SNAPSHOT");
+        }
         List<PomMetadata.License> licenses = new ArrayList<>();
         for (TomlTable t : tables(publish, "licenses", "publish.licenses")) {
             rejectUnknownKeys(t, PUBLISH_LICENSE_KEYS, "[publish] licenses");
@@ -530,6 +535,7 @@ public final class ManifestTables {
                 scm,
                 optionalString(publish, "repository", "publish.repository"),
                 release,
+                snapshotRepository,
                 sign,
                 optionalString(publish, "key-file", "publish.key-file"),
                 skip,

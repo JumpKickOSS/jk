@@ -22,9 +22,14 @@ import org.jspecify.annotations.Nullable;
 /**
  * Which lanes a {@code jk publish} runs: every lane the project gives a target, in {@link
  * PublishLane} order, narrowed by {@code --only}; {@code --stage} runs the release lane alone. A
- * lane {@code --only} names without a target is refused naming the key that gives it one.
+ * lane {@code --only} names without a target is refused naming the key that gives it one. A
+ * {@code -SNAPSHOT} runs the library lane alone: a release and an image are never replaced, so
+ * {@code note} names the lanes it leaves out.
  */
-record PublishLanes(List<PublishLane> lanes, @Nullable String refusal) {
+record PublishLanes(
+        List<PublishLane> lanes,
+        @Nullable String refusal,
+        @Nullable String note) {
 
     /** The job token GitLab CI gives every job. */
     static final String JOB_TOKEN = "CI_JOB_TOKEN";
@@ -35,7 +40,13 @@ record PublishLanes(List<PublishLane> lanes, @Nullable String refusal) {
      * dry run of a project with no target assembles the library lane, so a preview needs none.
      */
     static PublishLanes select(
-            List<String> only, boolean stage, boolean dryRun, boolean library, String release, boolean image) {
+            List<String> only,
+            boolean stage,
+            boolean dryRun,
+            boolean library,
+            String release,
+            boolean image,
+            boolean snapshot) {
         Set<PublishLane> named = EnumSet.noneOf(PublishLane.class);
         for (String value : only) {
             for (String word : value.split(",")) {
@@ -47,6 +58,24 @@ record PublishLanes(List<PublishLane> lanes, @Nullable String refusal) {
             }
         }
         String releaseRefusal = release.isEmpty() ? null : releaseRefusal(release);
+        if (snapshot) {
+            if (stage) return refused("--stage ships a release; a -SNAPSHOT goes to the library lane only");
+            for (PublishLane lane : List.of(PublishLane.RELEASE, PublishLane.IMAGE)) {
+                if (named.contains(lane)) {
+                    return refused("--only " + lane.word() + ": a -SNAPSHOT goes to the library lane only");
+                }
+            }
+        }
+        String note = null;
+        if (snapshot && named.isEmpty() && (!release.isEmpty() || image)) {
+            List<String> left = new ArrayList<>();
+            if (!release.isEmpty()) left.add(PublishLane.RELEASE.word());
+            if (image) left.add(PublishLane.IMAGE.word());
+            note = "a -SNAPSHOT skips the " + String.join(" and ", left) + " lane" + (left.size() > 1 ? "s" : "");
+            release = "";
+            image = false;
+            releaseRefusal = null;
+        }
         if (stage) {
             for (PublishLane lane : List.of(PublishLane.LIBRARY, PublishLane.IMAGE)) {
                 if (named.contains(lane)) {
@@ -55,7 +84,7 @@ record PublishLanes(List<PublishLane> lanes, @Nullable String refusal) {
             }
             if (release.isEmpty()) return refused("--stage needs " + PublishLane.RELEASE.key() + " in jk.toml");
             if (releaseRefusal != null) return refused(releaseRefusal);
-            return new PublishLanes(List.of(PublishLane.RELEASE), null);
+            return new PublishLanes(List.of(PublishLane.RELEASE), null, null);
         }
         boolean[] configured = {library, !release.isEmpty(), image};
         List<PublishLane> lanes = new ArrayList<>();
@@ -70,11 +99,14 @@ record PublishLanes(List<PublishLane> lanes, @Nullable String refusal) {
             if (lane == PublishLane.RELEASE && releaseRefusal != null) return refused(releaseRefusal);
             lanes.add(lane);
         }
-        if (lanes.isEmpty() && dryRun && named.isEmpty()) return new PublishLanes(List.of(PublishLane.LIBRARY), null);
+        if (lanes.isEmpty() && dryRun && named.isEmpty())
+            return new PublishLanes(List.of(PublishLane.LIBRARY), null, note);
+        if (lanes.isEmpty() && snapshot)
+            return refused("a -SNAPSHOT publishes libraries only; set [publish] repository");
         if (lanes.isEmpty()) {
             return refused("nothing to publish; set [publish] repository or release, or [image] registry");
         }
-        return new PublishLanes(List.copyOf(lanes), null);
+        return new PublishLanes(List.copyOf(lanes), null, note);
     }
 
     /** Why {@code release} names no release target, or {@code null}. */
@@ -112,6 +144,6 @@ record PublishLanes(List<PublishLane> lanes, @Nullable String refusal) {
     }
 
     private static PublishLanes refused(String why) {
-        return new PublishLanes(List.of(), why);
+        return new PublishLanes(List.of(), why, null);
     }
 }

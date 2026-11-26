@@ -36,7 +36,7 @@ final class UploadTail {
     static TailArgs.Publish dryRun(Path dir) {
         ProjectInfo info = ProjectInfoPlans.projectInfo(dir);
         // A broken manifest is the job's to report; the tail only names a destination.
-        String repository = info.error() == null ? info.publishRepository() : "";
+        String repository = info.error() == null ? info.publishRepositoryFor(info.isSnapshot()) : "";
         URI url = repository.contains("://") ? URI.create(repository) : null;
         List<PublishLane> lanes = new ArrayList<>(List.of(PublishLane.LIBRARY));
         String release = info.error() == null ? info.publishRelease() : "";

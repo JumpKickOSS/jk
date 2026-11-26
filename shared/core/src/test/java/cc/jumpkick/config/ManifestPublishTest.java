@@ -60,6 +60,26 @@ class ManifestPublishTest {
     }
 
     @Test
+    void the_table_names_where_a_snapshot_goes() throws Exception {
+        PomMetadata m = parse("""
+                [publish]
+                repository = "releases"
+                snapshot-repository = "snapshots"
+                """).pomMetadata();
+
+        assertThat(m.repository()).isEqualTo("releases");
+        assertThat(m.snapshotRepository()).isEqualTo("snapshots");
+        assertThat(parse("[publish]\nrepository = \"releases\"\n").pomMetadata().snapshotRepository())
+                .isNull();
+    }
+
+    @Test
+    void central_takes_no_snapshot_repository() {
+        assertThatThrownBy(() -> parse("[publish]\nsnapshot-repository = \"central\"\n"))
+                .hasMessageContaining("[publish] snapshot-repository: Maven Central takes no -SNAPSHOT");
+    }
+
+    @Test
     void signing_the_sbom_and_the_provenance_are_on_unless_the_table_turns_them_off() throws Exception {
         PomMetadata defaults = parse("[publish]\nrepository = \"releases\"\n").pomMetadata();
         assertThat(defaults.sign()).isTrue();

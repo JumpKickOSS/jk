@@ -9,6 +9,7 @@ import cc.jumpkick.cli.engine.ProjectInfos;
 import cc.jumpkick.cli.run.JsonlShape;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Coords;
+import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.config.ReleaseVerb;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
@@ -155,8 +156,9 @@ public final class PublishCommand implements CliCommand {
             CommandWedge.printFail("Publish", info.error());
             return Exit.CONFIG;
         }
-        // Nothing builds for a tree that is not the release: the refusal comes first.
-        if (!info.releaseBuild()) {
+        // Nothing builds for a tree that is not the release, unless the run asks to publish it as
+        // the snapshot it is: the refusal comes first.
+        if (!info.releaseBuild() && !allowSnapshot) {
             CommandWedge.printFail("Publish", notARelease(info, projectDir));
             return Exit.CONFIG;
         }
@@ -168,11 +170,13 @@ public final class PublishCommand implements CliCommand {
                 dryRun,
                 repositoryOverride != null || !info.publishRepository().isEmpty(),
                 info.publishRelease(),
-                !info.imageRegistry().isEmpty());
+                !info.imageRegistry().isEmpty(),
+                !info.releaseBuild());
         if (selected.refusal() != null) {
             CommandWedge.printFail("Publish", selected.refusal());
             return Exit.CONFIG;
         }
+        if (selected.note() != null) CommandWedge.printChip(Glyphs.WAITING, "skip", selected.note());
         List<PublishLane> lanes = selected.lanes();
         String stageRefusal = stage ? stageRefusal(info.releasePlatforms(), ReleasePlatform.current()) : null;
         if (stageRefusal != null) {
@@ -184,6 +188,7 @@ public final class PublishCommand implements CliCommand {
                 projectDir,
                 jkBuildPath,
                 repositoryOverride,
+                info.isSnapshot(),
                 dryRun,
                 lanes.contains(PublishLane.LIBRARY),
                 JkDirs::env);

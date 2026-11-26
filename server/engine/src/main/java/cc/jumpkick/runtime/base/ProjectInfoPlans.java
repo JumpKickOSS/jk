@@ -286,11 +286,11 @@ public final class ProjectInfoPlans {
     }
 
     /**
-     * Where the repository {@code [publish] repository} names is published to (its {@code
-     * publish-url}, else its url), {@code central}, or the name as written; empty when none.
+     * Where the repository {@code name} (a {@code [publish]} {@code repository} or {@code
+     * snapshot-repository}) is published to (its {@code publish-url}, else its url), {@code
+     * central}, or the name as written; empty when none.
      */
-    private static String publishRepository(JkBuild build) {
-        String name = build.pomMetadata().repository();
+    private static String publishRepository(JkBuild build, @Nullable String name) {
         if (name == null || name.isBlank()) return "";
         for (var declared : build.repositories()) {
             if (declared.name().equals(name)) return declared.publishTarget().toString();
@@ -385,7 +385,8 @@ public final class ProjectInfoPlans {
                 build.installOpt().map(JkBuild.Install::productLib).orElse(""),
                 build.installOpt().map(JkBuild.Install::productBin).orElse(""),
                 ws.toolchains(),
-                publishRepository(build),
+                publishRepository(build, build.pomMetadata().repository()),
+                publishRepository(build, build.pomMetadata().snapshotRepository()),
                 build.pomMetadata().sign(),
                 orEmpty(build.pomMetadata().keyFile()),
                 imageRegistry(build),

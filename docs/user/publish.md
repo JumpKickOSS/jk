@@ -36,15 +36,25 @@ What the publish renders itself (the POM, SLSA provenance, a sources jar the bui
 goes to `target/publish/` first: every file streams from disk, so a large jar never has to fit in
 memory.
 
-`jk publish` uploads only a release ([Releasing](release.md)). In a git checkout that is a clean
+`jk publish` uploads a release ([Releasing](release.md)). In a git checkout that is a clean
 checkout whose HEAD carries the version's tag (`[release] tag`, `v1.4.7` by default); on any other
-commit, or with uncommitted changes, it refuses before building and says which. In a tree with no
+commit, or with uncommitted changes, it refuses before building and says which, unless
+`--allow-snapshot` asks it to publish that tree as the snapshot it is (`1.4.7-SNAPSHOT`, below). In a tree with no
 git (a source archive) a publish is a release by itself, and every artifact it uploads carries the
 plain version.
 
-A `-SNAPSHOT` version publishes only with `--allow-snapshot`, in Maven's unique form: each run uploads
+A snapshot publishes only with `--allow-snapshot`, in Maven's unique form: each run uploads
 `name-1.0.1-20261025.201500-3.jar` and rewrites the version's `maven-metadata.xml` to name the newest
 build, so a snapshot repository that refuses redeploys takes every run and consumers resolve the latest.
+A snapshot goes to `[publish] snapshot-repository`, a `[repositories.<name>]` entry, when the table
+names one (its `publish-url`, else its `url`); otherwise it goes where a release goes. Releases
+always go to `repository`. `central` takes no `-SNAPSHOT`, so it is refused as a snapshot
+repository, and a snapshot publish that resolves to it stops before building. `--dry-run` and the
+MCP `publish` tool name the repository the version would go to.
+
+A snapshot runs the library lane alone. A release and an image are never replaced, so the run skips
+`[publish] release` and `[image] registry` and says so (`a -SNAPSHOT skips the release and image
+lanes`); `--stage`, `--only release` and `--only image` are refused for a snapshot.
 
 ## POM metadata: `[publish]`
 
@@ -76,6 +86,7 @@ url = "https://nexus.example.com/repository/maven-releases/"
 
 [publish]
 repository = "releases"             # a [repositories.<name>] entry, or "central"
+# snapshot-repository = "snapshots"  # where --allow-snapshot goes; a [repositories.<name>] entry
 key-file = "~/.gnupg/release.asc"   # the PGP key; the passphrase is JK_GPG_PASSPHRASE, never here
 # sign = false  sbom = false  provenance = false  hold = true      # opt-outs
 ```

@@ -331,7 +331,7 @@ public final class ReleaseCommand implements CliCommand {
     private static @Nullable String localPublishRefusal(ProjectInfo info, Path dir, Path manifest) {
         boolean library = !info.publishRepository().isEmpty();
         PublishTarget.Resolution resolved =
-                PublishTarget.resolve(info, dir, manifest, null, false, library, JkDirs::env);
+                PublishTarget.resolve(info, dir, manifest, null, false, false, library, JkDirs::env);
         PublishTarget target = resolved.target();
         if (target == null) return resolved.refusal();
         if (library && target.lacksCredential()) return noCredential(target.describe());

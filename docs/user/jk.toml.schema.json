@@ -1110,6 +1110,7 @@
           "anyOf": [{ "enum": ["github", "gitlab", "forgejo"] }, { "pattern": "^(s3|gs)://" }],
           "description": "Where `jk publish` sends the deliverables (fat jars, archives, runtime images, native executables): github, gitlab or forgejo (a release of the repository the git remote origin names; forgejo covers Gitea and Codeberg) or an s3:// or gs:// prefix. The workspace root's value governs the workspace. See docs/user/publish.md#releasing-deliverables."
         },
+        "snapshot-repository": { "type": "string", "description": "Where `jk publish --allow-snapshot` sends a -SNAPSHOT: a [repositories.<name>] entry (not \"central\", which takes no snapshots). Releases keep going to `repository`." },
         "sign": { "type": "boolean", "description": "Sign the release. Default true: a key-file means PGP, and CI that offers an identity token adds keyless Sigstore. false publishes unsigned (Central refuses that)." },
         "key-file": { "type": "string", "description": "The PGP signing key file, relative to the module or ~/-prefixed. Central requires one. The passphrase never goes here (JK_GPG_PASSPHRASE)." },
         "sbom": { "type": "boolean", "description": "Upload the CycloneDX and SPDX SBOMs beside the artifact. Default true." },

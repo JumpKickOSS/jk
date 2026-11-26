@@ -22,7 +22,34 @@ class PublishLanesTest {
     private static final String BUCKET = "s3://acme/app/";
 
     private static PublishLanes select(List<String> only, boolean stage, boolean library, String release) {
-        return PublishLanes.select(only, stage, false, library, release, false);
+        return PublishLanes.select(only, stage, false, library, release, false, false);
+    }
+
+    @Test
+    void a_snapshot_runs_the_library_lane_alone_and_names_what_it_skips() {
+        PublishLanes all = PublishLanes.select(List.of(), false, false, true, BUCKET, true, true);
+        assertThat(all.lanes()).containsExactly(PublishLane.LIBRARY);
+        assertThat(all.note()).isEqualTo("a -SNAPSHOT skips the release and image lanes");
+
+        PublishLanes plain = PublishLanes.select(List.of(), false, false, true, "", false, true);
+        assertThat(plain.lanes()).containsExactly(PublishLane.LIBRARY);
+        assertThat(plain.note()).isNull();
+    }
+
+    @Test
+    void a_snapshot_refuses_the_lanes_that_ship_releases() {
+        assertThat(PublishLanes.select(List.of("release"), false, false, true, BUCKET, false, true)
+                        .refusal())
+                .isEqualTo("--only release: a -SNAPSHOT goes to the library lane only");
+        assertThat(PublishLanes.select(List.of("image"), false, false, true, "", true, true)
+                        .refusal())
+                .isEqualTo("--only image: a -SNAPSHOT goes to the library lane only");
+        assertThat(PublishLanes.select(List.of(), true, false, true, BUCKET, false, true)
+                        .refusal())
+                .isEqualTo("--stage ships a release; a -SNAPSHOT goes to the library lane only");
+        assertThat(PublishLanes.select(List.of(), false, false, false, BUCKET, true, true)
+                        .refusal())
+                .isEqualTo("a -SNAPSHOT publishes libraries only; set [publish] repository");
     }
 
     @Test
@@ -52,33 +79,35 @@ class PublishLanesTest {
                 .isEqualTo("--only takes library, release or image, not `deliverables`");
         assertThat(select(List.of(), false, false, "").refusal())
                 .isEqualTo("nothing to publish; set [publish] repository or release, or [image] registry");
-        assertThat(PublishLanes.select(List.of(), false, true, false, "", false).lanes())
+        assertThat(PublishLanes.select(List.of(), false, true, false, "", false, false)
+                        .lanes())
                 .as("a dry run previews the library lane with no target")
                 .containsExactly(PublishLane.LIBRARY);
     }
 
     @Test
     void a_registry_adds_the_image_lane_last() {
-        assertThat(PublishLanes.select(List.of(), false, false, true, BUCKET, true)
+        assertThat(PublishLanes.select(List.of(), false, false, true, BUCKET, true, false)
                         .lanes())
                 .containsExactly(PublishLane.LIBRARY, PublishLane.RELEASE, PublishLane.IMAGE);
-        assertThat(PublishLanes.select(List.of("image,library"), false, false, true, BUCKET, true)
+        assertThat(PublishLanes.select(List.of("image,library"), false, false, true, BUCKET, true, false)
                         .lanes())
                 .containsExactly(PublishLane.LIBRARY, PublishLane.IMAGE);
-        assertThat(PublishLanes.select(List.of(), false, false, false, "", true).lanes())
+        assertThat(PublishLanes.select(List.of(), false, false, false, "", true, false)
+                        .lanes())
                 .as("a registry alone is something to publish")
                 .containsExactly(PublishLane.IMAGE);
-        assertThat(PublishLanes.select(List.of("image"), false, false, true, BUCKET, false)
+        assertThat(PublishLanes.select(List.of("image"), false, false, true, BUCKET, false, false)
                         .refusal())
                 .isEqualTo("--only image needs [image] registry in jk.toml");
     }
 
     @Test
     void a_stage_run_never_pushes_an_image() {
-        assertThat(PublishLanes.select(List.of(), true, false, true, BUCKET, true)
+        assertThat(PublishLanes.select(List.of(), true, false, true, BUCKET, true, false)
                         .lanes())
                 .containsExactly(PublishLane.RELEASE);
-        assertThat(PublishLanes.select(List.of("image"), true, false, false, BUCKET, true)
+        assertThat(PublishLanes.select(List.of("image"), true, false, false, BUCKET, true, false)
                         .refusal())
                 .isEqualTo("--stage uploads release files only; drop --only image");
     }

@@ -304,6 +304,7 @@ class InstallProductBinTest {
                 productBin,
                 Map.of(),
                 base.publishRepository(),
+                base.publishSnapshotRepository(),
                 base.publishSign(),
                 base.publishKeyFile(),
                 base.imageRegistry(),
