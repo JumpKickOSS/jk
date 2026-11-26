@@ -634,7 +634,7 @@ public final class ReleaseCommand implements CliCommand {
     }
 
     /** {@code root} and, for a workspace, every member it lists. */
-    private static List<ProjectInfo> modules(Path dir, ProjectInfo root) throws IOException {
+    static List<ProjectInfo> modules(Path dir, ProjectInfo root) throws IOException {
         List<ProjectInfo> out = new ArrayList<>(List.of(root));
         if (!root.workspaceRoot()) return out;
         for (String moduleDir : root.moduleDirs()) {

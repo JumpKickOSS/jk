@@ -75,4 +75,24 @@ class RepositoriesScanTest {
         assertThat(RepositoriesScan.holding(repos, "s3://acme-maven/releases-other"))
                 .isNull();
     }
+
+    @Test
+    void reads_an_object_store_region_and_endpoint(@TempDir Path dir) throws Exception {
+        Path toml = dir.resolve("jk.toml");
+        Files.writeString(toml, """
+                [repositories]
+                r2 = { url = "s3://bucket/maven", region = "auto", endpoint = "https://acct.r2.example" }
+
+                [repositories.minio]
+                url = "s3://releases/maven"
+                region = "us-west-2"
+                endpoint = "http://127.0.0.1:9000"
+                """);
+        var repos = RepositoriesScan.scan(toml);
+
+        assertThat(repos.get(0).region()).isEqualTo("auto");
+        assertThat(repos.get(0).endpoint()).isEqualTo("https://acct.r2.example");
+        assertThat(repos.get(1).region()).isEqualTo("us-west-2");
+        assertThat(repos.get(1).endpoint()).isEqualTo("http://127.0.0.1:9000");
+    }
 }

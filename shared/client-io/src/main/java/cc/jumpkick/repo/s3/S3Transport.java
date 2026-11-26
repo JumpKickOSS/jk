@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.repo.s3;
 
+import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.host.DomXml;
 import cc.jumpkick.host.Hashing;
@@ -238,6 +239,40 @@ public final class S3Transport implements ObjectStoreTransport {
         }
         conditions.put("Content-Type", contentType);
         return http.putFile(object, file, signedHeaders("PUT", object, Hashing.sha256Hex(file), conditions))
+                .statusCode();
+    }
+
+    /** Every key under {@code dir}, through ListObjectsV2 one page at a time. */
+    @Override
+    public List<String> list(URI dir, RepoCredential ignored) throws IOException, InterruptedException {
+        String path = dir.getPath() == null ? "" : dir.getPath();
+        String prefix = path.startsWith("/") ? path.substring(1) : path;
+        if (!prefix.isEmpty() && !prefix.endsWith("/")) prefix += "/";
+        List<String> names = new ArrayList<>();
+        String token = null;
+        do {
+            URI page = URI.create(endpoint + "/" + dir.getHost() + "?list-type=2&prefix=" + SigV4Signer.rfc3986(prefix)
+                    + (token == null ? "" : "&continuation-token=" + SigV4Signer.rfc3986(token)));
+            HttpResponse<byte[]> response = http.get(page, signedHeaders("GET", page, EMPTY_HASH, Map.of()));
+            requireSuccess("list", page, response.statusCode());
+            var root = DomXml.parse(response.body()).getDocumentElement();
+            for (var contents : DomXml.childElements(root, "Contents")) {
+                String key = DomXml.childText(contents, "Key");
+                if (key != null && key.startsWith(prefix) && key.length() > prefix.length()) {
+                    names.add(key.substring(prefix.length()));
+                }
+            }
+            token = EnvValues.parseBool(DomXml.childText(root, "IsTruncated")).orElse(false)
+                    ? DomXml.childText(root, "NextContinuationToken")
+                    : null;
+        } while (token != null && !token.isEmpty());
+        return names;
+    }
+
+    @Override
+    public int delete(URI uri, RepoCredential ignored) throws IOException, InterruptedException {
+        URI object = objectUri(uri);
+        return http.delete(object, signedHeaders("DELETE", object, EMPTY_HASH, Map.of()))
                 .statusCode();
     }
 

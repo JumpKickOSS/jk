@@ -83,12 +83,28 @@ public record MavenMetadata(
         Objects.requireNonNull(version, "version");
         List<String> merged = new ArrayList<>(versions);
         if (!merged.contains(version)) merged.add(version);
-        merged.sort(Versions::compare);
-        String newRelease = merged.stream()
+        return listing(merged);
+    }
+
+    /**
+     * This document without {@code version}, {@code <latest>}/{@code <release>} recomputed as
+     * {@link #withVersion} does; both are null when no version is left.
+     */
+    public MavenMetadata withoutVersion(String version) {
+        Objects.requireNonNull(version, "version");
+        List<String> left = new ArrayList<>(versions);
+        left.removeIf(version::equals);
+        return listing(left);
+    }
+
+    private MavenMetadata listing(List<String> list) {
+        list.sort(Versions::compare);
+        String latest = list.isEmpty() ? null : list.get(list.size() - 1);
+        String release = list.stream()
                 .filter(v -> !v.endsWith("-SNAPSHOT"))
                 .reduce((a, b) -> b)
                 .orElse(null);
-        return new MavenMetadata(groupId, artifactId, merged, merged.get(merged.size() - 1), newRelease);
+        return new MavenMetadata(groupId, artifactId, list, latest, release);
     }
 
     /** The document, UTF-8 encoded as its own declaration says. Exactly inverted by {@link #parse}. */

@@ -30,14 +30,16 @@ import org.jspecify.annotations.Nullable;
 public final class RepositoriesScan {
 
     /**
-     * One {@code [repositories]} entry: name, url, the inline credential and the {@code
-     * publish-url} when present.
+     * One {@code [repositories]} entry: name, url, the inline credential, and the {@code
+     * publish-url}, {@code region} and {@code endpoint} when present.
      */
     public record Repo(
             String name,
             String url,
             @Nullable RepoCredential credential,
-            @Nullable String publishUrl) {
+            @Nullable String publishUrl,
+            @Nullable String region,
+            @Nullable String endpoint) {
         public Optional<RepoCredential> credentialOpt() {
             return Optional.ofNullable(credential);
         }
@@ -86,13 +88,15 @@ public final class RepositoriesScan {
         String token = null;
         String username = null;
         String password = null;
+        String region = null;
+        String endpoint = null;
         for (String raw : lines) {
             String line = raw.strip();
             if (line.isEmpty() || line.startsWith("#")) continue;
             if (line.startsWith("[")) {
-                commit(out, entryName, url, publishUrl, token, username, password);
+                commit(out, entryName, url, publishUrl, token, username, password, region, endpoint);
                 entryName = null;
-                url = publishUrl = token = username = password = null;
+                url = publishUrl = token = username = password = region = endpoint = null;
                 int close = line.indexOf(']');
                 if (close <= 1) continue;
                 section = line.substring(line.startsWith("[[") ? 2 : 1, close)
@@ -115,8 +119,10 @@ public final class RepositoriesScan {
                     case "token" -> token = value;
                     case "username" -> username = value;
                     case "password" -> password = value;
+                    case "region" -> region = value;
+                    case "endpoint" -> endpoint = value;
                     default -> {
-                        // object-store keys etc. — not needed for credential resolution
+                        // other object-store keys: the AWS chain supplies them, as for a publish
                     }
                 }
             } else if (section.equals("repositories")) {
@@ -127,6 +133,8 @@ public final class RepositoriesScan {
                     String t = null;
                     String us = null;
                     String pw = null;
+                    String rg = null;
+                    String ep = null;
                     Matcher m = PAIR.matcher(rest);
                     while (m.find()) {
                         String v = MinimalToml.unquote('"' + m.group(2) + '"');
@@ -136,18 +144,20 @@ public final class RepositoriesScan {
                             case "token" -> t = v;
                             case "username" -> us = v;
                             case "password" -> pw = v;
+                            case "region" -> rg = v;
+                            case "endpoint" -> ep = v;
                             default -> {
                                 // ignore
                             }
                         }
                     }
-                    commit(out, key, u, pu, t, us, pw);
+                    commit(out, key, u, pu, t, us, pw, rg, ep);
                 } else {
-                    commit(out, key, TomlScan.scalar(rest), null, null, null, null);
+                    commit(out, key, TomlScan.scalar(rest), null, null, null, null, null, null);
                 }
             }
         }
-        commit(out, entryName, url, publishUrl, token, username, password);
+        commit(out, entryName, url, publishUrl, token, username, password, region, endpoint);
         return out;
     }
 
@@ -158,7 +168,9 @@ public final class RepositoriesScan {
             @Nullable String publishUrl,
             @Nullable String token,
             @Nullable String username,
-            @Nullable String password) {
+            @Nullable String password,
+            @Nullable String region,
+            @Nullable String endpoint) {
         if (name == null || url == null || url.isBlank()) return;
         String where = "repositories." + name;
         out.add(new Repo(
@@ -169,6 +181,12 @@ public final class RepositoriesScan {
                                 RepositoryToml.interpolate(username, STRICT, where),
                                 RepositoryToml.interpolate(password, STRICT, where))
                         .orElse(null),
-                publishUrl == null || publishUrl.isBlank() ? null : publishUrl));
+                publishUrl == null || publishUrl.isBlank() ? null : publishUrl,
+                blankToNull(RepositoryToml.interpolate(region, STRICT, where)),
+                blankToNull(RepositoryToml.interpolate(endpoint, STRICT, where))));
+    }
+
+    private static @Nullable String blankToNull(@Nullable String value) {
+        return value == null || value.isBlank() ? null : value;
     }
 }

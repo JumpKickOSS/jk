@@ -7,6 +7,7 @@ import cc.jumpkick.model.ObjectStoreConfig;
 import cc.jumpkick.model.Project;
 import cc.jumpkick.pom.PomXml;
 import cc.jumpkick.repo.MavenMetadata;
+import cc.jumpkick.repo.MetadataWrites;
 import cc.jumpkick.repo.ObjectStoreTransport;
 import cc.jumpkick.repo.ObjectStoreTransport.Revision;
 import cc.jumpkick.repo.RepoTransport;
@@ -34,7 +35,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.ThreadLocalRandom;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
@@ -202,8 +202,6 @@ public final class MavenPublisher {
         return new Result(results, bytes[0], alreadyThere);
     }
 
-    private static final int METADATA_RETRIES = 5;
-
     private static final String SNAPSHOT = "-SNAPSHOT";
 
     private static final DateTimeFormatter STAMP = DateTimeFormatter.ofPattern("yyyyMMdd.HHmmss");
@@ -233,25 +231,26 @@ public final class MavenPublisher {
         if (transport instanceof ObjectStoreTransport store) {
             List<Artifact> files = new ArrayList<>();
             artifacts.forEach(files::add);
+            MetadataWrites writes = writes(results, bytes);
             int minimumBuild = 1;
-            for (int attempt = 0; attempt <= METADATA_RETRIES; attempt++) {
+            for (int attempt = 0; attempt <= MetadataWrites.RETRIES; attempt++) {
                 Optional<Revision> previous = store.readRevision(repoBase.resolve(metadataPath), credential);
                 SnapshotMetadata snapshot = SnapshotMetadata.read(previous, repoBase.resolve(metadataPath));
                 int build = Math.max(minimumBuild, snapshot.build() + 1);
                 try {
                     byte[] body =
                             uploadSnapshot(project, prefix, files, signing, build, snapshot.entries(), results, bytes);
-                    if (putMetadataRevision(store, metadataPath, body, previous, results, bytes)) {
-                        publishMetadataChecksums(store, metadataPath, results, bytes);
+                    if (writes.putRevision(store, metadataPath, body, previous)) {
+                        writes.putChecksums(store, metadataPath);
                         publishMetadata(project, groupPath, results, bytes);
                         return new Result(results, bytes[0], Set.of());
                     }
                 } catch (PublishedBytesConflict conflict) {
                     minimumBuild = build + 1;
                 }
-                if (attempt < METADATA_RETRIES) backoff(attempt);
+                if (attempt < MetadataWrites.RETRIES) MetadataWrites.backoff(attempt);
             }
-            throw concurrentMetadata(metadataPath);
+            throw writes.concurrent(metadataPath);
         }
 
         int build = 1;
@@ -348,26 +347,16 @@ public final class MavenPublisher {
             throws IOException, InterruptedException {
         String relPath = groupPath + "/" + project.name() + "/maven-metadata.xml";
         URI uri = repoBase.resolve(relPath);
-        if (transport instanceof ObjectStoreTransport store) {
-            for (int attempt = 0; attempt <= METADATA_RETRIES; attempt++) {
-                Optional<Revision> previous = store.readRevision(uri, credential);
-                byte[] body = mergeVersions(project, uri, previous.map(Revision::body));
-                if (putMetadataRevision(store, relPath, body, previous, results, bytes)) {
-                    publishMetadataChecksums(store, relPath, results, bytes);
-                    return;
-                }
-                if (attempt < METADATA_RETRIES) backoff(attempt);
-            }
-            throw concurrentMetadata(relPath);
-        }
+        writes(results, bytes).update(relPath, previous -> mergeVersions(project, uri, previous));
+    }
 
-        Optional<byte[]> previous;
-        try {
-            previous = transport.fetch(uri, credential);
-        } catch (IOException e) {
-            throw metadataReadFailure(project, uri, e);
-        }
-        putWithChecksums(relPath, mergeVersions(project, uri, previous), "application/xml", results, bytes);
+    /** Metadata writes whose statuses land in {@code results} and {@code bytes}. */
+    private MetadataWrites writes(Map<String, Integer> results, long[] bytes) {
+        return new MetadataWrites(
+                repoBase,
+                transport,
+                credential,
+                (relPath, uri, status, size) -> record(relPath, uri, status, size, results, bytes));
     }
 
     private static byte[] mergeVersions(Project project, URI uri, Optional<byte[]> previous) throws IOException {
@@ -386,70 +375,6 @@ public final class MavenPublisher {
                 "could not read " + uri + ": " + cause.getMessage() + "\n  left it unchanged; re-run publish to add "
                         + project.version() + " to the version list",
                 cause);
-    }
-
-    private boolean putMetadataRevision(
-            ObjectStoreTransport store,
-            String path,
-            byte[] body,
-            Optional<Revision> previous,
-            Map<String, Integer> results,
-            long[] bytes)
-            throws IOException, InterruptedException {
-        URI uri = repoBase.resolve(path);
-        int status = store.putRevision(uri, body, "application/xml", credential, previous);
-        if (revisionChanged(status, previous)) return false;
-        record(path, uri, status, body.length, results, bytes);
-        return true;
-    }
-
-    private static boolean revisionChanged(int status, Optional<Revision> previous) {
-        return status == 412 || status == 409 || (status == 404 && previous.isPresent());
-    }
-
-    /** Repair checksums from the current metadata if another publisher advances it mid-write. */
-    private void publishMetadataChecksums(
-            ObjectStoreTransport store, String path, Map<String, Integer> results, long[] bytes)
-            throws IOException, InterruptedException {
-        URI uri = repoBase.resolve(path);
-        for (int attempt = 0; attempt <= METADATA_RETRIES; attempt++) {
-            Revision current = metadataRevision(store, uri);
-            boolean stable = true;
-            for (String[] sidecar : sidecars(Checksums.of(current.body()))) {
-                String sidePath = path + sidecar[0];
-                URI sideUri = repoBase.resolve(sidePath);
-                byte[] body = sidecar[1].getBytes(StandardCharsets.US_ASCII);
-                Optional<Revision> previous = store.readRevision(sideUri, credential);
-                if (previous.isPresent() && Arrays.equals(previous.get().body(), body)) continue;
-                if (!current.validator().equals(metadataRevision(store, uri).validator())) {
-                    stable = false;
-                    break;
-                }
-                int status = store.putRevision(sideUri, body, "text/plain", credential, previous);
-                if (revisionChanged(status, previous)) {
-                    stable = false;
-                    break;
-                }
-                record(sidePath, sideUri, status, body.length, results, bytes);
-            }
-            if (stable
-                    && current.validator().equals(metadataRevision(store, uri).validator())) return;
-            if (attempt < METADATA_RETRIES) backoff(attempt);
-        }
-        throw concurrentMetadata(path);
-    }
-
-    private Revision metadataRevision(ObjectStoreTransport store, URI uri) throws IOException, InterruptedException {
-        return store.readRevision(uri, credential).orElseThrow(() -> new IOException(uri + ": missing metadata"));
-    }
-
-    private IOException concurrentMetadata(String path) {
-        return new IOException(repoBase.resolve(path) + ": concurrent updates; re-run publish");
-    }
-
-    private static void backoff(int attempt) throws InterruptedException {
-        long delay = 10L << attempt;
-        Thread.sleep(ThreadLocalRandom.current().nextLong(delay, 2 * delay));
     }
 
     /**

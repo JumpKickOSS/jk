@@ -37,7 +37,8 @@ public final class UsageGroups {
                             "native",
                             "install",
                             "release",
-                            "publish")),
+                            "publish",
+                            "yank")),
             new CommandGroup(
                     "Project commands:",
                     List.of(

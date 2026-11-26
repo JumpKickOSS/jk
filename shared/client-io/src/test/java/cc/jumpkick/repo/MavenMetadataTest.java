@@ -210,4 +210,64 @@ class MavenMetadataTest {
         List<String> versions = MavenMetadata.empty("g", "a").withVersion("1.0").versions();
         assertThat(versions).isUnmodifiable();
     }
+
+    @Test
+    void removing_a_version_recomputes_latest_and_release_from_what_is_left() {
+        MavenMetadata md = MavenMetadata.empty("com.example", "widget")
+                .withVersion("1.0.0")
+                .withVersion("1.1.0")
+                .withVersion("1.2.0-SNAPSHOT")
+                .withVersion("1.2.0");
+
+        MavenMetadata yanked = md.withoutVersion("1.2.0");
+
+        assertThat(yanked.versions()).containsExactly("1.0.0", "1.1.0", "1.2.0-SNAPSHOT");
+        assertThat(yanked.latest()).isEqualTo("1.2.0-SNAPSHOT");
+        assertThat(yanked.release()).isEqualTo("1.1.0");
+        assertThat(reread(yanked)).isEqualTo(yanked);
+    }
+
+    @Test
+    void removing_a_middle_version_keeps_latest_and_release() {
+        MavenMetadata yanked = MavenMetadata.empty("com.example", "widget")
+                .withVersion("1.0.0")
+                .withVersion("1.1.0")
+                .withVersion("1.2.0")
+                .withoutVersion("1.1.0");
+
+        assertThat(yanked.versions()).containsExactly("1.0.0", "1.2.0");
+        assertThat(yanked.latest()).isEqualTo("1.2.0");
+        assertThat(yanked.release()).isEqualTo("1.2.0");
+    }
+
+    @Test
+    void removing_the_last_release_leaves_no_release_even_with_a_snapshot_listed() {
+        MavenMetadata yanked = MavenMetadata.empty("com.example", "widget")
+                .withVersion("1.0.0")
+                .withVersion("2.0.0-SNAPSHOT")
+                .withoutVersion("1.0.0");
+
+        assertThat(yanked.release()).isNull();
+        assertThat(yanked.latest()).isEqualTo("2.0.0-SNAPSHOT");
+    }
+
+    @Test
+    void removing_the_only_version_leaves_an_empty_list_and_clears_latest_and_release() {
+        MavenMetadata yanked = MavenMetadata.empty("com.example", "widget")
+                .withVersion("1.0.0")
+                .withoutVersion("1.0.0");
+
+        assertThat(yanked.versions()).isEmpty();
+        assertThat(yanked.latest()).isNull();
+        assertThat(yanked.release()).isNull();
+        assertThat(text(yanked)).doesNotContain("<latest>", "<release>").contains("<versions>");
+        assertThat(reread(yanked).versions()).isEmpty();
+    }
+
+    @Test
+    void removing_a_version_that_is_not_listed_changes_nothing() {
+        MavenMetadata md = MavenMetadata.empty("com.example", "widget").withVersion("1.0.0");
+
+        assertThat(md.withoutVersion("9.9.9")).isEqualTo(md);
+    }
 }
