@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.PluginTuning;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.testing.FakeClock;
 import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
@@ -63,12 +64,16 @@ class WorkerLeasesDeadlineTest {
 
     @Test
     void a_lease_that_fits_but_stays_blocked_fails_at_its_deadline_naming_the_memory() throws Exception {
-        WorkerLeases.Ledger ledger = ledger(() -> 4 * GIB, LITTLE_FREE).waitAtMost(Duration.ofMillis(300));
+        FakeClock clock = new FakeClock();
+        WorkerLeases.Ledger ledger = ledger(() -> 4 * GIB, LITTLE_FREE)
+                .waitAtMost(Duration.ofMillis(300))
+                .clock(clock);
         try (WorkerLeases.Grant held = ledger.acquireBytes(3 * GIB, true, 3L)) {
-            long started = System.nanoTime();
             CompletableFuture<WorkerLeases.Grant> waiting = acquireBytes(ledger, 2 * GIB, 7L);
+            awaitQueued(ledger, 1);
+            assertThat(waiting).as("still waiting before the deadline").isNotDone();
+            clock.advance(Duration.ofMillis(300));
             Throwable cause = failure(waiting, 5);
-            assertThat(System.nanoTime() - started).isGreaterThanOrEqualTo(TimeUnit.MILLISECONDS.toNanos(300));
             assertThat(cause).isInstanceOf(WorkerLeases.LeaseRefused.class);
             assertThat(cause.getMessage())
                     .startsWith("job #7 waited 0.3s for memory and gave up")
@@ -115,16 +120,19 @@ class WorkerLeasesDeadlineTest {
      */
     @Test
     void a_lease_that_gives_up_after_the_line_moved_says_how_long_it_stood_still() throws Exception {
-        WorkerLeases.Ledger ledger =
-                ledger(() -> 4 * GIB, OverbookSignals.off()).waitAtMost(Duration.ofMillis(400));
+        FakeClock clock = new FakeClock();
+        WorkerLeases.Ledger ledger = ledger(() -> 4 * GIB, OverbookSignals.off())
+                .waitAtMost(Duration.ofMillis(400))
+                .clock(clock);
         WorkerLeases.Grant held = ledger.acquireBytes(3 * GIB, true, 3L);
         CompletableFuture<WorkerLeases.Grant> first = acquireBytes(ledger, 3 * GIB, 4L);
         awaitQueued(ledger, 1);
         CompletableFuture<WorkerLeases.Grant> last = acquireBytes(ledger, 3 * GIB, 7L);
         awaitQueued(ledger, 2);
-        Thread.sleep(250);
+        clock.advance(Duration.ofMillis(250));
         held.close();
         try (WorkerLeases.Grant moved = first.get(5, TimeUnit.SECONDS)) {
+            clock.advance(Duration.ofMillis(400));
             Throwable cause = failure(last, 5);
             assertThat(cause).isInstanceOf(WorkerLeases.LeaseRefused.class);
             assertThat(cause.getMessage())
