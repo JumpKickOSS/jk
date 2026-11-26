@@ -3,6 +3,7 @@ package cc.jumpkick.runtime.base;
 
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.task.PortablePath;
+import cc.jumpkick.task.WorkerClosure;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -105,37 +106,17 @@ public record FormatKey(
     }
 
     /**
-     * Worker identity is the content hash of the thin jar <em>and</em> of its sibling Maven POM.
-     * Spotless lives on the POM runtime closure; fingerprinting only the thin jar left
-     * freshness green across formatter dependency upgrades.
-     *
-     * <p>Content, not {@code path:size:mtime}: the same worker re-materialised into the store is
-     * the same formatter, and keying on its stat minted a fresh 162 KB index every time one was
-     * re-fetched or re-installed. Neither is the path part of it — two byte-identical jars format
-     * identically wherever they sit. Nor would {@code path:size} do, because a rebuilt worker of
-     * the same length and different formatter code is exactly the case the POM hash exists to
-     * catch. One SHA-256 of a few MB, once per {@code jk format}, on a command that is about to
-     * fork a JVM.
+     * Worker identity is its whole launch classpath by content ({@link WorkerClosure#token}): the
+     * thin jar, the plugin SDK it runs on and Spotless with its dependencies. Content, not stat: the
+     * same worker re-materialised into the store is the same formatter, and keying on its stat
+     * minted a fresh index every time one was re-fetched or re-installed.
      */
     private String workerIdentity() {
         if (workerJar == null || !Files.isRegularFile(workerJar)) return "none";
-        return contentIdentity(workerJar) + "|" + contentIdentity(siblingPom(workerJar));
-    }
-
-    private static Path siblingPom(Path workerJar) {
-        String name =
-                workerJar.getFileName() == null ? "" : workerJar.getFileName().toString();
-        if (!name.endsWith(".jar")) return workerJar.resolveSibling(name + ".pom");
-        return workerJar.resolveSibling(name.substring(0, name.length() - 4) + ".pom");
-    }
-
-    /** SHA-256 of the file, or a path-derived stand-in when it cannot be read (fails dirty). */
-    private static String contentIdentity(Path path) {
-        if (path == null || !Files.isRegularFile(path)) return "none";
         try {
-            return Hashing.sha256Hex(path);
+            return WorkerClosure.token(workerJar);
         } catch (IOException e) {
-            return path.toAbsolutePath().normalize().toString();
+            return workerJar.toAbsolutePath().normalize().toString();
         }
     }
 

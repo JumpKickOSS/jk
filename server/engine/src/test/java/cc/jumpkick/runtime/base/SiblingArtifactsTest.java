@@ -267,6 +267,27 @@ class SiblingArtifactsTest {
         assertThat(released).isTrue();
     }
 
+    /** A worker's install stages a classpath naming the libraries below it, so it waits for each one's install. */
+    @Test
+    void an_install_waits_for_every_prerequisite_s_install_not_its_jar() throws Exception {
+        SiblingArtifacts siblings = new SiblingArtifacts(EDGES, List.of(CORE, LIB, APP));
+        siblings.published(LIB);
+        siblings.published(CORE);
+        siblings.installed(LIB);
+        AtomicBoolean released = new AtomicBoolean();
+        CompletableFuture<Void> waiting = waitOn(() -> siblings.gateFor(APP).awaitInstalled(() -> false), released);
+
+        Thread.sleep(50);
+        assertThat(released)
+                .as("core, two edges away, has published its jar but not installed it")
+                .isFalse();
+        siblings.completed(CORE);
+        waiting.get(10, TimeUnit.SECONDS);
+        assertThat(released)
+                .as("completion stands for an install that never ran")
+                .isTrue();
+    }
+
     @Test
     void completion_releases_a_wait_on_a_module_that_links_nothing() throws Exception {
         SiblingArtifacts siblings = new SiblingArtifacts(EDGES, List.of(CORE, LIB, APP));

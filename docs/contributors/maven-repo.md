@@ -38,10 +38,11 @@ Same bucket as **releases** (`releases/<ver>/jk`, `jk-engine-…jar`); only the 
    `build.jumpkick.*` only. Those coordinates never resolve from Central (dependency-confusion
    safe). For every other groupId, remotes are **central then google** — JumpKick is **not**
    probed (no 404-then-fallthrough on first-party CDN for third-party GAVs).
-3. **Plugin workers** (`PluginJar`): look in `repos/jk-local`, then the official repository's
-   store (`repos/jumpkick` at the product URL; a `JK_OFFICIAL_REPO_URL` mirror gets its own
-   origin-keyed tree), then `repos/central`; on miss, **HTTP-fetch** from the official repo (or
-   the mirror that stands in for it) into its store. The jar and its POM must hash to their lines in
+3. **Plugin workers** (`PluginJar`) and the first-party libraries their POMs name: look in
+   `repos/jk-local`, then the official repository's store (`repos/jumpkick` at the product URL; a
+   `JK_OFFICIAL_REPO_URL` mirror gets its own origin-keyed tree), then `repos/central`; on miss,
+   **HTTP-fetch** from the official repo (or the mirror that stands in for it) into its store.
+   Each jar and its POM must hash to their lines in
    the release's `jk-repo-<version>.sha256`, which the signed `SHA256SUMS` of
    `releases/<version>/` lists; the `.sha256` sidecars beside them are not read. A corporate
    mirror serving the same bytes passes; a host that cannot reach jumpkick.build points
@@ -76,14 +77,21 @@ third party compiles against with Maven or Gradle is on Central at the version `
 
 ### The worker POM
 
-A worker's POM is the one its launch classpath is rebuilt from. `jk install` renders it from the
-module's jk.toml: `<dependencies>` names what the worker declares, with vendored workspace
-siblings hoisted, and `<dependencyManagement>` pins every coordinate of the resolved runtime
-closure, so a launch runs on the versions the build tested whatever a transitive POM asks for. The
-engine walks that POM nearest-wins (Maven's rule) and applies the pins at every depth. Each
-first-party rung on the shelf carries its own POM declaring its direct dependencies, so the walk
-reaches a rung's third-party needs without the worker listing them. G19 (`published-poms`) refuses
-a POM naming a coordinate this build does not publish.
+A worker's jar holds its own module's classes and resources only. Its POM is the one its launch
+classpath is rebuilt from. `jk install` renders it from the module's jk.toml: `<dependencies>`
+names what the worker declares, the workspace libraries it runs on (`jk-plugin-sdk`, `jk-host`, …)
+among them, and `<dependencyManagement>` pins every coordinate of the resolved runtime closure,
+those libraries' third-party dependencies included, so a launch runs on the versions the build
+tested whatever a transitive POM asks for. The engine walks that POM nearest-wins (Maven's rule)
+and applies the pins at every depth. Each first-party library on the shelf carries its own POM
+declaring its direct dependencies, so the walk reaches a library's third-party needs through it.
+G19 (`published-poms`) refuses a POM naming a coordinate this build does not publish.
+
+The libraries are published beside the workers at the same version, and the release's
+`jk-repo-<version>.sha256` lists them too: a worker fetched from the official repository runs only
+once the jar and POM of every first-party library on its classpath hash to their lines there, as
+the worker's own do. An engine asks only for the workers and libraries of its own version, so a
+release whose workers are thin never meets an older release's repository layout.
 
 `publish-maven-repo.sh` refuses to stage a worker POM (an artifact whose module lives under
 `plugins/`) that declares no dependencies, or that names a `cc.jumpkick` artifact the stage does

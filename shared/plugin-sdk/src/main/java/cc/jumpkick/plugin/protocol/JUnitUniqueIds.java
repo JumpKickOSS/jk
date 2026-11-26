@@ -21,7 +21,7 @@ import org.jspecify.annotations.Nullable;
  * {@code [test:…]} with the JUnit 4 display name: {@code method(class)} for a test, the bare class
  * name for a suite member.
  *
- * <p>Vendored into the runner jar, which rides the user's test JVM — this class must stay
+ * <p>On the test runner's classpath, which rides the user's test JVM — this class must stay
  * release-17 clean like the rest of {@code :plugin-sdk}.
  */
 public final class JUnitUniqueIds {

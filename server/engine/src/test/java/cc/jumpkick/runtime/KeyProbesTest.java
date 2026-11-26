@@ -7,28 +7,37 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import cc.jumpkick.plugin.build.KeyProbe;
 import cc.jumpkick.testing.RepoRoot;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.jar.JarEntry;
+import java.util.jar.JarOutputStream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * A step's key probe forked for real: what it prints last becomes a fixed-width token that moves
- * with the measurement, a failing probe fails with its output, and a probe naming a closure the
- * step does not receive is refused before anything runs.
+ * A step's key probe forked for real from a plugin jar and the POM beside it: what it prints last
+ * becomes a fixed-width token that moves with the measurement, a failing probe fails with its
+ * output, a probe naming a closure the step does not receive is refused before anything runs, and
+ * the probe runs on the libraries the plugin's POM names, as every fork of the worker does.
  */
 class KeyProbesTest {
 
     /**
      * The probe: prints a preamble, then its arguments joined as the measurement; {@code fail} exits 3,
-     * {@code env} measures {@code PROBE_SECRET} and {@code HOME} from its environment instead.
+     * {@code env} measures {@code PROBE_SECRET} and {@code HOME} from its environment instead, and
+     * {@code library} measures what {@link Library}, in a jar of its own, answers.
      */
     public static final class Measure {
         public static void main(String[] args) {
             System.out.println("connecting");
             if (List.of(args).contains("env")) {
                 System.out.println(System.getenv("PROBE_SECRET") + " " + System.getenv("HOME"));
+                return;
+            }
+            if (List.of(args).contains("library")) {
+                System.out.println(Library.answer());
                 return;
             }
             if (List.of(args).contains("fail")) {
@@ -39,7 +48,19 @@ class KeyProbesTest {
         }
     }
 
+    /** What the plugin's POM names: a library the plugin jar does not carry. */
+    public static final class Library {
+        static String answer() {
+            return "from the library";
+        }
+    }
+
     private static final Path JAVA_HOME = Path.of(System.getProperty("java.home"));
+
+    @Test
+    void the_probe_runs_on_the_libraries_the_plugin_s_pom_names(@TempDir Path tmp) throws Exception {
+        assertThat(token(List.of("library"), tmp)).isEqualTo(token(List.of("from", "the", "library"), tmp));
+    }
 
     @Test
     void the_last_line_keys_the_step_and_moves_with_the_measurement(@TempDir Path tmp) throws Exception {
@@ -60,7 +81,7 @@ class KeyProbesTest {
     @Test
     void a_closure_the_step_does_not_receive_is_refused(@TempDir Path tmp) {
         KeyProbe probe = new KeyProbe(Measure.class.getName(), List.of("jdbc-driver"), List.of());
-        assertThatThrownBy(() -> KeyProbes.token(probe, JAVA_HOME, ownClasses(), Map.of(), tmp, Map.of(), Map.of()))
+        assertThatThrownBy(() -> KeyProbes.token(probe, JAVA_HOME, pluginJar(tmp), Map.of(), tmp, Map.of(), Map.of()))
                 .hasMessageContaining("`jdbc-driver`")
                 .hasMessageContaining("does not receive");
     }
@@ -78,13 +99,13 @@ class KeyProbesTest {
         assertThat(KeyProbes.token(
                         probe,
                         JAVA_HOME,
-                        ownClasses(),
+                        pluginJar(tmp),
                         Map.of(),
                         tmp,
                         Map.of("LANG", "C"),
                         Map.of("db-password", "s3cret")))
                 .isEqualTo(token(List.of("s3cret", "null"), tmp));
-        assertThat(KeyProbes.token(probe, JAVA_HOME, ownClasses(), Map.of(), tmp, Map.of("LANG", "C"), Map.of()))
+        assertThat(KeyProbes.token(probe, JAVA_HOME, pluginJar(tmp), Map.of(), tmp, Map.of("LANG", "C"), Map.of()))
                 .isEqualTo(token(List.of("null", "null"), tmp));
     }
 
@@ -113,14 +134,53 @@ class KeyProbesTest {
         return KeyProbes.token(
                 new KeyProbe(Measure.class.getName(), List.of(), args),
                 JAVA_HOME,
-                ownClasses(),
+                pluginJar(cwd),
                 Map.of(),
                 cwd,
                 Map.of(),
                 Map.of());
     }
 
-    /** This module's compiled test classes, where {@link Measure} lives. */
+    /**
+     * A plugin shelved in a store under {@code tmp}: its jar holds {@link Measure} only, and its POM
+     * names the library jar that holds {@link Library}.
+     */
+    private static Path pluginJar(Path tmp) throws IOException {
+        Path shelf = tmp.resolve("store/repos/jk-local/com/acme");
+        Path plugin = shelf.resolve("probe/1.0/probe-1.0.jar");
+        if (Files.isRegularFile(plugin)) return plugin;
+        jar(plugin, Measure.class);
+        Files.writeString(shelf.resolve("probe/1.0/probe-1.0.pom"), """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>com.acme</groupId><artifactId>probe</artifactId><version>1.0</version>
+                  <dependencies>
+                    <dependency><groupId>com.acme</groupId><artifactId>library</artifactId><version>1.0</version></dependency>
+                  </dependencies>
+                </project>
+                """);
+        jar(shelf.resolve("library/1.0/library-1.0.jar"), Library.class);
+        Files.writeString(shelf.resolve("library/1.0/library-1.0.pom"), """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>com.acme</groupId><artifactId>library</artifactId><version>1.0</version>
+                </project>
+                """);
+        return plugin;
+    }
+
+    /** A jar of {@code type}'s compiled class, taken from this module's test classes. */
+    private static void jar(Path jar, Class<?> type) throws IOException {
+        String entry = type.getName().replace('.', '/') + ".class";
+        Files.createDirectories(jar.getParent());
+        try (JarOutputStream out = new JarOutputStream(Files.newOutputStream(jar))) {
+            out.putNextEntry(new JarEntry(entry));
+            out.write(Files.readAllBytes(ownClasses().resolve(entry)));
+            out.closeEntry();
+        }
+    }
+
+    /** This module's compiled test classes, where {@link Measure} and {@link Library} live. */
     private static Path ownClasses() {
         return RepoRoot.dir(KeyProbesTest.class, "server/engine/target/test-classes");
     }

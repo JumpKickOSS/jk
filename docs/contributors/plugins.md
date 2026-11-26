@@ -76,8 +76,9 @@ the complete out-of-tree shape — manifest, code layer, consumer pin — and
 ### Dependency boundary
 
 `plugin-sdk` is the default and only unclassified first-party dependency. Compiler and test
-workers may vendor `host` as their JSONL/host primitive implementation; this is packaging, not an
-engine dependency. No module under `server/` may enter a plugin runtime.
+workers run on `host` (through `plugin-sdk`) as their JSONL/host primitive implementation; it is a
+dependency their POM names, not an engine dependency. No module under `server/` may enter a plugin
+runtime.
 
 The guarded exceptions each carry a current product invariant:
 

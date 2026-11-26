@@ -41,9 +41,9 @@ import cc.jumpkick.runtime.base.PluginDescriptorOps;
 import cc.jumpkick.runtime.base.PluginLaunch;
 import cc.jumpkick.runtime.base.SdkComponents;
 import cc.jumpkick.runtime.schema.SchemaFiles;
-import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.task.KeyContract;
 import cc.jumpkick.task.TransferBoard;
+import cc.jumpkick.task.WorkerClosure;
 import cc.jumpkick.tool.TrustedPlugins;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -178,7 +178,7 @@ public final class PluginBuild {
                 + '|'
                 + facts(project, project.mainClass()).token()
                 + '|'
-                + (workerJar == null ? "worker:absent" : ClasspathFingerprint.entry(workerJar));
+                + (workerJar == null ? "worker:absent" : WorkerClosure.token(workerJar));
         return Hashing.sha256Hex(key.getBytes(StandardCharsets.UTF_8)).substring(0, 16);
     }
 

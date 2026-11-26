@@ -11,6 +11,7 @@ import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.pom.PomXml;
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -185,6 +186,10 @@ public final class PublishablePom {
         if (!any) return;
 
         sb.append("  <dependencies>\n");
+        // One declaration per artifact, in its widest scope: Maven keeps the last of two, so a
+        // module that also names a dependency for its tests would publish it as test-only and
+        // drop it from every consumer's runtime classpath.
+        Set<String> declared = new HashSet<>();
         for (Scope s : order) {
             String mavenScope = PomXml.mavenScope(s);
             for (Dependency d : jkBuild.dependencies().of(s)) {
@@ -203,6 +208,8 @@ public final class PublishablePom {
                 if (d.isTestsKind() && workspaceSiblings.contains(d.module())) {
                     continue;
                 }
+                String artifact = d.module() + ":" + (d.isTestsKind() ? "tests" : Objects.toString(d.classifier(), ""));
+                if (!declared.add(artifact)) continue;
                 PomXml.appendDependency(sb, d, versionOf(d, locked), mavenScope);
             }
         }

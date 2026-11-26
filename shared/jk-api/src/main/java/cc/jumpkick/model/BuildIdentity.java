@@ -37,7 +37,7 @@ public final class BuildIdentity {
      * #cacheKeyVersion()}: a key-shape change would otherwise collide with records the old shape
      * wrote. Not a second product version: never printed, never parsed, never compared on its own.
      */
-    static final int CACHE_KEY_SALT = 14;
+    static final int CACHE_KEY_SALT = 15;
 
     private static volatile @Nullable String cachedBuildId;
 

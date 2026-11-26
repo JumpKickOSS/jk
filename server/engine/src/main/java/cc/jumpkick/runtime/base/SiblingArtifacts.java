@@ -123,6 +123,13 @@ public final class SiblingArtifacts implements WorkspaceScheduler.Parking {
          * which a module links after it publishes.
          */
         default void awaitLinked(Collection<Path> dirs, BooleanSupplier cancelled) throws InterruptedException {}
+
+        /**
+         * Returns once every sibling of this module's build-order closure has installed its jar or
+         * finished, or as soon as {@code cancelled} answers true: a worker's install stages its
+         * launch classpath, which names the sibling libraries the pass installs beside it.
+         */
+        default void awaitInstalled(BooleanSupplier cancelled) throws InterruptedException {}
     }
 
     /** The gate of a plan outside a workspace schedule: nothing to wait for. */
@@ -137,6 +144,7 @@ public final class SiblingArtifacts implements WorkspaceScheduler.Parking {
     private final Map<Path, CompletableFuture<Void>> testsCompiled = new ConcurrentHashMap<>();
     private final Map<Path, CompletableFuture<Void>> indexed = new ConcurrentHashMap<>();
     private final Map<Path, CompletableFuture<Void>> linked = new ConcurrentHashMap<>();
+    private final Map<Path, CompletableFuture<Void>> installed = new ConcurrentHashMap<>();
     private final Map<String, String> failedSteps = new ConcurrentHashMap<>();
     private final Map<Path, Integer> parkedSteps = new ConcurrentHashMap<>();
     private final Map<Path, WaitClock> waits = new ConcurrentHashMap<>();
@@ -179,6 +187,7 @@ public final class SiblingArtifacts implements WorkspaceScheduler.Parking {
             testsCompiled.put(dir, new CompletableFuture<>());
             indexed.put(dir, new CompletableFuture<>());
             linked.put(dir, new CompletableFuture<>());
+            installed.put(dir, new CompletableFuture<>());
         }
     }
 
@@ -273,6 +282,11 @@ public final class SiblingArtifacts implements WorkspaceScheduler.Parking {
         complete(linked, dir);
     }
 
+    /** {@code dir}'s jar is installed, or it installs none. */
+    public void installed(Path dir) {
+        complete(installed, dir);
+    }
+
     private static void complete(Map<Path, CompletableFuture<Void>> signals, Path dir) {
         CompletableFuture<Void> f = signals.get(dir);
         if (f != null) f.complete(null);
@@ -290,6 +304,7 @@ public final class SiblingArtifacts implements WorkspaceScheduler.Parking {
         published(dir);
         indexed(dir);
         linked(dir);
+        installed(dir);
     }
 
     /** {@code dir}'s facts indexes describe the classes this build compiled. */
@@ -363,6 +378,11 @@ public final class SiblingArtifacts implements WorkspaceScheduler.Parking {
             @Override
             public void awaitLinked(Collection<Path> dirs, BooleanSupplier cancelled) throws InterruptedException {
                 parked(dir, pending(linked, dirs), () -> await(linked, dirs, cancelled));
+            }
+
+            @Override
+            public void awaitInstalled(BooleanSupplier cancelled) throws InterruptedException {
+                parked(dir, pending(installed, waitOn), () -> await(installed, waitOn, cancelled));
             }
         };
     }

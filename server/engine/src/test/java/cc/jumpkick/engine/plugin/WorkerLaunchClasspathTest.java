@@ -31,14 +31,32 @@ class WorkerLaunchClasspathTest {
         PomRuntimeClasspath.clearResolveCacheForTests();
     }
 
+    /**
+     * A worker launched from a workspace {@code target/} tree runs on the workspace libraries its
+     * POM names as the build made them, from their own {@code target/} jars, never from a store
+     * that may hold another install's or none at all; its third-party dependencies still come from
+     * the host store.
+     */
     @Test
-    void workspace_codec_joins_the_launch_classpath(@TempDir Path tmp) throws Exception {
+    void a_workspace_worker_takes_its_sibling_libraries_from_their_target_trees(@TempDir Path tmp) throws Exception {
         Path host = tmp.resolve("host-store");
         Path sandbox = tmp.resolve("sandbox-home");
         Files.createDirectories(sandbox);
+        Path ws = tmp.resolve("ws");
+        Files.createDirectories(ws);
+        Files.writeString(ws.resolve("jk.toml"), """
+                group = "cc.jumpkick"
+                name = "ws"
+                version = "1.0.0"
+                [workspace]
+                modules = ["plugins/host-worker", "shared/sib"]
+                """);
         Coordinate worker = Coordinate.of("cc.jumpkick", "jk-host-worker", "1.0.0");
         Coordinate dep = Coordinate.of("org.example", "lib", "1.0");
-        Path workspaceJar = tmp.resolve("plugins/host-worker/target/jk-host-worker-1.0.0.jar");
+        Path workerModule = ws.resolve("plugins/host-worker");
+        Files.createDirectories(workerModule);
+        Files.writeString(workerModule.resolve("jk.toml"), "name = \"jk-host-worker\"\n");
+        Path workspaceJar = workerModule.resolve("target/jk-host-worker-1.0.0.jar");
         Files.createDirectories(workspaceJar.getParent());
         // A module output directory, not merely a path containing `target`: the compiled classes
         // beside it are what BuildLayout.isBuildOutput anchors on.
@@ -53,9 +71,9 @@ class WorkerLaunchClasspathTest {
                   <version>1.0.0</version>
                   <dependencies>
                     <dependency>
-                      <groupId>org.example</groupId>
-                      <artifactId>lib</artifactId>
-                      <version>1.0</version>
+                      <groupId>cc.jumpkick</groupId>
+                      <artifactId>jk-sib</artifactId>
+                      <version>1.0.0</version>
                     </dependency>
                   </dependencies>
                 </project>
@@ -69,12 +87,27 @@ class WorkerLaunchClasspathTest {
                   <version>1.0</version>
                 </project>
                 """);
-
-        Path sdkClasses = tmp.resolve("shared/plugin-sdk/target/classes");
-        Files.createDirectories(sdkClasses);
-        Path hostCodecJar = tmp.resolve("shared/host/target/jk-host-1.0.0.jar");
-        Files.createDirectories(hostCodecJar.getParent());
-        Files.writeString(hostCodecJar, "host");
+        Path sibModule = ws.resolve("shared/sib");
+        Files.createDirectories(sibModule.resolve("target/classes"));
+        Files.writeString(sibModule.resolve("jk.toml"), "name = \"jk-sib\"\n");
+        Path sibJar = sibModule.resolve("target/jk-sib-1.0.0.jar");
+        Files.writeString(sibJar, "sib");
+        // The sibling's own dependency is reached through its sidecar POM.
+        Files.writeString(sibModule.resolve("target/jk-sib-1.0.0.pom"), """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>cc.jumpkick</groupId>
+                  <artifactId>jk-sib</artifactId>
+                  <version>1.0.0</version>
+                  <dependencies>
+                    <dependency>
+                      <groupId>org.example</groupId>
+                      <artifactId>lib</artifactId>
+                      <version>1.0</version>
+                    </dependency>
+                  </dependencies>
+                </project>
+                """);
 
         String prevHost = System.getProperty(PomRuntimeClasspath.HOST_STORE_PROPERTY);
         try {
@@ -83,9 +116,6 @@ class WorkerLaunchClasspathTest {
                     PomRuntimeClasspath.HOST_STORE_PROPERTY,
                     host.toAbsolutePath().toString());
             List<Path> cp = WorkerLaunchClasspath.paths(workspaceJar);
-            Path workerAbs = workspaceJar.toAbsolutePath().normalize();
-            Path sdkAbs = sdkClasses.toAbsolutePath().normalize();
-            Path hostCodecAbs = hostCodecJar.toAbsolutePath().normalize();
             // The dependency's bytes come from the host store and are kept in the sandbox's: the
             // host store is read, never written.
             Path depAbs = cp.stream()
@@ -94,13 +124,11 @@ class WorkerLaunchClasspathTest {
                     .orElseThrow();
             assertThat(depAbs).hasSameBinaryContentAs(depJar);
             assertThat(depAbs).startsWith(sandbox.toAbsolutePath().normalize());
-            // : codec dirs must precede the worker jar so a fresh classes/main wins over the
-            // codec the jar vendors.
-            assertThat(cp).contains(workerAbs, sdkAbs, hostCodecAbs, depAbs);
-            assertThat(cp.indexOf(sdkAbs)).isLessThan(cp.indexOf(workerAbs));
-            assertThat(cp.indexOf(hostCodecAbs)).isLessThan(cp.indexOf(workerAbs));
-            assertThat(cp.indexOf(sdkAbs)).isLessThan(cp.indexOf(depAbs));
-            assertThat(cp.indexOf(hostCodecAbs)).isLessThan(cp.indexOf(depAbs));
+            assertThat(cp)
+                    .containsExactly(
+                            workspaceJar.toAbsolutePath().normalize(),
+                            sibJar.toAbsolutePath().normalize(),
+                            depAbs);
         } finally {
             if (prevHost == null) System.clearProperty(PomRuntimeClasspath.HOST_STORE_PROPERTY);
             else System.setProperty(PomRuntimeClasspath.HOST_STORE_PROPERTY, prevHost);

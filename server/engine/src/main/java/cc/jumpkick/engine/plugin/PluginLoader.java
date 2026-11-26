@@ -32,7 +32,7 @@ public final class PluginLoader {
 
     private PluginLoader() {}
 
-    /** Fully-qualified main class every plugin jar runs under (vendored from plugin-api). */
+    /** Fully-qualified main class every plugin jar runs under, from the plugin SDK on its classpath. */
     public static final String WORKER_MAIN = "cc.jumpkick.plugin.process.PluginMain";
 
     /**

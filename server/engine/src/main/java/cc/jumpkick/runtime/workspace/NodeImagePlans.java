@@ -28,7 +28,7 @@ import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.BuildPlanner;
 import cc.jumpkick.runtime.NodeImageContent;
 import cc.jumpkick.runtime.base.ImageCredentials;
-import cc.jumpkick.task.ClasspathFingerprint;
+import cc.jumpkick.task.WorkerClosure;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -239,7 +239,7 @@ final class NodeImagePlans {
                                     "node:" + content.token(),
                                     "base:" + base,
                                     "cfg:" + ImagePlans.imageConfigToken(config),
-                                    "worker:" + ClasspathFingerprint.entry(workerJar)),
+                                    "worker:" + WorkerClosure.token(workerJar)),
                             (base, said) -> ImagePlans.forkWorker(
                                     workerJar,
                                     project,

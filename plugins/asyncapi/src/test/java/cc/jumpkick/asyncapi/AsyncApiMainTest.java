@@ -3,8 +3,10 @@ package cc.jumpkick.asyncapi;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.avro.AvroMain;
 import cc.jumpkick.generate.GeneratorEntry;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.ToolJars;
 import cc.jumpkick.plugin.PluginConfig;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -186,7 +188,12 @@ class AsyncApiMainTest {
         assertThat(entry.inputs()).containsExactly("src/main/asyncapi/asyncapi.yaml");
         assertThat(entry.args())
                 .containsExactly("-t", "${out}", "-a", "JACKSON", "-p", "com.acme", "-303", "-D", "--", "${inputs}");
-        assertThat(entry.classpath()).hasSize(2);
+        assertThat(entry.classpath())
+                .as("the plugin's jar, then what a fork of AvroMain runs on: its jar and the host library's")
+                .containsExactly(
+                        Path.of("/shelf/jk-asyncapi.jar"),
+                        ToolJars.codeSource(AvroMain.class),
+                        ToolJars.codeSource(ToolJars.class));
         assertThat(AsyncApiPreset.entry(new PluginConfig("asyncapi", Map.of("avro", "1.12.2")), List.of())
                         .args())
                 .contains(AsyncApiMain.AVRO);

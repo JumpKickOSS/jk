@@ -35,8 +35,7 @@ public final class TaglibPreset implements Plugin, BuildExtension {
 
     @Override
     public void build(BuildContext ctx) {
-        ctx.task(entry(ctx.config(), List.of(ToolJars.codeSource(TaglibPreset.class)))
-                .task());
+        ctx.task(entry(ctx.config(), ToolJars.forkClasspath(TaglibPreset.class)).task());
     }
 
     /**

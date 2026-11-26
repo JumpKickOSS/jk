@@ -40,7 +40,7 @@ public final class LocalizerPreset implements Plugin, BuildExtension {
 
     @Override
     public void build(BuildContext ctx) {
-        ctx.task(entry(ctx.config(), List.of(ToolJars.codeSource(LocalizerPreset.class)))
+        ctx.task(entry(ctx.config(), ToolJars.forkClasspath(LocalizerPreset.class))
                 .task());
     }
 

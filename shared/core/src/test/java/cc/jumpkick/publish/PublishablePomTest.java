@@ -55,6 +55,27 @@ class PublishablePomTest {
         assertThat(xml).doesNotContain("<artifactId>lib</artifactId>");
     }
 
+    /**
+     * A module that names a dependency for its main code and again for its tests (a sibling whose
+     * fixtures its tests use) publishes it once, in compile scope: Maven keeps the last of two
+     * declarations, and a test-scope one would drop it from every consumer's runtime classpath.
+     */
+    @Test
+    void a_dependency_named_in_main_and_test_scope_is_published_once_in_compile_scope() {
+        EnumMap<Scope, List<Dependency>> byScope = new EnumMap<>(Scope.class);
+        byScope.put(Scope.MAIN, List.of(Dependency.of("host", "com.example:host", VersionSelector.parse("=1.0.0"))));
+        byScope.put(Scope.TEST, List.of(Dependency.of("host", "com.example:host", VersionSelector.parse("=1.0.0"))));
+        JkBuild project =
+                new JkBuild(new Project("com.example", "sdk", "1.0.0", 21), new JkBuild.Dependencies(byScope));
+
+        String xml = PublishablePom.render(project, null).xml();
+
+        assertThat(xml.split("<artifactId>host</artifactId>", -1)).hasSize(2);
+        String declaration = xml.substring(xml.indexOf("<artifactId>host</artifactId>"));
+        assertThat(declaration.substring(0, declaration.indexOf("</dependency>")))
+                .doesNotContain("<scope>");
+    }
+
     @Test
     void tests_kind_sibling_edge_is_omitted_but_external_test_jar_is_kept() {
         // jk has no test-jar packaging task, so a tests-kind edge to a workspace

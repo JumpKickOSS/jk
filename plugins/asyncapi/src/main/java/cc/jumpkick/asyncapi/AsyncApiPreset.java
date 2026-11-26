@@ -42,7 +42,7 @@ public final class AsyncApiPreset implements Plugin, BuildExtension {
 
     @Override
     public void build(BuildContext ctx) {
-        ctx.task(entry(ctx.config(), List.of(ToolJars.codeSource(AsyncApiPreset.class)))
+        ctx.task(entry(ctx.config(), ToolJars.forkClasspath(AsyncApiPreset.class))
                 .task());
     }
 
@@ -80,11 +80,12 @@ public final class AsyncApiPreset implements Plugin, BuildExtension {
                 null);
     }
 
-    /** {@code classpath} and the jar carrying {@link AvroMain}, which compiles the Avro payloads. */
+    /** {@code classpath} and what a fork of {@link AvroMain}, which compiles the Avro payloads, runs on. */
     static List<Path> withAvroMain(List<Path> classpath) {
         List<Path> out = new ArrayList<>(classpath);
-        Path jar = ToolJars.codeSource(AvroMain.class);
-        if (!out.contains(jar)) out.add(jar);
+        for (Path jar : ToolJars.forkClasspath(AvroMain.class)) {
+            if (!out.contains(jar)) out.add(jar);
+        }
         return out;
     }
 }

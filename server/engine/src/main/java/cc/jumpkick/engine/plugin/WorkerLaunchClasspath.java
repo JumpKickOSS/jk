@@ -7,9 +7,9 @@ import cc.jumpkick.cache.ShelfManifest;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Log;
-import cc.jumpkick.host.PathUtil;
-import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.repo.ArtifactMemo;
+import cc.jumpkick.repo.MavenLayout;
 import cc.jumpkick.repo.PomRuntimeClasspath;
 import cc.jumpkick.repo.RepoArtifactResolver;
 import cc.jumpkick.repo.RepoArtifactStore;
@@ -17,7 +17,6 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -26,18 +25,23 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * Classpath used to fork a thin plugin worker: the worker jar plus the Maven runtime closure from
- * its POM ({@code repos/jk-local} / {@code jumpkick} / {@code central} / {@code google}). A worker
- * built in jk's own workspace also gets plugin-sdk and host from {@code shared/plugin-sdk/target/}
- * and {@code shared/host/target/} (the codec a shipped worker jar vendors).
+ * its POM ({@code repos/jk-local} / {@code jumpkick} / {@code central} / {@code google}). A
+ * first-party worker's jar holds its own module's classes only; the JumpKick libraries it runs on
+ * (the plugin SDK, {@code jk-host}, …) are dependencies its POM names, resolved like any other. A
+ * worker built in a workspace takes them from the workspace's {@code target/} trees
+ * ({@link PomRuntimeClasspath}).
  *
  * <p>{@code repos/jk-local} jars reach a fork as artifact-CAS blobs, never as shelf paths: a
  * {@code cache-install} from another checkout replaces the shelf path in place, and on Windows
  * that rename is refused while a worker still has the shelf file mapped. The engine's shelf
  * manifest ({@link ShelfPins}) says which blob: a jar it pins launches at the pinned sha whatever
- * the shelf holds now, so every fork of one engine runs the workers that engine was installed
- * with. A jar the manifest does not name launches as the shelf has it. The worker's POM is pinned
- * the same way: the runtime closure is walked from the store's copy of the pinned POM when the
+ * the shelf holds now, so every fork of one engine runs the workers and libraries that engine was
+ * installed with. A jar the manifest does not name launches as the shelf has it. POMs are pinned
+ * the same way: the runtime closure is walked from the store's copy of each pinned POM when the
  * shelf holds another install's, so a worker never forks on another checkout's dependency list.
+ *
+ * <p>A first-party worker from the official repository's store runs only on first-party libraries
+ * whose bytes its release signed ({@link StoredWorkers}).
  */
 public final class WorkerLaunchClasspath {
 
@@ -54,20 +58,67 @@ public final class WorkerLaunchClasspath {
         // the launch from the consumer's lock (PluginSdkFloor).
         if (Cas.isBlobPath(workerJar)) return List.of(workerJar);
         Path worker = workerJar.toAbsolutePath().normalize();
-        Path pinnedPom = pinnedPom(worker, pins);
-        List<Path> closure = pinnedPom == null
-                ? PomRuntimeClasspath.resolve(worker)
-                : PomRuntimeClasspath.resolve(worker, pinnedPom);
-        List<Path> resolved = pinJkLocal(closure, pins);
-        List<Path> codec = workspaceCodec(worker);
-        if (codec.isEmpty()) return resolved;
-        // Codec dirs FIRST so a just-compiled target/classes wins over the copy the worker jar vendors
-        // — first-match-wins otherwise let a stale vendored codec shadow the fresh SDK, the exact
-        // codec skew this path exists to avoid.
-        LinkedHashSet<Path> out = new LinkedHashSet<>();
-        out.addAll(codec);
-        out.addAll(resolved);
-        return List.copyOf(out);
+        List<Path> closure =
+                PomRuntimeClasspath.resolve(worker, pinnedPom(worker, pins), coord -> pinnedLibrary(coord, pins));
+        vouchFirstParty(worker, closure);
+        return pinJkLocal(closure, pins);
+    }
+
+    /**
+     * A shelf library whose POM the manifest pins to other bytes than the shelf now holds: its shelf
+     * jar (launched at its pinned sha by {@link #pinJkLocal}) and the store's copy of the pinned POM.
+     * {@code null} when the shelf's own POM is the one to walk.
+     */
+    private static PomRuntimeClasspath.@Nullable Local pinnedLibrary(Coordinate coord, @Nullable ShelfManifest pins) {
+        if (pins == null || coord.classifier() != null) return null;
+        Path jar = shelfRoot().resolve(MavenLayout.artifactPath(coord));
+        Path pom = pinnedPom(jar, pins);
+        return pom == null ? null : new PomRuntimeClasspath.Local(jar, pom);
+    }
+
+    /**
+     * Refuse a first-party library on the classpath of a worker from the official repository's
+     * store (or Central's) unless its release signed the jar and the POM: the worker itself was
+     * held to those digests before it was located, and its libraries decide what it runs as surely.
+     */
+    private static void vouchFirstParty(Path worker, List<Path> closure) {
+        Cas cas = JkStores.storeCas();
+        if (signedStoreRelPath(cas, worker) == null) return;
+        for (int i = 1; i < closure.size(); i++) {
+            Path entry = closure.get(i);
+            String rel = signedStoreRelPath(cas, entry);
+            if (rel == null) continue;
+            String refusal =
+                    switch (StoredWorkers.check(cas, rel, entry, null)) {
+                        case StoredWorkers.Verdict.Vouched v -> null;
+                        case StoredWorkers.Verdict.Refused r -> r.reason();
+                        case StoredWorkers.Verdict.Unknown u ->
+                            "no signed release digests are kept for it; run jk storage clean -w to fetch it again";
+                    };
+            if (refusal != null) {
+                throw new IllegalStateException(
+                        entry.getFileName() + " on the classpath of " + worker.getFileName() + ": " + refusal);
+            }
+        }
+    }
+
+    /**
+     * {@code jar}'s Maven path when it is a first-party artifact in the official repository's store
+     * or Central's, the stores whose first-party jars run only once a signed release lists them;
+     * otherwise {@code null}.
+     */
+    private static @Nullable String signedStoreRelPath(Cas cas, Path jar) {
+        Path abs = jar.toAbsolutePath().normalize();
+        for (RepoArtifactStore store : RepoArtifactStore.firstParty(cas.root())) {
+            Path root = store.root();
+            if (root == null || RepoArtifactResolver.JK_LOCAL.equals(String.valueOf(root.getFileName()))) continue;
+            Path normalized = root.toAbsolutePath().normalize();
+            if (!abs.startsWith(normalized)) continue;
+            String rel = normalized.relativize(abs).toString().replace('\\', '/');
+            Coordinate coord = PomRuntimeClasspath.coordinateOf(abs);
+            return coord != null && PluginJar.isFirstPartyGroup(coord.group()) ? rel : null;
+        }
+        return null;
     }
 
     public static String resolve(Path workerJar) {
@@ -212,50 +263,5 @@ public final class WorkerLaunchClasspath {
                 .map(ArtifactMemo::sha256);
         if (pinned.isPresent()) return pinned.get();
         return Hashing.sha256Hex(jar);
-    }
-
-    /**
-     * plugin-sdk + host next to a workspace-built worker. Prefer the module's {@code classes/} when
-     * present so a just-compiled SDK is used even if the sibling jar is stale.
-     */
-    static List<Path> workspaceCodec(Path workerJar) {
-        Path root = codecWorkspace(workerJar);
-        if (root == null) return List.of();
-        List<Path> out = new ArrayList<>();
-        addCodecModule(
-                out, BuildLayout.moduleTargetDir(root.resolve("shared").resolve("plugin-sdk")), "jk-plugin-sdk-");
-        addCodecModule(out, BuildLayout.moduleTargetDir(root.resolve("shared").resolve("host")), "jk-host-");
-        return List.copyOf(out);
-    }
-
-    /** The workspace that built {@code workerJar} and holds {@code shared/plugin-sdk}, or {@code null}. */
-    static @Nullable Path codecWorkspace(Path workerJar) {
-        // The jar has to be something jk built, not merely something sitting under a build tree:
-        // a CAS blob or a @TempDir jar inside the workspace must not pick up its codec modules.
-        if (!BuildLayout.isBuildOutput(workerJar)) return null;
-        Path cur = workerJar.toAbsolutePath().normalize().getParent();
-        while (cur != null) {
-            if (Files.isDirectory(cur.resolve("shared").resolve("plugin-sdk"))) return cur;
-            cur = cur.getParent();
-        }
-        return null;
-    }
-
-    private static void addCodecModule(List<Path> out, Path moduleTarget, String jarPrefix) {
-        Path classes = moduleTarget.resolve("classes");
-        if (Files.isDirectory(classes)) {
-            out.add(classes);
-            return;
-        }
-        try {
-            PathUtil.forEachChild(moduleTarget, (jar, attrs) -> {
-                String n = jar.getFileName().toString();
-                if (n.startsWith(jarPrefix) && n.endsWith(".jar"))
-                    out.add(jar.toAbsolutePath().normalize());
-                return true;
-            });
-        } catch (IOException ignored) {
-            // Launch still fails clearly if PluginMain is missing.
-        }
     }
 }

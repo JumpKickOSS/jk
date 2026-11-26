@@ -45,6 +45,7 @@ import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
+import cc.jumpkick.runtime.base.SiblingArtifacts;
 import cc.jumpkick.task.ModuleIdentity;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
 import java.io.IOException;
@@ -54,8 +55,8 @@ import java.nio.file.Path;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -89,7 +90,7 @@ public final class InstallPlans {
     public static Tail tail(JkBuild proj, Path cache, @Nullable Path m2Dir, @Nullable InstallDestination override) {
         return (plan, in) -> {
             String packaging = ModuleJar.shippedStep(proj, in.dir());
-            if (packaging != null) appendCacheInstall(plan, proj, cache, m2Dir, override, packaging);
+            if (packaging != null) appendCacheInstall(plan, proj, cache, m2Dir, override, packaging, in.siblings());
         };
     }
 
@@ -121,7 +122,8 @@ public final class InstallPlans {
     /**
      * Thin-jar {@code cache-install}, extending the plan so the deliveries and the test suite it
      * displaces stay in it. Fat and minified jars are not written to the local repo — only the thin
-     * jar is.
+     * jar is. A plugin worker's install waits on {@code siblings} for the workspace libraries it
+     * runs on to be installed first: it stages its launch classpath, which names them.
      */
     public static void appendCacheInstall(
             BuildPlan.Builder builder,
@@ -129,7 +131,8 @@ public final class InstallPlans {
             Path cache,
             @Nullable Path m2Dir,
             @Nullable InstallDestination override,
-            String packaging) {
+            String packaging,
+            SiblingArtifacts.Gate siblings) {
         List<String> requires = new ArrayList<>(List.of(packaging));
         if (proj.nativeMode() == JkBuild.NativeMode.ALWAYS) requires.add(TaskNames.NATIVE_IMAGE);
         builder.stateKeys(PRIMARY, INSTALLED)
@@ -144,7 +147,14 @@ public final class InstallPlans {
                         .stage(BuildStage.PUBLISH)
                         .requires(requires.toArray(new String[0]))
                         .ticks(1)
-                        .execute(ctx -> executeCacheInstall(ctx, cache, m2Dir, override))
+                        .execute(ctx -> {
+                            if (PluginModule.isWorker(
+                                    ctx.require(BuildPlanner.MODULE).layout().moduleRoot())) {
+                                siblings.awaitInstalled(ctx::cancelled);
+                                if (ctx.cancelled()) return;
+                            }
+                            executeCacheInstall(ctx, cache, m2Dir, override);
+                        })
                         .build());
     }
 
@@ -664,42 +674,55 @@ public final class InstallPlans {
 
     private static byte[] renderedPom(JkBuild project, BuildLayout layout) {
         Path moduleRoot = layout.moduleRoot();
-        // Worker jars vendor workspace MAIN siblings (plugin-sdk / host). Those edges must not
-        // appear on the sidecar / install POM — otherwise PomRuntimeClasspath looks for a
-        // coordinate whose classes are already inside the jar.
-        JkBuild forPom = omitVendoredWorkerSiblings(project, moduleRoot);
         Lockfile lock = lockOf(moduleRoot);
+        Map<String, JkBuild> siblings =
+                PluginModule.isWorker(moduleRoot) ? WorkspaceResolve.siblingManifests(moduleRoot) : Map.of();
         String pomXml = PublishablePom.render(
-                        forPom,
+                        project,
                         null,
                         WorkspaceResolve.siblingCoordinates(moduleRoot),
                         lockPins(lock),
-                        lockClosure(forPom, lock))
+                        lockClosure(project, lock, siblings))
                 .xml();
         return pomXml.getBytes(StandardCharsets.UTF_8);
     }
 
     /**
-     * The runtime closure the lock resolved for {@code forPom}: every artifact reachable from its
+     * The runtime closure the lock resolved for {@code project}: every artifact reachable from its
      * MAIN / RUNTIME / EXPORT declarations along the lock's dependency edges, at the locked
      * version. The installed POM manages these versions so a classpath rebuilt from it — a worker
      * launch — is the closure the module was compiled and tested against, not whatever each
-     * transitive POM asks for. Empty when the module is unlocked or declares nothing the lock
+     * transitive POM asks for. A workspace sibling in {@code siblings} (keyed as {@link
+     * WorkspaceResolve#siblingManifests} keys them) is followed through to its own declarations,
+     * so a worker's POM pins what its sibling libraries pull in as well; a sibling missing from the
+     * map contributes nothing. Empty when the module is unlocked or declares nothing the lock
      * carries.
      */
-    static List<Coordinate> lockClosure(JkBuild forPom, @Nullable Lockfile lock) {
+    static List<Coordinate> lockClosure(JkBuild project, @Nullable Lockfile lock, Map<String, JkBuild> siblings) {
         if (lock == null) return List.of();
         LockGraph graph = LockGraph.forLock(lock);
         Map<String, Coordinate> out = new LinkedHashMap<>();
         Deque<Lockfile.Artifact> queue = new ArrayDeque<>();
-        for (Scope scope : List.of(Scope.EXPORT, Scope.MAIN, Scope.RUNTIME)) {
-            for (Dependency d : forPom.dependencies().of(scope)) {
-                if (d.isWorkspace()) continue;
-                Lockfile.Artifact root = graph.artifact(d.packageKey());
-                if (root == null) root = graph.artifact(d.module());
-                if (root != null && !out.containsKey(root.name())) {
-                    out.put(root.name(), root.coordinate());
-                    queue.add(root);
+        Deque<JkBuild> units = new ArrayDeque<>(List.of(project));
+        Set<String> seenUnits = new HashSet<>();
+        while (!units.isEmpty()) {
+            JkBuild unit = units.poll();
+            if (!seenUnits.add(unit.project().group() + ":" + unit.project().name())) continue;
+            for (Scope scope : List.of(Scope.EXPORT, Scope.MAIN, Scope.RUNTIME)) {
+                for (Dependency d : unit.dependencies().of(scope)) {
+                    JkBuild sibling = siblings.get(d.module());
+                    if (sibling == null) sibling = siblings.get(d.library());
+                    if (sibling != null) {
+                        units.add(sibling);
+                        continue;
+                    }
+                    if (d.isWorkspace()) continue;
+                    Lockfile.Artifact root = graph.artifact(d.packageKey());
+                    if (root == null) root = graph.artifact(d.module());
+                    if (root != null && !out.containsKey(root.name())) {
+                        out.put(root.name(), root.coordinate());
+                        queue.add(root);
+                    }
                 }
             }
         }
@@ -727,91 +750,6 @@ public final class InstallPlans {
         } catch (Exception e) {
             return null;
         }
-    }
-
-    /**
-     * Replace MAIN / RUNTIME / EXPORT edges to workspace siblings, in a worker's POM view, with
-     * what those siblings need from <em>outside</em> the workspace. Libraries are untouched — they
-     * keep sibling deps so consumers can resolve them.
-     *
-     * <p>A worker jar vendors its workspace siblings' classes, so naming the sibling in the POM
-     * would send a consumer looking for a coordinate that is already inside the jar. Dropping the
-     * edge outright is not the answer either: the vendored
-     * classes still have third-party dependencies of their own, and nothing else declares them.
-     * That is how {@code jk-auditor} came to ship {@code LockfileReader} — vendored from
-     * {@code jk-core} — with no mention of tomlj anywhere, and die on the first lockfile it read.
-     *
-     * <p>So each sibling edge is replaced by that sibling's own non-sibling edges, transitively:
-     * what the jar carries is elided, what it still needs is declared.
-     */
-    static JkBuild omitVendoredWorkerSiblings(JkBuild project, Path moduleRoot) {
-        if (project == null || moduleRoot == null || !PluginModule.isWorker(moduleRoot)) {
-            return project;
-        }
-        Set<String> siblings = WorkspaceResolve.siblingCoordinates(moduleRoot);
-        if (siblings.isEmpty()) return project;
-        Map<String, JkBuild> manifests = WorkspaceResolve.siblingManifests(moduleRoot);
-        Map<Scope, List<Dependency>> by = new LinkedHashMap<>();
-        boolean changed = false;
-        for (Scope scope : Scope.values()) {
-            List<Dependency> deps = project.dependencies().of(scope);
-            if (deps.isEmpty()) continue;
-            boolean strip = scope == Scope.MAIN || scope == Scope.RUNTIME || scope == Scope.EXPORT;
-            if (!strip) {
-                by.put(scope, deps);
-                continue;
-            }
-            Map<String, Dependency> kept = new LinkedHashMap<>();
-            for (Dependency d : deps) {
-                JkBuild vendored = siblingOf(d, siblings, manifests);
-                if (vendored != null || isSibling(d, siblings)) {
-                    changed = true;
-                    hoistVendored(vendored, siblings, manifests, new LinkedHashSet<>(), kept);
-                    continue;
-                }
-                kept.putIfAbsent(d.module(), d);
-            }
-            if (!kept.isEmpty()) by.put(scope, List.copyOf(kept.values()));
-            else changed = true;
-        }
-        return changed ? project.withDependencyScopes(by) : project;
-    }
-
-    /**
-     * Collect {@code coord}'s non-sibling MAIN / RUNTIME / EXPORT edges into {@code out}, following
-     * sibling edges through. {@code seen} makes a workspace cycle terminate rather than recurse;
-     * a sibling whose manifest could not be loaded contributes nothing, which is the same
-     * best-effort posture {@link WorkspaceResolve#siblingCoordinates} takes.
-     */
-    private static void hoistVendored(
-            @Nullable JkBuild sibling,
-            Set<String> siblings,
-            Map<String, JkBuild> manifests,
-            Set<String> seen,
-            Map<String, Dependency> out) {
-        if (sibling == null) return;
-        if (!seen.add(sibling.project().group() + ":" + sibling.project().name())) return;
-        for (Scope scope : List.of(Scope.MAIN, Scope.RUNTIME, Scope.EXPORT)) {
-            for (Dependency d : sibling.dependencies().of(scope)) {
-                JkBuild next = siblingOf(d, siblings, manifests);
-                if (next != null) hoistVendored(next, siblings, manifests, seen, out);
-                // A sibling edge whose manifest would not load contributes nothing — never the
-                // raw `workspace:<name>` placeholder, which no consumer could resolve.
-                else if (!isSibling(d, siblings)) out.putIfAbsent(d.module(), d);
-            }
-        }
-    }
-
-    /** True when {@code d} names a workspace member, in either spelling. */
-    private static boolean isSibling(Dependency d, Set<String> siblings) {
-        return d.isWorkspace() || siblings.contains(d.module());
-    }
-
-    /** The member {@code d} names, resolved through either spelling; {@code null} when it names none. */
-    private static @Nullable JkBuild siblingOf(Dependency d, Set<String> siblings, Map<String, JkBuild> manifests) {
-        if (!isSibling(d, siblings)) return null;
-        JkBuild byCoord = manifests.get(d.module());
-        return byCoord != null ? byCoord : manifests.get(d.library());
     }
 
     /** Exact versions from the module's lock, keyed by {@code group:artifact}. Empty when unlocked. */

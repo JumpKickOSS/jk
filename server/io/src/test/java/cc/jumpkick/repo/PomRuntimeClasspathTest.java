@@ -100,6 +100,57 @@ class PomRuntimeClasspathTest {
     }
 
     /**
+     * A library that names a dependency for its main code and again for its tests (a sibling whose
+     * fixtures its tests use) runs on it: the widest scope counts, never the last declaration, so a
+     * POM an older build rendered that way still puts the dependency on the worker's classpath.
+     */
+    @Test
+    void a_dependency_declared_in_compile_and_test_scope_stays_on_the_classpath(@TempDir Path tmp) throws Exception {
+        Path store = tmp.resolve("store");
+        Coordinate worker = Coordinate.of("cc.jumpkick", "jk-groovy-compiler", "0.12.0");
+        Coordinate sdk = Coordinate.of("cc.jumpkick", "jk-plugin-sdk", "0.12.0");
+        Coordinate host = Coordinate.of("cc.jumpkick", "jk-host", "0.12.0");
+        Path workerJar = putJar(store, RepoArtifactResolver.JK_LOCAL, worker, "worker-bytes");
+        putPom(store, RepoArtifactResolver.JK_LOCAL, worker, """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>cc.jumpkick</groupId><artifactId>jk-groovy-compiler</artifactId><version>0.12.0</version>
+                  <dependencies>
+                    <dependency>
+                      <groupId>cc.jumpkick</groupId><artifactId>jk-plugin-sdk</artifactId><version>0.12.0</version>
+                    </dependency>
+                  </dependencies>
+                </project>
+                """);
+        putJar(store, RepoArtifactResolver.JK_LOCAL, sdk, "sdk-bytes");
+        putPom(store, RepoArtifactResolver.JK_LOCAL, sdk, """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>cc.jumpkick</groupId><artifactId>jk-plugin-sdk</artifactId><version>0.12.0</version>
+                  <dependencies>
+                    <dependency>
+                      <groupId>cc.jumpkick</groupId><artifactId>jk-host</artifactId><version>0.12.0</version>
+                    </dependency>
+                    <dependency>
+                      <groupId>cc.jumpkick</groupId><artifactId>jk-host</artifactId><version>0.12.0</version>
+                      <scope>test</scope>
+                    </dependency>
+                  </dependencies>
+                </project>
+                """);
+        putJar(store, RepoArtifactResolver.JK_LOCAL, host, "host-bytes");
+        putPom(store, RepoArtifactResolver.JK_LOCAL, host, """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>cc.jumpkick</groupId><artifactId>jk-host</artifactId><version>0.12.0</version>
+                </project>
+                """);
+
+        assertThat(resolve(store, workerJar).stream().map(Path::getFileName).map(Path::toString))
+                .containsExactly("jk-groovy-compiler-0.12.0.jar", "jk-plugin-sdk-0.12.0.jar", "jk-host-0.12.0.jar");
+    }
+
+    /**
      * Maven's nearest-wins, in the shape that put an Android Guava under Jib: the worker declares
      * {@code client-lib} (jib-core), which declares {@code http} (google-http-client) before its
      * own {@code util:2.0-jre} (guava). {@code http}'s parent manages {@code util} at

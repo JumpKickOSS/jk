@@ -313,10 +313,10 @@ isolated sandboxes, so `jk test` in this tree never touches your resident engine
 engines run this checkout's engine: `jk test -m jk-cli-e2e` packages `server/engine`'s fat jar before
 the suite starts and hands it to the tests as `-Djk.engine.jar`, so an engine or library change is
 exercised without `jk install` first. The workers those engines fork are the checkout's too
-(`-Djk.<worker>.plugin.jar`), and so are the libraries they run on: a first-party worker jar
-carries the workspace libraries it depends on (its POM names only external ones), and
-`shared/plugin-sdk` and `shared/host` join its classpath from their `target/` trees, so a library
-change reaches a nested engine's workers once the worker's module is rebuilt. A suite that runs the
+(`-Djk.<worker>.plugin.jar`), and so are the libraries they run on: a first-party worker jar holds
+its own module's classes only, its POM names the workspace libraries it depends on, and a worker
+launched from a `target/` tree takes each of them from that library's own `target/` jar, so a
+library change reaches a nested engine's workers once the library is rebuilt. A suite that runs the
 native client gets the one `clients/cli` links (`-Djk.native.client`), and waits for the link:
 never `target/dist/jk`, which the build assembles after every module's tests, so a suite that ran it
 would be keyed on the previous build's client and run again on the next.
@@ -389,7 +389,7 @@ jk install           # or -S; the install runs the suite like `jk build`
 | Module kind | What `jk install` does with it |
 |---|---|
 | Library (`shared/*`, `server/*`, rule packs) | Thin jar + POM onto the shelf, `~/.jk/store/repos/jk-local/<g>/<a>/<v>/` |
-| Plugin worker (`plugins/*`) | Same shelf entry; launch rebuilds the runtime classpath from that POM |
+| Plugin worker (`plugins/*`) | Same shelf entry: a thin jar of the worker's own classes, and a POM naming the libraries it runs on (`jk-plugin-sdk`, `jk-host`, …), each a shelf entry of its own; launch rebuilds the runtime classpath from that POM. A worker's install waits for those libraries' installs, since it stages that classpath |
 | `server/engine` — declares `[install] product-lib = "jk-engine"` | Assembly jar materialized into `~/.jk/lib/jk-engine/`, pointer stamped by sha; the next client invocation takes over the resident engine. The shelf is pinned to that engine in `jk-shelf.toml` beside the pointer ([the pinned shelf](#the-pinned-shelf)) |
 | `clients/cli` — declares `[install] product-bin = "jk"` | Native binary replaces `~/.jk/bin/jk` (previous client parked as `.old`, `jkx` re-linked), the same swap `jk self update` performs — and `~/.jk/bin/jk-jvm` (`jk-jvm.cmd` on Windows) is written beside it: `cc.jumpkick.cli.Jk` on a JVM over the shelf's `jk-cli` closure. On a machine that built no native client (no GraalVM) the launcher is the whole install and the PATH client is left alone |
 

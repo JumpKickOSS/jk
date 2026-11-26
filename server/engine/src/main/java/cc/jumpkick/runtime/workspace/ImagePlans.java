@@ -49,6 +49,7 @@ import cc.jumpkick.runtime.base.ImageCredentials;
 import cc.jumpkick.runtime.base.PluginLaunch;
 import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.task.ModuleIdentity;
+import cc.jumpkick.task.WorkerClosure;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -696,7 +697,7 @@ public final class ImagePlans {
                 // The name and tag the image is loaded or tagged under: a rename is not up to date.
                 "ref:" + reference,
                 "apptree:" + appTree,
-                "worker:" + ClasspathFingerprint.entry(workerJar));
+                "worker:" + WorkerClosure.token(workerJar));
     }
 
     /** Stable serialization of the image config for the packaging cache key. */

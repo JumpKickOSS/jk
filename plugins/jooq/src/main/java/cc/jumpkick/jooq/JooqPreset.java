@@ -48,7 +48,7 @@ public final class JooqPreset implements Plugin, BuildExtension {
 
     @Override
     public void build(BuildContext ctx) {
-        ctx.task(entry(ctx.config(), ctx.project(), List.of(ToolJars.codeSource(JooqPreset.class)))
+        ctx.task(entry(ctx.config(), ctx.project(), ToolJars.forkClasspath(JooqPreset.class))
                 .task());
     }
 

@@ -11,7 +11,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.TreeMap;
-import java.util.function.Predicate;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -50,7 +49,7 @@ public final class PackagedTree {
     public List<Entry> entries() throws IOException {
         if (entries != null) return List.copyOf(entries.values());
         TreeMap<String, Entry> listed = new TreeMap<>();
-        addTree(listed, root, dir -> false);
+        addTree(listed, root);
         return List.copyOf(listed.values());
     }
 
@@ -73,7 +72,7 @@ public final class PackagedTree {
     /** {@link #root}'s files, then each {@link #layer}'s, later names replacing earlier ones. */
     public static Builder builder(Path root) throws IOException {
         TreeMap<String, Entry> start = new TreeMap<>();
-        addTree(start, root, dir -> false);
+        addTree(start, root);
         return new Builder(root, start);
     }
 
@@ -87,9 +86,9 @@ public final class PackagedTree {
             this.entries = entries;
         }
 
-        /** {@code tree}'s files over the entries so far, leaving out any subdirectory {@code skip} accepts. */
-        public Builder layer(Path tree, Predicate<Path> skip) throws IOException {
-            addTree(entries, tree, skip);
+        /** {@code tree}'s files over the entries so far. */
+        public Builder layer(Path tree) throws IOException {
+            addTree(entries, tree);
             return this;
         }
 
@@ -105,18 +104,12 @@ public final class PackagedTree {
             return this;
         }
 
-        /** No entry {@code name}. */
-        public Builder remove(String name) {
-            entries.remove(name);
-            return this;
-        }
-
         public PackagedTree build() {
             return new PackagedTree(root, new TreeMap<>(entries));
         }
     }
 
-    private static void addTree(Map<String, Entry> into, Path tree, Predicate<Path> skip) throws IOException {
-        TreeContent.forEach(tree, skip, (name, file, attrs) -> into.put(name, new Entry(name, file, null)));
+    private static void addTree(Map<String, Entry> into, Path tree) throws IOException {
+        TreeContent.forEach(tree, dir -> false, (name, file, attrs) -> into.put(name, new Entry(name, file, null)));
     }
 }
