@@ -806,13 +806,15 @@ class JkResultsMarkdownTest {
                         List.of("Missing signature for file: widget-1.0.0.pom", "Javadocs must be provided"),
                         List.of(
                                 "com/example/widget/1.0.0/widget-1.0.0.jar",
-                                "com/example/widget/1.0.0/widget-1.0.0.jar.asc")),
+                                "com/example/widget/1.0.0/widget-1.0.0.jar.asc"),
+                        1_234_567L),
                 List.of());
         String md = JkResultsMarkdown.render(r);
         assertThat(md)
                 .contains("## Publish\n\n- destination: Central Portal (user-managed)\n- files: 16\n"
                         + "- deployment: `28570f16-da32-4c14-bd2e-c1acc0782365` · **FAILED**\n"
                         + "- validation errors:\n  - Missing signature for file: widget-1.0.0.pom\n  - Javadocs must be provided\n"
+                        + "- Central bundle: 2 files, 1.2 MB\n"
                         + "- bundle (2 entries):\n  - `com/example/widget/1.0.0/widget-1.0.0.jar`\n");
         assertThat(JkResultsMarkdown.render(base)).doesNotContain("## Publish");
     }

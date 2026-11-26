@@ -274,6 +274,7 @@ final class Json {
         if (p.deploymentState() != null) pub.put("deploymentState", p.deploymentState());
         if (!p.deploymentErrors().isEmpty()) pub.put("deploymentErrors", p.deploymentErrors());
         if (!p.bundle().isEmpty()) pub.put("bundle", p.bundle());
+        if (p.bundleBytes() > 0) pub.put("bundleBytes", p.bundleBytes());
         return pub;
     }
 
@@ -414,7 +415,8 @@ final class Json {
                     str(pub, "deploymentId"),
                     str(pub, "deploymentState"),
                     strList(pub, "deploymentErrors"),
-                    strList(pub, "bundle"));
+                    strList(pub, "bundle"),
+                    lng(pub, "bundleBytes"));
         }
         List<BuildRecord.Coverage> coverage = new ArrayList<>();
         for (Object e : arr(o, "coverage")) {

@@ -10,7 +10,7 @@ import org.jspecify.annotations.Nullable;
  * handled, whether it was a {@code dryRun} (assembled but not uploaded), how many {@code bytes}
  * went over the wire (0 for a dry run), the files it {@code written} under the module's build
  * output for the caller to take (the SBOM documents, a Central bundle), the {@code bundle} entries
- * of a Central bundle, and the Portal {@code deployment} when there was one. A failure is
+ * of a Central bundle with its {@code bundleBytes}, and the Portal {@code deployment} when there was one. A failure is
  * signalled by throwing, not by this record; {@code existing} counts the artifacts the repository already
  * held at the same bytes, which an upload leaves alone; a deployment the Portal rejected is a failure that
  * still carries its facts, so the publisher throws after reporting it.
@@ -21,6 +21,7 @@ public record PublishResult(
         long bytes,
         List<Path> written,
         List<String> bundle,
+        long bundleBytes,
         @Nullable Deployment deployment,
         int existing) {
 
@@ -38,36 +39,36 @@ public record PublishResult(
 
     /** A completed upload of {@code files} artifacts, byte count unknown. */
     public static PublishResult uploaded(int files) {
-        return new PublishResult(files, false, 0L, List.of(), List.of(), null, 0);
+        return new PublishResult(files, false, 0L, List.of(), List.of(), 0L, null, 0);
     }
 
     /** A completed upload of {@code files} artifacts totalling {@code bytes} of payload. */
     public static PublishResult uploaded(int files, long bytes) {
-        return new PublishResult(files, false, bytes, List.of(), List.of(), null, 0);
+        return new PublishResult(files, false, bytes, List.of(), List.of(), 0L, null, 0);
     }
 
     /** A dry run that assembled {@code files} artifacts without uploading. */
     public static PublishResult dryRun(int files) {
-        return new PublishResult(files, true, 0L, List.of(), List.of(), null, 0);
+        return new PublishResult(files, true, 0L, List.of(), List.of(), 0L, null, 0);
     }
 
     /** The same outcome, naming the files the run left under the module's build output. */
     public PublishResult withWritten(List<Path> written) {
-        return new PublishResult(files, dryRun, bytes, written, bundle, deployment, existing);
+        return new PublishResult(files, dryRun, bytes, written, bundle, bundleBytes, deployment, existing);
     }
 
-    /** The same outcome, listing the entries of the Central bundle it assembled. */
-    public PublishResult withBundle(List<String> bundle) {
-        return new PublishResult(files, dryRun, bytes, written, bundle, deployment, existing);
+    /** The same outcome, listing the entries of the Central bundle it assembled and its size in bytes. */
+    public PublishResult withBundle(List<String> bundle, long bundleBytes) {
+        return new PublishResult(files, dryRun, bytes, written, bundle, bundleBytes, deployment, existing);
     }
 
     /** The same outcome, carrying the Portal deployment it ended on. */
     public PublishResult withDeployment(Deployment deployment) {
-        return new PublishResult(files, dryRun, bytes, written, bundle, deployment, existing);
+        return new PublishResult(files, dryRun, bytes, written, bundle, bundleBytes, deployment, existing);
     }
 
     /** The same outcome, counting the artifacts the repository already held at the same bytes. */
     public PublishResult withExisting(int existing) {
-        return new PublishResult(files, dryRun, bytes, written, bundle, deployment, existing);
+        return new PublishResult(files, dryRun, bytes, written, bundle, bundleBytes, deployment, existing);
     }
 }

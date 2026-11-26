@@ -996,7 +996,8 @@ public final class BuildAccumulator {
                 p.deploymentId(),
                 p.deploymentState(),
                 p.deploymentErrors().stream().map(this::redactOrSelf).toList(),
-                p.bundle());
+                p.bundle(),
+                p.bundleBytes());
     }
 
     /**

@@ -147,7 +147,8 @@ class JsonTest {
                         "dep-1",
                         "FAILED",
                         List.of("e1", "e2"),
-                        List.of("a/b.jar")),
+                        List.of("a/b.jar"),
+                        4_096L),
                 List.of());
         BuildRecord back = Json.read(Json.write(original));
         assertThat(back.publish()).isEqualTo(original.publish());

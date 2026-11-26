@@ -133,7 +133,10 @@ public final class Publisher implements Plugin, PublishExtension {
             if (!result.written().isEmpty())
                 fields.put(
                         "written", result.written().stream().map(Path::toString).toList());
-            if (!result.bundle().isEmpty()) fields.put("bundle", result.bundle());
+            if (!result.bundle().isEmpty()) {
+                fields.put("bundle", result.bundle());
+                fields.put("bundleBytes", result.bundleBytes());
+            }
             PublishResult.Deployment deployment = result.deployment();
             if (deployment != null) {
                 fields.put("deploymentId", deployment.id());
@@ -414,7 +417,9 @@ public final class Publisher implements Plugin, PublishExtension {
             for (String entry : bundle.entries()) ctx.label("bundle " + entry);
             written.add(zip);
             ctx.label("wrote " + zip);
-            return PublishResult.dryRun(artifacts.size()).withWritten(written).withBundle(bundle.entries());
+            return PublishResult.dryRun(artifacts.size())
+                    .withWritten(written)
+                    .withBundle(bundle.entries(), bundle.size());
         }
 
         URI portalUrl = URI.create(c.stringOpt("repoUrl").orElse(CentralPortal.DEFAULT_URL.toString()));
@@ -453,7 +458,7 @@ public final class Publisher implements Plugin, PublishExtension {
             for (String error : status.errors()) ctx.label("  " + error);
             return PublishResult.uploaded(bundle.entries().size(), bundle.size())
                     .withWritten(written)
-                    .withBundle(bundle.entries())
+                    .withBundle(bundle.entries(), bundle.size())
                     .withDeployment(new PublishResult.Deployment(id, status.state(), status.errors()));
         } finally {
             if (sigstore != null) sigstore.close();

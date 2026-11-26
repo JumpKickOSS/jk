@@ -61,7 +61,7 @@ class ProtoEventsModuleFinishTest {
     @Test
     void a_publish_outcome_carries_how_many_artifacts_were_already_there() {
         ModuleOutcome.Published published = new ModuleOutcome.Published(
-                "https://repo.example/releases/", false, 16, 4, List.of(), List.of(), null, null, List.of());
+                "https://repo.example/releases/", false, 16, 4, List.of(), List.of(), 0L, null, null, List.of());
 
         String line = ProtoEvents.moduleFinish(
                 "/w/app", "g:app", true, 0, 12, 0, true, false, false, null, null, published, null);

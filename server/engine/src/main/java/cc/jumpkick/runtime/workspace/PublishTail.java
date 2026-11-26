@@ -34,6 +34,7 @@ public final class PublishTail {
                             PublishPlans.EXISTING,
                             PublishPlans.WRITTEN,
                             PublishPlans.BUNDLE,
+                            PublishPlans.BUNDLE_BYTES,
                             PublishPlans.DEPLOYMENT,
                             PublishPlans.DESTINATION,
                             PublishPlans.DRY_RUN)
@@ -66,6 +67,7 @@ public final class PublishTail {
                 Math.max(plan.get(PublishPlans.EXISTING).orElse(0), 0),
                 plan.get(PublishPlans.WRITTEN).orElse(List.of()),
                 plan.get(PublishPlans.BUNDLE).orElse(List.of()),
+                plan.get(PublishPlans.BUNDLE_BYTES).orElse(0L),
                 deployment == null ? null : deployment.id(),
                 deployment == null ? null : deployment.state(),
                 deployment == null ? List.of() : deployment.errors());

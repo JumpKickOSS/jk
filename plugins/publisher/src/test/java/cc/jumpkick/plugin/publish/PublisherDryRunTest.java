@@ -275,6 +275,9 @@ class PublisherDryRunTest {
                 .isZero();
 
         Path zip = dir.resolve("target/publish/central-bundle.zip");
+        assertThat(buffer.toString(StandardCharsets.UTF_8))
+                .as("the result carries the bundle's size")
+                .contains("\"bundleBytes\":" + Files.size(zip));
         Map<String, byte[]> entries = new LinkedHashMap<>();
         try (ZipInputStream in = new ZipInputStream(new ByteArrayInputStream(Files.readAllBytes(zip)))) {
             for (ZipEntry e = in.getNextEntry(); e != null; e = in.getNextEntry()) {
