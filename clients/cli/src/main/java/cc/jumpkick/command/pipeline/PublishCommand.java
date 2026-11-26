@@ -292,16 +292,19 @@ public final class PublishCommand implements CliCommand {
     /**
      * The release lane's lines: where the release lives, then every file with what the run did with
      * it (a dry run: its size, SHA-256, destination and role), then the version {@code latest.json}
-     * names. Under {@code -O json} one line per file.
+     * names, and on stderr each note (an unsigned release). Under {@code -O json} one line per file
+     * and per note.
      */
     private void reportRelease(ReleaseOutcome release) {
         if (global.outputIsJson()) {
             for (ReleaseOutcome.File f : release.files()) {
                 CliOutput.machine(JsonlShape.output("publish", "release " + f.status() + " " + f.name()));
             }
+            for (String note : release.notes()) CliOutput.machine(JsonlShape.output("publish", note));
             return;
         }
         for (String line : releaseLines(release)) CliOutput.out(line);
+        for (String note : release.notes()) CliOutput.err("  ! " + note);
     }
 
     /** {@link #reportRelease}'s text lines. */

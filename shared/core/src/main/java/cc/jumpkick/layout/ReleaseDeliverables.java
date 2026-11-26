@@ -11,8 +11,8 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * What a module puts in a release: the files its build writes that a person downloads, each named
- * as the release names it. Platform-neutral files (the fat jar, the minified jar, the lib-dir
- * archive, a war) come from any host; platform-specific ones (the runtime-image archive, the native
+ * as the release names it. Platform-neutral files (a framework's runnable jar, the fat jar, the
+ * minified jar, the lib-dir archive, a war) come from any host; platform-specific ones (the runtime-image archive, the native
  * executable) come from the host of their platform. Decided from the manifest alone, so a host can
  * name the files another platform's host uploads.
  */
@@ -32,10 +32,15 @@ public final class ReleaseDeliverables {
         }
     }
 
-    /** The files of {@code build}'s release this host writes: the neutral ones and this host's platform's. */
-    public static List<Deliverable> local(BuildLayout layout, JkBuild build) {
+    /**
+     * The files of {@code build}'s release this host writes: the neutral ones and this host's
+     * platform's. {@code runnable} is the framework packager's self-contained jar (a Spring Boot or
+     * Grails jar, a Quarkus uber-jar), shipped as named on disk; {@code null} when there is none.
+     */
+    public static List<Deliverable> local(BuildLayout layout, JkBuild build, @Nullable Path runnable) {
         String module = layout.artifact();
         List<Deliverable> out = new ArrayList<>();
+        if (runnable != null) out.add(neutral(module, runnable));
         if (build.assembly()) out.add(neutral(module, layout.assemblyJar()));
         if (build.minified()) out.add(neutral(module, layout.minifiedJar()));
         if (build.libDir() != null) out.add(neutral(module, layout.libDirArchive()));

@@ -1,13 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.NodeShape;
+import cc.jumpkick.layout.ReleaseDeliverables;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.plugin.manifest.PluginDescriptor;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.base.CompileSupport;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Path;
+import java.util.List;
+import java.util.Set;
 import org.jspecify.annotations.NullMarked;
 import org.jspecify.annotations.Nullable;
 
@@ -51,5 +56,41 @@ public final class ModuleJar {
     /** {@code [publish] skip = true}: the module builds and tests, and no release ships it. */
     public static boolean skipsRelease(JkBuild project) {
         return project.pomMetadata().skip();
+    }
+
+    /** What {@code project} puts in a release from this host, its framework's runnable jar included. */
+    public static List<ReleaseDeliverables.Deliverable> releaseFiles(JkBuild project, Path moduleDir) {
+        BuildLayout layout = BuildLayout.of(moduleDir, project);
+        return ReleaseDeliverables.local(layout, project, runnable(project, moduleDir, layout));
+    }
+
+    /** The {@code [quarkus] package} values that make the runner one self-contained jar. */
+    private static final Set<String> QUARKUS_UBER = Set.of("uber-jar", "uberjar", "uber", "fat-jar");
+
+    /**
+     * The jar a framework packager writes in place of the main jar when that jar runs by itself:
+     * Spring Boot's and Grails' executable jars, a Quarkus uber-jar. A packager whose runnable
+     * application is a directory beside the jar (Quarkus's default {@code quarkus-app/}) has none;
+     * {@code null} also for a module with no packager.
+     */
+    static @Nullable Path runnable(JkBuild project, Path moduleDir, BuildLayout layout) {
+        ActivePlugin active;
+        try {
+            active = ActivePlugins.packager(project, moduleDir).orElse(null);
+        } catch (RuntimeException refused) {
+            // Two packagers or an unreadable table: the build refuses it with the reason.
+            return null;
+        }
+        PluginDescriptor.Packaging declared =
+                active == null ? null : active.manifest().packaging();
+        if (active == null || declared == null) return null;
+        PluginDescriptor.Packaging packaging = declared.resolve(active.config());
+        if (!packaging.selfContained() || !"jar".equals(packaging.execMode())) return null;
+        if (!packaging.appDir().isBlank()
+                && !QUARKUS_UBER.contains(
+                        String.valueOf(active.config().values().get("package")))) {
+            return null;
+        }
+        return ActivePlugins.mainArtifactPath(layout, active);
     }
 }

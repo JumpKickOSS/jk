@@ -606,6 +606,7 @@ public final class JkResultsMarkdown {
                     .append(" |\n");
         }
         sb.append('\n');
+        for (String note : p.notes()) sb.append("- ").append(note).append('\n');
         if (p.deploymentId() != null) {
             sb.append("- deployment: `").append(p.deploymentId()).append('`');
             if (p.deploymentState() != null)

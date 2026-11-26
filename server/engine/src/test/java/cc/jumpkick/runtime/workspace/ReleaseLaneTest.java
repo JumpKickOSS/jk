@@ -58,6 +58,10 @@ class ReleaseLaneTest {
     }
 
     private JkBuild app() throws Exception {
+        return app("sign = false");
+    }
+
+    private JkBuild app(String signing) throws Exception {
         return JkBuildParser.parse(Files.writeString(tmp.resolve("jk.toml"), """
                 name = "app"
                 group = "com.example"
@@ -71,8 +75,7 @@ class ReleaseLaneTest {
 
                 [publish]
                 release = "s3://releases/app/"
-                sign = false
-                """));
+                """ + signing + "\n"));
     }
 
     private ReleaseRun run(JkBuild root, boolean stage, boolean dryRun) {
@@ -171,6 +174,25 @@ class ReleaseLaneTest {
                 .allMatch(f -> ReleaseOutcome.EXISTING.equals(f.status()));
         assertThat(fake.writes).as("a re-run writes nothing").hasValue(writes);
         assertThat(fake.unguarded).hasValue(0);
+    }
+
+    @Test
+    void a_release_nothing_could_sign_says_so_and_one_signing_is_off_for_does_not() throws Exception {
+        fake.putText("app/1.0/app-1.0-all.jar", "fat jar");
+        List<ReleaseOutcome.File> modules = List.of(uploaded("app-1.0-all.jar", null, "fat jar"));
+        ReleaseOutcome unsigned = new ReleaseLane.Final(
+                        run(app(""), false, false), args(false, false), modules, List.of())
+                .over(fake.bucket("app/", "1.0"))
+                .env(name -> null)
+                .run(List.of(), tmp);
+        assertThat(unsigned.notes())
+                .containsExactly("release v1.0 is unsigned: set [publish] key-file, or sign = false");
+        assertThat(unsigned.notes().getFirst()).hasSizeLessThanOrEqualTo(78);
+
+        ReleaseOutcome off = new ReleaseLane.Final(run(app(), false, false), args(false, false), modules, List.of())
+                .over(fake.bucket("app/", "1.0"))
+                .run(List.of(), tmp);
+        assertThat(off.notes()).isEmpty();
     }
 
     @Test

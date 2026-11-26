@@ -118,6 +118,7 @@ public record WorkspaceFinishEvent(
                 .token("files", files.append(']').toString())
                 .optionalString("latest", r.latest())
                 .optionalArray("released", r.released().isEmpty() ? null : r.released())
+                .optionalArray("notes", r.notes().isEmpty() ? null : r.notes())
                 .finish();
     }
 
@@ -140,7 +141,8 @@ public record WorkspaceFinishEvent(
                 Jsonl.bool(release, "dryRun", false),
                 files,
                 Jsonl.str(release, "latest"),
-                Jsonl.strArray(release, "released"));
+                Jsonl.strArray(release, "released"),
+                Jsonl.strArray(release, "notes"));
     }
 
     private static WorkspaceResult.@Nullable SyncCounts syncOf(@Nullable String sync) {

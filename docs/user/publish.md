@@ -198,6 +198,7 @@ root's `[publish] release` and `[release]` govern the whole workspace.
 
 | File | From | Platform |
 |---|---|---|
+| `<name>-<version>.jar`, the framework's runnable jar | `[spring-boot]`, `[grails]`, `[quarkus] package = "uber-jar"` | neutral |
 | `<name>-<version>-all.jar` | `[application] assembly = true` | neutral |
 | `<name>-<version>-min.jar` | `[application] minified = true` | neutral |
 | `<name>-<version>.zip` | `[application] lib-dir` | neutral |
@@ -209,7 +210,10 @@ root's `[publish] release` and `[release]` govern the whole workspace.
 Then the final run adds `SHA256SUMS` (`sha256sum` format, the one `jk`'s own installer verifies),
 `SHA256SUMS.asc` when `key-file` is set, `SHA256SUMS.sigstore.json` when CI offers an identity
 token, and `index.json`, which lists every file with its module, size, SHA-256, URL and, for a
-platform file, its `os` and `arch`.
+platform file, its `os` and `arch`. With signing on and neither a key nor an identity, the release
+goes out unsigned and the run says so on one line, also in the results: `release v1.4.7 is
+unsigned: set [publish] key-file, or sign = false`. Quarkus's default fast-jar runs from its
+`quarkus-app/` directory, which the release does not carry; `package = "uber-jar"` ships one jar.
 
 **Platforms and the final run.** `[release] platforms` lists the platforms whose files a release
 must carry, named `linux-x86_64`, `linux-aarch64`, `macos-x86_64`, `macos-aarch64`,

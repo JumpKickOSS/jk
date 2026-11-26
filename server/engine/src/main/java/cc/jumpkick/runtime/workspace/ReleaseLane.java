@@ -31,6 +31,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.Function;
 import java.util.function.Predicate;
 import org.jspecify.annotations.Nullable;
 
@@ -69,7 +70,7 @@ final class ReleaseLane {
         for (Map.Entry<Path, JkBuild> unit : units.entrySet()) {
             if (selected.test(unit.getKey())
                     && !ModuleJar.skipsRelease(unit.getValue())
-                    && ReleasePlans.ships(unit.getKey(), unit.getValue())) {
+                    && !ModuleJar.releaseFiles(unit.getValue(), unit.getKey()).isEmpty()) {
                 shipping.put(unit.getKey(), unit.getValue());
             }
         }
@@ -155,13 +156,21 @@ final class ReleaseLane {
         private final List<ReleaseOutcome.File> files;
         private final List<String> held;
         private final List<String> released = new ArrayList<>();
+        private final List<String> notes = new ArrayList<>();
         private @Nullable ReleaseBucket bucket;
+        private Function<String, @Nullable String> env = BuildEnv::get;
 
         Final(ReleaseRun release, TailArgs.Publish args, List<ReleaseOutcome.File> files, List<String> held) {
             this.release = release;
             this.args = args;
             this.files = new ArrayList<>(files);
             this.held = held;
+        }
+
+        /** Overrides the environment a keyless signature reads its CI identity from. */
+        Final env(Function<String, @Nullable String> env) {
+            this.env = env;
+            return this;
         }
 
         /** Overrides the bucket the run opens: a test hands in one over a fake store. */
@@ -172,7 +181,7 @@ final class ReleaseLane {
 
         ReleaseOutcome outcome(@Nullable String latest) {
             return new ReleaseOutcome(
-                    release.destination(), release.stage(), release.dryRun(), files, latest, released);
+                    release.destination(), release.stage(), release.dryRun(), files, latest, released, notes);
         }
 
         ReleaseOutcome run(List<String> expected, Path entryDir) throws IOException, InterruptedException {
@@ -180,10 +189,11 @@ final class ReleaseLane {
             JkBuild root = release.rootBuild();
             boolean sign = root.pomMetadata().sign();
             Path keyFile = sign ? args.keyFile() : null;
-            boolean keyless = sign && CiIdentity.available(BuildEnv::get);
+            boolean keyless = sign && CiIdentity.available(env);
             List<String> signatures = new ArrayList<>();
             if (keyFile != null) signatures.add(ReleaseIndex.SUMS + ".asc");
             if (keyless) signatures.add(ReleaseIndex.SUMS + ".sigstore.json");
+            if (sign && signatures.isEmpty() && !release.dryRun()) notes.add(unsigned(release.tag()));
             if (release.dryRun()) {
                 for (String e : expected) {
                     String[] parts = e.split("/", 3);
@@ -250,6 +260,11 @@ final class ReleaseLane {
                 released.addAll(PublishPlans.releaseDeployments(entryDir, PublishTail.request(args), held));
             }
             return outcome(latest);
+        }
+
+        /** The line a release that signing is on for, and that nothing could sign, says. */
+        static String unsigned(String tag) {
+            return "release " + tag + " is unsigned: set [publish] key-file, or sign = false";
         }
 
         private static List<String> documents(List<String> signatures) {

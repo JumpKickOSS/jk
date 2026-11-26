@@ -447,7 +447,8 @@ class EngineProtocolTest {
                         new ReleaseOutcome.File(
                                 "SHA256SUMS", "", null, 99, "ef56", ReleaseOutcome.FINAL, ReleaseOutcome.EXISTING)),
                 "1.0.0",
-                List.of("dep-1"));
+                List.of("dep-1"),
+                List.of("release v1.0.0 is unsigned: set [publish] key-file, or sign = false"));
         WorkspaceFinishEvent finished =
                 new WorkspaceFinishEvent(true, 0, List.of(), false, null, -1, -1, false, "", release);
         assertThat(WorkspaceFinishEvent.decode(finished.encode())).isEqualTo(finished);

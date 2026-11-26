@@ -31,11 +31,12 @@ public final class PublishTail {
         PublishPlans.Request req = request(args);
         return (plan, in) -> {
             JkBuild manifest = manifest(in.buildFile());
-            if (args.runs(PublishLane.RELEASE)
-                    && !ModuleJar.skipsRelease(manifest)
-                    && ReleasePlans.ships(in.dir(), manifest)) {
-                plan.stateKeys(ReleasePlans.FILES, ReleasePlans.EXPECTED)
-                        .extend(ReleasePlans.uploadStep(in.dir(), args));
+            if (args.runs(PublishLane.RELEASE) && !ModuleJar.skipsRelease(manifest)) {
+                var files = ModuleJar.releaseFiles(manifest, in.dir());
+                if (!files.isEmpty()) {
+                    plan.stateKeys(ReleasePlans.FILES, ReleasePlans.EXPECTED)
+                            .extend(ReleasePlans.uploadStep(in.dir(), args, files));
+                }
             }
             if (!args.runs(PublishLane.LIBRARY) || ModuleJar.shippedStep(manifest, in.dir()) == null) return;
             plan.stateKeys(

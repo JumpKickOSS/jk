@@ -25,7 +25,8 @@ class ReleaseDeliverablesTest {
     @Test
     void a_library_puts_nothing_in_a_release() throws Exception {
         JkBuild lib = build("");
-        assertThat(ReleaseDeliverables.local(BuildLayout.of(tmp, lib), lib)).isEmpty();
+        assertThat(ReleaseDeliverables.local(BuildLayout.of(tmp, lib), lib, null))
+                .isEmpty();
         assertThat(ReleaseDeliverables.platformSpecific(lib)).isFalse();
     }
 
@@ -39,7 +40,7 @@ class ReleaseDeliverablesTest {
                 """);
         BuildLayout layout = BuildLayout.of(tmp, app);
         String v = layout.version();
-        var files = ReleaseDeliverables.local(layout, app);
+        var files = ReleaseDeliverables.local(layout, app, null);
         assertThat(files)
                 .extracting(ReleaseDeliverables.Deliverable::name)
                 .containsExactly("app-" + v + "-all.jar", "app-" + v + ".zip");
@@ -63,7 +64,7 @@ class ReleaseDeliverablesTest {
         BuildLayout layout = BuildLayout.of(tmp, app);
         String host = ReleasePlatform.current();
         String v = layout.version();
-        var files = ReleaseDeliverables.local(layout, app);
+        var files = ReleaseDeliverables.local(layout, app, null);
         assertThat(files).allMatch(d -> host.equals(d.platform()));
         assertThat(files)
                 .extracting(ReleaseDeliverables.Deliverable::file)
@@ -76,6 +77,18 @@ class ReleaseDeliverablesTest {
     }
 
     @Test
+    void a_framework_runnable_jar_ships_first_as_named_on_disk() throws Exception {
+        JkBuild app = build("");
+        BuildLayout layout = BuildLayout.of(tmp, app);
+        var files = ReleaseDeliverables.local(layout, app, layout.mainJar());
+        assertThat(files).singleElement().satisfies(d -> {
+            assertThat(d.name()).isEqualTo(layout.mainJar().getFileName().toString());
+            assertThat(d.neutral()).isTrue();
+            assertThat(d.file()).isEqualTo(layout.mainJar());
+        });
+    }
+
+    @Test
     void a_native_image_built_only_by_jk_native_is_no_release_file() throws Exception {
         JkBuild app = build("""
                 [application]
@@ -83,6 +96,7 @@ class ReleaseDeliverablesTest {
 
                 [native]
                 """);
-        assertThat(ReleaseDeliverables.local(BuildLayout.of(tmp, app), app)).isEmpty();
+        assertThat(ReleaseDeliverables.local(BuildLayout.of(tmp, app), app, null))
+                .isEmpty();
     }
 }
