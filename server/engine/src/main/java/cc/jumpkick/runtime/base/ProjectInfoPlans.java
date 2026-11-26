@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime.base;
 
 import cc.jumpkick.cache.JkStores;
+import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.JkBuildParseException;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.ModuleSelection;
@@ -294,6 +295,14 @@ public final class ProjectInfoPlans {
         return name;
     }
 
+    /** The registry {@code [image]} pushes to: the module's, else {@code ~/.jk/config.toml}'s; empty when none. */
+    private static String imageRegistry(JkBuild build) {
+        String registry = build.image().registry();
+        if (registry == null || registry.isBlank())
+            registry = GlobalConfig.image().registry();
+        return registry == null ? "" : registry;
+    }
+
     /** The manifest whose {@code [release]} table governs {@code buildFile}: the workspace root's, else its own. */
     private static Path rootManifest(Path buildFile, Workspace ws) {
         return ws.wsRoot() == null ? buildFile : ManifestPaths.manifestIn(ws.wsRoot());
@@ -376,6 +385,8 @@ public final class ProjectInfoPlans {
                 publishRepository(build),
                 build.pomMetadata().sign(),
                 orEmpty(build.pomMetadata().keyFile()),
+                imageRegistry(build),
+                release.publish(),
                 release.tag(),
                 release.files(),
                 upstreams,

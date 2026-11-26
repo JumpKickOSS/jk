@@ -63,18 +63,12 @@ class TailArgsJsonTest {
     private static TailArgs publish(RepoCredential credential) {
         return new TailArgs.Publish(
                 URI.create("https://repo.example/releases/"),
-                "eu-west-1",
-                "https://s3.example",
                 true,
                 false,
                 Path.of("/keys/release.asc"),
                 "secret",
-                true,
-                true,
-                true,
                 credential,
-                true,
-                "automatic");
+                true);
     }
 
     private static BuildRequest request(@Nullable TailArgs tail) {

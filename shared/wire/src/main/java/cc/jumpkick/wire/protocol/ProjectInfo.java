@@ -36,8 +36,10 @@ import org.jspecify.annotations.Nullable;
  * <p>{@code publishRepository}, {@code publishSign} and {@code publishKeyFile} are the module's
  * {@code [publish]} target: a repository URL (or {@code central}) when the table's {@code
  * repository} names a declared repository, else the name as written; empty when none is named.
- * {@code releaseTag} and {@code releaseFiles} are the workspace root's {@code [release]} tag template
- * and its {@code path → pattern} version-carrying files. {@code releaseBuild} says the tree is the
+ * {@code imageRegistry} is the registry {@code [image]} pushes to, the project's or the user's;
+ * empty when none. {@code releaseTag}, {@code releaseFiles} and {@code releasePublish} are the
+ * workspace root's {@code [release]} tag template, its {@code path → pattern} version-carrying files
+ * and who publishes a release ({@code ci}, {@code local}, {@code none}; empty to infer). {@code releaseBuild} says the tree is the
  * release a build of it ships (a clean checkout at the declared version's tag), and {@code
  * releaseLine} is the line that says so, or why a tagged tree builds a snapshot; empty otherwise.
  *
@@ -114,6 +116,8 @@ public record ProjectInfo(
         String publishRepository,
         boolean publishSign,
         String publishKeyFile,
+        String imageRegistry,
+        String releasePublish,
         String releaseTag,
         Map<String, String> releaseFiles,
         Map<String, String> upstreams,
@@ -216,6 +220,8 @@ public record ProjectInfo(
                 publishRepository,
                 publishSign,
                 publishKeyFile,
+                imageRegistry,
+                releasePublish,
                 releaseTag,
                 releaseFiles,
                 upstreams,
@@ -286,6 +292,8 @@ public record ProjectInfo(
                 publishRepository,
                 publishSign,
                 publishKeyFile,
+                imageRegistry,
+                releasePublish,
                 releaseTag,
                 releaseFiles,
                 upstreams,
@@ -373,6 +381,8 @@ public record ProjectInfo(
                 false,
                 "",
                 "",
+                "",
+                "",
                 Map.of(),
                 Map.of(),
                 false,
@@ -440,6 +450,8 @@ public record ProjectInfo(
                 .string("publishRepository", publishRepository)
                 .bool("publishSign", publishSign)
                 .string("publishKeyFile", publishKeyFile)
+                .string("imageRegistry", imageRegistry)
+                .string("releasePublish", releasePublish)
                 .string("releaseTag", releaseTag)
                 .map("releaseFiles", releaseFiles)
                 .map("upstreams", upstreams)
@@ -512,6 +524,8 @@ public record ProjectInfo(
                 orEmpty(Jsonl.str(line, "publishRepository")),
                 Jsonl.bool(line, "publishSign", false),
                 orEmpty(Jsonl.str(line, "publishKeyFile")),
+                orEmpty(Jsonl.str(line, "imageRegistry")),
+                orEmpty(Jsonl.str(line, "releasePublish")),
                 orEmpty(Jsonl.str(line, "releaseTag")),
                 Jsonl.strMap(line, "releaseFiles"),
                 Jsonl.strMap(line, "upstreams"),

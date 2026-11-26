@@ -11,9 +11,10 @@ import org.jspecify.annotations.Nullable;
  * and dependencies — the human name, the home page, the licenses, the people, the source
  * repository. Maven Central refuses a release missing any of them; a private repository reads
  * them if it cares. The same table names where a release goes: {@code repository} (a
- * {@code [repositories.<name>]} entry, or {@code central}), whether it is {@code sign}ed and the
- * {@code keyFile} that signs it — never a secret. A workspace root's table applies to every member
- * that declares none. {@code skip} keeps the module out of {@code jk publish} and {@code jk install}
+ * {@code [repositories.<name>]} entry, or {@code central}) and the {@code keyFile} that signs it,
+ * never a secret. {@code sign}, {@code sbom} and {@code provenance} are on unless the table turns
+ * them off; {@code hold} stops a Central upload at {@code VALIDATED} for a human to release. A
+ * workspace root's table applies to every member that declares none. {@code skip} keeps the module out of {@code jk publish} and {@code jk install}
  * (a test harness, an example, a site generator); it is the module's own word and is never
  * inherited from the root.
  */
@@ -27,21 +28,10 @@ public record PomMetadata(
         @Nullable String repository,
         boolean sign,
         @Nullable String keyFile,
-        boolean skip) {
-
-    /** A table that does not say {@code skip}. */
-    public PomMetadata(
-            @Nullable String name,
-            @Nullable String description,
-            @Nullable String url,
-            List<License> licenses,
-            List<Developer> developers,
-            @Nullable Scm scm,
-            @Nullable String repository,
-            boolean sign,
-            @Nullable String keyFile) {
-        this(name, description, url, licenses, developers, scm, repository, sign, keyFile, false);
-    }
+        boolean skip,
+        boolean sbom,
+        boolean provenance,
+        boolean hold) {
 
     public PomMetadata {
         licenses = licenses == null ? List.of() : List.copyOf(licenses);
@@ -50,7 +40,7 @@ public record PomMetadata(
 
     /** No {@code [publish]} table: a POM with coordinate, description and dependencies only. */
     public static final PomMetadata EMPTY =
-            new PomMetadata(null, null, null, List.of(), List.of(), null, null, false, null);
+            new PomMetadata(null, null, null, List.of(), List.of(), null, null, true, null, false, true, true, false);
 
     public record License(String name, @Nullable String url) {
         public License {
@@ -79,14 +69,30 @@ public record PomMetadata(
                 && developers.isEmpty()
                 && scm == null
                 && repository == null
-                && !sign
+                && sign
                 && keyFile == null
-                && !skip;
+                && !skip
+                && sbom
+                && provenance
+                && !hold;
     }
 
     /** This table with {@code skip} set to {@code value}. */
     public PomMetadata withSkip(boolean value) {
-        return new PomMetadata(name, description, url, licenses, developers, scm, repository, sign, keyFile, value);
+        return new PomMetadata(
+                name,
+                description,
+                url,
+                licenses,
+                developers,
+                scm,
+                repository,
+                sign,
+                keyFile,
+                value,
+                sbom,
+                provenance,
+                hold);
     }
 
     /**

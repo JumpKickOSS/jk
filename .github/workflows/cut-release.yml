@@ -70,4 +70,4 @@ jobs:
       - name: jk release
         env:
           NEXT: ${{ inputs.next }}
-        run: jk release "--${NEXT}" --skip-tests --push --no-ansi
+        run: jk release "--${NEXT}" --skip-tests --no-ansi

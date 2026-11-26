@@ -232,20 +232,7 @@ class LifecycleParityTest {
                     case PUBLISH ->
                         WorkspaceSpec.publish(
                                 Set.of(),
-                                new TailArgs.Publish(
-                                        null,
-                                        null,
-                                        null,
-                                        false,
-                                        true,
-                                        null,
-                                        null,
-                                        false,
-                                        false,
-                                        false,
-                                        RepoCredential.ANONYMOUS,
-                                        false,
-                                        null));
+                                new TailArgs.Publish(null, false, true, null, null, RepoCredential.ANONYMOUS, false));
                     default -> WorkspaceSpec.of(target);
                 };
         WorkspaceRequest request = new WorkspaceRequest(

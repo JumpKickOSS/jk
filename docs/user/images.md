@@ -124,7 +124,7 @@ referrers = false
 
 ### A signed push
 
-`jk image --sigstore` signs the provenance with Sigstore keyless, as `jk publish --sigstore`
+`jk image --sigstore` signs the provenance with Sigstore keyless, as `jk publish`
 signs a jar: on CI the runner's OIDC identity (GitHub Actions, GitLab, …), on a laptop a browser
 sign-in, and no key to keep. The provenance is then attached as one artifact of type
 `application/vnd.dsse.envelope.v1+json` whose two layers are the statement in a DSSE envelope and

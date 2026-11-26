@@ -87,18 +87,6 @@ class PublishVerbCredentialRedactionTest {
 
     private static TailArgs.Publish publish(RepoCredential credential) {
         return new TailArgs.Publish(
-                URI.create("https://nexus.example.com/repo/"),
-                null,
-                null,
-                false,
-                true,
-                null,
-                null,
-                false,
-                false,
-                false,
-                credential,
-                false,
-                null);
+                URI.create("https://nexus.example.com/repo/"), false, true, null, null, credential, false);
     }
 }

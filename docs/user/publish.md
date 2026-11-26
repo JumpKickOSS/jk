@@ -1,19 +1,16 @@
 # Publish and supply chain
 
 ```bash
-jk publish -l https://repo.example.com/releases/
-jk publish -I -f ~/.gnupg/release.asc
-jk publish -g
-jk publish -L
-jk publish -W
-jk publish -c -I -f ~/.gnupg/release.asc   # Maven Central, via the Portal
+jk publish                       # the [publish] target: signed, with SBOM and provenance
+jk publish --dry-run             # the same plan; nothing is uploaded
+jk publish --repository central  # this run goes to Maven Central, via the Portal
 jk verify                 # rebuild in a scratch dir and diff artifact hashes
 jk audit                  # OSV
 jk deny                   # apply [deny.sources]
 ```
 
-Real credentialed uploads are **CLI-only**. MCP `publish` / `run kind=publish` is
-always a **dry-run** so tokens never enter the engine — [MCP](mcp.md).
+Central uploads are **CLI-only**. MCP `publish` / `run kind=publish` is a **dry-run** unless
+`upload=true`, which never reaches Central — [MCP](mcp.md).
 
 Export a lock scope as a Maven BOM: `jk export bom` — [Platforms](platforms.md).
 
@@ -68,8 +65,8 @@ scm = { url = "https://github.com/example/widget",
 
 ### Naming the target
 
-The same table says where a release goes, so a bare `jk publish` is the whole command on a
-laptop and in CI:
+The same table says where a release goes and how it is signed, so a bare `jk publish` is the
+whole command on a laptop and in CI:
 
 ```toml
 [repositories.releases]
@@ -77,14 +74,24 @@ url = "https://nexus.example.com/repository/maven-releases/"
 
 [publish]
 repository = "releases"             # a [repositories.<name>] entry, or "central"
-sign = true
-key-file = "~/.gnupg/release.asc"   # the passphrase is JK_GPG_PASSPHRASE, never here
+key-file = "~/.gnupg/release.asc"   # the PGP key; the passphrase is JK_GPG_PASSPHRASE, never here
+# sign = false  sbom = false  provenance = false  hold = true      # opt-outs
 ```
 
-`--repo-url`, `--central`, `--sign` and `--key-file` override the table. Credentials and
-passphrases are secrets and do not belong in `jk.toml`: a `password`, `token` or `passphrase` key
-in `[publish]` is refused, naming where the secret goes (`jk repo login`, `JK_REPO_<ID>_*`,
-`JK_GPG_PASSPHRASE`).
+Everything a release should carry is on by default. Flags only skip, preview or choose per run:
+`-S` skips the tests, `-U` previews, `-s` allows a `-SNAPSHOT`, and `--repository <name|url>`
+replaces `[publish] repository` for one run (`central` names the Portal). Credentials come from
+`jk repo login` or `JK_REPO_<ID>_*`, the passphrase from `JK_GPG_PASSPHRASE`; a `password`,
+`token` or `passphrase` key in `[publish]` is refused, naming where the secret goes. A repository's
+object-store `region` and `endpoint` live on its `[repositories.<name>]` table.
+
+**Signing** is on. A `key-file` means PGP: a detached `.asc` beside every file. When CI offers an
+identity token (GitHub Actions `id-token: write`, or `SIGSTORE_ID_TOKEN` on GitLab), the release is
+also signed keylessly with Sigstore, never through a browser prompt. Central with no PGP key is
+refused before anything builds, naming `[publish] key-file`. Any other repository with neither a
+key nor an identity gets an unsigned release and one line in the results saying so. `sign = false`
+turns signing off. The SBOM and the SLSA provenance are uploaded beside the artifact unless
+`sbom = false` or `provenance = false` says otherwise.
 
 The key file may hold the whole secret key or only its subkeys (`gpg --export-secret-subkeys`, the
 primary kept offline). The newest key in it that is flagged for signing, carries its secret and is
@@ -94,8 +101,8 @@ over.
 ### Publishing from a tag
 
 `[release] tag` is the template of the git tag a release carries, `{version}` standing for the
-released version (default `v{version}`). `jk publish --tag <name>` compares the name with the
-template rendered for the project's version and stops before anything compiles when they differ:
+released version (default `v{version}`). `jk publish` stops before anything compiles unless HEAD
+carries that tag on a clean tree, so a CI job on the tag is just:
 
 ```yaml
 # .github/workflows/publish.yml
@@ -105,12 +112,12 @@ on:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write            # keyless Sigstore signing
     steps:
       - uses: actions/checkout@v4
-      - run: jk publish --tag "$GITHUB_REF_NAME"
+      - run: jk publish
 ```
-
-The flag is explicit: JumpKick does not read CI variables to guess a tag.
 
 ### Publishing again
 
@@ -154,9 +161,9 @@ transitive.
 `jk.toml` declares the **next release**, never a `-SNAPSHOT`. `jk release` cuts it:
 
 ```bash
-jk release                  # build + test, install 1.4.7, tag v1.4.7, then start 1.4.8
+jk release                  # build + test, install 1.4.7, tag v1.4.7, start 1.4.8, push
 jk release --minor          # …then start 1.5.0 (--major: 2.0.0; --patch is the default)
-jk release --publish --push # also upload the release before tagging, and push the tag and branch
+jk release --no-push        # keep the tag and the commit local
 jk release --dry-run        # check everything, change nothing
 ```
 
@@ -166,19 +173,45 @@ The segment flag picks what moves **after** the release. In order, `jk release`:
    (`[release] tag`, default `v{version}`) does not exist, and the `[publish]` repository does not
    already hold the version (an unreachable repository is no objection); outside git only the last
    two apply;
-2. builds, tests and installs the version once, where `jk install` would (`--destination m2` names
-   the Maven local repository);
-3. with `--publish`, runs `jk publish` against the `[publish]` target — a failed upload leaves no
-   tag and no bump, and a re-run finishes what is missing;
-4. tags the commit (annotated), then rewrites the version in `jk.toml` (and in every workspace
+2. builds, tests and installs the version once, exactly as `jk install` does (`-S` skips the tests;
+   `--destination m2` names the Maven local repository);
+3. tags the commit (annotated), then rewrites the version in `jk.toml` (and in every workspace
    member that declares the same literal), relocks, and commits it as `Start <next>`;
-5. with `--push`, pushes the branch and the tag; otherwise it prints the push command.
+4. pushes the branch and the tag (`--no-push` prints the push command instead);
+5. publishes, when this machine is the one that publishes (below).
 
-Outside git, steps 4 and 5 shrink to rewriting the version in `jk.toml` and relocking: there is
-nothing to tag, commit or push, and `--push` is refused.
+Outside git, steps 3 to 5 shrink to rewriting the version in `jk.toml` and relocking (and, in local
+publish mode, the upload before it): there is nothing to tag, commit or push.
 
-When a later step fails, the message says what was done and the command that finishes the rest.
-A workspace is released from the root; members that inherit its version follow it.
+**Who publishes** is inferred, and `--publish ci|local|none` overrides it for one run:
+
+| The project has | Mode | `jk release` ends by |
+|-----------------|------|----------------------|
+| no destination: no `[publish] repository`, no `[image] registry` (in `jk.toml` or `~/.jk/config.toml`) | `none` | pushing the tag |
+| a destination, and a CI file that runs `jk publish` | `ci` | printing `pushed v1.4.7; CI publishes it` |
+| a `[publish] repository`, and no such CI file | `local` | running `jk publish` on the pushed tag |
+
+CI files are the usual ones: `.github/workflows/`, `.gitlab-ci.yml`, `.forgejo/workflows/`,
+`.gitea/workflows/`, `.woodpecker*`, `.circleci/config.yml`, `.buildkite/`, `Jenkinsfile`,
+`azure-pipelines.yml`, `bitbucket-pipelines.yml` and `.drone.yml`; a pipeline that only runs tests
+does not count. When the inference is wrong for a project (a pipeline defined in a UI, say), say so
+once in `jk.toml`:
+
+```toml
+[release]
+publish = "ci"       # or "local" (or "none")
+```
+
+In `local` mode `jk release` checks, before it tags, that a credential and the signing key resolve
+for the target. When they do not, nothing has changed: `no credential for central on this machine;
+if CI publishes this project, run jk release --publish ci`. The upload runs from a checkout of the
+tag, so a failed upload after the push leaves a pushed tag and says to run `jk publish` on it.
+`--publish ci` with `--no-push` is refused: CI cannot see a tag that was not pushed.
+
+A git tag is signed as git itself is configured (`tag.gpgSign`, `user.signingkey`); `jk release` has
+no flag for it. When a later step fails, the message says what was done and the command that
+finishes the rest. A workspace is released from the root; members that inherit its version follow
+it.
 
 `jk release --undo` takes back a release cut on this machine and not yet pushed or published: it
 drops the `Start <next>` commit when it is HEAD, uninstalls the released version (from `~/.m2` only
@@ -186,45 +219,42 @@ what JumpKick put there) and deletes the tag, so `jk install` installs `<version
 It refuses when a git remote has the tag, a remote branch has the `Start <next>` commit, or the
 `[publish]` repository holds the version.
 
-[Releasing](release.md) has the CI recipes. CI usually does the upload: a developer runs `jk release --push`, and the tag triggers a job that
-runs `jk publish --tag "$GITHUB_REF_NAME"` ([above](#publishing-from-a-tag)). Locally, `jk install`
-is the loop; `jk release` is the end of it.
+[Releasing](release.md) has the CI recipes. Locally, `jk install` is the loop; `jk release` is the
+end of it.
 
 ## Maven Central
 
-`jk publish -c` publishes through the Sonatype Central Portal: one signed bundle — thin jar,
-POM, sources jar, javadoc jar, a detached GPG `.asc` on each, `.md5` and `.sha1` beside each — is
-uploaded to the Portal's API, and JumpKick polls the deployment until the Portal rules.
+`jk publish --repository central` (or `[publish] repository = "central"`) publishes through the
+Sonatype Central Portal: one signed bundle — thin jar, POM, sources jar, javadoc jar, a detached
+GPG `.asc` on each, `.md5` and `.sha1` beside each — is uploaded to the Portal's API as a
+user-managed deployment. JumpKick polls it to `VALIDATED`, publishes the deployment itself and
+polls it to `PUBLISHED`.
 
 ```bash
 # once: the Portal user token (central.sonatype.com → account → Generate User Token)
 printf '%s' "$TOKEN_PASSWORD" | jk repo login central -U https://central.sonatype.com -s "$TOKEN_NAME"
 
-jk publish -c -I -f ~/.gnupg/release.asc   # builds the four artefacts; JK_GPG_PASSPHRASE or -p
+jk publish                # [publish] repository = "central", key-file = "…"; JK_GPG_PASSPHRASE
 #   Published com.example:widget:1.0.0 to the Central Portal (16 files)
-#     deployment 28570f16-… · VALIDATED; release it from the Portal, or use --publishing-type automatic
+#     deployment 28570f16-… · PUBLISHED
 ```
 
-| Flag | Meaning |
-|------|---------|
-| `--central` | the Portal instead of a repository URL; requires `--sign --key-file` and the `[publish]` table |
-| `--publishing-type user-managed` | default: the Portal validates and parks the deployment for a click in its UI (`VALIDATED`) |
-| `--publishing-type automatic` | the Portal releases a valid deployment to Central on its own (`PUBLISHED`) |
-| `--repo-url <url>` | another Portal (a mirror, a stub) instead of `https://central.sonatype.com/` |
-| `--dry-run` | write the bundle to `target/publish/central-bundle.zip`, list its entries, upload nothing |
+`[publish] hold = true` stops at `VALIDATED` and prints `release it from the Portal`, leaving the
+last click to a person. `--dry-run` writes the bundle to `target/publish/central-bundle.zip`, lists
+its entries and uploads nothing. `JK_CENTRAL_PORTAL_URL` points the `central` repository at another
+Portal (a mirror, a stub).
 
 Before anything is signed, JumpKick refuses with the exact fix when the sources or javadoc jar is not
-on disk, when `[publish]` lacks a key Central requires, or when `--sign` is absent. The poll walks
-`PENDING → VALIDATING → VALIDATED` (`→ PUBLISHING → PUBLISHED` with `automatic`); a `FAILED`
-deployment fails the run and prints every validation error the Portal listed.
+on disk, when `[publish]` lacks the `key-file` Central requires, or says `sign = false`. The poll
+walks `PENDING → VALIDATING → VALIDATED → PUBLISHING → PUBLISHED`; a `FAILED` deployment fails the
+run and prints every validation error the Portal listed.
 
 The credential is the `central` entry: `jk repo login central -U https://central.sonatype.com`
 with the token's name as `--username` and its password on stdin (JumpKick sends the Portal the base64
 `name:password` it documents), or a token already encoded, on stdin without `--username`. From
 CI, `JK_REPO_CENTRAL_USERNAME` + `JK_REPO_CENTRAL_PASSWORD` (or `JK_REPO_CENTRAL_TOKEN`) with
 `JK_REPO_CENTRAL_HOST=central.sonatype.com` beside them — the same name-to-origin binding every
-stored credential needs ([Repositories: credentials](repositories.md#credentials)). `--user` /
-`--password` on the command line are the token's name and password too.
+stored credential needs ([Repositories: credentials](repositories.md#credentials)).
 
 `target/jk-results.md` gets a **Publish** block for every publish run — the target, the file
 count, and for Central the deployment id, the state the poll ended in and every validation error
@@ -232,13 +262,14 @@ count, and for Central the deployment id, the state the poll ended in and every 
 
 ## SBOM
 
-`jk publish -S` uploads a CycloneDX 1.6 and an SPDX 2.3 document beside the artifact and
-writes the same two files under the module's `target/` — `target/sbom/<name>-<version>.cdx.json`
-and `target/sbom/<name>-<version>.spdx.json` — printing their paths. With `--dry-run` nothing is uploaded and no
-`--repo-url` is needed, so a release script takes the bill of materials from disk:
+`jk publish` uploads a CycloneDX 1.6 and an SPDX 2.3 document beside the artifact (`[publish] sbom =
+false` turns them off) and writes the same two files under the module's `target/` —
+`target/sbom/<name>-<version>.cdx.json` and `target/sbom/<name>-<version>.spdx.json` — printing
+their paths. With `--dry-run` nothing is uploaded and no repository is needed, so a release script
+takes the bill of materials from disk:
 
 ```bash
-jk publish -S -U
+jk publish -U
 #   wrote target/sbom/widget-1.0.0.cdx.json
 #   wrote target/sbom/widget-1.0.0.spdx.json
 ```
@@ -257,11 +288,11 @@ documents carry the dependency graph between them: CycloneDX as `dependencies`, 
 `DESCRIBES` relationship from the document to the module and `DEPENDS_ON` relationships from the
 module and each package to what it depends on.
 
-`--slsa` uploads an SLSA v1 provenance statement (`.intoto.json`) whose
-`resolvedDependencies` are the same closure: each component's purl as `uri` and its locked
+The release also carries an SLSA v1 provenance statement (`.intoto.json`; `[publish] provenance =
+false` turns it off) whose `resolvedDependencies` are the same closure: each component's purl as `uri` and its locked
 SHA-256 as `digest.sha256`.
 
-With `--sign`, the statement goes up inside a [DSSE](https://github.com/secure-systems-lab/dsse)
+With a PGP `key-file`, the statement goes up inside a [DSSE](https://github.com/secure-systems-lab/dsse)
 envelope signed by the same key (`.intoto.jsonl`, one JSON line) instead of bare: the base64
 statement as `payload`, `payloadType` `application/vnd.in-toto+json`, and one signature whose
 `sig` is a binary OpenPGP signature and whose `keyid` is the signing key's fingerprint. The
@@ -280,7 +311,7 @@ gpg --verify statement.sig pae.bin
 The envelope's signature is new each time it is made, so a re-run after a partial publish keeps
 the envelope the repository already holds over the same statement, and refuses one over another.
 
-`--sigstore` without `--sign` signs the envelope keylessly: its one signature carries no `keyid`,
+Without a key, in CI that offers an identity token, the envelope is signed keylessly: its one signature carries no `keyid`,
 and the `.intoto.jsonl.sigstore` beside it is the Sigstore bundle of that signature (the
 certificate of the short-lived key and its transparency-log entry) rather than a bundle over the
 envelope file. Only that bundle verifies the envelope, so a re-run that finds a keyless envelope
@@ -292,8 +323,8 @@ cosign verify-blob --bundle widget-1.0.0.intoto.jsonl.sigstore --new-bundle-form
   --certificate-identity <identity> --certificate-oidc-issuer <issuer> pae.bin
 ```
 
-A dry run does not reach Sigstore, so with `--sigstore` alone it writes the bare `.intoto.json`.
-With both `--sign` and `--sigstore` the envelope is the GPG-signed one, with a `.sigstore` bundle
+A dry run does not reach Sigstore, so without a key it writes the bare `.intoto.json`.
+With a key and an identity both, the envelope is the GPG-signed one, with a `.sigstore` bundle
 over the file like every other file.
 
 ## Deny policy

@@ -46,18 +46,12 @@ public final class PublishTail {
     static PublishPlans.Request request(TailArgs.Publish a) {
         return new PublishPlans.Request(
                 a.repoUrl(),
-                a.region(),
-                a.endpoint(),
                 a.allowSnapshot(),
                 a.dryRun(),
                 a.keyFile(),
                 a.gpgPassphrase(),
-                a.sigstore(),
-                a.slsa(),
-                a.sbom(),
                 a.credential(),
-                a.central(),
-                a.publishingType());
+                a.central());
     }
 
     /** What a publish pass sent, from its plan's state; null for a plan that published nothing. */

@@ -60,6 +60,42 @@ class ManifestPublishTest {
     }
 
     @Test
+    void signing_the_sbom_and_the_provenance_are_on_unless_the_table_turns_them_off() throws Exception {
+        PomMetadata defaults = parse("[publish]\nrepository = \"releases\"\n").pomMetadata();
+        assertThat(defaults.sign()).isTrue();
+        assertThat(defaults.sbom()).isTrue();
+        assertThat(defaults.provenance()).isTrue();
+        assertThat(defaults.hold()).isFalse();
+
+        PomMetadata off = parse("""
+                [publish]
+                sign = false
+                sbom = false
+                provenance = false
+                hold = true
+                """).pomMetadata();
+        assertThat(off.sign()).isFalse();
+        assertThat(off.sbom()).isFalse();
+        assertThat(off.provenance()).isFalse();
+        assertThat(off.hold()).isTrue();
+    }
+
+    @Test
+    void who_publishes_a_release_is_ci_local_or_none_and_nothing_else() throws Exception {
+        parse("");
+        assertThat(JkBuildParser.releaseTable(tmp.resolve("jk.toml")).publish()).isEmpty();
+
+        parse("[release]\npublish = \"ci\"\n");
+        assertThat(JkBuildParser.releaseTable(tmp.resolve("jk.toml")).publish()).isEqualTo("ci");
+
+        assertThatThrownBy(() -> {
+                    parse("[release]\npublish = \"cloud\"\n");
+                    JkBuildParser.releaseTable(tmp.resolve("jk.toml"));
+                })
+                .hasMessageContaining("[release] publish must be");
+    }
+
+    @Test
     void the_release_tag_defaults_and_can_be_templated() throws Exception {
         parse("");
         assertThat(JkBuildParser.releaseTable(tmp.resolve("jk.toml")).tag()).isEqualTo("v{version}");

@@ -74,7 +74,7 @@ public final class Publisher implements Plugin, PublishExtension {
     /** The transport a repository upload goes through; a test hands in one without the retry ladder. */
     private final Supplier<Http> http;
 
-    /** Opens the keyless signer of {@code --sigstore}; a test hands in one that needs no Sigstore. */
+    /** Opens the keyless signer; a test hands in one that needs no Sigstore. */
     private final Callable<KeylessSigstoreSigner> keyless;
 
     public Publisher() {
@@ -387,12 +387,13 @@ public final class Publisher implements Plugin, PublishExtension {
 
     /** The fix a refusal prints when Central is asked for without a signing key. */
     public static final String SIGNING_REQUIRED =
-            "Maven Central needs every file signed; pass --sign --key-file <secret-key.asc>"
-                    + "\n  give the passphrase with --key-passphrase or JK_GPG_PASSPHRASE";
+            "Maven Central needs every file signed; set [publish] key-file = \"<secret-key.asc>\""
+                    + "\n  give the passphrase with JK_GPG_PASSPHRASE";
 
     /**
-     * The Central Portal flow: sign every artifact into one {@link CentralBundle}, upload it, and
-     * poll the deployment to its verdict. A dry run writes the bundle under the module's {@code
+     * The Central Portal flow: sign every artifact into one {@link CentralBundle}, upload it, poll the
+     * deployment to {@code VALIDATED}, release it, and poll it to {@code PUBLISHED}; {@code hold} stops
+     * at {@code VALIDATED}. A dry run writes the bundle under the module's {@code
      * target/publish/} and lists its entries instead.
      */
     private static PublishResult publishCentral(
@@ -416,8 +417,6 @@ public final class Publisher implements Plugin, PublishExtension {
 
         URI portalUrl = URI.create(c.stringOpt("repoUrl").orElse(CentralPortal.DEFAULT_URL.toString()));
         if (ctx.offline()) throw new OfflineException(portalUrl);
-        CentralPortal.PublishingType type =
-                CentralPortal.PublishingType.parse(c.stringOpt("publishingType").orElse(null));
         RepoCredential cred =
                 switch (c.string("repoAuthType").toLowerCase(Locale.ROOT)) {
                     case "basic" ->
@@ -436,11 +435,18 @@ public final class Publisher implements Plugin, PublishExtension {
         try {
             CentralBundle.Bundle bundle = CentralBundle.build(project.project(), artifacts, gpg, scratch);
             for (String entry : bundle.entries()) ctx.label("bundle " + entry);
-            String id = portal.upload(bundle.zip(), name, type);
+            String id = portal.upload(bundle.zip(), name);
             ctx.label("upload " + name + ".zip (" + bundle.size() + " bytes) → deployment " + id);
-            CentralPortal.Status status =
-                    portal.awaitTerminal(id, type, CentralPortal.DEFAULT_TIMEOUT, Clock.SYSTEM, Thread::sleep);
+            CentralPortal.Status status = portal.awaitTerminal(
+                    id, CentralPortal.Until.VALIDATED, CentralPortal.DEFAULT_TIMEOUT, Clock.SYSTEM, Thread::sleep);
             ctx.label("deployment " + id + " " + status.state());
+            if ("VALIDATED".equals(status.state()) && !c.bool("hold", false)) {
+                portal.publish(id);
+                ctx.label("publish deployment " + id);
+                status = portal.awaitTerminal(
+                        id, CentralPortal.Until.PUBLISHED, CentralPortal.DEFAULT_TIMEOUT, Clock.SYSTEM, Thread::sleep);
+                ctx.label("deployment " + id + " " + status.state());
+            }
             for (String error : status.errors()) ctx.label("  " + error);
             return PublishResult.uploaded(bundle.entries().size(), bundle.size())
                     .withWritten(written)

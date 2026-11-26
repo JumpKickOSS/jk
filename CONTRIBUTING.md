@@ -172,7 +172,7 @@ paths.
 | **Nightly** (`ci-nightly.yml`) | Daily cron + manual `workflow_dispatch` | `slow`, `network`, `bench`; the coverage ratchet (`jk test --coverage`, `jk guard`); heap guard; doc examples. macOS: product smoke (`scripts/ci-product-smoke.sh`). |
 
 **Cut release** (`cut-release.yml`, manual) runs
-`jk release --push`, which tests and tags the declared version and starts the next one; its tag push
+`jk release`, which tests, tags the declared version and starts the next one; its tag push
 starts the lane above; when it is green, **release** (`release.yml`, CD) builds every platform
 without re-running a test, then signs and publishes behind the `release` environment's approval. Coverage is a
 per-module ratchet (`jk test --coverage`, then `jk guard`; G91) with no percentage target, and the

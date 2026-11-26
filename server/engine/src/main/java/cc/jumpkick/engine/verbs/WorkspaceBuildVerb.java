@@ -156,18 +156,12 @@ public final class WorkspaceBuildVerb implements HostedVerb {
                                 ? UploadTail.of(entryDir)
                                 : new TailArgs.Publish(
                                         URI.create("https://publish.invalid/"),
-                                        null,
-                                        null,
                                         false,
                                         true,
                                         null,
                                         null,
-                                        false,
-                                        false,
-                                        false,
                                         RepoCredential.ANONYMOUS,
-                                        false,
-                                        null);
+                                        false);
                     default -> null;
                 };
         boolean skipTests = spec.skipTests()

@@ -38,6 +38,7 @@ class CentralPortalTest {
     private volatile List<String> walk = List.of("PENDING", "VALIDATING", "VALIDATED");
     private volatile String errorsJson = "";
     private volatile int uploadStatus = 201;
+    private volatile int deploymentStatus = 204;
 
     /** A clock the test moves by hand, so a deadline passes through a method call and never a wait. */
     private static final class TestClock implements Clock {
@@ -78,6 +79,12 @@ class CentralPortalTest {
             exchange.getResponseBody().write(id);
             exchange.close();
         });
+        server.createContext("/api/v1/publisher/deployment/", exchange -> {
+            requests.add(exchange.getRequestMethod() + " " + exchange.getRequestURI());
+            authorizations.add(exchange.getRequestHeaders().getFirst("Authorization"));
+            exchange.sendResponseHeaders(deploymentStatus, -1);
+            exchange.close();
+        });
         server.createContext("/api/v1/publisher/status", exchange -> {
             requests.add(exchange.getRequestMethod() + " " + exchange.getRequestURI());
             int n = Math.min(polls.getAndIncrement(), walk.size() - 1);
@@ -110,10 +117,10 @@ class CentralPortalTest {
     @Test
     void upload_is_a_bearer_multipart_post_that_returns_the_deployment_id() throws Exception {
         CentralPortal portal = new CentralPortal(base, new RepoCredential.Bearer("tok"), new Http());
-        String id = portal.upload(bundle("zip"), "widget-1.0.0", CentralPortal.PublishingType.AUTOMATIC);
+        String id = portal.upload(bundle("zip"), "widget-1.0.0");
         assertThat(id).isEqualTo("dep-1234");
         assertThat(requests)
-                .containsExactly("POST /api/v1/publisher/upload?name=widget-1.0.0&publishingType=AUTOMATIC");
+                .containsExactly("POST /api/v1/publisher/upload?name=widget-1.0.0&publishingType=USER_MANAGED");
         assertThat(authorizations).containsExactly("Bearer tok");
         String body = new String(uploaded, StandardCharsets.ISO_8859_1);
         assertThat(body)
@@ -128,7 +135,7 @@ class CentralPortalTest {
         new Random(7).nextBytes(zip);
         Path file = Files.write(dir.resolve("big.zip"), zip);
         CentralPortal portal = new CentralPortal(base, new RepoCredential.Bearer("tok"), new Http());
-        portal.upload(file, "widget-1.0.0", CentralPortal.PublishingType.USER_MANAGED);
+        portal.upload(file, "widget-1.0.0");
         byte[] body = uploaded;
         assertThat(contentLength).isEqualTo(String.valueOf(body.length));
         String text = new String(body, StandardCharsets.ISO_8859_1);
@@ -143,11 +150,11 @@ class CentralPortalTest {
     void an_upload_answered_with_a_server_error_is_not_sent_again() throws Exception {
         uploadStatus = 503;
         CentralPortal portal = new CentralPortal(base, new RepoCredential.Bearer("tok"), new Http());
-        assertThatThrownBy(() -> portal.upload(bundle("zip"), "widget-1.0.0", CentralPortal.PublishingType.AUTOMATIC))
+        assertThatThrownBy(() -> portal.upload(bundle("zip"), "widget-1.0.0"))
                 .isInstanceOf(IOException.class)
                 .hasMessageContaining("503");
         assertThat(requests)
-                .containsExactly("POST /api/v1/publisher/upload?name=widget-1.0.0&publishingType=AUTOMATIC");
+                .containsExactly("POST /api/v1/publisher/upload?name=widget-1.0.0&publishingType=USER_MANAGED");
     }
 
     @Test
@@ -160,15 +167,11 @@ class CentralPortalTest {
     }
 
     @Test
-    void the_poll_walks_to_validated_for_a_user_managed_deployment() throws Exception {
+    void the_poll_walks_to_validated() throws Exception {
         CentralPortal portal = new CentralPortal(base, new RepoCredential.Bearer("tok"), new Http());
         List<Long> sleeps = new ArrayList<>();
         CentralPortal.Status status = portal.awaitTerminal(
-                "dep-1234",
-                CentralPortal.PublishingType.USER_MANAGED,
-                Duration.ofMinutes(1),
-                new TestClock(),
-                sleeps::add);
+                "dep-1234", CentralPortal.Until.VALIDATED, Duration.ofMinutes(1), new TestClock(), sleeps::add);
         assertThat(status.state()).isEqualTo("VALIDATED");
         assertThat(status.errors()).isEmpty();
         assertThat(polls.get()).isEqualTo(3);
@@ -176,15 +179,11 @@ class CentralPortalTest {
     }
 
     @Test
-    void an_automatic_deployment_polls_through_validated_to_published() throws Exception {
+    void a_poll_for_published_walks_through_validated_to_published() throws Exception {
         walk = List.of("PENDING", "VALIDATED", "PUBLISHING", "PUBLISHED");
         CentralPortal portal = new CentralPortal(base, new RepoCredential.Bearer("tok"), new Http());
         CentralPortal.Status status = portal.awaitTerminal(
-                "dep-1234",
-                CentralPortal.PublishingType.AUTOMATIC,
-                Duration.ofMinutes(1),
-                new TestClock(),
-                millis -> {});
+                "dep-1234", CentralPortal.Until.PUBLISHED, Duration.ofMinutes(1), new TestClock(), millis -> {});
         assertThat(status.state()).isEqualTo("PUBLISHED");
         assertThat(polls.get()).isEqualTo(4);
     }
@@ -196,11 +195,7 @@ class CentralPortalTest {
                 + "\"pkg:maven/com.example/widget@1.0.0\":[\"Javadocs must be provided but not found in entries\"]}";
         CentralPortal portal = new CentralPortal(base, new RepoCredential.Bearer("tok"), new Http());
         CentralPortal.Status status = portal.awaitTerminal(
-                "dep-1234",
-                CentralPortal.PublishingType.USER_MANAGED,
-                Duration.ofMinutes(1),
-                new TestClock(),
-                millis -> {});
+                "dep-1234", CentralPortal.Until.VALIDATED, Duration.ofMinutes(1), new TestClock(), millis -> {});
         assertThat(status.failed()).isTrue();
         assertThat(status.errors())
                 .containsExactly(
@@ -216,7 +211,7 @@ class CentralPortalTest {
         TestClock clock = new TestClock();
         assertThatThrownBy(() -> portal.awaitTerminal(
                         "dep-1234",
-                        CentralPortal.PublishingType.USER_MANAGED,
+                        CentralPortal.Until.VALIDATED,
                         Duration.ofSeconds(3),
                         clock,
                         millis -> clock.advance(Duration.ofMillis(millis))))
@@ -234,7 +229,7 @@ class CentralPortalTest {
         TestClock clock = new TestClock(Long.MAX_VALUE - Duration.ofSeconds(1).toNanos());
         CentralPortal.Status status = portal.awaitTerminal(
                 "dep-1234",
-                CentralPortal.PublishingType.USER_MANAGED,
+                CentralPortal.Until.VALIDATED,
                 Duration.ofMinutes(1),
                 clock,
                 millis -> clock.advance(Duration.ofMillis(millis)));
@@ -245,7 +240,7 @@ class CentralPortalTest {
     @Test
     void a_quote_or_line_break_in_the_name_cannot_end_the_filename_parameter() throws Exception {
         CentralPortal portal = new CentralPortal(base, new RepoCredential.Bearer("tok"), new Http());
-        portal.upload(bundle("zip"), "widget\"; name=\"x\r\nX-Injected: 1", CentralPortal.PublishingType.AUTOMATIC);
+        portal.upload(bundle("zip"), "widget\"; name=\"x\r\nX-Injected: 1");
         String body = new String(uploaded, StandardCharsets.ISO_8859_1);
         assertThat(body)
                 .contains("name=\"bundle\"; filename=\"widget%22; name=%22x%0D%0AX-Injected: 1.zip\"\r\n")
@@ -267,9 +262,23 @@ class CentralPortalTest {
                 .isInstanceOf(IOException.class)
                 .hasMessageContaining("deploymentState");
         assertThatThrownBy(() -> CentralPortal.parseStatus("<html>", "d")).isInstanceOf(IOException.class);
-        assertThat(CentralPortal.PublishingType.parse("automatic")).isEqualTo(CentralPortal.PublishingType.AUTOMATIC);
-        assertThat(CentralPortal.PublishingType.parse(null)).isEqualTo(CentralPortal.PublishingType.USER_MANAGED);
-        assertThatThrownBy(() -> CentralPortal.PublishingType.parse("later"))
-                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void publish_posts_the_deployment_with_the_bearer_token() throws Exception {
+        CentralPortal portal = new CentralPortal(base, new RepoCredential.Bearer("tok"), new Http());
+        portal.publish("dep-1234");
+        assertThat(requests).containsExactly("POST /api/v1/publisher/deployment/dep-1234");
+        assertThat(authorizations).containsExactly("Bearer tok");
+    }
+
+    @Test
+    void a_publish_the_portal_refuses_names_the_status_and_the_deployment() throws Exception {
+        deploymentStatus = 400;
+        CentralPortal portal = new CentralPortal(base, new RepoCredential.Bearer("tok"), new Http());
+        assertThatThrownBy(() -> portal.publish("dep-1234"))
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("HTTP 400")
+                .hasMessageContaining("dep-1234");
     }
 }

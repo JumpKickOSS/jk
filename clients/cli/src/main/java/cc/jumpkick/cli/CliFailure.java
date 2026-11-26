@@ -125,7 +125,7 @@ final class CliFailure {
             }
             StringWriter sw = new StringWriter();
             PrintWriter pw = new PrintWriter(sw);
-            // Option values are left out: one may be a password (jk publish -P …).
+            // Option values are left out: one may be a password (a token passed as an option).
             pw.println(Clock.SYSTEM.instant() + "  "
                     + ChangeActor.shell(List.of(args)).label());
             t.printStackTrace(pw);

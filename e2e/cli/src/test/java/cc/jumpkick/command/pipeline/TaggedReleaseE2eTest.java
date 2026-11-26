@@ -74,9 +74,15 @@ class TaggedReleaseE2eTest {
 
     private static int jk(Path dir, String... verbAndFlags) {
         List<String> args = new ArrayList<>(List.of(verbAndFlags));
-        args.addAll(List.of(
-                "-C", dir.toString(), "--cache-dir", dir.resolve("cache").toString()));
-        return Jk.execute(args.toArray(String[]::new));
+        args.addAll(List.of("-C", dir.toString()));
+        String previous = System.getProperty("jk.env.JK_CACHE_DIR");
+        System.setProperty("jk.env.JK_CACHE_DIR", dir.resolve("cache").toString());
+        try {
+            return Jk.execute(args.toArray(String[]::new));
+        } finally {
+            if (previous == null) System.clearProperty("jk.env.JK_CACHE_DIR");
+            else System.setProperty("jk.env.JK_CACHE_DIR", previous);
+        }
     }
 
     private static String git(Path dir, String... args) throws IOException, InterruptedException {
@@ -247,7 +253,7 @@ class TaggedReleaseE2eTest {
                         "publish",
                         "-C",
                         dir.toString(),
-                        "--repo-url",
+                        "--repository",
                         repo.toUri().toString()))
                 .isZero());
         Path version = repo.resolve(group.replace('.', '/') + "/rel-lib/1.4.7");

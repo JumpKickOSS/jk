@@ -122,10 +122,10 @@ feature matrix.
 
 | Battery | Status today | Target |
 |---|---|---|
-| Plugin SDK on Maven Central | publishable with `jk publish -c` from `shared/host` and `shared/plugin-sdk`; not on Central. First-party plugins keep the workspace edge. The sample plugin compiles against a `jk publish`ed SDK | published with every release |
+| Plugin SDK on Maven Central | publishable with `jk publish` (Central) from `shared/host` and `shared/plugin-sdk`; not on Central. First-party plugins keep the workspace edge. The sample plugin compiles against a `jk publish`ed SDK | published with every release |
 | Coverage | JaCoCo XML + HTML per module, Coverage block and Δ in `jk-results.md`, guard floor on `coverage.line` / `coverage.branch` | done |
 | Sources and javadoc jars | both from `jk package`; javadoc for Java, Dokka (`[dokka]`) for a Kotlin or mixed module | done |
-| Central Portal publish | `jk publish -c`: signed bundle, Portal upload, status poll, Publish block in results | done |
+| Central Portal publish | `jk publish` (Central): signed bundle, Portal upload, status poll, Publish block in results | done |
 | Code generation | `[generate]`, protobuf, annotation processors, KSP, OpenAPI, jOOQ, Avro, ANTLR, JAXB | done |
 | Lint as a cached step | Checkstyle, PMD, SpotBugs and detekt as cached steps, findings in results; Error Prone via `[javac]`, null checking via `[nullness]` | done |
 | TestNG | `testng-engine` on the JUnit Platform launcher | done |

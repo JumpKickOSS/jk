@@ -17,6 +17,10 @@ JumpKick shows you this page's new entries after it updates itself.
 - **Maven repositories get the thin main jar.** Assembly jars and other runnable artifacts
   ship through the release lane. Import reports Maven Shade and Gradle Shadow relocations on
   libraries. [Publishing](publish.md)
+- **`jk publish` and `jk release` do the whole job with no flags.** Releases are signed, with an
+  SBOM and provenance, and a Central upload goes from `VALIDATED` to `PUBLISHED`. `jk release`
+  pushes, and publishes from this machine when no CI file runs `jk publish`; `[publish]` and
+  `[release] publish` hold the choices ([Publishing](publish.md), [Releasing](release.md)).
 
 ## 0.60.0
 

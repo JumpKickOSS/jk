@@ -32,6 +32,8 @@ destination = "jk"
 # The POM metadata every published member carries; Maven Central refuses a POM without it.
 [publish]
 url = "https://jumpkick.build"
+# scripts/publish-central.sh copies the release key here for the SDK modules' Central bundles.
+key-file = "target/central-release-key.asc"
 licenses = [{ name = "Apache-2.0", url = "https://www.apache.org/licenses/LICENSE-2.0" }]
 developers = [{ id = "bsant", name = "Bryan Sant" }]
 scm = { url = "https://github.com/JumpKickOSS/jk", connection = "scm:git:https://github.com/JumpKickOSS/jk.git", developer-connection = "scm:git:ssh://git@github.com/JumpKickOSS/jk.git" }

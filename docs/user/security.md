@@ -57,14 +57,13 @@ program it starts gets one from your shell unless the module's `jk.toml` names i
 |----------|----------------------------|
 | `JK_REPO_<ID>_TOKEN`, `JK_REPO_<ID>_USERNAME`, `JK_REPO_<ID>_PASSWORD`, an S3 repository's `JK_REPO_<ID>_ACCESS_KEY` and `JK_REPO_<ID>_SECRET_KEY`, any other `JK_REPO_<ID>_` name ending in `KEY`, `SECRET`, `PASSPHRASE` or `CREDENTIALS`, and each with `_FILE` | a repository's credential, a shared cache's token (`JK_REPO_<HOST>_TOKEN`), the Central Portal login ([Repositories](repositories.md#credentials)). `JK_REPO_<ID>_HOST` and other names, such as a region, are not credentials and follow the ordinary rules |
 | `JK_GITHUB_TOKEN`, `JK_GITLAB_TOKEN`, `JK_GITEA_TOKEN`, `JK_BITBUCKET_TOKEN` | a forge's token for its package registry and git remotes |
-| `JK_GPG_PASSPHRASE` | `jk publish --sign` |
+| `JK_GPG_PASSPHRASE` | the passphrase of the PGP key `jk publish` signs with |
 | `JK_CACHE_KEY_SEED` | the shared cache's key seed ([below](#what-a-shared-cache-learns-of-your-environment)) |
 
 A test that looks one up reads it unset, and a program the test starts doesn't get it.
 `[env] inherit = true` and `[env] scope = ["*"]` don't hand it over either. A variable a test
 looked up and found withheld keys nothing, so the result is shared as if the test had never looked.
-Names other tools read too, such as `GITHUB_TOKEN`, `GH_TOKEN`, the `AWS_*` chain and `jk publish`'s
-`PUBLISH_USER` and `PUBLISH_PASSWORD`, belong to your shell, not to JumpKick, and follow the
+Names other tools read too, such as `GITHUB_TOKEN`, `GH_TOKEN` and the `AWS_*` chain, belong to your shell, not to JumpKick, and follow the
 ordinary rules ([Test](test.md#environment-variables-a-suite-reads)).
 
 **Naming one in `jk.toml` is your consent.** An integration test that publishes to a private

@@ -138,8 +138,12 @@ class PublishablePomTest {
                 List.of(new PomMetadata.Developer("bsant", "Bryan Sant", "bsant@example.com")),
                 new PomMetadata.Scm("https://github.com/example/widget", null, null),
                 null,
+                true,
+                null,
                 false,
-                null);
+                true,
+                true,
+                false);
 
         String xml = PublishablePom.render(
                         new JkBuild(new Project("com.example", "widget", "1.0.0", 21), JkBuild.Dependencies.empty()),
@@ -174,7 +178,20 @@ class PublishablePomTest {
                 .java(21)
                 .description("from jk.toml")
                 .build();
-        var meta = new PomMetadata(null, "from publish call", null, List.of(), List.of(), null, null, false, null);
+        var meta = new PomMetadata(
+                null,
+                "from publish call",
+                null,
+                List.of(),
+                List.of(),
+                null,
+                null,
+                true,
+                null,
+                false,
+                true,
+                true,
+                false);
         String xml = PublishablePom.render(new JkBuild(p, JkBuild.Dependencies.empty()), meta)
                 .xml();
         assertThat(xml).contains("<description>from publish call</description>");

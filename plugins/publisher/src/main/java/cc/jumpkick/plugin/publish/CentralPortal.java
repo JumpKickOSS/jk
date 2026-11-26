@@ -18,29 +18,30 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 import org.jspecify.annotations.Nullable;
 
 /**
- * The Sonatype Central Portal publisher API: one multipart upload of a {@link CentralBundle}, then
- * a status poll until the Portal has ruled. Authentication is a bearer token — the Portal's user
+ * The Sonatype Central Portal publisher API: one multipart upload of a {@link CentralBundle}, a
+ * status poll until the Portal has ruled, then the call that releases a validated deployment.
+ * Authentication is a bearer token — the Portal's user
  * token, which is the base64 of {@code name:password}; a {@link RepoCredential.Basic} is encoded
  * here, a {@link RepoCredential.Bearer} is taken as already encoded.
  *
- * <p>Endpoints: {@code POST /api/v1/publisher/upload?name=…&publishingType=…} answers the
+ * <p>Endpoints: {@code POST /api/v1/publisher/upload?name=…&publishingType=USER_MANAGED} answers the
  * deployment id as its body; {@code POST /api/v1/publisher/status?id=…} answers JSON with {@code
- * deploymentState} and, once validation has failed, {@code errors} — a map of scope to messages.
+ * deploymentState} and, once validation has failed, {@code errors} — a map of scope to messages;
+ * {@code POST /api/v1/publisher/deployment/<id>} releases a {@code VALIDATED} deployment.
  */
 public final class CentralPortal {
 
-    /** The production Portal; {@code --repo-url} points at another one. */
+    /** The production Portal; {@code jk publish --repository <url>} points at another one. */
     public static final URI DEFAULT_URL = URI.create("https://central.sonatype.com/");
 
     /**
-     * The credential id {@code jk publish -c} reads from the store and the environment: the
+     * The credential id a Central publish reads from the store and the environment: the
      * repository's own name, so the Portal's token lives where Central's does.
      */
     public static final String CREDENTIAL_ID = RepositorySpec.CENTRAL;
@@ -51,26 +52,10 @@ public final class CentralPortal {
     private static final long FIRST_POLL_MILLIS = 500;
     private static final long MAX_POLL_MILLIS = 5_000;
 
-    /**
-     * What the Portal does once the bundle validates: {@code USER_MANAGED} parks the deployment
-     * for a click in the Portal UI; {@code AUTOMATIC} releases it to Central.
-     */
-    public enum PublishingType {
-        USER_MANAGED,
-        AUTOMATIC;
-
-        /** {@code user-managed} / {@code automatic} in any case; anything else is a usage error. */
-        public static PublishingType parse(@Nullable String text) {
-            if (text == null || text.isBlank()) return USER_MANAGED;
-            String key = text.trim().toUpperCase(Locale.ROOT).replace('-', '_');
-            for (PublishingType t : values()) if (t.name().equals(key)) return t;
-            throw new IllegalArgumentException("--publishing-type must be user-managed or automatic, got: " + text);
-        }
-
-        /** The spelling the CLI and the docs use. */
-        public String flag() {
-            return name().toLowerCase(Locale.ROOT).replace('_', '-');
-        }
+    /** The state a poll waits for: the Portal has validated the bundle, or has published it. */
+    public enum Until {
+        VALIDATED,
+        PUBLISHED
     }
 
     /** One status answer: the state and every error message the Portal listed, any scope. */
@@ -84,11 +69,11 @@ public final class CentralPortal {
             return "FAILED".equals(state);
         }
 
-        /** Whether the poll can stop: the Portal will not move this deployment on its own any more. */
-        public boolean terminal(PublishingType type) {
+        /** Whether the poll can stop: the Portal has reached {@code until}, or failed. */
+        public boolean terminal(Until until) {
             return switch (state) {
                 case "FAILED", "PUBLISHED" -> true;
-                case "VALIDATED" -> type == PublishingType.USER_MANAGED;
+                case "VALIDATED" -> until == Until.VALIDATED;
                 default -> false;
             };
         }
@@ -130,13 +115,14 @@ public final class CentralPortal {
     }
 
     /**
-     * Upload the zip at {@code bundle} as deployment {@code name}; returns the id the Portal
-     * assigned. The multipart body streams from the file, so the bundle is never in the heap.
+     * Upload the zip at {@code bundle} as deployment {@code name}, held for a call to {@link
+     * #publish}; returns the id the Portal assigned. The multipart body streams from the file, so
+     * the bundle is never in the heap.
      */
-    public String upload(Path bundle, String name, PublishingType type) throws IOException, InterruptedException {
+    public String upload(Path bundle, String name) throws IOException, InterruptedException {
         String boundary = "----jk-central-" + UUID.randomUUID();
         HttpRequest.BodyPublisher body = multipart(boundary, name + ".zip", bundle);
-        URI uri = base.resolve("api/v1/publisher/upload?name=" + encode(name) + "&publishingType=" + type.name());
+        URI uri = base.resolve("api/v1/publisher/upload?name=" + encode(name) + "&publishingType=USER_MANAGED");
         // One attempt: the Portal may have taken the bundle before a 5xx or a reset, and a second
         // upload would be a second deployment.
         HttpResponse<byte[]> response = http.documents()
@@ -159,6 +145,18 @@ public final class CentralPortal {
         return text;
     }
 
+    /** Release the validated deployment {@code deploymentId} to Central. */
+    public void publish(String deploymentId) throws IOException, InterruptedException {
+        URI uri = base.resolve("api/v1/publisher/deployment/" + encode(deploymentId));
+        HttpResponse<byte[]> response = http.documents()
+                .postOnce(uri, HttpRequest.BodyPublishers.noBody(), Map.of("Authorization", "Bearer " + bearer));
+        if (response.statusCode() / 100 != 2) {
+            String text = new String(response.body(), StandardCharsets.UTF_8).trim();
+            throw new IOException("Central Portal publish returned HTTP " + response.statusCode() + " for deployment "
+                    + deploymentId + (text.isEmpty() ? "" : ": " + clip(text)));
+        }
+    }
+
     /** One status read for {@code deploymentId}. */
     public Status status(String deploymentId) throws IOException, InterruptedException {
         URI uri = base.resolve("api/v1/publisher/status?id=" + encode(deploymentId));
@@ -174,16 +172,15 @@ public final class CentralPortal {
 
     /**
      * Poll {@link #status} until the deployment is {@linkplain Status#terminal terminal} for
-     * {@code type}, backing off from half a second to five, and give up after {@code timeout} on
+     * {@code until}, backing off from half a second to five, and give up after {@code timeout} on
      * {@code clock} naming the id and the last state seen.
      */
-    public Status awaitTerminal(
-            String deploymentId, PublishingType type, Duration timeout, Clock clock, Sleeper sleeper)
+    public Status awaitTerminal(String deploymentId, Until until, Duration timeout, Clock clock, Sleeper sleeper)
             throws IOException, InterruptedException {
         long started = clock.nanos();
         long wait = FIRST_POLL_MILLIS;
         Status last = status(deploymentId);
-        while (!last.terminal(type)) {
+        while (!last.terminal(until)) {
             // A difference of two readings: the ticker has no origin, so a sum can wrap.
             if (clock.nanos() - started >= timeout.toNanos()) {
                 throw new IOException("Central Portal deployment " + deploymentId + " is still " + last.state()

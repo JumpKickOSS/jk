@@ -1103,9 +1103,12 @@
       "properties": {
         "name": { "type": "string", "description": "POM <name>; default the artifact id" },
         "url": { "type": "string" },
-        "repository": { "type": "string", "description": "Where `jk publish` sends a release: a [repositories.<name>] entry, or \"central\". A --repo-url or --central flag overrides it." },
-        "sign": { "type": "boolean", "description": "Sign the release as `jk publish --sign` does. Default false." },
-        "key-file": { "type": "string", "description": "The signing key file, relative to the module or ~/-prefixed. The passphrase never goes here (JK_GPG_PASSPHRASE)." },
+        "repository": { "type": "string", "description": "Where `jk publish` sends a release: a [repositories.<name>] entry, or \"central\". `jk publish --repository` overrides it for one run." },
+        "sign": { "type": "boolean", "description": "Sign the release. Default true: a key-file means PGP, and CI that offers an identity token adds keyless Sigstore. false publishes unsigned (Central refuses that)." },
+        "key-file": { "type": "string", "description": "The PGP signing key file, relative to the module or ~/-prefixed. Central requires one. The passphrase never goes here (JK_GPG_PASSPHRASE)." },
+        "sbom": { "type": "boolean", "description": "Upload the CycloneDX and SPDX SBOMs beside the artifact. Default true." },
+        "provenance": { "type": "boolean", "description": "Upload the SLSA provenance statement beside the artifact. Default true." },
+        "hold": { "type": "boolean", "description": "Stop a Central upload at VALIDATED and leave the release to the Portal. Default false: jk publishes the deployment itself." },
         "skip": { "type": "boolean", "description": "When true, jk publish and jk install leave this module out (a test harness, an example, a site tool); it still builds and tests. Never inherited from the workspace root. A shipped module may not depend on a skipped one outside its test tables." },
         "licenses": {
           "type": "array",
@@ -1139,9 +1142,10 @@
     },
     "release": {
       "type": "object",
-      "description": "[release]: how a release is named (docs/user/publish.md). The workspace root's table governs the whole workspace.",
+      "description": "[release]: how a release is named and who publishes it (docs/user/release.md). The workspace root's table governs the whole workspace.",
       "properties": {
         "tag": { "type": "string", "description": "The git tag of a release; {version} stands for the released version. Default \"v{version}\"." },
+        "publish": { "enum": ["ci", "local", "none"], "description": "Who publishes a release: \"ci\" (the pushed tag starts CI), \"local\" (jk release runs jk publish on the tag) or \"none\". Default: inferred from the destination and the CI files. `jk release --publish` overrides it for one run." },
         "files": {
           "type": "array",
           "description": "Files besides jk.toml that carry the declared version. `jk release` rewrites the pattern's one group in each to the next version, in the commit that starts it.",

@@ -277,7 +277,7 @@ public final class OciImageBuilder implements Plugin, ImageExtension {
     /**
      * {@code statement} signed with Sigstore keyless: one artifact whose layers are the DSSE
      * envelope and the bundle of its signature (the short-lived certificate and the transparency-log
-     * entry), as {@code jk publish --sigstore} uploads them beside a jar.
+     * entry), as {@code jk publish} uploads them beside a jar.
      */
     private static Referrers.Document signed(
             ImageContext ctx, String ref, byte[] statement, Callable<KeylessSigstoreSigner> keyless)

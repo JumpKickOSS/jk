@@ -5,8 +5,8 @@ Who runs which verb, and how a release travels from a laptop to a repository.
 | Verb | Who runs it | What it does |
 |------|-------------|--------------|
 | `jk install` | the developer, every edit | installs `<version>-SNAPSHOT` on this machine for sibling projects (`--destination m2` for Maven and Gradle ones), and an application or tool on this machine; offline |
-| `jk release` | the developer, once per version | builds, tests, installs and tags the declared version, then starts the next one |
-| `jk publish` | CI on the tag, or `jk release --publish` | uploads the release to the `[publish]` repository; in git, only from a clean checkout of the tag |
+| `jk release` | the developer, once per version | builds, tests, installs and tags the declared version, starts the next one and pushes both |
+| `jk publish` | CI on the tag, or `jk release` itself | uploads the release to the `[publish]` repository; in git, only from a clean checkout of the tag |
 
 `jk.toml` always holds the **next release**. A snapshot is a build-time suffix, never written down.
 
@@ -40,7 +40,7 @@ other tree it refuses and says why (no tag at HEAD, the tag of another version, 
 
 **Outside git** (a source archive), `jk release` and `jk publish` are releases by themselves: `jk
 release` runs the tests, builds and installs the plain version and moves `jk.toml` to the next one by
-editing it, with nothing to tag, commit or push (`--push` is refused); `jk release --undo` cannot
+editing it, with nothing to tag, commit or push; `jk release --undo` cannot
 tell which release to take back there, and says what to undo by hand. Every other verb builds a
 snapshot.
 
@@ -56,12 +56,12 @@ CI run on the tag starts the build and the upload, and that stage re-runs none o
 to a branch or a pull request starts no run.
 
 A repository can also cut the release from its Actions tab: a workflow that runs
-`jk release --patch --skip-tests --push` (JumpKick's own is `cut-release.yml`) tags the version, commits
+`jk release --patch --skip-tests` (JumpKick's own is `cut-release.yml`) tags the version, commits
 the next one and pushes both; the tests are CI's. A push made with the job's `GITHUB_TOKEN` starts no workflow, so the job
 ends by starting the tag's workflow itself (`gh workflow run ci.yml --ref "$tag"`).
 
 ```bash
-jk release --push           # build + test, tag v1.4.7, commit "Start 1.4.8", push both
+jk release                  # build + test, tag v1.4.7, commit "Start 1.4.8", push both
 ```
 
 ```yaml
@@ -75,7 +75,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: jk publish --tag "$GITHUB_REF_NAME"
+      - run: jk publish
         env:
           JK_REPO_RELEASES_USERNAME: ${{ secrets.NEXUS_USER }}
           JK_REPO_RELEASES_PASSWORD: ${{ secrets.NEXUS_PASSWORD }}
@@ -83,7 +83,7 @@ jobs:
           JK_GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
 ```
 
-`jk.toml` names the target, so the job has no flags beyond `--tag`:
+`jk.toml` names the target, so the job has no flags at all:
 
 ```toml
 [repositories.releases]
@@ -91,13 +91,14 @@ url = "https://nexus.example.com/repository/maven-releases/"
 
 [publish]
 repository = "releases"
-sign = true
 key-file = ".github/release.asc"     # decrypted into the job by an earlier step
 ```
 
-`--tag` stops the job before anything compiles unless the pushed tag is the one `[release] tag`
-(default `v{version}`) names for the version in `jk.toml`. A push made with a job's default token
-does not trigger other workflows; push the tag from a developer machine or with a personal token.
+`jk publish` stops before anything compiles unless HEAD carries the tag `[release] tag` (default
+`v{version}`) names for the version in `jk.toml`, on a clean tree. A push made with a job's default
+token does not trigger other workflows; push the tag from a developer machine or with a personal
+token. Because the workflow runs `jk publish`, `jk release` sees that CI publishes and ends by
+pushing the tag.
 
 ## Files that carry the version
 
@@ -115,12 +116,12 @@ tag, naming the file.
 
 ## One command, no CI
 
-```bash
-jk release --publish --push
-```
-
-publishes between the build and the tag, so a failed upload leaves no tag. Credentials come from
-`jk repo login <name>` on the machine ([Repositories: credentials](repositories.md#credentials)).
+With a `[publish] repository` and no CI file that runs `jk publish`, `jk release` publishes from
+this machine: it checks before it tags that a credential and the signing key resolve, tags, pushes,
+and runs `jk publish` on the tag. Credentials come from `jk repo login <name>` on the machine
+([Repositories: credentials](repositories.md#credentials)). `jk release --publish ci` says CI
+publishes instead, and `[release] publish = "ci"` makes that permanent; the inference is in
+[Publish](publish.md#releasing).
 
 ## Credentials and keys
 
@@ -134,5 +135,4 @@ Secrets never go in `jk.toml`; `[publish]` refuses a `password`, `token` or `pas
 ## Untested here
 
 The GitHub Actions snippet is not run by JumpKick's own tests; the verbs it calls are
-(`jk publish --tag` and `jk release --publish --push` against a local repository and a bare git
-remote).
+(`jk publish` and `jk release` against a local repository and a bare git remote).

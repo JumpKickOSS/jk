@@ -486,7 +486,7 @@ profiles and plugin mapping, `jk mvn` writing `target/jk-results.md`, a build ov
   measured.
 - **IntelliJ and VS Code are not on their marketplaces.** The IntelliJ plugin is an external
   system packaged from this repository.
-- **The plugin SDK is not on Maven Central.** `jk publish -c` can publish it; a release has not
+- **The plugin SDK is not on Maven Central.** `jk publish` can publish it; a release has not
   put the coordinate there.
 - **Maven top-20 corpus:** 13 of 20 build and 2 of 20 pass their tests (run 16, main
   `30c21270b`, 2026-09-18). The table is in
