@@ -14,7 +14,6 @@ import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.SnapshotQualifier;
 import cc.jumpkick.config.WorkspaceLocator;
-import cc.jumpkick.forge.ForgeAuth;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.ReleasePlatform;
 import cc.jumpkick.host.WorkingDirectory;
@@ -211,7 +210,7 @@ public final class PublishCommand implements CliCommand {
         @Nullable String releaseToken = null;
         if (lanes.contains(PublishLane.RELEASE) && ReleaseTarget.GITHUB.equals(info.publishRelease()) && !dryRun) {
             try {
-                releaseToken = PublishLanes.githubToken(projectDir, new ForgeAuth());
+                releaseToken = PublishLanes.githubToken(projectDir, PublishLanes.forgeAuth());
             } catch (IllegalArgumentException e) {
                 CommandWedge.printFail("Publish", String.valueOf(e.getMessage()));
                 return Exit.CONFIG;

@@ -18,7 +18,6 @@ import cc.jumpkick.config.ReleaseVersion.Segment;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.credential.RepoCredential;
-import cc.jumpkick.forge.ForgeAuth;
 import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.GitCommand;
 import cc.jumpkick.host.JkDirs;
@@ -341,7 +340,7 @@ public final class ReleaseCommand implements CliCommand {
             if (refused != null) return refused;
             if (ReleaseTarget.GITHUB.equals(info.publishRelease())) {
                 try {
-                    PublishLanes.githubToken(dir, new ForgeAuth());
+                    PublishLanes.githubToken(dir, PublishLanes.forgeAuth());
                 } catch (IllegalArgumentException e) {
                     return String.valueOf(e.getMessage());
                 }

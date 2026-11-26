@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command.pipeline;
 
+import cc.jumpkick.forge.CliTokenProbe;
 import cc.jumpkick.forge.ForgeAuth;
 import cc.jumpkick.forge.ForgeKind;
 import cc.jumpkick.forge.GitHubRepository;
 import cc.jumpkick.forge.ResolvedToken;
+import cc.jumpkick.forge.TokenStore;
+import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.release.ReleaseTarget;
 import cc.jumpkick.wire.runtime.PublishLane;
 import java.nio.file.Path;
@@ -80,6 +83,15 @@ record PublishLanes(List<PublishLane> lanes, @Nullable String refusal) {
             return "release = \"" + release + "\" is not supported yet; use github or a bucket";
         }
         return null;
+    }
+
+    /**
+     * The forge token chain as this command's shell holds it: the environment through {@link
+     * JkDirs#env}, so a {@code jk.env.*} override counts, then {@code gh auth token}, then the
+     * token {@code jk auth login} stored.
+     */
+    static ForgeAuth forgeAuth() {
+        return new ForgeAuth(new TokenStore(), JkDirs::env, CliTokenProbe.REAL);
     }
 
     /**
