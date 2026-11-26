@@ -318,7 +318,7 @@ class MavenPublisherTest {
 
         assertThat(rerun.alreadyThere()).containsExactly("com/example/widget/1.0.0/widget-1.0.0.jar");
         assertThat(putLog)
-                .contains(at + ".sha256", at + ".sha512", at + ".sigstore", at + ".sigstore.sha1")
+                .contains(at + ".sha256", at + ".sha512", at + ".sigstore.json", at + ".sigstore.json.sha1")
                 .doesNotContain(at, at + ".md5", at + ".sha1");
 
         putLog.clear();
@@ -326,7 +326,7 @@ class MavenPublisherTest {
         publisher.publish(project, List.of(artifact(".jar", jar)), SigningOptions.of(null, other));
         assertThat(putLog)
                 .as("a signature already beside the body is kept, not re-signed")
-                .doesNotContain(at + ".sigstore");
+                .doesNotContain(at + ".sigstore.json");
     }
 
     @Test
@@ -364,7 +364,7 @@ class MavenPublisherTest {
         String at = "/repo/com/example/widget/1.0.0/widget-1.0.0.intoto.jsonl";
         publisher.publish(project, List.of(keyless(statement, "first")), SigningOptions.none());
         // Run 1 died between the envelope and its bundle.
-        received.remove(at + ".sigstore");
+        received.remove(at + ".sigstore.json");
         putLog.clear();
 
         MavenPublisher.Artifact second = keyless(statement, "second");
@@ -372,14 +372,14 @@ class MavenPublisherTest {
         publisher.publish(project, List.of(second), SigningOptions.none());
 
         assertThat(received.get(at)).as("the envelope its bundle signs").isEqualTo(envelope);
-        assertThat(new String(requireNonNull(received.get(at + ".sigstore")), StandardCharsets.UTF_8))
+        assertThat(new String(requireNonNull(received.get(at + ".sigstore.json")), StandardCharsets.UTF_8))
                 .isEqualTo("{\"bundle\":\"second\"}");
 
         putLog.clear();
         MavenPublisher.Result third =
                 publisher.publish(project, List.of(keyless(statement, "third")), SigningOptions.none());
         assertThat(third.alreadyThere()).contains("com/example/widget/1.0.0/widget-1.0.0.intoto.jsonl");
-        assertThat(putLog).as("an envelope held with its bundle is kept").doesNotContain(at, at + ".sigstore");
+        assertThat(putLog).as("an envelope held with its bundle is kept").doesNotContain(at, at + ".sigstore.json");
         assertThat(received.get(at)).isEqualTo(envelope);
     }
 
@@ -389,7 +389,7 @@ class MavenPublisherTest {
                 Files.createTempFile(artifactFiles, "artifact", ".intoto.jsonl"),
                 Dsse.envelope(statement, null, run.getBytes(StandardCharsets.UTF_8)));
         Path bundle = Files.writeString(
-                Files.createTempFile(artifactFiles, "bundle", ".sigstore"), "{\"bundle\":\"" + run + "\"}");
+                Files.createTempFile(artifactFiles, "bundle", ".sigstore.json"), "{\"bundle\":\"" + run + "\"}");
         return new MavenPublisher.Artifact(".intoto.jsonl", file, true, bundle);
     }
 
@@ -437,7 +437,8 @@ class MavenPublisherTest {
         MavenPublisher publisher = new MavenPublisher(base, null, null);
         Project project = new Project("com.example", "widget", "1.0.0", 21);
         Path envelope = Files.write(Files.createTempFile(artifactFiles, "artifact", ".intoto.jsonl"), new byte[] {'{'});
-        Path bundle = Files.writeString(Files.createTempFile(artifactFiles, "bundle", ".sigstore"), "{\"made\":1}");
+        Path bundle =
+                Files.writeString(Files.createTempFile(artifactFiles, "bundle", ".sigstore.json"), "{\"made\":1}");
         SigstoreSigner fileSigner = file -> "{\"over-the-file\":1}".getBytes(StandardCharsets.UTF_8);
 
         publisher.publish(
@@ -445,7 +446,7 @@ class MavenPublisherTest {
                 List.of(new MavenPublisher.Artifact(".intoto.jsonl", envelope, true, bundle)),
                 SigningOptions.of(null, fileSigner));
 
-        String at = "/repo/com/example/widget/1.0.0/widget-1.0.0.intoto.jsonl.sigstore";
+        String at = "/repo/com/example/widget/1.0.0/widget-1.0.0.intoto.jsonl.sigstore.json";
         assertThat(new String(requireNonNull(received.get(at)), StandardCharsets.UTF_8))
                 .isEqualTo("{\"made\":1}");
         assertThat(received).containsKey(at + ".sha256");
@@ -613,12 +614,12 @@ class MavenPublisherTest {
         String stem = "/repo/com/example/widget/1.0.0/widget-1.0.0";
         assertThat(received)
                 .containsKeys(
-                        stem + ".jar.sigstore",
-                        stem + ".jar.sigstore.md5",
-                        stem + ".jar.sigstore.sha1",
-                        stem + ".jar.sigstore.sha256",
-                        stem + ".jar.sigstore.sha512");
-        assertThat(new String(received.get(stem + ".jar.sigstore"), StandardCharsets.UTF_8))
+                        stem + ".jar.sigstore.json",
+                        stem + ".jar.sigstore.json.md5",
+                        stem + ".jar.sigstore.json.sha1",
+                        stem + ".jar.sigstore.json.sha256",
+                        stem + ".jar.sigstore.json.sha512");
+        assertThat(new String(received.get(stem + ".jar.sigstore.json"), StandardCharsets.UTF_8))
                 .isEqualTo("{\"fake-bundle-over-fake-jar\"}");
     }
 
@@ -635,7 +636,7 @@ class MavenPublisherTest {
                 new SigningOptions(gpg, fake));
 
         String stem = "/repo/com/example/widget/1.0.0/widget-1.0.0";
-        assertThat(received).containsKeys(stem + ".jar.asc", stem + ".jar.sigstore");
+        assertThat(received).containsKeys(stem + ".jar.asc", stem + ".jar.sigstore.json");
     }
 
     @Test

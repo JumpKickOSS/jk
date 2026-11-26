@@ -228,7 +228,10 @@ end of it.
 Sonatype Central Portal: one signed bundle — thin jar, POM, sources jar, javadoc jar, a detached
 GPG `.asc` on each, `.md5` and `.sha1` beside each — is uploaded to the Portal's API as a
 user-managed deployment. JumpKick polls it to `VALIDATED`, publishes the deployment itself and
-polls it to `PUBLISHED`.
+polls it to `PUBLISHED`. Every file counts against Central's publishing limits, so the bundle
+carries only those sidecars: no `.sha256` or `.sha512`, and no signature or checksum on a sidecar.
+When CI offers an identity token, each file also gets a Sigstore `<file>.sigstore.json` bundle, the
+name the Portal checks; PGP stays required.
 
 ```bash
 # once: the Portal user token (central.sonatype.com → account → Generate User Token)
@@ -312,19 +315,19 @@ The envelope's signature is new each time it is made, so a re-run after a partia
 the envelope the repository already holds over the same statement, and refuses one over another.
 
 Without a key, in CI that offers an identity token, the envelope is signed keylessly: its one signature carries no `keyid`,
-and the `.intoto.jsonl.sigstore` beside it is the Sigstore bundle of that signature (the
+and the `.intoto.jsonl.sigstore.json` beside it is the Sigstore bundle of that signature (the
 certificate of the short-lived key and its transparency-log entry) rather than a bundle over the
 envelope file. Only that bundle verifies the envelope, so a re-run that finds a keyless envelope
 with no bundle beside it uploads a fresh envelope and its bundle in its place. Verify it against
 the same `pae.bin`, naming the identity you expect:
 
 ```bash
-cosign verify-blob --bundle widget-1.0.0.intoto.jsonl.sigstore --new-bundle-format \
+cosign verify-blob --bundle widget-1.0.0.intoto.jsonl.sigstore.json --new-bundle-format \
   --certificate-identity <identity> --certificate-oidc-issuer <issuer> pae.bin
 ```
 
 A dry run does not reach Sigstore, so without a key it writes the bare `.intoto.json`.
-With a key and an identity both, the envelope is the GPG-signed one, with a `.sigstore` bundle
+With a key and an identity both, the envelope is the GPG-signed one, with a `.sigstore.json` bundle
 over the file like every other file.
 
 ## Deny policy

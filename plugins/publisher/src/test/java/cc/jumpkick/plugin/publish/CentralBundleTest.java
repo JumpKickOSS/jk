@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.model.Project;
 import cc.jumpkick.plugin.publish.testkit.GpgTestFixture;
+import cc.jumpkick.sigstore.StubSigner;
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -39,6 +40,7 @@ class CentralBundleTest {
                         new MavenPublisher.Artifact("-sources.jar", jarFile),
                         new MavenPublisher.Artifact("-javadoc.jar", jarFile)),
                 signer,
+                null,
                 dir.resolve("central-bundle.zip"));
 
         String stem = "com/example/widget/1.0.0/widget-1.0.0";
@@ -70,6 +72,40 @@ class CentralBundleTest {
         assertThat(new String(entry(zipped, stem + ".pom.sha1"), StandardCharsets.US_ASCII))
                 .isEqualTo(Checksums.sha1Hex(pom));
         GpgTestFixture.verifyDetached(pom, entry(zipped, stem + ".pom.asc"), key.publicRing());
+    }
+
+    @Test
+    void a_sigstore_bundle_sits_beside_each_signature_and_carries_no_checksums_of_its_own(@TempDir Path dir)
+            throws Exception {
+        var key = GpgTestFixture.generate(dir, "pass");
+        GpgSigner signer = GpgSigner.fromKeyFile(key.secretKeyFile(), "pass".toCharArray());
+        Project project = new Project("com.example", "widget", "1.0.0", 25);
+        Path jarFile = Files.write(dir.resolve("widget.jar"), "jar-bytes".getBytes(StandardCharsets.UTF_8));
+        Path pomFile = Files.write(dir.resolve("widget.pom"), "<project/>".getBytes(StandardCharsets.UTF_8));
+
+        CentralBundle.Bundle bundle = CentralBundle.build(
+                project,
+                List.of(new MavenPublisher.Artifact(".jar", jarFile), new MavenPublisher.Artifact(".pom", pomFile)),
+                signer,
+                new StubSigner().signer(),
+                dir.resolve("central-bundle.zip"));
+
+        String stem = "com/example/widget/1.0.0/widget-1.0.0";
+        assertThat(bundle.entries())
+                .containsExactly(
+                        stem + ".jar",
+                        stem + ".jar.asc",
+                        stem + ".jar.sigstore.json",
+                        stem + ".jar.md5",
+                        stem + ".jar.sha1",
+                        stem + ".pom",
+                        stem + ".pom.asc",
+                        stem + ".pom.sigstore.json",
+                        stem + ".pom.md5",
+                        stem + ".pom.sha1");
+        Map<String, byte[]> zipped = unzip(Files.readAllBytes(bundle.zip()));
+        assertThat(new String(entry(zipped, stem + ".jar.sigstore.json"), StandardCharsets.UTF_8))
+                .contains("mediaType");
     }
 
     static byte[] entry(Map<String, byte[]> zipped, String name) {
