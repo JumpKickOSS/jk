@@ -234,8 +234,11 @@ public final class PublishCommand implements CliCommand {
                 releaseToken != null && releaseToken.job());
         // The build and the upload run as every build verb runs: the same phases through PACKAGE,
         // the upload as the goal's tail, a workspace member's prerequisites first.
+        // The release carries this host's native executables when [release] platforms lists it.
+        boolean nativeRelease = lanes.contains(PublishLane.RELEASE)
+                && stageRefusal(info.releasePlatforms(), ReleasePlatform.current()) == null;
         return BuildVerbCommand.run(
-                new PublishVerb(args, new PublishVerb.Report() {
+                new PublishVerb(args, nativeRelease, new PublishVerb.Report() {
                     @Override
                     public void module(ModuleOutcome module, ModuleOutcome.Published published, List<String> released)
                             throws IOException {

@@ -95,7 +95,7 @@ jk new -t quarkus/hello my-api
   production application (`quarkus-run.jar`) and `jk dev` re-runs it on change, so a dev-mode
   dependency would sit on no classpath the application reads.
 - **Native:** `[native] enabled = "always"` (or a bare `[native]` / `enabled = true` for
-  `jk native` only) builds through **Quarkus’s own** native-image command. JumpKick
+  `jk native` and a release only) builds through **Quarkus’s own** native-image command. JumpKick
   supplies the GraalVM toolchain. Nothing JumpKick composes is added on top; `[native] args`
   still applies.
 - Use a plain `main` + `Quarkus.run` (as scaffolded).

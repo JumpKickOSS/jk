@@ -70,11 +70,12 @@ public final class ReleaseDeliverables {
     }
 
     /**
-     * True when the build writes a native executable: {@code [native] enabled = "always"} builds
-     * it in every packaging run; a {@code --shared} library is no download.
+     * True when the release carries the module's native executable: any {@code [native]} module
+     * not {@code enabled = false}, which a release-lane publish builds whatever {@code enabled}
+     * says; a {@code --shared} library is no download.
      */
-    static boolean shipsNative(JkBuild build) {
-        return build.nativeMode() == JkBuild.NativeMode.ALWAYS
+    public static boolean shipsNative(JkBuild build) {
+        return build.nativeMode().isEnabled()
                 && build.nativeConfigOpt()
                         .map(c -> !c.args().contains("--shared"))
                         .orElse(true);

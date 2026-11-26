@@ -24,7 +24,9 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * The GraalVM home each always-native module builds with, resolved on the client before the request
- * ships — the one owner for {@code jk build}, {@code jk run}, {@code jk install} and {@code jk native}. The engine is a daemon: a
+ * ships — the one owner for {@code jk build}, {@code jk run}, {@code jk install}, {@code jk native}
+ * and {@code jk publish}, whose release lane also builds the image of an on-demand {@code [native]}
+ * module. The engine is a daemon: a
  * GraalVM it found for itself would answer from the shell that started it, and a prompt or an
  * install belongs to the terminal the user is looking at. So the client's resolver decides (pin,
  * lock, inventory, then prompt or install) and the request carries the answer per module.
@@ -55,12 +57,17 @@ final class AlwaysNativeGraal {
      * ALWAYS.
      */
     static List<Module> fromManifests(Path root) {
+        return fromManifests(root, false);
+    }
+
+    /** As {@link #fromManifests(Path)}; {@code release} adds the modules a release ships natively ({@link #fromManifest(Path, boolean)}). */
+    static List<Module> fromManifests(Path root, boolean release) {
         Path abs = WorkingDirectory.resolve(root);
         List<Path> dirs = WorkspaceModules.memberDirs(abs);
         if (dirs.isEmpty()) dirs = List.of(abs);
         List<Module> out = new ArrayList<>();
         for (Path dir : dirs) {
-            Module m = fromManifest(dir);
+            Module m = fromManifest(dir, release);
             if (m != null) out.add(m);
         }
         return List.copyOf(out);
@@ -143,10 +150,20 @@ final class AlwaysNativeGraal {
      * leaves out is not asked about. Empty when the resolver could not decide; it printed why.
      */
     static Optional<Graal> reached(BuildRun run, Path entryDir, BuildRun.Selection selection) {
+        return reached(run, entryDir, selection, false);
+    }
+
+    /**
+     * As {@link #reached(BuildRun, Path, BuildRun.Selection)}; {@code release} adds every module a
+     * release ships natively from this host, which the release lane builds whatever {@code
+     * [native] enabled} says.
+     */
+    static Optional<Graal> reached(BuildRun run, Path entryDir, BuildRun.Selection selection, boolean release) {
         return reached(
                 run.standalone(),
                 entryDir,
                 selection,
+                release,
                 () -> ProjectInfos.orNull(entryDir),
                 new GraalResolver(run.flags().jdksDir(), run.global().yes, run.mode())::resolve);
     }
@@ -159,14 +176,15 @@ final class AlwaysNativeGraal {
             boolean standalone,
             Path entryDir,
             BuildRun.Selection selection,
+            boolean release,
             Supplier<@Nullable ProjectInfo> rootInfo,
             Resolve resolve) {
         List<Module> members;
         if (standalone) {
-            Module self = fromManifest(entryDir);
+            Module self = fromManifest(entryDir, release);
             members = self == null ? List.of() : List.of(self);
         } else {
-            members = fromManifests(entryDir);
+            members = fromManifests(entryDir, release);
             if (selection.confines()) members = within(members, selection.dirs());
         }
         // A member that inherits its `java` from the root declares none of its own; the summary has it.
@@ -202,11 +220,31 @@ final class AlwaysNativeGraal {
 
     /** {@code dir} as an always-native module, or null when its build links no native image. */
     static @Nullable Module fromManifest(Path dir) {
+        return fromManifest(dir, false);
+    }
+
+    /**
+     * As {@link #fromManifest(Path)}; {@code release} also takes a module whose release carries its
+     * native executable: a {@code [native]} table not {@code enabled = false}, not {@code [publish]
+     * skip}, and not a {@code --shared} library.
+     */
+    static @Nullable Module fromManifest(Path dir, boolean release) {
         TomlScan scan = TomlScan.scan(
-                ManifestPaths.manifestIn(dir), "application.native", "native.enabled", "native.graal", "java");
+                ManifestPaths.manifestIn(dir),
+                "application.native",
+                "native.enabled",
+                "native.graal",
+                "native.args",
+                "publish.skip",
+                "java");
         boolean always = EnvValues.parseBool(scan.get("application.native")).orElse(false)
                 || "always".equalsIgnoreCase(scan.get("native.enabled"));
-        if (!always) return null;
+        boolean released = release
+                && scan.hasSection("native")
+                && !EnvValues.parseBool(scan.get("native.enabled")).map(b -> !b).orElse(false)
+                && !EnvValues.parseBool(scan.get("publish.skip")).orElse(false)
+                && !scan.stringArray("native.args").contains("--shared");
+        if (!always && !released) return null;
         String spec = scan.get("native.graal");
         // The module's own `java`, not the workspace root's inherited one: this is the bootstrap
         // read, and a member that declares none is left unconstrained rather than guessed at.

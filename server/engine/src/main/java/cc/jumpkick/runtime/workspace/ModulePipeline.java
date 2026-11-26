@@ -147,7 +147,7 @@ public final class ModulePipeline {
                 if (!(args instanceof TailArgs.Publish a)) {
                     throw new IllegalStateException("a publish request carries its publish arguments");
                 }
-                yield PublishTail.of(a, unit.manifest());
+                yield PublishTail.of(a, unit.manifest(), graal);
             }
             case PACKAGE, RUN -> Tail.NONE;
             case COMPILE, TEST_COMPILE, TEST, RESHELVE, SYNC ->

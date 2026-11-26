@@ -89,6 +89,17 @@ public record ReleaseRun(
         return platforms.contains(host);
     }
 
+    /**
+     * True when this host's platform-specific files belong in the release of the workspace around
+     * {@code dir}: its root's {@code [release] platforms} lists this host, or lists none.
+     */
+    public static boolean hostListed(Path dir) throws IOException {
+        Path root = WorkspaceLocator.findRoot(dir).orElse(dir);
+        return JkBuildParser.releaseTable(ManifestPaths.manifestIn(root))
+                .platformsOrHost()
+                .contains(ReleasePlatform.current());
+    }
+
     /** The listed platforms other than this host's: their files come from their own stage runs. */
     public List<String> others() {
         List<String> out = new ArrayList<>(platforms);

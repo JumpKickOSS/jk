@@ -42,6 +42,30 @@ class AlwaysNativeGraalTest {
                                 root.toAbsolutePath().normalize().resolve("tool"), AlwaysNativeGraal.DEFAULT_SPEC, 0));
     }
 
+    /**
+     * A release-lane publish builds the native image of every module whose release carries it, so
+     * it resolves their GraalVM too: an on-demand {@code [native]} module joins the always-native
+     * ones, and a disabled, skipped or shared-library one does not.
+     */
+    @Test
+    void a_release_also_reaches_the_on_demand_native_members(@TempDir Path root) throws IOException {
+        Files.writeString(
+                root.resolve("jk.toml"), "[workspace]\nmodules = [\"app\", \"lib\", \"off\", \"skip\", \"so\"]\n");
+        write(root.resolve("app/jk.toml"), "[project]\nname = \"app\"\n\n[native]\nenabled = \"always\"\n");
+        write(root.resolve("lib/jk.toml"), "[project]\nname = \"lib\"\n\n[native]\n");
+        write(root.resolve("off/jk.toml"), "[project]\nname = \"off\"\n\n[native]\nenabled = false\n");
+        write(root.resolve("skip/jk.toml"), "[project]\nname = \"skip\"\n\n[publish]\nskip = true\n\n[native]\n");
+        write(root.resolve("so/jk.toml"), "[project]\nname = \"so\"\n\n[native]\nargs = [\"--shared\"]\n");
+        Path abs = root.toAbsolutePath().normalize();
+
+        assertThat(AlwaysNativeGraal.fromManifests(root, true))
+                .extracting(AlwaysNativeGraal.Module::dir)
+                .containsExactly(abs.resolve("app"), abs.resolve("lib"));
+        assertThat(AlwaysNativeGraal.fromManifests(root, false))
+                .extracting(AlwaysNativeGraal.Module::dir)
+                .containsExactly(abs.resolve("app"));
+    }
+
     @Test
     void a_lone_module_is_its_own_member(@TempDir Path dir) throws IOException {
         write(dir.resolve("jk.toml"), "[project]\nname = \"cli\"\n\n[native]\nenabled = \"always\"\n");
