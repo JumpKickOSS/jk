@@ -257,7 +257,7 @@ class ImageReferrersTest {
                 .isNull();
         Object definition = MiniJson.get(MiniJson.get(json, "predicate"), "buildDefinition");
         assertThat(MiniJson.str(MiniJson.get(definition, "externalParameters"), "command"))
-                .isEqualTo("jk image");
+                .isEqualTo("jk publish");
         assertThat(MiniJson.str(MiniJson.get(definition, "externalParameters"), "sourceCommit"))
                 .isEqualTo("f".repeat(40));
         assertThat(MiniJson.str(MiniJson.get(definition, "internalParameters"), "jkVersion"))

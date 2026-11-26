@@ -45,7 +45,8 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>The spec is line-oriented ({@code MAIN_JAR /abs/app.jar}, {@code BASE …}, {@code TARBALL …},
  * {@code DEP_JAR …}, …); the reply is {@value #PREFIX}-prefixed JSONL, terminating in
- * {@code {"t":"result","ok":true,"ref":"…"}} (or {@code "tarball"}), {@code {"t":"result",
+ * {@code {"t":"result","ok":true,"ref":"…"}} (a push adds {@code "digest"}; a tarball sends {@code
+ * "tarball"} instead), {@code {"t":"result",
  * "ok":false,"error":"…"}} on failure. Exit codes are {@link Exit}: 0 success, 1 build/push
  * error, {@link Exit#USAGE} bad command line, {@link Exit#NO_INPUT} unreadable spec.
  */
@@ -99,6 +100,7 @@ public final class OciImageBuilder implements Plugin, ImageExtension {
             } else {
                 fields.put("ref", result.reference());
                 if (result.daemon()) fields.put("daemon", true);
+                if (result.digest() != null) fields.put("digest", result.digest());
             }
             out.emit(PluginReply.result(fields));
             return 0;
@@ -226,7 +228,7 @@ public final class OciImageBuilder implements Plugin, ImageExtension {
         ImageBuilder.Result pushed = ImageBuilder.pushToRegistry(plan, cacheRoot, auth);
         noticeOf(ctx, pushed);
         if (config.referrers()) attach(ctx, pushed, base, auth, keyless);
-        return ImageResult.pushed(ref);
+        return ImageResult.pushed(ref, pushed.digest());
     }
 
     /**
@@ -305,8 +307,8 @@ public final class OciImageBuilder implements Plugin, ImageExtension {
     }
 
     /**
-     * The SLSA provenance of the image {@code reference} pushed as {@code digest}: built by {@code
-     * jk image} at this JumpKick's version, from {@code sourceCommit} when the module is in a git
+     * The SLSA provenance of the image {@code reference} pushed as {@code digest}: pushed by {@code
+     * jk publish} at this JumpKick's version, from {@code sourceCommit} when the module is in a git
      * checkout, on {@code base}, from the components {@code sbom} lists. A function of its inputs,
      * no clock and no random id, so a re-push of the same image attaches the same statement.
      */
@@ -357,7 +359,7 @@ public final class OciImageBuilder implements Plugin, ImageExtension {
     /** What the build was asked: the command, the image it pushed, and the commit it built from when known. */
     private static Map<String, String> externalParameters(String reference, @Nullable String sourceCommit) {
         Map<String, String> parameters = new LinkedHashMap<>();
-        parameters.put("command", "jk image");
+        parameters.put("command", "jk publish");
         parameters.put("image", reference);
         if (sourceCommit != null) parameters.put("sourceCommit", sourceCommit);
         return parameters;
@@ -463,7 +465,7 @@ public final class OciImageBuilder implements Plugin, ImageExtension {
         ctx.label("pushing " + ref);
         ImageBuilder.Result pushed = LayeredImage.pushToRegistry(plan, cacheRoot, auth);
         if (config.referrers()) attach(ctx, pushed, base, auth, keyless);
-        return ImageResult.pushed(ref);
+        return ImageResult.pushed(ref, pushed.digest());
     }
 
     /**

@@ -7,8 +7,9 @@ import java.util.Objects;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Resolved {@code [image]} config for {@code jk image}. {@code base} is non-null by the time this
- * reaches the image worker (CLI supplies a default when undeclared).
+ * Resolved {@code [image]} config for {@code jk image} and {@code jk publish}'s image lane. {@code
+ * base} is non-null by the time this reaches the image worker (CLI supplies a default when
+ * undeclared).
  */
 public record ImageConfig(
         @Nullable String base,
@@ -41,7 +42,7 @@ public record ImageConfig(
         boolean referrers,
         /**
          * Sign a registry push's provenance with Sigstore keyless and attach it in a DSSE envelope;
-         * {@code [image] sigstore} or {@code jk image --sigstore}.
+         * {@code [image] sigstore}.
          */
         boolean sigstore) {
 

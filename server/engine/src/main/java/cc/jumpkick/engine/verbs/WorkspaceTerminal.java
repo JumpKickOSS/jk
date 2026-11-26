@@ -6,6 +6,7 @@ import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.journal.BuildRecord;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.wire.protocol.ProtoEvents;
+import cc.jumpkick.wire.runtime.ImagePush;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
 import cc.jumpkick.wire.runtime.PublishLane;
 import cc.jumpkick.wire.runtime.ReleaseOutcome;
@@ -98,6 +99,9 @@ final class WorkspaceTerminal {
         }
         ReleaseOutcome release = result.release();
         if (rid > 0 && release != null) host.accPublish(rid, releaseRow(release));
+        if (rid > 0) {
+            for (ImagePush image : result.images()) host.accPublish(rid, imageRow(image));
+        }
         List<Redacted> errors = host.redactErrors(dir, result.errors());
         if (!succeeded && !cancelled && rid > 0) {
             host.accRunErrors(rid, errors.stream().map(Redacted::text).toList());
@@ -116,7 +120,8 @@ final class WorkspaceTerminal {
                         result.sync(),
                         succeeded && result.upToDate(),
                         conflict,
-                        result.release()));
+                        result.release(),
+                        result.images()));
         if (!succeeded && !cancelled) {
             for (Redacted error : errors.stream().limit(PUBLISHED_ERROR_ROWS).toList()) {
                 host.publishRequestError(rid, dir, error.text());
@@ -130,6 +135,19 @@ final class WorkspaceTerminal {
         if (p.dryRun()) return "";
         if (p.deploymentState() != null) return p.deploymentState().toLowerCase(Locale.ROOT);
         return p.existing() > 0 ? "uploaded, " + p.existing() + " already there" : "uploaded";
+    }
+
+    /** The image lane's row of the results file for one image: the reference, and the digest it went up under. */
+    static BuildRecord.Publish imageRow(ImagePush image) {
+        return new BuildRecord.Publish(
+                List.of(new BuildRecord.Publish.Lane(
+                        PublishLane.IMAGE.word(), image.reference(), 1, image.dryRun(), image.digest())),
+                null,
+                null,
+                List.of(),
+                List.of(),
+                0L,
+                List.of());
     }
 
     /** The release lane's row of the results file: where, how many files this run sent, and how it ended. */

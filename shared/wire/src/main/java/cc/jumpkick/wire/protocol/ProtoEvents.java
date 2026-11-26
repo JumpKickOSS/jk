@@ -7,6 +7,7 @@ import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.run.TestClassResult;
 import cc.jumpkick.run.TestFailureInfo;
 import cc.jumpkick.task.TransferBoard;
+import cc.jumpkick.wire.runtime.ImagePush;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
 import cc.jumpkick.wire.runtime.ReleaseOutcome;
 import cc.jumpkick.wire.runtime.WorkspaceProgressTracker;
@@ -687,13 +688,13 @@ public final class ProtoEvents {
     }
 
     public static String workspaceFinish(boolean success, int exitCode, List<Redacted> errors, boolean cancelled) {
-        return workspaceFinish(success, exitCode, errors, cancelled, null, false, null, null);
+        return workspaceFinish(success, exitCode, errors, cancelled, null, false, null, null, List.of());
     }
 
     /**
      * As above, with what a {@code jk sync} run settled, whether the run was up to date, the
-     * conflict of the lock's resolve with no solution ({@code null} when there is none) and what a
-     * publish run's release lane did ({@code null} when it has none).
+     * conflict of the lock's resolve with no solution ({@code null} when there is none), what a
+     * publish run's release lane did ({@code null} when it has none) and what its image lane pushed.
      */
     public static String workspaceFinish(
             boolean success,
@@ -703,7 +704,8 @@ public final class ProtoEvents {
             WorkspaceResult.@Nullable SyncCounts sync,
             boolean upToDate,
             @Nullable Redacted conflict,
-            @Nullable ReleaseOutcome release) {
+            @Nullable ReleaseOutcome release,
+            List<ImagePush> images) {
         return new WorkspaceFinishEvent(
                         success,
                         exitCode,
@@ -714,7 +716,8 @@ public final class ProtoEvents {
                         -1,
                         upToDate,
                         conflict == null ? "" : conflict.text(),
-                        release)
+                        release,
+                        images)
                 .encode();
     }
 

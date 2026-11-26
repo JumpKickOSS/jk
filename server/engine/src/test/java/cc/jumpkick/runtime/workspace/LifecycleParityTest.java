@@ -196,11 +196,58 @@ class LifecycleParityTest {
         BuildGraph.BuildUnit unit = unit(web, "ex:web");
         WorkspaceRequest request = new WorkspaceRequest(
                         tmp, tmp.resolve("cache"), null, 0, null, false, false, 0, null, false, false)
-                .withSpec(WorkspaceSpec.image(Set.of(web), null, null, null, "", null, false));
+                .withSpec(WorkspaceSpec.image(Set.of(web), null, null, "", null));
         var plan = ModulePipeline.plan(unit, request, Set.of(web), false);
         assertThat(plan.steps().stream().map(t -> t.name()))
                 .as("a node module's image tail")
                 .contains(TaskNames.IMAGE_PLAN, TaskNames.WRITE_IMAGE);
+    }
+
+    @Test
+    void a_publish_plans_an_image_before_the_uploads_and_only_for_a_module_that_runs() throws Exception {
+        for (BuildGraph.BuildUnit u : units.subList(1, 3)) {
+            Path manifest = u.dir().resolve("jk.toml");
+            Files.writeString(manifest, Files.readString(manifest) + "\n[image]\nregistry = \"reg.example\"\n");
+        }
+        WorkspaceSpec spec = WorkspaceSpec.publish(
+                Set.of(),
+                new TailArgs.Publish(
+                        null,
+                        false,
+                        true,
+                        null,
+                        null,
+                        RepoCredential.ANONYMOUS,
+                        false,
+                        List.of(PublishLane.LIBRARY, PublishLane.IMAGE),
+                        false,
+                        null));
+        WorkspaceRequest request = new WorkspaceRequest(
+                        tmp, tmp.resolve("cache"), null, 0, null, false, false, 0, null, false, false)
+                .withSpec(spec);
+        ModulePipeline.Planned app = ModulePipeline.planned(
+                unit(units.getLast().dir(), "ex:app"),
+                request,
+                moduleDirs,
+                false,
+                Set.of(),
+                Set.of(),
+                SiblingArtifacts.NONE);
+        List<String> steps = app.plan().steps().stream().map(t -> t.name()).toList();
+        assertThat(app.tailSteps()).contains(TaskNames.IMAGE_PLAN).doesNotContain(TaskNames.WRITE_IMAGE);
+        assertThat(steps.indexOf(TaskNames.IMAGE_PLAN))
+                .as("the image is planned before the module uploads anything")
+                .isLessThan(steps.indexOf(TaskNames.PUBLISH));
+        assertThat(steps.getLast()).isEqualTo(TaskNames.PUBLISH);
+        ModulePipeline.Planned lib = ModulePipeline.planned(
+                unit(units.get(1).dir(), "ex:lib"),
+                request,
+                moduleDirs,
+                false,
+                Set.of(),
+                Set.of(),
+                SiblingArtifacts.NONE);
+        assertThat(lib.tailSteps()).as("a library has no image").doesNotContain(TaskNames.IMAGE_PLAN);
     }
 
     private boolean selects(WorkspaceTarget target, BuildGraph.BuildUnit unit) {
@@ -227,7 +274,7 @@ class LifecycleParityTest {
         WorkspaceSpec spec =
                 switch (target) {
                     case NATIVE -> WorkspaceSpec.nativeImage(Set.of(app), Map.of(app, graal), null, List.of());
-                    case IMAGE -> WorkspaceSpec.image(Set.of(app), null, null, null, "", null, false);
+                    case IMAGE -> WorkspaceSpec.image(Set.of(app), null, null, "", null);
                     case INSTALL -> WorkspaceSpec.install(Set.of(), Map.of(), tmp.resolve("m2"), null);
                     case TRAIN -> WorkspaceSpec.train(Set.of(app), Map.of(), null, false);
                     case PUBLISH ->

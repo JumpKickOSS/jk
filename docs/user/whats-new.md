@@ -29,6 +29,9 @@ JumpKick shows you this page's new entries after it updates itself.
   them to a draft release of the tag in the repository `origin` names, on github.com or GitHub
   Enterprise, and the final run publishes it. `jk auth login github` asks for the `repo` scope in
   such a project ([GitHub Releases](publish.md#github-releases)).
+- **`jk publish` pushes container images.** With `[image] registry` set, its image lane pushes each
+  application module's image with its SBOM and provenance, after the release is published.
+  `jk image` builds the image and loads it locally ([Pushing an image](images.md#pushing-an-image)).
 
 ## 0.60.0
 

@@ -3,6 +3,7 @@ package cc.jumpkick.wire.protocol;
 
 import cc.jumpkick.jsonl.JsonFields;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.wire.runtime.ImagePush;
 import cc.jumpkick.wire.runtime.ReleaseOutcome;
 import cc.jumpkick.wire.runtime.WorkspaceResult;
 import java.util.ArrayList;
@@ -18,7 +19,8 @@ import org.jspecify.annotations.Nullable;
  * makes forgetting to mask a compile error — nothing constructs this record from raw worker output
  * (see {@link EngineProtocol#WORKSPACE_FINISH}). {@code conflict} is {@link
  * WorkspaceResult#conflict}, the text of one JSON object, {@code ""} (left out) otherwise. {@code
- * release} is {@link WorkspaceResult#release}, left out when the run has none.
+ * release} is {@link WorkspaceResult#release}, left out when the run has none, and {@code images}
+ * is {@link WorkspaceResult#images}, left out when empty.
  */
 public record WorkspaceFinishEvent(
         boolean success,
@@ -30,7 +32,8 @@ public record WorkspaceFinishEvent(
         int modules,
         boolean upToDate,
         String conflict,
-        @Nullable ReleaseOutcome release) {
+        @Nullable ReleaseOutcome release,
+        List<ImagePush> images) {
 
     /** No sync counts: every goal but {@code jk sync}. */
     public WorkspaceFinishEvent(boolean success, int exitCode, List<String> errors, boolean cancelled) {
@@ -45,7 +48,7 @@ public record WorkspaceFinishEvent(
             boolean cancelled,
             WorkspaceResult.@Nullable SyncCounts sync,
             boolean upToDate) {
-        this(success, exitCode, errors, cancelled, sync, -1, -1, upToDate, "", null);
+        this(success, exitCode, errors, cancelled, sync, -1, -1, upToDate, "", null, List.of());
     }
 
     /** The client's terminal, with no conflict behind it. */
@@ -58,7 +61,7 @@ public record WorkspaceFinishEvent(
             long millis,
             int modules,
             boolean upToDate) {
-        this(success, exitCode, errors, cancelled, sync, millis, modules, upToDate, "", null);
+        this(success, exitCode, errors, cancelled, sync, millis, modules, upToDate, "", null, List.of());
     }
 
     public String encode() {
@@ -80,6 +83,7 @@ public record WorkspaceFinishEvent(
                 .optionalNumber("modules", modules, -1)
                 .optionalNonEmptyString("conflict", conflict)
                 .optionalToken("release", release == null ? null : encodeRelease(release))
+                .optionalToken("images", images.isEmpty() ? null : encodeImages(images))
                 .finish();
     }
 
@@ -94,7 +98,34 @@ public record WorkspaceFinishEvent(
                 Jsonl.intValue(json, "modules", -1),
                 Jsonl.bool(json, "upToDate", false),
                 Objects.requireNonNullElse(Jsonl.str(json, "conflict"), ""),
-                releaseOf(Jsonl.nested(json, "release")));
+                releaseOf(Jsonl.nested(json, "release")),
+                imagesOf(json));
+    }
+
+    private static String encodeImages(List<ImagePush> images) {
+        StringBuilder out = new StringBuilder("[");
+        for (ImagePush i : images) {
+            if (out.length() > 1) out.append(',');
+            out.append(JsonFields.object()
+                    .string("module", i.module())
+                    .string("reference", i.reference())
+                    .optionalNonEmptyString("digest", i.digest())
+                    .optionalTrue("dryRun", i.dryRun())
+                    .finish());
+        }
+        return out.append(']').toString();
+    }
+
+    private static List<ImagePush> imagesOf(String json) {
+        List<ImagePush> images = new ArrayList<>();
+        for (String i : Jsonl.objectArray(json, "images")) {
+            images.add(new ImagePush(
+                    Jsonl.requiredStr(i, "module"),
+                    Jsonl.requiredStr(i, "reference"),
+                    Objects.requireNonNullElse(Jsonl.str(i, "digest"), ""),
+                    Jsonl.bool(i, "dryRun", false)));
+        }
+        return images;
     }
 
     private static String encodeRelease(ReleaseOutcome r) {

@@ -902,7 +902,7 @@ public final class PlannerPlugin {
     }
 
     /** A {@code diagnostic} reply's text: {@code file:line[:col]: message} when it names a file, else the message. */
-    static String diagnosticText(String line) {
+    public static String diagnosticText(String line) {
         StringBuilder text = new StringBuilder();
         @Nullable String file = Jsonl.str(line, "file");
         if (file != null) {

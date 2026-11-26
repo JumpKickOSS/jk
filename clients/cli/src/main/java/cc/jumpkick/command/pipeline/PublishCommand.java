@@ -28,6 +28,7 @@ import cc.jumpkick.release.ReleaseTarget;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.protocol.ProjectInfo;
 import cc.jumpkick.wire.runtime.CentralBudget;
+import cc.jumpkick.wire.runtime.ImagePush;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
 import cc.jumpkick.wire.runtime.PublishLane;
 import cc.jumpkick.wire.runtime.ReleaseOutcome;
@@ -44,8 +45,9 @@ import org.jspecify.annotations.Nullable;
 /**
  * {@code jk publish}: assemble, sign and upload a release (engine-hosted worker), one {@link
  * PublishLane lane} per target {@code jk.toml} names: the libraries to {@code [publish]
- * repository}, the deliverables to {@code [publish] release}. {@code --only} narrows the lanes and
- * {@code --stage} uploads only this platform's release files. The credential and the GPG
+ * repository}, the deliverables to {@code [publish] release}, the container images to {@code
+ * [image] registry}. {@code --only} narrows the lanes and {@code --stage} uploads only this
+ * platform's release files. The credential and the GPG
  * passphrase are resolved client-side and passed on the request.
  *
  * <p>A Central Portal publish uploads one signed bundle, waits for {@code VALIDATED}, then releases
@@ -61,7 +63,7 @@ public final class PublishCommand implements CliCommand {
 
     @Override
     public String description() {
-        return "Publish libraries to a repository and deliverables to a release";
+        return "Publish libraries, release files and container images";
     }
 
     @Override
@@ -242,6 +244,11 @@ public final class PublishCommand implements CliCommand {
                     public void release(ReleaseOutcome release) {
                         reportRelease(release);
                     }
+
+                    @Override
+                    public void images(List<ImagePush> images) {
+                        reportImages(images);
+                    }
                 }),
                 BuildVerbCommand.forward(in, WorkspaceTarget.PUBLISH.tests(), b -> {}),
                 true);
@@ -337,6 +344,24 @@ public final class PublishCommand implements CliCommand {
         }
         if (release.finish() != null) lines.add("  " + release.finish());
         for (String id : release.released()) lines.add("  published Central deployment " + id);
+        return lines;
+    }
+
+    /** The image lane's lines: each image pushed with its digest, or on a dry run each it would push. */
+    private void reportImages(List<ImagePush> images) {
+        for (String line : imageLines(images)) {
+            if (global.outputIsJson()) CliOutput.machine(JsonlShape.output("publish", line));
+            else CliOutput.out(line);
+        }
+    }
+
+    /** {@link #reportImages}'s lines. */
+    static List<String> imageLines(List<ImagePush> images) {
+        List<String> lines = new ArrayList<>();
+        for (ImagePush i : images) {
+            if (i.dryRun()) lines.add("Would push image " + i.reference());
+            else lines.add("Pushed image " + i.reference() + (i.digest().isEmpty() ? "" : "@" + i.digest()));
+        }
         return lines;
     }
 

@@ -82,7 +82,8 @@ class ImageWorkerSpecTest {
                         "com.example.Main",
                         new ImagePlans.RuntimeJars(List.of(), List.of(), List.of(), Map.of()),
                         null,
-                        tarball)
+                        tarball,
+                        tarball == null && registry != null)
                 .lines();
     }
 
@@ -201,7 +202,8 @@ class ImageWorkerSpecTest {
                         "com.example.Main",
                         new ImagePlans.RuntimeJars(List.of(), List.of(), List.of(), Map.of()),
                         null,
-                        null));
+                        null,
+                        true));
 
         assertThat(spec)
                 .filteredOn(line -> MiniJson.parse(line) instanceof Map<?, ?> m && "project".equals(m.get("t")))
@@ -303,14 +305,11 @@ class ImageWorkerSpecTest {
     /** The signature is over the provenance a push attaches: a push that attaches none is refused. */
     @Test
     void a_signed_push_that_attaches_no_provenance_is_refused() {
-        assertThat(ImagePushProvenance.unsignable(signed(null, true), null)).isNull();
-        assertThat(ImagePushProvenance.unsignable(signed("Dockerfile", true), null))
+        assertThat(ImagePushProvenance.unsignable(signed(null, true))).isNull();
+        assertThat(ImagePushProvenance.unsignable(signed("Dockerfile", true)))
                 .isEqualTo("[image] sigstore: a Dockerfile-mode push attaches no provenance to sign");
-        assertThat(ImagePushProvenance.unsignable(signed(null, false), null))
+        assertThat(ImagePushProvenance.unsignable(signed(null, false)))
                 .isEqualTo("[image] sigstore: referrers = false attaches no provenance to sign");
-        assertThat(ImagePushProvenance.unsignable(signed(null, false), Path.of("app.tar")))
-                .as("a tarball is not pushed")
-                .isNull();
     }
 
     @Test

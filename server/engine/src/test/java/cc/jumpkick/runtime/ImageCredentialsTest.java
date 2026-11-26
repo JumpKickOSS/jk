@@ -203,7 +203,8 @@ class ImageCredentialsTest {
                         "com.example.Main",
                         new ImagePlans.RuntimeJars(List.of(), List.of(), List.of(), Map.of()),
                         null,
-                        registry == null ? module.resolve("target/app.tar") : null)
+                        registry == null ? module.resolve("target/app.tar") : null,
+                        registry != null)
                 .lines();
     }
 

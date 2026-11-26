@@ -6,6 +6,7 @@ import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.wire.EnginePaths;
+import cc.jumpkick.wire.runtime.ImagePush;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
 import cc.jumpkick.wire.runtime.ReleaseOutcome;
 import cc.jumpkick.wire.runtime.TailArgs;
@@ -15,6 +16,7 @@ import cc.jumpkick.wire.runtime.WorkspaceSpec;
 import cc.jumpkick.wire.runtime.WorkspaceTarget;
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
@@ -26,13 +28,16 @@ import org.jspecify.annotations.Nullable;
 final class PublishVerb implements BuildVerb {
 
     /**
-     * What a finished publish prints: each module's library lane, then the release lane. {@code
-     * released} names the Central deployments the release lane published after the release.
+     * What a finished publish prints: each module's library lane, then the release lane, then the
+     * image lane. {@code released} names the Central deployments the release lane published after
+     * the release.
      */
     interface Report {
         void module(ModuleOutcome module, ModuleOutcome.Published published, List<String> released) throws IOException;
 
         void release(ReleaseOutcome release) throws IOException;
+
+        void images(List<ImagePush> images) throws IOException;
     }
 
     private static final Words WORDS = new Words("Publish", "publishing", "publish", "Publishing");
@@ -53,7 +58,7 @@ final class PublishVerb implements BuildVerb {
 
     @Override
     public String description() {
-        return "Publish libraries to a repository and deliverables to a release";
+        return "Publish libraries, release files and container images";
     }
 
     @Override
@@ -85,19 +90,23 @@ final class PublishVerb implements BuildVerb {
                 r -> BuildTails.failureTail(WorkspaceRunView.failedSubject(r, "publish"), startNanos));
     }
 
-    /** What the run shipped, as its settle line names it: the modules' libraries and the release. */
+    /** What the run shipped, as its settle line names it: the modules' libraries, the release and the images. */
     static String shipped(WorkspaceResult r) {
         long modules = r.modules().stream().filter(m -> m.published() != null).count();
         ReleaseOutcome release = r.release();
-        String libraries = modules + " module" + (modules == 1 ? "" : "s");
-        if (release == null) return libraries;
-        String what = release.stage() ? "this platform's release files" : "the release";
-        return modules == 0 ? what : libraries + " and " + what;
+        int images = r.images().size();
+        List<String> parts = new ArrayList<>();
+        if (modules > 0 || (release == null && images == 0)) parts.add(modules + " module" + (modules == 1 ? "" : "s"));
+        if (release != null) parts.add(release.stage() ? "this platform's release files" : "the release");
+        if (images > 0) parts.add(images + " image" + (images == 1 ? "" : "s"));
+        if (parts.size() == 1) return parts.getFirst();
+        return String.join(", ", parts.subList(0, parts.size() - 1)) + " and " + parts.getLast();
     }
 
     /**
      * Every module's report, success or not: a Portal deployment that was refused has an id and
-     * errors to print beside the diagnostics already shown. Then the release lane's, when it ran.
+     * errors to print beside the diagnostics already shown. Then the release lane's, when it ran,
+     * and the images the image lane pushed.
      */
     @Override
     public int after(BuildRun run, int code) {
@@ -110,6 +119,7 @@ final class PublishVerb implements BuildVerb {
                 if (m.published() != null) report.module(m, m.published(), released);
             }
             if (r.release() != null) report.release(r.release());
+            if (!r.images().isEmpty()) report.images(r.images());
         } catch (IOException e) {
             CliOutput.err(e.getMessage());
             return code == 0 ? Exit.SOFTWARE : code;

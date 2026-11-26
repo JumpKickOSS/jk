@@ -29,9 +29,9 @@ import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * {@code jk image} end to end, through the CLI and the engine, against a local registry: a JVM
- * application and a node server, each written to a tarball and pushed, built on base images the
- * registry serves.
+ * Images end to end, through the CLI and the engine, against a local registry: a JVM application
+ * and a node server, each written to a tarball by {@code jk image} and pushed by {@code jk
+ * publish}'s image lane, built on base images the registry serves.
  */
 @Tag("integration")
 @DisabledOnOs(OS.WINDOWS)
@@ -66,10 +66,15 @@ class ImageRegistryE2eTest {
                 .anyMatch(f -> f.endsWith("app-1.0.0-SNAPSHOT.jar") || f.contains("example/Main.class"));
         assertThat(built.config()).contains("java").contains("\"amd64\"");
 
-        assertThat(image(ws, "app", "--registry", registry.hostPort())).isZero();
-        assertThat(registry.holdsManifest("acme/app", "1.0.0-SNAPSHOT")).isTrue();
-        OciImages.Image pushed = OciImages.fromRegistry(registry, "acme/app", "1.0.0-SNAPSHOT");
-        assertThat(pushed.files()).containsExactlyInAnyOrderElementsOf(built.files());
+        assertThat(registry.tags("acme/app")).as("jk image pushes nothing").isEmpty();
+        assertThat(publishImage(ws, "app")).isZero();
+        assertThat(registry.holdsManifest("acme/app", "1.0.0")).isTrue();
+        OciImages.Image pushed = OciImages.fromRegistry(registry, "acme/app", "1.0.0");
+        assertThat(pushed.files())
+                .as("the release's own jar, the image jk image built otherwise")
+                .containsExactlyInAnyOrderElementsOf(built.files().stream()
+                        .map(f -> f.replace("-SNAPSHOT", ""))
+                        .toList());
         String referrers = registry.tags("acme/app").stream()
                 .filter(t -> t.startsWith("sha256-"))
                 .findFirst()
@@ -109,10 +114,9 @@ class ImageRegistryE2eTest {
         assertThat(built.files()).contains("app/server.js", "app/package.json");
         assertThat(built.config()).contains("server.js").contains("PORT=3000").contains("65532");
 
-        assertThat(image(ws, "web", "--registry", registry.hostPort())).isZero();
-        assertThat(registry.holdsManifest("acme/web", "1.0.0-SNAPSHOT")).isTrue();
-        assertThat(OciImages.fromRegistry(registry, "acme/web", "1.0.0-SNAPSHOT")
-                        .files())
+        assertThat(publishImage(ws, "web")).isZero();
+        assertThat(registry.holdsManifest("acme/web", "1.0.0")).isTrue();
+        assertThat(OciImages.fromRegistry(registry, "acme/web", "1.0.0").files())
                 .contains("app/server.js");
     }
 
@@ -142,7 +146,15 @@ class ImageRegistryE2eTest {
         return run(args.toArray(String[]::new));
     }
 
-    /** {@code app}: a JVM application; {@code web}: a node server needing no install. */
+    /** {@code jk publish --only image} from {@code module}'s directory: its image, pushed to the root's registry. */
+    private int publishImage(Path ws, String module) {
+        return run("publish", "-C", ws.resolve(module).toString(), "--only", "image");
+    }
+
+    /**
+     * {@code app}: a JVM application; {@code web}: a node server needing no install. The root's
+     * {@code [image] registry} reaches both.
+     */
     private void workspace(Path ws) throws IOException {
         write(ws.resolve("jk.toml"), """
                 group = "com.example"
@@ -152,7 +164,10 @@ class ImageRegistryE2eTest {
 
                 [workspace]
                 modules = ["app", "web"]
-                """);
+
+                [image]
+                registry = "%s"
+                """.formatted(registry.hostPort()));
         write(ws.resolve("app/jk.toml"), """
                 group = "com.example"
                 name  = "app"

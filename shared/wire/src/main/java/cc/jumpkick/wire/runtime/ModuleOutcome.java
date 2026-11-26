@@ -49,17 +49,18 @@ public record ModuleOutcome(
         @Nullable Tests tests) {
 
     /**
-     * Image-terminal outcome for a {@code jk image} workspace module — what the terminal step
-     * actually did (push / daemon load / tarball write), so the CLI can print the same
-     * "Pushed &lt;ref&gt;" / "Wrote OCI tarball" / "Loaded … into docker" tail the single-project
-     * path shows. {@code null} for non-image modules; all fields nullable.
+     * What a {@code jk image} module's image step did: the tarball it wrote, or the reference it
+     * loaded into {@code daemonExe}. {@code publishRef} is the reference {@code jk publish} pushes,
+     * {@code null} when no {@code [image] registry} is set. {@code null} for non-image modules; all
+     * fields nullable.
      */
     public record Image(
             @Nullable String ref,
             @Nullable String tarball,
             @Nullable String name,
             @Nullable String version,
-            @Nullable String daemonExe) {}
+            @Nullable String daemonExe,
+            @Nullable String publishRef) {}
 
     /**
      * The repository slot an install pass wrote for a module: its plain {@code group:artifact:version},

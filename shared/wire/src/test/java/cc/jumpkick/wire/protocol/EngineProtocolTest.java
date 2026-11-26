@@ -11,6 +11,7 @@ import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.plugin.build.InvocationPhase;
 import cc.jumpkick.run.TestSummary;
+import cc.jumpkick.wire.runtime.ImagePush;
 import cc.jumpkick.wire.runtime.ReleaseOutcome;
 import cc.jumpkick.wire.runtime.TailArgs;
 import cc.jumpkick.wire.runtime.WorkspaceResult;
@@ -414,7 +415,17 @@ class EngineProtocolTest {
     @Test
     void a_workspace_finish_round_trips_its_lock_conflict() {
         WorkspaceFinishEvent refused = new WorkspaceFinishEvent(
-                false, 6, List.of("no solution"), false, null, -1, -1, false, "{\"packages\":[\"g:a\"]}", null);
+                false,
+                6,
+                List.of("no solution"),
+                false,
+                null,
+                -1,
+                -1,
+                false,
+                "{\"packages\":[\"g:a\"]}",
+                null,
+                List.of());
         assertThat(WorkspaceFinishEvent.decode(refused.encode())).isEqualTo(refused);
         assertThat(WorkspaceFinishEvent.decode(new WorkspaceFinishEvent(true, 0, List.of(), false).encode())
                         .conflict())
@@ -450,9 +461,20 @@ class EngineProtocolTest {
                 List.of("dep-1"),
                 List.of("release v1.0.0 is unsigned: set [publish] key-file, or sign = false"));
         WorkspaceFinishEvent finished =
-                new WorkspaceFinishEvent(true, 0, List.of(), false, null, -1, -1, false, "", release);
+                new WorkspaceFinishEvent(true, 0, List.of(), false, null, -1, -1, false, "", release, List.of());
         assertThat(WorkspaceFinishEvent.decode(finished.encode())).isEqualTo(finished);
         assertThat(new WorkspaceFinishEvent(true, 0, List.of(), false).encode()).doesNotContain("release");
+    }
+
+    @Test
+    void a_workspace_finish_round_trips_what_the_image_lane_pushed() {
+        List<ImagePush> images = List.of(
+                new ImagePush("app", "ghcr.io/acme/app:1.0.0", "sha256:ab12", false),
+                new ImagePush("web", "ghcr.io/acme/web:1.0.0", "", true));
+        WorkspaceFinishEvent finished =
+                new WorkspaceFinishEvent(true, 0, List.of(), false, null, -1, -1, false, "", null, images);
+        assertThat(WorkspaceFinishEvent.decode(finished.encode())).isEqualTo(finished);
+        assertThat(new WorkspaceFinishEvent(true, 0, List.of(), false).encode()).doesNotContain("images");
     }
 
     @Test

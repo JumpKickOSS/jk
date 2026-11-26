@@ -30,18 +30,15 @@ public sealed interface TailArgs {
     }
 
     /**
-     * {@code jk image}: {@code tarball} is tri-state like {@code --tarball}: {@code null} (no
-     * tarball), {@code ""} (the default layout path), or an explicit path. {@code sigstore} is
-     * {@code --sigstore}: sign a push's provenance whatever {@code [image] sigstore} says.
+     * {@code jk image}, which builds and loads the image and never pushes it: {@code tarball} is
+     * tri-state like {@code --tarball}: {@code null} (load into the daemon), {@code ""} (the default
+     * layout path), or an explicit path.
      */
     record Image(
             @Nullable String main,
-            @Nullable String registry,
             @Nullable String tag,
             @Nullable String tarball,
-            @Nullable String docker,
-            boolean sigstore)
-            implements TailArgs {}
+            @Nullable String docker) implements TailArgs {}
 
     /**
      * {@code jk install} and its re-shelve pass: the local Maven repo root (null for {@code ~/.m2})

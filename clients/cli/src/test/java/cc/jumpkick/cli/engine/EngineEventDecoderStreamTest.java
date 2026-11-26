@@ -403,6 +403,31 @@ class EngineEventDecoderStreamTest {
         assertThat(rec.moduleWarnings).containsExactly("g:a:1 run-tests key-moved: the key of run-tests moved");
     }
 
+    /**
+     * A run notice posted once its module has finished (the image lane pushes after every module)
+     * reaches the client as a note: the module's own listener has already rendered its block.
+     */
+    @Test
+    void a_notice_after_its_module_finished_reaches_the_client_as_a_note() throws Exception {
+        Recorder rec = new Recorder();
+        EngineEventDecoder.streamWorkspaceEvents(
+                stream(
+                        ProtoLifecycle.jobStart(56, "publish", "/w", 1),
+                        ProtoEvents.planModule("/w/a", "g:a:1", "a", 10, false),
+                        ProtoEvents.planDone(1),
+                        ProtoEvents.moduleStart("/w/a"),
+                        ProtoEvents.planFinish("/w/a", true),
+                        ProtoEvents.moduleFinish("/w/a", "g:a:1", true, 0, 5),
+                        ProtoEvents.warn("/w/a", "", "notice", "a write-image: no SBOM or provenance attached"),
+                        ProtoEvents.workspaceFinish(true, 0, List.of(), false),
+                        ProtoLifecycle.jobFinish(56)),
+                rec,
+                Path.of("/cache"),
+                null);
+
+        assertThat(rec.notes).containsExactly("a write-image: no SBOM or provenance attached");
+    }
+
     /** A workspace lock with no solution ends the run with its conflict, for the client to print. */
     @Test
     void a_workspace_terminal_carries_the_lock_conflict_onto_the_result() throws Exception {
@@ -420,7 +445,8 @@ class EngineEventDecoderStreamTest {
                                         -1,
                                         false,
                                         conflict,
-                                        null)
+                                        null,
+                                        List.of())
                                 .encode(),
                         ProtoLifecycle.jobFinish(56)),
                 new Recorder(),

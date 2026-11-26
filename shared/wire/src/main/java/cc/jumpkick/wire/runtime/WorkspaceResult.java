@@ -16,6 +16,7 @@ import org.jspecify.annotations.Nullable;
  * @param conflict the conflict of the workspace lock's resolve with no solution, as one JSON
  * object; {@code ""} for any other result
  * @param release what a publish run's release lane did; {@code null} for every run that has none
+ * @param images what a publish run's image lane pushed; empty for every run that has none
  */
 public record WorkspaceResult(
         boolean success,
@@ -25,7 +26,8 @@ public record WorkspaceResult(
         boolean cancelled,
         @Nullable SyncCounts sync,
         String conflict,
-        @Nullable ReleaseOutcome release) {
+        @Nullable ReleaseOutcome release,
+        List<ImagePush> images) {
 
     /** What a {@code jk sync} run settled: artifacts downloaded, and artifacts already on disk. */
     public record SyncCounts(int fetched, int upToDate) {}
@@ -33,7 +35,7 @@ public record WorkspaceResult(
     /** No sync counts and no conflict: every goal but {@code jk sync}, until a phase adds them. */
     public WorkspaceResult(
             boolean success, int exitCode, List<ModuleOutcome> modules, List<String> errors, boolean cancelled) {
-        this(success, exitCode, modules, errors, cancelled, null, "", null);
+        this(success, exitCode, modules, errors, cancelled, null, "", null, List.of());
     }
 
     /** Compatibility constructor — not cancelled. */
@@ -57,23 +59,29 @@ public record WorkspaceResult(
 
     /** This result with what the sync settled. */
     public WorkspaceResult withSync(SyncCounts counts) {
-        return new WorkspaceResult(success, exitCode, modules, errors, cancelled, counts, conflict, release);
+        return new WorkspaceResult(success, exitCode, modules, errors, cancelled, counts, conflict, release, images);
     }
 
     /** This result with the conflict of the lock's resolve with no solution. */
     public WorkspaceResult withConflict(String conflict) {
-        return new WorkspaceResult(success, exitCode, modules, errors, cancelled, sync, conflict, release);
+        return new WorkspaceResult(success, exitCode, modules, errors, cancelled, sync, conflict, release, images);
     }
 
     /** This result with what the release lane did. */
     public WorkspaceResult withRelease(ReleaseOutcome outcome) {
-        return new WorkspaceResult(success, exitCode, modules, errors, cancelled, sync, conflict, outcome);
+        return new WorkspaceResult(success, exitCode, modules, errors, cancelled, sync, conflict, outcome, images);
+    }
+
+    /** This result with what the image lane pushed. */
+    public WorkspaceResult withImages(List<ImagePush> pushed) {
+        return new WorkspaceResult(
+                success, exitCode, modules, errors, cancelled, sync, conflict, release, List.copyOf(pushed));
     }
 
     /** This result failed with {@code error}, as a release lane that stopped leaves it. */
     public WorkspaceResult failed(int exit, String error, @Nullable ReleaseOutcome outcome) {
         List<String> all = new ArrayList<>(errors);
         all.add(error);
-        return new WorkspaceResult(false, exit, modules, all, cancelled, sync, conflict, outcome);
+        return new WorkspaceResult(false, exit, modules, all, cancelled, sync, conflict, outcome, images);
     }
 }

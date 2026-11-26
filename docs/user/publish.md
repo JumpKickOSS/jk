@@ -1,7 +1,7 @@
 # Publish and supply chain
 
 ```bash
-jk publish                       # every lane: libraries, then the release; signed, with SBOMs
+jk publish                       # every lane: libraries, the release, then images; signed
 jk publish --dry-run             # the same plan; nothing is uploaded
 jk publish --repository central  # this run's libraries go to Maven Central, via the Portal
 jk publish --only release        # one lane: library, release or image
@@ -206,11 +206,12 @@ it never delists or deletes a published version. `-O jsonl` prints one `yank` ro
 |---|---|---|
 | `library` | `[publish] repository` | thin jars, POMs, sources and javadoc jars to a Maven repository or Central |
 | `release` | `[publish] release` | the files a person downloads, with `SHA256SUMS`, signatures and an index |
-| `image` | `[image] registry` | not yet: `jk image` pushes images |
+| `image` | `[image] registry` | each application module's OCI image, with its SBOM and provenance ([Images](images.md#pushing-an-image)) |
 
-A plain `jk publish` runs every lane that has a target, library first. `--only release` (or
-`--only library,release`) runs only the lanes it names; naming a lane with no target is refused,
-naming the key to set.
+A plain `jk publish` runs every lane that has a target, in that order: library, release, image.
+`--only release` (or `--only library,image`) runs only the lanes it names; naming a lane with no
+target is refused, naming the key to set. `jk image` builds the image and loads it locally; only
+`jk publish` pushes it.
 
 ```toml
 [publish]
@@ -262,14 +263,15 @@ one platform needs nothing else: one `jk publish` builds, uploads and publishes 
 
 - `jk publish --stage` runs on each platform. It builds and uploads only that platform's files,
   never touches the library or image lane, and publishes nothing. It is refused on a platform the
-  list does not name.
+  list does not name, and with `--only library` or `--only image`.
 - `jk publish`, once, is the final run. Before anything builds it checks that every other listed
   platform's files are staged, and refuses naming the first that is not: `release v1.4.7 lacks
   macos-aarch64; run jk publish --stage on that platform first`. Then it uploads the neutral files
   (and this host's own, if not staged yet), runs the library lane (a Central upload waits for
   `VALIDATED`), writes `SHA256SUMS`, its signatures and `index.json`, publishes the release, and
-  only then presses Publish on the Central Portal (unless `hold = true`). If anything fails before
-  the release is published, nothing on Central, in `latest.json` or on GitHub is public.
+  only then presses Publish on the Central Portal (unless `hold = true`). The image lane goes last:
+  each image is pushed once the release is out. If anything fails before the release is published,
+  nothing on Central, in `latest.json`, on GitHub or in the registry is public.
 
 Every upload resumes: a file already there with the same bytes is left alone, so a final run that
 stopped half way finishes on the next try, and a file there with other bytes stops the run and says
@@ -385,8 +387,10 @@ its files already there and leaves them.
 **Previewing.** `jk publish --dry-run` prints each lane's plan: for the release, every file with its
 size, SHA-256, destination and role (`staging` for a platform's own file, `final` for what only the
 final run writes), then what the run would do last (`would publish the draft release v1.4.7`,
-`would point latest.json at 1.4.7`), and nothing is uploaded. `target/jk-results.md` gives the Publish block one row
-per lane.
+`would point latest.json at 1.4.7`); for the image lane, each image reference it would push
+(`Would push image ghcr.io/acme/app:1.4.7`). Nothing is uploaded. `target/jk-results.md` gives the
+Publish block one row per lane and destination: an image's row names its reference and, once
+pushed, its digest.
 
 ## Releasing
 
@@ -421,7 +425,7 @@ publish mode, the upload before it): there is nothing to tag, commit or push.
 |-----------------|------|----------------------|
 | no destination: no `[publish] repository` or `release`, no `[image] registry` (in `jk.toml` or `~/.jk/config.toml`) | `none` | pushing the tag |
 | a destination, and a CI file that runs `jk publish` | `ci` | printing `pushed v1.4.7; CI publishes it` |
-| a `[publish] repository` or `release`, and no such CI file | `local` | running `jk publish` on the pushed tag |
+| a destination, and no such CI file | `local` | running `jk publish` on the pushed tag |
 
 CI files are the usual ones: `.github/workflows/`, `.gitlab-ci.yml`, `.forgejo/workflows/`,
 `.gitea/workflows/`, `.woodpecker*`, `.circleci/config.yml`, `.buildkite/`, `Jenkinsfile`,

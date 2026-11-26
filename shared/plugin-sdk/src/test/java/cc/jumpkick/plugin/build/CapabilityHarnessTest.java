@@ -94,7 +94,7 @@ class CapabilityHarnessTest {
 
         @Override
         public ImageResult image(ImageContext ctx) {
-            return ImageResult.pushed("unused"); // unreachable: the build harness rejects terminal caps
+            return ImageResult.pushed("unused", ""); // unreachable: the build harness rejects terminal caps
         }
     }
 

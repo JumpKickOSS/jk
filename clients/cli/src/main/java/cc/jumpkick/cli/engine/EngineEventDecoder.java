@@ -49,10 +49,12 @@ import java.nio.channels.SocketChannel;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
@@ -199,6 +201,7 @@ final class EngineEventDecoder {
             private @Nullable String pendingPlanDir;
 
             private final FailureTextRefs texts = new FailureTextRefs();
+            private final Set<String> finishedDirs = new HashSet<>();
 
             @Override
             public @Nullable WorkspaceResult onLine(String type, String line) throws IOException {
@@ -257,6 +260,7 @@ final class EngineEventDecoder {
                     }
                     case EngineProtocol.MODULE_FINISH -> {
                         ModuleOutcome outcome = readOutcome(dirOf(dir, type), line);
+                        if (dir != null) finishedDirs.add(dir);
                         outcomes.add(outcome);
                         listener.onModuleFinish(outcome);
                     }
@@ -272,7 +276,8 @@ final class EngineEventDecoder {
                                 e.cancelled(),
                                 e.sync(),
                                 e.conflict(),
-                                e.release());
+                                e.release(),
+                                e.images());
                         WireStream.noteWorkspaceFinish(e.success() && result.upToDate());
                         listener.onWorkspaceFinish(result);
                         return result;
@@ -288,9 +293,10 @@ final class EngineEventDecoder {
                     // A warning that names its module is the workspace's word on that module, whether
                     // or not the module ran: the kept compiler warnings of a module the build does not
                     // run, or the key audit's verdict once every module has ended. Routed to the
-                    // module's own listener, which has already rendered its block, it was dropped.
+                    // module's own listener, which has already rendered its block, it was dropped. So
+                    // is a run notice posted once its module has finished (the image lane's push).
                     case EngineProtocol.WARN -> {
-                        BuildPlanListener owner = planListenersByDir.get(dir);
+                        BuildPlanListener owner = finishedDirs.contains(dir) ? null : planListenersByDir.get(dir);
                         WarnEvent e = WarnEvent.decode(line);
                         if (e.replayed() && !e.module().isEmpty()) {
                             listener.onModuleWarning(Path.of(dir), e.module(), e.task(), e.code(), e.message());

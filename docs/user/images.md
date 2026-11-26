@@ -1,28 +1,34 @@
 # Container images
 
 ```bash
-jk image
+jk image                  # build the image and load it into docker or podman
+jk image --tarball        # or write it to target/ as an OCI tarball
+jk publish                # push it to [image] registry, with its SBOM and provenance
 ```
 
 Daemonless OCI images (Jib-core). No Docker daemon required to *write* the image; a
 container runtime is only needed for some [AOT training](#aot-cache-in-the-image) paths.
+`jk image` never pushes: pushing is the image lane of [`jk publish`](#pushing-an-image).
 
 ```toml
 [image]
 # base      = "eclipse-temurin:{java-major-version}-jre"   # default: a JRE of the module's java
 # name      = "gyggly-app"        # image repository; default the module's artifact id
-# registry  = "ghcr.io/acme"      # push target; default a local daemon load
+# registry  = "ghcr.io/acme"      # where jk publish pushes; default none
 # tag       = "edge"              # default the module version
 # aot-cache = true
 # referrers = false               # attach no SBOM or provenance to a push
-# sigstore  = true                # sign a push's provenance (as --sigstore does)
+# sigstore  = true                # sign every push's provenance with Sigstore
 
 [image.env]
 # JAVA_OPTS = "-Xmx256m -XX:+UseSerialGC"   # the JVM flags: entrypoint AND AOT training run
 ```
 
-The image is `<registry>/<name>:<tag>`, each part falling back as noted. Layers, from least to most
-volatile: the base, this module's **runtime dependency jars** at `/app/libs/<artifact>-<version>.jar`
+The image is `<registry>/<name>:<tag>`, each part falling back as noted: `jk image` loads it
+under that name, and `jk publish` pushes it there. With a registry set, `jk image` ends with one
+line naming the reference `jk publish` pushes.
+
+Layers, from least to most volatile: the base, this module's **runtime dependency jars** at `/app/libs/<artifact>-<version>.jar`
 — locked releases in one layer, then `-SNAPSHOT` versions and workspace siblings' thin jars in a
 volatile layer, so rebuilding a sibling never rewrites the release layer — then the application jar
 at `/app/classpath/`. In a workspace that closure is the module's own — its declared externals, its
@@ -59,10 +65,33 @@ entrypoint. It replaces a Dockerfile that copies `target/<name>.jar` and `target
 every training run as well: a cache is only valid for the collector and heap shape it was trained
 with, so the two cannot be allowed to differ.
 
+## Pushing an image
+
+When `[image] registry` is set, `jk publish` has an image lane ([Publish](publish.md#releasing-deliverables)).
+It builds each application module's image, the same image `jk image` builds, and pushes it to
+`<registry>/<name>:<tag>`, an image index when `platforms` names several. A module ships an image
+when the registry reaches it and it has something to run: a main class (`[application] main`,
+`[image] main`, or one the framework finds), a `docker-file`, or a node server. `[publish] skip`
+keeps a module's image back too.
+
+```bash
+jk publish                    # every lane; the images go last, after the release is published
+jk publish --only image       # only the images
+jk publish --dry-run          # lists each image it would push; pushes nothing
+```
+
+Each module's image is planned beside its other uploads, so an image that cannot be pushed (no
+main class, a base older than the module's Java, a `sigstore` push with nothing to sign) stops the
+run before the module uploads anything. The pushes themselves wait until every module is built
+and every other lane is done. The run prints `Pushed image <reference>@<digest>` for each, and the
+results file's Publish block gives each image its row. `jk publish --stage` never pushes an image.
+An image lane with no module to push is refused when it is the only lane, and pushes nothing
+beside the others.
+
 ## Private registries
 
-Both registry legs authenticate: the **base-image pull** (every mode — tarball, daemon and
-push) and the **push** itself. Credentials are looked up by the registry **host**, through the
+Both registry legs authenticate: the **base-image pull** (`jk image` and `jk publish` alike) and
+the **push** (`jk publish`). Credentials are looked up by the registry **host**, through the
 same chain `jk publish` uses:
 
 ```bash
@@ -95,19 +124,19 @@ image's digest:
 - the module's **CycloneDX SBOM** (`application/vnd.cyclonedx+json`), the same bill of materials an
   application jar embeds, read from the lock; a copy stays at `target/sbom/image.cdx.json`.
 - a **SLSA v1 provenance** statement (`application/vnd.in-toto+json`) naming the image digest,
-  the command (`jk image`), the JumpKick version, the git commit the module was built from (when it
+  the command (`jk publish`), the JumpKick version, the git commit the module was built from (when it
   is in a git checkout), the base image and every locked dependency with its SHA-256. It is
   unsigned unless the push is [signed](#a-signed-push).
 
 ```bash
-jk image --registry ghcr.io/acme
+jk publish --only image
 oras discover ghcr.io/acme/app:1.0.0     # lists the SBOM and the provenance
 ```
 
 A registry that serves the referrers API indexes them itself. For one that does not (a
 `registry:2`), JumpKick keeps the index at the tag `sha256-<image digest hex>`, the fallback the
 distribution spec names. They are written with the push credential. If the registry refuses them,
-the image stays pushed and the build prints a notice. A tarball or a daemon load attaches nothing.
+the image stays pushed and the build prints a notice. `jk image`'s tarball or daemon load attaches nothing.
 
 A node module's push attaches the provenance alone, naming the base image: JumpKick writes no SBOM
 of npm packages. A push in Dockerfile mode attaches neither and says so, since the image is what
@@ -124,22 +153,24 @@ referrers = false
 
 ### A signed push
 
-`jk image --sigstore` signs the provenance with Sigstore keyless, as `jk publish`
+`[image] sigstore = true` signs the provenance of every push with Sigstore keyless, as `jk publish`
 signs a jar: on CI the runner's OIDC identity (GitHub Actions, GitLab, …), on a laptop a browser
 sign-in, and no key to keep. The provenance is then attached as one artifact of type
 `application/vnd.dsse.envelope.v1+json` whose two layers are the statement in a DSSE envelope and
 the Sigstore bundle of its signature (`application/vnd.dev.sigstore.bundle+json`): the short-lived
 certificate naming who signed it and the transparency-log entry. The envelope's signature verifies
-against that certificate. `[image] sigstore = true` makes every push of the project signed.
+against that certificate.
 
-```bash
-jk image --registry ghcr.io/acme --sigstore
+```toml
+[image]
+registry = "ghcr.io/acme"
+sigstore = true
 ```
 
 A signed push is signed or it fails: when Sigstore cannot sign (no OIDC identity, no network) or
 the registry refuses the artifact, the image stays pushed and the build fails naming it. A push
-that attaches no provenance cannot be signed and is refused before it builds: Dockerfile mode, or
-`referrers = false`. A tarball or a daemon load is not pushed, so `--sigstore` signs nothing there.
+that attaches no provenance cannot be signed and is refused before anything uploads: Dockerfile
+mode, or `referrers = false`. `jk image` pushes nothing, so `sigstore` signs nothing there.
 
 ## In a workspace
 

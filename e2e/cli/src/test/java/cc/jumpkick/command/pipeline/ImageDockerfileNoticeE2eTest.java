@@ -17,7 +17,7 @@ import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * {@code jk image} in Dockerfile mode, through the CLI and the engine, with a docker executable that
+ * {@code jk publish --only image} in Dockerfile mode, through the CLI and the engine, with a docker executable that
  * records what it was asked: a push says once that it attaches no SBOM or provenance, and says
  * nothing when {@code [image] referrers = false} asked for none.
  */
@@ -26,20 +26,20 @@ import org.junit.jupiter.api.io.TempDir;
 class ImageDockerfileNoticeE2eTest {
 
     private static final String NOTICE =
-            "[image] no SBOM or provenance attached to registry.invalid/acme/widget:0.1.0-SNAPSHOT: Dockerfile mode";
+            "[image] no SBOM or provenance attached to registry.invalid/acme/widget:0.1.0: Dockerfile mode";
 
     @Test
     void a_dockerfile_push_says_it_attaches_nothing(@TempDir Path dir) throws Exception {
         Path calls = project(dir, "");
 
         int[] exit = {-1};
-        Capture.Streams said = Capture.both(() -> exit[0] = image(dir));
+        Capture.Streams said = Capture.both(() -> exit[0] = publishImage(dir));
 
         assertThat(exit[0]).as(said.out() + said.err()).isZero();
         assertThat(Files.readAllLines(calls))
                 .as("the image is built from the Dockerfile and pushed by docker")
                 .anySatisfy(line -> assertThat(line).startsWith("build -f " + dir.resolve("Dockerfile")))
-                .contains("push registry.invalid/acme/widget:0.1.0-SNAPSHOT");
+                .contains("push registry.invalid/acme/widget:0.1.0");
         String console = said.out() + said.err();
         assertThat(console.split(Pattern.quote(NOTICE), -1))
                 .as("the notice is said once: %s", console)
@@ -51,20 +51,15 @@ class ImageDockerfileNoticeE2eTest {
         Path calls = project(dir, "referrers = false\n");
 
         int[] exit = {-1};
-        Capture.Streams said = Capture.both(() -> exit[0] = image(dir));
+        Capture.Streams said = Capture.both(() -> exit[0] = publishImage(dir));
 
         assertThat(exit[0]).as(said.out() + said.err()).isZero();
-        assertThat(Files.readAllLines(calls)).contains("push registry.invalid/acme/widget:0.1.0-SNAPSHOT");
+        assertThat(Files.readAllLines(calls)).contains("push registry.invalid/acme/widget:0.1.0");
         assertThat(said.out() + said.err()).doesNotContain("no SBOM or provenance");
     }
 
-    private static int image(Path dir) {
-        return run(
-                "image",
-                "-C",
-                dir.toString(),
-                "--cache-dir",
-                dir.resolve("cache").toString());
+    private static int publishImage(Path dir) {
+        return run("publish", "-C", dir.toString(), "--only", "image");
     }
 
     /**

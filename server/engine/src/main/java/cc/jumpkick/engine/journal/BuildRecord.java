@@ -587,15 +587,18 @@ public record BuildRecord(
         }
 
         /**
-         * This row with {@code other}'s folded in: a lane already listed adds its files, a new lane
-         * is appended, and the later deployment's facts win.
+         * This row with {@code other}'s folded in: a lane already listed for the same destination
+         * adds its files, any other is appended (so each image pushed gets its row), and the later
+         * deployment's facts win.
          */
         public Publish merge(Publish other) {
             List<Lane> merged = new ArrayList<>(lanes);
             for (Lane lane : other.lanes()) {
                 int at = -1;
                 for (int i = 0; i < merged.size(); i++) {
-                    if (merged.get(i).lane().equals(lane.lane())) at = i;
+                    Lane listed = merged.get(i);
+                    if (listed.lane().equals(lane.lane())
+                            && listed.destination().equals(lane.destination())) at = i;
                 }
                 if (at < 0) {
                     merged.add(lane);

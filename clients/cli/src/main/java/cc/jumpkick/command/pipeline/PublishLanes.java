@@ -41,13 +41,12 @@ record PublishLanes(List<PublishLane> lanes, @Nullable String refusal) {
                 named.add(lane);
             }
         }
-        if (named.contains(PublishLane.IMAGE)) {
-            return refused("--only image: jk publish does not push images yet; use jk image");
-        }
         String releaseRefusal = release.isEmpty() ? null : forgeRefusal(release);
         if (stage) {
-            if (named.contains(PublishLane.LIBRARY)) {
-                return refused("--stage uploads release files only; drop --only library");
+            for (PublishLane lane : List.of(PublishLane.LIBRARY, PublishLane.IMAGE)) {
+                if (named.contains(lane)) {
+                    return refused("--stage uploads release files only; drop --only " + lane.word());
+                }
             }
             if (release.isEmpty()) return refused("--stage needs " + PublishLane.RELEASE.key() + " in jk.toml");
             if (releaseRefusal != null) return refused(releaseRefusal);
@@ -63,14 +62,12 @@ record PublishLanes(List<PublishLane> lanes, @Nullable String refusal) {
                     return refused("--only " + lane.word() + " needs " + lane.key() + " in jk.toml");
                 continue;
             }
-            // Until jk publish pushes images, a registry gives jk image a target and this run nothing.
-            if (lane == PublishLane.IMAGE) continue;
             if (lane == PublishLane.RELEASE && releaseRefusal != null) return refused(releaseRefusal);
             lanes.add(lane);
         }
         if (lanes.isEmpty() && dryRun && named.isEmpty()) return new PublishLanes(List.of(PublishLane.LIBRARY), null);
         if (lanes.isEmpty()) {
-            return refused("nothing to publish; set [publish] repository or [publish] release in jk.toml");
+            return refused("nothing to publish; set [publish] repository or release, or [image] registry");
         }
         return new PublishLanes(List.copyOf(lanes), null);
     }

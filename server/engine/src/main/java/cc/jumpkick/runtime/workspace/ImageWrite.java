@@ -116,8 +116,6 @@ final class ImageWrite {
             WorkerFork fork)
             throws IOException {
         boolean offline = SessionContext.current().offline();
-        // Packaging cache — tarball only. A registry push is a network
-        // side-effect (the remote's state is unknown), so it's never skipped.
         // The tarball is a pure function of the main jar, the dependency jars,
         // the main class, the image config, and the image-builder plugin version.
         // The base image is an input, not a name. `eclipse-temurin:25-jre` moves, and a
@@ -132,10 +130,8 @@ final class ImageWrite {
         String base = pinnedBase.orElse(declared);
 
         ActionCache ac = new ActionCache(JkStores.cacheCas(cache), CacheTree.ACTIONS.under(cache), JkStores.storeCas());
-        boolean daemonMode = tarballPath == null
-                && (config.registry() == null || config.registry().isBlank());
         // Where a daemon image is loaded: the runtime the project names, else whichever answers.
-        String daemonExe = !daemonMode
+        String daemonExe = tarballPath != null
                 ? null
                 : config.dockerExecutable() != null ? config.dockerExecutable() : ImagePlans.detectDockerExecutable();
         // The image lives in one place — the tarball beside the build, or the daemon's store — and the
@@ -145,7 +141,7 @@ final class ImageWrite {
         // still cannot be resolved (offline, an unreachable registry, a rejected credential) leaves
         // nothing in the key that identifies the layers underneath the image, so it is not recorded at
         // all rather than recorded wrongly. Writing `base = "…@sha256:…"` needs no registry round trip
-        // and always records. A push is a network side-effect (the remote's state is unknown): never skipped.
+        // and always records.
         boolean useCache = (tarballPath != null || daemonExe != null)
                 && pinnedBase.isPresent()
                 && !SessionContext.current().config().rebuildOr(false);
@@ -188,13 +184,9 @@ final class ImageWrite {
         }
         if (tarballPath != null) {
             ctx.label("write OCI tarball " + tarballPath.getFileName());
-        } else if (daemonMode) {
+        } else {
             ctx.label("load into local daemon ("
                     + (config.dockerExecutable() != null ? config.dockerExecutable() : "docker/podman") + ")");
-        } else {
-            ctx.label("push to "
-                    + config.targetReference(
-                            project.project().name(), project.project().version()));
         }
         String built;
         // What the worker says is the step's to say. A notice (an AOT cache the image was asked for
