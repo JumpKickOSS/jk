@@ -4,7 +4,7 @@ package cc.jumpkick.command.pipeline;
 import cc.jumpkick.forge.CliTokenProbe;
 import cc.jumpkick.forge.ForgeAuth;
 import cc.jumpkick.forge.ForgeKind;
-import cc.jumpkick.forge.GitHubRepository;
+import cc.jumpkick.forge.ForgeRepository;
 import cc.jumpkick.forge.ResolvedToken;
 import cc.jumpkick.forge.TokenStore;
 import cc.jumpkick.host.JkDirs;
@@ -14,7 +14,9 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
+import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -23,6 +25,9 @@ import org.jspecify.annotations.Nullable;
  * lane {@code --only} names without a target is refused naming the key that gives it one.
  */
 record PublishLanes(List<PublishLane> lanes, @Nullable String refusal) {
+
+    /** The job token GitLab CI gives every job. */
+    static final String JOB_TOKEN = "CI_JOB_TOKEN";
 
     /**
      * The lanes of one run. {@code only} is every {@code --only} value, each a lane or a comma list
@@ -41,7 +46,7 @@ record PublishLanes(List<PublishLane> lanes, @Nullable String refusal) {
                 named.add(lane);
             }
         }
-        String releaseRefusal = release.isEmpty() ? null : forgeRefusal(release);
+        String releaseRefusal = release.isEmpty() ? null : releaseRefusal(release);
         if (stage) {
             for (PublishLane lane : List.of(PublishLane.LIBRARY, PublishLane.IMAGE)) {
                 if (named.contains(lane)) {
@@ -72,15 +77,14 @@ record PublishLanes(List<PublishLane> lanes, @Nullable String refusal) {
         return new PublishLanes(List.copyOf(lanes), null);
     }
 
-    /** Why the release lane cannot ship to {@code release} from this version of jk, or {@code null}. */
-    static @Nullable String forgeRefusal(String release) {
+    /** Why {@code release} names no release target, or {@code null}. */
+    static @Nullable String releaseRefusal(String release) {
         String refused = ReleaseTarget.refusal(release);
-        if (refused != null) return "[publish] release: " + refused;
-        if (ReleaseTarget.FORGES.contains(release) && !release.equals(ReleaseTarget.GITHUB)) {
-            return "release = \"" + release + "\" is not supported yet; use github or a bucket";
-        }
-        return null;
+        return refused == null ? null : "[publish] release: " + refused;
     }
+
+    /** The token a forge release is written with; {@code job} when it is GitLab CI's {@code CI_JOB_TOKEN}. */
+    record ReleaseToken(String value, boolean job) {}
 
     /**
      * The forge token chain as this command's shell holds it: the environment through {@link
@@ -92,17 +96,19 @@ record PublishLanes(List<PublishLane> lanes, @Nullable String refusal) {
     }
 
     /**
-     * The token a {@code release = "github"} run writes with: the forge token chain's for the host
-     * of {@code dir}'s origin.
+     * The token a forge {@code release} run writes with: the forge token chain's for the host of
+     * {@code dir}'s origin, and on GitLab CI the job's {@code CI_JOB_TOKEN} when the chain has none.
      *
-     * @throws IllegalArgumentException with one line when origin is not on GitHub or no token is set
+     * @throws IllegalArgumentException with one line when origin is not on that forge or no token is set
      */
-    static String githubToken(Path dir, ForgeAuth auth) {
-        GitHubRepository repo = GitHubRepository.fromOrigin(dir);
-        return auth.resolveSilently(ForgeKind.GITHUB, repo.host())
-                .map(ResolvedToken::value)
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "no GitHub token for " + repo.host() + "; run jk auth login github or set GH_TOKEN"));
+    static ReleaseToken releaseToken(Path dir, String release, ForgeAuth auth, Function<String, @Nullable String> env) {
+        ForgeRepository repo = ForgeRepository.fromOrigin(release, dir);
+        Optional<ResolvedToken> resolved = auth.resolveSilently(repo.kind(), repo.host());
+        if (resolved.isPresent()) return new ReleaseToken(resolved.get().value(), false);
+        String job = env.apply(JOB_TOKEN);
+        if (repo.kind() == ForgeKind.GITLAB && job != null && !job.isBlank())
+            return new ReleaseToken(job.strip(), true);
+        throw new IllegalArgumentException("no token for " + repo.host() + "; " + repo.login());
     }
 
     private static PublishLanes refused(String why) {

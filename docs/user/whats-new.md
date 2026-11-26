@@ -32,6 +32,11 @@ JumpKick shows you this page's new entries after it updates itself.
 - **`jk publish` pushes container images.** With `[image] registry` set, its image lane pushes each
   application module's image with its SBOM and provenance, after the release is published.
   `jk image` builds the image and loads it locally ([Pushing an image](images.md#pushing-an-image)).
+- **`jk publish` ships deliverables to GitLab, Forgejo, Gitea and Codeberg.** `release =
+  "gitlab"` stages files in the project's generic package and the final run creates the release
+  linking them; GitLab CI's job token works as it is. `release = "forgejo"` uses a draft release as
+  on GitHub ([GitLab releases](publish.md#gitlab-releases), [Forgejo, Gitea and Codeberg
+  releases](publish.md#forgejo-gitea-and-codeberg-releases)).
 
 ## 0.60.0
 

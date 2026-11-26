@@ -221,7 +221,8 @@ class LifecycleParityTest {
                         false,
                         List.of(PublishLane.LIBRARY, PublishLane.IMAGE),
                         false,
-                        null));
+                        null,
+                        false));
         WorkspaceRequest request = new WorkspaceRequest(
                         tmp, tmp.resolve("cache"), null, 0, null, false, false, 0, null, false, false)
                 .withSpec(spec);
@@ -290,7 +291,8 @@ class LifecycleParityTest {
                                         false,
                                         List.of(PublishLane.LIBRARY),
                                         false,
-                                        null));
+                                        null,
+                                        false));
                     default -> WorkspaceSpec.of(target);
                 };
         WorkspaceRequest request = new WorkspaceRequest(

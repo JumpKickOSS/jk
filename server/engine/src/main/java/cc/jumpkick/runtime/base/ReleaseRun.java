@@ -4,7 +4,10 @@ package cc.jumpkick.runtime.base;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.SnapshotQualifier;
 import cc.jumpkick.config.WorkspaceLocator;
+import cc.jumpkick.forge.ForgeRepository;
+import cc.jumpkick.forge.ForgejoRepository;
 import cc.jumpkick.forge.GitHubRepository;
+import cc.jumpkick.forge.GitLabProject;
 import cc.jumpkick.host.ReleasePlatform;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
@@ -21,8 +24,8 @@ import java.util.Objects;
 import org.jspecify.annotations.Nullable;
 
 /**
- * One publish run's release: the workspace root's {@code [publish] release} target (for {@code
- * github}, the repository the git remote {@code origin} names), the release's name, version and
+ * One publish run's release: the workspace root's {@code [publish] release} target (for a forge,
+ * the repository the git remote {@code origin} names), the release's name, version and
  * tag, the platforms {@code [release]} lists, this host's platform, and whether the run stages this
  * host's files or is the final run. Read from the workspace root, whose tables govern the whole
  * release.
@@ -34,7 +37,7 @@ public record ReleaseRun(
         String version,
         String tag,
         ReleaseTarget target,
-        @Nullable GitHubRepository github,
+        @Nullable ForgeRepository forge,
         List<String> platforms,
         String host,
         boolean stage,
@@ -47,8 +50,8 @@ public record ReleaseRun(
     /**
      * The release of the workspace around {@code dir}, as {@code args} runs it.
      *
-     * @throws IllegalStateException when the root names no target this jk releases to, or {@code
-     *     github} with an origin that is not on GitHub
+     * @throws IllegalStateException when the root names no target this jk releases to, or a forge
+     *     with an origin that is not on that forge
      */
     public static ReleaseRun of(Path dir, TailArgs.Publish args) throws IOException {
         Path root = WorkspaceLocator.findRoot(dir).orElse(dir);
@@ -57,14 +60,10 @@ public record ReleaseRun(
         String release = rootBuild.pomMetadata().release();
         if (release == null) throw new IllegalStateException("no [publish] release in " + manifest);
         ReleaseTarget target = ReleaseTarget.parse(release);
-        GitHubRepository github = null;
-        if (target instanceof ReleaseTarget.Forge forge) {
-            if (!forge.kind().equals(ReleaseTarget.GITHUB)) {
-                throw new IllegalStateException(
-                        "release = \"" + release + "\" is not supported yet; use github or a bucket");
-            }
+        ForgeRepository forge = null;
+        if (target instanceof ReleaseTarget.Forge named) {
             try {
-                github = GitHubRepository.fromOrigin(root);
+                forge = ForgeRepository.fromOrigin(named.kind(), root);
             } catch (IllegalArgumentException e) {
                 throw new IllegalStateException(e.getMessage(), e);
             }
@@ -78,7 +77,7 @@ public record ReleaseRun(
                 version,
                 ReleaseTag.render(table.tag(), version),
                 target,
-                github,
+                forge,
                 table.platformsOrHost(),
                 ReleasePlatform.current(),
                 args.stage(),
@@ -99,22 +98,33 @@ public record ReleaseRun(
 
     /**
      * Where the release's files go: {@code {prefix}{version}/} in a bucket, the tag's download
-     * directory on GitHub.
+     * directory on GitHub and Forgejo, the version's generic package on GitLab.
      */
     public String destination() {
         if (target instanceof ReleaseTarget.Bucket bucket)
             return bucket.version(version).toString();
-        return Objects.requireNonNull(github, "github").download(tag);
+        return switch (Objects.requireNonNull(forge, "forge")) {
+            case GitHubRepository github -> github.download(tag);
+            case ForgejoRepository forgejo -> forgejo.download(tag);
+            case GitLabProject gitlab -> gitlab.packages(gitlab.api(), name, version);
+        };
     }
 
     /**
-     * What a dry run's release would do last: point {@code latest.json} at it or publish its draft;
-     * a stage run, upload to the draft ({@code null} for a bucket, which has none).
+     * What a dry run's release would do last: point {@code latest.json} at it, publish its draft, or
+     * create the GitLab release; a stage run, upload to the draft or the generic package ({@code
+     * null} for a bucket, which has neither).
      */
     public @Nullable String plannedFinish() {
-        if (stage) return github == null ? null : "would upload to the draft release " + tag;
-        if (github == null) return "would point " + ReleaseIndex.LATEST + " at " + version;
-        return "would publish the draft release " + tag;
+        boolean gitlab = forge instanceof GitLabProject;
+        if (stage) {
+            if (forge == null) return null;
+            return gitlab
+                    ? "would upload to the generic package " + name + " " + version
+                    : "would upload to the draft release " + tag;
+        }
+        if (forge == null) return "would point " + ReleaseIndex.LATEST + " at " + version;
+        return gitlab ? "would create the release " + tag : "would publish the draft release " + tag;
     }
 
     /** The line a run refuses with when {@code name} is not in a release that is already out. */

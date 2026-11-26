@@ -64,7 +64,8 @@ class TailArgsJsonTest {
                 true,
                 List.of(PublishLane.LIBRARY, PublishLane.RELEASE),
                 true,
-                "release-token");
+                "release-token",
+                true);
     }
 
     private static BuildRequest request(@Nullable TailArgs tail) {

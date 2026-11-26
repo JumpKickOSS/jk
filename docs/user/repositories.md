@@ -407,10 +407,11 @@ Sources, in order — the first that yields a credential wins:
 4. the `<server>` with that `<id>` in `~/.m2/settings.xml` (a `<mirror>` or active-profile
    `<repository>` with that id in the same file binds the name to its URL — see
    [Maven `settings.xml`](#maven-settingsxml-mirrors-proxies-profiles))
-5. a `jk auth login` forge token, for forge package registries (matched by host). On GitHub it
-   asks for `read:packages`, and `repo` as well in a project whose `[publish] release` is
-   `github`, so the same token writes its releases ([Publish](publish.md#github-releases));
-   `--scope` asks for others
+5. a `jk auth login` forge token, for forge package registries (matched by host). It asks to
+   read packages (`read:packages` on GitHub, `read_api` on GitLab, `read:package` on Forgejo and
+   Gitea), and to write releases as well in a project whose `[publish] release` names that forge:
+   `repo` on GitHub, `api` on GitLab, `write:repository` on Forgejo and Gitea
+   ([Releasing deliverables](publish.md#releasing-deliverables)); `--scope` asks for others
 
 Tool distribution mirrors and npm registries use the same chain, keyed by host — see
 [Config § Tool mirrors](config.md#tool-mirrors) and [Config § Node network](config.md#node-network).

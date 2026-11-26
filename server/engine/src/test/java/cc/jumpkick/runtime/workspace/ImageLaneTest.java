@@ -106,7 +106,7 @@ class ImageLaneTest {
 
     private WorkspaceRequest request(List<PublishLane> lanes) {
         TailArgs.Publish args = new TailArgs.Publish(
-                null, false, true, null, null, RepoCredential.ANONYMOUS, false, lanes, false, null);
+                null, false, true, null, null, RepoCredential.ANONYMOUS, false, lanes, false, null, false);
         return new WorkspaceRequest(tmp, tmp.resolve("cache"), null, 0, null, false, false, 0, null, false, false)
                 .withSpec(WorkspaceSpec.publish(Set.of(), args));
     }

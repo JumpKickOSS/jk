@@ -94,7 +94,8 @@ class PublishVerbCredentialRedactionTest {
                 false,
                 List.of(PublishLane.RELEASE),
                 false,
-                token);
+                token,
+                false);
         WorkspaceBuildVerb.fileShippedCredential(dir, release);
 
         assertThat(mask(dir, "POST https://api.github.com/ (sent Authorization: Bearer " + token + ")"))
@@ -120,6 +121,7 @@ class PublishVerbCredentialRedactionTest {
                 false,
                 List.of(PublishLane.LIBRARY),
                 false,
-                null);
+                null,
+                false);
     }
 }

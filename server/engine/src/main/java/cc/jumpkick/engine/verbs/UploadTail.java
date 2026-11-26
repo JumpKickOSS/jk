@@ -46,7 +46,8 @@ final class UploadTail {
             lanes.add(PublishLane.RELEASE);
         }
         if (info.error() == null && !info.imageRegistry().isEmpty()) lanes.add(PublishLane.IMAGE);
-        return new TailArgs.Publish(url, false, true, null, null, RepoCredential.ANONYMOUS, false, lanes, false, null);
+        return new TailArgs.Publish(
+                url, false, true, null, null, RepoCredential.ANONYMOUS, false, lanes, false, null, false);
     }
 
     /**
@@ -83,6 +84,16 @@ final class UploadTail {
             passphrase = BuildEnv.get("JK_GPG_PASSPHRASE");
         }
         return new TailArgs.Publish(
-                url, false, false, keyFile, passphrase, credential, false, List.of(PublishLane.LIBRARY), false, null);
+                url,
+                false,
+                false,
+                keyFile,
+                passphrase,
+                credential,
+                false,
+                List.of(PublishLane.LIBRARY),
+                false,
+                null,
+                false);
     }
 }

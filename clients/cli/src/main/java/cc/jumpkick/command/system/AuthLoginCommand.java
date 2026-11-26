@@ -145,7 +145,9 @@ public final class AuthLoginCommand implements CliCommand {
                     + "] client-id to your jk.toml, or use --with-token.");
         String requestedScope = (scope != null && !scope.isBlank())
                 ? scope.strip()
-                : defaultScope(kind, releasesToGitHub(global.workingDir()));
+                : defaultScope(
+                        kind,
+                        releasesTo(global.workingDir()).filter(kind::equals).isPresent());
         DeviceFlow flow = DeviceFlow.forHost(new Http(), kind, resolvedHost, clientId, requestedScope);
         return flow.run(this::prompt);
     }
@@ -176,27 +178,29 @@ public final class AuthLoginCommand implements CliCommand {
     }
 
     /**
-     * The scope the device flow asks for: reading packages, and on GitHub writing releases too
-     * ({@code repo}) when the project sends its deliverables to a GitHub Release.
+     * The scope the device flow asks for: reading packages, and writing releases too when the
+     * project sends its deliverables to this forge ({@code repo} on GitHub, {@code api} on GitLab,
+     * {@code write:repository} on Forgejo and Gitea).
      */
-    static String defaultScope(ForgeKind kind, boolean githubRelease) {
+    static String defaultScope(ForgeKind kind, boolean releases) {
         return switch (kind) {
-            case GITHUB -> githubRelease ? "read:packages repo" : "read:packages";
-            case GITLAB -> "read_api";
-            case GITEA -> "read:package";
+            case GITHUB -> releases ? "read:packages repo" : "read:packages";
+            case GITLAB -> releases ? "api" : "read_api";
+            case GITEA -> releases ? "read:package write:repository" : "read:package";
             case BITBUCKET -> "";
         };
     }
 
-    /** True when the workspace around {@code dir} sets {@code [publish] release = "github"}. */
-    static boolean releasesToGitHub(Path dir) {
+    /** The forge the workspace around {@code dir} releases to by {@code [publish] release}, if any. */
+    static Optional<ForgeKind> releasesTo(Path dir) {
         try {
             Path root = WorkspaceLocator.findRoot(dir).orElse(dir);
             String release = TomlScan.scan(ManifestPaths.manifestIn(root), "publish.release")
                     .get("publish.release");
-            return ReleaseTarget.GITHUB.equals(release);
+            if (release == null || !ReleaseTarget.FORGES.contains(release)) return Optional.empty();
+            return ForgeKind.fromId(release);
         } catch (IOException | RuntimeException e) {
-            return false;
+            return Optional.empty();
         }
     }
 

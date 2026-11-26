@@ -336,11 +336,11 @@ public final class ReleaseCommand implements CliCommand {
         if (target == null) return resolved.refusal();
         if (library && target.lacksCredential()) return noCredential(target.describe());
         if (!info.publishRelease().isEmpty()) {
-            String refused = PublishLanes.forgeRefusal(info.publishRelease());
+            String refused = PublishLanes.releaseRefusal(info.publishRelease());
             if (refused != null) return refused;
-            if (ReleaseTarget.GITHUB.equals(info.publishRelease())) {
+            if (ReleaseTarget.FORGES.contains(info.publishRelease())) {
                 try {
-                    PublishLanes.githubToken(dir, PublishLanes.forgeAuth());
+                    PublishLanes.releaseToken(dir, info.publishRelease(), PublishLanes.forgeAuth(), JkDirs::env);
                 } catch (IllegalArgumentException e) {
                     return String.valueOf(e.getMessage());
                 }

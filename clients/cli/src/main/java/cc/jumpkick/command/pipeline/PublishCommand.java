@@ -209,10 +209,11 @@ public final class PublishCommand implements CliCommand {
             return Exit.CONFIG;
         }
 
-        @Nullable String releaseToken = null;
-        if (lanes.contains(PublishLane.RELEASE) && ReleaseTarget.GITHUB.equals(info.publishRelease()) && !dryRun) {
+        PublishLanes.@Nullable ReleaseToken releaseToken = null;
+        if (lanes.contains(PublishLane.RELEASE) && ReleaseTarget.FORGES.contains(info.publishRelease()) && !dryRun) {
             try {
-                releaseToken = PublishLanes.githubToken(projectDir, PublishLanes.forgeAuth());
+                releaseToken = PublishLanes.releaseToken(
+                        projectDir, info.publishRelease(), PublishLanes.forgeAuth(), JkDirs::env);
             } catch (IllegalArgumentException e) {
                 CommandWedge.printFail("Publish", String.valueOf(e.getMessage()));
                 return Exit.CONFIG;
@@ -229,7 +230,8 @@ public final class PublishCommand implements CliCommand {
                 target.central(),
                 lanes,
                 stage,
-                releaseToken);
+                releaseToken == null ? null : releaseToken.value(),
+                releaseToken != null && releaseToken.job());
         // The build and the upload run as every build verb runs: the same phases through PACKAGE,
         // the upload as the goal's tail, a workspace member's prerequisites first.
         return BuildVerbCommand.run(

@@ -97,7 +97,8 @@ class ReleaseSetTest {
                 false,
                 List.of(PublishLane.LIBRARY),
                 false,
-                null);
+                null,
+                false);
     }
 
     @Test

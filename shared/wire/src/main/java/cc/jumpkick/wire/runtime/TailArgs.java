@@ -52,8 +52,9 @@ public sealed interface TailArgs {
     /**
      * {@code jk publish}: the library repository, the PGP key and passphrase the client resolved,
      * the credential, the {@link PublishLane lanes} the run ships to and whether it only stages this
-     * host's release files, and the token a GitHub release is written with ({@code null} when the
-     * release goes elsewhere or the run is dry). Signing, SBOM and provenance come from the
+     * host's release files, and the token a forge release is written with ({@code null} when the
+     * release goes to a bucket or the run is dry; {@code releaseJobToken} when it is GitLab CI's
+     * {@code CI_JOB_TOKEN}). Signing, SBOM and provenance come from the
      * project's {@code [publish]} table and the engine's view of CI, never from the client.
      */
     record Publish(
@@ -66,7 +67,8 @@ public sealed interface TailArgs {
             boolean central,
             List<PublishLane> lanes,
             boolean stage,
-            @Nullable String releaseToken)
+            @Nullable String releaseToken,
+            boolean releaseJobToken)
             implements TailArgs {
         public Publish {
             lanes = List.copyOf(lanes);

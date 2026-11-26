@@ -216,23 +216,27 @@ target is refused, naming the key to set. `jk image` builds the image and loads 
 ```toml
 [publish]
 repository = "central"                        # the library lane
-release    = "github"                         # the release lane: github, or an s3:// or gs:// prefix
+release    = "github"                         # the release lane: github, gitlab, forgejo, or a bucket
 
 [release]
 platforms = ["linux-x86_64", "macos-aarch64", "windows-x86_64"]
 ```
 
-`release` takes `github` or an `s3://` or `gs://` prefix:
+`release` takes `github`, `gitlab`, `forgejo` or an `s3://` or `gs://` prefix:
 
 - `github` sends the files to a GitHub Release of the repository the git remote `origin` names,
   on github.com or a GitHub Enterprise host. See [GitHub Releases](#github-releases).
+- `gitlab` sends them to a GitLab release of the project `origin` names, on gitlab.com or a
+  self-managed host. See [GitLab releases](#gitlab-releases).
+- `forgejo` sends them to a Forgejo or Gitea release of the repository `origin` names, on
+  codeberg.org or any self-hosted instance. See [Forgejo, Gitea and Codeberg
+  releases](#forgejo-gitea-and-codeberg-releases).
 - A bucket's endpoint and region come from a `[repositories]` table whose `url` or `publish-url`
   covers the bucket, else from the AWS environment (`AWS_ENDPOINT_URL` for R2 or MinIO,
   `AWS_REGION`). The credential comes from the AWS chain (`AWS_ACCESS_KEY_ID` and
   `AWS_SECRET_ACCESS_KEY`, or `~/.aws/credentials`).
 
-`gitlab` and `forgejo` are refused until JumpKick supports them. The workspace root's
-`[publish] release` and `[release]` govern the whole workspace.
+The workspace root's `[publish] release` and `[release]` govern the whole workspace.
 
 **What the release carries.** From every module that is not `[publish] skip`:
 
@@ -250,7 +254,7 @@ platforms = ["linux-x86_64", "macos-aarch64", "windows-x86_64"]
 Then the final run adds `SHA256SUMS` (`sha256sum` format, the one `jk`'s own installer verifies),
 `SHA256SUMS.asc` when `key-file` is set, `SHA256SUMS.sigstore.json` when CI offers an identity
 token, and `index.json`, which lists every file with its module, size, SHA-256, URL (a bucket's
-only; GitHub names its own) and, for a platform file, its `os` and `arch`. With signing on and
+and GitLab's; GitHub and Forgejo name their own) and, for a platform file, its `os` and `arch`. With signing on and
 neither a key nor an identity, the release goes out unsigned and the run says so on one line, also
 in the results: `release v1.4.7 is unsigned: set [publish] key-file, or sign = false`. Quarkus's
 default fast-jar runs from its `quarkus-app/` directory, which the release does not carry;
@@ -271,7 +275,7 @@ one platform needs nothing else: one `jk publish` builds, uploads and publishes 
   `VALIDATED`), writes `SHA256SUMS`, its signatures and `index.json`, publishes the release, and
   only then presses Publish on the Central Portal (unless `hold = true`). The image lane goes last:
   each image is pushed once the release is out. If anything fails before the release is published,
-  nothing on Central, in `latest.json`, on GitHub or in the registry is public.
+  nothing on Central, in `latest.json`, on the forge or in the registry is public.
 
 Every upload resumes: a file already there with the same bytes is left alone, so a final run that
 stopped half way finishes on the next try, and a file there with other bytes stops the run and says
@@ -384,13 +388,119 @@ jobs:
 The final job's own platform (`linux-x86_64` here) is staged by the matrix too; the final run finds
 its files already there and leaves them.
 
+### GitLab releases
+
+With `release = "gitlab"` the release is the GitLab release of the version's tag in the project
+`origin` names: gitlab.com, or any other host as a self-managed GitLab, with subgroups in the path
+(`git@gitlab.example.com:acme/tools/app.git`). A run refuses with one line when `origin` is
+missing or on another forge's public host.
+
+GitLab has no draft release, and a release's assets are links. So:
+
+- Every upload goes to the project's generic package `<name>/<version>` (`app/1.4.7`), which no
+  release points at yet. A file already in the package with the same name, size and SHA-256 is left
+  alone; one with other bytes stops the run.
+- The final run uploads the neutral files, `SHA256SUMS`, its signatures and `index.json`, then
+  creates the release with a link to every file of the package. `index.json` gives each file's
+  package URL.
+- A release that already exists takes no new file. A final run that finds every file there and
+  linked changes nothing; one that would add a file is refused before anything builds.
+
+The package shows in the project's package registry as soon as the first stage run uploads to it.
+
+**The token.** JumpKick takes the first of `JK_GITLAB_TOKEN`, `GITLAB_TOKEN`, `glab auth token`
+and the token `jk auth login gitlab` stored, then, in a GitLab CI job, the job's `CI_JOB_TOKEN`.
+A personal or project access token needs the `api` scope and the Developer role; the job token
+needs no setup, since the generic packages and releases APIs take it. A token without the scope is
+refused with `GitLab refused the release; the token needs api scope and Developer`. In a project
+with `release = "gitlab"`, `jk auth login gitlab` asks for `api` instead of `read_api`.
+`CI_API_V4_URL`, which GitLab CI sets, names the REST API when it is set; otherwise it is
+`https://<host>/api/v4`.
+
+```yaml
+# .gitlab-ci.yml
+stages: [stage, publish]
+
+stage:
+  stage: stage
+  rules:
+    - if: $CI_COMMIT_TAG
+  parallel:
+    matrix:
+      - RUNNER: [saas-linux-small-amd64, saas-macos-medium-m1]
+  tags: [$RUNNER]
+  script:
+    - jk publish --stage
+
+publish:
+  stage: publish
+  rules:
+    - if: $CI_COMMIT_TAG
+  tags: [saas-linux-small-amd64]
+  id_tokens:
+    SIGSTORE_ID_TOKEN:
+      aud: sigstore              # keyless Sigstore signing
+  script:
+    - jk publish
+```
+
+### Forgejo, Gitea and Codeberg releases
+
+With `release = "forgejo"` the release is the Forgejo or Gitea release of the version's tag in the
+repository `origin` names: codeberg.org, or any other host as a self-hosted Forgejo or Gitea,
+under a sub-path too (`https://git.example.com/forge/acme/app.git`). A run refuses with one line
+when `origin` is missing or on another forge's public host.
+
+The release works as on GitHub: the first upload creates a **draft** named after the tag, stage
+runs and the final run upload attachments to it, an attachment with the same name, size and SHA-256
+is left alone and one with other bytes stops the run, and the final run publishes the draft. A
+release that is already published takes no new file.
+
+**The token.** JumpKick takes the first of `JK_GITEA_TOKEN`, `GITEA_TOKEN`, `FORGEJO_TOKEN` and
+the token `jk auth login forgejo --host <host>` stored for the host of `origin`. It needs the
+`write:repository` scope; a token without it is refused with `Forgejo refused the release; the
+token needs write:repository`. In a project with `release = "forgejo"`, `jk auth login forgejo`
+asks for `write:repository` as well as `read:package`.
+
+Forgejo Actions runs the same matrix as GitHub Actions. Give the jobs a token with
+`write:repository` from a repository secret:
+
+```yaml
+# .forgejo/workflows/release.yml
+on:
+  push:
+    tags: ["v*"]
+jobs:
+  stage:
+    strategy:
+      matrix:
+        runner: [docker, macos-arm64]
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: jk publish --stage
+        env:
+          FORGEJO_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+  publish:
+    needs: stage
+    runs-on: docker
+    steps:
+      - uses: actions/checkout@v4
+      - run: jk publish
+        env:
+          FORGEJO_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+          JK_GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+```
+
+The runner labels are the ones your runners registered with.
+
 **Previewing.** `jk publish --dry-run` prints each lane's plan: for the release, every file with its
 size, SHA-256, destination and role (`staging` for a platform's own file, `final` for what only the
 final run writes), then what the run would do last (`would publish the draft release v1.4.7`,
-`would point latest.json at 1.4.7`); for the image lane, each image reference it would push
-(`Would push image ghcr.io/acme/app:1.4.7`). Nothing is uploaded. `target/jk-results.md` gives the
-Publish block one row per lane and destination: an image's row names its reference and, once
-pushed, its digest.
+`would create the release v1.4.7` on GitLab, `would point latest.json at 1.4.7`); for the image
+lane, each image reference it would push (`Would push image ghcr.io/acme/app:1.4.7`). Nothing is
+uploaded, and a dry run reads no token. `target/jk-results.md` gives the Publish block one row per
+lane and destination: an image's row names its reference and, once pushed, its digest.
 
 ## Releasing
 
