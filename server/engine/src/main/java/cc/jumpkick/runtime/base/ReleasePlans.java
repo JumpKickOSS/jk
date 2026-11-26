@@ -61,7 +61,7 @@ public final class ReleasePlans {
                     BuildLayout layout = BuildLayout.of(dir, build);
                     ctx.label(run.dryRun() ? "release plan" : "upload to " + run.destination());
                     List<ReleaseOutcome.File> files = new ArrayList<>();
-                    @Nullable ReleaseBucket bucket = run.dryRun() ? null : ReleaseBucket.open(run);
+                    @Nullable ReleaseStore store = run.dryRun() ? null : ReleaseStores.open(run, args);
                     try {
                         for (ReleaseDeliverables.Deliverable d : deliverables) {
                             boolean wanted = d.neutral() ? !run.stage() : run.hostListed();
@@ -72,8 +72,8 @@ public final class ReleasePlans {
                             }
                             // The final run takes a stage run's file of this platform as it found it:
                             // a second build of a native executable need not have the same bytes.
-                            ReleaseBucket.Held staged = bucket != null && !run.stage() && !d.neutral()
-                                    ? bucket.held(d.name()).orElse(null)
+                            ReleaseStore.Held staged = store != null && !run.stage() && !d.neutral()
+                                    ? store.held(d.name()).orElse(null)
                                     : null;
                             if (staged != null) {
                                 files.add(new ReleaseOutcome.File(
@@ -86,11 +86,11 @@ public final class ReleasePlans {
                                         ReleaseOutcome.STAGED));
                                 continue;
                             }
-                            files.add(send(bucket, d.name(), d.module(), d.platform(), d.file()));
+                            files.add(send(store, d.name(), d.module(), d.platform(), d.file()));
                         }
                         if (!run.stage() && build.pomMetadata().sbom()) {
                             Path sbom = sbom(dir, build, layout);
-                            files.add(send(bucket, String.valueOf(sbom.getFileName()), layout.artifact(), null, sbom));
+                            files.add(send(store, String.valueOf(sbom.getFileName()), layout.artifact(), null, sbom));
                         }
                     } catch (IOException e) {
                         ctx.error("upload", Errors.text(e));
@@ -112,14 +112,14 @@ public final class ReleasePlans {
     }
 
     private static ReleaseOutcome.File send(
-            @Nullable ReleaseBucket bucket, String name, String module, @Nullable String platform, Path file)
+            @Nullable ReleaseStore store, String name, String module, @Nullable String platform, Path file)
             throws IOException, InterruptedException {
         String role = platform == null ? ReleaseOutcome.FINAL : ReleaseOutcome.STAGING;
         String status;
-        if (bucket == null) {
+        if (store == null) {
             status = ReleaseOutcome.PLANNED;
         } else {
-            status = bucket.put(name, file) == ReleaseBucket.Put.UPLOADED
+            status = store.put(name, file) == ReleaseStore.Put.UPLOADED
                     ? ReleaseOutcome.UPLOADED
                     : ReleaseOutcome.EXISTING;
         }

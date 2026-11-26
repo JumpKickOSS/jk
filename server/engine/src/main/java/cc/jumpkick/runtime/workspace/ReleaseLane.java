@@ -13,9 +13,10 @@ import cc.jumpkick.publish.CiIdentity;
 import cc.jumpkick.release.ReleaseIndex;
 import cc.jumpkick.runtime.ModuleJar;
 import cc.jumpkick.runtime.base.PublishPlans;
-import cc.jumpkick.runtime.base.ReleaseBucket;
 import cc.jumpkick.runtime.base.ReleasePlans;
 import cc.jumpkick.runtime.base.ReleaseRun;
+import cc.jumpkick.runtime.base.ReleaseStore;
+import cc.jumpkick.runtime.base.ReleaseStores;
 import cc.jumpkick.wire.runtime.ModulePlan;
 import cc.jumpkick.wire.runtime.PublishLane;
 import cc.jumpkick.wire.runtime.ReleaseOutcome;
@@ -36,11 +37,13 @@ import java.util.function.Predicate;
 import org.jspecify.annotations.Nullable;
 
 /**
- * The release lane's workspace half. Before anything builds, a final run refuses a release that
- * lacks a listed platform's files, so nothing irreversible happens first. After every module
- * uploaded its files, the final run writes {@code SHA256SUMS}, its signatures and {@code
- * index.json}, publishes the release ({@code latest.json}), then publishes the Central deployments
- * the library lane held at {@code VALIDATED}. A stage run only reports what it uploaded.
+ * The release lane's workspace half. Before anything builds, a run refuses a release that is
+ * already published without a file it would write, and a final run one that lacks a listed
+ * platform's files, so nothing irreversible happens first. After every module uploaded its files,
+ * the final run writes {@code SHA256SUMS}, its signatures and {@code index.json}, publishes the
+ * release ({@code latest.json} in a bucket, the draft on GitHub), then publishes the Central
+ * deployments the library lane held at {@code VALIDATED}. A stage run only reports what it
+ * uploaded.
  */
 final class ReleaseLane {
 
@@ -55,7 +58,8 @@ final class ReleaseLane {
     /**
      * Why the run's release cannot go ahead, one line each, before anything builds: no selected
      * module builds a release file; a stage run on a host whose platform is not listed or with
-     * nothing platform-specific to stage; a final run whose listed platforms are not all staged.
+     * nothing platform-specific to stage; a release already published without a file the run would
+     * write; a final run whose listed platforms are not all staged.
      */
     static List<String> refusals(WorkspaceRequest request, Map<Path, JkBuild> units, Predicate<Path> selected) {
         TailArgs.Publish args = args(request);
@@ -84,12 +88,17 @@ final class ReleaseLane {
             }
             boolean specific = shipping.values().stream().anyMatch(ReleaseDeliverables::platformSpecific);
             if (!specific) return List.of("nothing to stage: no module builds a runtime image or native executable");
-            return List.of();
         }
-        if (run.dryRun() || run.others().isEmpty()) return List.of();
+        if (run.dryRun()) return List.of();
         try {
-            return missingPlatforms(run, ReleaseBucket.open(run), shipping);
+            ReleaseStore store = ReleaseStores.open(run, args);
+            List<String> refused = publishedWithout(run, store, shipping);
+            if (refused.isEmpty() && !run.stage()) refused = missingPlatforms(run, store, shipping);
+            if (refused.isEmpty()) store.prepare();
+            return refused;
         } catch (IOException | RuntimeException e) {
+            // GitHub's refusals name the release themselves; a bucket's need the place.
+            if (run.github() != null) return List.of(Errors.text(e));
             return List.of("could not read " + run.destination() + ": " + Errors.text(e));
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -97,8 +106,38 @@ final class ReleaseLane {
         }
     }
 
+    /**
+     * The {@link ReleaseRun#publishedWithout} line for the first file the run would write that a
+     * release already out does not hold; empty when the release is not out or holds them all. A
+     * release that is out takes no new file, so a re-run that finds them all changes nothing.
+     */
+    static List<String> publishedWithout(ReleaseRun run, ReleaseStore store, Map<Path, JkBuild> shipping)
+            throws IOException, InterruptedException {
+        if (!store.published()) return List.of();
+        List<String> names = new ArrayList<>();
+        for (Map.Entry<Path, JkBuild> unit : shipping.entrySet()) {
+            BuildLayout layout = BuildLayout.of(unit.getKey(), unit.getValue());
+            for (ReleaseDeliverables.Deliverable d : ModuleJar.releaseFiles(unit.getValue(), unit.getKey())) {
+                if (d.neutral() ? !run.stage() : run.hostListed()) names.add(d.name());
+            }
+            if (run.stage()) continue;
+            for (String platform : run.others()) {
+                names.addAll(ReleaseDeliverables.platformNames(layout, unit.getValue(), platform));
+            }
+            if (unit.getValue().pomMetadata().sbom()) names.add(layout.archiveRoot() + ".cdx.json");
+        }
+        if (!run.stage()) {
+            names.add(ReleaseIndex.SUMS);
+            names.add(ReleaseIndex.INDEX);
+        }
+        for (String name : names) {
+            if (!store.present(name)) return List.of(run.publishedWithout(name));
+        }
+        return List.of();
+    }
+
     /** One {@link ReleaseRun#lacks} line per listed platform some shipping module has no staged file for. */
-    static List<String> missingPlatforms(ReleaseRun run, ReleaseBucket bucket, Map<Path, JkBuild> shipping)
+    static List<String> missingPlatforms(ReleaseRun run, ReleaseStore store, Map<Path, JkBuild> shipping)
             throws IOException, InterruptedException {
         List<String> refused = new ArrayList<>();
         for (String platform : run.others()) {
@@ -106,7 +145,7 @@ final class ReleaseLane {
             for (Map.Entry<Path, JkBuild> unit : shipping.entrySet()) {
                 BuildLayout layout = BuildLayout.of(unit.getKey(), unit.getValue());
                 for (String name : ReleaseDeliverables.platformNames(layout, unit.getValue(), platform)) {
-                    if (!bucket.present(name)) {
+                    if (!store.present(name)) {
                         refused.add(run.lacks(platform));
                         break search;
                     }
@@ -157,7 +196,7 @@ final class ReleaseLane {
         private final List<String> held;
         private final List<String> released = new ArrayList<>();
         private final List<String> notes = new ArrayList<>();
-        private @Nullable ReleaseBucket bucket;
+        private @Nullable ReleaseStore store;
         private Function<String, @Nullable String> env = BuildEnv::get;
 
         Final(ReleaseRun release, TailArgs.Publish args, List<ReleaseOutcome.File> files, List<String> held) {
@@ -173,19 +212,19 @@ final class ReleaseLane {
             return this;
         }
 
-        /** Overrides the bucket the run opens: a test hands in one over a fake store. */
-        Final over(ReleaseBucket bucket) {
-            this.bucket = bucket;
+        /** Overrides the store the run opens: a test hands in one over a fake server. */
+        Final over(ReleaseStore store) {
+            this.store = store;
             return this;
         }
 
-        ReleaseOutcome outcome(@Nullable String latest) {
+        ReleaseOutcome outcome(@Nullable String finish) {
             return new ReleaseOutcome(
-                    release.destination(), release.stage(), release.dryRun(), files, latest, released, notes);
+                    release.destination(), release.stage(), release.dryRun(), files, finish, released, notes);
         }
 
         ReleaseOutcome run(List<String> expected, Path entryDir) throws IOException, InterruptedException {
-            if (release.stage()) return outcome(null);
+            if (release.stage()) return outcome(release.dryRun() ? release.plannedFinish() : null);
             JkBuild root = release.rootBuild();
             boolean sign = root.pomMetadata().sign();
             Path keyFile = sign ? args.keyFile() : null;
@@ -201,13 +240,12 @@ final class ReleaseLane {
                 }
                 for (String name : documents(signatures))
                     files.add(file(name, "", null, -1, "", ReleaseOutcome.PLANNED));
-                files.add(file(ReleaseIndex.LATEST, "", null, -1, "", ReleaseOutcome.PLANNED));
-                return outcome(null);
+                return outcome(release.plannedFinish());
             }
-            ReleaseBucket store = bucket != null ? bucket : ReleaseBucket.open(release);
+            ReleaseStore store = this.store != null ? this.store : ReleaseStores.open(release, args);
             for (String e : expected) {
                 String[] parts = e.split("/", 3);
-                Optional<ReleaseBucket.Held> staged = store.held(parts[2]);
+                Optional<ReleaseStore.Held> staged = store.held(parts[2]);
                 if (staged.isEmpty()) throw new IOException(release.lacks(parts[1]));
                 files.add(file(
                         parts[2],
@@ -220,12 +258,7 @@ final class ReleaseLane {
             List<ReleaseIndex.Entry> entries = new ArrayList<>();
             for (ReleaseOutcome.File f : files) {
                 entries.add(new ReleaseIndex.Entry(
-                        f.name(),
-                        f.module(),
-                        f.platform(),
-                        f.size(),
-                        f.sha256(),
-                        store.uri(f.name()).toString()));
+                        f.name(), f.module(), f.platform(), f.size(), f.sha256(), store.url(f.name())));
             }
             Path dir = Files.createDirectories(
                     release.root().resolve(OutputDirs.TARGET).resolve("release").resolve(release.version()));
@@ -253,13 +286,13 @@ final class ReleaseLane {
             byte[] index = ReleaseIndex.index(release.name(), release.version(), release.tag(), entries);
             Files.write(dir.resolve(ReleaseIndex.INDEX), index);
             files.add(put(store, ReleaseIndex.INDEX, index));
-            String latest = store.publishLatest();
+            String finish = store.publish();
             if (!held.isEmpty()
                     && PublishTail.holdsForRelease(args)
                     && !root.pomMetadata().hold()) {
                 released.addAll(PublishPlans.releaseDeployments(entryDir, PublishTail.request(args), held));
             }
-            return outcome(latest);
+            return outcome(finish);
         }
 
         /** The line a release that signing is on for, and that nothing could sign, says. */
@@ -275,16 +308,16 @@ final class ReleaseLane {
             return out;
         }
 
-        private static ReleaseOutcome.File put(ReleaseBucket store, String name, byte[] body)
+        private static ReleaseOutcome.File put(ReleaseStore store, String name, byte[] body)
                 throws IOException, InterruptedException {
-            ReleaseBucket.Put put = store.put(name, body);
+            ReleaseStore.Put put = store.put(name, body);
             return file(
                     name,
                     "",
                     null,
                     body.length,
                     Hashing.sha256Hex(body),
-                    put == ReleaseBucket.Put.UPLOADED ? ReleaseOutcome.UPLOADED : ReleaseOutcome.EXISTING);
+                    put == ReleaseStore.Put.UPLOADED ? ReleaseOutcome.UPLOADED : ReleaseOutcome.EXISTING);
         }
 
         private static ReleaseOutcome.File file(

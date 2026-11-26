@@ -123,8 +123,8 @@ final class WorkspaceTerminal {
         int sent = (int) release.files().stream()
                 .filter(f -> ReleaseOutcome.UPLOADED.equals(f.status()) || ReleaseOutcome.PLANNED.equals(f.status()))
                 .count();
-        String state =
-                release.stage() ? "staged" : release.latest() != null ? "latest.json names " + release.latest() : "";
+        String finish = release.finish();
+        String state = finish != null ? finish : release.stage() ? "staged" : "";
         return new BuildRecord.Publish(
                 List.of(new BuildRecord.Publish.Lane(
                         PublishLane.RELEASE.word(), release.destination(), sent, release.dryRun(), state)),

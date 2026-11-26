@@ -37,12 +37,12 @@ class ReleaseBucketTest {
         ReleaseBucket bucket = fake.bucket("app/", "1.0");
         Path jar = Files.writeString(tmp.resolve("app-1.0-all.jar"), "jar bytes");
 
-        assertThat(bucket.put("app-1.0-all.jar", jar)).isEqualTo(ReleaseBucket.Put.UPLOADED);
+        assertThat(bucket.put("app-1.0-all.jar", jar)).isEqualTo(ReleaseStore.Put.UPLOADED);
         assertThat(fake.text("app/1.0/app-1.0-all.jar")).isEqualTo("jar bytes");
-        assertThat(bucket.put("app-1.0-all.jar", jar)).isEqualTo(ReleaseBucket.Put.EXISTING);
+        assertThat(bucket.put("app-1.0-all.jar", jar)).isEqualTo(ReleaseStore.Put.EXISTING);
         assertThat(bucket.present("app-1.0-all.jar")).isTrue();
         assertThat(bucket.present("app-1.0.zip")).isFalse();
-        assertThat(bucket.held("app-1.0-all.jar")).contains(new ReleaseBucket.Held(9, Hashing.sha256Hex("jar bytes")));
+        assertThat(bucket.held("app-1.0-all.jar")).contains(new ReleaseStore.Held(9, Hashing.sha256Hex("jar bytes")));
         assertThat(fake.unguarded).hasValue(0);
     }
 

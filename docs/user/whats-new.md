@@ -25,6 +25,10 @@ JumpKick shows you this page's new entries after it updates itself.
   archives, runtime images and native executables with `SHA256SUMS`, signatures and an index, and
   publishes the release with `latest.json`. `jk publish --stage` adds each platform's files from its
   own CI job; `--only` picks lanes ([Releasing deliverables](publish.md#releasing-deliverables)).
+- **`jk publish` ships deliverables to a GitHub Release.** `[publish] release = "github"` uploads
+  them to a draft release of the tag in the repository `origin` names, on github.com or GitHub
+  Enterprise, and the final run publishes it. `jk auth login github` asks for the `repo` scope in
+  such a project ([GitHub Releases](publish.md#github-releases)).
 
 ## 0.60.0
 

@@ -18,6 +18,7 @@ import cc.jumpkick.config.ReleaseVersion.Segment;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.credential.RepoCredential;
+import cc.jumpkick.forge.ForgeAuth;
 import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.GitCommand;
 import cc.jumpkick.host.JkDirs;
@@ -32,6 +33,7 @@ import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.MachineOutput;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.release.ReleaseTag;
+import cc.jumpkick.release.ReleaseTarget;
 import cc.jumpkick.repo.InstalledRelease;
 import cc.jumpkick.repo.M2Dirs;
 import cc.jumpkick.repo.RemoteClaim;
@@ -337,7 +339,13 @@ public final class ReleaseCommand implements CliCommand {
         if (!info.publishRelease().isEmpty()) {
             String refused = PublishLanes.forgeRefusal(info.publishRelease());
             if (refused != null) return refused;
-            if (new AwsCredentialChain(JkDirs::env, Path.of(System.getProperty("user.home", ""), ".aws"))
+            if (ReleaseTarget.GITHUB.equals(info.publishRelease())) {
+                try {
+                    PublishLanes.githubToken(dir, new ForgeAuth());
+                } catch (IllegalArgumentException e) {
+                    return String.valueOf(e.getMessage());
+                }
+            } else if (new AwsCredentialChain(JkDirs::env, Path.of(System.getProperty("user.home", ""), ".aws"))
                     .resolve(null)
                     .isEmpty()) {
                 return noCredential(info.publishRelease());

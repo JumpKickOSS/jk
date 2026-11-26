@@ -44,7 +44,7 @@ final class UploadTail {
                 && ReleaseTarget.parse(release) instanceof ReleaseTarget.Bucket) {
             lanes.add(PublishLane.RELEASE);
         }
-        return new TailArgs.Publish(url, false, true, null, null, RepoCredential.ANONYMOUS, false, lanes, false);
+        return new TailArgs.Publish(url, false, true, null, null, RepoCredential.ANONYMOUS, false, lanes, false, null);
     }
 
     /**
@@ -81,6 +81,6 @@ final class UploadTail {
             passphrase = BuildEnv.get("JK_GPG_PASSPHRASE");
         }
         return new TailArgs.Publish(
-                url, false, false, keyFile, passphrase, credential, false, List.of(PublishLane.LIBRARY), false);
+                url, false, false, keyFile, passphrase, credential, false, List.of(PublishLane.LIBRARY), false, null);
     }
 }

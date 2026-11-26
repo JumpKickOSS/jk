@@ -85,7 +85,8 @@ class ReleaseLaneTest {
                 "app",
                 "1.0",
                 "v1.0",
-                (ReleaseTarget.Bucket) ReleaseTarget.parse("s3://releases/app/"),
+                ReleaseTarget.parse("s3://releases/app/"),
+                null,
                 List.of(LINUX, MAC),
                 LINUX,
                 stage,
@@ -94,7 +95,16 @@ class ReleaseLaneTest {
 
     private static TailArgs.Publish args(boolean stage, boolean dryRun) {
         return new TailArgs.Publish(
-                null, false, dryRun, null, null, RepoCredential.ANONYMOUS, false, List.of(PublishLane.RELEASE), stage);
+                null,
+                false,
+                dryRun,
+                null,
+                null,
+                RepoCredential.ANONYMOUS,
+                false,
+                List.of(PublishLane.RELEASE),
+                stage,
+                null);
     }
 
     private static ReleaseOutcome.File uploaded(String name, @Nullable String platform, String body) {
@@ -146,7 +156,7 @@ class ReleaseLaneTest {
                 .over(bucket)
                 .run(expected, tmp);
 
-        assertThat(first.latest()).isEqualTo("1.0");
+        assertThat(first.finish()).isEqualTo("latest.json names 1.0");
         assertThat(first.files())
                 .extracting(ReleaseOutcome.File::name, ReleaseOutcome.File::status)
                 .containsExactly(
@@ -204,7 +214,7 @@ class ReleaseLaneTest {
                 .run(List.of(), tmp);
 
         assertThat(outcome.stage()).isTrue();
-        assertThat(outcome.latest()).isNull();
+        assertThat(outcome.finish()).isNull();
         assertThat(outcome.files()).containsExactlyElementsOf(staged);
         assertThat(fake.objects).isEmpty();
     }
@@ -218,7 +228,8 @@ class ReleaseLaneTest {
 
         assertThat(plan.files())
                 .extracting(ReleaseOutcome.File::name)
-                .containsExactly(macImage, "SHA256SUMS", "index.json", "latest.json");
+                .containsExactly(macImage, "SHA256SUMS", "index.json");
+        assertThat(plan.finish()).isEqualTo("would point latest.json at 1.0");
         assertThat(plan.files()).allMatch(f -> ReleaseOutcome.PLANNED.equals(f.status()));
         assertThat(plan.files().getFirst().role()).isEqualTo(ReleaseOutcome.STAGING);
         assertThat(plan.files().getLast().role()).isEqualTo(ReleaseOutcome.FINAL);

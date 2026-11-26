@@ -30,16 +30,7 @@ import java.util.Optional;
  * {prefix}latest.json} replaced by compare-and-swap. A file already there with the same bytes is
  * left alone, so a run that stopped halfway resumes; other bytes stop the run.
  */
-public final class ReleaseBucket {
-
-    /** What a create-only write found. */
-    public enum Put {
-        UPLOADED,
-        EXISTING
-    }
-
-    /** A file in the bucket: its size and lower-case hex SHA-256. */
-    public record Held(long size, String sha256) {}
+public final class ReleaseBucket implements ReleaseStore {
 
     private static final int LATEST_ATTEMPTS = 5;
 
@@ -59,7 +50,8 @@ public final class ReleaseBucket {
      * credential from the AWS chain of the shell that ran {@code jk}.
      */
     public static ReleaseBucket open(ReleaseRun run) {
-        URI base = run.target().base();
+        ReleaseTarget.Bucket bucket = (ReleaseTarget.Bucket) run.target();
+        URI base = bucket.base();
         ObjectStoreConfig declared = PublishPlans.objectStore(run.rootBuild(), base);
         ObjectStoreConfig cfg = declared == null ? ObjectStoreConfig.EMPTY : declared;
         if (!cfg.hasExplicitCredentials()) {
@@ -79,7 +71,7 @@ public final class ReleaseBucket {
         if (!(transport instanceof ObjectStoreTransport store)) {
             throw new IllegalStateException(base + " is not an object store");
         }
-        return new ReleaseBucket(store, run.target(), run.version());
+        return new ReleaseBucket(store, bucket, run.version());
     }
 
     /** {@code {prefix}{version}/{name}}. */
@@ -87,10 +79,15 @@ public final class ReleaseBucket {
         return target.file(version, name);
     }
 
-    /** Upload {@code file} as {@code name}, create-only. */
+    @Override
+    public String url(String name) {
+        return uri(name).toString();
+    }
+
+    @Override
     public Put put(String name, Path file) throws IOException, InterruptedException {
         URI uri = uri(name);
-        int status = store.putFile(uri, file, contentType(name), RepoCredential.ANONYMOUS);
+        int status = store.putFile(uri, file, ReleaseStore.contentType(name), RepoCredential.ANONYMOUS);
         if (status >= 200 && status < 300) {
             SessionContext.current().io().remoteUp(Files.size(file));
             return Put.UPLOADED;
@@ -102,10 +99,10 @@ public final class ReleaseBucket {
         return Put.EXISTING;
     }
 
-    /** Upload {@code body} as {@code name}, create-only. */
+    @Override
     public Put put(String name, byte[] body) throws IOException, InterruptedException {
         URI uri = uri(name);
-        int status = store.put(uri, body, contentType(name), RepoCredential.ANONYMOUS);
+        int status = store.put(uri, body, ReleaseStore.contentType(name), RepoCredential.ANONYMOUS);
         if (status >= 200 && status < 300) {
             SessionContext.current().io().remoteUp(body.length);
             return Put.UPLOADED;
@@ -115,7 +112,7 @@ public final class ReleaseBucket {
         return Put.EXISTING;
     }
 
-    /** True when the release holds {@code name}. */
+    @Override
     public boolean present(String name) throws IOException, InterruptedException {
         Optional<RepoTransport.Body> body = store.fetchBody(uri(name), RepoCredential.ANONYMOUS);
         if (body.isEmpty()) return false;
@@ -123,7 +120,8 @@ public final class ReleaseBucket {
         return true;
     }
 
-    /** The size and SHA-256 of {@code name}, read through once; empty when the release does not hold it. */
+    /** The size and SHA-256 of {@code name}, read through once. */
+    @Override
     public Optional<Held> held(String name) throws IOException, InterruptedException {
         Optional<InputStream> body = store.fetchStream(uri(name), RepoCredential.ANONYMOUS);
         if (body.isEmpty()) return Optional.empty();
@@ -137,6 +135,22 @@ public final class ReleaseBucket {
             }
         }
         return Optional.of(new Held(size, Hashing.hex(digest.digest())));
+    }
+
+    /** A bucket needs nothing before its first file. */
+    @Override
+    public void prepare() {}
+
+    /** A bucket takes new files after {@code latest.json} names its version. */
+    @Override
+    public boolean published() {
+        return false;
+    }
+
+    /** {@link #publishLatest}, said as a line. */
+    @Override
+    public String publish() throws IOException, InterruptedException {
+        return ReleaseIndex.LATEST + " names " + publishLatest();
     }
 
     /**
@@ -179,16 +193,6 @@ public final class ReleaseBucket {
                 }
             } while (count == expected.length);
         }
-    }
-
-    static String contentType(String name) {
-        if (name.endsWith(".json")) return "application/json";
-        if (name.endsWith(".asc")) return "application/pgp-signature";
-        if (name.endsWith(".jar") || name.endsWith(".war")) return "application/java-archive";
-        if (name.endsWith(".zip")) return "application/zip";
-        if (name.endsWith(".tar.gz")) return "application/gzip";
-        if (name.equals(ReleaseIndex.SUMS)) return "text/plain";
-        return "application/octet-stream";
     }
 
     /** The bucket's manifest root, for a message. */

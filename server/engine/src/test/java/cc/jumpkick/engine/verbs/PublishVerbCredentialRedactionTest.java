@@ -79,6 +79,29 @@ class PublishVerbCredentialRedactionTest {
         assertThat(mask(other, worker401(TOKEN))).isEqualTo(worker401(TOKEN));
     }
 
+    /** A GitHub release's token rides the same request and is masked the same way. */
+    @Test
+    void a_socket_shipped_github_release_token_is_masked(@TempDir Path tmp) throws Exception {
+        Path dir = Files.createDirectories(tmp.resolve("project"));
+        String token = "ghp_socketOnlyReleaseTokenForTests";
+        TailArgs.Publish release = new TailArgs.Publish(
+                null,
+                false,
+                false,
+                null,
+                null,
+                RepoCredential.ANONYMOUS,
+                false,
+                List.of(PublishLane.RELEASE),
+                false,
+                token);
+        WorkspaceBuildVerb.fileShippedCredential(dir, release);
+
+        assertThat(mask(dir, "POST https://api.github.com/ (sent Authorization: Bearer " + token + ")"))
+                .doesNotContain(token)
+                .contains(SecretRedactor.MASK);
+    }
+
     private static String mask(Path dir, String error) {
         return new InertVerbHost()
                 .redactErrors(dir.toString(), List.of(error))
@@ -96,6 +119,7 @@ class PublishVerbCredentialRedactionTest {
                 credential,
                 false,
                 List.of(PublishLane.LIBRARY),
-                false);
+                false,
+                null);
     }
 }

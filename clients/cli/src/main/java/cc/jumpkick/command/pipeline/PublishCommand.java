@@ -14,6 +14,7 @@ import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.SnapshotQualifier;
 import cc.jumpkick.config.WorkspaceLocator;
+import cc.jumpkick.forge.ForgeAuth;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.ReleasePlatform;
 import cc.jumpkick.host.WorkingDirectory;
@@ -24,6 +25,7 @@ import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.MachineOutput;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.release.ReleaseTag;
+import cc.jumpkick.release.ReleaseTarget;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.protocol.ProjectInfo;
 import cc.jumpkick.wire.runtime.CentralBudget;
@@ -206,6 +208,16 @@ public final class PublishCommand implements CliCommand {
             return Exit.CONFIG;
         }
 
+        @Nullable String releaseToken = null;
+        if (lanes.contains(PublishLane.RELEASE) && ReleaseTarget.GITHUB.equals(info.publishRelease()) && !dryRun) {
+            try {
+                releaseToken = PublishLanes.githubToken(projectDir, new ForgeAuth());
+            } catch (IllegalArgumentException e) {
+                CommandWedge.printFail("Publish", String.valueOf(e.getMessage()));
+                return Exit.CONFIG;
+            }
+        }
+
         TailArgs.Publish args = new TailArgs.Publish(
                 target.repoUrl(),
                 allowSnapshot,
@@ -215,7 +227,8 @@ public final class PublishCommand implements CliCommand {
                 target.credential(),
                 target.central(),
                 lanes,
-                stage);
+                stage,
+                releaseToken);
         // The build and the upload run as every build verb runs: the same phases through PACKAGE,
         // the upload as the goal's tail, a workspace member's prerequisites first.
         return BuildVerbCommand.run(
@@ -291,8 +304,8 @@ public final class PublishCommand implements CliCommand {
 
     /**
      * The release lane's lines: where the release lives, then every file with what the run did with
-     * it (a dry run: its size, SHA-256, destination and role), then the version {@code latest.json}
-     * names, and on stderr each note (an unsigned release). Under {@code -O json} one line per file
+     * it (a dry run: its size, SHA-256, destination and role), then what its last step did or would
+     * do, and on stderr each note (an unsigned release). Under {@code -O json} one line per file
      * and per note.
      */
     private void reportRelease(ReleaseOutcome release) {
@@ -323,7 +336,7 @@ public final class PublishCommand implements CliCommand {
             line.append("  (").append(f.role()).append(')');
             lines.add(line.toString());
         }
-        if (release.latest() != null) lines.add("  latest.json names " + release.latest());
+        if (release.finish() != null) lines.add("  " + release.finish());
         for (String id : release.released()) lines.add("  published Central deployment " + id);
         return lines;
     }

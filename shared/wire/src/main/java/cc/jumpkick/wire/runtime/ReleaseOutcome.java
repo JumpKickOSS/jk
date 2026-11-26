@@ -6,17 +6,17 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * What a publish run's release lane did: where the release lives, whether the run staged this
- * host's platform files or was the final run, every file of the release, the version {@code
- * latest.json} names after it (an object store's final run; {@code null} otherwise), the Central
- * deployments it published once the release was out, and the notes it has for the reader (an
- * unsigned release), one line each.
+ * host's platform files or was the final run, every file of the release, what its last step did
+ * or a dry run would do ({@code latest.json names 1.4.7}, {@code published v1.4.7}; {@code null}
+ * when nothing), the Central deployments it published once the release was out, and the notes it
+ * has for the reader (an unsigned release), one line each.
  */
 public record ReleaseOutcome(
         String destination,
         boolean stage,
         boolean dryRun,
         List<File> files,
-        @Nullable String latest,
+        @Nullable String finish,
         List<String> released,
         List<String> notes) {
 

@@ -14,8 +14,11 @@ import org.jspecify.annotations.Nullable;
  */
 public sealed interface ReleaseTarget {
 
+    /** {@code github}: the forge jk releases to. */
+    String GITHUB = "github";
+
     /** The forges {@code [publish] release} may name. */
-    List<String> FORGES = List.of("github", "gitlab", "forgejo");
+    List<String> FORGES = List.of(GITHUB, "gitlab", "forgejo");
 
     /**
      * An object-store prefix, always ending in {@code /}. A release is {@code {prefix}{version}/},
