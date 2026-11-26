@@ -101,7 +101,7 @@ public final class MavenPublisher {
      * file}: checksums, signatures and the upload each stream it, so a large jar never sits in memory.
      * An {@code envelope} is a {@link Dsse} envelope, whose signature differs from one signing to the
      * next: one the repository holds over the same payload is kept, as a held {@code .asc} is. A
-     * {@code bundle} is the Sigstore bundle made with the file, uploaded as its {@code .sigstore} in
+     * {@code bundle} is the Sigstore bundle made with the file, uploaded as its {@code .sigstore.json} in
      * place of one signed over the file.
      */
     public record Artifact(
@@ -151,7 +151,7 @@ public final class MavenPublisher {
 
     /**
      * Upload {@code artifacts} for {@code project} with no signing — every artifact gets its four
-     * checksum files but no {@code .asc} or {@code .sigstore} sidecar. See {@link
+     * checksum files but no {@code .asc} or {@code .sigstore.json} sidecar. See {@link
      * #publish(Project, Iterable, SigningOptions)} for the signed variant.
      */
     public Result publish(Project project, Iterable<Artifact> artifacts) throws IOException, InterruptedException {
@@ -160,7 +160,7 @@ public final class MavenPublisher {
 
     /**
      * Upload {@code artifacts} for {@code project}. Per artifact: body + four checksums; optional
-     * {@code .asc} / {@code .sigstore} (each with their own checksums).
+     * {@code .asc} / {@code .sigstore.json} (each with their own checksums).
      */
     public Result publish(Project project, Iterable<Artifact> artifacts, SigningOptions signing)
             throws IOException, InterruptedException {
@@ -192,10 +192,10 @@ public final class MavenPublisher {
             }
             if (a.bundle() != null) {
                 Path bundle = a.bundle();
-                putSignature(relPath + ".sigstore", there, () -> Files.readAllBytes(bundle), results, bytes);
+                putSignature(relPath + ".sigstore.json", there, () -> Files.readAllBytes(bundle), results, bytes);
             } else if (signing.sigstore() != null) {
                 SigstoreSigner sigstore = signing.sigstore();
-                putSignature(relPath + ".sigstore", there, () -> sigstore.signBundle(a.file()), results, bytes);
+                putSignature(relPath + ".sigstore.json", there, () -> sigstore.signBundle(a.file()), results, bytes);
             }
         }
         publishMetadata(project, groupPath, results, bytes);
@@ -303,7 +303,8 @@ public final class MavenPublisher {
                     ? Files.readAllBytes(bundle)
                     : sigstore != null ? sigstore.signBundle(a.file()) : null;
             if (sigstoreBundle != null) {
-                putWithChecksums(relPath + ".sigstore", sigstoreBundle, contentType(".sigstore"), results, bytes);
+                putWithChecksums(
+                        relPath + ".sigstore.json", sigstoreBundle, contentType(".sigstore.json"), results, bytes);
             }
             entries.put(
                     new SnapshotMetadata.Key(a.classifier(), a.extension()),
@@ -455,7 +456,7 @@ public final class MavenPublisher {
      * Whether the repository already holds the envelope at {@code relPath} over the payload of the
      * one in {@code a}'s file; when it does, its bytes replace the file's, so the sidecars and the
      * signatures beside it are of the copy that is published. An envelope whose bundle was made with
-     * it is kept only beside its held {@code .sigstore}: no other bundle verifies its signature, so
+     * it is kept only beside its held {@code .sigstore.json}: no other bundle verifies its signature, so
      * without one the fresh envelope goes up over it with its own bundle.
      *
      * @throws IOException when the repository holds an envelope over another payload
@@ -467,7 +468,7 @@ public final class MavenPublisher {
             throw new IOException(repoBase.resolve(relPath)
                     + " is already published over another statement; raise the version in jk.toml");
         }
-        if (a.bundle() != null && readable(relPath + ".sigstore").isEmpty()) return false;
+        if (a.bundle() != null && readable(relPath + ".sigstore.json").isEmpty()) return false;
         Files.write(a.file(), held.get());
         return true;
     }
@@ -615,8 +616,7 @@ public final class MavenPublisher {
         if (suffix.endsWith(".jar")) return "application/java-archive";
         if (suffix.endsWith(".pom") || suffix.endsWith(".xml")) return "application/xml";
         if (suffix.endsWith(".asc")) return "application/pgp-signature";
-        if (suffix.endsWith(".sigstore") || suffix.endsWith(".json") || suffix.endsWith(".jsonl"))
-            return "application/json";
+        if (suffix.endsWith(".json") || suffix.endsWith(".jsonl")) return "application/json";
         return "application/octet-stream";
     }
 

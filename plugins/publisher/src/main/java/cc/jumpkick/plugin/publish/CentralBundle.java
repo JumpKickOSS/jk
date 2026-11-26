@@ -3,6 +3,7 @@ package cc.jumpkick.plugin.publish;
 
 import cc.jumpkick.host.DeterministicZip;
 import cc.jumpkick.model.Project;
+import cc.jumpkick.sigstore.SigstoreSigner;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -11,11 +12,13 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.zip.ZipOutputStream;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The zip the Central Portal's upload API takes: a Maven repository layout holding every artifact
- * of one release with its detached GPG signature and its {@code .md5} / {@code .sha1} checksums.
- * The Portal validates the layout — jar, POM, sources jar, javadoc jar, a signature on each —
+ * of one release with its detached GPG signature, its {@code .sigstore.json} bundle when Sigstore signs, and its
+ * {@code .md5} / {@code .sha1} checksums. Every file counts against Central's publishing limits, so
+ * nothing else goes in: no other digests, and no signature or checksum on a sidecar. The Portal validates the layout — jar, POM, sources jar, javadoc jar, a signature on each —
  * and refuses a release short of any of them, so the caller assembles the four before it gets
  * here. Entry order is fixed and every entry carries the pinned archive instant, so two bundles
  * of the same bytes are the same zip.
@@ -34,12 +37,16 @@ public final class CentralBundle {
 
     /**
      * Write the bundle for {@code project}'s {@code artifacts} to {@code target}: each artifact, its
-     * {@code .asc} from {@code signer}, and the two checksums the Portal reads. Signatures carry no
-     * checksums. Each artifact streams from its file into the zip, which goes straight to disk, so the
+     * {@code .asc} from {@code signer}, a Sigstore bundle from {@code sigstore} when it is not null,
+     * and the two checksums the Portal reads. Signatures and bundles carry no checksums. Each artifact streams from its file into the zip, which goes straight to disk, so the
      * heap never holds a copy of the release.
      */
     public static Bundle build(
-            Project project, Iterable<MavenPublisher.Artifact> artifacts, GpgSigner signer, Path target)
+            Project project,
+            Iterable<MavenPublisher.Artifact> artifacts,
+            GpgSigner signer,
+            @Nullable SigstoreSigner sigstore,
+            Path target)
             throws IOException {
         Objects.requireNonNull(project, "project");
         Objects.requireNonNull(signer, "signer");
@@ -52,6 +59,7 @@ public final class CentralBundle {
                 DeterministicZip.PINNED.writeEntry(zip, path, a.file());
                 entries.add(path);
                 write(zip, entries, path + ".asc", signer.signArmored(a.file()));
+                if (sigstore != null) write(zip, entries, path + ".sigstore.json", sigstore.signBundle(a.file()));
                 Checksums.Set sums = Checksums.of(a.file());
                 write(zip, entries, path + ".md5", sums.md5().getBytes(StandardCharsets.US_ASCII));
                 write(zip, entries, path + ".sha1", sums.sha1().getBytes(StandardCharsets.US_ASCII));

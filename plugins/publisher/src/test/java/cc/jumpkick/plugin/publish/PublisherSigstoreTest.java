@@ -71,12 +71,12 @@ class PublisherSigstoreTest {
                         Jsonl.objectArray(envelope, "signatures").getFirst(), "sig"));
 
         Bundle bundle = Bundle.from(new StringReader(
-                new String(requireNonNull(received.get(AT + ".intoto.jsonl.sigstore")), StandardCharsets.UTF_8)));
+                new String(requireNonNull(received.get(AT + ".intoto.jsonl.sigstore.json")), StandardCharsets.UTF_8)));
         Signature verify = Signature.getInstance("SHA256withECDSA");
         verify.initVerify(bundle.getCertPath().getCertificates().getFirst().getPublicKey());
         verify.update(Dsse.pae(Dsse.IN_TOTO, statement));
         assertThat(verify.verify(sig)).isTrue();
-        assertThat(received).containsKeys(AT + ".intoto.jsonl.sha1", AT + ".jar.sigstore");
+        assertThat(received).containsKeys(AT + ".intoto.jsonl.sha1", AT + ".jar.sigstore.json");
         assertThat(dir.resolve("target/publish/widget-1.2.3.intoto.json")).doesNotExist();
     }
 

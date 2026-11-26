@@ -244,7 +244,7 @@ public final class Publisher implements Plugin, PublishExtension {
         List<Path> written = new ArrayList<>();
         if (sbom) sbom(ctx, projectDir, project, closure, artifacts, written);
 
-        if (central) return publishCentral(ctx, c, gpg, project, publishDir, artifacts, written);
+        if (central) return publishCentral(ctx, c, gpg, signSigstore, project, publishDir, artifacts, written);
 
         if (c.bool("dryRun", false)) {
             return PublishResult.dryRun(artifacts.size()).withWritten(written);
@@ -303,7 +303,7 @@ public final class Publisher implements Plugin, PublishExtension {
 
     /**
      * Replaces the bare statement among {@code artifacts} with its keyless DSSE envelope ({@code
-     * .intoto.jsonl}), whose {@code .sigstore} is the bundle of the envelope's signature.
+     * .intoto.jsonl}), whose {@code .sigstore.json} is the bundle of the envelope's signature.
      */
     private static void attest(
             KeylessSigstoreSigner signer,
@@ -315,7 +315,7 @@ public final class Publisher implements Plugin, PublishExtension {
         KeylessSigstoreSigner.Attestation attestation = signer.attest(statement);
         Path bare = publishDir.resolve(stem + ".intoto.json");
         Path envelope = Files.write(publishDir.resolve(stem + ".intoto.jsonl"), attestation.envelope());
-        Path bundle = Files.write(publishDir.resolve(stem + ".intoto.jsonl.sigstore"), attestation.bundle());
+        Path bundle = Files.write(publishDir.resolve(stem + ".intoto.jsonl.sigstore.json"), attestation.bundle());
         Files.delete(bare);
         artifacts.replaceAll(
                 a -> a.file().equals(bare) ? new MavenPublisher.Artifact(".intoto.jsonl", envelope, true, bundle) : a);
@@ -393,22 +393,24 @@ public final class Publisher implements Plugin, PublishExtension {
     /**
      * The Central Portal flow: sign every artifact into one {@link CentralBundle}, upload it, poll the
      * deployment to {@code VALIDATED}, release it, and poll it to {@code PUBLISHED}; {@code hold} stops
-     * at {@code VALIDATED}. A dry run writes the bundle under the module's {@code
-     * target/publish/} and lists its entries instead.
+     * at {@code VALIDATED}. Sigstore bundles ride in it when keyless
+     * signing applies. A dry run writes the bundle under the module's {@code target/publish/} and
+     * lists its entries instead; it reaches no Sigstore service, so it has no bundles.
      */
-    private static PublishResult publishCentral(
+    private PublishResult publishCentral(
             PublishContext ctx,
             PluginConfig c,
             @Nullable GpgSigner gpg,
+            boolean signSigstore,
             JkBuild project,
             Path publishDir,
             List<MavenPublisher.Artifact> artifacts,
             List<Path> written)
-            throws IOException, InterruptedException {
+            throws Exception {
         if (gpg == null) throw new IOException(SIGNING_REQUIRED);
         if (c.bool("dryRun", false)) {
             Path zip = publishDir.resolve("central-bundle.zip");
-            CentralBundle.Bundle bundle = CentralBundle.build(project.project(), artifacts, gpg, zip);
+            CentralBundle.Bundle bundle = CentralBundle.build(project.project(), artifacts, gpg, null, zip);
             for (String entry : bundle.entries()) ctx.label("bundle " + entry);
             written.add(zip);
             ctx.label("wrote " + zip);
@@ -432,8 +434,9 @@ public final class Publisher implements Plugin, PublishExtension {
         // The bundle is only what the upload streams from, so it does not outlive the upload. It
         // sits beside the module's outputs, not in a temp directory that may be memory-backed.
         Path scratch = Files.createTempFile(publishDir, "central-bundle-", ".zip");
+        KeylessSigstoreSigner sigstore = signSigstore ? keyless.call() : null;
         try {
-            CentralBundle.Bundle bundle = CentralBundle.build(project.project(), artifacts, gpg, scratch);
+            CentralBundle.Bundle bundle = CentralBundle.build(project.project(), artifacts, gpg, sigstore, scratch);
             for (String entry : bundle.entries()) ctx.label("bundle " + entry);
             String id = portal.upload(bundle.zip(), name);
             ctx.label("upload " + name + ".zip (" + bundle.size() + " bytes) → deployment " + id);
@@ -453,6 +456,7 @@ public final class Publisher implements Plugin, PublishExtension {
                     .withBundle(bundle.entries())
                     .withDeployment(new PublishResult.Deployment(id, status.state(), status.errors()));
         } finally {
+            if (sigstore != null) sigstore.close();
             Files.deleteIfExists(scratch);
         }
     }

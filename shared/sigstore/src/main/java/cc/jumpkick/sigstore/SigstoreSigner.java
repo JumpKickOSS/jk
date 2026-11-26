@@ -5,7 +5,7 @@ import java.io.IOException;
 import java.nio.file.Path;
 
 /**
- * Produces a Sigstore Bundle (JSON) over an artifact file ({@code .sigstore}). No {@code
+ * Produces a Sigstore Bundle (JSON) over an artifact file ({@code .sigstore.json}). No {@code
  * dev.sigstore.*} types on the interface; production impl is {@link KeylessSigstoreSigner}.
  */
 @FunctionalInterface
