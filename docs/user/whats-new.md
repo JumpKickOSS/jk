@@ -21,6 +21,10 @@ JumpKick shows you this page's new entries after it updates itself.
   SBOM and provenance, and a Central upload goes from `VALIDATED` to `PUBLISHED`. `jk release`
   pushes, and publishes from this machine when no CI file runs `jk publish`; `[publish]` and
   `[release] publish` hold the choices ([Publishing](publish.md), [Releasing](release.md)).
+- **`jk publish` ships deliverables to a bucket.** `[publish] release = "s3://…"` uploads fat jars,
+  archives, runtime images and native executables with `SHA256SUMS`, signatures and an index, and
+  publishes the release with `latest.json`. `jk publish --stage` adds each platform's files from its
+  own CI job; `--only` picks lanes ([Releasing deliverables](publish.md#releasing-deliverables)).
 
 ## 0.60.0
 

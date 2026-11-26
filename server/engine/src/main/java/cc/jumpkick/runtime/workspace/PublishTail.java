@@ -7,7 +7,9 @@ import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.runtime.ModuleJar;
 import cc.jumpkick.runtime.Tail;
 import cc.jumpkick.runtime.base.PublishPlans;
+import cc.jumpkick.runtime.base.ReleasePlans;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
+import cc.jumpkick.wire.runtime.PublishLane;
 import cc.jumpkick.wire.runtime.TailArgs;
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -16,8 +18,10 @@ import java.util.List;
 import org.jspecify.annotations.Nullable;
 
 /**
- * {@code jk publish}'s {@link Tail}: its refusals run beside the build, so a refused publish fails
- * before anything compiles, and the upload extends the build, so it ships what this run packaged.
+ * {@code jk publish}'s {@link Tail}, one part per lane the run ships to. The library lane's
+ * refusals run beside the build, so a refused publish fails before anything compiles; each upload
+ * extends the build, so it ships what this run packaged. The release lane's upload comes first: a
+ * module's library goes out only after its release files are in place.
  */
 public final class PublishTail {
 
@@ -26,7 +30,14 @@ public final class PublishTail {
     public static Tail of(TailArgs.Publish args) {
         PublishPlans.Request req = request(args);
         return (plan, in) -> {
-            if (ModuleJar.shippedStep(manifest(in.buildFile()), in.dir()) == null) return;
+            JkBuild manifest = manifest(in.buildFile());
+            if (args.runs(PublishLane.RELEASE)
+                    && !ModuleJar.skipsRelease(manifest)
+                    && ReleasePlans.ships(in.dir(), manifest)) {
+                plan.stateKeys(ReleasePlans.FILES, ReleasePlans.EXPECTED)
+                        .extend(ReleasePlans.uploadStep(in.dir(), args));
+            }
+            if (!args.runs(PublishLane.LIBRARY) || ModuleJar.shippedStep(manifest, in.dir()) == null) return;
             plan.stateKeys(
                             PublishPlans.PROJECT,
                             PublishPlans.JAR,
@@ -52,7 +63,16 @@ public final class PublishTail {
                 a.keyFile(),
                 a.gpgPassphrase(),
                 a.credential(),
-                a.central());
+                a.central(),
+                holdsForRelease(a));
+    }
+
+    /**
+     * True when a Central upload stops at {@code VALIDATED} for the release lane to publish it once
+     * the release is out: the final run of a project that ships both.
+     */
+    static boolean holdsForRelease(TailArgs.Publish a) {
+        return a.central() && a.runs(PublishLane.RELEASE) && !a.stage() && !a.dryRun();
     }
 
     /** What a publish pass sent, from its plan's state; null for a plan that published nothing. */

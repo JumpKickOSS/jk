@@ -397,7 +397,9 @@ public final class ProjectInfoPlans {
                 "",
                 List.of(),
                 build.pomMetadata().skip(),
-                ws.publishSkipped());
+                ws.publishSkipped(),
+                orEmpty(ws.rootBuild().pomMetadata().release()),
+                release.platforms());
     }
 
     private static String sanitizeIdentity(String value) {

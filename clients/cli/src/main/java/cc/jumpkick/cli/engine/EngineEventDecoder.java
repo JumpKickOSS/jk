@@ -271,7 +271,8 @@ final class EngineEventDecoder {
                                 e.errors(),
                                 e.cancelled(),
                                 e.sync(),
-                                e.conflict());
+                                e.conflict(),
+                                e.release());
                         WireStream.noteWorkspaceFinish(e.success() && result.upToDate());
                         listener.onWorkspaceFinish(result);
                         return result;

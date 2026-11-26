@@ -5,6 +5,7 @@ import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.model.InstallDestination;
 import cc.jumpkick.model.RepositorySpec;
+import cc.jumpkick.wire.runtime.PublishLane;
 import cc.jumpkick.wire.runtime.TailArgs;
 import java.net.URI;
 import java.nio.file.Path;
@@ -79,7 +80,9 @@ public final class TailArgsJson {
                 .optionalNonBlankString(
                         "keyFile", p.keyFile() == null ? null : p.keyFile().toString())
                 .optionalNonBlankString("gpgPassphrase", p.gpgPassphrase())
-                .optionalTrue(RepositorySpec.CENTRAL, p.central());
+                .optionalTrue(RepositorySpec.CENTRAL, p.central())
+                .array("lanes", p.lanes().stream().map(PublishLane::word).toList())
+                .optionalTrue("stage", p.stage());
         return switch (p.credential()) {
             case RepoCredential.Basic b ->
                 json.string("authType", "basic")
@@ -121,7 +124,12 @@ public final class TailArgsJson {
                         path(Jsonl.str(json, "keyFile")),
                         Jsonl.str(json, "gpgPassphrase"),
                         credential(json),
-                        Jsonl.bool(json, RepositorySpec.CENTRAL, false));
+                        Jsonl.bool(json, RepositorySpec.CENTRAL, false),
+                        Jsonl.strArray(json, "lanes").stream()
+                                .map(word -> PublishLane.parse(word)
+                                        .orElseThrow(() -> new IllegalArgumentException("unknown lane `" + word + "`")))
+                                .toList(),
+                        Jsonl.bool(json, "stage", false));
             default -> throw new IllegalArgumentException("unknown tail kind `" + kind + "`");
         };
     }

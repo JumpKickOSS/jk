@@ -31,6 +31,10 @@ public final class PluginProtocol {
 
     public static final String OP_IMAGE = "image";
     public static final String OP_PUBLISH = "publish";
+    /** Sign the spec's artifact (a release's {@code SHA256SUMS}) beside itself: {@code .asc}, {@code .sigstore.json}. */
+    public static final String OP_SIGN_RELEASE = "sign-release";
+    /** Publish the Central Portal deployments the spec lists, each already {@code VALIDATED}. */
+    public static final String OP_CENTRAL_RELEASE = "central-release";
     /**
      * Answer the files one of the plugin's {@code [[contribute.lock-closure]]} closures needs
      * ({@code name} on the op line), each a {@link #PIN} reply, for {@code jk lock} to pin.

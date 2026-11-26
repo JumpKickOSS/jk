@@ -70,7 +70,7 @@ class PublishPlansTest {
     private static final Map<String, String> GITLAB = Map.of("SIGSTORE_ID_TOKEN", "jwt");
 
     private static PublishPlans.Request requestWithKey(Path key) {
-        return new PublishPlans.Request(null, false, false, key, null, RepoCredential.ANONYMOUS, false);
+        return new PublishPlans.Request(null, false, false, key, null, RepoCredential.ANONYMOUS, false, false);
     }
 
     @Test
@@ -88,7 +88,7 @@ class PublishPlansTest {
     void with_no_key_and_no_identity_the_release_is_unsigned() {
         PublishPlans.Signing signing = PublishPlans.Signing.of(
                 SIGNS,
-                new PublishPlans.Request(null, false, false, null, null, RepoCredential.ANONYMOUS, false),
+                new PublishPlans.Request(null, false, false, null, null, RepoCredential.ANONYMOUS, false, false),
                 n -> null);
         assertThat(signing.unsigned()).isTrue();
     }
@@ -96,7 +96,7 @@ class PublishPlansTest {
     @Test
     void sign_false_signs_nothing_whatever_the_key_and_the_identity() {
         PomMetadata off = new PomMetadata(
-                null, null, null, List.of(), List.of(), null, null, false, null, false, true, true, false);
+                null, null, null, List.of(), List.of(), null, null, null, false, null, false, true, true, false);
         PublishPlans.Signing signing =
                 PublishPlans.Signing.of(off, requestWithKey(Path.of("release.asc")), GITLAB::get);
         assertThat(signing.pgpKey()).isNull();
@@ -137,13 +137,13 @@ class PublishPlansTest {
                 .isEqualTo("eu-west-1"));
         assertThat(PublishPlans.objectStore(project, URI.create("s3://other-bucket/")))
                 .isNull();
-        assertThat(PublishPlans.destination(
-                        new PublishPlans.Request(target, false, true, null, null, RepoCredential.ANONYMOUS, false)))
+        assertThat(PublishPlans.destination(new PublishPlans.Request(
+                        target, false, true, null, null, RepoCredential.ANONYMOUS, false, false)))
                 .isEqualTo("s3://acme-maven/releases/");
     }
 
     private static PublishPlans.Request request() {
-        return new PublishPlans.Request(null, false, true, null, null, new RepoCredential.Anonymous(), false);
+        return new PublishPlans.Request(null, false, true, null, null, new RepoCredential.Anonymous(), false, false);
     }
 
     private static BuildPlan planFor(Path dir, PublishPlans.Request req) {

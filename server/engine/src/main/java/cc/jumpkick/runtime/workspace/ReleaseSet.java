@@ -8,6 +8,8 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.runtime.InstallPlans;
 import cc.jumpkick.runtime.ModuleJar;
+import cc.jumpkick.wire.runtime.PublishLane;
+import cc.jumpkick.wire.runtime.TailArgs;
 import cc.jumpkick.wire.runtime.WorkspaceRequest;
 import cc.jumpkick.wire.runtime.WorkspaceSpec;
 import cc.jumpkick.wire.runtime.WorkspaceTarget;
@@ -23,7 +25,8 @@ import org.jspecify.annotations.Nullable;
  * What {@code jk publish} and {@code jk install} ship of a workspace when members say {@code
  * [publish] skip = true}: every selected module with a jar but those, and a refusal, before
  * anything builds, for a shipped module whose POM would name a skipped sibling — a consumer of it
- * could resolve neither from the repository it went to nor from this machine's installs.
+ * could resolve neither from the repository it went to nor from this machine's installs. A
+ * publish's release lane adds its own refusals ({@link ReleaseLane#refusals}).
  */
 final class ReleaseSet {
 
@@ -41,6 +44,10 @@ final class ReleaseSet {
         List<String> refused = new ArrayList<>();
         WorkspaceTarget target = request.target();
         WorkspaceSpec spec = request.spec() == null ? WorkspaceSpec.DEFAULT : request.spec();
+        // A publish without the library lane ships no POM: only the release lane's refusals apply.
+        if (target == WorkspaceTarget.PUBLISH
+                && !(spec.tail() instanceof TailArgs.Publish p && p.runs(PublishLane.LIBRARY)))
+            return ReleaseLane.refusals(request, units, selected);
         if (target == WorkspaceTarget.PUBLISH
                 || target == WorkspaceTarget.INSTALL
                 || target == WorkspaceTarget.RESHELVE) {
@@ -56,6 +63,7 @@ final class ReleaseSet {
         }
         refused.addAll(installRefusals(request, units, selected));
         refused.addAll(skippedDependencies(request, units, selected));
+        if (refused.isEmpty()) refused.addAll(ReleaseLane.refusals(request, units, selected));
         return refused;
     }
 

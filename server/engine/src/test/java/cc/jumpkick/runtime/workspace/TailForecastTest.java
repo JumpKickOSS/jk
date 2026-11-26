@@ -11,6 +11,7 @@ import cc.jumpkick.lock.LockManifestDigest;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileWriter;
 import cc.jumpkick.runtime.BuildGraph;
+import cc.jumpkick.wire.runtime.PublishLane;
 import cc.jumpkick.wire.runtime.TailArgs;
 import cc.jumpkick.wire.runtime.WorkspaceRequest;
 import cc.jumpkick.wire.runtime.WorkspaceSpec;
@@ -80,7 +81,8 @@ class TailForecastTest {
 
     @Test
     void publish_and_train_run_their_tail_on_a_clean_tree() throws Exception {
-        TailArgs.Publish dryRun = new TailArgs.Publish(null, false, true, null, null, RepoCredential.ANONYMOUS, false);
+        TailArgs.Publish dryRun = new TailArgs.Publish(
+                null, false, true, null, null, RepoCredential.ANONYMOUS, false, List.of(PublishLane.LIBRARY), false);
         assertThat(scheduled(WorkspaceSpec.publish(Set.of(lib), dryRun))).containsExactly(lib);
         assertThat(scheduled(WorkspaceSpec.train(Set.of(app), Map.of(), null, false)))
                 .containsExactly(app);

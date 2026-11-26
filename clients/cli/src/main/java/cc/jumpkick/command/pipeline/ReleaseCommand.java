@@ -35,6 +35,7 @@ import cc.jumpkick.release.ReleaseTag;
 import cc.jumpkick.repo.InstalledRelease;
 import cc.jumpkick.repo.M2Dirs;
 import cc.jumpkick.repo.RemoteClaim;
+import cc.jumpkick.repo.s3.AwsCredentialChain;
 import cc.jumpkick.repo.transport.RepoTransports;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.Task;
@@ -142,17 +143,19 @@ public final class ReleaseCommand implements CliCommand {
     /**
      * The publish mode: {@code override} ({@code --publish}), else {@code [release] publish}, else
      * inferred. With no destination there is nothing to upload. With one, CI that runs {@code jk
-     * publish} publishes it; with none, this machine does, when {@code [publish] repository} names
-     * somewhere to upload (an image registry alone has no {@code jk publish} lane yet).
+     * publish} publishes it; with none, this machine does, when {@code [publish] repository} or
+     * {@code [publish] release} names somewhere to upload (an image registry alone has no {@code jk
+     * publish} lane yet).
      */
     static PublishMode publishMode(@Nullable String override, ProjectInfo info, Path ciRoot, boolean inGit) {
         String word = override != null ? override : info.releasePublish();
         PublishMode chosen = word.isEmpty() ? null : PublishMode.parse(word);
         if (chosen != null) return chosen;
-        boolean repository = !info.publishRepository().isEmpty();
-        if (!repository && info.imageRegistry().isEmpty()) return PublishMode.NONE;
+        boolean uploads =
+                !info.publishRepository().isEmpty() || !info.publishRelease().isEmpty();
+        if (!uploads && info.imageRegistry().isEmpty()) return PublishMode.NONE;
         if (inGit && CiPublishScan.runsPublish(ciRoot)) return PublishMode.CI;
-        return repository ? PublishMode.LOCAL : PublishMode.NONE;
+        return uploads ? PublishMode.LOCAL : PublishMode.NONE;
     }
 
     @Override
@@ -325,14 +328,27 @@ public final class ReleaseCommand implements CliCommand {
 
     /** Why this machine cannot publish {@code info}'s release, or {@code null} when it can. */
     private static @Nullable String localPublishRefusal(ProjectInfo info, Path dir, Path manifest) {
-        PublishTarget.Resolution resolved = PublishTarget.resolve(info, dir, manifest, null, false, JkDirs::env);
+        boolean library = !info.publishRepository().isEmpty();
+        PublishTarget.Resolution resolved =
+                PublishTarget.resolve(info, dir, manifest, null, false, library, JkDirs::env);
         PublishTarget target = resolved.target();
         if (target == null) return resolved.refusal();
-        if (target.lacksCredential()) {
-            return "no credential for " + target.describe() + " on this machine; if CI publishes this project,"
-                    + " run jk release --publish ci";
+        if (library && target.lacksCredential()) return noCredential(target.describe());
+        if (!info.publishRelease().isEmpty()) {
+            String refused = PublishLanes.forgeRefusal(info.publishRelease());
+            if (refused != null) return refused;
+            if (new AwsCredentialChain(JkDirs::env, Path.of(System.getProperty("user.home", ""), ".aws"))
+                    .resolve(null)
+                    .isEmpty()) {
+                return noCredential(info.publishRelease());
+            }
         }
         return null;
+    }
+
+    private static String noCredential(String target) {
+        return "no credential for " + target + " on this machine; if CI publishes this project,"
+                + " run jk release --publish ci";
     }
 
     /** The options of a publish run from this release's: its global options and test policy, at {@code dir}. */

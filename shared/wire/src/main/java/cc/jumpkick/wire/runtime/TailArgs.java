@@ -53,9 +53,10 @@ public sealed interface TailArgs {
     record Train(@Nullable String profile, boolean force) implements TailArgs {}
 
     /**
-     * {@code jk publish}: where to, the PGP key and passphrase the client resolved, and the
-     * credential. Signing, SBOM and provenance come from the project's {@code [publish]} table and
-     * the engine's view of CI, never from the client.
+     * {@code jk publish}: the library repository, the PGP key and passphrase the client resolved,
+     * the credential, the {@link PublishLane lanes} the run ships to and whether it only stages this
+     * host's release files. Signing, SBOM and provenance come from the project's {@code [publish]}
+     * table and the engine's view of CI, never from the client.
      */
     record Publish(
             @Nullable URI repoUrl,
@@ -64,6 +65,17 @@ public sealed interface TailArgs {
             @Nullable Path keyFile,
             @Nullable String gpgPassphrase,
             RepoCredential credential,
-            boolean central)
-            implements TailArgs {}
+            boolean central,
+            List<PublishLane> lanes,
+            boolean stage)
+            implements TailArgs {
+        public Publish {
+            lanes = List.copyOf(lanes);
+        }
+
+        /** True when the run ships to {@code lane}. */
+        public boolean runs(PublishLane lane) {
+            return lanes.contains(lane);
+        }
+    }
 }

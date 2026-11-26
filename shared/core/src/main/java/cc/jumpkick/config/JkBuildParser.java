@@ -722,7 +722,7 @@ public final class JkBuildParser {
         Path dir = file.toAbsolutePath().normalize().getParent();
         if (dir == null || WorkspaceGroup.listing(dir) == null) return table;
         String name = root.isString(List.of("name")) ? root.getString(List.of("name")) : null;
-        return new ReleaseTable(ReleaseTag.defaultTemplate(name), table.files(), table.publish());
+        return new ReleaseTable(ReleaseTag.defaultTemplate(name), table.files(), table.publish(), table.platforms());
     }
 
     /** {@code [deny]} — the dependency policy block. Permissive when the file/table is absent. */

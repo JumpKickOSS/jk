@@ -815,6 +815,7 @@ class JkBuildRendererTest {
                 List.of(new PomMetadata.Developer("ada", "Ada Lovelace", null)),
                 new PomMetadata.Scm("https://github.com/example/widget", null, null),
                 "releases",
+                "s3://acme-releases/widget/",
                 false,
                 null,
                 false,

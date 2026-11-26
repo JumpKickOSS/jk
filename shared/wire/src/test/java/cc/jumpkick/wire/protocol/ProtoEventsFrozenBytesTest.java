@@ -332,7 +332,7 @@ class ProtoEventsFrozenBytesTest {
                         false, 2, SecretRedactor.of(List.of("s3cret")).redactAll(List.of("m1", "m2")), true))
                 .isEqualTo(
                         "{\"type\":\"workspace-finish\",\"success\":false,\"exitCode\":2,\"errors\":[\"m1\",\"m2\"],\"cancelled\":true,\"upToDate\":false}");
-        assertThat(ProtoEvents.workspaceFinish(true, 0, List.of(), false, null, true, null))
+        assertThat(ProtoEvents.workspaceFinish(true, 0, List.of(), false, null, true, null, null))
                 .isEqualTo(
                         "{\"type\":\"workspace-finish\",\"success\":true,\"exitCode\":0,\"errors\":[],\"cancelled\":false,\"upToDate\":true}");
         assertThat(ProtoEvents.workspaceFinish(
@@ -344,7 +344,8 @@ class ProtoEventsFrozenBytesTest {
                         false,
                         SecretRedactor.none()
                                 .redactAll(List.of("{\"packages\":[\"g:a\"]}"))
-                                .getFirst()))
+                                .getFirst(),
+                        null))
                 .isEqualTo(
                         "{\"type\":\"workspace-finish\",\"success\":false,\"exitCode\":6,\"errors\":[\"no solution\"],\"cancelled\":false,\"upToDate\":false,\"conflict\":\"{\\\"packages\\\":[\\\"g:a\\\"]}\"}");
         assertThat(ProtoEvents.withCancelled(ProtoEvents.planFinish("a/b", true, "up-to-date", -1, 0, 0, 0), true))

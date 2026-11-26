@@ -65,7 +65,9 @@ record PublishTarget(
     /**
      * Resolve the target of {@code info}'s publish. {@code override} is {@code --repository}: a
      * declared repository's name, {@code central}, or a URL; it replaces {@code [publish]
-     * repository}. A dry run may name no repository and needs no credential.
+     * repository}. A dry run may name no repository and needs no credential. A run without the
+     * library lane ({@code library} false) resolves only the signing key, which the release lane
+     * signs with too.
      */
     static Resolution resolve(
             ProjectInfo info,
@@ -73,10 +75,11 @@ record PublishTarget(
             Path manifest,
             @Nullable String override,
             boolean dryRun,
+            boolean library,
             Function<String, @Nullable String> env) {
         boolean central = false;
         URI repoUrl = null;
-        String repository = override != null ? override : info.publishRepository();
+        String repository = !library ? "" : override != null ? override : info.publishRepository();
         String source = override != null ? "--repository" : "[publish] repository";
         if (!repository.isEmpty()) {
             if (RepositorySpec.CENTRAL.equals(repository)) {
@@ -93,7 +96,7 @@ record PublishTarget(
                 }
                 repoUrl = URI.create(declared);
             }
-        } else if (!dryRun) {
+        } else if (library && !dryRun) {
             return Resolution.refused("no repository to publish to; set [publish] repository in jk.toml"
                     + " or pass --repository <name|url>");
         }

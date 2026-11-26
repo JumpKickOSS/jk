@@ -153,6 +153,7 @@ final class GradleModuleSettings {
                 List.of(),
                 null,
                 null,
+                null,
                 true,
                 null,
                 false,

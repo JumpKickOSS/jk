@@ -49,6 +49,13 @@ class ReleasePublishModeTest {
     }
 
     @Test
+    void a_release_bucket_alone_is_a_destination_to_publish_from_here() {
+        ProjectInfo bucket =
+                ProjectInfo.decode("{\"type\":\"project-info-ack\",\"publishRelease\":\"s3://acme/app/\"}");
+        assertThat(ReleaseCommand.publishMode(null, bucket, root, true)).isEqualTo(PublishMode.LOCAL);
+    }
+
+    @Test
     void an_image_registry_alone_has_nothing_for_jk_publish_to_upload_from_here() {
         assertThat(ReleaseCommand.publishMode(null, info("", "ghcr.io/acme", ""), root, true))
                 .isEqualTo(PublishMode.NONE);

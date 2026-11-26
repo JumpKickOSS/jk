@@ -4,6 +4,7 @@ package cc.jumpkick.config;
 import static cc.jumpkick.config.JkBuildParser.*;
 import static cc.jumpkick.config.TomlTableReader.*;
 
+import cc.jumpkick.host.ReleasePlatform;
 import cc.jumpkick.library.LibraryCatalog;
 import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.Dependency;
@@ -27,6 +28,7 @@ import cc.jumpkick.plugin.manifest.PluginDescriptor;
 import cc.jumpkick.plugin.manifest.PluginTableRegistry;
 import cc.jumpkick.release.ReleaseTable;
 import cc.jumpkick.release.ReleaseTag;
+import cc.jumpkick.release.ReleaseTarget;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.util.Suggest;
 import java.util.ArrayList;
@@ -371,6 +373,7 @@ public final class ManifestTables {
             "developers",
             "scm",
             "repository",
+            "release",
             "sign",
             "key-file",
             "skip",
@@ -382,7 +385,7 @@ public final class ManifestTables {
     static final List<String> PUBLISH_SECRET_KEYS =
             List.of("password", "token", "passphrase", "key-passphrase", "user", "username");
 
-    static final List<String> RELEASE_KEYS = List.of("tag", "files", "publish");
+    static final List<String> RELEASE_KEYS = List.of("tag", "files", "publish", "platforms");
     static final List<String> RELEASE_FILE_KEYS = List.of("path", "pattern");
 
     /**
@@ -428,7 +431,26 @@ public final class ManifestTables {
             throw new JkBuildParseException(
                     "[release] publish must be \"ci\", \"local\" or \"none\", got `" + publish + "`");
         }
-        return new ReleaseTable(tag, files, publish == null ? "" : publish);
+        List<String> platforms = platforms(release);
+        return new ReleaseTable(tag, files, publish == null ? "" : publish, platforms);
+    }
+
+    /** {@code [release] platforms}: each a {@link ReleasePlatform#KNOWN} name, once. */
+    private static List<String> platforms(TomlTable release) {
+        if (!release.contains("platforms")) return List.of();
+        if (!(release.get("platforms") instanceof TomlArray arr) || arr.isEmpty()) {
+            throw new JkBuildParseException("[release] platforms must list platforms, e.g. [\"linux-x86_64\"]");
+        }
+        List<String> out = new ArrayList<>();
+        for (int i = 0; i < arr.size(); i++) {
+            if (!(arr.get(i) instanceof String name) || !ReleasePlatform.KNOWN.contains(name)) {
+                throw new JkBuildParseException("[release] platforms: `" + arr.get(i) + "` is not one of "
+                        + String.join(", ", ReleasePlatform.KNOWN));
+            }
+            if (out.contains(name)) throw new JkBuildParseException("[release] platforms: " + name + " twice");
+            out.add(name);
+        }
+        return List.copyOf(out);
     }
 
     static final List<String> PUBLISH_LICENSE_KEYS = List.of("name", "url");
@@ -462,6 +484,9 @@ public final class ManifestTables {
         boolean provenance = !Boolean.FALSE.equals(optionalBool(publish, "provenance", "[publish] provenance"));
         boolean hold = Boolean.TRUE.equals(optionalBool(publish, "hold", "[publish] hold"));
         boolean skip = Boolean.TRUE.equals(optionalBool(publish, "skip", "[publish] skip"));
+        String release = optionalString(publish, "release", "publish.release");
+        String releaseRefusal = release == null ? null : ReleaseTarget.refusal(release);
+        if (releaseRefusal != null) throw new JkBuildParseException("[publish] release: " + releaseRefusal);
         List<PomMetadata.License> licenses = new ArrayList<>();
         for (TomlTable t : tables(publish, "licenses", "publish.licenses")) {
             rejectUnknownKeys(t, PUBLISH_LICENSE_KEYS, "[publish] licenses");
@@ -504,6 +529,7 @@ public final class ManifestTables {
                 developers,
                 scm,
                 optionalString(publish, "repository", "publish.repository"),
+                release,
                 sign,
                 optionalString(publish, "key-file", "publish.key-file"),
                 skip,

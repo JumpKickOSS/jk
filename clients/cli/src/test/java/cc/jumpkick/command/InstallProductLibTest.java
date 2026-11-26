@@ -90,6 +90,8 @@ class InstallProductLibTest {
                 base.releaseLine(),
                 List.of(),
                 false,
+                List.of(),
+                "",
                 List.of());
     }
 

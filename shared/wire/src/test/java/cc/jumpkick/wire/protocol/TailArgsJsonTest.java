@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.model.InstallDestination;
+import cc.jumpkick.wire.runtime.PublishLane;
 import cc.jumpkick.wire.runtime.TailArgs;
 import java.net.URI;
 import java.nio.file.Path;
@@ -68,6 +69,8 @@ class TailArgsJsonTest {
                 Path.of("/keys/release.asc"),
                 "secret",
                 credential,
+                true,
+                List.of(PublishLane.LIBRARY, PublishLane.RELEASE),
                 true);
     }
 

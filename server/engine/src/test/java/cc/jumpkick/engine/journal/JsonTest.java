@@ -141,9 +141,10 @@ class JsonTest {
                 null,
                 0L,
                 new BuildRecord.Publish(
-                        "Central Portal (automatic)",
-                        8,
-                        false,
+                        List.of(
+                                new BuildRecord.Publish.Lane("library", "Central Portal (automatic)", 8, false, ""),
+                                new BuildRecord.Publish.Lane(
+                                        "release", "s3://acme/app/1.0.0/", 5, false, "latest.json names 1.0.0")),
                         "dep-1",
                         "FAILED",
                         List.of("e1", "e2"),

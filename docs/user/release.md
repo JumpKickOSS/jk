@@ -6,7 +6,7 @@ Who runs which verb, and how a release travels from a laptop to a repository.
 |------|-------------|--------------|
 | `jk install` | the developer, every edit | installs `<version>-SNAPSHOT` on this machine for sibling projects (`--destination m2` for Maven and Gradle ones), and an application or tool on this machine; offline |
 | `jk release` | the developer, once per version | builds, tests, installs and tags the declared version, starts the next one and pushes both |
-| `jk publish` | CI on the tag, or `jk release` itself | uploads the release to the `[publish]` repository; in git, only from a clean checkout of the tag |
+| `jk publish` | CI on the tag, or `jk release` itself | uploads the libraries to the `[publish]` repository and the deliverables to the `[publish] release` bucket; in git, only from a clean checkout of the tag |
 
 `jk.toml` always holds the **next release**. A snapshot is a build-time suffix, never written down.
 
@@ -116,9 +116,11 @@ tag, naming the file.
 
 ## One command, no CI
 
-With a `[publish] repository` and no CI file that runs `jk publish`, `jk release` publishes from
-this machine: it checks before it tags that a credential and the signing key resolve, tags, pushes,
-and runs `jk publish` on the tag. Credentials come from `jk repo login <name>` on the machine
+With a `[publish] repository` or `release` and no CI file that runs `jk publish`, `jk release`
+publishes from this machine: it checks before it tags that a credential and the signing key resolve,
+tags, pushes, and runs `jk publish` on the tag, which publishes every lane. A release built on
+several platforms is staged by CI, one `jk publish --stage` per platform, before the final run
+([Publish: Releasing deliverables](publish.md#releasing-deliverables)). Credentials come from `jk repo login <name>` on the machine
 ([Repositories: credentials](repositories.md#credentials)). `jk release --publish ci` says CI
 publishes instead, and `[release] publish = "ci"` makes that permanent; the inference is in
 [Publish](publish.md#releasing).
