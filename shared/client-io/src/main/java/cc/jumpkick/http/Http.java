@@ -787,6 +787,12 @@ public final class Http {
         return put(uri, FileBody.of(file), headers);
     }
 
+    /** PATCH a byte body with caller-supplied headers; retried like {@link #put}, so only for an idempotent change. */
+    public HttpResponse<byte[]> patch(URI uri, byte[] body, Map<String, String> headers)
+            throws IOException, InterruptedException {
+        return sendUpload("PATCH", uri, HttpRequest.BodyPublishers.ofByteArray(body), headers);
+    }
+
     /** DELETE with caller-supplied headers and the standard retry policy. */
     public HttpResponse<byte[]> delete(URI uri, Map<String, String> headers) throws IOException, InterruptedException {
         return sendUpload("DELETE", uri, HttpRequest.BodyPublishers.noBody(), headers);

@@ -71,7 +71,8 @@ class TailArgsJsonTest {
                 credential,
                 true,
                 List.of(PublishLane.LIBRARY, PublishLane.RELEASE),
-                true);
+                true,
+                "release-token");
     }
 
     private static BuildRequest request(@Nullable TailArgs tail) {

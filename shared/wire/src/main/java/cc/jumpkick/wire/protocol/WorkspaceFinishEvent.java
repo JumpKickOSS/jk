@@ -116,7 +116,7 @@ public record WorkspaceFinishEvent(
                 .optionalTrue("stage", r.stage())
                 .optionalTrue("dryRun", r.dryRun())
                 .token("files", files.append(']').toString())
-                .optionalString("latest", r.latest())
+                .optionalString("finish", r.finish())
                 .optionalArray("released", r.released().isEmpty() ? null : r.released())
                 .optionalArray("notes", r.notes().isEmpty() ? null : r.notes())
                 .finish();
@@ -140,7 +140,7 @@ public record WorkspaceFinishEvent(
                 Jsonl.bool(release, "stage", false),
                 Jsonl.bool(release, "dryRun", false),
                 files,
-                Jsonl.str(release, "latest"),
+                Jsonl.str(release, "finish"),
                 Jsonl.strArray(release, "released"),
                 Jsonl.strArray(release, "notes"));
     }

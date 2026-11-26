@@ -55,8 +55,9 @@ public sealed interface TailArgs {
     /**
      * {@code jk publish}: the library repository, the PGP key and passphrase the client resolved,
      * the credential, the {@link PublishLane lanes} the run ships to and whether it only stages this
-     * host's release files. Signing, SBOM and provenance come from the project's {@code [publish]}
-     * table and the engine's view of CI, never from the client.
+     * host's release files, and the token a GitHub release is written with ({@code null} when the
+     * release goes elsewhere or the run is dry). Signing, SBOM and provenance come from the
+     * project's {@code [publish]} table and the engine's view of CI, never from the client.
      */
     record Publish(
             @Nullable URI repoUrl,
@@ -67,7 +68,8 @@ public sealed interface TailArgs {
             RepoCredential credential,
             boolean central,
             List<PublishLane> lanes,
-            boolean stage)
+            boolean stage,
+            @Nullable String releaseToken)
             implements TailArgs {
         public Publish {
             lanes = List.copyOf(lanes);

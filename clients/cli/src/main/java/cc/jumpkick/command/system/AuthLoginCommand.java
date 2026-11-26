@@ -8,18 +8,22 @@ import cc.jumpkick.cli.api.OpenBrowser;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.config.ForgeAuthConfig;
+import cc.jumpkick.config.TomlScan;
+import cc.jumpkick.config.WorkspaceLocator;
 import cc.jumpkick.forge.AuthException;
 import cc.jumpkick.forge.DeviceCode;
 import cc.jumpkick.forge.DeviceFlow;
 import cc.jumpkick.forge.ForgeAuth;
 import cc.jumpkick.forge.ForgeKind;
 import cc.jumpkick.http.Http;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
+import cc.jumpkick.release.ReleaseTarget;
 import cc.jumpkick.secret.SecretVault;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -139,7 +143,9 @@ public final class AuthLoginCommand implements CliCommand {
                     + ", add [forge."
                     + kind.id()
                     + "] client-id to your jk.toml, or use --with-token.");
-        String requestedScope = (scope != null && !scope.isBlank()) ? scope.strip() : defaultScope(kind);
+        String requestedScope = (scope != null && !scope.isBlank())
+                ? scope.strip()
+                : defaultScope(kind, releasesToGitHub(global.workingDir()));
         DeviceFlow flow = DeviceFlow.forHost(new Http(), kind, resolvedHost, clientId, requestedScope);
         return flow.run(this::prompt);
     }
@@ -169,13 +175,29 @@ public final class AuthLoginCommand implements CliCommand {
         return isDefaultHost ? kind.defaultOAuthClientId() : Optional.empty();
     }
 
-    private static String defaultScope(ForgeKind kind) {
+    /**
+     * The scope the device flow asks for: reading packages, and on GitHub writing releases too
+     * ({@code repo}) when the project sends its deliverables to a GitHub Release.
+     */
+    static String defaultScope(ForgeKind kind, boolean githubRelease) {
         return switch (kind) {
-            case GITHUB -> "read:packages";
+            case GITHUB -> githubRelease ? "read:packages repo" : "read:packages";
             case GITLAB -> "read_api";
             case GITEA -> "read:package";
             case BITBUCKET -> "";
         };
+    }
+
+    /** True when the workspace around {@code dir} sets {@code [publish] release = "github"}. */
+    static boolean releasesToGitHub(Path dir) {
+        try {
+            Path root = WorkspaceLocator.findRoot(dir).orElse(dir);
+            String release = TomlScan.scan(ManifestPaths.manifestIn(root), "publish.release")
+                    .get("publish.release");
+            return ReleaseTarget.GITHUB.equals(release);
+        } catch (IOException | RuntimeException e) {
+            return false;
+        }
     }
 
     private static void openBrowser(String url) {

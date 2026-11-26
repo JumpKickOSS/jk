@@ -6,7 +6,7 @@ Who runs which verb, and how a release travels from a laptop to a repository.
 |------|-------------|--------------|
 | `jk install` | the developer, every edit | installs `<version>-SNAPSHOT` on this machine for sibling projects (`--destination m2` for Maven and Gradle ones), and an application or tool on this machine; offline |
 | `jk release` | the developer, once per version | builds, tests, installs and tags the declared version, starts the next one and pushes both |
-| `jk publish` | CI on the tag, or `jk release` itself | uploads the libraries to the `[publish]` repository and the deliverables to the `[publish] release` bucket; in git, only from a clean checkout of the tag |
+| `jk publish` | CI on the tag, or `jk release` itself | uploads the libraries to the `[publish]` repository and the deliverables to the `[publish] release` bucket or GitHub Release; in git, only from a clean checkout of the tag |
 
 `jk.toml` always holds the **next release**. A snapshot is a build-time suffix, never written down.
 

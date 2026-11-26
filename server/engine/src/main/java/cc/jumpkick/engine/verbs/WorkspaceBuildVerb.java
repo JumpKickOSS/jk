@@ -341,13 +341,16 @@ public final class WorkspaceBuildVerb implements HostedVerb {
     }
 
     /**
-     * The one credential the engine does not resolve: a publish's, resolved by the CLI and shipped
-     * over the socket. Filed against the request's directory before anything runs, so an error that
-     * quotes it back is masked like every resolved secret, and only in that workspace's output.
+     * The credentials the engine does not resolve: a publish's repository credential and GitHub
+     * release token, resolved by the CLI and shipped over the socket. Filed against the request's
+     * directory before anything runs, so an error that quotes one back is masked like every
+     * resolved secret, and only in that workspace's output.
      */
     static void fileShippedCredential(Path entryDir, @Nullable TailArgs tail) {
-        if (tail instanceof TailArgs.Publish publish)
+        if (tail instanceof TailArgs.Publish publish) {
             ResolvedSecrets.recordFor(entryDir, publish.credential().secret());
+            ResolvedSecrets.recordFor(entryDir, publish.releaseToken());
+        }
     }
 
     @Override

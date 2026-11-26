@@ -242,7 +242,8 @@ class LifecycleParityTest {
                                         RepoCredential.ANONYMOUS,
                                         false,
                                         List.of(PublishLane.LIBRARY),
-                                        false));
+                                        false,
+                                        null));
                     default -> WorkspaceSpec.of(target);
                 };
         WorkspaceRequest request = new WorkspaceRequest(

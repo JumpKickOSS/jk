@@ -15,7 +15,7 @@ import org.jspecify.annotations.Nullable;
 /**
  * {@link TailArgs} as the nested {@code tail} object of a build request: {@code {"kind":"native",…}}.
  * A publish credential rides as {@code authType} plus its fields, the shape the client resolved it
- * in; the engine files it as a secret on decode.
+ * in; the engine files it, and a GitHub release's {@code releaseToken}, as a secret on decode.
  */
 public final class TailArgsJson {
 
@@ -82,7 +82,8 @@ public final class TailArgsJson {
                 .optionalNonBlankString("gpgPassphrase", p.gpgPassphrase())
                 .optionalTrue(RepositorySpec.CENTRAL, p.central())
                 .array("lanes", p.lanes().stream().map(PublishLane::word).toList())
-                .optionalTrue("stage", p.stage());
+                .optionalTrue("stage", p.stage())
+                .optionalNonBlankString("releaseToken", p.releaseToken());
         return switch (p.credential()) {
             case RepoCredential.Basic b ->
                 json.string("authType", "basic")
@@ -129,7 +130,8 @@ public final class TailArgsJson {
                                 .map(word -> PublishLane.parse(word)
                                         .orElseThrow(() -> new IllegalArgumentException("unknown lane `" + word + "`")))
                                 .toList(),
-                        Jsonl.bool(json, "stage", false));
+                        Jsonl.bool(json, "stage", false),
+                        Jsonl.str(json, "releaseToken"));
             default -> throw new IllegalArgumentException("unknown tail kind `" + kind + "`");
         };
     }

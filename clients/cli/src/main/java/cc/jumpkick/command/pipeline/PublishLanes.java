@@ -1,8 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command.pipeline;
 
+import cc.jumpkick.forge.ForgeAuth;
+import cc.jumpkick.forge.ForgeKind;
+import cc.jumpkick.forge.GitHubRepository;
+import cc.jumpkick.forge.ResolvedToken;
 import cc.jumpkick.release.ReleaseTarget;
 import cc.jumpkick.wire.runtime.PublishLane;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
@@ -71,10 +76,24 @@ record PublishLanes(List<PublishLane> lanes, @Nullable String refusal) {
     static @Nullable String forgeRefusal(String release) {
         String refused = ReleaseTarget.refusal(release);
         if (refused != null) return "[publish] release: " + refused;
-        if (ReleaseTarget.FORGES.contains(release)) {
-            return "release = \"" + release + "\" is not supported yet; use an s3:// or gs:// bucket";
+        if (ReleaseTarget.FORGES.contains(release) && !release.equals(ReleaseTarget.GITHUB)) {
+            return "release = \"" + release + "\" is not supported yet; use github or a bucket";
         }
         return null;
+    }
+
+    /**
+     * The token a {@code release = "github"} run writes with: the forge token chain's for the host
+     * of {@code dir}'s origin.
+     *
+     * @throws IllegalArgumentException with one line when origin is not on GitHub or no token is set
+     */
+    static String githubToken(Path dir, ForgeAuth auth) {
+        GitHubRepository repo = GitHubRepository.fromOrigin(dir);
+        return auth.resolveSilently(ForgeKind.GITHUB, repo.host())
+                .map(ResolvedToken::value)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "no GitHub token for " + repo.host() + "; run jk auth login github or set GH_TOKEN"));
     }
 
     private static PublishLanes refused(String why) {

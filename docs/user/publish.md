@@ -181,18 +181,23 @@ naming the key to set.
 ```toml
 [publish]
 repository = "central"                        # the library lane
-release    = "s3://acme-releases/widget/"     # the release lane: an s3:// or gs:// prefix
+release    = "github"                         # the release lane: github, or an s3:// or gs:// prefix
 
 [release]
 platforms = ["linux-x86_64", "macos-aarch64", "windows-x86_64"]
 ```
 
-`release` takes an `s3://` or `gs://` prefix. The bucket's endpoint and region come from a
-`[repositories]` table whose `url` or `publish-url` covers the bucket, else from the AWS
-environment (`AWS_ENDPOINT_URL` for R2 or MinIO, `AWS_REGION`); the credential comes from the AWS
-chain (`AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`, or `~/.aws/credentials`). `github`, `gitlab`
-and `forgejo` name a forge's releases and are refused until JumpKick supports them. The workspace
-root's `[publish] release` and `[release]` govern the whole workspace.
+`release` takes `github` or an `s3://` or `gs://` prefix:
+
+- `github` sends the files to a GitHub Release of the repository the git remote `origin` names,
+  on github.com or a GitHub Enterprise host. See [GitHub Releases](#github-releases).
+- A bucket's endpoint and region come from a `[repositories]` table whose `url` or `publish-url`
+  covers the bucket, else from the AWS environment (`AWS_ENDPOINT_URL` for R2 or MinIO,
+  `AWS_REGION`). The credential comes from the AWS chain (`AWS_ACCESS_KEY_ID` and
+  `AWS_SECRET_ACCESS_KEY`, or `~/.aws/credentials`).
+
+`gitlab` and `forgejo` are refused until JumpKick supports them. The workspace root's
+`[publish] release` and `[release]` govern the whole workspace.
 
 **What the release carries.** From every module that is not `[publish] skip`:
 
@@ -209,11 +214,12 @@ root's `[publish] release` and `[release]` govern the whole workspace.
 
 Then the final run adds `SHA256SUMS` (`sha256sum` format, the one `jk`'s own installer verifies),
 `SHA256SUMS.asc` when `key-file` is set, `SHA256SUMS.sigstore.json` when CI offers an identity
-token, and `index.json`, which lists every file with its module, size, SHA-256, URL and, for a
-platform file, its `os` and `arch`. With signing on and neither a key nor an identity, the release
-goes out unsigned and the run says so on one line, also in the results: `release v1.4.7 is
-unsigned: set [publish] key-file, or sign = false`. Quarkus's default fast-jar runs from its
-`quarkus-app/` directory, which the release does not carry; `package = "uber-jar"` ships one jar.
+token, and `index.json`, which lists every file with its module, size, SHA-256, URL (a bucket's
+only; GitHub names its own) and, for a platform file, its `os` and `arch`. With signing on and
+neither a key nor an identity, the release goes out unsigned and the run says so on one line, also
+in the results: `release v1.4.7 is unsigned: set [publish] key-file, or sign = false`. Quarkus's
+default fast-jar runs from its `quarkus-app/` directory, which the release does not carry;
+`package = "uber-jar"` ships one jar.
 
 **Platforms and the final run.** `[release] platforms` lists the platforms whose files a release
 must carry, named `linux-x86_64`, `linux-aarch64`, `macos-x86_64`, `macos-aarch64`,
@@ -229,7 +235,7 @@ one platform needs nothing else: one `jk publish` builds, uploads and publishes 
   (and this host's own, if not staged yet), runs the library lane (a Central upload waits for
   `VALIDATED`), writes `SHA256SUMS`, its signatures and `index.json`, publishes the release, and
   only then presses Publish on the Central Portal (unless `hold = true`). If anything fails before
-  the release is published, nothing on Central or in `latest.json` is public.
+  the release is published, nothing on Central, in `latest.json` or on GitHub is public.
 
 Every upload resumes: a file already there with the same bytes is left alone, so a final run that
 stopped half way finishes on the next try, and a file there with other bytes stops the run and says
@@ -241,8 +247,70 @@ is absent. The release is published when `{prefix}latest.json`
 compare-and-swap and never moves it back to an older version. A stage run's files sit under the
 same `{version}/` and stay unannounced until then.
 
+### GitHub Releases
+
+With `release = "github"` the release is the GitHub Release of the version's tag (`v1.4.7` by
+default, `[release] tag` otherwise) in the repository `origin` names. A run refuses with one line
+when `origin` is missing or on another forge.
+
+- The first upload creates the release as a **draft** named after the tag, at the tagged commit.
+  Stage runs and the final run upload to that draft, which nobody else sees.
+- An asset already in the draft with the same name, size and SHA-256 is left alone; one with other
+  bytes stops the run. An empty asset a broken upload left behind is replaced.
+- The final run uploads the neutral files, `SHA256SUMS`, its signatures and `index.json`, then
+  publishes the draft.
+- A release that is already published takes no new file. A final run that finds every file there
+  with the same bytes changes nothing; one that would add a file is refused before anything
+  builds: `v1.4.7 is already published without app-1.4.7-all.jar; raise the version`.
+
+**The token.** JumpKick takes the first of `JK_GITHUB_TOKEN`, `GH_TOKEN`, `GITHUB_TOKEN`, `gh auth
+token` and the token `jk auth login github` stored. It needs the `repo` scope, or `contents: write`
+for the `GITHUB_TOKEN` of a GitHub Actions job; a token without it is refused with `GitHub refused
+the release; the token needs repo scope or contents: write`. In a project with `release =
+"github"`, `jk auth login github` asks for `repo` as well as `read:packages`. `GITHUB_API_URL`,
+which Actions sets, names the REST API when it is set; otherwise it is `https://api.github.com`, or
+`https://<host>/api/v3` for an Enterprise host. A rate limit stops the run with the time to try
+again; JumpKick does not retry against it.
+
 **A matrix in CI.** JumpKick does not write CI workflows; it holds the order with its commands. Stage
-on each platform, then publish once:
+on each platform, then publish once. For a GitHub Release, each job's `GITHUB_TOKEN` needs
+`contents: write`:
+
+```yaml
+# .github/workflows/release.yml
+on:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: write                # the draft release and its assets
+jobs:
+  stage:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: jk publish --stage
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  publish:
+    needs: stage
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write            # keyless Sigstore signing
+    steps:
+      - uses: actions/checkout@v4
+      - run: jk publish
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          JK_REPO_CENTRAL_USERNAME: ${{ secrets.CENTRAL_USERNAME }}
+          JK_REPO_CENTRAL_PASSWORD: ${{ secrets.CENTRAL_PASSWORD }}
+          JK_GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+```
+
+For a bucket the jobs carry the bucket's credential instead:
 
 ```yaml
 # .github/workflows/release.yml
@@ -282,7 +350,8 @@ its files already there and leaves them.
 
 **Previewing.** `jk publish --dry-run` prints each lane's plan: for the release, every file with its
 size, SHA-256, destination and role (`staging` for a platform's own file, `final` for what only the
-final run writes), and nothing is uploaded. `target/jk-results.md` gives the Publish block one row
+final run writes), then what the run would do last (`would publish the draft release v1.4.7`,
+`would point latest.json at 1.4.7`), and nothing is uploaded. `target/jk-results.md` gives the Publish block one row
 per lane.
 
 ## Releasing

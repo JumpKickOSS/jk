@@ -2,11 +2,19 @@
 package cc.jumpkick.command.pipeline;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cc.jumpkick.forge.ForgeAuth;
+import cc.jumpkick.forge.TokenStore;
 import cc.jumpkick.wire.runtime.PublishLane;
 import cc.jumpkick.wire.runtime.ReleaseOutcome;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 /** Which lanes a {@code jk publish} runs, in which order, and what it refuses before anything builds. */
 class PublishLanesTest {
@@ -68,11 +76,12 @@ class PublishLanesTest {
     }
 
     @Test
-    void a_forge_target_is_refused_until_it_is_supported() {
-        assertThat(select(List.of(), false, true, "github").refusal())
-                .isEqualTo("release = \"github\" is not supported yet; use an s3:// or gs:// bucket");
+    void github_is_a_release_target_and_the_other_forges_are_refused() {
+        assertThat(select(List.of(), false, true, "github").lanes())
+                .containsExactly(PublishLane.LIBRARY, PublishLane.RELEASE);
+        assertThat(select(List.of(), true, false, "github").lanes()).containsExactly(PublishLane.RELEASE);
         assertThat(select(List.of(), true, false, "forgejo").refusal())
-                .isEqualTo("release = \"forgejo\" is not supported yet; use an s3:// or gs:// bucket");
+                .isEqualTo("release = \"forgejo\" is not supported yet; use github or a bucket");
         assertThat(select(List.of("library"), false, true, "gitlab").lanes()).containsExactly(PublishLane.LIBRARY);
     }
 
@@ -117,5 +126,51 @@ class PublishLanesTest {
                         "  planned  app-1.0-all.jar  42 bytes  sha256 ab12  -> s3://acme/app/1.0/app-1.0-all.jar  (final)",
                         "  planned  app-1.0-macos-aarch64.tar.gz  -> s3://acme/app/1.0/app-1.0-macos-aarch64.tar.gz"
                                 + "  (staging)");
+    }
+
+    @Test
+    void a_github_release_takes_the_forge_token_for_the_host_of_origin(@TempDir Path dir) throws Exception {
+        origin(dir, "git@github.example.com:acme/app.git");
+        TokenStore store = new TokenStore(dir.resolve("creds"));
+        ForgeAuth none = new ForgeAuth(store, k -> null, argv -> Optional.empty());
+        assertThatThrownBy(() -> PublishLanes.githubToken(dir, none))
+                .hasMessage("no GitHub token for github.example.com; run jk auth login github or set GH_TOKEN");
+
+        store.write("github.example.com", "stored-token");
+        assertThat(PublishLanes.githubToken(dir, none)).isEqualTo("stored-token");
+        ForgeAuth env = new ForgeAuth(store, Map.of("GH_TOKEN", "env-token")::get, argv -> Optional.empty());
+        assertThat(PublishLanes.githubToken(dir, env)).isEqualTo("env-token");
+    }
+
+    @Test
+    void a_github_release_is_refused_when_origin_is_on_another_forge(@TempDir Path dir) throws Exception {
+        origin(dir, "https://gitlab.com/acme/app.git");
+        ForgeAuth auth = new ForgeAuth(new TokenStore(dir.resolve("creds")), k -> "t", argv -> Optional.empty());
+        assertThatThrownBy(() -> PublishLanes.githubToken(dir, auth))
+                .hasMessage("origin https://gitlab.com/acme/app.git is not a GitHub remote");
+    }
+
+    @Test
+    void a_github_dry_run_names_the_draft_it_would_publish() {
+        ReleaseOutcome plan = new ReleaseOutcome(
+                "https://github.com/acme/app/releases/download/v1.0/",
+                false,
+                true,
+                List.of(new ReleaseOutcome.File(
+                        "SHA256SUMS", "", null, -1, "", ReleaseOutcome.FINAL, ReleaseOutcome.PLANNED)),
+                "would publish the draft release v1.0",
+                List.of(),
+                List.of());
+        assertThat(PublishCommand.releaseLines(plan))
+                .containsExactly(
+                        "Release https://github.com/acme/app/releases/download/v1.0/ (dry run)",
+                        "  planned  SHA256SUMS  -> https://github.com/acme/app/releases/download/v1.0/SHA256SUMS"
+                                + "  (final)",
+                        "  would publish the draft release v1.0");
+    }
+
+    private static void origin(Path dir, String url) throws Exception {
+        Files.createDirectories(dir.resolve(".git"));
+        Files.writeString(dir.resolve(".git/config"), "[remote \"origin\"]\n\turl = " + url + "\n");
     }
 }
