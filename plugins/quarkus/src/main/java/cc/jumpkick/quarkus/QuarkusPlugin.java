@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.quarkus;
 
-import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.host.ManifestNames;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.PreferIpv4;
@@ -364,11 +363,10 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
      */
     private static List<Path> toolClasspath(TaskExec exec) throws IOException {
         List<Path> cp = new ArrayList<>();
-        cp.add(ToolJars.codeSource(QuarkusPlugin.class));
-        // The forked mains parse their offline flag with the engine's host helpers and read the
-        // repository routes with the SDK's; both jars are on the plugin's loader, never on a bare
-        // fork's classpath.
-        cp.add(ToolJars.codeSource(EnvValues.class));
+        // The forked mains parse their offline flag with the host helpers and read the repository
+        // routes with the SDK's; both jars are on the plugin's loader, never on a bare fork's
+        // classpath.
+        cp.addAll(ToolJars.forkClasspath(QuarkusPlugin.class));
         cp.add(ToolJars.codeSource(RepositoryRoute.class));
         Path tools = exec.requireExtra(BOOTSTRAP_EXTRA);
         if (Files.isDirectory(tools)) {

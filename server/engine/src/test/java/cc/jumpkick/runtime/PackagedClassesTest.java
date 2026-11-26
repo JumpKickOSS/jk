@@ -16,8 +16,6 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
-import java.util.jar.JarEntry;
-import java.util.jar.JarFile;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -62,12 +60,7 @@ class PackagedClassesTest {
                 .containsEntry("com/example/aot/Optimized.class", "opt");
     }
 
-    /**
-     * A plugin worker whose contribution is a workspace sibling that is itself a plugin — grails
-     * over spring-boot: both carry {@code META-INF/services/cc.jumpkick.plugin.Plugin}, and letting
-     * the sibling's file win made the grails jar register SpringBootPlugin, so the worker reported
-     * "no plugin with protocol prefix ##JKGR:".
-     */
+    /** A contribution that registers services adds its providers to the module's, never replaces them. */
     @Test
     void service_registrations_from_every_source_are_merged(@TempDir Path tmp) throws Exception {
         Fixture f = fixture(tmp);
@@ -89,51 +82,6 @@ class PackagedClassesTest {
                 .as("a file one source owns is taken as is")
                 .isEqualTo("x.OnlyMine\n");
         assertThat(tree).containsEntry("Sibling.class", "sib");
-    }
-
-    /**
-     * A worker vendors a workspace sibling's class tree, and a sibling that is itself a plugin
-     * carries its own {@code jk-plugin.toml} and {@code templates/} at that root. The module's
-     * descriptor is the one the jar ships; the sibling's root resources do not reach it at all.
-     */
-    @Test
-    void a_vendored_sibling_s_descriptor_and_templates_do_not_reach_the_tree_or_the_jar(@TempDir Path tmp)
-            throws Exception {
-        Fixture f = fixture(tmp);
-        Files.writeString(f.classes.resolve("jk-plugin.toml"), "[plugin]\nid = \"grails\"\ntable = \"grails\"\n");
-        Files.createDirectories(f.classes.resolve("templates/java/grails"));
-        Files.writeString(f.classes.resolve("templates/java/grails/hello.g8"), "own");
-        Files.writeString(
-                f.contributed.resolve("jk-plugin.toml"), "[plugin]\nid = \"spring-boot\"\ntable = \"spring-boot\"\n");
-        Files.createDirectories(f.contributed.resolve("templates/java/spring-boot"));
-        Files.writeString(f.contributed.resolve("templates/java/spring-boot/hello.g8"), "sibling");
-        Files.createDirectories(f.contributed.resolve("cc/jumpkick/boot"));
-        Files.writeString(f.contributed.resolve("cc/jumpkick/boot/BootJarPackager.class"), "vendored");
-
-        PackagedTree packaged = PackagedClasses.packagedClasses(f.classes, contributed(f));
-        Map<String, String> tree = contents(packaged);
-
-        assertThat(tree.get("jk-plugin.toml")).contains("id = \"grails\"");
-        assertThat(tree).containsEntry("templates/java/grails/hello.g8", "own");
-        assertThat(tree.keySet()).noneMatch(n -> n.startsWith("templates/java/spring-boot"));
-        assertThat(tree)
-                .as("the sibling's classes are still vendored")
-                .containsEntry("cc/jumpkick/boot/BootJarPackager.class", "vendored");
-
-        Path jar = tmp.resolve("jk-grails.jar");
-        new JarPackager().packageJar(JarPackager.JarRequest.of(packaged, jar));
-        try (JarFile jf = new JarFile(jar.toFile())) {
-            JarEntry descriptor = jf.getJarEntry("jk-plugin.toml");
-            assertThat(descriptor).isNotNull();
-            assertThat(new String(jf.getInputStream(descriptor).readAllBytes(), StandardCharsets.UTF_8))
-                    .contains("table = \"grails\"");
-            assertThat(jf.stream()
-                            .map(JarEntry::getName)
-                            .filter(n -> n.startsWith("templates/spring-boot")
-                                    || n.startsWith("templates/java/spring-boot")))
-                    .isEmpty();
-            assertThat(jf.getJarEntry("cc/jumpkick/boot/BootJarPackager.class")).isNotNull();
-        }
     }
 
     @Test

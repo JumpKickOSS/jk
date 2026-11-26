@@ -422,10 +422,11 @@ public final class EffectivePomBuilder {
 
         // 4. Effective deps — parent first, child overrides by module. Valued before they are
         // keyed: a coordinate spelled with a parent's property names its module only once valued,
-        // both for the override and for the management lookup below.
+        // both for the override and for the management lookup below. A module one POM declares
+        // twice keeps its widest scope.
         List<Pom.Dep> mergedDeps = new ArrayList<>();
         if (parent != null) mergedDeps.addAll(parent.dependencies());
-        mergedDeps.addAll(child.dependencies());
+        mergedDeps.addAll(widestByModule(substituteAll(child.dependencies(), props)));
         mergedDeps = dedupeByModule(substituteAll(mergedDeps, props));
         Map<String, String> hostClassified = hostClassified(child.dependencies(), parent, props);
 
@@ -701,6 +702,29 @@ public final class EffectivePomBuilder {
         LinkedHashMap<String, Pom.Dep> byModule = new LinkedHashMap<>();
         for (Pom.Dep dep : deps) byModule.put(depKey(dep), dep);
         return new ArrayList<>(byModule.values());
+    }
+
+    /**
+     * {@code deps} of one POM with each module declared once, in the widest scope any of its
+     * declarations names (compile, then runtime, provided, test), at the place it first appears. A
+     * POM that names a library for its main code and again for its tests means the library at
+     * runtime; Maven's keep-the-last rule would make it test-only and drop it from the classpath.
+     */
+    static List<Pom.Dep> widestByModule(List<Pom.Dep> deps) {
+        LinkedHashMap<String, Pom.Dep> byModule = new LinkedHashMap<>();
+        for (Pom.Dep dep : deps)
+            byModule.merge(depKey(dep), dep, (kept, next) -> scopeRank(next) < scopeRank(kept) ? next : kept);
+        return new ArrayList<>(byModule.values());
+    }
+
+    /** How wide a declared scope reaches: lower is wider; an unset scope is compile. */
+    private static int scopeRank(Pom.Dep dep) {
+        String scope = dep.scope();
+        if (blank(scope) || "compile".equalsIgnoreCase(scope)) return 0;
+        if ("runtime".equalsIgnoreCase(scope)) return 1;
+        if ("provided".equalsIgnoreCase(scope)) return 2;
+        if ("test".equalsIgnoreCase(scope)) return 3;
+        return 4;
     }
 
     /** Maven dependency identity: {@code groupId:artifactId:type:classifier} (type defaults to jar). */

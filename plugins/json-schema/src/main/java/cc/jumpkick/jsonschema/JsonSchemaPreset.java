@@ -63,7 +63,7 @@ public final class JsonSchemaPreset implements Plugin, BuildExtension {
 
     @Override
     public void build(BuildContext ctx) {
-        ctx.task(entry(ctx.config(), List.of(ToolJars.codeSource(JsonSchemaPreset.class)))
+        ctx.task(entry(ctx.config(), ToolJars.forkClasspath(JsonSchemaPreset.class))
                 .task());
     }
 

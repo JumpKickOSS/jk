@@ -42,6 +42,7 @@ import cc.jumpkick.task.KeyContract;
 import cc.jumpkick.task.KeyOwner;
 import cc.jumpkick.task.ModuleEnvKeys;
 import cc.jumpkick.task.PortablePath;
+import cc.jumpkick.task.WorkerClosure;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -110,12 +111,10 @@ public final class PackagingKeys {
         return new Keyed(taskId, tokens, jarKey);
     }
 
-    /** The dirs package-jar merges over the classes: plugin contributions, then worker codec classes. */
+    /** The dirs package-jar merges over the classes: the plugin contributions and the multi-release root. */
     public static List<Path> packagedContributions(
-            @Nullable PluginDeclarations decls, BuildLayout layout, Path moduleDir, JkBuild project) {
-        List<Path> contributed = new ArrayList<>(PackagedClasses.packagedDirs(decls, layout, project));
-        contributed.addAll(PackagedClasses.workerCodecClassDirs(moduleDir, project));
-        return contributed;
+            @Nullable PluginDeclarations decls, BuildLayout layout, JkBuild project) {
+        return PackagedClasses.packagedDirs(decls, layout, project);
     }
 
     // ---- package-assembly ------------------------------------------------------------------
@@ -466,7 +465,7 @@ public final class PackagingKeys {
         // Packager identity (e.g. shrink vs boot) so CLI packaging overrides cannot cache-collide.
         tokens.add("packaging:" + p.decls().packager().name());
         // The packager's CODE is an input, same as plugin steps (see PlannerPlugin.pluginTask).
-        tokens.add("worker:" + ClasspathFingerprint.entry(PluginBuild.workerJarFor(p.active(), p.cache())));
+        tokens.add("worker:" + WorkerClosure.token(PluginBuild.workerJarFor(p.active(), p.cache())));
         // The minified packager folds `jk train` observations into its keep rules out-of-band
         // (same path derivation as MinifiedJarPackager.produce). Absence and every content state
         // must be distinct keys — otherwise a post-train rebuild restores the pre-train jar as

@@ -125,7 +125,7 @@ final class HelidonBinding {
         if (settings.failOnWarning()) args.add("--fail-on-warning");
 
         List<Path> toolClasspath = new ArrayList<>();
-        toolClasspath.add(ToolJars.codeSource(HelidonBinding.class));
+        toolClasspath.addAll(ToolJars.forkClasspath(HelidonBinding.class));
         toolClasspath.addAll(ToolJars.classpath(exec.requireExtra(TOOL)));
         Report report = new Report();
         int exit = exec

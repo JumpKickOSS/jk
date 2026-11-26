@@ -117,8 +117,7 @@ final class PackageSteps {
                     // custom packagers (boot-jar) merge step outputs themselves. The dirs are only
                     // *listed* here — staging them is a copy, and it must not happen before the
                     // cache check below.
-                    List<Path> contributed =
-                            PackagingKeys.packagedContributions(pluginDecls, layout, in.dir(), project);
+                    List<Path> contributed = PackagingKeys.packagedContributions(pluginDecls, layout, project);
                     Files.createDirectories(jarPath.getParent());
                     String mainClass = PluginModule.mainClass(in.dir(), project);
                     // Application jars embed the lockfile-derived SBOM (libraries don't:
@@ -442,10 +441,8 @@ final class PackageSteps {
                     s.compileMainKey,
                     s.knownResourceDrift);
         }
-        // A worker's vendored sibling class dirs are the declared set the build lists, each read
-        // as the tree the build restores.
         String contribTok = PackagedClasses.contributionsToken(
-                PackagingKeys.packagedContributions(prepared.parsed().pkgDecls(), layout, s.dir, s.project),
+                PackagingKeys.packagedContributions(prepared.parsed().pkgDecls(), layout, s.project),
                 s.restored.identity());
         PackagingKeys.Keyed keyed = PackagingKeys.packageJar(jar, s.dir, s.project, classesTok, contribTok, sbom);
         String pkgKey = keyed.key();

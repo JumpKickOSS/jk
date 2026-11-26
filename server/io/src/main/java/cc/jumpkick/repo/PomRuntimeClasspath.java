@@ -4,10 +4,13 @@ package cc.jumpkick.repo;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.config.WorkspaceLocator;
+import cc.jumpkick.config.WorkspaceModules;
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.RepositorySpec;
 import java.io.IOException;
@@ -39,6 +42,10 @@ import org.jspecify.annotations.Nullable;
  * built-in repository set a lock resolves against, Google's Android Maven included, so a worker
  * whose closure lives only there (the Android worker's apksig) resolves from an empty store.
  *
+ * <p>A worker built in a workspace ({@code <module>/target/<artifact>-<version>.jar}) takes the
+ * workspace libraries its POM names from their own {@code target/} jars and sidecar POMs, never from
+ * the store: those are the classes the build that made the worker compiled it against.
+ *
  * <p>The whole POM graph a launch walks is staged into the store when the worker is installed
  * ({@link #stage}), so a fork resolves from disk: a launch that still finds a POM missing is an
  * install that did not finish, and it fails naming the coordinate and the install, rather than
@@ -65,15 +72,32 @@ public final class PomRuntimeClasspath {
 
     private PomRuntimeClasspath() {}
 
+    /** An artifact the walk takes from outside the store: the jar for the classpath and the POM to read for it. */
+    public record Local(Path jar, Path pom) {}
+
+    /** Where the walk takes a coordinate from instead of the store; {@code null} for the store. */
+    @FunctionalInterface
+    public interface Locals {
+        @Nullable
+        Local of(Coordinate coord) throws IOException;
+
+        /** Every coordinate from the store. */
+        Locals NONE = coord -> null;
+    }
+
+    /** A memoised launch classpath and the stat of each mutable POM it was walked from. */
+    private record Resolved(List<Path> paths, String stamp) {}
+
     /**
      * Process-lifetime memo of {@link #resolve(Path)}: every fork re-resolved the full effective
      * POM walk (worker POM + every transitive POM, XML parses, possible network) in the resident
      * engine. Keyed on the jar and POM identity (path, size, mtime) plus the repo-group identity;
      * a hit is re-validated with one stat per entry so a swept store falls back to a real
-     * resolve. Only successes are cached — a store that gains the missing artifact later must be
-     * able to succeed.
+     * resolve, and with the stat of each first-party POM below the root (a shelf or workspace
+     * library's), so a library that changed what it depends on is walked again. Only successes are
+     * cached — a store that gains the missing artifact later must be able to succeed.
      */
-    private static final ConcurrentHashMap<String, List<Path>> RESOLVE_CACHE = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<String, Resolved> RESOLVE_CACHE = new ConcurrentHashMap<>();
 
     private static final int RESOLVE_CACHE_MAX = 256;
 
@@ -115,44 +139,142 @@ public final class PomRuntimeClasspath {
             throw new IllegalStateException("worker jar is missing: " + workerJar);
         }
         Path worker = workerJar.toAbsolutePath().normalize();
-        return resolveFrom(worker, pomFor(worker));
+        return resolveFrom(worker, pomFor(worker), Locals.NONE);
     }
 
     /**
-     * As {@link #resolve(Path)}, walking {@code pom} instead of the POM found beside the jar: the
-     * engine's shelf manifest pins a worker's POM, and hands the store's copy here when the shelf
-     * holds another install's.
+     * As {@link #resolve(Path)}, walking {@code pom} instead of the POM found beside the jar when it
+     * is not null, and taking each coordinate {@code pinned} answers for from there: the engine's
+     * shelf manifest pins a worker's POM and the POMs of the shelf libraries it runs on, and hands
+     * the store's copies here when the shelf holds another install's. The walk is memoised while the
+     * worker's POM and the POM beside each shelf or workspace jar keep their stat, so {@code
+     * pinned} may change its answer only when one of those does.
      */
-    public static List<Path> resolve(Path workerJar, Path pom) {
+    public static List<Path> resolve(Path workerJar, @Nullable Path pom, Locals pinned) {
         if (workerJar == null || !Files.isRegularFile(workerJar)) {
             throw new IllegalStateException("worker jar is missing: " + workerJar);
         }
+        Path worker = workerJar.toAbsolutePath().normalize();
         return resolveFrom(
-                workerJar.toAbsolutePath().normalize(), pom.toAbsolutePath().normalize());
+                worker, pom == null ? pomFor(worker) : pom.toAbsolutePath().normalize(), pinned);
     }
 
-    private static List<Path> resolveFrom(Path worker, @Nullable Path pom) {
+    private static List<Path> resolveFrom(Path worker, @Nullable Path pom, Locals pinned) {
         Path extra = extraStoreFor(worker);
         String key = pom == null ? null : resolveCacheKey(worker, pom, extra);
         if (key != null) {
-            List<Path> hit = RESOLVE_CACHE.get(key);
+            Resolved hit = RESOLVE_CACHE.get(key);
             if (hit != null) {
-                boolean intact = true;
-                for (Path p : hit) {
-                    if (!Files.isRegularFile(p)) {
-                        intact = false;
-                        break;
-                    }
+                boolean intact = hit.stamp().equals(mutablePomStamp(hit.paths()));
+                for (Path p : hit.paths()) {
+                    if (!intact) break;
+                    if (!Files.isRegularFile(p)) intact = false;
                 }
-                if (intact) return hit;
+                if (intact) return hit.paths();
                 RESOLVE_CACHE.remove(key);
             }
         }
-        List<Path> resolved = List.copyOf(resolve(worker, pom, reposFor(worker)));
+        Locals locals = withWorkspace(worker, pinned);
+        List<Path> resolved = List.copyOf(resolve(worker, pom, reposFor(worker), locals));
         if (key != null && RESOLVE_CACHE.size() < RESOLVE_CACHE_MAX) {
-            RESOLVE_CACHE.put(key, resolved);
+            RESOLVE_CACHE.put(key, new Resolved(resolved, mutablePomStamp(resolved)));
         }
         return resolved;
+    }
+
+    /**
+     * The size and mtime of the POM beside every entry below the root that a later build or install
+     * may rewrite in place: a shelf jar's, a workspace library's sidecar. A store's other trees
+     * hold what a repository published, which does not move.
+     */
+    private static String mutablePomStamp(List<Path> paths) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 1; i < paths.size(); i++) {
+            Path entry = paths.get(i);
+            if (!isWorkspaceLayout(entry) && !isShelfEntry(entry)) continue;
+            Path pom = siblingPom(entry);
+            if (pom == null) continue;
+            sb.append(pom).append('|');
+            try {
+                sb.append(Files.size(pom))
+                        .append('|')
+                        .append(Files.getLastModifiedTime(pom).toMillis());
+            } catch (IOException gone) {
+                sb.append("absent");
+            }
+            sb.append('\n');
+        }
+        return sb.toString();
+    }
+
+    /** True when {@code entry} sits in a store's {@code repos/jk-local} tree. */
+    private static boolean isShelfEntry(Path entry) {
+        for (Path cur = entry.getParent(); cur != null; cur = cur.getParent()) {
+            Path parent = cur.getParent();
+            if (RepoArtifactResolver.JK_LOCAL.equals(fileName(cur))
+                    && parent != null
+                    && "repos".equals(fileName(parent))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * {@code pinned}, after the workspace's own libraries for a worker built in one: a coordinate a
+     * member of the worker's workspace packages is that member's {@code target/} jar and sidecar
+     * POM.
+     */
+    private static Locals withWorkspace(Path worker, Locals pinned) {
+        if (!isWorkspaceLayout(worker)) return pinned;
+        List<Path> members = workspaceMembers(worker);
+        if (members.isEmpty()) return pinned;
+        return coord -> {
+            Local member = workspaceMember(members, coord);
+            return member != null ? member : pinned.of(coord);
+        };
+    }
+
+    /** The members of the workspace that holds the module {@code worker} was built in; empty outside one. */
+    static List<Path> workspaceMembers(Path worker) {
+        Path module = moduleOf(worker);
+        if (module == null) return List.of();
+        try {
+            Path root = WorkspaceLocator.findRoot(module).orElse(null);
+            return root == null ? List.of() : WorkspaceModules.memberDirs(root);
+        } catch (IOException | RuntimeException unreadable) {
+            return List.of();
+        }
+    }
+
+    /** The module a {@code target/} artifact was built by: the parent of its {@code target} directory. */
+    private static @Nullable Path moduleOf(Path artifact) {
+        for (Path cur = artifact.toAbsolutePath().normalize().getParent(); cur != null; cur = cur.getParent()) {
+            Path parent = cur.getParent();
+            if (BuildLayout.TARGET.equals(fileName(cur))
+                    && parent != null
+                    && Files.isRegularFile(ManifestPaths.manifestIn(parent))) {
+                return parent;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * The member of {@code members} that packaged {@code coord}: a plain jar of that name in its
+     * {@code target/}, beside a sidecar POM of the same group. {@code null} when none did.
+     */
+    private static @Nullable Local workspaceMember(List<Path> members, Coordinate coord) throws IOException {
+        if (coord.classifier() != null || !"jar".equalsIgnoreCase(coord.type())) return null;
+        String base = coord.artifact() + "-" + coord.version();
+        for (Path member : members) {
+            Path target = BuildLayout.moduleTargetDir(member);
+            Path jar = target.resolve(base + ".jar");
+            Path pom = target.resolve(base + ".pom");
+            if (!Files.isRegularFile(jar) || !Files.isRegularFile(pom)) continue;
+            if (coord.group().equals(StorePoms.parse(pom).groupId())) return new Local(jar, pom);
+        }
+        return null;
     }
 
     /**
@@ -196,10 +318,10 @@ public final class PomRuntimeClasspath {
             throw new IllegalStateException("worker jar is missing: " + workerJar);
         }
         Path worker = workerJar.toAbsolutePath().normalize();
-        return resolve(worker, pomFor(worker), repos);
+        return resolve(worker, pomFor(worker), repos, withWorkspace(worker, Locals.NONE));
     }
 
-    private static List<Path> resolve(Path worker, @Nullable Path pom, RepoGroup repos) {
+    private static List<Path> resolve(Path worker, @Nullable Path pom, RepoGroup repos, Locals locals) {
         if (pom == null) {
             throw new IllegalStateException(
                     "worker " + worker + " has no POM; run jk install to publish it to repos/jk-local");
@@ -210,7 +332,7 @@ public final class PomRuntimeClasspath {
             EffectivePomBuilder builder = new EffectivePomBuilder(repos);
             Pom raw = StorePoms.parse(pom);
             EffectivePom effective = builder.build(raw);
-            walk(effective, rootPins(raw, effective), coordinateOf(worker), builder, repos, out);
+            walk(effective, rootPins(raw, effective), coordinateOf(worker), builder, repos, locals, out);
         } catch (IllegalStateException e) {
             throw e;
         } catch (InterruptedException e) {
@@ -236,8 +358,11 @@ public final class PomRuntimeClasspath {
      * Fetch the runtime closure of {@code root} (jar + POM per compile/runtime dependency, parents
      * and BOM imports included) into {@code repos}. Official plugin install uses this so a thin
      * published POM is enough to materialize the worker classpath.
+     *
+     * @return the jar of every dependency, in classpath order; {@code root}'s own is not among them
      */
-    public static void fetchRuntimeClosure(Coordinate root, RepoGroup repos) throws IOException, InterruptedException {
+    public static List<Path> fetchRuntimeClosure(Coordinate root, RepoGroup repos)
+            throws IOException, InterruptedException {
         EffectivePomBuilder builder = new EffectivePomBuilder(repos);
         EffectivePom pom = builder.build(root);
         Pom raw = repos.tryFetchPom(root)
@@ -249,7 +374,9 @@ public final class PomRuntimeClasspath {
                     }
                 })
                 .orElseThrow(() -> new IllegalStateException("worker POM " + root + " was not found in any repo"));
-        walk(pom, rootPins(raw, pom), root, builder, repos, new ArrayList<>());
+        List<Path> out = new ArrayList<>();
+        walk(pom, rootPins(raw, pom), root, builder, repos, Locals.NONE, out);
+        return List.copyOf(out);
     }
 
     /**
@@ -588,6 +715,7 @@ public final class PomRuntimeClasspath {
             @Nullable Coordinate self,
             EffectivePomBuilder builder,
             RepoGroup repos,
+            Locals locals,
             List<Path> out)
             throws IOException, InterruptedException {
         WalkState state = WalkState.fresh(pins);
@@ -595,7 +723,7 @@ public final class PomRuntimeClasspath {
         if (self != null && root.relocation() != null && root.relocation().redirects(self)) {
             Coordinate target = state.pinned(root.relocation().applyTo(self));
             if (state.claim(target) && state.walked().add(mediationKey(target))) {
-                Node moved = fetch(new Claim(target, Set.of(), false), builder, repos, state, out);
+                Node moved = fetch(new Claim(target, Set.of(), false), builder, repos, locals, state, out);
                 if (moved != null) level.add(moved);
             }
         } else {
@@ -626,10 +754,10 @@ public final class PomRuntimeClasspath {
             }
             // A depth's jars and POMs are fetched at once; what they mean is settled in claim order,
             // so the classpath, mediation and the first error are what a one-at-a-time walk gives.
-            List<Fetched> fetched = fetchAll(due, builder, repos);
+            List<Fetched> fetched = fetchAll(due, builder, repos, locals);
             List<Node> next = new ArrayList<>();
             for (int i = 0; i < due.size(); i++) {
-                Node child = settle(due.get(i), fetched.get(i), builder, repos, state, out);
+                Node child = settle(due.get(i), fetched.get(i), builder, repos, locals, state, out);
                 if (child != null) next.add(child);
             }
             level = next;
@@ -643,58 +771,71 @@ public final class PomRuntimeClasspath {
      * request already serves. A relocated module keeps its stub jar and expands the target instead.
      */
     private static @Nullable Node fetch(
-            Claim claim, EffectivePomBuilder builder, RepoGroup repos, WalkState state, List<Path> out)
+            Claim claim, EffectivePomBuilder builder, RepoGroup repos, Locals locals, WalkState state, List<Path> out)
             throws IOException, InterruptedException {
-        return settle(claim, fetchOne(claim.coord(), builder, repos), builder, repos, state, out);
+        return settle(claim, fetchOne(claim.coord(), builder, repos, locals), builder, repos, locals, state, out);
     }
 
     /**
-     * One claim's I/O, done ahead of deciding anything: its jar, and when there is one, its
-     * effective POM, or the miss that POM met (kept, so the claim's own turn reports it).
+     * One claim's I/O, done ahead of deciding anything: its jar (from the store, or the {@link
+     * Local} one), and when there is one, its effective POM, or the miss that POM met (kept, so the
+     * claim's own turn reports it).
      */
     private record Fetched(
-            Optional<RepoGroup.RepoFetched> art,
+            @Nullable Path jar,
             @Nullable EffectivePom pom,
             MavenRepo.@Nullable ArtifactNotFoundException pomMissing,
             boolean downloaded) {}
 
-    private static Fetched fetchOne(Coordinate coord, EffectivePomBuilder builder, RepoGroup repos)
+    private static Fetched fetchOne(Coordinate coord, EffectivePomBuilder builder, RepoGroup repos, Locals locals)
             throws IOException, InterruptedException {
+        Local local = locals.of(coord);
+        if (local != null) {
+            return new Fetched(local.jar(), builder.build(StorePoms.parse(local.pom())), null, false);
+        }
         Optional<RepoGroup.RepoFetched> art = repos.tryFetchArtifact(coord);
-        if (art.isEmpty()) return new Fetched(art, null, null, false);
+        if (art.isEmpty()) return new Fetched(null, null, null, false);
+        Path jar = art.get().fetched().cachePath();
         // Whether this jar came down the wire this run, or the store already held it.
         boolean downloaded = SessionContext.current().io().transfers().claimLanding(coord.toString());
         try {
-            return new Fetched(art, builder.build(coord), null, downloaded);
+            return new Fetched(jar, builder.build(coord), null, downloaded);
         } catch (MavenRepo.ArtifactNotFoundException e) {
-            return new Fetched(art, null, e, downloaded);
+            return new Fetched(jar, null, e, downloaded);
         }
     }
 
     /** Every claim's {@link #fetchOne} at once, a declared set on the run's board, answered in claim order. */
-    private static List<Fetched> fetchAll(List<Claim> claims, EffectivePomBuilder builder, RepoGroup repos)
+    private static List<Fetched> fetchAll(
+            List<Claim> claims, EffectivePomBuilder builder, RepoGroup repos, Locals locals)
             throws IOException, InterruptedException {
         List<ArtifactFanOut.Fetch<Fetched>> fetches = new ArrayList<>(claims.size());
-        for (Claim c : claims) fetches.add(() -> fetchOne(c.coord(), builder, repos));
+        for (Claim c : claims) fetches.add(() -> fetchOne(c.coord(), builder, repos, locals));
         return ArtifactFanOut.all(fetches, Fetched::downloaded);
     }
 
     /** What one claim's fetch means for the walk: its jar on the classpath and its POM for the next depth. */
     private static @Nullable Node settle(
-            Claim claim, Fetched fetched, EffectivePomBuilder builder, RepoGroup repos, WalkState state, List<Path> out)
+            Claim claim,
+            Fetched fetched,
+            EffectivePomBuilder builder,
+            RepoGroup repos,
+            Locals locals,
+            WalkState state,
+            List<Path> out)
             throws IOException, InterruptedException {
         Coordinate coord = claim.coord();
         String key = coord.group() + ":" + coord.artifact() + ":" + coord.version();
         if (coord.classifier() != null) key = key + ":" + coord.classifier();
-        Optional<RepoGroup.RepoFetched> art = fetched.art();
-        if (art.isEmpty()) {
+        Path jar = fetched.jar();
+        if (jar == null) {
             if (claim.optional()) return null;
             String names =
                     repos.repos().stream().map(MavenRepo::name).distinct().collect(Collectors.joining(", "));
             throw new IllegalStateException(
                     "worker dependency " + key + " not found in " + names + "; " + STAGING_REMEDY);
         }
-        out.add(art.get().fetched().cachePath().toAbsolutePath().normalize());
+        out.add(jar.toAbsolutePath().normalize());
         EffectivePom child = fetched.pom();
         MavenRepo.ArtifactNotFoundException e = fetched.pomMissing();
         if (child == null && e != null) {
@@ -718,7 +859,7 @@ public final class PomRuntimeClasspath {
         if (child.relocation() != null && child.relocation().redirects(coord)) {
             Coordinate target = state.pinned(child.relocation().applyTo(coord));
             if (!state.claim(target) || !state.walked().add(mediationKey(target))) return null;
-            return fetch(new Claim(target, claim.exclusions(), claim.optional()), builder, repos, state, out);
+            return fetch(new Claim(target, claim.exclusions(), claim.optional()), builder, repos, locals, state, out);
         }
         return new Node(child, coord, claim.exclusions());
     }

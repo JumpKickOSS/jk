@@ -310,7 +310,7 @@ is this job: true when it started with the pool full, or `vfs-max-mb = 0`.
 ## Package
 
 `cc.jumpkick.layout` (next to `TestSuites` / `Languages` / `ModuleLayout`).
-Not `:host` — plugin workers vendor `:host` only and must not grow a tree
+Not `:host` — plugin workers run on `:host` and must not grow a tree
 cache. Not `:config` — that owns `RequestScope`, which this uses.
 
 ## Non-goals

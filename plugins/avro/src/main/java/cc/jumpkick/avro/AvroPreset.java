@@ -40,8 +40,7 @@ public final class AvroPreset implements Plugin, BuildExtension {
 
     @Override
     public void build(BuildContext ctx) {
-        ctx.task(entry(ctx.config(), List.of(ToolJars.codeSource(AvroPreset.class)))
-                .task());
+        ctx.task(entry(ctx.config(), ToolJars.forkClasspath(AvroPreset.class)).task());
     }
 
     /**

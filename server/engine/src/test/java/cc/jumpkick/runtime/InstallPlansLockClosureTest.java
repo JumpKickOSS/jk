@@ -82,11 +82,33 @@ class InstallPlansLockClosureTest {
 
     @Test
     void the_closure_follows_lock_edges_from_the_runtime_roots_only() {
-        List<Coordinate> closure = InstallPlans.lockClosure(declaringLib(), lock());
+        List<Coordinate> closure = InstallPlans.lockClosure(declaringLib(), lock(), Map.of());
 
         assertThat(closure)
                 .containsExactly(Coordinate.of("com.acme", "lib", "1.0"), Coordinate.of("com.acme", "leaf", "3.0"));
-        assertThat(InstallPlans.lockClosure(declaringLib(), null)).isEmpty();
+        assertThat(InstallPlans.lockClosure(declaringLib(), null, Map.of())).isEmpty();
+    }
+
+    /**
+     * A worker's POM names its sibling libraries, whose own POMs the launch walks; the pins stay at
+     * the worker's root, so what a sibling pulls in from outside is pinned there too.
+     */
+    @Test
+    void the_closure_follows_a_sibling_through_to_its_own_declarations() {
+        Map<Scope, List<Dependency>> workerDeps = new EnumMap<>(Scope.class);
+        workerDeps.put(Scope.MAIN, List.of(new Dependency("cc.jumpkick:jk-foo", VersionSelector.parse("=1.0"))));
+        JkBuild worker = JkBuild.builder(Project.builder("cc.jumpkick", "jk-worker", "1.0")
+                        .jdkMajor(25)
+                        .java(25)
+                        .build())
+                .dependencies(new JkBuild.Dependencies(workerDeps))
+                .build();
+
+        assertThat(InstallPlans.lockClosure(worker, lock(), Map.of("cc.jumpkick:jk-foo", declaringLib())))
+                .containsExactly(Coordinate.of("com.acme", "lib", "1.0"), Coordinate.of("com.acme", "leaf", "3.0"));
+        assertThat(InstallPlans.lockClosure(worker, lock(), Map.of()))
+                .as("a sibling the map does not know contributes nothing")
+                .isEmpty();
     }
 
     @Test
@@ -151,7 +173,7 @@ class InstallPlansLockClosureTest {
                                         List.of()))),
                 ws.resolve("jk-lock.toml"));
 
-        assertThat(InstallPlans.lockClosure(declaringLib(), InstallPlans.lockOf(ws.resolve("mod"))))
+        assertThat(InstallPlans.lockClosure(declaringLib(), InstallPlans.lockOf(ws.resolve("mod")), Map.of()))
                 .contains(Coordinate.of("com.acme", "logging", "1.2"));
     }
 
@@ -161,7 +183,11 @@ class InstallPlansLockClosureTest {
         JkBuild project = declaringLib();
         Lockfile lock = lock();
         String pom = PublishablePom.render(
-                        project, null, Set.of(), InstallPlans.lockPins(lock), InstallPlans.lockClosure(project, lock))
+                        project,
+                        null,
+                        Set.of(),
+                        InstallPlans.lockPins(lock),
+                        InstallPlans.lockClosure(project, lock, Map.of()))
                 .xml();
 
         Coordinate worker = Coordinate.of("cc.jumpkick", "jk-foo", "1.0");

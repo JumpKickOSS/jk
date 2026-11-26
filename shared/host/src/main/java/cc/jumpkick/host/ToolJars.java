@@ -30,6 +30,17 @@ public final class ToolJars {
     }
 
     /**
+     * The classpath for a fork of {@code main}, a worker's own command-line class: the jar (or
+     * classes directory) that holds it and this library's, which a worker jar does not carry —
+     * the host helpers such a class runs on reach the worker as a dependency of its POM.
+     */
+    public static List<Path> forkClasspath(Class<?> main) {
+        Path own = codeSource(main);
+        Path host = codeSource(ToolJars.class);
+        return own.equals(host) ? List.of(own) : List.of(own, host);
+    }
+
+    /**
      * Where {@code type} was loaded from: its jar, or a classes directory when the worker runs from
      * a workspace build's own output. Either is a classpath entry for a fork.
      */

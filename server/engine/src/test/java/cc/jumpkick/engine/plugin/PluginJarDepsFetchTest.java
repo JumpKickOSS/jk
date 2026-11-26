@@ -132,6 +132,48 @@ class PluginJarDepsFetchTest {
     }
 
     /**
+     * A worker's jar holds its own classes only; the first-party libraries its POM names decide what
+     * it runs as surely, so each is held to the signed digests like the worker.
+     */
+    @Test
+    void a_first_party_library_whose_bytes_the_release_did_not_sign_is_refused(@TempDir Path tmp) throws Exception {
+        String rel = PluginJar.PUBLISHER.relativePath();
+        String pomRel = rel.substring(0, rel.length() - 4) + ".pom";
+        serve("/" + rel, "thin-worker-jar");
+        serve("/" + pomRel, """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>cc.jumpkick</groupId>
+                  <artifactId>jk-publisher</artifactId>
+                  <version>%s</version>
+                  <dependencies>
+                    <dependency>
+                      <groupId>cc.jumpkick.fixture</groupId>
+                      <artifactId>lib</artifactId>
+                      <version>1.0</version>
+                    </dependency>
+                  </dependencies>
+                </project>
+                """.formatted(JkVersion.VERSION));
+        serve("/cc/jumpkick/fixture/lib/1.0/lib-1.0.jar", "genuine-lib");
+        serve("/cc/jumpkick/fixture/lib/1.0/lib-1.0.pom", """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>cc.jumpkick.fixture</groupId>
+                  <artifactId>lib</artifactId>
+                  <version>1.0</version>
+                </project>
+                """);
+        SignedRelease.publishServed(http, JkVersion.VERSION);
+        serve("/cc/jumpkick/fixture/lib/1.0/lib-1.0.jar", "tampered-lib");
+
+        assertThatThrownBy(() -> PluginJar.PUBLISHER.locate(new Cas(tmp.resolve("cache"))))
+                .isInstanceOf(PluginJarNotFoundException.class)
+                .hasMessageContaining("lib-1.0.jar")
+                .hasMessageContaining(Hashing.sha256Hex("tampered-lib".getBytes(StandardCharsets.UTF_8)));
+    }
+
+    /**
      * The release vouches for the genuine bytes; the repository (or whatever stands in for it)
      * serves others, with a sidecar that agrees with them. The jar is refused, the message names it
      * and both digests, and nothing reaches the store.

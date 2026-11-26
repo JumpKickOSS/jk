@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import cc.jumpkick.engine.plugin.WorkerLaunchClasspath;
 import cc.jumpkick.host.ChildEnv;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.Forks;
@@ -35,8 +36,8 @@ final class KeyProbes {
     private KeyProbes() {}
 
     /**
-     * {@code probe:<sha256>} for {@code probe} run on {@code javaHome} with {@code pluginJar} and the
-     * closures it names from {@code tools} on the classpath, in {@code cwd}, under exactly {@code
+     * {@code probe:<sha256>} for {@code probe} run on {@code javaHome} with {@code pluginJar}'s launch
+     * classpath and the closures it names from {@code tools} on the classpath, in {@code cwd}, under exactly {@code
      * environment} with each variable of {@link KeyProbe#secretEnv} laid on top as the plugin's
      * {@code secrets} answer it.
      */
@@ -49,8 +50,9 @@ final class KeyProbes {
             Map<String, String> environment,
             Map<String, String> secrets)
             throws IOException, InterruptedException {
-        List<Path> classpath = new ArrayList<>();
-        classpath.add(pluginJar);
+        // The worker's launch classpath, as every fork of it gets: its jar holds its own classes
+        // only, and the probe's main runs on the libraries its POM names.
+        List<Path> classpath = new ArrayList<>(WorkerLaunchClasspath.paths(pluginJar));
         for (String tool : probe.tools()) {
             Path closure = tools.get(tool);
             if (closure == null) {

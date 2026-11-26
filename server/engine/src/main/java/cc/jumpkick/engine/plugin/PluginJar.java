@@ -10,6 +10,7 @@ import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.repo.AuthHeaders;
+import cc.jumpkick.repo.MavenLayout;
 import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.PomRuntimeClasspath;
 import cc.jumpkick.repo.ReleaseArtifacts;
@@ -254,7 +255,7 @@ public enum PluginJar {
         Path localJar = store.locate(relPath)
                 .orElseThrow(() -> new IOException("could not write worker jar " + relPath + " under " + store.root()
                         + "; check disk space and permissions"));
-        fetchOfficialClosure(cas, http, base, localJar);
+        fetchOfficialClosure(cas, http, base, localJar, signed);
         return localJar;
     }
 
@@ -302,16 +303,37 @@ public enum PluginJar {
     /**
      * Fetch the worker POM's Maven runtime closure (effective POM: parent properties, BOM
      * imports, {@code dependencyManagement}) from the {@linkplain PomRuntimeClasspath#workerRemotes
-     * built-in remotes}: the official repo, Maven Central, Google's Android Maven.
+     * built-in remotes}: the official repo, Maven Central, Google's Android Maven. Every
+     * first-party library in it (the plugin SDK, {@code jk-host}, …) must hash, jar and POM, to
+     * what {@code signed} lists, as the worker itself did.
      */
-    private static void fetchOfficialClosure(Cas cas, Http http, URI base, Path workerJar)
+    private static void fetchOfficialClosure(Cas cas, Http http, URI base, Path workerJar, ReleaseRepoDigests signed)
             throws IOException, InterruptedException {
         Coordinate coord = PomRuntimeClasspath.coordinateOf(workerJar);
         if (coord == null) {
             throw new IOException("cannot parse Maven coordinate of official worker jar " + workerJar);
         }
         // Worker closures stay under JK_STORE_DIR (repos/jumpkick, repos/central, repos/google) — not ~/.m2.
-        PomRuntimeClasspath.fetchRuntimeClosure(coord, PomRuntimeClasspath.workerRemotes(base, http, cas));
+        List<Path> closure =
+                PomRuntimeClasspath.fetchRuntimeClosure(coord, PomRuntimeClasspath.workerRemotes(base, http, cas));
+        for (Path jar : closure) {
+            Coordinate dep = PomRuntimeClasspath.coordinateOf(jar);
+            if (dep == null || !isFirstPartyGroup(dep.group())) continue;
+            String jarRel = MavenLayout.artifactPath(dep);
+            String pomRel = MavenLayout.pomPath(dep);
+            URI from = base.resolve(jarRel);
+            vouched(signed, jarRel, from, Files.readAllBytes(jar));
+            Path pom = jar.resolveSibling(pomRel.substring(pomRel.lastIndexOf('/') + 1));
+            vouched(signed, pomRel, base.resolve(pomRel), Files.readAllBytes(pom));
+        }
+    }
+
+    /** True for a group the official repository serves exclusively ({@code cc.jumpkick}, {@code cc.jumpkick.guards}, …). */
+    static boolean isFirstPartyGroup(String group) {
+        return group.equals("cc.jumpkick")
+                || group.startsWith("cc.jumpkick.")
+                || group.equals("build.jumpkick")
+                || group.startsWith("build.jumpkick.");
     }
 
     /**

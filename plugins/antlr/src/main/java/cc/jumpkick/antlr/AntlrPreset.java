@@ -41,8 +41,7 @@ public final class AntlrPreset implements Plugin, BuildExtension {
 
     @Override
     public void build(BuildContext ctx) {
-        ctx.task(entry(ctx.config(), List.of(ToolJars.codeSource(AntlrPreset.class)))
-                .task());
+        ctx.task(entry(ctx.config(), ToolJars.forkClasspath(AntlrPreset.class)).task());
     }
 
     /**

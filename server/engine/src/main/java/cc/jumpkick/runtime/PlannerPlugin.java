@@ -48,6 +48,7 @@ import cc.jumpkick.task.KeyAudit;
 import cc.jumpkick.task.KeyContract;
 import cc.jumpkick.task.KeyOwner;
 import cc.jumpkick.task.ModuleEnvKeys;
+import cc.jumpkick.task.WorkerClosure;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -689,7 +690,7 @@ public final class PlannerPlugin {
         // step, or a plugin upgrade (or first-party dev iteration) silently restores
         // outputs produced by the old code.
         Path workerJar = PluginBuild.workerJarFor(active, in.cache());
-        tokens.add("worker:" + ClasspathFingerprint.entry(workerJar));
+        tokens.add("worker:" + WorkerClosure.token(workerJar));
         probeToken(
                         ctx,
                         step,
