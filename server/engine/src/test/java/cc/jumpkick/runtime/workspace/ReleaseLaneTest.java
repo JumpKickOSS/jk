@@ -104,7 +104,8 @@ class ReleaseLaneTest {
                 false,
                 List.of(PublishLane.RELEASE),
                 stage,
-                null);
+                null,
+                false);
     }
 
     private static ReleaseOutcome.File uploaded(String name, @Nullable String platform, String body) {

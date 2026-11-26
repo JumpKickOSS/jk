@@ -91,7 +91,8 @@ class TailForecastTest {
                 false,
                 List.of(PublishLane.LIBRARY),
                 false,
-                null);
+                null,
+                false);
         assertThat(scheduled(WorkspaceSpec.publish(Set.of(lib), dryRun))).containsExactly(lib);
         assertThat(scheduled(WorkspaceSpec.train(Set.of(app), Map.of(), null, false)))
                 .containsExactly(app);

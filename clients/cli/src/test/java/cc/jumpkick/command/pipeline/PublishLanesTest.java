@@ -92,13 +92,16 @@ class PublishLanesTest {
     }
 
     @Test
-    void github_is_a_release_target_and_the_other_forges_are_refused() {
-        assertThat(select(List.of(), false, true, "github").lanes())
-                .containsExactly(PublishLane.LIBRARY, PublishLane.RELEASE);
-        assertThat(select(List.of(), true, false, "github").lanes()).containsExactly(PublishLane.RELEASE);
-        assertThat(select(List.of(), true, false, "forgejo").refusal())
-                .isEqualTo("release = \"forgejo\" is not supported yet; use github or a bucket");
+    void every_forge_is_a_release_target() {
+        for (String forge : List.of("github", "gitlab", "forgejo")) {
+            assertThat(select(List.of(), false, true, forge).lanes())
+                    .as(forge)
+                    .containsExactly(PublishLane.LIBRARY, PublishLane.RELEASE);
+            assertThat(select(List.of(), true, false, forge).lanes()).as(forge).containsExactly(PublishLane.RELEASE);
+        }
         assertThat(select(List.of("library"), false, true, "gitlab").lanes()).containsExactly(PublishLane.LIBRARY);
+        assertThat(select(List.of(), true, false, "gitea").refusal())
+                .isEqualTo("[publish] release: `gitea` is not github, gitlab, forgejo or an s3:// or gs:// URL");
     }
 
     @Test
@@ -149,21 +152,60 @@ class PublishLanesTest {
         origin(dir, "git@github.example.com:acme/app.git");
         TokenStore store = new TokenStore(dir.resolve("creds"));
         ForgeAuth none = new ForgeAuth(store, k -> null, argv -> Optional.empty());
-        assertThatThrownBy(() -> PublishLanes.githubToken(dir, none))
-                .hasMessage("no GitHub token for github.example.com; run jk auth login github or set GH_TOKEN");
+        assertThatThrownBy(() -> PublishLanes.releaseToken(dir, "github", none, k -> null))
+                .hasMessage("no token for github.example.com; run jk auth login github or set GH_TOKEN");
 
         store.write("github.example.com", "stored-token");
-        assertThat(PublishLanes.githubToken(dir, none)).isEqualTo("stored-token");
+        assertThat(PublishLanes.releaseToken(dir, "github", none, k -> null))
+                .isEqualTo(new PublishLanes.ReleaseToken("stored-token", false));
         ForgeAuth env = new ForgeAuth(store, Map.of("GH_TOKEN", "env-token")::get, argv -> Optional.empty());
-        assertThat(PublishLanes.githubToken(dir, env)).isEqualTo("env-token");
+        assertThat(PublishLanes.releaseToken(dir, "github", env, k -> null).value())
+                .isEqualTo("env-token");
     }
 
     @Test
-    void a_github_release_is_refused_when_origin_is_on_another_forge(@TempDir Path dir) throws Exception {
+    void a_forge_release_is_refused_when_origin_is_on_another_forge(@TempDir Path dir) throws Exception {
         origin(dir, "https://gitlab.com/acme/app.git");
         ForgeAuth auth = new ForgeAuth(new TokenStore(dir.resolve("creds")), k -> "t", argv -> Optional.empty());
-        assertThatThrownBy(() -> PublishLanes.githubToken(dir, auth))
+        assertThatThrownBy(() -> PublishLanes.releaseToken(dir, "github", auth, k -> null))
                 .hasMessage("origin https://gitlab.com/acme/app.git is not a GitHub remote");
+        assertThatThrownBy(() -> PublishLanes.releaseToken(dir, "forgejo", auth, k -> null))
+                .hasMessage("origin https://gitlab.com/acme/app.git is not a Forgejo remote");
+    }
+
+    @Test
+    void a_gitlab_release_takes_the_chain_then_the_ci_job_token(@TempDir Path dir) throws Exception {
+        origin(dir, "git@gitlab.acme.corp:platform/tools/app.git");
+        TokenStore store = new TokenStore(dir.resolve("creds"));
+        ForgeAuth none = new ForgeAuth(store, k -> null, argv -> Optional.empty());
+        assertThatThrownBy(() -> PublishLanes.releaseToken(dir, "gitlab", none, k -> null))
+                .hasMessage("no token for gitlab.acme.corp; run jk auth login gitlab or set GITLAB_TOKEN");
+
+        Map<String, String> ci = Map.of("CI_JOB_TOKEN", "job-token");
+        assertThat(PublishLanes.releaseToken(dir, "gitlab", none, ci::get))
+                .isEqualTo(new PublishLanes.ReleaseToken("job-token", true));
+        ForgeAuth env = new ForgeAuth(store, Map.of("GITLAB_TOKEN", "pat")::get, argv -> Optional.empty());
+        assertThat(PublishLanes.releaseToken(dir, "gitlab", env, ci::get))
+                .as("a configured token wins over the job's")
+                .isEqualTo(new PublishLanes.ReleaseToken("pat", false));
+    }
+
+    @Test
+    void a_forgejo_release_takes_the_gitea_chain_for_the_host_of_origin(@TempDir Path dir) throws Exception {
+        origin(dir, "https://codeberg.org/acme/app.git");
+        TokenStore store = new TokenStore(dir.resolve("creds"));
+        ForgeAuth none = new ForgeAuth(store, k -> null, argv -> Optional.empty());
+        Map<String, String> ci = Map.of("CI_JOB_TOKEN", "job-token");
+        assertThatThrownBy(() -> PublishLanes.releaseToken(dir, "forgejo", none, ci::get))
+                .as("a job token is GitLab's alone")
+                .hasMessage("no token for codeberg.org; run jk auth login forgejo or set FORGEJO_TOKEN");
+
+        store.write("codeberg.org", "stored-token");
+        assertThat(PublishLanes.releaseToken(dir, "forgejo", none, k -> null).value())
+                .isEqualTo("stored-token");
+        ForgeAuth env = new ForgeAuth(store, Map.of("FORGEJO_TOKEN", "env-token")::get, argv -> Optional.empty());
+        assertThat(PublishLanes.releaseToken(dir, "forgejo", env, k -> null).value())
+                .isEqualTo("env-token");
     }
 
     @Test

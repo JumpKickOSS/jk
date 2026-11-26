@@ -41,7 +41,8 @@ import org.jspecify.annotations.Nullable;
  * already published without a file it would write, and a final run one that lacks a listed
  * platform's files, so nothing irreversible happens first. After every module uploaded its files,
  * the final run writes {@code SHA256SUMS}, its signatures and {@code index.json}, publishes the
- * release ({@code latest.json} in a bucket, the draft on GitHub), then publishes the Central
+ * release ({@code latest.json} in a bucket, the draft on GitHub or Forgejo, a new release linking
+ * the generic package on GitLab), then publishes the Central
  * deployments the library lane held at {@code VALIDATED}. A stage run only reports what it
  * uploaded.
  */
@@ -97,8 +98,8 @@ final class ReleaseLane {
             if (refused.isEmpty()) store.prepare();
             return refused;
         } catch (IOException | RuntimeException e) {
-            // GitHub's refusals name the release themselves; a bucket's need the place.
-            if (run.github() != null) return List.of(Errors.text(e));
+            // A forge's refusals name the release themselves; a bucket's need the place.
+            if (run.forge() != null) return List.of(Errors.text(e));
             return List.of("could not read " + run.destination() + ": " + Errors.text(e));
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();

@@ -80,13 +80,13 @@ class GitHubRepositoryTest {
     void the_origin_is_read_from_the_checkout(@TempDir Path dir) throws Exception {
         Files.createDirectories(dir.resolve(".git"));
         Files.writeString(dir.resolve(".git/config"), "[remote \"origin\"]\n\turl = git@github.com:acme/app.git\n");
-        assertThat(GitHubRepository.fromOrigin(dir.resolve("."), null))
+        assertThat(ForgeRepository.fromOrigin("github", dir.resolve("."), null))
                 .isEqualTo(new GitHubRepository("github.com", "acme", "app"));
 
         Path other = dir.resolve("other");
         Files.createDirectories(other.resolve(".git"));
         Files.writeString(other.resolve(".git/config"), "[core]\n\tbare = false\n");
-        assertThatThrownBy(() -> GitHubRepository.fromOrigin(other, null))
+        assertThatThrownBy(() -> ForgeRepository.fromOrigin("github", other, null))
                 .hasMessage("release = \"github\" needs a git remote origin on GitHub");
     }
 }

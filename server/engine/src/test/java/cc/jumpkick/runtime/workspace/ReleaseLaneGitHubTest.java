@@ -117,7 +117,8 @@ class ReleaseLaneGitHubTest {
                 false,
                 List.of(PublishLane.RELEASE),
                 false,
-                FakeGitHub.TOKEN);
+                FakeGitHub.TOKEN,
+                false);
     }
 
     private ReleaseStore store() {

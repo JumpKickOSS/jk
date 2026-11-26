@@ -8,7 +8,7 @@ import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Where a release's files go: an object-store prefix or a GitHub Release, opened by {@link
+ * Where a release's files go: an object-store prefix or a forge's release, opened by {@link
  * ReleaseStores#open}. Every write is create-only and resumable: a file already there with the
  * same bytes is left alone and other bytes stop the run.
  */
@@ -43,7 +43,7 @@ public interface ReleaseStore {
     boolean published() throws IOException, InterruptedException;
 
     /**
-     * Ready the release to take files, once, before any module uploads: GitHub creates the draft
+     * Ready the release to take files, once, before any module uploads: GitHub and Forgejo create the draft
      * here, so modules that upload at the same time find the one draft.
      */
     void prepare() throws IOException, InterruptedException;

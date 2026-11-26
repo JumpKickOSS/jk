@@ -113,13 +113,14 @@ public final class RequestEnvNames {
             "AWS_ENDPOINT_URL");
 
     /**
-     * What {@code jk publish} reads for itself, by exact name: the REST API a GitHub release is
+     * What {@code jk publish} reads for itself, by exact name: the REST API a forge release is
      * written through ({@code GITHUB_API_URL}, which GitHub Actions sets, on Enterprise Server
-     * too) and the CI identity a keyless signature requests its token with ({@link
+     * too; {@code CI_API_V4_URL}, which GitLab CI sets on a self-managed instance too) and the CI identity a keyless signature requests its token with ({@link
      * CiIdentity#VARIABLES}). The engine files the identity with the redactor and hands it only to
      * the signing worker.
      */
-    public static final List<String> PUBLISH = Stream.concat(Stream.of("GITHUB_API_URL"), CiIdentity.VARIABLES.stream())
+    public static final List<String> PUBLISH = Stream.concat(
+                    Stream.of("GITHUB_API_URL", "CI_API_V4_URL"), CiIdentity.VARIABLES.stream())
             .toList();
 
     /** A prefix forwarded whole, and what in the engine reads under it. */

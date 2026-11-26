@@ -1107,8 +1107,8 @@
         "repository": { "type": "string", "description": "Where `jk publish` sends a release: a [repositories.<name>] entry, or \"central\". `jk publish --repository` overrides it for one run." },
         "release": {
           "type": "string",
-          "anyOf": [{ "enum": ["github"] }, { "pattern": "^(s3|gs)://" }],
-          "description": "Where `jk publish` sends the deliverables (fat jars, archives, runtime images, native executables): github (a GitHub Release of the repository the git remote origin names) or an s3:// or gs:// prefix. The workspace root's value governs the workspace. See docs/user/publish.md#releasing-deliverables."
+          "anyOf": [{ "enum": ["github", "gitlab", "forgejo"] }, { "pattern": "^(s3|gs)://" }],
+          "description": "Where `jk publish` sends the deliverables (fat jars, archives, runtime images, native executables): github, gitlab or forgejo (a release of the repository the git remote origin names; forgejo covers Gitea and Codeberg) or an s3:// or gs:// prefix. The workspace root's value governs the workspace. See docs/user/publish.md#releasing-deliverables."
         },
         "sign": { "type": "boolean", "description": "Sign the release. Default true: a key-file means PGP, and CI that offers an identity token adds keyless Sigstore. false publishes unsigned (Central refuses that)." },
         "key-file": { "type": "string", "description": "The PGP signing key file, relative to the module or ~/-prefixed. Central requires one. The passphrase never goes here (JK_GPG_PASSPHRASE)." },
