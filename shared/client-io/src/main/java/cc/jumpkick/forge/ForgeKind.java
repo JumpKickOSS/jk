@@ -2,6 +2,7 @@
 package cc.jumpkick.forge;
 
 import java.net.URI;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
@@ -12,11 +13,13 @@ import org.jspecify.annotations.Nullable;
  * CLI, ecosystem env vars, and {@code JK_<KIND>_TOKEN}. OAuth client IDs are not stored here.
  */
 public enum ForgeKind {
-    GITHUB("github", "GitHub", "github.com", true, List.of("gh", "auth", "token"), new String[] {
+    GITHUB("github", "GitHub", "github.com", true, List.of("gh", "auth", "token", "--hostname"), new String[] {
         "GH_TOKEN", "GITHUB_TOKEN"
     }),
 
-    GITLAB("gitlab", "GitLab", "gitlab.com", true, List.of("glab", "auth", "token"), new String[] {"GITLAB_TOKEN"}),
+    GITLAB("gitlab", "GitLab", "gitlab.com", true, List.of("glab", "config", "get", "token", "--host"), new String[] {
+        "GITLAB_TOKEN"
+    }),
 
     // Covers Gitea and its forks (Forgejo, Codeberg). No single canonical
     // host, so --host is effectively required; no widely-installed native
@@ -31,7 +34,7 @@ public enum ForgeKind {
     private final String displayName;
     private final @Nullable String defaultHost; // null → --host required
     private final boolean supportsDeviceFlow;
-    private final @Nullable List<String> nativeCliToken; // null → none
+    private final @Nullable List<String> nativeCliToken; // ends with the CLI's host flag; null → none
     private final String[] nativeEnvVars;
 
     ForgeKind(
@@ -66,9 +69,16 @@ public enum ForgeKind {
         return Optional.ofNullable(defaultHost);
     }
 
-    /** Native token CLI argv ({@code gh auth token}), or empty if none. */
-    public Optional<List<String>> nativeCliToken() {
-        return Optional.ofNullable(nativeCliToken);
+    /**
+     * Native CLI argv that prints the stored token for {@code host} ({@code gh auth token --hostname
+     * host}, {@code glab config get token --host host}), or empty if none.
+     */
+    public Optional<List<String>> nativeCliToken(String host) {
+        return Optional.ofNullable(nativeCliToken).map(argv -> {
+            List<String> withHost = new ArrayList<>(argv);
+            withHost.add(host);
+            return List.copyOf(withHost);
+        });
     }
 
     /** Ecosystem-native env vars to honour, in precedence order. */

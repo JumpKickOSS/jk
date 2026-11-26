@@ -38,8 +38,8 @@ public final class ForgeAuth {
             if (v != null) return Optional.of(new ResolvedToken(v, TokenSource.NATIVE_ENV));
         }
 
-        // 3. native CLI piggyback (gh/glab) — best-effort, never throws
-        Optional<String> cli = kind.nativeCliToken().flatMap(cliProbe::token);
+        // 3. native CLI piggyback (gh/glab) for this host — best-effort, never throws
+        Optional<String> cli = kind.nativeCliToken(resolveHost(kind, host)).flatMap(cliProbe::token);
         if (cli.isPresent()) return cli.map(t -> new ResolvedToken(t, TokenSource.NATIVE_CLI));
 
         // 4. jk's stored credential for this host

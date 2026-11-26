@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.host.ChildEnv;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -58,7 +59,7 @@ class ForgeAuthTest {
         var store = new TokenStore(dir);
         store.write("github.com", "stored-token");
         CliTokenProbe cli = argv -> {
-            assertThat(argv).isEqualTo(List.of("gh", "auth", "token"));
+            assertThat(argv).isEqualTo(List.of("gh", "auth", "token", "--hostname", "github.com"));
             return Optional.of("gh-token");
         };
 
@@ -67,6 +68,24 @@ class ForgeAuthTest {
         var resolved = auth.resolveSilently(ForgeKind.GITHUB, null).orElseThrow();
         assertThat(resolved.value()).isEqualTo("gh-token");
         assertThat(resolved.source()).isEqualTo(TokenSource.NATIVE_CLI);
+    }
+
+    @Test
+    void native_cli_is_asked_for_the_host_being_called(@TempDir Path dir) {
+        List<List<String>> asked = new ArrayList<>();
+        CliTokenProbe cli = argv -> {
+            asked.add(argv);
+            return Optional.of("tok");
+        };
+        var auth = new ForgeAuth(new TokenStore(dir), env(Map.of()), cli);
+
+        auth.resolveSilently(ForgeKind.GITHUB, "ghe.acme.dev");
+        auth.resolveSilently(ForgeKind.GITLAB, "gitlab.acme.dev");
+
+        assertThat(asked)
+                .containsExactly(
+                        List.of("gh", "auth", "token", "--hostname", "ghe.acme.dev"),
+                        List.of("glab", "config", "get", "token", "--host", "gitlab.acme.dev"));
     }
 
     @Test
@@ -107,7 +126,7 @@ class ForgeAuthTest {
 
     @Test
     void bitbucket_has_no_native_cli_so_cli_step_is_skipped(@TempDir Path dir) {
-        // nativeCliToken() is empty for Bitbucket → the probe must never run.
+        // nativeCliToken(host) is empty for Bitbucket → the probe must never run.
         CliTokenProbe failing = argv -> {
             throw new AssertionError("CLI must not be probed");
         };
