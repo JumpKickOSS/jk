@@ -254,10 +254,13 @@ class EffortWeightsTest {
                 1L);
         StepTimings t = StepTimings.load(cache);
         var projectDirs = List.of("/proj/sib", "/proj/new");
+        // No step walls anywhere, so only the ledger's rates decide; the JVM's own metrics stay out.
+        BuildMetrics.clearMemo();
+        BuildMetrics noWalls = BuildMetrics.load(cache.resolve("metrics.json"));
 
         // A never-built module in the project borrows the project (sibling) rate, not the host median.
-        int project = EffortWeights.learned(t, "/proj/new", "run-tests", 10, staticWeight, projectDirs);
-        int host = EffortWeights.learned(t, "/proj/new", "run-tests", 10, staticWeight); // no project ctx
+        int project = EffortWeights.learned(t, noWalls, "/proj/new", "run-tests", 10, staticWeight, projectDirs);
+        int host = EffortWeights.learned(t, noWalls, "/proj/new", "run-tests", 10, staticWeight, List.of());
         assertThat(project).isEqualTo((int) Math.round(EffortWeights.TEST_STARTUP_FLOOR + 1.0 * 10)); // 12
         assertThat(host).isEqualTo((int) Math.round(EffortWeights.TEST_STARTUP_FLOOR + 5.0 * 10)); // 52
         assertThat(project).isLessThan(host);
@@ -265,8 +268,8 @@ class EffortWeightsTest {
         // The module's OWN history still wins over the project tier.
         StepTimings.clearMemo();
         StepTimings.record(cache, List.of(new StepTimings.Sample("/proj/new", "run-tests", 3.0)), 0.4, 2L);
-        int own =
-                EffortWeights.learned(StepTimings.load(cache), "/proj/new", "run-tests", 10, staticWeight, projectDirs);
+        int own = EffortWeights.learned(
+                StepTimings.load(cache), noWalls, "/proj/new", "run-tests", 10, staticWeight, projectDirs);
         assertThat(own).isEqualTo((int) Math.round(EffortWeights.TEST_STARTUP_FLOOR + 3.0 * 10)); // 32
     }
 
