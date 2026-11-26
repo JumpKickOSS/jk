@@ -983,21 +983,11 @@ public final class BuildAccumulator {
         }
     }
 
-    /**
-     * What a publish run sent where; the one Publish row a record carries. Its destination and the
-     * repository's validation errors are redacted.
-     */
+    /** One publish row folded into the record's, a row per lane; destinations and errors redacted. */
     public synchronized void addPublish(BuildRecord.Publish p) {
         anyFact = true;
-        publish = new BuildRecord.Publish(
-                redactOrSelf(p.destination()),
-                p.files(),
-                p.dryRun(),
-                p.deploymentId(),
-                p.deploymentState(),
-                p.deploymentErrors().stream().map(this::redactOrSelf).toList(),
-                p.bundle(),
-                p.bundleBytes());
+        BuildRecord.Publish redacted = p.redacted(this::redactOrSelf);
+        publish = publish == null ? redacted : publish.merge(redacted);
     }
 
     /**

@@ -30,4 +30,13 @@ class ReleasePlatformTest {
     void the_host_is_os_dash_arch() {
         assertThat(ReleasePlatform.current()).matches("[a-z0-9_]+-[a-z0-9_]+");
     }
+
+    @Test
+    void the_known_platforms_are_spelled_as_the_host_names_itself() {
+        assertThat(ReleasePlatform.KNOWN)
+                .allMatch(p -> p.equals(ReleasePlatform.os(p.substring(0, p.indexOf('-'))) + "-"
+                        + ReleasePlatform.arch(p.substring(p.indexOf('-') + 1))));
+        assertThat(ReleasePlatform.windows("windows-x86_64")).isTrue();
+        assertThat(ReleasePlatform.windows("linux-x86_64")).isFalse();
+    }
 }

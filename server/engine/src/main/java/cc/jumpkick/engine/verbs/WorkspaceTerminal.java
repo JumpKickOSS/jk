@@ -7,6 +7,8 @@ import cc.jumpkick.engine.journal.BuildRecord;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.wire.protocol.ProtoEvents;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
+import cc.jumpkick.wire.runtime.PublishLane;
+import cc.jumpkick.wire.runtime.ReleaseOutcome;
 import cc.jumpkick.wire.runtime.WorkspaceResult;
 import java.io.BufferedWriter;
 import java.util.List;
@@ -77,9 +79,8 @@ final class WorkspaceTerminal {
                 host.accPublish(
                         rid,
                         new BuildRecord.Publish(
-                                p.destination(),
-                                p.files(),
-                                p.dryRun(),
+                                List.of(new BuildRecord.Publish.Lane(
+                                        PublishLane.LIBRARY.word(), p.destination(), p.files(), p.dryRun(), "")),
                                 p.deploymentId(),
                                 p.deploymentState(),
                                 p.deploymentErrors(),
@@ -87,6 +88,8 @@ final class WorkspaceTerminal {
                                 p.bundleBytes()));
             }
         }
+        ReleaseOutcome release = result.release();
+        if (rid > 0 && release != null) host.accPublish(rid, releaseRow(release));
         List<Redacted> errors = host.redactErrors(dir, result.errors());
         if (!succeeded && !cancelled && rid > 0) {
             host.accRunErrors(rid, errors.stream().map(Redacted::text).toList());
@@ -104,12 +107,30 @@ final class WorkspaceTerminal {
                         cancelled,
                         result.sync(),
                         succeeded && result.upToDate(),
-                        conflict));
+                        conflict,
+                        result.release()));
         if (!succeeded && !cancelled) {
             for (Redacted error : errors.stream().limit(PUBLISHED_ERROR_ROWS).toList()) {
                 host.publishRequestError(rid, dir, error.text());
             }
         }
         return outcome;
+    }
+
+    /** The release lane's row of the results file: where, how many files this run sent, and how it ended. */
+    static BuildRecord.Publish releaseRow(ReleaseOutcome release) {
+        int sent = (int) release.files().stream()
+                .filter(f -> ReleaseOutcome.UPLOADED.equals(f.status()) || ReleaseOutcome.PLANNED.equals(f.status()))
+                .count();
+        String state =
+                release.stage() ? "staged" : release.latest() != null ? "latest.json names " + release.latest() : "";
+        return new BuildRecord.Publish(
+                List.of(new BuildRecord.Publish.Lane(
+                        PublishLane.RELEASE.word(), release.destination(), sent, release.dryRun(), state)),
+                null,
+                null,
+                List.of(),
+                List.of(),
+                0L);
     }
 }

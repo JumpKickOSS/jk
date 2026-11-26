@@ -798,9 +798,10 @@ class JkResultsMarkdownTest {
                 base.io(),
                 base.requestId(),
                 new BuildRecord.Publish(
-                        "Central Portal (user-managed)",
-                        16,
-                        false,
+                        List.of(
+                                new BuildRecord.Publish.Lane("library", "Central Portal (user-managed)", 16, false, ""),
+                                new BuildRecord.Publish.Lane(
+                                        "release", "s3://acme/widget/1.0.0/", 4, false, "latest.json names 1.0.0")),
                         "28570f16-da32-4c14-bd2e-c1acc0782365",
                         "FAILED",
                         List.of("Missing signature for file: widget-1.0.0.pom", "Javadocs must be provided"),
@@ -811,7 +812,9 @@ class JkResultsMarkdownTest {
                 List.of());
         String md = JkResultsMarkdown.render(r);
         assertThat(md)
-                .contains("## Publish\n\n- destination: Central Portal (user-managed)\n- files: 16\n"
+                .contains("## Publish\n\n| Lane | Destination | Files | State |\n|---|---|---|---|\n"
+                        + "| library | Central Portal (user-managed) | 16 |  |\n"
+                        + "| release | s3://acme/widget/1.0.0/ | 4 | latest.json names 1.0.0 |\n\n"
                         + "- deployment: `28570f16-da32-4c14-bd2e-c1acc0782365` · **FAILED**\n"
                         + "- validation errors:\n  - Missing signature for file: widget-1.0.0.pom\n  - Javadocs must be provided\n"
                         + "- Central bundle: 2 files, 1.2 MB\n"

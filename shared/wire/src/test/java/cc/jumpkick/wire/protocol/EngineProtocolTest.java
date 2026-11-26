@@ -11,6 +11,7 @@ import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.plugin.build.InvocationPhase;
 import cc.jumpkick.run.TestSummary;
+import cc.jumpkick.wire.runtime.ReleaseOutcome;
 import cc.jumpkick.wire.runtime.TailArgs;
 import cc.jumpkick.wire.runtime.WorkspaceResult;
 import java.net.URI;
@@ -413,11 +414,44 @@ class EngineProtocolTest {
     @Test
     void a_workspace_finish_round_trips_its_lock_conflict() {
         WorkspaceFinishEvent refused = new WorkspaceFinishEvent(
-                false, 6, List.of("no solution"), false, null, -1, -1, false, "{\"packages\":[\"g:a\"]}");
+                false, 6, List.of("no solution"), false, null, -1, -1, false, "{\"packages\":[\"g:a\"]}", null);
         assertThat(WorkspaceFinishEvent.decode(refused.encode())).isEqualTo(refused);
         assertThat(WorkspaceFinishEvent.decode(new WorkspaceFinishEvent(true, 0, List.of(), false).encode())
                         .conflict())
                 .isEmpty();
+    }
+
+    @Test
+    void a_workspace_finish_round_trips_what_the_release_lane_did() {
+        ReleaseOutcome release = new ReleaseOutcome(
+                "s3://acme/app/1.0.0/",
+                false,
+                false,
+                List.of(
+                        new ReleaseOutcome.File(
+                                "app-1.0.0-all.jar",
+                                "app",
+                                null,
+                                42,
+                                "ab12",
+                                ReleaseOutcome.FINAL,
+                                ReleaseOutcome.UPLOADED),
+                        new ReleaseOutcome.File(
+                                "app-1.0.0-macos-aarch64.tar.gz",
+                                "app",
+                                "macos-aarch64",
+                                7,
+                                "cd34",
+                                ReleaseOutcome.STAGING,
+                                ReleaseOutcome.STAGED),
+                        new ReleaseOutcome.File(
+                                "SHA256SUMS", "", null, 99, "ef56", ReleaseOutcome.FINAL, ReleaseOutcome.EXISTING)),
+                "1.0.0",
+                List.of("dep-1"));
+        WorkspaceFinishEvent finished =
+                new WorkspaceFinishEvent(true, 0, List.of(), false, null, -1, -1, false, "", release);
+        assertThat(WorkspaceFinishEvent.decode(finished.encode())).isEqualTo(finished);
+        assertThat(new WorkspaceFinishEvent(true, 0, List.of(), false).encode()).doesNotContain("release");
     }
 
     @Test

@@ -45,7 +45,8 @@ public final class WorkspaceExecute {
                 } else {
                     WorkspaceRunPhase.Run run =
                             WorkspaceRunPhase.run(((WorkspacePreparePhase.Ready) prepare).prepared(), listener);
-                    result = KeyAudits.report(run, WorkspaceFinalPhase.complete(run), listener);
+                    result = KeyAudits.report(
+                            run, ReleaseLane.complete(run, WorkspaceFinalPhase.complete(run)), listener);
                 }
             } finally {
                 // No work model reaches the listener after the build: a pricing still running stops.

@@ -1,9 +1,11 @@
 # Publish and supply chain
 
 ```bash
-jk publish                       # the [publish] target: signed, with SBOM and provenance
+jk publish                       # every lane: libraries, then the release; signed, with SBOMs
 jk publish --dry-run             # the same plan; nothing is uploaded
-jk publish --repository central  # this run goes to Maven Central, via the Portal
+jk publish --repository central  # this run's libraries go to Maven Central, via the Portal
+jk publish --only release        # one lane: library, release or image
+jk publish --stage               # this platform's release files, for a later final run
 jk verify                 # rebuild in a scratch dir and diff artifact hashes
 jk audit                  # OSV
 jk deny                   # apply [deny.sources]
@@ -21,8 +23,8 @@ thin main jar, POM, sources and javadoc jars, plus checksums and any requested s
 and provenance sidecars. Maven Central requires both classifier jars.
 
 Assembly and minified jars, native binaries, jlink images, lib-dir trees, WARs and framework
-runnable jars belong in the release lane. A module with an assembly can publish its ordinary main
-jar. A framework packager that replaces the main artifact is refused before compilation.
+runnable jars belong in the release lane ([Releasing deliverables](#releasing-deliverables)). A
+module with an assembly can publish its ordinary main jar. A framework packager that replaces the main artifact is refused before compilation.
 `jk install --destination m2` uses the same main jar rule and installs the sources and javadoc
 jars produced by the build, with Maven checksums.
 
@@ -162,6 +164,123 @@ it; remove skip from testing/testkit/jk.toml, or make testkit a [test-dependenci
 core`. A skipped member in a shipped member's test tables is fine: test scope is not
 transitive.
 
+## Releasing deliverables
+
+`jk publish` ships to up to three **lanes**, each with its own target in `jk.toml`:
+
+| Lane | Target | What it ships |
+|---|---|---|
+| `library` | `[publish] repository` | thin jars, POMs, sources and javadoc jars to a Maven repository or Central |
+| `release` | `[publish] release` | the files a person downloads, with `SHA256SUMS`, signatures and an index |
+| `image` | `[image] registry` | not yet: `jk image` pushes images |
+
+A plain `jk publish` runs every lane that has a target, library first. `--only release` (or
+`--only library,release`) runs only the lanes it names; naming a lane with no target is refused,
+naming the key to set.
+
+```toml
+[publish]
+repository = "central"                        # the library lane
+release    = "s3://acme-releases/widget/"     # the release lane: an s3:// or gs:// prefix
+
+[release]
+platforms = ["linux-x86_64", "macos-aarch64", "windows-x86_64"]
+```
+
+`release` takes an `s3://` or `gs://` prefix. The bucket's endpoint and region come from a
+`[repositories]` table whose `url` or `publish-url` covers the bucket, else from the AWS
+environment (`AWS_ENDPOINT_URL` for R2 or MinIO, `AWS_REGION`); the credential comes from the AWS
+chain (`AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`, or `~/.aws/credentials`). `github`, `gitlab`
+and `forgejo` name a forge's releases and are refused until JumpKick supports them. The workspace
+root's `[publish] release` and `[release]` govern the whole workspace.
+
+**What the release carries.** From every module that is not `[publish] skip`:
+
+| File | From | Platform |
+|---|---|---|
+| `<name>-<version>-all.jar` | `[application] assembly = true` | neutral |
+| `<name>-<version>-min.jar` | `[application] minified = true` | neutral |
+| `<name>-<version>.zip` | `[application] lib-dir` | neutral |
+| `<name>-<version>.war` | `[war]` | neutral |
+| `<name>-<version>-<os>-<arch>.tar.gz` (`.zip` on Windows) | `[jlink]` | that platform |
+| `<executable>-<version>-<os>-<arch>` (`.exe` on Windows) | `[native] enabled = "always"` | that platform |
+| `<name>-<version>.cdx.json` | the module's SBOM, unless `sbom = false` | neutral |
+
+Then the final run adds `SHA256SUMS` (`sha256sum` format, the one `jk`'s own installer verifies),
+`SHA256SUMS.asc` when `key-file` is set, `SHA256SUMS.sigstore.json` when CI offers an identity
+token, and `index.json`, which lists every file with its module, size, SHA-256, URL and, for a
+platform file, its `os` and `arch`.
+
+**Platforms and the final run.** `[release] platforms` lists the platforms whose files a release
+must carry, named `linux-x86_64`, `linux-aarch64`, `macos-x86_64`, `macos-aarch64`,
+`windows-x86_64` or `windows-aarch64`; with none listed, the host's own is the one. A release for
+one platform needs nothing else: one `jk publish` builds, uploads and publishes it. For several:
+
+- `jk publish --stage` runs on each platform. It builds and uploads only that platform's files,
+  never touches the library or image lane, and publishes nothing. It is refused on a platform the
+  list does not name.
+- `jk publish`, once, is the final run. Before anything builds it checks that every other listed
+  platform's files are staged, and refuses naming the first that is not: `release v1.4.7 lacks
+  macos-aarch64; run jk publish --stage on that platform first`. Then it uploads the neutral files
+  (and this host's own, if not staged yet), runs the library lane (a Central upload waits for
+  `VALIDATED`), writes `SHA256SUMS`, its signatures and `index.json`, publishes the release, and
+  only then presses Publish on the Central Portal (unless `hold = true`). If anything fails before
+  the release is published, nothing on Central or in `latest.json` is public.
+
+Every upload resumes: a file already there with the same bytes is left alone, so a final run that
+stopped half way finishes on the next try, and a file there with other bytes stops the run and says
+to raise the version.
+
+**Bucket layout.** A release is `{prefix}{version}/`: every file above, each written only if the key
+is absent. The release is published when `{prefix}latest.json`
+(`{"version":"1.4.7","index":"1.4.7/index.json"}`) names it; the final run writes it by
+compare-and-swap and never moves it back to an older version. A stage run's files sit under the
+same `{version}/` and stay unannounced until then.
+
+**A matrix in CI.** JumpKick does not write CI workflows; it holds the order with its commands. Stage
+on each platform, then publish once:
+
+```yaml
+# .github/workflows/release.yml
+on:
+  push:
+    tags: ["v*"]
+jobs:
+  stage:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: jk publish --stage
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+  publish:
+    needs: stage
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write            # keyless Sigstore signing
+    steps:
+      - uses: actions/checkout@v4
+      - run: jk publish
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          JK_REPO_CENTRAL_USERNAME: ${{ secrets.CENTRAL_USERNAME }}
+          JK_REPO_CENTRAL_PASSWORD: ${{ secrets.CENTRAL_PASSWORD }}
+          JK_GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+```
+
+The final job's own platform (`linux-x86_64` here) is staged by the matrix too; the final run finds
+its files already there and leaves them.
+
+**Previewing.** `jk publish --dry-run` prints each lane's plan: for the release, every file with its
+size, SHA-256, destination and role (`staging` for a platform's own file, `final` for what only the
+final run writes), and nothing is uploaded. `target/jk-results.md` gives the Publish block one row
+per lane.
+
 ## Releasing
 
 `jk.toml` declares the **next release**, never a `-SNAPSHOT`. `jk release` cuts it:
@@ -193,9 +312,9 @@ publish mode, the upload before it): there is nothing to tag, commit or push.
 
 | The project has | Mode | `jk release` ends by |
 |-----------------|------|----------------------|
-| no destination: no `[publish] repository`, no `[image] registry` (in `jk.toml` or `~/.jk/config.toml`) | `none` | pushing the tag |
+| no destination: no `[publish] repository` or `release`, no `[image] registry` (in `jk.toml` or `~/.jk/config.toml`) | `none` | pushing the tag |
 | a destination, and a CI file that runs `jk publish` | `ci` | printing `pushed v1.4.7; CI publishes it` |
-| a `[publish] repository`, and no such CI file | `local` | running `jk publish` on the pushed tag |
+| a `[publish] repository` or `release`, and no such CI file | `local` | running `jk publish` on the pushed tag |
 
 CI files are the usual ones: `.github/workflows/`, `.gitlab-ci.yml`, `.forgejo/workflows/`,
 `.gitea/workflows/`, `.woodpecker*`, `.circleci/config.yml`, `.buildkite/`, `Jenkinsfile`,
@@ -209,7 +328,7 @@ publish = "ci"       # or "local" (or "none")
 ```
 
 In `local` mode `jk release` checks, before it tags, that a credential and the signing key resolve
-for the target. When they do not, nothing has changed: `no credential for central on this machine;
+for every lane: the repository's credential, and for a release bucket an AWS credential. When they do not, nothing has changed: `no credential for central on this machine;
 if CI publishes this project, run jk release --publish ci`. The upload runs from a checkout of the
 tag, so a failed upload after the push leaves a pushed tag and says to run `jk publish` on it.
 `--publish ci` with `--no-push` is refused: CI cannot see a tag that was not pushed.

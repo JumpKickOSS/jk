@@ -48,6 +48,10 @@ import org.jspecify.annotations.Nullable;
  * install} leave it out. {@code publishSkipped} names, at a workspace root, every member that says
  * so, in module order; {@code jk explain} prints them.
  *
+ * <p>{@code publishRelease} is the workspace root's {@code [publish] release} as written (a bucket
+ * URL or a forge), empty when none; {@code releasePlatforms} the platforms its {@code [release]}
+ * table lists, empty for the host's alone.
+ *
  * <p>{@code envReads} names the environment variables the workspace's suites were found to read
  * (names only, never values; {@code SuiteEnvReads}): the client ships their values with the next
  * request, so a suite's key needs no question back. {@link #ENV_READS_NAMES} among them asks for
@@ -126,7 +130,9 @@ public record ProjectInfo(
         String releaseLine,
         List<String> envReads,
         boolean publishSkip,
-        List<String> publishSkipped) {
+        List<String> publishSkipped,
+        String publishRelease,
+        List<String> releasePlatforms) {
 
     /**
      * One module's effective toolchain as {@link ProjectInfo#toolchains} carries it: the resolver
@@ -230,7 +236,9 @@ public record ProjectInfo(
                 line,
                 envReads,
                 publishSkip,
-                publishSkipped);
+                publishSkipped,
+                publishRelease,
+                releasePlatforms);
     }
 
     /** This summary with {@link #envReads} set. */
@@ -302,7 +310,9 @@ public record ProjectInfo(
                 releaseLine,
                 List.copyOf(reads),
                 publishSkip,
-                publishSkipped);
+                publishSkipped,
+                publishRelease,
+                releasePlatforms);
     }
 
     /** The siblings {@code dir} depends on ({@link #upstreams}), as absolute directories; empty for none. */
@@ -390,6 +400,8 @@ public record ProjectInfo(
                 "",
                 List.of(),
                 false,
+                List.of(),
+                "",
                 List.of());
     }
 
@@ -462,6 +474,8 @@ public record ProjectInfo(
                 .optionalArray("envReads", envReads.isEmpty() ? null : envReads)
                 .optionalTrue("publishSkip", publishSkip)
                 .optionalArray("publishSkipped", publishSkipped.isEmpty() ? null : publishSkipped)
+                .optionalNonEmptyString("publishRelease", publishRelease)
+                .optionalArray("releasePlatforms", releasePlatforms.isEmpty() ? null : releasePlatforms)
                 .finish();
     }
 
@@ -534,7 +548,9 @@ public record ProjectInfo(
                 orEmpty(Jsonl.str(line, "releaseLine")),
                 Jsonl.strArray(line, "envReads"),
                 Jsonl.bool(line, "publishSkip", false),
-                Jsonl.strArray(line, "publishSkipped"));
+                Jsonl.strArray(line, "publishSkipped"),
+                orEmpty(Jsonl.str(line, "publishRelease")),
+                Jsonl.strArray(line, "releasePlatforms"));
     }
 
     /** {@code ,"key":true|false} when set; empty string when unset (tri-state). */

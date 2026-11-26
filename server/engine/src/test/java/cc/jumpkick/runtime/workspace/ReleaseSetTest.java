@@ -8,6 +8,7 @@ import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.model.InstallDestination;
 import cc.jumpkick.runtime.BuildGraph;
 import cc.jumpkick.runtime.ModuleJar;
+import cc.jumpkick.wire.runtime.PublishLane;
 import cc.jumpkick.wire.runtime.TailArgs;
 import cc.jumpkick.wire.runtime.WorkspaceRequest;
 import cc.jumpkick.wire.runtime.WorkspaceSpec;
@@ -86,7 +87,8 @@ class ReleaseSetTest {
     }
 
     private static TailArgs.Publish publishArgs() {
-        return new TailArgs.Publish(null, false, true, null, null, RepoCredential.ANONYMOUS, false);
+        return new TailArgs.Publish(
+                null, false, true, null, null, RepoCredential.ANONYMOUS, false, List.of(PublishLane.LIBRARY), false);
     }
 
     @Test

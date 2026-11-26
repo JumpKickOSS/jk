@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.config.ResolvedSecrets;
 import cc.jumpkick.config.SecretRedactor;
 import cc.jumpkick.credential.RepoCredential;
+import cc.jumpkick.wire.runtime.PublishLane;
 import cc.jumpkick.wire.runtime.TailArgs;
 import java.net.URI;
 import java.nio.file.Files;
@@ -87,6 +88,14 @@ class PublishVerbCredentialRedactionTest {
 
     private static TailArgs.Publish publish(RepoCredential credential) {
         return new TailArgs.Publish(
-                URI.create("https://nexus.example.com/repo/"), false, true, null, null, credential, false);
+                URI.create("https://nexus.example.com/repo/"),
+                false,
+                true,
+                null,
+                null,
+                credential,
+                false,
+                List.of(PublishLane.LIBRARY),
+                false);
     }
 }

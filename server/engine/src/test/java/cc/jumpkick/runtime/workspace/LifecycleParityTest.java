@@ -10,6 +10,7 @@ import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.BuildGraph;
 import cc.jumpkick.runtime.base.SiblingArtifacts;
+import cc.jumpkick.wire.runtime.PublishLane;
 import cc.jumpkick.wire.runtime.TailArgs;
 import cc.jumpkick.wire.runtime.WorkspaceRequest;
 import cc.jumpkick.wire.runtime.WorkspaceSpec;
@@ -232,7 +233,16 @@ class LifecycleParityTest {
                     case PUBLISH ->
                         WorkspaceSpec.publish(
                                 Set.of(),
-                                new TailArgs.Publish(null, false, true, null, null, RepoCredential.ANONYMOUS, false));
+                                new TailArgs.Publish(
+                                        null,
+                                        false,
+                                        true,
+                                        null,
+                                        null,
+                                        RepoCredential.ANONYMOUS,
+                                        false,
+                                        List.of(PublishLane.LIBRARY),
+                                        false));
                     default -> WorkspaceSpec.of(target);
                 };
         WorkspaceRequest request = new WorkspaceRequest(

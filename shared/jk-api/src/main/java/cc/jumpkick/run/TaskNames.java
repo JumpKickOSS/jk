@@ -23,6 +23,9 @@ public final class TaskNames {
     /** Publish's upload of what PACKAGE left. */
     public static final String PUBLISH = "publish";
 
+    /** The release lane's upload of a module's release files. */
+    public static final String RELEASE_UPLOAD = "release-upload";
+
     public static final String COLLECT_SOURCES = "collect-sources";
     public static final String COMPARE_HASHES = "compare-hashes";
     public static final String COMPILE_GROOVY = "compile-groovy";

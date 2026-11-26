@@ -267,9 +267,17 @@ final class Json {
     /** The {@code publish} object: what a publish run sent where, absent keys for absent facts. */
     private static Map<String, Object> publishMap(BuildRecord.Publish p) {
         Map<String, Object> pub = new LinkedHashMap<>();
-        pub.put("destination", p.destination());
-        pub.put("files", p.files());
-        pub.put("dryRun", p.dryRun());
+        List<Object> lanes = new ArrayList<>();
+        for (BuildRecord.Publish.Lane l : p.lanes()) {
+            Map<String, Object> lane = new LinkedHashMap<>();
+            lane.put("lane", l.lane());
+            lane.put("destination", l.destination());
+            lane.put("files", l.files());
+            lane.put("dryRun", l.dryRun());
+            if (!l.state().isEmpty()) lane.put("state", l.state());
+            lanes.add(lane);
+        }
+        pub.put("lanes", lanes);
         if (p.deploymentId() != null) pub.put("deploymentId", p.deploymentId());
         if (p.deploymentState() != null) pub.put("deploymentState", p.deploymentState());
         if (!p.deploymentErrors().isEmpty()) pub.put("deploymentErrors", p.deploymentErrors());
@@ -408,10 +416,19 @@ final class Json {
         BuildRecord.Publish publish = null;
         if (o.get("publish") instanceof Map<?, ?> pm) {
             Map<String, Object> pub = (Map<String, Object>) pm;
+            List<BuildRecord.Publish.Lane> lanes = new ArrayList<>();
+            for (Object e : arr(pub, "lanes")) {
+                Map<String, Object> lm = (Map<String, Object>) e;
+                String state = str(lm, "state");
+                lanes.add(new BuildRecord.Publish.Lane(
+                        text(lm, "lane"),
+                        text(lm, "destination"),
+                        (int) lng(lm, "files"),
+                        bool(lm, "dryRun"),
+                        state == null ? "" : state));
+            }
             publish = new BuildRecord.Publish(
-                    text(pub, "destination"),
-                    (int) lng(pub, "files"),
-                    bool(pub, "dryRun"),
+                    lanes,
                     str(pub, "deploymentId"),
                     str(pub, "deploymentState"),
                     strList(pub, "deploymentErrors"),

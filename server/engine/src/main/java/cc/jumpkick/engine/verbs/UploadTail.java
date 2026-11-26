@@ -6,12 +6,16 @@ import cc.jumpkick.config.RepositoriesScan;
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.RepositorySpec;
+import cc.jumpkick.release.ReleaseTarget;
 import cc.jumpkick.repo.RepoCredentialResolver;
 import cc.jumpkick.runtime.base.ProjectInfoPlans;
 import cc.jumpkick.wire.protocol.ProjectInfo;
+import cc.jumpkick.wire.runtime.PublishLane;
 import cc.jumpkick.wire.runtime.TailArgs;
 import java.net.URI;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -25,14 +29,22 @@ final class UploadTail {
 
     /**
      * A dry run: nothing is sent and no credential is read. Its destination is the URL the
-     * {@code [publish]} repository writes to, or none when the manifest names no repository URL.
+     * {@code [publish]} repository writes to, or none when the manifest names no repository URL;
+     * a project with a {@code [publish] release} bucket also plans its release lane.
      */
     static TailArgs.Publish dryRun(Path dir) {
         ProjectInfo info = ProjectInfoPlans.projectInfo(dir);
         // A broken manifest is the job's to report; the tail only names a destination.
         String repository = info.error() == null ? info.publishRepository() : "";
         URI url = repository.contains("://") ? URI.create(repository) : null;
-        return new TailArgs.Publish(url, false, true, null, null, RepoCredential.ANONYMOUS, false);
+        List<PublishLane> lanes = new ArrayList<>(List.of(PublishLane.LIBRARY));
+        String release = info.error() == null ? info.publishRelease() : "";
+        if (!release.isEmpty()
+                && ReleaseTarget.refusal(release) == null
+                && ReleaseTarget.parse(release) instanceof ReleaseTarget.Bucket) {
+            lanes.add(PublishLane.RELEASE);
+        }
+        return new TailArgs.Publish(url, false, true, null, null, RepoCredential.ANONYMOUS, false, lanes, false);
     }
 
     /**
@@ -68,6 +80,7 @@ final class UploadTail {
                     : dir.resolve(configured).normalize();
             passphrase = BuildEnv.get("JK_GPG_PASSPHRASE");
         }
-        return new TailArgs.Publish(url, false, false, keyFile, passphrase, credential, false);
+        return new TailArgs.Publish(
+                url, false, false, keyFile, passphrase, credential, false, List.of(PublishLane.LIBRARY), false);
     }
 }

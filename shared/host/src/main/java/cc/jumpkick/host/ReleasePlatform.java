@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.host;
 
+import java.util.List;
 import java.util.Locale;
 
 /**
@@ -11,6 +12,15 @@ import java.util.Locale;
 public final class ReleasePlatform {
 
     private ReleasePlatform() {}
+
+    /** Every platform a release may name: the operating systems and architectures jk ships for. */
+    public static final List<String> KNOWN = List.of(
+            "linux-x86_64", "linux-aarch64", "macos-x86_64", "macos-aarch64", "windows-x86_64", "windows-aarch64");
+
+    /** True for a Windows platform, whose executables end in {@code .exe} and whose archives are zips. */
+    public static boolean windows(String platform) {
+        return platform.startsWith("windows-");
+    }
 
     /** This host's {@code <os>-<arch>}. */
     public static String current() {

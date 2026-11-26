@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.wire.runtime;
 
+import java.util.ArrayList;
 import java.util.List;
 import org.jspecify.annotations.Nullable;
 
@@ -14,6 +15,7 @@ import org.jspecify.annotations.Nullable;
  * render "cancelled" rather than "disconnected" / generic fail
  * @param conflict the conflict of the workspace lock's resolve with no solution, as one JSON
  * object; {@code ""} for any other result
+ * @param release what a publish run's release lane did; {@code null} for every run that has none
  */
 public record WorkspaceResult(
         boolean success,
@@ -22,7 +24,8 @@ public record WorkspaceResult(
         List<String> errors,
         boolean cancelled,
         @Nullable SyncCounts sync,
-        String conflict) {
+        String conflict,
+        @Nullable ReleaseOutcome release) {
 
     /** What a {@code jk sync} run settled: artifacts downloaded, and artifacts already on disk. */
     public record SyncCounts(int fetched, int upToDate) {}
@@ -30,7 +33,7 @@ public record WorkspaceResult(
     /** No sync counts and no conflict: every goal but {@code jk sync}, until a phase adds them. */
     public WorkspaceResult(
             boolean success, int exitCode, List<ModuleOutcome> modules, List<String> errors, boolean cancelled) {
-        this(success, exitCode, modules, errors, cancelled, null, "");
+        this(success, exitCode, modules, errors, cancelled, null, "", null);
     }
 
     /** Compatibility constructor — not cancelled. */
@@ -54,11 +57,23 @@ public record WorkspaceResult(
 
     /** This result with what the sync settled. */
     public WorkspaceResult withSync(SyncCounts counts) {
-        return new WorkspaceResult(success, exitCode, modules, errors, cancelled, counts, conflict);
+        return new WorkspaceResult(success, exitCode, modules, errors, cancelled, counts, conflict, release);
     }
 
     /** This result with the conflict of the lock's resolve with no solution. */
     public WorkspaceResult withConflict(String conflict) {
-        return new WorkspaceResult(success, exitCode, modules, errors, cancelled, sync, conflict);
+        return new WorkspaceResult(success, exitCode, modules, errors, cancelled, sync, conflict, release);
+    }
+
+    /** This result with what the release lane did. */
+    public WorkspaceResult withRelease(ReleaseOutcome outcome) {
+        return new WorkspaceResult(success, exitCode, modules, errors, cancelled, sync, conflict, outcome);
+    }
+
+    /** This result failed with {@code error}, as a release lane that stopped leaves it. */
+    public WorkspaceResult failed(int exit, String error, @Nullable ReleaseOutcome outcome) {
+        List<String> all = new ArrayList<>(errors);
+        all.add(error);
+        return new WorkspaceResult(false, exit, modules, all, cancelled, sync, conflict, outcome);
     }
 }

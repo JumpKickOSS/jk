@@ -4,8 +4,10 @@ package cc.jumpkick.engine.journal;
 import cc.jumpkick.config.IoLedger;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.run.StepCache;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.function.UnaryOperator;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -541,24 +543,81 @@ public record BuildRecord(
     public record Tests(long total, long succeeded, long failed, long skipped) {}
 
     /**
-     * What a {@code jk publish} run sent where, or {@code null} for every other kind. {@code
-     * destination} is the repository URL or the Central Portal; {@code files} the files uploaded (or
-     * assembled, on a dry run). A Central deployment carries the id the Portal assigned, the
-     * {@code state} the poll ended in and every validation {@code error} it listed; {@code bundle}
-     * is the entries of the bundle it uploaded or, on a dry run, wrote.
+     * What a {@code jk publish} run sent where, or {@code null} for every other kind: one {@link
+     * Lane} row per lane it ran. A Central deployment of the library lane carries the id the Portal
+     * assigned, the {@code state} the poll ended in and every validation {@code error} it listed;
+     * {@code bundle} is the entries of the bundle it uploaded or, on a dry run, wrote.
      */
     public record Publish(
-            String destination,
-            int files,
-            boolean dryRun,
+            List<Lane> lanes,
             @Nullable String deploymentId,
             @Nullable String deploymentState,
             List<String> deploymentErrors,
             List<String> bundle,
             long bundleBytes) {
         public Publish {
+            lanes = lanes == null ? List.of() : List.copyOf(lanes);
             deploymentErrors = deploymentErrors == null ? List.of() : List.copyOf(deploymentErrors);
             bundle = bundle == null ? List.of() : List.copyOf(bundle);
+        }
+
+        /**
+         * One lane of a publish: {@code library}, {@code release} or {@code image}, where it went
+         * (a repository URL, the Central Portal, a release prefix), the files it sent (or assembled,
+         * on a dry run), and a short {@code state} ({@code ""} when there is nothing to say).
+         */
+        public record Lane(String lane, String destination, int files, boolean dryRun, String state) {}
+
+        /** This row with every destination and validation error passed through {@code redact}. */
+        public Publish redacted(UnaryOperator<String> redact) {
+            return new Publish(
+                    lanes.stream()
+                            .map(l ->
+                                    new Lane(l.lane(), redact.apply(l.destination()), l.files(), l.dryRun(), l.state()))
+                            .toList(),
+                    deploymentId,
+                    deploymentState,
+                    deploymentErrors.stream().map(redact).toList(),
+                    bundle,
+                    bundleBytes);
+        }
+
+        /**
+         * This row with {@code other}'s folded in: a lane already listed adds its files, a new lane
+         * is appended, and the later deployment's facts win.
+         */
+        public Publish merge(Publish other) {
+            List<Lane> merged = new ArrayList<>(lanes);
+            for (Lane lane : other.lanes()) {
+                int at = -1;
+                for (int i = 0; i < merged.size(); i++) {
+                    if (merged.get(i).lane().equals(lane.lane())) at = i;
+                }
+                if (at < 0) {
+                    merged.add(lane);
+                } else {
+                    Lane was = merged.get(at);
+                    merged.set(
+                            at,
+                            new Lane(
+                                    was.lane(),
+                                    was.destination(),
+                                    was.files() + lane.files(),
+                                    was.dryRun() || lane.dryRun(),
+                                    lane.state().isEmpty() ? was.state() : lane.state()));
+                }
+            }
+            List<String> errors = new ArrayList<>(deploymentErrors);
+            errors.addAll(other.deploymentErrors());
+            List<String> entries = new ArrayList<>(bundle);
+            entries.addAll(other.bundle());
+            return new Publish(
+                    merged,
+                    other.deploymentId() != null ? other.deploymentId() : deploymentId,
+                    other.deploymentState() != null ? other.deploymentState() : deploymentState,
+                    errors,
+                    entries,
+                    bundleBytes + other.bundleBytes());
         }
     }
 

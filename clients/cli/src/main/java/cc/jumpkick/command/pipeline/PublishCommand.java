@@ -15,6 +15,7 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.SnapshotQualifier;
 import cc.jumpkick.config.WorkspaceLocator;
 import cc.jumpkick.host.JkDirs;
+import cc.jumpkick.host.ReleasePlatform;
 import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.command.CliCommand;
@@ -27,18 +28,24 @@ import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.protocol.ProjectInfo;
 import cc.jumpkick.wire.runtime.CentralBudget;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
+import cc.jumpkick.wire.runtime.PublishLane;
+import cc.jumpkick.wire.runtime.ReleaseOutcome;
 import cc.jumpkick.wire.runtime.TailArgs;
 import cc.jumpkick.wire.runtime.WorkspaceTarget;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import org.jspecify.annotations.Nullable;
 
 /**
- * {@code jk publish}: assemble, sign and upload a release (engine-hosted worker). {@code
- * [publish]} in {@code jk.toml} says where it goes and how it is signed; the flags only choose per
- * run. The credential and the GPG passphrase are resolved client-side and passed on the request.
+ * {@code jk publish}: assemble, sign and upload a release (engine-hosted worker), one {@link
+ * PublishLane lane} per target {@code jk.toml} names: the libraries to {@code [publish]
+ * repository}, the deliverables to {@code [publish] release}. {@code --only} narrows the lanes and
+ * {@code --stage} uploads only this platform's release files. The credential and the GPG
+ * passphrase are resolved client-side and passed on the request.
  *
  * <p>A Central Portal publish uploads one signed bundle, waits for {@code VALIDATED}, then releases
  * the deployment and waits for {@code PUBLISHED}; {@code [publish] hold = true} stops at {@code
@@ -53,7 +60,7 @@ public final class PublishCommand implements CliCommand {
 
     @Override
     public String description() {
-        return "Publish artifacts to a package repository";
+        return "Publish libraries to a repository and deliverables to a release";
     }
 
     @Override
@@ -69,6 +76,10 @@ public final class PublishCommand implements CliCommand {
                         "Publish here instead of [publish] repository; central names the Portal.",
                         "-R",
                         "--repository"),
+                Opt.value("<lane>", "Run only these lanes: library, release, image.", "-l", "--only")
+                        .repeat()
+                        .splitOn(","),
+                Opt.flag("Upload this platform's release files for a later final run.", "-t", "--stage"),
                 Opt.flag("Permit publishing -SNAPSHOT versions.", "-s", "--allow-snapshot"),
                 Opt.flag("Print the upload plan; no HTTP requests.", "-U", "--dry-run"),
                 CommonOpts.skipTests());
@@ -113,6 +124,16 @@ public final class PublishCommand implements CliCommand {
         return head + ", so this is a snapshot; publish from a clean checkout of " + tag;
     }
 
+    /**
+     * Why this host may not stage a release: its platform is not one {@code [release] platforms}
+     * lists (with none listed, the host's own is the one); {@code null} when it may.
+     */
+    static @Nullable String stageRefusal(List<String> platforms, String host) {
+        List<String> listed = platforms.isEmpty() ? List.of(host) : platforms;
+        if (listed.contains(host)) return null;
+        return host + " is not in [release] platforms; stage on " + String.join(", ", listed);
+    }
+
     private int publish(Invocation in) throws IOException, InterruptedException {
         this.allowSnapshot = in.isSet("allow-snapshot");
         this.dryRun = in.isSet("dry-run");
@@ -136,8 +157,33 @@ public final class PublishCommand implements CliCommand {
             CommandWedge.printFail("Publish", notARelease(info, projectDir));
             return Exit.CONFIG;
         }
+        String repositoryOverride = in.value("repository").orElse(null);
+        boolean stage = in.isSet("stage");
+        PublishLanes selected = PublishLanes.select(
+                in.values("only"),
+                stage,
+                dryRun,
+                repositoryOverride != null || !info.publishRepository().isEmpty(),
+                info.publishRelease(),
+                !info.imageRegistry().isEmpty());
+        if (selected.refusal() != null) {
+            CommandWedge.printFail("Publish", selected.refusal());
+            return Exit.CONFIG;
+        }
+        List<PublishLane> lanes = selected.lanes();
+        String stageRefusal = stage ? stageRefusal(info.releasePlatforms(), ReleasePlatform.current()) : null;
+        if (stageRefusal != null) {
+            CommandWedge.printFail("Publish", stageRefusal);
+            return Exit.CONFIG;
+        }
         PublishTarget.Resolution resolved = PublishTarget.resolve(
-                info, projectDir, jkBuildPath, in.value("repository").orElse(null), dryRun, JkDirs::env);
+                info,
+                projectDir,
+                jkBuildPath,
+                repositoryOverride,
+                dryRun,
+                lanes.contains(PublishLane.LIBRARY),
+                JkDirs::env);
         PublishTarget target = resolved.target();
         if (target == null) {
             CommandWedge.printFail("Publish", String.valueOf(resolved.refusal()));
@@ -152,7 +198,7 @@ public final class PublishCommand implements CliCommand {
         // Path deps are consume-only (docs/path-source-deps.md): a published POM would
         // reference a coordinate no consumer can resolve. Refuse before any upload —
         // `jk export` warn-and-skips for the same reason.
-        for (String pathDep : info.pathDeps()) {
+        for (String pathDep : lanes.contains(PublishLane.LIBRARY) ? info.pathDeps() : List.<String>of()) {
             CommandWedge.printFail(
                     "Publish",
                     "`" + pathDep + "` is a path dependency and cannot be published; make it a"
@@ -167,11 +213,24 @@ public final class PublishCommand implements CliCommand {
                 target.keyFile(),
                 target.keyFile() == null ? null : JkDirs.env("JK_GPG_PASSPHRASE"),
                 target.credential(),
-                target.central());
+                target.central(),
+                lanes,
+                stage);
         // The build and the upload run as every build verb runs: the same phases through PACKAGE,
         // the upload as the goal's tail, a workspace member's prerequisites first.
         return BuildVerbCommand.run(
-                new PublishVerb(args, (module, published) -> report(module, published, projectDir)),
+                new PublishVerb(args, new PublishVerb.Report() {
+                    @Override
+                    public void module(ModuleOutcome module, ModuleOutcome.Published published, List<String> released)
+                            throws IOException {
+                        report(module, published, released, projectDir);
+                    }
+
+                    @Override
+                    public void release(ReleaseOutcome release) {
+                        reportRelease(release);
+                    }
+                }),
                 BuildVerbCommand.forward(in, WorkspaceTarget.PUBLISH.tests(), b -> {}),
                 true);
     }
@@ -182,7 +241,8 @@ public final class PublishCommand implements CliCommand {
      * on a dry run the bundle's entries. A module that failed prints only a refused deployment's id
      * and errors. Paths are workspace-relative like every other path jk prints.
      */
-    private void report(ModuleOutcome module, ModuleOutcome.Published published, Path projectDir) throws IOException {
+    private void report(ModuleOutcome module, ModuleOutcome.Published published, List<String> released, Path projectDir)
+            throws IOException {
         if (!module.success()) {
             if (published.deploymentId() != null && !global.outputIsJson()) {
                 CliOutput.err(
@@ -208,8 +268,12 @@ public final class PublishCommand implements CliCommand {
                 for (int i = 0; i < warnings.size(); i++) CliOutput.err((i == 0 ? "  ! " : "    ") + warnings.get(i));
             }
             if (published.deploymentId() != null) {
-                CliOutput.out("  deployment " + published.deploymentId() + " · " + published.deploymentState()
-                        + ("VALIDATED".equals(published.deploymentState()) ? "; release it from the Portal" : ""));
+                boolean out = released.contains(published.deploymentId());
+                CliOutput.out("  deployment " + published.deploymentId() + " · "
+                        + (out ? "PUBLISHED after the release" : published.deploymentState())
+                        + (!out && "VALIDATED".equals(published.deploymentState())
+                                ? "; release it from the Portal"
+                                : ""));
             }
             for (String written : published.written()) {
                 CliOutput.out("  wrote " + displayPath(Path.of(written), workspaceRoot, projectDir));
@@ -223,6 +287,42 @@ public final class PublishCommand implements CliCommand {
                         "publish", "wrote " + displayPath(Path.of(written), workspaceRoot, projectDir)));
             }
         }
+    }
+
+    /**
+     * The release lane's lines: where the release lives, then every file with what the run did with
+     * it (a dry run: its size, SHA-256, destination and role), then the version {@code latest.json}
+     * names. Under {@code -O json} one line per file.
+     */
+    private void reportRelease(ReleaseOutcome release) {
+        if (global.outputIsJson()) {
+            for (ReleaseOutcome.File f : release.files()) {
+                CliOutput.machine(JsonlShape.output("publish", "release " + f.status() + " " + f.name()));
+            }
+            return;
+        }
+        for (String line : releaseLines(release)) CliOutput.out(line);
+    }
+
+    /** {@link #reportRelease}'s text lines. */
+    static List<String> releaseLines(ReleaseOutcome release) {
+        List<String> lines = new ArrayList<>();
+        String run = release.dryRun() ? "dry run" : release.stage() ? "staged" : "final";
+        lines.add("Release " + release.destination() + " (" + run + ")");
+        for (ReleaseOutcome.File f : release.files()) {
+            StringBuilder line = new StringBuilder("  ")
+                    .append(String.format("%-9s", f.status()))
+                    .append(f.name());
+            if (f.size() >= 0) line.append("  ").append(f.size()).append(" bytes");
+            if (!f.sha256().isEmpty()) line.append("  sha256 ").append(f.sha256());
+            if (release.dryRun())
+                line.append("  -> ").append(release.destination()).append(f.name());
+            line.append("  (").append(f.role()).append(')');
+            lines.add(line.toString());
+        }
+        if (release.latest() != null) lines.add("  latest.json names " + release.latest());
+        for (String id : release.released()) lines.add("  published Central deployment " + id);
+        return lines;
     }
 
     /**

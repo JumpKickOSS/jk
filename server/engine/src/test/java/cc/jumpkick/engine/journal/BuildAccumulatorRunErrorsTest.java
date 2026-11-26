@@ -133,9 +133,7 @@ class BuildAccumulatorRunErrorsTest {
         a.addWarning(null, null, "notice", "token " + secret + " expires soon");
         a.markUserCancelled(true, "cancelled by " + secret);
         a.addPublish(new BuildRecord.Publish(
-                "https://u:" + secret + "@repo.example",
-                1,
-                false,
+                List.of(new BuildRecord.Publish.Lane("library", "https://u:" + secret + "@repo.example", 1, false, "")),
                 "d1",
                 "FAILED",
                 List.of("bad " + secret),
@@ -149,7 +147,7 @@ class BuildAccumulatorRunErrorsTest {
                 .allSatisfy(d -> assertThat(d.message()).doesNotContain(secret).contains(SecretRedactor.MASK));
         assertThat(a.cancelReason()).doesNotContain(secret);
         assertThat(r.publish()).isNotNull().satisfies(p -> {
-            assertThat(p.destination()).doesNotContain(secret);
+            assertThat(p.lanes().getFirst().destination()).doesNotContain(secret);
             assertThat(p.deploymentErrors()).singleElement().asString().doesNotContain(secret);
         });
     }

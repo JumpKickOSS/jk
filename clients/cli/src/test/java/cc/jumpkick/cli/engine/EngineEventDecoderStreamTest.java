@@ -419,7 +419,8 @@ class EngineEventDecoderStreamTest {
                                         -1,
                                         -1,
                                         false,
-                                        conflict)
+                                        conflict,
+                                        null)
                                 .encode(),
                         ProtoLifecycle.jobFinish(56)),
                 new Recorder(),

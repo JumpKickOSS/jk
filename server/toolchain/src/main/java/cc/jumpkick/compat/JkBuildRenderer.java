@@ -771,6 +771,8 @@ public final class JkBuildRenderer {
         }
         if (publish.repository() != null)
             sb.append("repository = ").append(quote(publish.repository())).append('\n');
+        if (publish.release() != null)
+            sb.append("release = ").append(quote(publish.release())).append('\n');
         if (!publish.sign()) sb.append("sign = false\n");
         if (!publish.sbom()) sb.append("sbom = false\n");
         if (!publish.provenance()) sb.append("provenance = false\n");

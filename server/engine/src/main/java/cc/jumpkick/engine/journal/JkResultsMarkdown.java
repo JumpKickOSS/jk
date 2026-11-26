@@ -583,19 +583,29 @@ public final class JkResultsMarkdown {
     }
 
     /**
-     * What a publish run sent where: the destination, the file count, and for a Central Portal
-     * deployment its id, the state the poll ended in and every validation error — the facts a
-     * release engineer needs in front of them when the Portal says no.
+     * What a publish run sent where: one row per lane (its destination, file count and state), and
+     * for a Central Portal deployment its id, the state the poll ended in and every validation
+     * error — the facts a release engineer needs in front of them when the Portal says no.
      */
     private static void appendPublish(StringBuilder sb, BuildRecord r) {
         BuildRecord.Publish p = r.publish();
         if (p == null) return;
         sb.append("## Publish\n\n");
-        sb.append("- destination: ")
-                .append(p.destination())
-                .append(p.dryRun() ? " (dry run)" : "")
-                .append('\n');
-        sb.append("- files: ").append(p.files()).append('\n');
+        sb.append("| Lane | Destination | Files | State |\n|---|---|---|---|\n");
+        for (BuildRecord.Publish.Lane lane : p.lanes()) {
+            String state =
+                    lane.dryRun() ? (lane.state().isEmpty() ? "dry run" : "dry run, " + lane.state()) : lane.state();
+            sb.append("| ")
+                    .append(lane.lane())
+                    .append(" | ")
+                    .append(lane.destination())
+                    .append(" | ")
+                    .append(lane.files())
+                    .append(" | ")
+                    .append(state)
+                    .append(" |\n");
+        }
+        sb.append('\n');
         if (p.deploymentId() != null) {
             sb.append("- deployment: `").append(p.deploymentId()).append('`');
             if (p.deploymentState() != null)

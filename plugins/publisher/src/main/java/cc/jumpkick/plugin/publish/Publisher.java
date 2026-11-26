@@ -34,6 +34,7 @@ import cc.jumpkick.plugin.build.PublishContext;
 import cc.jumpkick.plugin.build.PublishExtension;
 import cc.jumpkick.plugin.build.PublishResult;
 import cc.jumpkick.plugin.manifest.PluginTableRegistry;
+import cc.jumpkick.plugin.protocol.PluginProtocol;
 import cc.jumpkick.plugin.protocol.PluginReply;
 import cc.jumpkick.plugin.protocol.PluginSpec;
 import cc.jumpkick.publish.PublishablePom;
@@ -123,6 +124,8 @@ public final class Publisher implements Plugin, PublishExtension {
         // A publish ships the declared version: the manifest this worker parses is read as a release.
         SessionContext.install(SessionContext.current().withRelease(true));
 
+        if (PluginProtocol.OP_SIGN_RELEASE.equals(spec.op())) return signRelease(spec, out);
+        if (PluginProtocol.OP_CENTRAL_RELEASE.equals(spec.op())) return releaseDeployments(spec, out);
         try {
             PublishResult result = publish(new SpecPublishContext(spec, out));
             Map<String, Object> fields = new LinkedHashMap<>();
@@ -463,6 +466,87 @@ public final class Publisher implements Plugin, PublishExtension {
         } finally {
             if (sigstore != null) sigstore.close();
             Files.deleteIfExists(scratch);
+        }
+    }
+
+    /**
+     * A release's {@code SHA256SUMS} signed beside itself: {@code SHA256SUMS.asc} with the PGP key,
+     * {@code SHA256SUMS.sigstore.json} keyless when CI offers an identity. Reports the files written.
+     */
+    private int signRelease(PluginSpec spec, ProtocolWriter out) {
+        PluginConfig c = spec.config();
+        Path file = Objects.requireNonNull(spec.artifactPath(), "spec missing the file to sign");
+        List<String> written = new ArrayList<>();
+        try {
+            if (c.bool("signGpg", false)) {
+                GpgSigner gpg = GpgSigner.fromKeyFile(
+                        Path.of(c.string("gpgKeyFile")),
+                        spec.secret("gpgPassphrase").map(String::toCharArray).orElse(new char[0]));
+                Path asc = Path.of(file + ".asc");
+                Files.write(asc, gpg.signArmored(file));
+                written.add(asc.toString());
+            }
+            if (c.bool("signSigstore", false)) {
+                if (spec.offline()) throw new OfflineException(URI.create("https://fulcio.sigstore.dev/"));
+                try (KeylessSigstoreSigner signer = keyless.call()) {
+                    Path bundle = Path.of(file + ".sigstore.json");
+                    Files.write(bundle, signer.signBundle(file));
+                    written.add(bundle.toString());
+                }
+            }
+            out.emit(PluginReply.result(Map.of("written", written)));
+            return 0;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            out.emit(PluginReply.error("sign-release", String.valueOf(e.getMessage())));
+            return 1;
+        } catch (Exception e) {
+            out.emit(PluginReply.error("sign-release", String.valueOf(e.getMessage())));
+            return 1;
+        }
+    }
+
+    /**
+     * Publish each Central Portal deployment the spec lists and wait for {@code PUBLISHED}: the
+     * libraries a final run held at {@code VALIDATED} until the release was out.
+     */
+    private int releaseDeployments(PluginSpec spec, ProtocolWriter out) {
+        PluginConfig c = spec.config();
+        List<String> released = new ArrayList<>();
+        try {
+            URI portalUrl = URI.create(c.stringOpt("repoUrl").orElse(CentralPortal.DEFAULT_URL.toString()));
+            if (spec.offline()) throw new OfflineException(portalUrl);
+            RepoCredential cred =
+                    switch (c.string("repoAuthType").toLowerCase(Locale.ROOT)) {
+                        case "basic" ->
+                            new RepoCredential.Basic(
+                                    spec.secret("repoUser").orElse(""),
+                                    spec.secret("repoPass").orElse(""));
+                        case "bearer" ->
+                            new RepoCredential.Bearer(spec.secret("repoToken").orElse(""));
+                        default -> new RepoCredential.Anonymous();
+                    };
+            CentralPortal portal = new CentralPortal(portalUrl, cred, http.get());
+            for (String id : c.stringList("deployments")) {
+                portal.publish(id);
+                CentralPortal.Status status = portal.awaitTerminal(
+                        id, CentralPortal.Until.PUBLISHED, CentralPortal.DEFAULT_TIMEOUT, Clock.SYSTEM, Thread::sleep);
+                if (!"PUBLISHED".equals(status.state())) {
+                    throw new IOException("Central Portal deployment " + id + " ended " + status.state());
+                }
+                released.add(id);
+            }
+            out.emit(PluginReply.result(Map.of("released", released)));
+            return 0;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            out.emit(PluginReply.result(Map.of("released", released)));
+            out.emit(PluginReply.error("central-release", String.valueOf(e.getMessage())));
+            return 1;
+        } catch (Exception e) {
+            out.emit(PluginReply.result(Map.of("released", released)));
+            out.emit(PluginReply.error("central-release", String.valueOf(e.getMessage())));
+            return 1;
         }
     }
 

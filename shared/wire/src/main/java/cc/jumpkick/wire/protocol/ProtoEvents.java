@@ -8,6 +8,7 @@ import cc.jumpkick.run.TestClassResult;
 import cc.jumpkick.run.TestFailureInfo;
 import cc.jumpkick.task.TransferBoard;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
+import cc.jumpkick.wire.runtime.ReleaseOutcome;
 import cc.jumpkick.wire.runtime.WorkspaceProgressTracker;
 import cc.jumpkick.wire.runtime.WorkspaceResult;
 import java.util.List;
@@ -686,12 +687,13 @@ public final class ProtoEvents {
     }
 
     public static String workspaceFinish(boolean success, int exitCode, List<Redacted> errors, boolean cancelled) {
-        return workspaceFinish(success, exitCode, errors, cancelled, null, false, null);
+        return workspaceFinish(success, exitCode, errors, cancelled, null, false, null, null);
     }
 
     /**
-     * As above, with what a {@code jk sync} run settled, whether the run was up to date, and the
-     * conflict of the lock's resolve with no solution ({@code null} when there is none).
+     * As above, with what a {@code jk sync} run settled, whether the run was up to date, the
+     * conflict of the lock's resolve with no solution ({@code null} when there is none) and what a
+     * publish run's release lane did ({@code null} when it has none).
      */
     public static String workspaceFinish(
             boolean success,
@@ -700,7 +702,8 @@ public final class ProtoEvents {
             boolean cancelled,
             WorkspaceResult.@Nullable SyncCounts sync,
             boolean upToDate,
-            @Nullable Redacted conflict) {
+            @Nullable Redacted conflict,
+            @Nullable ReleaseOutcome release) {
         return new WorkspaceFinishEvent(
                         success,
                         exitCode,
@@ -710,7 +713,8 @@ public final class ProtoEvents {
                         -1,
                         -1,
                         upToDate,
-                        conflict == null ? "" : conflict.text())
+                        conflict == null ? "" : conflict.text(),
+                        release)
                 .encode();
     }
 

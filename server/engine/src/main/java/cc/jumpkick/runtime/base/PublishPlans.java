@@ -42,6 +42,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 
@@ -54,10 +55,15 @@ public final class PublishPlans {
 
     private PublishPlans() {}
 
+    /** The prefix of the publisher worker's protocol lines. */
+    private static final String PREFIX = "##JKPU:";
+
     /**
      * Everything the publish plan needs beyond the project directory: where to, the client-resolved
      * PGP key, passphrase and credential. {@code keyFile} is null when the project does not sign or
      * names no key. Signing, SBOM and provenance follow the project's {@code [publish]} table.
+     * {@code holdForRelease} stops a Central upload at {@code VALIDATED} whatever {@code hold} says,
+     * for the release lane to publish it after the release.
      */
     public record Request(
             @Nullable URI repoUrl,
@@ -66,7 +72,8 @@ public final class PublishPlans {
             @Nullable Path keyFile,
             @Nullable String gpgPassphrase,
             RepoCredential credential,
-            boolean central) {}
+            boolean central,
+            boolean holdForRelease) {}
 
     /** A Central Portal deployment as the worker reported it: id, final state, validation errors. */
     public record Deployment(String id, String state, List<String> errors) {
@@ -259,7 +266,7 @@ public final class PublishPlans {
                 @Nullable Deployment[] deployment = {null};
                 @Nullable String[] error = {null};
                 StringBuilder workerDiag = new StringBuilder();
-                int exit = new PluginClient("##JKPU:")
+                int exit = new PluginClient(PREFIX)
                         .on(PluginProtocol.RESULT, json -> {
                             reported[0] = true;
                             files[0] = Jsonl.intValue(json, "files", 0);
@@ -305,6 +312,79 @@ public final class PublishPlans {
         }
     }
 
+    /**
+     * Sign a release's {@code file} beside itself through the publisher worker: {@code .asc} with
+     * {@code keyFile} when it is non-null, {@code .sigstore.json} keyless when {@code keyless}.
+     * Returns the files written.
+     */
+    public static List<Path> signRelease(
+            Path projectDir, Path file, @Nullable Path keyFile, @Nullable String passphrase, boolean keyless) {
+        SpecWriter sw = new SpecWriter()
+                .op(PluginProtocol.OP_SIGN_RELEASE, null, "jk-publisher")
+                .configBool("signGpg", keyFile != null)
+                .configBool("signSigstore", keyless);
+        if (keyFile != null) {
+            sw.configString("gpgKeyFile", keyFile.toAbsolutePath().toString());
+            if (passphrase != null) sw.secret("gpgPassphrase", passphrase);
+        }
+        sw.artifact(file);
+        List<Path> written = new ArrayList<>();
+        Signing signing = new Signing(true, keyFile, keyless, false, false, false);
+        String error = fork(projectDir, sw, signing, json -> {
+            for (String w : Jsonl.strArray(json, "written")) written.add(Path.of(w));
+        });
+        if (error != null) throw new IllegalStateException("could not sign " + file.getFileName() + ": " + error);
+        return written;
+    }
+
+    /**
+     * Publish the Central Portal deployments {@code ids} through the publisher worker, with the
+     * credential {@code req} carries. Returns the ids that reached {@code PUBLISHED}; a deployment
+     * that did not fails the call after the ones before it.
+     */
+    public static List<String> releaseDeployments(Path projectDir, Request req, List<String> ids) {
+        SpecWriter sw = new SpecWriter().op(PluginProtocol.OP_CENTRAL_RELEASE, null, "jk-publisher");
+        credential(sw, req.credential());
+        if (req.repoUrl() != null) sw.configString("repoUrl", req.repoUrl().toString());
+        sw.configList("deployments", ids);
+        List<String> released = new ArrayList<>();
+        String error = fork(
+                projectDir,
+                sw,
+                new Signing(false, null, false, false, false, false),
+                json -> released.addAll(Jsonl.strArray(json, "released")));
+        if (error != null) throw new IllegalStateException(error);
+        return released;
+    }
+
+    /** Run the publisher worker over {@code sw}'s spec; the error it reported, or {@code null}. */
+    private static @Nullable String fork(Path projectDir, SpecWriter sw, Signing signing, Consumer<String> result) {
+        try {
+            Path spec = specFile(sw);
+            try {
+                @Nullable String[] error = {null};
+                StringBuilder diag = new StringBuilder();
+                int exit = new PluginClient(PREFIX)
+                        .on(PluginProtocol.RESULT, result::accept)
+                        .on(PluginProtocol.ERROR, json -> error[0] = Jsonl.str(json, PluginProtocol.MESSAGE))
+                        .passthrough(line -> diag.append(line).append('\n'))
+                        .run(PluginLaunch.javaCommand(workerJar(), spec), workerEnv(projectDir, signing))
+                        .code();
+                if (exit == 0) return null;
+                return error[0] != null
+                        ? error[0]
+                        : diag.isEmpty() ? "exit " + exit : diag.toString().trim();
+            } finally {
+                Files.deleteIfExists(spec);
+            }
+        } catch (IOException e) {
+            return e.getMessage();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return "interrupted";
+        }
+    }
+
     /** The worker's environment: the allow-list, plus the CI identity a keyless signature reads. */
     private static WorkerEnv workerEnv(Path projectDir, Signing signing) {
         if (!signing.keyless()) return WorkerEnv.strict();
@@ -319,7 +399,7 @@ public final class PublishPlans {
     }
 
     /** The object-store settings of the declared repository whose url or publish-url {@code repoUrl} falls under, if any. */
-    static @Nullable ObjectStoreConfig objectStore(JkBuild project, @Nullable URI repoUrl) {
+    public static @Nullable ObjectStoreConfig objectStore(JkBuild project, @Nullable URI repoUrl) {
         if (repoUrl == null) return null;
         String target = repoUrl.toString();
         for (RepositorySpec repo : project.repositories()) {
@@ -343,19 +423,11 @@ public final class PublishPlans {
                 .configBool("slsa", signing.provenance())
                 .configBool("sbom", signing.sbom())
                 .configBool("signSigstore", signing.keyless())
-                .configBool("hold", signing.hold())
+                .configBool("hold", signing.hold() || req.holdForRelease())
                 .configBool("centralPortal", req.central());
 
         // Credential (resolved client-side so neither the engine nor the plugin needs env/keychain access).
-        if (req.credential() instanceof RepoCredential.Basic b) {
-            sw.configString("repoAuthType", "basic")
-                    .secret("repoUser", b.username())
-                    .secret("repoPass", b.password());
-        } else if (req.credential() instanceof RepoCredential.Bearer b) {
-            sw.configString("repoAuthType", "bearer").secret("repoToken", b.token());
-        } else {
-            sw.configString("repoAuthType", "anonymous");
-        }
+        credential(sw, req.credential());
 
         if (signing.pgpKey() != null) {
             sw.configBool("signGpg", true)
@@ -373,7 +445,23 @@ public final class PublishPlans {
         String pluginJars = Classpaths.join(BuiltInPluginJars.tablePluginJars());
         if (!pluginJars.isEmpty()) sw.configString("pluginJars", pluginJars);
 
-        // Use a 0600 temp file so credentials aren't world-readable.
+        return specFile(sw);
+    }
+
+    private static void credential(SpecWriter sw, RepoCredential credential) {
+        if (credential instanceof RepoCredential.Basic b) {
+            sw.configString("repoAuthType", "basic")
+                    .secret("repoUser", b.username())
+                    .secret("repoPass", b.password());
+        } else if (credential instanceof RepoCredential.Bearer b) {
+            sw.configString("repoAuthType", "bearer").secret("repoToken", b.token());
+        } else {
+            sw.configString("repoAuthType", "anonymous");
+        }
+    }
+
+    /** {@code sw}'s spec in a 0600 temp file, so the secrets it carries are not world-readable. */
+    private static Path specFile(SpecWriter sw) throws IOException {
         Path spec;
         try {
             spec = Files.createTempFile(

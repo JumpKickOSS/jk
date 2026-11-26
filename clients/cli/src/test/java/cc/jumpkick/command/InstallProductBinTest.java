@@ -315,6 +315,8 @@ class InstallProductBinTest {
                 base.releaseLine(),
                 List.of(),
                 false,
+                List.of(),
+                "",
                 List.of());
     }
 }
