@@ -194,6 +194,12 @@ class TaggedReleaseE2eTest {
         String untagged = output(() -> assertThat(Jk.execute("publish", "--dry-run", "-C", dir.toString()))
                 .isEqualTo(Exit.CONFIG));
         assertThat(untagged).contains("HEAD carries no tag v1.4.7, so this is a snapshot");
+        String snapshot =
+                output(() -> assertThat(Jk.execute("publish", "--dry-run", "--allow-snapshot", "-C", dir.toString()))
+                        .isZero());
+        assertThat(snapshot)
+                .as("--allow-snapshot publishes the untagged tree as its snapshot")
+                .contains("1.4.7-SNAPSHOT");
 
         git(dir, "tag", "v1.4.6");
         String other = output(() -> assertThat(Jk.execute("publish", "--dry-run", "-C", dir.toString()))

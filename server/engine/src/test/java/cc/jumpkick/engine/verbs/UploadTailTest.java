@@ -36,6 +36,28 @@ class UploadTailTest {
         assertThat(tail.credential()).isEqualTo(RepoCredential.ANONYMOUS);
     }
 
+    private static final String SPLIT_REPOSITORIES = """
+            group   = "com.example"
+            name    = "lib"
+            version = "%s"
+
+            [repositories.rel]
+            url = "https://releases.acme.dev/"
+            [repositories.snap]
+            url = "https://snapshots.acme.dev/"
+
+            [publish]
+            repository = "rel"
+            snapshot-repository = "snap"
+            """;
+
+    @Test
+    void a_snapshot_dry_run_names_the_snapshot_repository(@TempDir Path dir) throws Exception {
+        Files.writeString(dir.resolve("jk.toml"), SPLIT_REPOSITORIES.formatted("1.0.0-SNAPSHOT"));
+
+        assertThat(UploadTail.dryRun(dir).repoUrl()).isEqualTo(URI.create("https://snapshots.acme.dev/"));
+    }
+
     @Test
     void a_dry_run_with_no_repository_names_none(@TempDir Path dir) throws Exception {
         Files.writeString(dir.resolve("jk.toml"), """

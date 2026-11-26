@@ -12,8 +12,9 @@ import org.jspecify.annotations.Nullable;
  * repository. Maven Central refuses a release missing any of them; a private repository reads
  * them if it cares. The same table names where a release goes: {@code repository} (a
  * {@code [repositories.<name>]} entry, or {@code central}) for the libraries, {@code release} (an
- * {@code s3://} or {@code gs://} prefix, or a forge) for the deliverables, and the {@code keyFile}
- * that signs them, never a secret. {@code sign}, {@code sbom} and {@code provenance} are on unless the table turns
+ * {@code s3://} or {@code gs://} prefix, or a forge) for the deliverables, where a {@code -SNAPSHOT}
+ * goes ({@code snapshotRepository}, a declared repository) and the {@code keyFile} that signs them,
+ * never a secret. {@code sign}, {@code sbom} and {@code provenance} are on unless the table turns
  * them off; {@code hold} stops a Central upload at {@code VALIDATED} for a human to release. A
  * workspace root's table applies to every member that declares none. {@code skip} keeps the module out of {@code jk publish} and {@code jk install}
  * (a test harness, an example, a site generator); it is the module's own word and is never
@@ -28,6 +29,7 @@ public record PomMetadata(
         @Nullable Scm scm,
         @Nullable String repository,
         @Nullable String release,
+        @Nullable String snapshotRepository,
         boolean sign,
         @Nullable String keyFile,
         boolean skip,
@@ -42,7 +44,7 @@ public record PomMetadata(
 
     /** No {@code [publish]} table: a POM with coordinate, description and dependencies only. */
     public static final PomMetadata EMPTY = new PomMetadata(
-            null, null, null, List.of(), List.of(), null, null, null, true, null, false, true, true, false);
+            null, null, null, List.of(), List.of(), null, null, null, null, true, null, false, true, true, false);
 
     public record License(String name, @Nullable String url) {
         public License {
@@ -72,6 +74,7 @@ public record PomMetadata(
                 && scm == null
                 && repository == null
                 && release == null
+                && snapshotRepository == null
                 && sign
                 && keyFile == null
                 && !skip
@@ -91,6 +94,7 @@ public record PomMetadata(
                 scm,
                 repository,
                 release,
+                snapshotRepository,
                 sign,
                 keyFile,
                 value,

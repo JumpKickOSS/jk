@@ -96,7 +96,7 @@ class PublishPlansTest {
     @Test
     void sign_false_signs_nothing_whatever_the_key_and_the_identity() {
         PomMetadata off = new PomMetadata(
-                null, null, null, List.of(), List.of(), null, null, null, false, null, false, true, true, false);
+                null, null, null, List.of(), List.of(), null, null, null, null, false, null, false, true, true, false);
         PublishPlans.Signing signing =
                 PublishPlans.Signing.of(off, requestWithKey(Path.of("release.asc")), GITLAB::get);
         assertThat(signing.pgpKey()).isNull();
@@ -124,6 +124,23 @@ class PublishPlansTest {
         Files.writeString(dir.resolve("jk.toml"), PUBLISH_URL_PROJECT);
 
         assertThat(ProjectInfoPlans.projectInfo(dir).publishRepository()).isEqualTo("s3://acme-maven/releases/");
+    }
+
+    /** A snapshot repository resolves like the release one: to its publish-url, else its url. */
+    @Test
+    void a_snapshot_repository_resolves_to_its_publish_url(@TempDir Path dir) throws Exception {
+        Files.writeString(dir.resolve("jk.toml"), PUBLISH_URL_PROJECT + """
+                snapshot-repository = "snaps"
+
+                [repositories.snaps]
+                url         = "https://snapshots.acme.dev/"
+                publish-url = "s3://acme-maven/snapshots/"
+                """);
+
+        var info = ProjectInfoPlans.projectInfo(dir);
+
+        assertThat(info.publishRepository()).isEqualTo("s3://acme-maven/releases/");
+        assertThat(info.publishSnapshotRepository()).isEqualTo("s3://acme-maven/snapshots/");
     }
 
     /** The table's object-store settings follow the publish to its publish-url, and the run names it as the destination. */

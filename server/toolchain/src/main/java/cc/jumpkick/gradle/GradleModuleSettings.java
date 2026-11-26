@@ -154,6 +154,7 @@ final class GradleModuleSettings {
                 null,
                 null,
                 null,
+                null,
                 true,
                 null,
                 false,

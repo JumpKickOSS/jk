@@ -816,6 +816,7 @@ class JkBuildRendererTest {
                 new PomMetadata.Scm("https://github.com/example/widget", null, null),
                 "releases",
                 "s3://acme-releases/widget/",
+                "snapshots",
                 false,
                 null,
                 false,

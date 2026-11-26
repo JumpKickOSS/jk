@@ -36,7 +36,8 @@ import org.jspecify.annotations.Nullable;
  * <p>{@code publishRepository}, {@code publishSign} and {@code publishKeyFile} are the module's
  * {@code [publish]} target: the URL a publish writes to (the repository's {@code publish-url},
  * else its url; or {@code central}) when the table's {@code repository} names a declared
- * repository, else the name as written; empty when none is named.
+ * repository, else the name as written; empty when none is named. {@code publishSnapshotRepository}
+ * is the same for {@code [publish] snapshot-repository}, where a {@code -SNAPSHOT} goes.
  * {@code imageRegistry} is the registry {@code [image]} pushes to, the project's or the user's;
  * empty when none. {@code releaseTag}, {@code releaseFiles} and {@code releasePublish} are the
  * workspace root's {@code [release]} tag template, its {@code path → pattern} version-carrying files
@@ -119,6 +120,7 @@ public record ProjectInfo(
         String productBin,
         Map<String, String> toolchains,
         String publishRepository,
+        String publishSnapshotRepository,
         boolean publishSign,
         String publishKeyFile,
         String imageRegistry,
@@ -165,6 +167,16 @@ public record ProjectInfo(
         var out = new LinkedHashMap<String, Toolchain>();
         for (var e : toolchains.entrySet()) out.put(e.getKey(), Toolchain.decode(e.getValue()));
         return out;
+    }
+
+    /** Where a publish goes: {@code [publish] snapshot-repository} for a snapshot when set, else {@code repository}. */
+    public String publishRepositoryFor(boolean snapshot) {
+        return snapshot && !publishSnapshotRepository.isEmpty() ? publishSnapshotRepository : publishRepository;
+    }
+
+    /** True when {@link #version} is a {@code -SNAPSHOT}. */
+    public boolean isSnapshot() {
+        return version.endsWith("-SNAPSHOT");
     }
 
     /** This summary with {@link #releaseLine} set. */
@@ -225,6 +237,7 @@ public record ProjectInfo(
                 productBin,
                 toolchains,
                 publishRepository,
+                publishSnapshotRepository,
                 publishSign,
                 publishKeyFile,
                 imageRegistry,
@@ -299,6 +312,7 @@ public record ProjectInfo(
                 productBin,
                 toolchains,
                 publishRepository,
+                publishSnapshotRepository,
                 publishSign,
                 publishKeyFile,
                 imageRegistry,
@@ -389,6 +403,7 @@ public record ProjectInfo(
                 "",
                 Map.of(),
                 "",
+                "",
                 false,
                 "",
                 "",
@@ -461,6 +476,7 @@ public record ProjectInfo(
                 .string("productBin", productBin)
                 .map("toolchains", toolchains)
                 .string("publishRepository", publishRepository)
+                .string("publishSnapshotRepository", publishSnapshotRepository)
                 .bool("publishSign", publishSign)
                 .string("publishKeyFile", publishKeyFile)
                 .string("imageRegistry", imageRegistry)
@@ -537,6 +553,7 @@ public record ProjectInfo(
                 orEmpty(Jsonl.str(line, "productBin")),
                 Jsonl.strMap(line, "toolchains"),
                 orEmpty(Jsonl.str(line, "publishRepository")),
+                orEmpty(Jsonl.str(line, "publishSnapshotRepository")),
                 Jsonl.bool(line, "publishSign", false),
                 orEmpty(Jsonl.str(line, "publishKeyFile")),
                 orEmpty(Jsonl.str(line, "imageRegistry")),
