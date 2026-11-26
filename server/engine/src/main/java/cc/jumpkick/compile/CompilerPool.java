@@ -321,9 +321,8 @@ final class CompilerPool {
 
     /** Under the lock: start a worker unless a live one, not retiring, is already here; whether it started one. */
     private boolean ensureWorker() {
-        workers.removeIf(CompilerWorker::dead);
         for (CompilerWorker w : workers) {
-            if (!w.retiring()) return false;
+            if (!w.dead() && !w.retiring()) return false;
         }
         CompilerWorker worker = new CompilerWorker(this, workerScope(), starter.launcher());
         workers.add(worker);
@@ -445,7 +444,10 @@ final class CompilerPool {
         boolean idle;
         synchronized (this) {
             w = worker.inflight.remove(id);
-            if (w != null) CompilerBudget.gave(1);
+            if (w != null) {
+                w.settled = true;
+                CompilerBudget.gave(1);
+            }
             idle = w != null && worker.inflight.isEmpty() && queue.isEmpty() && !worker.dead();
             notifyAll();
         }
@@ -557,11 +559,14 @@ final class CompilerPool {
         return mine;
     }
 
-    /** Whether {@code w} is queued here or in flight on one of this pool's live workers. */
+    /**
+     * Whether {@code w} is queued here, in flight on one of this pool's workers, or settled and about
+     * to be answered. A dead worker still holds its items until {@link #workerDied} takes them.
+     */
     synchronized boolean holds(CompileWork w) {
-        if (queue.contains(w)) return true;
+        if (w.settled || queue.contains(w)) return true;
         for (CompilerWorker worker : workers) {
-            if (!worker.dead() && worker.inflight.get(w.id) == w) return true;
+            if (worker.inflight.get(w.id) == w) return true;
         }
         return false;
     }
@@ -628,10 +633,9 @@ final class CompilerPool {
         return queue.size();
     }
 
-    /** Test seam: live workers. */
+    /** Live workers. A dead one stays in the pool's list until {@link #workerDied} takes its items. */
     synchronized List<CompilerWorker> workers() {
-        workers.removeIf(CompilerWorker::dead);
-        return List.copyOf(workers);
+        return workers.stream().filter(w -> !w.dead()).toList();
     }
 
     /** The most compiles any of this pool's ready workers has answered; -1 when none is ready. */
