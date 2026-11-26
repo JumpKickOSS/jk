@@ -390,6 +390,62 @@ repository = "acme"
   read side and a credentialed write side. An `s3://` or `gs://` `publish-url` takes the
   object-store credential chain, as an object-store `url` does.
 
+### A public Maven repository on a bucket
+
+A bucket behind a public URL is a Maven repository with no server to run. Consumers read plain
+https; only the publisher holds a credential.
+
+```toml
+# consumers and publisher
+[repositories.acme]
+url         = "https://maven.acme.dev/"     # the bucket's public address
+publish-url = "s3://acme-maven/"            # where jk publish writes
+
+[publish]
+repository = "acme"
+```
+
+Consumers declare only `url`; they need no account and no credential.
+
+- **Cloudflare R2** has no egress fees. Make the bucket public through a custom domain
+  (`maven.acme.dev`), then point the S3 transport at the account's endpoint:
+
+  ```toml
+  [repositories.acme]
+  url         = "https://maven.acme.dev/"
+  publish-url = "s3://acme-maven/"
+  endpoint    = "https://<account-id>.r2.cloudflarestorage.com"
+  region      = "auto"
+  ```
+
+  Create an R2 API token with object read and write on the bucket and give JumpKick its access key id and
+  secret as `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`.
+- **Google Cloud Storage:** grant `allUsers` the Storage Object Viewer role on the bucket, then
+  use `url = "https://storage.googleapis.com/acme-maven/"` (or your own domain in front of it)
+  and `publish-url = "gs://acme-maven/"`. JumpKick writes through the bucket's S3-compatible API, so
+  create an HMAC key for a service account that may write objects and export it as
+  `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`.
+
+Without the environment variables, the write side reads the AWS shared files: the
+`[default]` profile of `~/.aws/credentials`, or the one `AWS_PROFILE` names. `AWS_SESSION_TOKEN`
+is honoured, and the table's `access-key`, `secret-key` and `session-token` keys take precedence
+over both (see [Who may write a `${VAR}` reference](#who-may-write-a-var-reference)).
+
+`jk publish` creates each artifact only when its key is absent, so a published file never
+changes, and it updates `maven-metadata.xml` by compare-and-swap, so two publishers cannot
+overwrite each other's version list ([Publish § Publishing to object
+storage](publish.md#publishing-to-object-storage)).
+
+A version published by mistake leaves the version list with `jk yank 1.4.7`, through the same
+`publish-url` and credential; its files stay, so lockfiles that pin it still build. `jk yank 1.4.7
+--delete` removes its files too ([Publish § Yanking a version](publish.md#yanking-a-version)).
+
+For a public library, prefer this or Maven Central. GitHub Packages asks for a token on every
+read, even for a public package ([GitHub's
+documentation](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-apache-maven-registry)),
+so every consumer needs an account. JitPack builds from source on first request and is not a
+repository you publish to.
+
 ## Credentials
 
 Sources, in order — the first that yields a credential wins:
