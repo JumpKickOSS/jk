@@ -40,6 +40,30 @@ class AppendDeclaredTailsTerminalTest {
                 .doesNotContain(TaskNames.PACKAGE_ASSEMBLY);
     }
 
+    @Test
+    void the_lib_dir_layout_is_archived_after_it_is_laid_out() throws Exception {
+        assertThat(plannedSteps("lib-dir = true\n"))
+                .contains(TaskNames.PACKAGE_LIB_DIR, TaskNames.PACKAGE_LIB_DIR_ARCHIVE)
+                .doesNotContain(TaskNames.PACKAGE_JLINK_ARCHIVE);
+        assertThat(PlannerArchive.libDirArchiveStep(tmp, true).requires()).containsExactly(TaskNames.PACKAGE_LIB_DIR);
+    }
+
+    @Test
+    void the_runtime_image_is_archived_after_it_is_linked() throws Exception {
+        assertThat(plannedSteps("\n[jlink]\n"))
+                .contains(TaskNames.PACKAGE_JLINK, TaskNames.PACKAGE_JLINK_ARCHIVE)
+                .doesNotContain(TaskNames.PACKAGE_LIB_DIR_ARCHIVE);
+        assertThat(PlannerArchive.jlinkArchiveStep(tmp, true).requires()).containsExactly(TaskNames.PACKAGE_JLINK);
+    }
+
+    @Test
+    void a_module_with_neither_layout_plans_no_archive() throws Exception {
+        assertThat(plannedSteps()).doesNotContain(TaskNames.PACKAGE_LIB_DIR_ARCHIVE, TaskNames.PACKAGE_JLINK_ARCHIVE);
+        Set<String> guard = SessionContext.where(
+                SessionContext.current().withLanesOnly(true), () -> plannedSteps("lib-dir = true\n\n[jlink]\n"));
+        assertThat(guard).doesNotContain(TaskNames.PACKAGE_LIB_DIR_ARCHIVE, TaskNames.PACKAGE_JLINK_ARCHIVE);
+    }
+
     private Set<String> plannedSteps() throws Exception {
         return plannedSteps("assembly = true\n");
     }

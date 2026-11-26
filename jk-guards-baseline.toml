@@ -1490,8 +1490,8 @@ reason = "the runtime packages as the coupling guard first measured them"
 [[runtime-efferent-coupling.entries]]
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.PlannerTails"
-value  = 23
-reason = "the runtime packages as the coupling guard first measured them"
+value  = 24
+reason = "PlannerTails plans the distribution archive steps from PlannerArchive: 23 to 24"
 [[runtime-efferent-coupling.entries]]
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.TestCompileSteps"
@@ -1733,8 +1733,8 @@ reason = "the runtime packages as the coupling guard first measured them"
 [[runtime-static-holder-fan-in.entries]]
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.BuildPlanner"
-value  = 50
-reason = "AffectedTestRun moved into runtime to cut the runtime-test cycle: BuildPlanner 49 to 50"
+value  = 51
+reason = "PlannerArchive, the distribution archive steps, reads the module and outcome keys: BuildPlanner 50 to 51"
 [[runtime-static-holder-fan-in.entries]]
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.EffortWeights"

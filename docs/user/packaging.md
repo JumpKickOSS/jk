@@ -20,6 +20,8 @@ writes the declared version (`app-1.4.7.jar`); see [Releasing](release.md).
 | Fat jar `*-all.jar` | `[application] assembly = true` | `jk assemble` / `jk build` |
 | Runnable `target/<name>.jar` + `target/libs/` | `[application] lib-dir = true` | `jk build` |
 | Runtime image `target/<name>-jri/` (jlink, with a startup cache) | `[jlink]` | `jk build` |
+| Archive `target/<name>-<version>.zip` of the lib-dir layout | `[application] lib-dir = true` | `jk build` |
+| Archive `target/<name>-<version>-<os>-<arch>.tar.gz` (`.zip` on Windows) of the runtime image | `[jlink]` | `jk build` |
 | Minified jar `*-min.jar` | `[application] minified = true` | `jk assemble` / `jk build` (also builds the fat jar) |
 | War `target/<name>-<version>.war`, exploded beside it | `[war]` | `jk build` |
 | Node module's resource jar `target/<name>-<version>.jar` | a node module a sibling depends on, or `[node] classpath-root` | `jk build` |
@@ -273,6 +275,28 @@ on a runtime jlink links from the project JDK, so the jars a Dockerfile copies a
 image runs are the same files. The startup cache is trained by starting the image the way its
 launcher does (the absolute path of the jar, the launcher's flags), by the trainer `[image]
 aot-cache` uses, so a server needs no framework hook to be trained.
+
+## Distribution archives
+
+A layout people download whole also ships as one file, written by `jk build` whenever the layout
+is, with nothing to configure:
+
+| Layout | Archive |
+|---|---|
+| [Lib-dir layout](#lib-dir-layout) | `target/<name>-<version>.zip`, the same on every platform |
+| [Runtime image](#runtime-image-jlink) | `target/<name>-<version>-<os>-<arch>.tar.gz`, `.zip` on Windows |
+
+- **Inside.** One directory, `<name>-<version>/`, holding `<name>.jar` and `libs/` (the lib
+  directory's own name), or the image's `bin/`, `lib/`, `app/` and the rest.
+- **The platform.** `<os>` is `linux`, `macos` or `windows` and `<arch>` is `x86_64` or `aarch64`,
+  the names JumpKick's own release files use. The image is linked for the host, so the archive is
+  named for it.
+- **Reproducible.** Entries are in name order with no owner, and the same inputs give the same
+  bytes. The tar keeps `bin/` and other executables at `0755`, everything else at `0644`. The
+  image's files carry the image's fixed time, so an unpacked image keeps its startup cache; the
+  lib-dir zip uses the time every JumpKick jar carries.
+- **Caching.** Each archive is its own step (`package-jlink-archive`, `package-lib-dir-archive`),
+  cached on the bytes of the layout it archives: an unchanged layout is not compressed again.
 
 ## War
 

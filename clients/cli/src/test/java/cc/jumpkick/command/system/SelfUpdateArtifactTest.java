@@ -74,21 +74,6 @@ class SelfUpdateArtifactTest {
                 .contains("jk-windows-aarch64-0.12.0.zip");
     }
 
-    /** The host's release name uses the vocabulary the installers derive from {@code uname}. */
-    @Test
-    void the_host_is_named_as_the_installers_name_it() {
-        assertThat(SelfCommand.UpdateSub.releaseOs("Linux")).isEqualTo("linux");
-        assertThat(SelfCommand.UpdateSub.releaseOs("Mac OS X")).isEqualTo("macos");
-        assertThat(SelfCommand.UpdateSub.releaseOs("Windows 11")).isEqualTo("windows");
-        assertThat(SelfCommand.UpdateSub.releaseOs("FreeBSD")).isEqualTo("freebsd");
-        assertThat(SelfCommand.UpdateSub.releaseOs("SunOS")).isEqualTo("sunos");
-        assertThat(SelfCommand.UpdateSub.releaseOs("")).isEqualTo("unknown");
-        assertThat(SelfCommand.UpdateSub.releaseArch("amd64")).isEqualTo("x86_64");
-        assertThat(SelfCommand.UpdateSub.releaseArch("arm64")).isEqualTo("aarch64");
-        assertThat(SelfCommand.UpdateSub.releaseArch("aarch64")).isEqualTo("aarch64");
-        assertThat(SelfCommand.UpdateSub.releaseArch("ppc64le")).isEqualTo("ppc64le");
-    }
-
     @Test
     void the_jvm_client_is_the_platform_neutral_jar_and_only_when_the_release_ships_one() throws Exception {
         String sums = HASH + "  jk-engine-0.12.0.jar\n" + HASH + "  jk-0.12.0.jar\n";

@@ -50,6 +50,8 @@ public final class WorkspaceArtifacts {
             candidates.add(layout.nativeBinary());
             candidates.add(layout.nativeLibrary());
             candidates.add(layout.ociImageTar());
+            candidates.add(layout.libDirArchive());
+            candidates.add(layout.jlinkArchive());
             candidates.add(sidecarPom(layout.mainJar()));
             candidates.add(sidecarPom(layout.assemblyJar()));
             moduleArtifacts.put(normalDir, candidates);

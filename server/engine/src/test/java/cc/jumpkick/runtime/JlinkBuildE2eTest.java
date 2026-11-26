@@ -13,6 +13,7 @@ import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.Processes;
+import cc.jumpkick.host.ReleasePlatform;
 import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanListener;
@@ -89,6 +90,9 @@ class JlinkBuildE2eTest {
                 .contains("AOT cache");
         assertThat(run(image.resolve("bin/start"), "once")).contains("hello from lib");
         assertThat(cacheRefusal(image)).isNull();
+        Path archive = ws.resolve("app/target/app-1.0.0-SNAPSHOT-" + ReleasePlatform.current() + ".tar.gz");
+        assertThat(archive).as("the image ships as one archive beside it").isRegularFile();
+        assertThat(first.of("app", TaskNames.PACKAGE_JLINK_ARCHIVE)).startsWith(archive.getFileName() + ": ");
         assertThat(forecast(ws, cache).cached())
                 .as("explain prices the image under the key the build stored it by")
                 .isTrue();
@@ -111,6 +115,10 @@ class JlinkBuildE2eTest {
         assertThat(cacheRefusal(image))
                 .as("a restored image still matches the cache it was trained with")
                 .isNull();
+        assertThat(third.of("app", TaskNames.PACKAGE_JLINK_ARCHIVE))
+                .as("the restored image has the bytes the archive was written from")
+                .doesNotStartWith("archive ");
+        assertThat(archive).isRegularFile();
 
         // A changed [jlink] table relinks, and explain says why: the plain miss, or, for an image heavy
         // enough that the cache treats it as a heavy output, the setting that keeps it out.

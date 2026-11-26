@@ -7,6 +7,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.host.Os;
+import cc.jumpkick.host.ReleasePlatform;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Project;
 import java.io.IOException;
@@ -157,6 +159,19 @@ class BuildLayoutTest {
         assertThat(layout.ociImageTar()).isEqualTo(dir.resolve("target/widget.oci.tar"));
         assertThat(layout.sbomDir()).isEqualTo(dir.resolve("target/sbom"));
         assertThat(layout.provenanceDir()).isEqualTo(dir.resolve("target/widget-1.2.3-SNAPSHOT-provenance"));
+    }
+
+    @Test
+    void the_distribution_archives_are_named_for_the_version_and_the_image_for_its_platform(@TempDir Path dir) {
+        BuildLayout layout = BuildLayout.of(dir, appProject("app", "1.2.3"));
+
+        assertThat(layout.archiveRoot()).isEqualTo("app-1.2.3-SNAPSHOT");
+        assertThat(layout.libDirArchive()).isEqualTo(dir.resolve("target/app-1.2.3-SNAPSHOT.zip"));
+        String ext = Os.isWindows() ? ".zip" : ".tar.gz";
+        assertThat(layout.jlinkArchive())
+                .isEqualTo(dir.resolve("target/app-1.2.3-SNAPSHOT-" + ReleasePlatform.current() + ext));
+        assertThat(layout.jlinkArchive().getFileName().toString())
+                .matches("app-1\\.2\\.3-SNAPSHOT-[a-z0-9_]+-[a-z0-9_]+\\.(tar\\.gz|zip)");
     }
 
     @Test
