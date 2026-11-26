@@ -90,6 +90,9 @@ public final class PublishPlans {
     /** The entries of the Central bundle the worker assembled; empty for a plain repository publish. */
     public static final BuildPlanKey<List<String>> BUNDLE = BuildPlanKey.list("pub-bundle", String.class);
 
+    /** The byte size of the Central bundle. */
+    public static final BuildPlanKey<Long> BUNDLE_BYTES = BuildPlanKey.scalar("pub-bundle-bytes", Long.class);
+
     /** Where the run sent its files, as the results file names it. */
     public static final BuildPlanKey<String> DESTINATION = BuildPlanKey.scalar("pub-destination", String.class);
 
@@ -186,6 +189,7 @@ public final class PublishPlans {
                     ctx.put(EXISTING, out.existing());
                     ctx.put(WRITTEN, out.written());
                     ctx.put(BUNDLE, out.bundle());
+                    ctx.put(BUNDLE_BYTES, out.bundleBytes());
                     if (out.deployment() != null) ctx.put(DEPLOYMENT, out.deployment());
                     if (out.error() != null) {
                         ctx.error("publish", out.error());
@@ -236,6 +240,7 @@ public final class PublishPlans {
             int existing,
             List<String> written,
             List<String> bundle,
+            long bundleBytes,
             @Nullable Deployment deployment,
             @Nullable String error) {}
 
@@ -250,6 +255,7 @@ public final class PublishPlans {
                 boolean[] reported = {false};
                 List<String> written = new ArrayList<>();
                 List<String> bundle = new ArrayList<>();
+                long[] bundleBytes = {0};
                 @Nullable Deployment[] deployment = {null};
                 @Nullable String[] error = {null};
                 StringBuilder workerDiag = new StringBuilder();
@@ -260,6 +266,7 @@ public final class PublishPlans {
                             existing[0] = Jsonl.intValue(json, "existing", 0);
                             written.addAll(Jsonl.strArray(json, "written"));
                             bundle.addAll(Jsonl.strArray(json, "bundle"));
+                            bundleBytes[0] = Jsonl.longValue(json, "bundleBytes", 0L);
                             String id = Jsonl.str(json, "deploymentId");
                             if (id != null) {
                                 deployment[0] = new Deployment(
@@ -283,9 +290,10 @@ public final class PublishPlans {
                                     ? ": " + error[0]
                                     : diag != null ? ": " + diag : " (exit " + exit + ")");
                     if (!reported[0]) throw new RuntimeException(message);
-                    return new WorkerOutcome(files[0], existing[0], written, bundle, deployment[0], message);
+                    return new WorkerOutcome(
+                            files[0], existing[0], written, bundle, bundleBytes[0], deployment[0], message);
                 }
-                return new WorkerOutcome(files[0], existing[0], written, bundle, deployment[0], null);
+                return new WorkerOutcome(files[0], existing[0], written, bundle, bundleBytes[0], deployment[0], null);
             } finally {
                 Files.deleteIfExists(spec);
             }

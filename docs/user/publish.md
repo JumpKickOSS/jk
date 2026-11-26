@@ -259,6 +259,14 @@ CI, `JK_REPO_CENTRAL_USERNAME` + `JK_REPO_CENTRAL_PASSWORD` (or `JK_REPO_CENTRAL
 `JK_REPO_CENTRAL_HOST=central.sonatype.com` beside them — the same name-to-origin binding every
 stored credential needs ([Repositories: credentials](repositories.md#credentials)).
 
+Sonatype limits each organization's monthly publishing by file count, release size and release
+count ([limits](https://central.sonatype.org/publish/maven-central-publishing-limits/)). Every
+Central publish, `--dry-run` included, prints the bundle's size on one line (`Central bundle: 16
+files, 1.2 MB`) and repeats it in the results file. When one release alone passes the published
+90th percentile, 1,167 files or 78 MB a month, it also warns and points to the
+[Usage Center](https://central.sonatype.com/publishing/usage), the only place the month's totals
+are shown. The warning does not fail the publish.
+
 `target/jk-results.md` gets a **Publish** block for every publish run — the target, the file
 count, and for Central the deployment id, the state the poll ended in and every validation error
 — so a failed release is diagnosed from the results file, not from scrollback.

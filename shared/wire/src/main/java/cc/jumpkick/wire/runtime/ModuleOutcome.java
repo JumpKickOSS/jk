@@ -97,7 +97,7 @@ public record ModuleOutcome(
 
     /**
      * What a publish pass sent: where to, how many files (none on a dry run), how many artifacts the repository already held, the files it wrote
-     * under {@code target/}, a Central bundle's entries, and the Portal deployment it ended on.
+     * under {@code target/}, a Central bundle's entries and byte size, and the Portal deployment it ended on.
      */
     public record Published(
             String destination,
@@ -106,6 +106,7 @@ public record ModuleOutcome(
             int existing,
             List<String> written,
             List<String> bundle,
+            long bundleBytes,
             @Nullable String deploymentId,
             @Nullable String deploymentState,
             List<String> deploymentErrors) {

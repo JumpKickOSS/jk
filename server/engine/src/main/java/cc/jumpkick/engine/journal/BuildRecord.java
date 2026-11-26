@@ -554,7 +554,8 @@ public record BuildRecord(
             @Nullable String deploymentId,
             @Nullable String deploymentState,
             List<String> deploymentErrors,
-            List<String> bundle) {
+            List<String> bundle,
+            long bundleBytes) {
         public Publish {
             deploymentErrors = deploymentErrors == null ? List.of() : List.copyOf(deploymentErrors);
             bundle = bundle == null ? List.of() : List.copyOf(bundle);

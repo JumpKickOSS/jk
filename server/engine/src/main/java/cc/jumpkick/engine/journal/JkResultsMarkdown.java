@@ -9,6 +9,7 @@ import cc.jumpkick.run.TestFailureInfo;
 import cc.jumpkick.test.MarkdownTestReport;
 import cc.jumpkick.util.DirKeys;
 import cc.jumpkick.util.MarkdownReports;
+import cc.jumpkick.wire.runtime.CentralBudget;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -612,6 +613,11 @@ public final class JkResultsMarkdown {
             }
         }
         if (!p.bundle().isEmpty()) {
+            sb.append("- ")
+                    .append(CentralBudget.summary(p.bundle().size(), p.bundleBytes()))
+                    .append('\n');
+            for (String warning : CentralBudget.warnings(p.bundle().size(), p.bundleBytes()))
+                sb.append("- ").append(warning).append('\n');
             sb.append("- bundle (").append(p.bundle().size()).append(" entries):\n");
             for (String entry : p.bundle()) sb.append("  - `").append(entry).append("`\n");
         }

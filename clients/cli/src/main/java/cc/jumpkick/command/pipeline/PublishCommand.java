@@ -25,6 +25,7 @@ import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.release.ReleaseTag;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.protocol.ProjectInfo;
+import cc.jumpkick.wire.runtime.CentralBudget;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
 import cc.jumpkick.wire.runtime.TailArgs;
 import cc.jumpkick.wire.runtime.WorkspaceTarget;
@@ -200,6 +201,12 @@ public final class PublishCommand implements CliCommand {
             ProjectInfo info = ProjectInfos.orNull(module.dir());
             String coord = info == null ? module.coord() : Coords.gav(info.group(), info.name(), info.version());
             CliOutput.out("Published " + coord + where + summary);
+            if (!published.bundle().isEmpty()) {
+                CliOutput.out("  " + CentralBudget.summary(published.bundle().size(), published.bundleBytes()));
+                List<String> warnings =
+                        CentralBudget.warnings(published.bundle().size(), published.bundleBytes());
+                for (int i = 0; i < warnings.size(); i++) CliOutput.err((i == 0 ? "  ! " : "    ") + warnings.get(i));
+            }
             if (published.deploymentId() != null) {
                 CliOutput.out("  deployment " + published.deploymentId() + " · " + published.deploymentState()
                         + ("VALIDATED".equals(published.deploymentState()) ? "; release it from the Portal" : ""));

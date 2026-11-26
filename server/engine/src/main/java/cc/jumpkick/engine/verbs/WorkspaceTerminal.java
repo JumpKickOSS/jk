@@ -83,7 +83,8 @@ final class WorkspaceTerminal {
                                 p.deploymentId(),
                                 p.deploymentState(),
                                 p.deploymentErrors(),
-                                p.bundle()));
+                                p.bundle(),
+                                p.bundleBytes()));
             }
         }
         List<Redacted> errors = host.redactErrors(dir, result.errors());

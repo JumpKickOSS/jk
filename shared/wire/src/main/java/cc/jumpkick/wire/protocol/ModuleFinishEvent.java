@@ -87,6 +87,7 @@ public record ModuleFinishEvent(
                                     .number("existing", published.existing())
                                     .optionalArray("written", published.written())
                                     .optionalArray("bundle", published.bundle())
+                                    .number("bundleBytes", published.bundleBytes())
                                     .optionalString("deploymentId", published.deploymentId())
                                     .optionalString("deploymentState", published.deploymentState())
                                     .optionalArray("deploymentErrors", published.deploymentErrors())
@@ -154,6 +155,7 @@ public record ModuleFinishEvent(
                         Jsonl.intValue(pub, "existing", 0),
                         Jsonl.strArray(pub, "written"),
                         Jsonl.strArray(pub, "bundle"),
+                        Jsonl.longValue(pub, "bundleBytes", 0L),
                         Jsonl.str(pub, "deploymentId"),
                         Jsonl.str(pub, "deploymentState"),
                         Jsonl.strArray(pub, "deploymentErrors"));

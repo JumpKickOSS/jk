@@ -136,6 +136,7 @@ class PublishCentralCommandTest {
                         STEM + "-javadoc.jar.sha1");
         assertThat(out)
                 .contains("Published com.example:widget:1.0.0 to the Central Portal (16 files)")
+                .contains("  Central bundle: 16 files, ")
                 .contains("deployment dep-1234")
                 .contains("PUBLISHED");
 
@@ -144,6 +145,7 @@ class PublishCentralCommandTest {
                 .contains("## Publish")
                 .contains("- destination: Central Portal")
                 .contains("- files: 16")
+                .contains("- Central bundle: 16 files, ")
                 .contains("- deployment: `dep-1234` · **PUBLISHED**");
     }
 
@@ -198,11 +200,13 @@ class PublishCentralCommandTest {
                 .contains(STEM + ".pom.asc", STEM + "-javadoc.jar.sha1");
         assertThat(out)
                 .contains("(dry-run)")
+                .contains("  Central bundle: 16 files, ")
                 .contains("wrote target/publish/central-bundle.zip")
                 .contains("    " + STEM + ".jar")
                 .contains("    " + STEM + "-sources.jar.asc");
         assertThat(MarkdownReports.strip(Files.readString(dir.resolve("target/jk-results.md"))))
                 .contains("- destination: Central Portal (dry run)")
+                .contains("- Central bundle: 16 files, ")
                 .contains("- bundle (16 entries):");
     }
 
