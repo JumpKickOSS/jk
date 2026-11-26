@@ -3,6 +3,7 @@ package cc.jumpkick.command.pipeline;
 
 import cc.jumpkick.config.RepositoriesScan;
 import cc.jumpkick.credential.RepoCredential;
+import cc.jumpkick.model.ObjectStoreConfig;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.repo.RepoCredentialResolver;
 import cc.jumpkick.wire.protocol.ProjectInfo;
@@ -86,15 +87,9 @@ record PublishTarget(
                 central = true;
                 String portal = env.apply(PORTAL_ENV);
                 repoUrl = portal == null || portal.isBlank() ? CENTRAL_PORTAL : URI.create(portal);
-            } else if (repository.contains("://")) {
-                repoUrl = URI.create(repository);
             } else {
-                String declared = declaredTarget(manifest, repository);
-                if (declared == null) {
-                    return Resolution.refused(
-                            source + " `" + repository + "` is not `central`, a URL or declared under [repositories]");
-                }
-                repoUrl = URI.create(declared);
+                repoUrl = locate(manifest, repository);
+                if (repoUrl == null) return Resolution.refused(undeclared(source, repository));
             }
         } else if (library && !dryRun) {
             return Resolution.refused("no repository to publish to; set [publish] repository in jk.toml"
@@ -129,6 +124,52 @@ record PublishTarget(
             return Resolution.refused(String.valueOf(e.getMessage()));
         }
         return Resolution.of(new PublishTarget(repoUrl, central, keyFile, credential));
+    }
+
+    /** The refusal a jk yank of anything on Maven Central gets. */
+    static final String CENTRAL_YANK = "Maven Central never delists or deletes a published version";
+
+    /**
+     * The repository a yank edits, with the credential a publish there sends: {@code override}
+     * ({@code --repository}), else {@code publishRepository}. Maven Central is refused.
+     */
+    static Resolution yank(String publishRepository, Path manifest, @Nullable String override) {
+        String repository = override != null ? override : publishRepository;
+        String source = override != null ? "--repository" : "[publish] repository";
+        if (repository.isEmpty()) {
+            return Resolution.refused("no repository to yank from; set [publish] repository or pass -R");
+        }
+        if (RepositorySpec.CENTRAL.equals(repository)) return Resolution.refused(CENTRAL_YANK);
+        URI repoUrl = locate(manifest, repository);
+        if (repoUrl == null) return Resolution.refused(undeclared(source, repository));
+        if (RepositorySpec.isCentralHost(repoUrl.getHost())) return Resolution.refused(CENTRAL_YANK);
+        try {
+            return Resolution.of(new PublishTarget(repoUrl, false, null, repositoryCredential(manifest, repoUrl)));
+        } catch (RuntimeException e) {
+            return Resolution.refused(String.valueOf(e.getMessage()));
+        }
+    }
+
+    /**
+     * The region and endpoint of the declared repository holding {@code repoUrl}, as a publish
+     * there gets them; the AWS credential chain supplies the keys.
+     */
+    static ObjectStoreConfig objectStore(Path manifest, URI repoUrl) {
+        RepositoriesScan.Repo repo = RepositoriesScan.holding(RepositoriesScan.scan(manifest), repoUrl.toString());
+        return repo == null
+                ? ObjectStoreConfig.EMPTY
+                : new ObjectStoreConfig(repo.region(), repo.endpoint(), null, null, null);
+    }
+
+    /** The URL {@code repository} names: itself when it is a URL, else the declared repository's publish target. */
+    private static @Nullable URI locate(Path manifest, String repository) {
+        if (repository.contains("://")) return URI.create(repository);
+        String declared = declaredTarget(manifest, repository);
+        return declared == null ? null : URI.create(declared);
+    }
+
+    private static String undeclared(String source, String repository) {
+        return source + " `" + repository + "` is not `central`, a URL or declared under [repositories]";
     }
 
     /** Where a publish to the declared repository {@code name} goes: its publish-url, else its url. */

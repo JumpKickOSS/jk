@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -81,4 +82,21 @@ public interface RepoTransport {
      */
     int putFile(URI uri, Path file, String contentType, RepoCredential credential)
             throws IOException, InterruptedException;
+
+    /**
+     * The files under the directory {@code dir}, as paths relative to it with {@code /} between
+     * segments; empty when it holds none. A transport that cannot list says so with an {@link
+     * IOException}.
+     */
+    default List<String> list(URI dir, RepoCredential credential) throws IOException, InterruptedException {
+        throw new IOException(dir + ": this repository cannot list files");
+    }
+
+    /**
+     * Delete the file at {@code uri} and return a status: 2xx when it is gone, 404 when it was not
+     * there, else what the repository answered.
+     */
+    default int delete(URI uri, RepoCredential credential) throws IOException, InterruptedException {
+        throw new IOException(uri + ": this repository cannot delete files");
+    }
 }

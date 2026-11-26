@@ -8,12 +8,18 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.URI;
+import java.net.URLDecoder;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * {@link RepoTransport} over HTTP(S), wrapping the shared {@link Http} client (so it inherits the
@@ -92,6 +98,39 @@ public final class HttpTransport implements RepoTransport {
     public int putFile(URI uri, Path file, String contentType, RepoCredential credential)
             throws IOException, InterruptedException {
         return http.putFile(uri, file, putHeaders(contentType, credential)).statusCode();
+    }
+
+    private static final Pattern HREF = Pattern.compile("href\\s*=\\s*[\"']([^\"'#?]+)[\"']", Pattern.CASE_INSENSITIVE);
+
+    /**
+     * The files the directory's HTML index links to directly: what Nexus, Artifactory, Reposilite
+     * and a static server answer for a directory URL. An index that links to none lists nothing.
+     */
+    @Override
+    public List<String> list(URI dir, RepoCredential credential) throws IOException, InterruptedException {
+        URI base = dir.toString().endsWith("/") ? dir : URI.create(dir + "/");
+        Optional<byte[]> index = fetch(base, credential);
+        if (index.isEmpty()) return List.of();
+        List<String> names = new ArrayList<>();
+        Matcher m = HREF.matcher(new String(index.get(), StandardCharsets.UTF_8));
+        while (m.find()) {
+            String target;
+            try {
+                target = base.resolve(m.group(1).strip()).toString();
+            } catch (IllegalArgumentException notAUri) {
+                continue;
+            }
+            if (!target.startsWith(base.toString())) continue;
+            String name = URLDecoder.decode(
+                    target.substring(base.toString().length()).replace("+", "%2B"), StandardCharsets.UTF_8);
+            if (!name.isEmpty() && !name.contains("/") && !names.contains(name)) names.add(name);
+        }
+        return names;
+    }
+
+    @Override
+    public int delete(URI uri, RepoCredential credential) throws IOException, InterruptedException {
+        return http.delete(uri, AuthHeaders.of(credential)).statusCode();
     }
 
     private static Map<String, String> putHeaders(String contentType, RepoCredential credential) {

@@ -3,10 +3,13 @@ package cc.jumpkick.repo;
 
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.host.AtomicWrites;
+import cc.jumpkick.host.PathUtil;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -36,5 +39,25 @@ public final class FileTransport implements RepoTransport {
     public int putFile(URI uri, Path file, String contentType, RepoCredential ignored) throws IOException {
         AtomicWrites.copy(file, Path.of(uri));
         return 201;
+    }
+
+    @Override
+    public List<String> list(URI dir, RepoCredential ignored) throws IOException {
+        Path root = Path.of(dir);
+        if (!Files.isDirectory(root)) return List.of();
+        List<String> names = new ArrayList<>();
+        PathUtil.forEachRegularFile(
+                root,
+                (file, attrs) -> names.add(root.relativize(file)
+                        .toString()
+                        .replace(file.getFileSystem().getSeparator(), "/")));
+        names.sort(null);
+        return names;
+    }
+
+    /** Deletes a file, or a directory once it is empty. */
+    @Override
+    public int delete(URI uri, RepoCredential ignored) throws IOException {
+        return Files.deleteIfExists(Path.of(uri)) ? 204 : 404;
     }
 }

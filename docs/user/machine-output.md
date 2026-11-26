@@ -301,6 +301,7 @@ These commands print their own rows, one envelope object each, and nothing else 
 | `trusted` | `trust list` | `kind` (`source`, `plugin`), `value` |
 | `trust` | `trust add`, `plugin`, `remove`, `import` | `action`, `kind`, `value`, `changed` |
 | `jdk-pinned` | `jdk pin` | `pin`, `file` |
+| `yank` | `yank` | `coordinate`, `repository`, `dryRun`, `listed` (the version was in the list), `before` and `after` (the version list read and the list left), `files` (deleted, or on a dry run the ones `--delete` would delete), `refused` (path → the status of each delete the repository refused) |
 | `jdk-verify` | `jdk verify` | `id`, `status` (`ok`, `unhashed`, `untracked`, `missing`, `tampered`), `detail` |
 
 ```json

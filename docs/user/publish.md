@@ -164,6 +164,40 @@ it; remove skip from testing/testkit/jk.toml, or make testkit a [test-dependenci
 core`. A skipped member in a shipped member's test tables is fine: test scope is not
 transitive.
 
+### Yanking a version
+
+`jk yank` takes a published version out of the version list at the `[publish]` repository (its
+`publish-url` when it has one), for every module `jk publish` ships:
+
+```bash
+jk yank 1.4.7                           # every published module of this project or workspace
+jk yank com.example:widget:1.4.7        # one coordinate
+jk yank 1.4.7 --dry-run                 # print the version list before and after; change nothing
+jk yank 1.4.7 --delete                  # also delete the files under widget/1.4.7/
+jk yank 1.4.7 -R staging                # a declared repository or a URL instead of [publish]
+```
+
+Yanking edits each artifact's `maven-metadata.xml`: the version leaves `<versions>`, and
+`<latest>` and `<release>` are worked out again from what is left (`<release>` is never a
+snapshot). Version ranges, `latest`, `jk add` and `jk update` stop choosing it. Its files stay, so
+every lockfile that pins it still builds. Yanking the last version leaves an empty list with no
+`<latest>` or `<release>`, and the run says so. Yanking a version that is not listed changes
+nothing (`com.example:widget:1.4.7 is not listed; nothing to yank`).
+
+The metadata is written the way `jk publish` writes it: on `s3://` and `gs://` a write that
+another publisher beat is read again and retried, so a version published during the yank stays
+listed. `file://` and web repositories are read and then written.
+
+`--delete` also removes every file under the version's directory and warns that lockfiles pinning
+it no longer build. Object stores list the directory and delete each object; `file://` deletes the
+directory. A web repository is asked to delete each file its directory page links to (or the
+directory itself when it has no such page); each file it refuses is named with its status and the
+run exits 1.
+
+`jk yank` needs the same credential `jk publish` sends that repository. Maven Central is refused:
+it never delists or deletes a published version. `-O jsonl` prints one `yank` row per coordinate
+([machine output](machine-output.md#command-rows)).
+
 ## Releasing deliverables
 
 `jk publish` ships to up to three **lanes**, each with its own target in `jk.toml`:
