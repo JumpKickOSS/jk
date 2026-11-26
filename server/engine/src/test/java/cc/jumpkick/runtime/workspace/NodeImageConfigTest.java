@@ -22,7 +22,7 @@ class NodeImageConfigTest {
             throws IOException {
         JkBuild project = project(dir, "");
 
-        ImageConfig config = NodeImagePlans.config(project.image(), project, dir, false, null, null, "docker", false);
+        ImageConfig config = NodeImagePlans.config(project.image(), project, dir, false, null, "docker");
 
         assertThat(config.base()).isEqualTo("gcr.io/distroless/nodejs24-debian13");
         assertThat(config.ports()).containsExactly(3000);
@@ -46,7 +46,7 @@ class NodeImageConfigTest {
                 referrers = false
                 """);
 
-        ImageConfig config = NodeImagePlans.config(project.image(), project, dir, false, null, null, "docker", false);
+        ImageConfig config = NodeImagePlans.config(project.image(), project, dir, false, null, "docker");
 
         assertThat(config.base()).isEqualTo("node:24-slim");
         assertThat(config.ports()).containsExactly(8080);
@@ -59,7 +59,7 @@ class NodeImageConfigTest {
     void a_static_image_is_nginx_on_port_80(@TempDir Path dir) throws IOException {
         JkBuild project = project(dir, "");
 
-        ImageConfig config = NodeImagePlans.config(project.image(), project, dir, true, null, null, "docker", false);
+        ImageConfig config = NodeImagePlans.config(project.image(), project, dir, true, null, "docker");
 
         assertThat(config.base()).isEqualTo("nginx:stable-alpine");
         assertThat(config.ports()).containsExactly(80);
@@ -72,8 +72,7 @@ class NodeImageConfigTest {
         JkBuild project = project(dir, "");
         Files.delete(dir.resolve("jk-lock.toml"));
 
-        assertThatThrownBy(
-                        () -> NodeImagePlans.config(ImageTable.EMPTY, project, dir, false, null, null, "docker", false))
+        assertThatThrownBy(() -> NodeImagePlans.config(ImageTable.EMPTY, project, dir, false, null, "docker"))
                 .hasMessageContaining("jk lock");
     }
 

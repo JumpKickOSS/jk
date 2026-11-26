@@ -22,15 +22,12 @@ final class ImagePushProvenance {
     private ImagePushProvenance() {}
 
     /**
-     * Why a push of {@code config} cannot be signed as it asks, or null when it can or is not a
-     * push: the signature is over the provenance a push attaches, and a Dockerfile-mode push or
-     * {@code referrers = false} attaches none. Said before the build, never after an unsigned push.
+     * Why a push of {@code config} cannot be signed as it asks, or null when it can or is not asked
+     * to: the signature is over the provenance a push attaches, and a Dockerfile-mode push or {@code
+     * referrers = false} attaches none. Said before anything ships, never after an unsigned push.
      */
-    static @Nullable String unsignable(ImageConfig config, @Nullable Path tarballPath) {
-        boolean pushing = tarballPath == null
-                && config.registry() != null
-                && !config.registry().isBlank();
-        if (!pushing || !config.sigstore()) return null;
+    static @Nullable String unsignable(ImageConfig config) {
+        if (!config.sigstore()) return null;
         if (config.dockerFile() != null && !config.dockerFile().isBlank()) {
             return "[image] sigstore: a Dockerfile-mode push attaches no provenance to sign";
         }

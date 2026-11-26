@@ -18,7 +18,7 @@ class ProtoEventsModuleFinishTest {
         String plain = ProtoEvents.moduleFinish("/w/app", "g:app", true, 0, 12, true, false);
         assertThat(plain).doesNotContain("hasImage");
 
-        String pushed = ProtoEvents.moduleFinish(
+        String loaded = ProtoEvents.moduleFinish(
                 "/w/app",
                 "g:app",
                 true,
@@ -26,14 +26,17 @@ class ProtoEventsModuleFinishTest {
                 12,
                 true,
                 false,
-                new ModuleOutcome.Image("reg.example/app:1.0", null, "app", "1.0", null),
+                new ModuleOutcome.Image("reg.example/app:1.0", null, "app", "1.0", "docker", "reg.example/app:1.0"),
                 null);
-        assertThat(Jsonl.bool(pushed, "hasImage", false)).isTrue();
-        assertThat(Jsonl.str(pushed, "imageRef")).isEqualTo("reg.example/app:1.0");
-        assertThat(Jsonl.str(pushed, "imageName")).isEqualTo("app");
-        assertThat(Jsonl.str(pushed, "imageVersion")).isEqualTo("1.0");
-        assertThat(Jsonl.str(pushed, "imageTarball")).isNull();
-        assertThat(Jsonl.str(pushed, "imageDaemonExe")).isNull();
+        assertThat(Jsonl.bool(loaded, "hasImage", false)).isTrue();
+        assertThat(Jsonl.str(loaded, "imageRef")).isEqualTo("reg.example/app:1.0");
+        assertThat(Jsonl.str(loaded, "imageName")).isEqualTo("app");
+        assertThat(Jsonl.str(loaded, "imageVersion")).isEqualTo("1.0");
+        assertThat(Jsonl.str(loaded, "imageTarball")).isNull();
+        assertThat(Jsonl.str(loaded, "imageDaemonExe")).isEqualTo("docker");
+        assertThat(ModuleFinishEvent.decode(loaded).image())
+                .extracting(ModuleOutcome.Image::publishRef)
+                .isEqualTo("reg.example/app:1.0");
     }
 
     @Test

@@ -143,20 +143,20 @@ public final class ReleaseCommand implements CliCommand {
 
     /**
      * The publish mode: {@code override} ({@code --publish}), else {@code [release] publish}, else
-     * inferred. With no destination there is nothing to upload. With one, CI that runs {@code jk
-     * publish} publishes it; with none, this machine does, when {@code [publish] repository} or
-     * {@code [publish] release} names somewhere to upload (an image registry alone has no {@code jk
-     * publish} lane yet).
+     * inferred. With no destination ({@code [publish] repository}, {@code [publish] release} or
+     * {@code [image] registry}) there is nothing to upload. With one, CI that runs {@code jk
+     * publish} publishes it; with none, this machine does.
      */
     static PublishMode publishMode(@Nullable String override, ProjectInfo info, Path ciRoot, boolean inGit) {
         String word = override != null ? override : info.releasePublish();
         PublishMode chosen = word.isEmpty() ? null : PublishMode.parse(word);
         if (chosen != null) return chosen;
-        boolean uploads =
-                !info.publishRepository().isEmpty() || !info.publishRelease().isEmpty();
-        if (!uploads && info.imageRegistry().isEmpty()) return PublishMode.NONE;
+        boolean uploads = !info.publishRepository().isEmpty()
+                || !info.publishRelease().isEmpty()
+                || !info.imageRegistry().isEmpty();
+        if (!uploads) return PublishMode.NONE;
         if (inGit && CiPublishScan.runsPublish(ciRoot)) return PublishMode.CI;
-        return uploads ? PublishMode.LOCAL : PublishMode.NONE;
+        return PublishMode.LOCAL;
     }
 
     @Override

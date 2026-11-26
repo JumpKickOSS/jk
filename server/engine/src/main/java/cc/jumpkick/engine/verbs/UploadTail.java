@@ -30,7 +30,8 @@ final class UploadTail {
     /**
      * A dry run: nothing is sent and no credential is read. Its destination is the URL the
      * {@code [publish]} repository writes to, or none when the manifest names no repository URL;
-     * a project with a {@code [publish] release} bucket also plans its release lane.
+     * a project with a {@code [publish] release} bucket also plans its release lane, and one with an
+     * {@code [image] registry} the images it would push.
      */
     static TailArgs.Publish dryRun(Path dir) {
         ProjectInfo info = ProjectInfoPlans.projectInfo(dir);
@@ -44,6 +45,7 @@ final class UploadTail {
                 && ReleaseTarget.parse(release) instanceof ReleaseTarget.Bucket) {
             lanes.add(PublishLane.RELEASE);
         }
+        if (info.error() == null && !info.imageRegistry().isEmpty()) lanes.add(PublishLane.IMAGE);
         return new TailArgs.Publish(url, false, true, null, null, RepoCredential.ANONYMOUS, false, lanes, false, null);
     }
 

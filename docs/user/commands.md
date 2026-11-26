@@ -29,9 +29,9 @@ Canonical names. Hidden aliases (Maven/Gradle muscle memory) are listed in
 | `jk assemble` | Fat / minified jar | [Packaging](packaging.md) |
 | `jk javadoc` | Javadoc jar of every library, no tests (`jk build` writes it only where `javadoc = true`) | [Packaging](packaging.md#library-artefacts-sources-and-javadoc-jars) |
 | `jk native` | GraalVM native-image | [Native](native.md) |
-| `jk image` | OCI image | [Images](images.md) |
+| `jk image` | OCI image, loaded into docker or podman or written as a tarball | [Images](images.md) |
 | `jk train` | Observe a run for reachability / AOT | [Dynamic surface](dynamic-surface.md) |
-| `jk publish` | Publish libraries to a repository and deliverables to a release | [Publish](publish.md) |
+| `jk publish` | Publish libraries, release files and container images | [Publish](publish.md) |
 | `jk yank` | Delist a published version from the `[publish]` repository (`--delete` removes its files too) | [Publish](publish.md#yanking-a-version) |
 | `jk install` | The inner-loop install: this project at its version plus `-SNAPSHOT`, and an application or tool on this machine (PATH / jkx) | [Packaging](packaging.md#jk-install-project), [Tools](tools.md) |
 | `jk release` | Build, install, tag the declared version, move `jk.toml` to the next and push | [Publish](publish.md#releasing) |

@@ -29,7 +29,6 @@ class ShortFlagsTest {
             "install --ver",
             "install --bin",
             "install --destination",
-            "image --sigstore",
             "release --major",
             "release --minor",
             "release --patch",

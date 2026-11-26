@@ -5,9 +5,12 @@ import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.compile.LibDirLayout;
 import cc.jumpkick.compile.ModuleRuntimeClasspath;
+import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.ManifestImage;
 import cc.jumpkick.config.RunNotices;
+import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.config.SnapshotQualifier;
 import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.engine.plugin.PluginClient;
@@ -15,8 +18,10 @@ import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.engine.plugin.WorkerContainment;
 import cc.jumpkick.engine.plugin.WorkerExit;
 import cc.jumpkick.host.AtomicWrites;
+import cc.jumpkick.host.ChildEnv;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.Log;
+import cc.jumpkick.http.Http;
 import cc.jumpkick.image.ImageConfig;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jsonl.Jsonl;
@@ -25,6 +30,7 @@ import cc.jumpkick.layout.MainClassScanner;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.ImageTable;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.LibDir;
@@ -36,20 +42,22 @@ import cc.jumpkick.run.BuildPlanKey;
 import cc.jumpkick.run.BuildStage;
 import cc.jumpkick.run.StepForecast;
 import cc.jumpkick.run.Task;
-import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.BuildPlanner;
 import cc.jumpkick.runtime.EffortWeights;
+import cc.jumpkick.runtime.ModuleJar;
 import cc.jumpkick.runtime.PackagingKeys;
 import cc.jumpkick.runtime.PluginBuild;
 import cc.jumpkick.runtime.PluginTransfers;
 import cc.jumpkick.runtime.Tail;
+import cc.jumpkick.runtime.base.BaseImageDigest;
 import cc.jumpkick.runtime.base.ImageCredentials;
 import cc.jumpkick.runtime.base.PluginLaunch;
 import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.task.ModuleIdentity;
 import cc.jumpkick.task.WorkerClosure;
+import cc.jumpkick.wire.runtime.ImagePush;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -70,11 +78,15 @@ import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 
 /**
  * {@code jk image}: the OCI {@link Tail} (Jib plugin or docker/podman Dockerfile mode) after the
- * build. Success details ride structured keys ({@link #IMAGE_REF}/{@link #TARBALL_PATH}/…).
+ * build, which writes a tarball or loads the local daemon. Success details ride structured keys
+ * ({@link #IMAGE_REF}/{@link #TARBALL_PATH}/…). {@code jk publish}'s image lane plans the same image
+ * with {@link #publish} and pushes it with {@link #push} once the run's other lanes are done.
  */
 public final class ImagePlans {
 
@@ -88,55 +100,83 @@ public final class ImagePlans {
 
     public static final BuildPlanKey<String> IMAGE_REF = BuildPlanKey.scalar("image-ref", String.class);
 
+    /** The digest a {@code docker push} prints for the manifest it pushed. */
+    private static final Pattern PUSHED_DIGEST = Pattern.compile("sha256:[0-9a-f]{64}");
+
     /** The SBOM a push attaches to the image, under the module's {@link BuildLayout#sbomDir}. */
     static final String IMAGE_SBOM = "image.cdx.json";
 
     /**
      * {@code jk image}'s tail: {@code image-plan} then {@code write-image} (a node module's own pair
-     * for a node module). {@code tarballArg} is tri-state exactly like {@code --tarball}'s optional
-     * value: {@code null} (no tarball), {@code ""} (default layout path), or an explicit path.
-     * {@code sigstore} is {@code --sigstore}, which signs a push whatever {@code [image]} says.
+     * for a node module), which never pushes. {@code tarballArg} is tri-state exactly like {@code
+     * --tarball}'s optional value: {@code null} (load the daemon), {@code ""} (default layout path),
+     * or an explicit path.
      */
     public static Tail tail(
             @Nullable String mainClass,
-            @Nullable String registry,
             @Nullable String tag,
             @Nullable String tarballArg,
-            @Nullable String dockerExecutableArg,
-            boolean sigstore) {
+            @Nullable String dockerExecutableArg) {
         return (plan, in) -> {
             Path projectDir = in.dir();
             if (NodeImagePlans.isNodeModule(in.buildFile(), projectDir)) {
-                NodeImagePlans.tail(
-                        plan, in, projectDir, in.cache(), registry, tag, tarballArg, dockerExecutableArg, sigstore);
+                NodeImagePlans.tail(plan, in, projectDir, in.cache(), tag, tarballArg, dockerExecutableArg);
                 return;
             }
             plan.stateKeys(CONFIG, TARBALL_PATH, RUNTIME_JARS, IMAGE_REF)
                     .extend(imagePlanStep(
-                            projectDir,
-                            in.cache(),
-                            mainClass,
-                            registry,
-                            tag,
-                            tarballArg,
-                            dockerExecutableArg,
-                            sigstore))
+                            projectDir, in.cache(), mainClass, tag, tarballArg, dockerExecutableArg, false))
                     .extend(writeImageStep(projectDir, in.cache(), mainClass));
         };
     }
 
-    /** Resolve the image config and, in Jib mode, the main class and the dependency layers. */
+    /**
+     * {@code jk publish}'s image lane in the module's plan: {@code image-plan} resolves everything
+     * the push needs and refuses what cannot be pushed, before the module's uploads. The push itself
+     * runs after every other lane ({@link ImageLane}).
+     */
+    static void publish(BuildPlan.Builder plan, BuildPlanner.Inputs in) {
+        plan.stateKeys(CONFIG, RUNTIME_JARS, ImagePushPlan.KEY)
+                .extend(imagePlanStep(in.dir(), in.cache(), null, null, null, null, true));
+    }
+
+    /**
+     * Whether the module {@code manifest} describes ships an image in a publish run: it is not
+     * {@code [publish] skip}, an {@code [image] registry} reaches it, and it has something to run,
+     * a main class, a Dockerfile or a node server.
+     */
+    static boolean images(JkBuild manifest, Path dir) {
+        if (ModuleJar.skipsRelease(manifest)) return false;
+        ImageTable table = ManifestImage.merge(manifest.image(), GlobalConfig.image());
+        if (table.registry() == null || table.registry().isBlank()) return false;
+        if (NodeImagePlans.isNodeModule(ManifestPaths.manifestIn(dir), dir)) return true;
+        if (table.main() != null && !table.main().isBlank()) return true;
+        if (table.dockerFile() != null && !table.dockerFile().isBlank()) return true;
+        if (manifest.mainClass() != null) return true;
+        return PluginBuild.shape(manifest, dir).map(sh -> sh.mainScan()).orElse(false);
+    }
+
+    /** The name of the module {@code plan} planned, or {@code ""} before its parse step ran. */
+    static String moduleName(BuildPlan plan) {
+        return plan.get(BuildPlanner.MODULE)
+                .map(m -> m.project().project().name())
+                .orElse("");
+    }
+
+    /**
+     * Resolve the image config and, in Jib mode, the main class and the dependency layers. A push
+     * ({@code jk publish}) also refuses what it cannot sign and records the {@link #PUSH}.
+     */
     private static Task imagePlanStep(
             Path projectDir,
             Path cache,
             @Nullable String mainClass,
-            @Nullable String registry,
             @Nullable String tag,
             @Nullable String tarballArg,
             @Nullable String dockerExecutableArg,
-            boolean sigstore) {
+            boolean push) {
         return Task.builder(TaskNames.IMAGE_PLAN)
-                .forecast(StepForecast.RIDES)
+                .forecast(push ? StepForecast.always("the image lane pushes the image") : StepForecast.RIDES)
                 .stage(BuildStage.IMAGE)
                 .requires(TaskNames.PACKAGE_JAR)
                 .ticks(1)
@@ -147,15 +187,16 @@ public final class ImagePlans {
                     Path tarballPath = resolveTarballPath(tarballArg, layout);
                     if (tarballPath != null) ctx.put(TARBALL_PATH, tarballPath);
                     int level = javaLevel(project, projectDir);
-                    ImageConfig config = buildConfig(project, level, registry, tag, dockerExecutableArg, sigstore);
+                    ImageConfig config = buildConfig(project, level, tag, dockerExecutableArg);
                     ctx.put(CONFIG, config);
-                    String unsignable = ImagePushProvenance.unsignable(config, tarballPath);
+                    String unsignable = push ? ImagePushProvenance.unsignable(config) : null;
                     if (unsignable != null) {
                         ctx.error("image", unsignable);
                         throw new IllegalStateException(unsignable);
                     }
                     boolean dockerfileMode =
                             config.dockerFile() != null && !config.dockerFile().isBlank();
+                    String chosen = null;
                     if (!dockerfileMode) {
                         // A base whose tag names an older Java than the module's level holds a
                         // JVM that cannot load these classes: the image would not start.
@@ -165,7 +206,7 @@ public final class ImagePlans {
                             throw new RuntimeException(tooOld);
                         }
                         // Jib mode: main class required; load dep jars for classpath layering.
-                        String chosen = resolveMainClass(mainClass, config, project, projectDir);
+                        chosen = resolveMainClass(mainClass, config, project, projectDir);
                         if (chosen == null || chosen.isBlank()) {
                             ctx.error(
                                     "no-main", "no main class; pass --main, or set [image] main or [application] main");
@@ -186,6 +227,7 @@ public final class ImagePlans {
                                         : runtimeJars(LibDirLayout.libs(
                                                 layout.moduleRoot(), project, lockFile, JkStores.storeCas(), libDir)));
                     }
+                    if (push) ctx.put(ImagePushPlan.KEY, new ImagePushPlan(cache, chosen, null));
                     ctx.progress(1);
                 })
                 .build();
@@ -208,14 +250,11 @@ public final class ImagePlans {
 
                     // Dockerfile mode: shell out to docker/podman build; skip Jib entirely.
                     if (config.dockerFile() != null && !config.dockerFile().isBlank()) {
-                        boolean daemonMode = tarballPath == null
-                                && (config.registry() == null
-                                        || config.registry().isBlank());
                         String exe = config.dockerExecutable() != null ? config.dockerExecutable() : "docker";
-                        ctx.label((daemonMode ? "build into " : "build + push via ") + exe + " (" + config.dockerFile()
-                                + ")");
+                        ctx.label("build into " + exe + " (" + config.dockerFile() + ")");
                         try {
-                            String ref = runDockerfileBuild(ctx, config, projectDir, tarballPath, project);
+                            String ref =
+                                    runDockerfileBuild(ctx::output, config, projectDir, tarballPath, project, false);
                             ctx.put(IMAGE_REF, ref);
                         } catch (RuntimeException e) {
                             ctx.error("image", Errors.text(e));
@@ -226,11 +265,7 @@ public final class ImagePlans {
                     }
 
                     RuntimeJars jars = ctx.require(RUNTIME_JARS);
-                    Path classesDir = PluginBuild.shape(project, projectDir)
-                                    .map(sh -> sh.layeredImage())
-                                    .orElse(false)
-                            ? layout.classesDir()
-                            : null;
+                    Path classesDir = classesDir(project, layout);
 
                     String chosen = resolveMainClass(mainClass, config, project, projectDir);
 
@@ -249,48 +284,142 @@ public final class ImagePlans {
                             classesDir,
                             chosen,
                             workerJar,
-                            (base, said) -> runImageWorker(
-                                    said,
-                                    cache,
-                                    workerJar,
-                                    project,
-                                    layout,
-                                    config,
-                                    base,
-                                    chosen,
-                                    jars,
-                                    classesDir,
-                                    tarballPath));
+                            (base, said) -> {
+                                SpecWriter spec;
+                                try {
+                                    spec = imageWorkerSpec(
+                                            cache,
+                                            project,
+                                            layout,
+                                            config,
+                                            base,
+                                            chosen,
+                                            jars,
+                                            classesDir,
+                                            tarballPath,
+                                            false);
+                                } catch (IOException e) {
+                                    throw new RuntimeException(e.getMessage(), e);
+                                }
+                                return forkWorker(workerJar, project, spec, said);
+                            });
                 })
                 .build();
     }
 
+    /** The compiled classes a layered-image packager ships as their own layer, else null. */
+    private static @Nullable Path classesDir(JkBuild project, BuildLayout layout) {
+        return PluginBuild.shape(project, layout.moduleRoot())
+                        .map(sh -> sh.layeredImage())
+                        .orElse(false)
+                ? layout.classesDir()
+                : null;
+    }
+
+    /** What a dry run's image lane would push for the module {@code plan} planned. */
+    static ImagePush planned(BuildPlan plan) {
+        JkBuild project = plan.get(BuildPlanner.MODULE).orElseThrow().project();
+        ImageConfig config = plan.get(CONFIG).orElseThrow();
+        return new ImagePush(
+                project.project().name(),
+                config.targetReference(
+                        project.project().name(), project.project().version()),
+                "",
+                true);
+    }
+
     /**
-     * What the image tail of {@code plan} did — the reference it pushed or loaded, the tarball it
-     * wrote, and the repository:tag it resolved — or {@code null} when the plan never reached its
-     * image step. Daemon mode is the default when there is neither a tarball nor a registry.
+     * Build and push the image {@code plan}'s {@code image-plan} step prepared: Jib through the image
+     * worker, which attaches the SBOM and provenance, or {@code docker build} and {@code docker push}
+     * in Dockerfile mode. {@code said} takes each diagnostic the worker sends.
+     */
+    static ImagePush push(BuildPlan plan, Consumer<String> said) throws IOException {
+        ImagePushPlan push = plan.get(ImagePushPlan.KEY).orElseThrow();
+        ImageConfig config = plan.get(CONFIG).orElseThrow();
+        ModuleIdentity module = plan.get(BuildPlanner.MODULE).orElseThrow();
+        JkBuild project = module.project();
+        BuildLayout layout = module.layout();
+        String name = project.project().name();
+        String ref = config.targetReference(name, project.project().version());
+        if (SessionContext.current().offline()) throw new IOException(Errors.offlineRefusal(ref));
+        if (config.dockerFile() != null && !config.dockerFile().isBlank()) {
+            @Nullable String[] digest = {null};
+            List<String> tail = new ArrayList<>();
+            Consumer<String> output = line -> {
+                Matcher m = PUSHED_DIGEST.matcher(line);
+                if (line.contains("digest:") && m.find()) digest[0] = m.group();
+                tail.add(line);
+                if (tail.size() > 20) tail.removeFirst();
+            };
+            try {
+                runDockerfileBuild(output, config, layout.moduleRoot(), null, project, true);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new IOException("interrupted pushing " + ref, e);
+            } catch (RuntimeException e) {
+                throw new IOException(Errors.text(e) + (tail.isEmpty() ? "" : ":\n" + String.join("\n", tail)), e);
+            }
+            return new ImagePush(name, ref, digest[0] == null ? "" : digest[0], false);
+        }
+        String declared = Objects.requireNonNull(config.base(), "image base");
+        String base = BaseImageDigest.pin(declared, new Http(), ImageCredentials.resolve(declared, layout.moduleRoot()))
+                .orElse(declared);
+        Path workerJar = PluginJar.IMAGE_BUILDER.locate(JkStores.storeCas());
+        ImagePushPlan.NodeSpec node = push.node();
+        SpecWriter spec = node != null
+                ? node.of(base)
+                : imageWorkerSpec(
+                        push.cache(),
+                        project,
+                        layout,
+                        config,
+                        base,
+                        push.main(),
+                        plan.get(RUNTIME_JARS).orElseThrow(),
+                        classesDir(project, layout),
+                        null,
+                        true);
+        Built built;
+        try {
+            built = runWorker(workerJar, project, spec, said);
+        } catch (RuntimeException e) {
+            throw new IOException(Errors.text(e), e);
+        }
+        return new ImagePush(name, built.ref().isBlank() ? ref : built.ref(), built.digest(), false);
+    }
+
+    /**
+     * What {@code jk image}'s tail of {@code plan} did — the reference it loaded, the tarball it
+     * wrote, the repository:tag it resolved and the reference {@code jk publish} would push — or
+     * {@code null} when the plan never reached its image step or is a publish run's.
      */
     public static ModuleOutcome.@Nullable Image outcomeOf(BuildPlan plan) {
+        if (plan.get(ImagePushPlan.KEY).isPresent()) return null;
         ImageConfig config = plan.get(CONFIG).orElse(null);
         Path tarball = plan.get(TARBALL_PATH).orElse(null);
         String reference = plan.get(IMAGE_REF).orElse(null);
         if (config == null && tarball == null && reference == null) return null;
         JkBuild project =
                 plan.get(BuildPlanner.MODULE).map(ModuleIdentity::project).orElse(null);
-        boolean daemonMode = tarball == null
-                && (config == null
-                        || config.registry() == null
-                        || config.registry().isBlank());
-        String daemon = !daemonMode
+        String daemon = tarball != null
                 ? null
                 : config != null && config.dockerExecutable() != null ? config.dockerExecutable() : "docker";
         String name = project == null ? null : project.project().name();
         String version = project == null ? null : project.project().version();
+        String publishRef = null;
         if (config != null && name != null && version != null) {
+            if (config.registry() != null && !config.registry().isBlank()) {
+                // jk publish ships the declared version, never this build's snapshot of it.
+                String declared = version.endsWith(SnapshotQualifier.SUFFIX)
+                        ? version.substring(0, version.length() - SnapshotQualifier.SUFFIX.length())
+                        : version;
+                publishRef = config.targetReference(name, declared);
+            }
             name = config.repository(name);
             version = config.tagOr(version);
         }
-        return new ModuleOutcome.Image(reference, tarball != null ? tarball.toString() : null, name, version, daemon);
+        return new ModuleOutcome.Image(
+                reference, tarball != null ? tarball.toString() : null, name, version, daemon, publishRef);
     }
 
     static @Nullable Path resolveTarballPath(@Nullable String tarballArg, BuildLayout layout) {
@@ -311,13 +440,7 @@ public final class ImagePlans {
      * </ol>
      */
     private static ImageConfig buildConfig(
-            JkBuild project,
-            int level,
-            @Nullable String registry,
-            @Nullable String tag,
-            @Nullable String dockerExecutableArg,
-            boolean sigstore)
-            throws IOException {
+            JkBuild project, int level, @Nullable String tag, @Nullable String dockerExecutableArg) throws IOException {
         // Merge user-global [image] from ~/.jk/config.toml underneath the project layer.
         ImageTable data = ManifestImage.merge(project.image(), GlobalConfig.image());
 
@@ -335,7 +458,7 @@ public final class ImagePlans {
                 data.env(),
                 data.trainingEnv(),
                 data.labels(),
-                registry != null ? registry : data.registry(),
+                data.registry(),
                 tag != null ? tag : data.tag(),
                 data.platforms(),
                 data.main(),
@@ -343,7 +466,7 @@ public final class ImagePlans {
                 data.dockerFile(),
                 Boolean.TRUE.equals(data.aotCache()),
                 !Boolean.FALSE.equals(data.referrers()),
-                sigstore || Boolean.TRUE.equals(data.sigstore()));
+                Boolean.TRUE.equals(data.sigstore()));
     }
 
     /**
@@ -359,7 +482,8 @@ public final class ImagePlans {
     /**
      * The worker spec for one image build: every {@code [image]} value the worker needs, plus the
      * two the engine alone knows — the resolved {@code base} the action key was built from, and the
-     * jk cache root the worker writes its base-JRE tree under.
+     * jk cache root the worker writes its base-JRE tree under. With no {@code tarballPath} the image
+     * is pushed when {@code push} says so, else loaded into the local daemon.
      */
     public static SpecWriter imageWorkerSpec(
             Path cache,
@@ -370,10 +494,10 @@ public final class ImagePlans {
             @Nullable String chosen,
             RuntimeJars jars,
             @Nullable Path classesDir,
-            @Nullable Path tarballPath)
+            @Nullable Path tarballPath,
+            boolean push)
             throws IOException {
-        boolean daemonMode = tarballPath == null
-                && (config.registry() == null || config.registry().isBlank());
+        boolean daemonMode = tarballPath == null && !push;
         SpecWriter sw = new SpecWriter()
                 .op(PluginProtocol.OP_IMAGE, null, "jk-image-builder")
                 .configString("artifact", project.project().name())
@@ -480,47 +604,34 @@ public final class ImagePlans {
     }
 
     /**
-     * Fork the image worker. {@code base} is the resolved (digest-pinned where the registry could
-     * be asked) base reference the action key was built from — not {@code config.base()}, whose tag
-     * may point somewhere else by the time Jib pulls.
+     * What the image worker built: the reference ({@code ""} for a tarball) and, for a push, the
+     * digest the registry holds it under ({@code ""} otherwise).
      */
-    private static String runImageWorker(
-            Consumer<String> said,
-            Path cache,
-            Path workerJar,
-            JkBuild project,
-            BuildLayout layout,
-            ImageConfig config,
-            String base,
-            @Nullable String chosen,
-            RuntimeJars jars,
-            @Nullable Path classesDir,
-            @Nullable Path tarballPath) {
-        try {
-            return forkWorker(
-                    workerJar,
-                    project,
-                    imageWorkerSpec(cache, project, layout, config, base, chosen, jars, classesDir, tarballPath),
-                    said);
-        } catch (IOException e) {
-            throw new RuntimeException(e.getMessage(), e);
-        }
-    }
+    record Built(String ref, String digest) {}
 
     /**
      * Run the image worker on {@code sw}, for {@code project}; the reference it built, or {@code ""}
      * for a tarball. {@code said} takes each {@code diagnostic} reply.
      */
     static String forkWorker(Path workerJar, JkBuild project, SpecWriter sw, Consumer<String> said) {
+        return runWorker(workerJar, project, sw, said).ref();
+    }
+
+    /** {@link #forkWorker}, with the digest a push left in the registry. */
+    private static Built runWorker(Path workerJar, JkBuild project, SpecWriter sw, Consumer<String> said) {
         try {
             Path spec = ImageCredentials.newSpecFile();
             try {
                 Files.write(spec, specLines(project, sw), StandardCharsets.UTF_8);
                 @Nullable String[] ref = {null};
+                @Nullable String[] digest = {null};
                 @Nullable String[] workerError = {null};
                 StringBuilder diag = new StringBuilder();
                 PluginClient client = new PluginClient("##JKIM:")
-                        .on(PluginProtocol.RESULT, json -> ref[0] = Jsonl.str(json, "ref"))
+                        .on(PluginProtocol.RESULT, json -> {
+                            ref[0] = Jsonl.str(json, "ref");
+                            digest[0] = Jsonl.str(json, "digest");
+                        })
                         .on(PluginProtocol.ERROR, json -> workerError[0] = Jsonl.str(json, PluginProtocol.MESSAGE))
                         .on(PluginProtocol.DIAGNOSTIC, said)
                         .passthrough(ln -> diag.append(ln).append('\n'));
@@ -538,8 +649,7 @@ public final class ImagePlans {
                     throw new RuntimeException(
                             "image worker failed" + (d != null ? ": " + d : " (exit " + exit.code() + ")"));
                 }
-                String built = ref[0];
-                return built != null ? built : "";
+                return new Built(ref[0] != null ? ref[0] : "", digest[0] != null ? digest[0] : "");
             } finally {
                 Files.deleteIfExists(spec);
             }
@@ -558,13 +668,17 @@ public final class ImagePlans {
 
     /**
      * Build an OCI image using the project's Dockerfile. Runs {@code docker build -f <file> -t
-     * <ref> [--platform <p>]* <projectDir>}, then (for tarball mode) {@code docker save}, or (for
-     * push mode) {@code docker push}. Daemon mode requires no extra step — the build loads directly
-     * into the local runtime. Build output streams via {@code ctx.output()} (over the wire, in the
-     * engine-hosted case).
+     * <ref> [--platform <p>]* <projectDir>}, then (for tarball mode) {@code docker save}, or (for a
+     * {@code push}) {@code docker push}. Daemon mode requires no extra step — the build loads
+     * directly into the local runtime. Every line the runtime prints goes to {@code output}.
      */
     private static String runDockerfileBuild(
-            TaskContext ctx, ImageConfig config, Path projectDir, @Nullable Path tarballPath, JkBuild project)
+            Consumer<String> output,
+            ImageConfig config,
+            Path projectDir,
+            @Nullable Path tarballPath,
+            JkBuild project,
+            boolean push)
             throws IOException, InterruptedException {
         String exe = config.dockerExecutable() != null ? config.dockerExecutable() : "docker";
         Path dockerfile = projectDir.resolve(config.dockerFile()).normalize();
@@ -586,13 +700,13 @@ public final class ImagePlans {
         }
         buildCmd.add(projectDir.toString());
 
-        runSubprocess(ctx, buildCmd, projectDir);
+        runSubprocess(output, buildCmd, projectDir);
 
         if (tarballPath != null) {
             Files.createDirectories(tarballPath.getParent());
-            runSubprocess(ctx, List.of(exe, "save", "-o", tarballPath.toString(), ref), projectDir);
-        } else if (config.registry() != null && !config.registry().isBlank()) {
-            runSubprocess(ctx, List.of(exe, "push", ref), projectDir);
+            runSubprocess(output, List.of(exe, "save", "-o", tarballPath.toString(), ref), projectDir);
+        } else if (push) {
+            runSubprocess(output, List.of(exe, "push", ref), projectDir);
             String unattached = dockerfilePushNotice(config, ref);
             if (unattached != null) {
                 RunNotices.warnOnce(
@@ -612,15 +726,20 @@ public final class ImagePlans {
         return config.referrers() ? "[image] no SBOM or provenance attached to " + ref + ": Dockerfile mode" : null;
     }
 
-    /** Run a subprocess, streaming each output line via {@code ctx.output()}. */
-    private static void runSubprocess(TaskContext ctx, List<String> cmd, Path cwd)
+    /**
+     * Run a subprocess, handing each line it prints to {@code output}. It sees the container runtime,
+     * the {@code DOCKER_CONFIG}, the proxy and the {@code PATH} of the shell running {@code jk}, not
+     * the daemon's.
+     */
+    private static void runSubprocess(Consumer<String> output, List<String> cmd, Path cwd)
             throws IOException, InterruptedException {
-        Process p =
-                JobWorkers.start(new ProcessBuilder(cmd).directory(cwd.toFile()).redirectErrorStream(true));
+        ProcessBuilder pb = ChildEnv.putAll(
+                new ProcessBuilder(cmd).directory(cwd.toFile()).redirectErrorStream(true), BuildEnv.fromRequest());
+        Process p = JobWorkers.start(pb);
         try (var reader = new BufferedReader(new InputStreamReader(p.getInputStream(), StandardCharsets.UTF_8))) {
             String line;
             while ((line = reader.readLine()) != null) {
-                ctx.output(line);
+                output.accept(line);
             }
         }
         int exit = p.waitFor();

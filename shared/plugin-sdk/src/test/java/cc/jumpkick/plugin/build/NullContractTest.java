@@ -12,13 +12,15 @@ class NullContractTest {
 
     @Test
     void optional_result_and_runtime_entry_paths_are_explicit() {
-        ImageResult pushed = ImageResult.pushed("registry.example/app:1");
+        ImageResult pushed = ImageResult.pushed("registry.example/app:1", "sha256:ab12");
         ImageResult tarball = ImageResult.tarball(Path.of("app.tar"));
         RuntimeEntry container = new RuntimeEntry("app.aar", null, false, Path.of("app-aar"));
 
         assertThat(pushed.reference()).isEqualTo("registry.example/app:1");
         assertThat(pushed.tarball()).isNull();
+        assertThat(pushed.digest()).isEqualTo("sha256:ab12");
         assertThat(tarball.reference()).isNull();
+        assertThat(tarball.digest()).isNull();
         assertThat(tarball.tarball()).isEqualTo(Path.of("app.tar"));
         assertThat(container.jar()).isNull();
         assertThat(container.container()).isEqualTo(Path.of("app-aar"));

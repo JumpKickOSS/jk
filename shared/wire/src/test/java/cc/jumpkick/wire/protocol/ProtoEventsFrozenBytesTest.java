@@ -311,7 +311,7 @@ class ProtoEventsFrozenBytesTest {
                         9,
                         true,
                         false,
-                        new ModuleOutcome.Image("ghcr.io/x:1", null, "x", null, null),
+                        new ModuleOutcome.Image("ghcr.io/x:1", null, "x", null, null, null),
                         null))
                 .isEqualTo(
                         "{\"type\":\"module-finish\",\"dir\":\"a/b\",\"coord\":\"g:a\",\"success\":true,\"exitCode\":0,\"millis\":9,\"didWork\":true,\"cancelled\":false,\"imageRef\":\"ghcr.io/x:1\",\"imageName\":\"x\",\"hasImage\":true}");
@@ -332,7 +332,7 @@ class ProtoEventsFrozenBytesTest {
                         false, 2, SecretRedactor.of(List.of("s3cret")).redactAll(List.of("m1", "m2")), true))
                 .isEqualTo(
                         "{\"type\":\"workspace-finish\",\"success\":false,\"exitCode\":2,\"errors\":[\"m1\",\"m2\"],\"cancelled\":true,\"upToDate\":false}");
-        assertThat(ProtoEvents.workspaceFinish(true, 0, List.of(), false, null, true, null, null))
+        assertThat(ProtoEvents.workspaceFinish(true, 0, List.of(), false, null, true, null, null, List.of()))
                 .isEqualTo(
                         "{\"type\":\"workspace-finish\",\"success\":true,\"exitCode\":0,\"errors\":[],\"cancelled\":false,\"upToDate\":true}");
         assertThat(ProtoEvents.workspaceFinish(
@@ -345,7 +345,8 @@ class ProtoEventsFrozenBytesTest {
                         SecretRedactor.none()
                                 .redactAll(List.of("{\"packages\":[\"g:a\"]}"))
                                 .getFirst(),
-                        null))
+                        null,
+                        List.of()))
                 .isEqualTo(
                         "{\"type\":\"workspace-finish\",\"success\":false,\"exitCode\":6,\"errors\":[\"no solution\"],\"cancelled\":false,\"upToDate\":false,\"conflict\":\"{\\\"packages\\\":[\\\"g:a\\\"]}\"}");
         assertThat(ProtoEvents.withCancelled(ProtoEvents.planFinish("a/b", true, "up-to-date", -1, 0, 0, 0), true))

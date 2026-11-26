@@ -56,9 +56,9 @@ class ReleasePublishModeTest {
     }
 
     @Test
-    void an_image_registry_alone_has_nothing_for_jk_publish_to_upload_from_here() {
+    void an_image_registry_alone_is_a_destination_to_publish_from_here() {
         assertThat(ReleaseCommand.publishMode(null, info("", "ghcr.io/acme", ""), root, true))
-                .isEqualTo(PublishMode.NONE);
+                .isEqualTo(PublishMode.LOCAL);
     }
 
     @Test

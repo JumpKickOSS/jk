@@ -67,6 +67,7 @@ public record ModuleFinishEvent(
                     .optionalString("imageName", image.name())
                     .optionalString("imageVersion", image.version())
                     .optionalString("imageDaemonExe", image.daemonExe())
+                    .optionalString("imagePublishRef", image.publishRef())
                     .bool("hasImage", true);
         }
         if (installed != null) {
@@ -133,7 +134,8 @@ public record ModuleFinishEvent(
                         Jsonl.str(json, "imageTarball"),
                         Jsonl.str(json, "imageName"),
                         Jsonl.str(json, "imageVersion"),
-                        Jsonl.str(json, "imageDaemonExe"))
+                        Jsonl.str(json, "imageDaemonExe"),
+                        Jsonl.str(json, "imagePublishRef"))
                 : null;
         String installCoord = Jsonl.str(json, "installCoord");
         ModuleOutcome.Installed installed = installCoord == null

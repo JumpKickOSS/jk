@@ -270,7 +270,7 @@
     },
     "image": {
       "type": "object",
-      "description": "[image] table: what jk image builds and where it pushes. A member's table sits over the workspace root's, which sits over ~/.jk/config.toml's. Keys are documented in docs/user/images.md.",
+      "description": "[image] table: what jk image builds and where jk publish pushes it. A member's table sits over the workspace root's, which sits over ~/.jk/config.toml's. Keys are documented in docs/user/images.md.",
       "properties": {
         "base": {
           "type": "string",
@@ -306,7 +306,7 @@
         },
         "registry": {
           "type": "string",
-          "description": "Push target (\"ghcr.io/acme\"). Default: load into the local daemon."
+          "description": "Registry jk publish pushes the image to (\"ghcr.io/acme\"); jk image names the image it loads after it. Default: none, no image lane."
         },
         "tag": {
           "type": "string",
@@ -344,7 +344,7 @@
         },
         "sigstore": {
           "type": "boolean",
-          "description": "Sign a registry push's SLSA provenance with Sigstore keyless and attach it in a DSSE envelope, as jk image --sigstore does. Default false."
+          "description": "Sign a registry push's SLSA provenance with Sigstore keyless and attach it in a DSSE envelope, on every jk publish push. Default false."
         }
       },
       "additionalProperties": false

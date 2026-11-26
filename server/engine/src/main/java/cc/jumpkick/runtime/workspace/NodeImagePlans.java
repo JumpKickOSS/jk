@@ -23,6 +23,7 @@ import cc.jumpkick.run.BuildPlanKey;
 import cc.jumpkick.run.BuildStage;
 import cc.jumpkick.run.StepForecast;
 import cc.jumpkick.run.Task;
+import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.BuildPlanner;
@@ -72,25 +73,31 @@ final class NodeImagePlans {
             BuildPlanner.Inputs inputs,
             Path projectDir,
             Path cache,
-            @Nullable String registry,
             @Nullable String tag,
             @Nullable String tarballArg,
-            @Nullable String dockerExecutableArg,
-            boolean sigstore) {
+            @Nullable String dockerExecutableArg) {
         return builder.stateKeys(ImagePlans.CONFIG, ImagePlans.TARBALL_PATH, ImagePlans.IMAGE_REF, STATIC)
-                .extend(planStep(projectDir, registry, tag, tarballArg, dockerExecutableArg, sigstore))
+                .extend(planStep(inputs, projectDir, cache, tag, tarballArg, dockerExecutableArg, false))
                 .extend(writeStep(inputs, projectDir, cache));
     }
 
+    /** A publish run's image-plan step: it also gathers the layers the image lane pushes. */
+    static BuildPlan.Builder publish(
+            BuildPlan.Builder builder, BuildPlanner.Inputs inputs, Path projectDir, Path cache) {
+        return builder.stateKeys(ImagePlans.CONFIG, STATIC, ImagePushPlan.KEY)
+                .extend(planStep(inputs, projectDir, cache, null, null, null, true));
+    }
+
     private static Task planStep(
+            BuildPlanner.Inputs inputs,
             Path projectDir,
-            @Nullable String registry,
+            Path cache,
             @Nullable String tag,
             @Nullable String tarballArg,
             @Nullable String dockerExecutableArg,
-            boolean sigstore) {
+            boolean push) {
         return Task.builder(TaskNames.IMAGE_PLAN)
-                .forecast(StepForecast.RIDES)
+                .forecast(push ? StepForecast.always("the image lane pushes the image") : StepForecast.RIDES)
                 .stage(BuildStage.IMAGE)
                 .requires(TaskNames.NODE_BUILD)
                 .ticks(1)
@@ -115,14 +122,23 @@ final class NodeImagePlans {
                     Path tarballPath = ImagePlans.resolveTarballPath(tarballArg, layout);
                     if (tarballPath != null) ctx.put(ImagePlans.TARBALL_PATH, tarballPath);
                     ctx.put(STATIC, staticSite);
-                    ImageConfig config =
-                            config(data, project, projectDir, staticSite, registry, tag, dockerExecutableArg, sigstore);
-                    String unsignable = ImagePushProvenance.unsignable(config, tarballPath);
+                    ImageConfig config = config(data, project, projectDir, staticSite, tag, dockerExecutableArg);
+                    String unsignable = push ? ImagePushProvenance.unsignable(config) : null;
                     if (unsignable != null) {
                         ctx.error("image", unsignable);
                         throw new IllegalStateException(unsignable);
                     }
                     ctx.put(ImagePlans.CONFIG, config);
+                    if (push) {
+                        NodeImageContent.Content content =
+                                content(ctx, inputs, project, projectDir, staticSite, config);
+                        ctx.put(
+                                ImagePushPlan.KEY,
+                                new ImagePushPlan(
+                                        cache,
+                                        null,
+                                        base -> spec(cache, project, layout, config, base, content, null, true)));
+                    }
                     ctx.progress(1);
                 })
                 .build();
@@ -139,10 +155,8 @@ final class NodeImagePlans {
             JkBuild project,
             Path projectDir,
             boolean staticSite,
-            @Nullable String registry,
             @Nullable String tag,
-            @Nullable String dockerExecutableArg,
-            boolean sigstore)
+            @Nullable String dockerExecutableArg)
             throws IOException {
         String base = data.base();
         if (base == null || base.isBlank()) {
@@ -177,7 +191,7 @@ final class NodeImagePlans {
                 env,
                 Map.of(),
                 data.labels(),
-                registry != null ? registry : data.registry(),
+                data.registry(),
                 tag != null ? tag : data.tag(),
                 data.platforms(),
                 null,
@@ -185,7 +199,35 @@ final class NodeImagePlans {
                 null,
                 false,
                 !Boolean.FALSE.equals(data.referrers()),
-                sigstore || Boolean.TRUE.equals(data.sigstore()));
+                Boolean.TRUE.equals(data.sigstore()));
+    }
+
+    /** The layers of the node image {@code config} describes: the server with its production install, or the static files. */
+    private static NodeImageContent.Content content(
+            TaskContext ctx,
+            BuildPlanner.Inputs inputs,
+            JkBuild project,
+            Path projectDir,
+            boolean staticSite,
+            ImageConfig config)
+            throws IOException, InterruptedException {
+        String declared = Objects.requireNonNull(config.base(), "image base");
+        try {
+            NodeImageContent.Content content = staticSite
+                    ? NodeImageContent.staticSite(project, projectDir)
+                    : NodeImageContent.server(
+                            ctx, inputs, project, projectDir, ctx.require(BuildPlanner.NODE_HOME), declared);
+            ctx.label("layers · "
+                    + String.join(
+                            ", ",
+                            content.layers().stream()
+                                    .map(NodeImageContent.Layer::name)
+                                    .toList()) + " on " + declared);
+            return content;
+        } catch (IOException | RuntimeException e) {
+            ctx.error("image", Errors.text(e));
+            throw e;
+        }
     }
 
     private static Task writeStep(BuildPlanner.Inputs inputs, Path projectDir, Path cache) {
@@ -205,28 +247,7 @@ final class NodeImagePlans {
                     BuildLayout layout = ctx.require(BuildPlanner.MODULE).layout();
                     Path tarballPath = ctx.get(ImagePlans.TARBALL_PATH).orElse(null);
                     boolean staticSite = ctx.get(STATIC).orElse(false);
-                    String declared = Objects.requireNonNull(config.base(), "image base");
-                    NodeImageContent.Content content;
-                    try {
-                        content = staticSite
-                                ? NodeImageContent.staticSite(project, projectDir)
-                                : NodeImageContent.server(
-                                        ctx,
-                                        inputs,
-                                        project,
-                                        projectDir,
-                                        ctx.require(BuildPlanner.NODE_HOME),
-                                        declared);
-                    } catch (IOException | RuntimeException e) {
-                        ctx.error("image", Errors.text(e));
-                        throw e;
-                    }
-                    ctx.label("layers · "
-                            + String.join(
-                                    ", ",
-                                    content.layers().stream()
-                                            .map(NodeImageContent.Layer::name)
-                                            .toList()) + " on " + declared);
+                    NodeImageContent.Content content = content(ctx, inputs, project, projectDir, staticSite, config);
                     Path workerJar = PluginJar.IMAGE_BUILDER.locate(JkStores.storeCas());
                     ImageWrite.restoreOrBuild(
                             ctx,
@@ -243,13 +264,13 @@ final class NodeImagePlans {
                             (base, said) -> ImagePlans.forkWorker(
                                     workerJar,
                                     project,
-                                    spec(cache, project, layout, config, base, content, tarballPath),
+                                    spec(cache, project, layout, config, base, content, tarballPath, false),
                                     said));
                 })
                 .build();
     }
 
-    /** The worker spec for a layered node image. */
+    /** The worker spec for a layered node image: a tarball, else a push when {@code push}, else a daemon load. */
     static SpecWriter spec(
             Path cache,
             JkBuild project,
@@ -257,9 +278,9 @@ final class NodeImagePlans {
             ImageConfig config,
             String base,
             NodeImageContent.Content content,
-            @Nullable Path tarballPath) {
-        boolean daemonMode = tarballPath == null
-                && (config.registry() == null || config.registry().isBlank());
+            @Nullable Path tarballPath,
+            boolean push) {
+        boolean daemonMode = tarballPath == null && !push;
         SpecWriter sw = new SpecWriter()
                 .op(PluginProtocol.OP_IMAGE, null, "jk-image-builder")
                 .configString("kind", "node")
