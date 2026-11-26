@@ -89,14 +89,43 @@ class ReleaseDeliverablesTest {
     }
 
     @Test
-    void a_native_image_built_only_by_jk_native_is_no_release_file() throws Exception {
+    void an_on_demand_native_image_is_a_release_file_for_its_platform() throws Exception {
         JkBuild app = build("""
                 [application]
                 main = "com.example.Main"
 
                 [native]
                 """);
-        assertThat(ReleaseDeliverables.local(BuildLayout.of(tmp, app), app, null))
+        BuildLayout layout = BuildLayout.of(tmp, app);
+        String host = ReleasePlatform.current();
+        String v = layout.version();
+        assertThat(ReleaseDeliverables.local(layout, app, null)).singleElement().satisfies(d -> {
+            assertThat(d.name()).isEqualTo("app-" + v + "-" + host + (ReleasePlatform.windows(host) ? ".exe" : ""));
+            assertThat(d.platform()).isEqualTo(host);
+            assertThat(d.file()).isEqualTo(layout.nativeBinary());
+        });
+        assertThat(ReleaseDeliverables.platformNames(layout, app, "linux-x86_64"))
+                .containsExactly("app-" + v + "-linux-x86_64");
+        assertThat(ReleaseDeliverables.platformSpecific(app)).isTrue();
+    }
+
+    @Test
+    void a_disabled_native_image_or_a_shared_library_is_no_release_file() throws Exception {
+        JkBuild disabled = build("""
+                [application]
+                main = "com.example.Main"
+
+                [native]
+                enabled = false
+                """);
+        assertThat(ReleaseDeliverables.local(BuildLayout.of(tmp, disabled), disabled, null))
+                .isEmpty();
+        assertThat(ReleaseDeliverables.platformSpecific(disabled)).isFalse();
+        JkBuild shared = build("""
+                [native]
+                args = ["--shared"]
+                """);
+        assertThat(ReleaseDeliverables.local(BuildLayout.of(tmp, shared), shared, null))
                 .isEmpty();
     }
 }

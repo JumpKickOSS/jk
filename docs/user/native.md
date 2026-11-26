@@ -9,11 +9,18 @@ management ([JDK](jdk.md)). Prefer modules with `[native]` enabled.
 
 ```toml
 [native]
-enabled = "always"     # native-image on jk build and jk native
-# enabled = true       # jk native only (bare [native] is the same)
+enabled = "always"     # native-image on every build: jk build, jk install, jk native, jk publish
+# enabled = true       # on demand: jk native and a release (bare [native] is the same)
+# enabled = false      # never: no image, no release file
 # name = "jk"          # output basename (default: module name). A trailing .exe is ignored.
 # args = ["--verbose"]
 ```
+
+A module built on demand needs no `"always"` to ship its executable: a release-lane `jk publish`
+(final or `--stage`) builds it after the tests, on a platform `[release] platforms` lists, and
+uploads it as `<name>-<version>-<os>-<arch>` (`.exe` on Windows). GraalVM builds for its host, so
+each platform's executable comes from a `jk publish --stage` on that platform. See
+[Releasing deliverables](publish.md#releasing-deliverables).
 
 `jk native` builds only native-eligible modules plus their dependency closure. With tests
 on, the cone includes test/dev workspace deps so a dirty harness is rebuilt first.

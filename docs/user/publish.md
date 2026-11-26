@@ -248,7 +248,7 @@ The workspace root's `[publish] release` and `[release]` govern the whole worksp
 | `<name>-<version>.zip` | `[application] lib-dir` | neutral |
 | `<name>-<version>.war` | `[war]` | neutral |
 | `<name>-<version>-<os>-<arch>.tar.gz` (`.zip` on Windows) | `[jlink]` | that platform |
-| `<executable>-<version>-<os>-<arch>` (`.exe` on Windows) | `[native] enabled = "always"` | that platform |
+| `<executable>-<version>-<os>-<arch>` (`.exe` on Windows) | `[native]`, unless `enabled = false` | that platform |
 | `<name>-<version>.cdx.json` | the module's SBOM, unless `sbom = false` | neutral |
 
 Then the final run adds `SHA256SUMS` (`sha256sum` format, the one `jk`'s own installer verifies),
@@ -259,6 +259,14 @@ neither a key nor an identity, the release goes out unsigned and the run says so
 in the results: `release v1.4.7 is unsigned: set [publish] key-file, or sign = false`. Quarkus's
 default fast-jar runs from its `quarkus-app/` directory, which the release does not carry;
 `package = "uber-jar"` ships one jar.
+
+**Native executables.** A release-lane run (`jk publish` or `jk publish --stage`, not `--only
+library` or `--only image`) builds the native image of every `[native]` module on a platform the
+release lists, after the tests and before the upload, so `[native]` alone is enough: `jk build`
+and `jk install` stay JVM-only, and `enabled = "always"` is needed only to build the image on every
+build. The executable is named after `[native] name` (the module's name by default), and each
+platform's comes from a run on that platform: GraalVM builds for the host it runs on. `enabled =
+false` ships none, and neither does a `--shared` library. See [Native images](native.md).
 
 **Platforms and the final run.** `[release] platforms` lists the platforms whose files a release
 must carry, named `linux-x86_64`, `linux-aarch64`, `macos-x86_64`, `macos-aarch64`,
@@ -386,7 +394,8 @@ jobs:
 ```
 
 The final job's own platform (`linux-x86_64` here) is staged by the matrix too; the final run finds
-its files already there and leaves them.
+its files already there and leaves them. Each stage job builds its platform's native executables,
+so a `[native]` module ships one per runner with nothing more in the workflow.
 
 ### GitLab releases
 
@@ -499,8 +508,9 @@ size, SHA-256, destination and role (`staging` for a platform's own file, `final
 final run writes), then what the run would do last (`would publish the draft release v1.4.7`,
 `would create the release v1.4.7` on GitLab, `would point latest.json at 1.4.7`); for the image
 lane, each image reference it would push (`Would push image ghcr.io/acme/app:1.4.7`). Nothing is
-uploaded, and a dry run reads no token. `target/jk-results.md` gives the Publish block one row per
-lane and destination: an image's row names its reference and, once pushed, its digest.
+uploaded, and a dry run reads no token. The build still runs, native image included, since the
+sizes and digests are those of the files it writes. `target/jk-results.md` gives the Publish block
+one row per lane and destination: an image's row names its reference and, once pushed, its digest.
 
 ## Releasing
 

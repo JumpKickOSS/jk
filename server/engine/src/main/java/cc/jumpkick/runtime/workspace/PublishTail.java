@@ -2,12 +2,16 @@
 package cc.jumpkick.runtime.workspace;
 
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.layout.ReleaseDeliverables;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.ModuleJar;
+import cc.jumpkick.runtime.PlannerNative;
 import cc.jumpkick.runtime.Tail;
 import cc.jumpkick.runtime.base.PublishPlans;
 import cc.jumpkick.runtime.base.ReleasePlans;
+import cc.jumpkick.runtime.base.ReleaseRun;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
 import cc.jumpkick.wire.runtime.PublishLane;
 import cc.jumpkick.wire.runtime.TailArgs;
@@ -23,7 +27,8 @@ import org.jspecify.annotations.Nullable;
  * extends the build, so it ships what this run packaged. The image lane's plan comes first, so an
  * image that cannot be pushed stops the module before it uploads anything; its push waits for the
  * whole run ({@link ImageLane}). The release lane's upload comes next: a module's library goes out
- * only after its release files are in place.
+ * only after its release files are in place. A release that carries a module's native executable
+ * requires it, so the lane builds it when the build did not.
  */
 public final class PublishTail {
 
@@ -31,9 +36,10 @@ public final class PublishTail {
 
     /**
      * The tail of the module {@code unit} describes, as the workspace sees it: the image lane reads
-     * the {@code [image]} table a member inherits from the root.
+     * the {@code [image]} table a member inherits from the root. {@code graalHome} is the GraalVM
+     * the client resolved for the module, {@code null} when it resolved none.
      */
-    public static Tail of(TailArgs.Publish args, JkBuild unit) {
+    public static Tail of(TailArgs.Publish args, JkBuild unit, @Nullable Path graalHome) {
         PublishPlans.Request req = request(args);
         return (plan, in) -> {
             if (args.runs(PublishLane.IMAGE) && ImagePlans.images(unit, in.dir())) {
@@ -45,6 +51,17 @@ public final class PublishTail {
             if (args.runs(PublishLane.RELEASE) && !ModuleJar.skipsRelease(manifest)) {
                 var files = ModuleJar.releaseFiles(manifest, in.dir());
                 if (!files.isEmpty()) {
+                    if (needsNativeImage(plan, manifest, in.dir())) {
+                        plan.extend(PlannerNative.nativeStep(
+                                in.dir(),
+                                in.cache(),
+                                in.lockFile(),
+                                in.jdksDir(),
+                                graalHome,
+                                NativePlans.resolveMain(in.buildFile(), null),
+                                List.of(),
+                                /*allowShared*/ false));
+                    }
                     plan.stateKeys(ReleasePlans.FILES, ReleasePlans.EXPECTED)
                             .extend(ReleasePlans.uploadStep(in.dir(), args, files));
                 }
@@ -64,6 +81,22 @@ public final class PublishTail {
                     .addTask(PublishPlans.checkStep(in.dir(), req))
                     .extend(PublishPlans.publishStep(in.dir(), req));
         };
+    }
+
+    /**
+     * True when the release lane must build the module's native executable itself: the release
+     * carries it from this host, and the build did not already plan it ({@code enabled =
+     * "always"}). This is the demand an on-demand {@code [native]} module waits for.
+     */
+    static boolean needsNativeImage(BuildPlan.Builder plan, JkBuild manifest, Path dir) {
+        if (!ReleaseDeliverables.shipsNative(manifest) || plan.stepNames().contains(TaskNames.NATIVE_IMAGE)) {
+            return false;
+        }
+        try {
+            return ReleaseRun.hostListed(dir);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
     }
 
     /** The publish worker's request from the arguments the client resolved. */

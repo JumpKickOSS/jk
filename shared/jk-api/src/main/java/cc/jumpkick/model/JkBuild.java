@@ -548,11 +548,11 @@ public record JkBuild(
      * Resolved {@code [native].enabled}. See {@link JkBuild#nativeMode}.
      */
     public enum NativeMode {
-        /** No {@code [native]} table, or {@code enabled = false}. */
+        /** No {@code [native]} table, or {@code enabled = false}: never built, never released. */
         DISABLED,
         /**
-         * {@code [native]} present (or {@code enabled = true}): {@code jk native} builds the image;
-         * plain {@code jk build} does not.
+         * {@code [native]} present (or {@code enabled = true}): built on demand, by {@code jk
+         * native} and by a release-lane {@code jk publish}; plain {@code jk build} does not.
          */
         SUPPORTED,
         /**

@@ -18,6 +18,7 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
@@ -43,11 +44,20 @@ final class PublishVerb implements BuildVerb {
     private static final Words WORDS = new Words("Publish", "publishing", "publish", "Publishing");
 
     private final TailArgs.Publish args;
+    private final boolean nativeRelease;
     private final Report report;
     private @Nullable WorkspaceResult result;
 
-    PublishVerb(TailArgs.Publish args, Report report) {
+    /** Client-resolved GraalVM home per module whose run links a native image. */
+    private AlwaysNativeGraal.Graal graal = AlwaysNativeGraal.Graal.NONE;
+
+    /**
+     * {@code nativeRelease}: the run's release lane carries this host's platform-specific files, so
+     * it builds the native executable of every module that ships one.
+     */
+    PublishVerb(TailArgs.Publish args, boolean nativeRelease, Report report) {
         this.args = args;
+        this.nativeRelease = nativeRelease;
         this.report = report;
     }
 
@@ -72,10 +82,20 @@ final class PublishVerb implements BuildVerb {
     }
 
     @Override
+    public int prepareWorkspace(BuildRun run, Path entryDir, BuildRun.Selection selection) {
+        Optional<AlwaysNativeGraal.Graal> resolved = AlwaysNativeGraal.reached(run, entryDir, selection, nativeRelease);
+        if (resolved.isEmpty()) return Exit.FAILURE; // the resolver printed why
+        this.graal = resolved.get();
+        return -1;
+    }
+
+    @Override
     public WorkspaceResult workspace(BuildRun run, Path entryDir, List<String> modules, WorkspaceBuildListener listener)
             throws IOException {
         WorkspaceResult r = EngineClient.buildWorkspace(
-                EnginePaths.current(), run.request(entryDir, modules, WorkspaceSpec.publish(Set.of(), args)), listener);
+                EnginePaths.current(),
+                run.request(entryDir, modules, graal.onto(WorkspaceSpec.publish(Set.of(), args))),
+                listener);
         this.result = r;
         return r;
     }

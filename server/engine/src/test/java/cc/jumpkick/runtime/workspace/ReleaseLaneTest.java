@@ -142,6 +142,35 @@ class ReleaseLaneTest {
         assertThat(ReleaseLane.missingPlatforms(run, bucket, Map.of(tmp, root))).isEmpty();
     }
 
+    /** An on-demand {@code [native]} module's executable is a platform file the final run counts. */
+    @Test
+    void a_final_run_counts_the_native_executable_of_each_platform() throws Exception {
+        JkBuild root = JkBuildParser.parse(Files.writeString(tmp.resolve("jk.toml"), """
+                name = "app"
+                group = "com.example"
+                version = "1.0"
+
+                [application]
+                main = "com.example.Main"
+
+                [native]
+
+                [publish]
+                release = "s3://releases/app/"
+                sign = false
+                """));
+        ReleaseRun run = run(root, false, false);
+        ReleaseBucket bucket = fake.bucket("app/", "1.0");
+        String macExecutable = "app-" + BuildLayout.of(tmp, root).version() + "-macos-aarch64";
+        assertThat(ReleaseDeliverables.platformNames(BuildLayout.of(tmp, root), root, MAC))
+                .containsExactly(macExecutable);
+
+        assertThat(ReleaseLane.missingPlatforms(run, bucket, Map.of(tmp, root)))
+                .containsExactly("release v1.0 lacks macos-aarch64; run jk publish --stage on that platform first");
+        fake.putText("app/1.0/" + macExecutable, "mac executable");
+        assertThat(ReleaseLane.missingPlatforms(run, bucket, Map.of(tmp, root))).isEmpty();
+    }
+
     @Test
     void a_final_run_writes_the_sums_the_index_and_latest_and_a_rerun_changes_nothing() throws Exception {
         JkBuild root = app();
