@@ -119,6 +119,38 @@ class CompilerPoolTest {
     }
 
     @Test
+    void a_dying_worker_holds_its_items_until_the_pool_puts_them_back(@TempDir Path dir) throws Exception {
+        Fakes fakes = new Fakes(2);
+        CompilerPool pool = pool(dir, fakes);
+        List<CompileWork> items = items(dir, 2, job());
+        for (CompileWork w : items) pool.enqueue(w);
+        Fake first = fakes.await(0);
+        awaitTrue(() -> first.dispatched().size() == 2, "both in flight");
+
+        // Holding the pool's lock keeps the death between the worker marking itself dead and the
+        // pool taking its items: the window the liveness check must not mistake for a lost compile.
+        synchronized (pool) {
+            first.die("zinc worker exited with status 137");
+            awaitTrue(() -> first.worker().dead(), "the worker is dead");
+            for (CompileWork w : items) {
+                assertThat(pool.holds(w)).as("item " + w.id + " is still held").isTrue();
+            }
+            assertThat(pool.workers())
+                    .as("a dead worker is not offered as live")
+                    .isEmpty();
+        }
+
+        Fake second = fakes.await(1);
+        awaitTrue(() -> second.dispatched().size() == 1, "the first item runs again");
+        second.frame(result(second.dispatched().get(0), "OK"));
+        awaitTrue(() -> second.dispatched().size() == 2, "the second item runs again");
+        second.frame(result(second.dispatched().get(1), "OK"));
+        for (CompileWork w : items)
+            assertThat(w.compile.get(10, TimeUnit.SECONDS).success()).isTrue();
+        pool.close();
+    }
+
+    @Test
     void a_compile_that_kills_its_worker_twice_fails_alone_and_its_neighbours_succeed(@TempDir Path dir)
             throws Exception {
         Fakes fakes = new Fakes(3);

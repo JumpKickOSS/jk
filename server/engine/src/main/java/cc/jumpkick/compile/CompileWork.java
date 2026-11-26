@@ -53,6 +53,9 @@ final class CompileWork {
      */
     int deaths;
 
+    /** Taken off its worker by an answer that is about to complete or fail it. */
+    volatile boolean settled;
+
     final CompletableFuture<ForkedJavac.Result> compile = new CompletableFuture<>();
     final CompletableFuture<ForkedJavac.Plan> forecast = new CompletableFuture<>();
     final List<CompileResult.Diagnostic> diagnostics = new ArrayList<>();
