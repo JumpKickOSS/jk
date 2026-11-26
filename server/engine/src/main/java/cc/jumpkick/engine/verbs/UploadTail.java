@@ -55,17 +55,13 @@ final class UploadTail {
         RepoCredential credential = new RepoCredentialResolver().resolve(matchedName, url, inline);
         Path keyFile = null;
         String passphrase = null;
-        if (info.publishSign()) {
-            if (info.publishKeyFile().isEmpty()) {
-                throw new IllegalArgumentException("[publish] sign = true needs key-file in [publish].");
-            }
+        if (info.publishSign() && !info.publishKeyFile().isEmpty()) {
             String configured = info.publishKeyFile();
             keyFile = configured.startsWith("~/")
                     ? Path.of(System.getProperty("user.home", ".")).resolve(configured.substring(2))
                     : dir.resolve(configured).normalize();
             passphrase = BuildEnv.get("JK_GPG_PASSPHRASE");
         }
-        return new TailArgs.Publish(
-                url, null, null, false, false, keyFile, passphrase, false, false, false, credential, false, null);
+        return new TailArgs.Publish(url, false, false, keyFile, passphrase, credential, false);
     }
 }

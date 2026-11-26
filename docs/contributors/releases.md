@@ -292,7 +292,7 @@ When CD publishes, nothing reaches the bucket, the pointer, the installers or th
 a developer machine. A manual release is the other way round, and the two never run together.
 
 ```bash
-jk release --patch --push        # tests, tags vX.Y.Z, commits "Start X.Y.Z+1", pushes both
+jk release --patch               # tests, tags vX.Y.Z, commits "Start X.Y.Z+1", pushes both
 gh run watch                     # CI, then CD: build, merge, and publish waiting for approval
 ```
 
@@ -325,7 +325,7 @@ that holds the signing key would be a signed release someone else cut. The
 under `jk guard`, `scripts/check-workflows.sh` refuses the same in CI's workflow-lint job, and
 `.github/dependabot.yml` moves the pins weekly.
 
-1. CI is green on the tag `v0.14.0` (`jk release --push`). The version must equal what `jk.toml` declares;
+1. CI is green on the tag `v0.14.0` (`jk release`). The version must equal what `jk.toml` declares;
    `scripts/release-version.sh` refuses any other tag before anything is built.
 2. Matrix builds native client + engine jar per OS/arch — with JumpKick itself (`jk build`, the layout
    under `target/dist`), from the checkout of the tag, which the job fetches and asserts
@@ -510,7 +510,7 @@ The sequence the owner runs, start to finish. Steps marked **outward** change wh
 |------|-------|------|
 | 1 | release commit: `git fetch origin && git checkout origin/main` | the merge queue passed it (`jk guard`, `jk test`, the docs, tree and release suites, the whole integration tier, Windows and macOS, `scripts/test-*.sh`); the nightly run on it is green, or `jk test -s slow` passes locally when a plugin changed since the last release. The release's own changes (the [What's new](../user/whats-new.md) entry, floors) land through a pull request first. `scripts/release-floors.sh` lists every floor (manifest, installers, locks, guard rules, bootstrap pin, what jumpkick.build serves) and they agree; the What's new entry passes `scripts/release-notes.sh <version>` |
 | 1b | release commit, installed with `jk install` | `scripts/release-check-routes.sh --examples <jk-examples checkout>`: every template, generated fresh, and every example builds twice with the candidate, the second build a no-op, and each template passes `CI=1 jk guard`; every row of `target/release-check-routes/summary.md` is green (`--skip` only a route this host cannot build, named in the release notes) |
-| 2 | any | `jk release --dry-run`, then `jk release --skip-tests`: the tag and the local "Start <next>" commit |
+| 2 | any | `jk release --dry-run`, then `jk release --skip-tests --no-push`: the tag and the local "Start <next>" commit |
 | 3 **outward** | any, `gh` with write access | `gh workflow disable Release`, then `gh workflow list --all` shows it `disabled_manually`. Only then `git push origin v<version>` (the tag alone) |
 | 4 | each platform's machine | `scripts/release-lane.sh <work-dir>` from a checkout of the tag: it refuses a tag that is not on `origin/main`'s history, and it ends `== lane <os>-<arch> done`, its engine jar is `jk-engine-<version>.jar`, its `jk --version` says `jk <version>`, and no file under `out/` names a `SNAPSHOT` (the lane checks the last two) |
 | 4w **outward** | GitHub Actions, `gh` | windows-x86_64 is not a lane on a machine of ours: `gh workflow run sign-windows.yml --ref v<version>` builds and Authenticode-signs it ([Authenticode](#authenticode-jkexe)); `gh run download` its `release-<version>-windows-x86_64` artifact into the staging directory, then, on a Windows host, `Get-AuthenticodeSignature` on the `jk.exe` inside its `.zip` reports `Valid` and the expected signer, and that `jk.exe --version` says `jk <version>` |
@@ -653,7 +653,7 @@ alone; Central serves plugin authors who build with Maven or Gradle.
 
 `release.yml` does it in three steps of `scripts/publish-central.sh`:
 
-1. **bundle** — the publish job builds the two modules and runs `jk publish -c -I -U` in
+1. **bundle** — the publish job builds the two modules and runs `jk publish --repository central -U` in
    `shared/host` and `shared/plugin-sdk`: each module's jar, POM, sources and javadoc jars, every
    file signed with the release GPG key, as one Portal bundle per module.
 2. **upload** — the publish job, once `repo/` is live and both POMs answer on jumpkick.build,

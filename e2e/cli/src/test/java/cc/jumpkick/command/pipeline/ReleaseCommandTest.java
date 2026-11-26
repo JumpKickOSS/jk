@@ -4,6 +4,7 @@ package cc.jumpkick.command.pipeline;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.Jk;
+import cc.jumpkick.cli.testing.Capture;
 import cc.jumpkick.host.GitCommand;
 import cc.jumpkick.host.Processes;
 import com.sun.net.httpserver.HttpServer;
@@ -37,8 +38,6 @@ class ReleaseCommandTest {
         args.addAll(List.of(
                 "-C",
                 dir.toString(),
-                "--cache-dir",
-                dir.resolve("cache").toString(),
                 "--state-dir",
                 dir.resolve("state").toString(),
                 "--bin-dir",
@@ -50,7 +49,13 @@ class ReleaseCommandTest {
                 // These releases are checked in the Maven local repository, which an install targets by name.
                 "--destination",
                 "m2"));
-        return Jk.execute(args.toArray(String[]::new));
+        // The cache directory is the environment's, not an option of a release.
+        System.setProperty("jk.env.JK_CACHE_DIR", dir.resolve("cache").toString());
+        try {
+            return Jk.execute(args.toArray(String[]::new));
+        } finally {
+            System.clearProperty("jk.env.JK_CACHE_DIR");
+        }
     }
 
     private static String git(Path dir, String... args) throws IOException, InterruptedException {
@@ -193,21 +198,40 @@ class ReleaseCommandTest {
         return server;
     }
 
-    @Test
-    void publish_and_push_send_the_release_where_it_belongs(@TempDir Path tmp) throws Exception {
-        Path project = Files.createDirectory(tmp.resolve("project"));
-        Path m2 = repository(project, "1.4.7");
+    /** Declare {@code url} as the repository releases go to, unsigned and without sidecars, and commit it. */
+    private static void publishTo(Path project, String url) throws Exception {
+        Files.writeString(
+                project.resolve("jk.toml"), Files.readString(project.resolve("jk.toml")) + """
+
+                        [publish]
+                        repository = "%s"
+                        sign = false
+                        sbom = false
+                        provenance = false
+                        """.formatted(url));
+        git(project, "commit", "-q", "-am", "Publish to the stub");
+    }
+
+    private static Path withRemote(Path tmp, Path project) throws Exception {
         Path remote = Files.createDirectory(tmp.resolve("remote.git"));
         git(remote, "init", "-q", "--bare", "-b", "main");
         git(project, "remote", "add", "origin", remote.toString());
         git(project, "push", "-q", "-u", "origin", "main");
+        return remote;
+    }
+
+    @Test
+    void a_release_with_a_repository_and_no_ci_pushes_and_publishes_the_tag(@TempDir Path tmp) throws Exception {
+        Path project = Files.createDirectory(tmp.resolve("project"));
+        Path m2 = repository(project, "1.4.7");
+        Path remote = withRemote(tmp, project);
         Map<String, byte[]> received = new HashMap<>();
         HttpServer repo = repositoryStub(received, 201);
         try {
-            String url = "http://127.0.0.1:" + repo.getAddress().getPort() + "/repo/";
+            publishTo(project, "http://127.0.0.1:" + repo.getAddress().getPort() + "/repo/");
+            git(project, "push", "-q");
 
-            assertThat(jk(project, m2, "release", "--publish", "--push", "--repo-url", url))
-                    .isZero();
+            assertThat(jk(project, m2, "release")).isZero();
 
             assertThat(received).containsKey("/repo/com/example/rel-lib/1.4.7/rel-lib-1.4.7.jar");
             assertThat(git(remote, "tag", "--list")).isEqualTo("v1.4.7");
@@ -218,18 +242,84 @@ class ReleaseCommandTest {
     }
 
     @Test
-    void a_failed_publish_leaves_no_tag_and_no_bump(@TempDir Path tmp) throws Exception {
+    void ci_that_runs_jk_publish_is_left_to_publish(@TempDir Path tmp) throws Exception {
+        Path project = Files.createDirectory(tmp.resolve("project"));
+        Path m2 = repository(project, "1.4.7");
+        Path remote = withRemote(tmp, project);
+        Map<String, byte[]> received = new HashMap<>();
+        HttpServer repo = repositoryStub(received, 201);
+        try {
+            publishTo(project, "http://127.0.0.1:" + repo.getAddress().getPort() + "/repo/");
+            Files.createDirectories(project.resolve(".github/workflows"));
+            Files.writeString(
+                    project.resolve(".github/workflows/publish.yml"),
+                    "jobs:\n  p:\n    steps:\n      - run: jk publish\n");
+            git(project, "add", ".github");
+            git(project, "commit", "-q", "-m", "CI publishes");
+            git(project, "push", "-q");
+
+            String out =
+                    Capture.stdout(() -> assertThat(jk(project, m2, "release")).isZero());
+
+            assertThat(out).contains("pushed v1.4.7; CI publishes it");
+            assertThat(received).as("this machine uploaded nothing").isEmpty();
+            assertThat(git(remote, "tag", "--list")).isEqualTo("v1.4.7");
+        } finally {
+            repo.stop(0);
+        }
+    }
+
+    @Test
+    void ci_publish_cannot_be_forced_without_pushing_the_tag(@TempDir Path tmp) throws Exception {
         Path m2 = repository(tmp, "1.4.7");
-        String manifest = Files.readString(tmp.resolve("jk.toml"));
+
+        assertThat(jk(tmp, m2, "release", "--publish", "ci", "--no-push")).isNotZero();
+
+        assertThat(git(tmp, "tag", "--list")).isEmpty();
+    }
+
+    @Test
+    void no_push_keeps_the_release_local(@TempDir Path tmp) throws Exception {
+        Path project = Files.createDirectory(tmp.resolve("project"));
+        Path m2 = repository(project, "1.4.7");
+        Path remote = withRemote(tmp, project);
+
+        assertThat(jk(project, m2, "release", "--no-push")).isZero();
+
+        assertThat(git(project, "tag", "--list")).isEqualTo("v1.4.7");
+        assertThat(git(remote, "tag", "--list")).isEmpty();
+    }
+
+    @Test
+    void a_local_release_with_no_credential_is_refused_with_nothing_changed(@TempDir Path tmp) throws Exception {
+        Path m2 = repository(tmp, "1.4.7");
+        Files.writeString(
+                tmp.resolve("jk.toml"),
+                Files.readString(tmp.resolve("jk.toml")) + "\n[publish]\nrepository = \"central\"\n");
+        git(tmp, "commit", "-q", "-am", "Publish to Central");
+        String head = git(tmp, "rev-parse", "HEAD");
+
+        assertThat(jk(tmp, m2, "release")).isNotZero();
+
+        assertThat(git(tmp, "tag", "--list")).isEmpty();
+        assertThat(git(tmp, "rev-parse", "HEAD")).isEqualTo(head);
+    }
+
+    @Test
+    void a_failed_upload_after_the_push_leaves_the_pushed_tag_for_jk_publish_to_finish(@TempDir Path tmp)
+            throws Exception {
+        Path project = Files.createDirectory(tmp.resolve("project"));
+        Path m2 = repository(project, "1.4.7");
+        Path remote = withRemote(tmp, project);
         HttpServer repo = repositoryStub(new HashMap<>(), 500);
         try {
-            String url = "http://127.0.0.1:" + repo.getAddress().getPort() + "/repo/";
+            publishTo(project, "http://127.0.0.1:" + repo.getAddress().getPort() + "/repo/");
+            git(project, "push", "-q");
 
-            assertThat(jk(tmp, m2, "release", "--publish", "--repo-url", url)).isNotZero();
+            assertThat(jk(project, m2, "release")).isNotZero();
 
-            assertThat(git(tmp, "tag", "--list")).isEmpty();
-            assertThat(Files.readString(tmp.resolve("jk.toml"))).isEqualTo(manifest);
-            assertThat(git(tmp, "status", "--porcelain")).isEmpty();
+            assertThat(git(project, "tag", "--list")).isEqualTo("v1.4.7");
+            assertThat(git(remote, "tag", "--list")).isEqualTo("v1.4.7");
         } finally {
             repo.stop(0);
         }
@@ -240,7 +330,7 @@ class ReleaseCommandTest {
         Path m2 = repository(tmp, "1.4.7");
         git(tmp, "remote", "add", "origin", tmp.resolve("missing.git").toString());
 
-        assertThat(jk(tmp, m2, "release", "--push")).isNotZero();
+        assertThat(jk(tmp, m2, "release")).isNotZero();
 
         assertThat(git(tmp, "tag", "--list")).as("the local release stands").isEqualTo("v1.4.7");
         assertThat(git(tmp, "log", "-1", "--format=%s")).isEqualTo("Start 1.4.8");

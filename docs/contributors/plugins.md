@@ -607,7 +607,7 @@ after compile, custom packagers) via `TaskSpec`/`TaskContribution`. Important SP
 |---|---|
 | **First-party** plugins under `plugins/` | Ship with JumpKick; `jk install` publishes them to `repos/jk-local` |
 | **Private / vendored** jars (`[plugins]` + `sha256`) | Supported now — see below |
-| **Third-party** plugins against the published SDK | `cc.jumpkick:jk-plugin-sdk:<version>` on `jumpkick.build/repo` (publishable to Maven Central with `jk publish -c`; not on Central yet); pinned by content in the consumer |
+| **Third-party** plugins against the published SDK | `cc.jumpkick:jk-plugin-sdk:<version>` on `jumpkick.build/repo` (publishable to Maven Central with `jk publish` (Central); not on Central yet); pinned by content in the consumer |
 | **Plugin marketplace / registry** | Intentionally deferred (product anti-goal pre-freeze) |
 
 ### Private plugins (path or Maven pin)

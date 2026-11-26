@@ -86,8 +86,7 @@ class ReleaseSetTest {
     }
 
     private static TailArgs.Publish publishArgs() {
-        return new TailArgs.Publish(
-                null, null, null, false, true, null, null, false, false, false, RepoCredential.ANONYMOUS, false, null);
+        return new TailArgs.Publish(null, false, true, null, null, RepoCredential.ANONYMOUS, false);
     }
 
     @Test

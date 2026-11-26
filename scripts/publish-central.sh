@@ -7,7 +7,7 @@
 #   scripts/publish-central.sh upload <bundle-dir>   # each bundle to the Portal, polled to PUBLISHED
 #   scripts/publish-central.sh await <version>       # the POMs and metadata answer on repo1
 #
-# bundle runs `jk publish --central --sign --dry-run` in shared/host and shared/plugin-sdk (the
+# bundle runs `jk publish --repository central --dry-run` in shared/host and shared/plugin-sdk (the
 # `jk build` outputs must exist) and copies each module's target/publish/central-bundle.zip to
 # <out-dir>/<artifact>-<version>.zip. upload releases jk-host before jk-plugin-sdk, whose POM
 # depends on it; a version the Portal already lists as published is skipped, so a re-run of the
@@ -66,7 +66,7 @@ portal() {
 }
 
 bundle() {
-  local out="$1" spec module art zip
+  local out="$1" spec module art zip key
   [[ -n "${JK_CENTRAL_GPG_KEY_FILE:-}" && -f "$JK_CENTRAL_GPG_KEY_FILE" ]] ||
     die "JK_CENTRAL_GPG_KEY_FILE names no GPG secret key — Central requires a signature on every file"
   mkdir -p "$out"
@@ -74,7 +74,12 @@ bundle() {
     module="${spec%%:*}"
     art="${spec#*:}"
     echo "=== bundle $art $VERSION ==="
-    (cd "$ROOT/$module" && jk publish --central --sign --key-file "$JK_CENTRAL_GPG_KEY_FILE" --dry-run --no-ansi)
+    # [publish] key-file in the root jk.toml names this path under each module's target/.
+    mkdir -p "$ROOT/$module/target"
+    key="$ROOT/$module/target/central-release-key.asc"
+    (umask 077 && cp -f "$JK_CENTRAL_GPG_KEY_FILE" "$key")
+    (cd "$ROOT/$module" && jk publish --repository central --dry-run --no-ansi) || { rm -f "$key"; exit 1; }
+    rm -f "$key"
     zip="$ROOT/$module/target/publish/central-bundle.zip"
     [[ -f "$zip" ]] || die "jk publish wrote no $zip"
     cp -f "$zip" "$out/$art-$VERSION.zip"

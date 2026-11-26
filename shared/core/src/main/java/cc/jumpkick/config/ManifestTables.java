@@ -364,21 +364,32 @@ public final class ManifestTables {
         return Optional.of(new BuildBlock.War(name, webapp == null ? BuildBlock.War.DEFAULT_WEBAPP : webapp));
     }
 
-    static final List<String> PUBLISH_KEYS =
-            List.of("name", "url", "licenses", "developers", "scm", "repository", "sign", "key-file", "skip");
+    static final List<String> PUBLISH_KEYS = List.of(
+            "name",
+            "url",
+            "licenses",
+            "developers",
+            "scm",
+            "repository",
+            "sign",
+            "key-file",
+            "skip",
+            "sbom",
+            "provenance",
+            "hold");
 
     /** Keys that would hold a secret: refused with where a secret does belong. */
     static final List<String> PUBLISH_SECRET_KEYS =
             List.of("password", "token", "passphrase", "key-passphrase", "user", "username");
 
-    static final List<String> RELEASE_KEYS = List.of("tag", "files");
+    static final List<String> RELEASE_KEYS = List.of("tag", "files", "publish");
     static final List<String> RELEASE_FILE_KEYS = List.of("path", "pattern");
 
     /**
      * {@code [release]} — the tag template a release carries ({@code {version}} standing for the
      * released version; {@link ReleaseTag#DEFAULT_TEMPLATE} when absent) and the files that carry
      * the declared version besides {@code jk.toml}: {@code files = [{ path, pattern }]}, the
-     * pattern's one group being the version.
+     * pattern's one group being the version. {@code publish} fixes who publishes a release.
      */
     static ReleaseTable parseRelease(TomlTable root) {
         if (root.contains("release") && !root.isTable("release")) {
@@ -412,7 +423,12 @@ public final class ManifestTables {
             }
             files.put(path, pattern);
         }
-        return new ReleaseTable(tag, files);
+        String publish = optionalString(release, "publish", "release.publish");
+        if (publish != null && !ReleaseTable.PUBLISH_MODES.contains(publish)) {
+            throw new JkBuildParseException(
+                    "[release] publish must be \"ci\", \"local\" or \"none\", got `" + publish + "`");
+        }
+        return new ReleaseTable(tag, files, publish == null ? "" : publish);
     }
 
     static final List<String> PUBLISH_LICENSE_KEYS = List.of("name", "url");
@@ -421,7 +437,7 @@ public final class ManifestTables {
 
     /**
      * {@code [publish]} — the POM metadata a release carries. Every key is optional here; what a
-     * repository requires is the repository's rule, and {@code jk publish -c} names the
+     * repository requires is the repository's rule, and a publish to Central names the
      * missing ones before it signs anything.
      */
     static Optional<PomMetadata> parsePublish(TomlTable root) {
@@ -441,7 +457,10 @@ public final class ManifestTables {
             }
         }
         rejectUnknownKeys(publish, PUBLISH_KEYS, "[publish]");
-        boolean sign = Boolean.TRUE.equals(optionalBool(publish, "sign", "[publish] sign"));
+        boolean sign = !Boolean.FALSE.equals(optionalBool(publish, "sign", "[publish] sign"));
+        boolean sbom = !Boolean.FALSE.equals(optionalBool(publish, "sbom", "[publish] sbom"));
+        boolean provenance = !Boolean.FALSE.equals(optionalBool(publish, "provenance", "[publish] provenance"));
+        boolean hold = Boolean.TRUE.equals(optionalBool(publish, "hold", "[publish] hold"));
         boolean skip = Boolean.TRUE.equals(optionalBool(publish, "skip", "[publish] skip"));
         List<PomMetadata.License> licenses = new ArrayList<>();
         for (TomlTable t : tables(publish, "licenses", "publish.licenses")) {
@@ -487,7 +506,10 @@ public final class ManifestTables {
                 optionalString(publish, "repository", "publish.repository"),
                 sign,
                 optionalString(publish, "key-file", "publish.key-file"),
-                skip));
+                skip,
+                sbom,
+                provenance,
+                hold));
     }
 
     private static List<TomlTable> tables(TomlTable parent, String key, String displayPath) {

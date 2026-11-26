@@ -195,7 +195,7 @@ public final class RepoCredentialResolver {
         if (fromInline.isPresent()) return fromInline.get();
 
         // Sources 2–4 are keyed by repo id; skip them when there's no declared
-        // name (e.g. `jk publish -l <url>` with no matching repo). Each is sent only when
+        // name (e.g. `jk publish --repository <url>` with no matching repo). Each is sent only when
         // the name is bound to the URL's origin; a refused source falls through to the next.
         if (repoId != null && !repoId.isBlank()) {
             Binding binding = bindingOf(repoId, url);

@@ -1140,7 +1140,7 @@ public final class PlannerPlugin {
 
     /**
      * The application SBOM every packager embeds: the module's runtime closure as CycloneDX (see
-     * {@link CycloneDxSbom#closure}), the same document {@code jk publish -S} writes beside it.
+     * {@link CycloneDxSbom#closure}), the same document {@code jk publish} writes beside it.
      *
      * @param lock the lock as the module at {@code moduleDir} reads it
      */

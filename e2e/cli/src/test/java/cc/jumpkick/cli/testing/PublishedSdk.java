@@ -58,7 +58,8 @@ public final class PublishedSdk {
             Path project, String name, String description, String deps, Path module, String version, URI repoUrl)
             throws IOException {
         copyTree(module.resolve("src/main"), project.resolve("src/main"));
-        Files.writeString(project.resolve("jk.toml"), """
+        Files.writeString(
+                project.resolve("jk.toml"), """
                 group       = "cc.jumpkick"
                 name        = "%s"
                 version     = "%s"
@@ -68,15 +69,14 @@ public final class PublishedSdk {
                 [repositories.jumpkick]
                 url    = "%s"
                 groups = ["cc.jumpkick", "cc.jumpkick.*"]
-                """.formatted(name, version, description, deps, repoUrl));
-        assertThat(run(
-                        "publish",
-                        "-C",
-                        project.toString(),
-                        "--repo-url",
-                        repoUrl.toString(),
-                        "--skip-tests",
-                        "--allow-snapshot"))
+
+                [publish]
+                repository = "%s"
+                sign       = false
+                sbom       = false
+                provenance = false
+                """.formatted(name, version, description, deps, repoUrl, repoUrl));
+        assertThat(run("publish", "-C", project.toString(), "--skip-tests", "--allow-snapshot"))
                 .as("jk publish %s %s", name, version)
                 .isEqualTo(0);
     }

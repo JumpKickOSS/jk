@@ -41,7 +41,6 @@ import cc.jumpkick.run.Task;
 import cc.jumpkick.secret.SecretCommand;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.protocol.ProjectInfo;
-import cc.jumpkick.wire.runtime.WorkspaceTarget;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
@@ -49,16 +48,14 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import org.jspecify.annotations.Nullable;
 
 /**
  * {@code jk release} — cut the release the manifest declares: build and test, install the version
- * once, optionally publish it, tag the commit, then move {@code jk.toml} to the next version in a
- * commit of its own. Nothing is pushed unless {@code --push} says so.
+ * once, tag the commit, move {@code jk.toml} to the next version in a commit of its own, push both,
+ * and publish the tag when this machine is the one that publishes ({@link PublishMode}).
  */
 public final class ReleaseCommand implements CliCommand {
 
@@ -86,12 +83,16 @@ public final class ReleaseCommand implements CliCommand {
 
     @Override
     public List<Opt> options() {
-        List<Opt> opts = new ArrayList<>(List.of(
+        return List.of(
                 Opt.flag("After the release, move the major version (1.4.7 → 2.0.0).", "--major"),
                 Opt.flag("After the release, move the minor version (1.4.7 → 1.5.0).", "--minor"),
                 Opt.flag("After the release, move the patch version (1.4.7 → 1.4.8). The default.", "--patch"),
-                Opt.flag("Publish to the [publish] target before tagging; takes jk publish options.", "--publish"),
-                Opt.flag("Push the branch and tag to its upstream after the release.", "--push"),
+                Opt.value(
+                        "<ci|local|none>",
+                        "Who publishes the release: CI on the pushed tag, this machine, or nobody."
+                                + " Default: inferred.",
+                        "--publish"),
+                Opt.flag("Keep the branch and tag local; push nothing.", "--no-push"),
                 Opt.flag("Check everything and print what would happen; change nothing.", "--dry-run"),
                 Opt.flag(
                         "Take back a release cut here and not pushed: its tag, the version commit, its installed jars.",
@@ -100,37 +101,58 @@ public final class ReleaseCommand implements CliCommand {
                         "<m2|jk>",
                         "Install the release into m2 (the Maven local repository) or jk (JumpKick's own repository).",
                         "--destination"),
+                CommonOpts.skipTests(),
+                CommonOpts.jdksDir(),
                 Opt.value("<dir>", "Override the tool state directory.", "--state-dir")
                         .hide(),
                 Opt.value("<dir>", "Override the bin directory.", "--bin-dir").hide(),
                 Opt.value("<dir>", "Override the lib directory.", "--lib-dir").hide(),
                 Opt.value("<dir>", "Override the local Maven repo root (~/.m2).", "--m2-dir")
-                        .hide()));
-        opts.addAll(BuildFlags.options(WorkspaceTarget.INSTALL.tests(), BuildFlags.Affected.MODULES));
-        Set<String> taken = new HashSet<>();
-        taken.add("tag"); // a release names its own tag
-        for (Opt o : opts) taken.addAll(o.names());
-        for (Opt o : new PublishCommand().options()) {
-            // Publish's options ride along unlisted (the help names --publish); a spelling a release option uses stays
-            // its own.
-            List<String> free =
-                    o.names().stream().filter(n -> !taken.contains(n)).toList();
-            if (free.isEmpty() || taken.contains(o.canonicalName())) continue;
-            taken.addAll(free);
-            opts.add(new Opt(
-                    free,
-                    o.paramLabel(),
-                    o.description(),
-                    o.takesValue(),
-                    o.repeatable(),
-                    o.split(),
-                    true,
-                    o.negatable(),
-                    o.required(),
-                    o.fallbackValue(),
-                    o.aliases()));
+                        .hide());
+    }
+
+    /** Who uploads a release. */
+    enum PublishMode {
+        /** The pushed tag starts a CI job that runs {@code jk publish}. */
+        CI,
+        /** This machine runs {@code jk publish} on the tag once it is pushed. */
+        LOCAL,
+        /** Nothing is uploaded: the release is the tag and the installed jars. */
+        NONE;
+
+        /** The clause a dry run adds for this mode. */
+        String dryRunNote() {
+            return switch (this) {
+                case LOCAL -> ", publish from here";
+                case CI -> ", leave the publish to CI";
+                case NONE -> "";
+            };
         }
-        return opts;
+
+        static @Nullable PublishMode parse(String word) {
+            return switch (word) {
+                case "ci" -> CI;
+                case "local" -> LOCAL;
+                case "none" -> NONE;
+                default -> null;
+            };
+        }
+    }
+
+    /**
+     * The publish mode: {@code override} ({@code --publish}), else {@code [release] publish}, else
+     * inferred. With no destination there is nothing to upload. With one, CI that runs {@code jk
+     * publish} publishes it; with none, this machine does, when {@code [publish] repository} names
+     * somewhere to upload (an image registry alone has no {@code jk publish} lane yet).
+     */
+    static PublishMode publishMode(@Nullable String override, ProjectInfo info, Path ciRoot, boolean inGit) {
+        String word = override != null ? override : info.releasePublish();
+        PublishMode chosen = word.isEmpty() ? null : PublishMode.parse(word);
+        if (chosen != null) return chosen;
+        boolean repository = !info.publishRepository().isEmpty();
+        if (!repository && info.imageRegistry().isEmpty()) return PublishMode.NONE;
+        if (inGit && CiPublishScan.runsPublish(ciRoot)) return PublishMode.CI;
+        return repository ? PublishMode.LOCAL : PublishMode.NONE;
     }
 
     @Override
@@ -161,8 +183,12 @@ public final class ReleaseCommand implements CliCommand {
         }
         Segment segment = in.isSet("major") ? Segment.MAJOR : in.isSet("minor") ? Segment.MINOR : Segment.PATCH;
         boolean dryRun = in.isSet("dry-run");
-        boolean publish = in.isSet("publish");
-        boolean push = in.isSet("push");
+        String publishWord = in.value("publish").orElse(null);
+        if (publishWord != null && PublishMode.parse(publishWord) == null) {
+            CommandWedge.printFail(CHIP, "--publish must be ci, local or none, not `" + publishWord + "`");
+            return Exit.USAGE;
+        }
+        boolean noPush = in.isSet("no-push");
         boolean undo = in.isSet("undo");
         String destinationWord = in.value(InstallDestination.KEY).orElse(null);
         InstallDestination destination = destinationWord == null
@@ -172,8 +198,8 @@ public final class ReleaseCommand implements CliCommand {
             CommandWedge.printFail(CHIP, "--destination must be m2 or jk, not `" + destinationWord + "`");
             return Exit.USAGE;
         }
-        if (undo && (publish || push || segments > 0)) {
-            CommandWedge.printFail(CHIP, "--undo takes no --publish, --push or version segment");
+        if (undo && (publishWord != null || noPush || segments > 0)) {
+            CommandWedge.printFail(CHIP, "--undo takes no --publish, --no-push or version segment");
             return Exit.USAGE;
         }
 
@@ -190,10 +216,6 @@ public final class ReleaseCommand implements CliCommand {
                     "no git here, so jk cannot tell which release to take back; set `version` in jk.toml back"
                             + " and delete that version's installed jars by hand");
             return Exit.CONFIG;
-        }
-        if (push && !inGit) {
-            CommandWedge.printFail(CHIP, "--push needs git; this tree has none, so there is nothing to push");
-            return Exit.USAGE;
         }
         if (undo) {
             return withdraw(
@@ -215,15 +237,25 @@ public final class ReleaseCommand implements CliCommand {
         String tag = ReleaseTag.render(info.releaseTag(), version);
 
         Git git = new Git(dir);
+        // A checkout with no remote has nowhere to push to.
+        String remotes = inGit ? git.output("remote") : null;
+        boolean noRemote = inGit && (remotes == null || remotes.isBlank());
+        boolean push = inGit && !noPush && !noRemote;
+        String top = inGit ? git.output("rev-parse", "--show-toplevel") : null;
+        Path ciRoot = top == null || top.isEmpty() ? dir : Path.of(top);
+        PublishMode mode = publishMode(publishWord, info, ciRoot, inGit);
+        boolean explicitMode = publishWord != null || !info.releasePublish().isEmpty();
+        if (mode == PublishMode.CI && noPush && explicitMode) {
+            CommandWedge.printFail(CHIP, "--publish ci needs the tag pushed for CI to see it; drop --no-push");
+            return Exit.USAGE;
+        }
         // Outside git a release is the verb's alone: no clean-tree check, no tag, no commit, no push.
         String refusal = inGit ? preflight(git, tag, manifest) : null;
         if (refusal != null) {
             CommandWedge.printFail(CHIP, refusal);
             return Exit.CONFIG;
         }
-        CompletableFuture<RemoteClaim.Verdict> claim = startClaim(info, version);
-        RemoteClaim.Verdict verdict = claim.join();
-        if (verdict == RemoteClaim.Verdict.CLAIMED) {
+        if (startClaim(info, version).join() == RemoteClaim.Verdict.CLAIMED) {
             CommandWedge.printFail(
                     CHIP,
                     info.group() + ":" + info.name() + ":" + version + " is already published to "
@@ -231,14 +263,46 @@ public final class ReleaseCommand implements CliCommand {
             return Exit.CONFIG;
         }
 
+        // A release this machine must publish is refused before anything changes when it cannot.
+        if (mode == PublishMode.LOCAL) {
+            String cannot = localPublishRefusal(info, dir, manifest);
+            if (cannot != null) {
+                CommandWedge.printFail(CHIP, cannot);
+                return Exit.CONFIG;
+            }
+        }
+
         if (dryRun) {
+            String steps = (inGit ? ", tag " + tag : "") + ", move jk.toml to " + next + (push ? ", push" : "");
             CommandWedge.printOk(
                     CHIP,
-                    "Would release " + info.group() + ":" + info.name() + ":" + version + (publish ? ", publish" : "")
-                            + (inGit ? ", tag " + tag : "") + ", move jk.toml to " + next + (push ? ", push" : ""));
+                    "Would release " + info.group() + ":" + info.name() + ":" + version + steps + mode.dryRunNote());
             return Exit.SUCCESS;
         }
 
+        int built = installRelease(in, global, dir, destination);
+        if (built != 0) return built;
+
+        if (!inGit) {
+            if (mode == PublishMode.LOCAL) {
+                int published = new PublishCommand().run(publishInvocation(in, dir));
+                if (published != 0) {
+                    CommandWedge.printFail(
+                            CHIP,
+                            info.name() + " " + version + " was not published; fix the publish and run"
+                                    + " `jk release` again");
+                    return published;
+                }
+            }
+            return startOutsideGit(info, dir, manifest, text, version, next);
+        }
+        return tagAndStart(info, git, dir, manifest, text, version, next, tag, push, mode, in);
+    }
+
+    /** Build, test and install the declared version where {@code jk install} would. */
+    private static int installRelease(
+            Invocation in, GlobalOptions global, Path dir, @Nullable InstallDestination destination)
+            throws IOException, InterruptedException {
         BuildFlags flags;
         try {
             flags = BuildFlags.from(in);
@@ -250,29 +314,68 @@ public final class ReleaseCommand implements CliCommand {
         BuildOptions buildOpts = new BuildOptions();
         buildOpts.skipTests = flags.skipTests();
         InstallCommand install = new InstallCommand(global, buildOpts);
-        install.cacheDirOverride = in.value("cache-dir").map(CliPaths::abs).orElse(null);
         install.stateDirOverride = in.value("state-dir").map(CliPaths::abs).orElse(null);
         install.binDirOverride = in.value("bin-dir").map(CliPaths::abs).orElse(null);
         install.libDirOverride = in.value("lib-dir").map(CliPaths::abs).orElse(null);
         install.m2DirOverride = in.value("m2-dir").map(CliPaths::abs).orElse(null);
         install.destinationOverride = destination;
         install.jdksDir = CommonOpts.jdksDirValue(in);
-        int built = install.runProjectInstallBuildPlan(dir);
-        if (built != 0) return built;
+        return install.runProjectInstallBuildPlan(dir);
+    }
 
-        if (publish) {
-            int published = new PublishCommand().run(in);
-            if (published != 0) {
-                CommandWedge.printFail(
-                        CHIP,
-                        info.name() + " " + version + " was not published or tagged; fix the publish and run"
-                                + " `jk release` again");
-                return published;
-            }
+    /** Why this machine cannot publish {@code info}'s release, or {@code null} when it can. */
+    private static @Nullable String localPublishRefusal(ProjectInfo info, Path dir, Path manifest) {
+        PublishTarget.Resolution resolved = PublishTarget.resolve(info, dir, manifest, null, false, JkDirs::env);
+        PublishTarget target = resolved.target();
+        if (target == null) return resolved.refusal();
+        if (target.lacksCredential()) {
+            return "no credential for " + target.describe() + " on this machine; if CI publishes this project,"
+                    + " run jk release --publish ci";
         }
+        return null;
+    }
 
-        if (!inGit) return startOutsideGit(info, dir, manifest, text, version, next);
-        return tagAndStart(info, git, dir, manifest, text, version, next, tag, push);
+    /** The options of a publish run from this release's: its global options and test policy, at {@code dir}. */
+    private static Invocation publishInvocation(Invocation in, Path dir) {
+        Invocation.Builder b = Invocation.builder();
+        for (Opt opt : GlobalOptions.globalOpts()) {
+            if (!opt.canonicalName().equals("dir")) BuildVerbCommand.copy(in, opt, b);
+        }
+        BuildVerbCommand.copy(in, CommonOpts.skipTests(), b);
+        BuildVerbCommand.copy(in, CommonOpts.jdksDir(), b);
+        b.addValue("dir", dir.toString());
+        return b.build();
+    }
+
+    /**
+     * {@code jk publish} on the tag just cut, from a checkout of it: the release commit is no longer
+     * HEAD once {@code jk.toml} has moved on. The checkout is a detached worktree beside the user
+     * cache, removed afterwards.
+     */
+    private static int publishTag(Git git, Path dir, String tag, Invocation in)
+            throws IOException, InterruptedException {
+        String top = git.output("rev-parse", "--show-toplevel");
+        if (top == null || top.isEmpty()) {
+            CliOutput.err("could not find the repository root to publish " + tag + " from");
+            return Exit.CONFIG;
+        }
+        Path root = Path.of(top).toRealPath();
+        Path checkout = JkDirs.cache()
+                .resolve("release-checkouts")
+                .resolve(root.getFileName() + "-" + tag.replaceAll("[^A-Za-z0-9._-]", "_"));
+        Files.createDirectories(checkout.getParent());
+        git.run("worktree", "remove", "--force", checkout.toString());
+        String added = git.run("worktree", "add", "--detach", checkout.toString(), tag);
+        if (added != null) {
+            CliOutput.err("could not check out " + tag + " to publish it: " + added);
+            return Exit.CONFIG;
+        }
+        try {
+            Path at = checkout.resolve(root.relativize(dir.toRealPath()).toString());
+            return new PublishCommand().run(publishInvocation(in, at));
+        } finally {
+            git.run("worktree", "remove", "--force", checkout.toString());
+        }
     }
 
     /** Outside git: move the manifests to {@code next} by editing them, and relock. Nothing is tagged or committed. */
@@ -310,8 +413,10 @@ public final class ReleaseCommand implements CliCommand {
             String version,
             String next,
             String tag,
-            boolean push)
-            throws IOException {
+            boolean push,
+            PublishMode mode,
+            Invocation in)
+            throws IOException, InterruptedException {
         String tagFailure = git.run("tag", "-a", tag, "-m", "Release " + version);
         if (tagFailure != null) {
             CommandWedge.printFail(CHIP, "could not tag " + tag + ": " + tagFailure);
@@ -358,10 +463,25 @@ public final class ReleaseCommand implements CliCommand {
                 return Exit.CONFIG;
             }
         }
-        CommandWedge.printOk(
-                CHIP,
+        String remotes = push ? null : git.output("remote");
+        boolean noRemote = !push && (remotes == null || remotes.isBlank());
+        String released =
                 "Released " + info.group() + ":" + info.name() + ":" + version + ", tag " + tag + ", next " + next
-                        + (push ? ", pushed" : "; push with `git push --follow-tags`"));
+                        + (push
+                                ? ", pushed"
+                                : noRemote ? "; no git remote to push to" : "; push with `git push --follow-tags`");
+        if (mode == PublishMode.LOCAL) {
+            int published = publishTag(git, dir, tag, in);
+            if (published != 0) {
+                CommandWedge.printFail(
+                        CHIP,
+                        "released " + version + " as " + tag + (push ? " and pushed it" : "")
+                                + " but the upload failed; run `jk publish` on " + tag + " to finish it");
+                return published;
+            }
+        }
+        CommandWedge.printOk(CHIP, released);
+        if (mode == PublishMode.CI && push) CliOutput.out("pushed " + tag + "; CI publishes it");
         return Exit.SUCCESS;
     }
 

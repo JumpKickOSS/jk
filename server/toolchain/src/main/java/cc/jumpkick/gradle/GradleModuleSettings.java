@@ -145,8 +145,20 @@ final class GradleModuleSettings {
         if (p.publications().size() != 1) return build;
         GradleModel.Publication pub = p.publications().getFirst();
         if (pub.pomName() == null && pub.pomUrl() == null) return build;
-        return build.withPublish(
-                new PomMetadata(pub.pomName(), null, pub.pomUrl(), List.of(), List.of(), null, null, false, null));
+        return build.withPublish(new PomMetadata(
+                pub.pomName(),
+                null,
+                pub.pomUrl(),
+                List.of(),
+                List.of(),
+                null,
+                null,
+                true,
+                null,
+                false,
+                true,
+                true,
+                false));
     }
 
     /**

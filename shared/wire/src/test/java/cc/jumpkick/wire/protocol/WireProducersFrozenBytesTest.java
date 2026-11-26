@@ -30,7 +30,7 @@ class WireProducersFrozenBytesTest {
                                 + "\"testCount\":0,\"nativeExplicitlyDisabled\":false,\"classesDir\":\"\",\"testClassesDir\":\"\","
                                 + "\"kotlinClassesDir\":\"\",\"groovyClassesDir\":\"\",\"testResultsDir\":\"\","
                                 + "\"lockStale\":false,\"scala\":false,\"scalaVersion\":\"\","
-                                + "\"coordinatorOnly\":false,\"productLib\":\"\",\"productBin\":\"\",\"toolchains\":{},\"publishRepository\":\"\",\"publishSign\":false,\"publishKeyFile\":\"\",\"releaseTag\":\"\",\"releaseFiles\":{},\"upstreams\":{},\"releaseBuild\":false,\"releaseLine\":\"\"}");
+                                + "\"coordinatorOnly\":false,\"productLib\":\"\",\"productBin\":\"\",\"toolchains\":{},\"publishRepository\":\"\",\"publishSign\":false,\"publishKeyFile\":\"\",\"imageRegistry\":\"\",\"releasePublish\":\"\",\"releaseTag\":\"\",\"releaseFiles\":{},\"upstreams\":{},\"releaseBuild\":false,\"releaseLine\":\"\"}");
         // A populated line in the old template's order, with the three tri-state format flags present
         // and a null error: decode then encode must give the same bytes back.
         String line = "{\"type\":\"project-info-ack\",\"error\":null,\"group\":\"g\",\"name\":\"n\",\"version\":\"1\","
@@ -47,7 +47,7 @@ class WireProducersFrozenBytesTest {
                 + "\"kotlinClassesDir\":\"/kc\",\"groovyClassesDir\":\"/gc\",\"testResultsDir\":\"/tr\","
                 + "\"lockStale\":true,\"scala\":true,"
                 + "\"scalaVersion\":\"3.9\",\"coordinatorOnly\":false,\"productLib\":\"lib\",\"productBin\":\"jk\","
-                + "\"toolchains\":{\"a/b\":\"temurin-21@21\",\"c\":\"@25\"},\"publishRepository\":\"r\",\"publishSign\":true,\"publishKeyFile\":\"k.asc\",\"releaseTag\":\"v{version}\",\"releaseFiles\":{\"install.sh\":\"FLOOR=(.+)\"},\"upstreams\":{\"/w/a/b\":\"/w/c\"},\"releaseBuild\":true,\"releaseLine\":\"Release 1 (tag v1)\"}";
+                + "\"toolchains\":{\"a/b\":\"temurin-21@21\",\"c\":\"@25\"},\"publishRepository\":\"r\",\"publishSign\":true,\"publishKeyFile\":\"k.asc\",\"imageRegistry\":\"ghcr.io/a\",\"releasePublish\":\"ci\",\"releaseTag\":\"v{version}\",\"releaseFiles\":{\"install.sh\":\"FLOOR=(.+)\"},\"upstreams\":{\"/w/a/b\":\"/w/c\"},\"releaseBuild\":true,\"releaseLine\":\"Release 1 (tag v1)\"}";
         assertThat(ProjectInfo.decode(line).encode()).isEqualTo(line);
     }
 

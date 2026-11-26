@@ -376,7 +376,7 @@ Sources, in order — the first that yields a credential wins:
 Tool distribution mirrors and npm registries use the same chain, keyed by host — see
 [Config § Tool mirrors](config.md#tool-mirrors) and [Config § Node network](config.md#node-network).
 
-`jk publish -c` reads the id `central`, bound to `https://central.sonatype.com` — see
+A publish to `central` reads the id `central`, bound to `https://central.sonatype.com` — see
 [Publish: Maven Central](publish.md#maven-central).
 
 ### On CI, in a container, over SSH

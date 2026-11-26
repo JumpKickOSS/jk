@@ -88,7 +88,7 @@ class PublishCommandTest {
                 tempDir.resolve("src/main/java/com/example/Widget.java"),
                 "package com.example; public class Widget {}");
 
-        int exit = run("publish", "-C", tempDir.toString(), "--repo-url", base.toString());
+        int exit = run("publish", "-C", tempDir.toString(), "--repository", base.toString());
         assertThat(exit).isEqualTo(0);
 
         String prefix = "/repo/com/example/widget/1.0.0/widget-1.0.0";
@@ -116,38 +116,9 @@ class PublishCommandTest {
                 """);
         writeJar(tempDir.resolve("target/widget-1.0.0-SNAPSHOT.jar"));
 
-        int exit = run("publish", "-C", tempDir.toString(), "--repo-url", base.toString());
+        int exit = run("publish", "-C", tempDir.toString(), "--repository", base.toString());
         assertThat(exit).isEqualTo(65); // EX_DATAERR
         assertThat(received).isEmpty();
-    }
-
-    @Test
-    void a_tag_that_is_not_the_releases_tag_stops_before_anything_uploads(@TempDir Path tempDir) throws Exception {
-        writeJkBuild(tempDir);
-        writeJar(tempDir.resolve("target/widget-1.0.0.jar"));
-
-        int exit = run("publish", "-C", tempDir.toString(), "--repo-url", base.toString(), "--tag", "v1.0.1");
-
-        assertThat(exit).isEqualTo(2); // CONFIG
-        assertThat(received).isEmpty();
-    }
-
-    @Test
-    void the_tag_the_release_created_publishes(@TempDir Path tempDir) throws Exception {
-        Files.writeString(tempDir.resolve("jk.toml"), """
-                group    = "com.example"
-                name     = "widget"
-                version  = "1.0.0"
-                jdk      = { version = "25" }
-                [release]
-                tag = "widget-{version}"
-                """);
-        writeJar(tempDir.resolve("target/widget-1.0.0.jar"));
-
-        int exit = run("publish", "-C", tempDir.toString(), "--repo-url", base.toString(), "--tag", "widget-1.0.0");
-
-        assertThat(exit).isEqualTo(0);
-        assertThat(received).containsKey("/repo/com/example/widget/1.0.0/widget-1.0.0.jar");
     }
 
     @Test
@@ -182,7 +153,7 @@ class PublishCommandTest {
                 """);
         writeJar(tempDir.resolve("target/widget-1.0.0-SNAPSHOT.jar"));
 
-        int exit = run("publish", "-C", tempDir.toString(), "--repo-url", base.toString(), "--allow-snapshot");
+        int exit = run("publish", "-C", tempDir.toString(), "--repository", base.toString(), "--allow-snapshot");
         assertThat(exit).isEqualTo(0);
     }
 
@@ -191,7 +162,7 @@ class PublishCommandTest {
         writeJkBuild(tempDir);
         writeJar(tempDir.resolve("target/widget-1.0.0.jar"));
 
-        int exit = run("publish", "-C", tempDir.toString(), "--repo-url", base.toString());
+        int exit = run("publish", "-C", tempDir.toString(), "--repository", base.toString());
         assertThat(exit).isEqualTo(0);
         assertThat(received.keySet()).noneMatch(k -> k.contains("-sources.jar"));
     }
@@ -199,30 +170,28 @@ class PublishCommandTest {
     @Test
     void publish_builds_the_jar_it_uploads(@TempDir Path tempDir) throws Exception {
         writeJkBuild(tempDir);
-        int exit = run("publish", "-C", tempDir.toString(), "--repo-url", base.toString());
+        int exit = run("publish", "-C", tempDir.toString(), "--repository", base.toString());
         assertThat(exit).isEqualTo(0);
         assertThat(received.keySet()).anyMatch(k -> k.endsWith("widget-1.0.0.jar"));
     }
 
     @Test
-    void signed_publish_uploads_asc_files(@TempDir Path tempDir) throws Exception {
-        // Generate a throwaway secret key via the supply-chain test fixture.
-        var key = GpgTestFixture.generate(tempDir, "pass");
+    void a_key_file_in_publish_signs_every_file(@TempDir Path tempDir) throws Exception {
+        // A throwaway secret key from the supply-chain test fixture, with no passphrase.
+        var key = GpgTestFixture.generate(tempDir, "");
 
-        writeJkBuild(tempDir);
+        Files.writeString(tempDir.resolve("jk.toml"), """
+                group    = "com.example"
+                name     = "widget"
+                version  = "1.0.0"
+                jdk      = { version = "25" }
+
+                [publish]
+                key-file = "%s"
+                """.formatted(key.secretKeyFile()));
         writeJar(tempDir.resolve("target/widget-1.0.0.jar"));
 
-        int exit = run(
-                "publish",
-                "-C",
-                tempDir.toString(),
-                "--repo-url",
-                base.toString(),
-                "--sign",
-                "--key-file",
-                key.secretKeyFile().toString(),
-                "--key-passphrase",
-                "pass");
+        int exit = run("publish", "-C", tempDir.toString(), "--repository", base.toString());
         assertThat(exit).isEqualTo(0);
 
         String stem = "/repo/com/example/widget/1.0.0/widget-1.0.0";
@@ -232,12 +201,46 @@ class PublishCommandTest {
     }
 
     @Test
-    void sign_without_key_file_errors(@TempDir Path tempDir) throws Exception {
-        writeJkBuild(tempDir);
+    void a_key_file_that_is_not_there_is_refused_before_anything_uploads(@TempDir Path tempDir) throws Exception {
+        Files.writeString(tempDir.resolve("jk.toml"), """
+                group    = "com.example"
+                name     = "widget"
+                version  = "1.0.0"
+                jdk      = { version = "25" }
+
+                [publish]
+                key-file = "missing.asc"
+                """);
         writeJar(tempDir.resolve("target/widget-1.0.0.jar"));
-        int exit = run("publish", "-C", tempDir.toString(), "--repo-url", base.toString(), "--sign");
-        // CommandLine propagates the runtime error as a non-zero exit.
-        assertThat(exit).isNotZero();
+
+        assertThat(run("publish", "-C", tempDir.toString(), "--repository", base.toString()))
+                .isEqualTo(2); // CONFIG
+        assertThat(received).isEmpty();
+    }
+
+    @Test
+    void sign_false_publishes_unsigned_and_leaves_the_sidecars_to_their_switches(@TempDir Path tempDir)
+            throws Exception {
+        Files.writeString(tempDir.resolve("jk.toml"), """
+                group    = "com.example"
+                name     = "widget"
+                version  = "1.0.0"
+                jdk      = { version = "25" }
+
+                [publish]
+                sign = false
+                sbom = false
+                provenance = false
+                """);
+        writeJar(tempDir.resolve("target/widget-1.0.0.jar"));
+
+        assertThat(run("publish", "-C", tempDir.toString(), "--repository", base.toString()))
+                .isEqualTo(0);
+
+        assertThat(received.keySet())
+                .noneMatch(k ->
+                        k.endsWith(".asc") || k.contains("cyclonedx") || k.contains("spdx") || k.contains("intoto"));
+        assertThat(received).containsKey("/repo/com/example/widget/1.0.0/widget-1.0.0.jar");
     }
 
     @Test
@@ -245,17 +248,17 @@ class PublishCommandTest {
         writeJkBuild(tempDir);
         writeJar(tempDir.resolve("target/widget-1.0.0.jar"));
 
-        int exit = run("publish", "-C", tempDir.toString(), "--repo-url", base.toString(), "--dry-run");
+        int exit = run("publish", "-C", tempDir.toString(), "--repository", base.toString(), "--dry-run");
         assertThat(exit).isEqualTo(0);
         assertThat(received).isEmpty();
     }
 
     @Test
-    void slsa_emits_intoto_provenance_for_the_main_jar(@TempDir Path tempDir) throws Exception {
+    void provenance_is_on_by_default_for_the_main_jar(@TempDir Path tempDir) throws Exception {
         writeJkBuild(tempDir);
         writeJar(tempDir.resolve("target/widget-1.0.0.jar"));
 
-        int exit = run("publish", "-C", tempDir.toString(), "--repo-url", base.toString(), "--slsa");
+        int exit = run("publish", "-C", tempDir.toString(), "--repository", base.toString());
         assertThat(exit).isEqualTo(0);
 
         String stem = "/repo/com/example/widget/1.0.0/widget-1.0.0";
@@ -267,11 +270,11 @@ class PublishCommandTest {
     }
 
     @Test
-    void sbom_emits_cyclonedx_and_spdx_sidecars(@TempDir Path tempDir) throws Exception {
+    void the_sbom_sidecars_are_on_by_default(@TempDir Path tempDir) throws Exception {
         writeJkBuild(tempDir);
         writeJar(tempDir.resolve("target/widget-1.0.0.jar"));
 
-        int exit = run("publish", "-C", tempDir.toString(), "--repo-url", base.toString(), "--sbom");
+        int exit = run("publish", "-C", tempDir.toString(), "--repository", base.toString());
         assertThat(exit).isEqualTo(0);
 
         String stem = "/repo/com/example/widget/1.0.0/widget-1.0.0";
@@ -291,11 +294,11 @@ class PublishCommandTest {
     }
 
     @Test
-    void sbom_dry_run_writes_the_documents_under_target_and_needs_no_repo_url(@TempDir Path tempDir) throws Exception {
+    void a_dry_run_writes_the_sbom_under_target_and_needs_no_repository(@TempDir Path tempDir) throws Exception {
         writeJkBuild(tempDir);
         writeJar(tempDir.resolve("target/widget-1.0.0.jar"));
 
-        int exit = run("publish", "-C", tempDir.toString(), "--sbom", "--dry-run");
+        int exit = run("publish", "-C", tempDir.toString(), "--dry-run");
         assertThat(exit).isEqualTo(0);
         assertThat(received).isEmpty();
         Path cdx = tempDir.resolve("target/sbom/widget-1.0.0.cdx.json");
@@ -321,7 +324,7 @@ class PublishCommandTest {
         writeJkBuild(member);
         writeJar(tempDir.resolve("widget/target/widget-1.0.0.jar"));
 
-        String out = Capture.stdout(() -> run("publish", "-C", member.toString(), "--sbom", "--dry-run"));
+        String out = Capture.stdout(() -> run("publish", "-C", member.toString(), "--dry-run"));
 
         assertThat(tempDir.resolve("widget/target/sbom/widget-1.0.0.cdx.json")).exists();
         assertThat(out)
@@ -330,24 +333,11 @@ class PublishCommandTest {
     }
 
     @Test
-    void publish_without_a_repo_url_is_refused_unless_dry_run(@TempDir Path tempDir) throws Exception {
+    void publish_without_a_repository_is_refused_unless_dry_run(@TempDir Path tempDir) throws Exception {
         writeJkBuild(tempDir);
         writeJar(tempDir.resolve("target/widget-1.0.0.jar"));
 
         assertThat(run("publish", "-C", tempDir.toString())).isNotZero();
-        assertThat(received).isEmpty();
-    }
-
-    @Test
-    void sigstore_dry_run_does_not_call_fulcio(@TempDir Path tempDir) throws Exception {
-        // --dry-run must not attempt to initialise the keyless signer, which
-        // would otherwise need network + OIDC. Same goes for --sign without a
-        // key file — dry-run is the path users hit while exploring the command.
-        writeJkBuild(tempDir);
-        writeJar(tempDir.resolve("target/widget-1.0.0.jar"));
-
-        int exit = run("publish", "-C", tempDir.toString(), "--repo-url", base.toString(), "--sigstore", "--dry-run");
-        assertThat(exit).isEqualTo(0);
         assertThat(received).isEmpty();
     }
 
@@ -374,7 +364,7 @@ class PublishCommandTest {
                 """);
         writeJar(tempDir.resolve("target/widget-1.0.0.jar"));
 
-        int exit = run("publish", "-C", tempDir.toString(), "--repo-url", base.toString());
+        int exit = run("publish", "-C", tempDir.toString(), "--repository", base.toString());
 
         assertThat(exit).isNotEqualTo(0);
         assertThat(received).isEmpty(); // rejected before any upload
@@ -407,12 +397,12 @@ class PublishCommandTest {
 
         Files.writeString(tempDir.resolve("jk.toml"), manifest.formatted("0.1.0"));
         writeJar(tempDir.resolve("target/widget-0.1.0.jar"));
-        assertThat(run("publish", "-C", tempDir.toString(), "--repo-url", base.toString()))
+        assertThat(run("publish", "-C", tempDir.toString(), "--repository", base.toString()))
                 .isEqualTo(0);
 
         Files.writeString(tempDir.resolve("jk.toml"), manifest.formatted("0.2.0"));
         writeJar(tempDir.resolve("target/widget-0.2.0.jar"));
-        assertThat(run("publish", "-C", tempDir.toString(), "--repo-url", base.toString()))
+        assertThat(run("publish", "-C", tempDir.toString(), "--repository", base.toString()))
                 .isEqualTo(0);
 
         String metadata =
@@ -439,7 +429,7 @@ class PublishCommandTest {
 
         Files.writeString(tempDir.resolve("jk.toml"), manifest.formatted("0.1.0"));
         writeJar(tempDir.resolve("target/widget-0.1.0.jar"));
-        assertThat(run("publish", "-C", tempDir.toString(), "--repo-url", base.toString()))
+        assertThat(run("publish", "-C", tempDir.toString(), "--repository", base.toString()))
                 .isEqualTo(0);
         byte[] afterFirst = received.get("/repo/com/example/widget/maven-metadata.xml");
         assertThat(new String(afterFirst, StandardCharsets.UTF_8)).contains("<version>0.1.0</version>");
@@ -448,7 +438,7 @@ class PublishCommandTest {
         Files.writeString(tempDir.resolve("jk.toml"), manifest.formatted("0.2.0"));
         writeJar(tempDir.resolve("target/widget-0.2.0.jar"));
 
-        assertThat(run("publish", "-C", tempDir.toString(), "--repo-url", base.toString()))
+        assertThat(run("publish", "-C", tempDir.toString(), "--repository", base.toString()))
                 .as("publish must fail loudly rather than truncate the version list")
                 .isNotEqualTo(0);
 

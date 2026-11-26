@@ -31,10 +31,11 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * {@code jk publish -c} against a stub Central Portal on loopback: the upload hands out a
- * deployment id, the status endpoint walks the Portal's states, and one variant fails validation
- * with two errors. The token comes from the {@code central} entry of the credential store, bound
- * to the stub's origin the way {@code jk repo login central -U …} binds it.
+ * {@code jk publish} to {@code central} against a stub Portal on loopback: the upload hands out a
+ * deployment id, the status endpoint walks the Portal's states, the publish call releases the
+ * deployment, and one variant fails validation with two errors. The token comes from the {@code
+ * central} entry of the credential store, bound to the stub's origin the way {@code jk repo login
+ * central -U …} binds it.
  */
 @Tag("integration")
 @SysProps.TempRoots("jk.m2.local")
@@ -48,6 +49,8 @@ class PublishCentralCommandTest {
     private volatile byte[] uploaded = new byte[0];
     private final AtomicInteger polls = new AtomicInteger();
     private volatile List<String> walk = List.of("PENDING", "VALIDATING", "VALIDATED");
+    private final AtomicInteger releasedPolls = new AtomicInteger();
+    private volatile boolean released;
     private volatile String errorsJson = "{}";
     private final RepoCredentialStore store = new RepoCredentialStore();
 
@@ -63,9 +66,17 @@ class PublishCentralCommandTest {
             exchange.getResponseBody().write(id);
             exchange.close();
         });
+        server.createContext("/api/v1/publisher/deployment/", exchange -> {
+            requests.add(exchange.getRequestMethod() + " " + exchange.getRequestURI());
+            released = true;
+            exchange.sendResponseHeaders(204, -1);
+            exchange.close();
+        });
         server.createContext("/api/v1/publisher/status", exchange -> {
             requests.add(exchange.getRequestMethod() + " " + exchange.getRequestURI());
-            String state = walk.get(Math.min(polls.getAndIncrement(), walk.size() - 1));
+            String state = released
+                    ? List.of("PUBLISHING", "PUBLISHED").get(Math.min(releasedPolls.getAndIncrement(), 1))
+                    : walk.get(Math.min(polls.getAndIncrement(), walk.size() - 1));
             String body = "{\"deploymentId\":\"dep-1234\",\"deploymentState\":\"" + state + "\""
                     + ("FAILED".equals(state) ? ",\"errors\":" + errorsJson : "") + "}";
             byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
@@ -76,33 +87,22 @@ class PublishCentralCommandTest {
         server.start();
         base = URI.create("http://127.0.0.1:" + server.getAddress().getPort() + "/");
         store.write("central", new RepoCredential.Bearer("portal-token"), base);
+        System.setProperty("jk.env.JK_CENTRAL_PORTAL_URL", base.toString());
     }
 
     @AfterEach
     void stop() {
         server.stop(0);
         store.clear("central");
+        System.clearProperty("jk.env.JK_CENTRAL_PORTAL_URL");
     }
 
     @Test
-    void a_user_managed_publish_uploads_the_signed_bundle_and_polls_to_validated(@TempDir Path dir) throws Exception {
-        var key = GpgTestFixture.generate(dir, "pass");
-        writeLibrary(dir);
+    void a_publish_uploads_the_signed_bundle_and_releases_the_deployment(@TempDir Path dir) throws Exception {
+        writeLibrary(dir, "");
 
-        String out = Capture.stdout(() -> assertThat(run(
-                        "publish",
-                        "--no-ansi",
-                        "-C",
-                        dir.toString(),
-                        "--central",
-                        "--repo-url",
-                        base.toString(),
-                        "--sign",
-                        "--key-file",
-                        key.secretKeyFile().toString(),
-                        "--key-passphrase",
-                        "pass"))
-                .isEqualTo(0));
+        String out = Capture.stdout(() ->
+                assertThat(run("publish", "--no-ansi", "-C", dir.toString())).isEqualTo(0));
 
         assertThat(requests.get(0))
                 .isEqualTo(
@@ -110,6 +110,9 @@ class PublishCentralCommandTest {
         assertThat(requests.subList(1, requests.size()))
                 .containsExactly(
                         "POST /api/v1/publisher/status?id=dep-1234",
+                        "POST /api/v1/publisher/status?id=dep-1234",
+                        "POST /api/v1/publisher/status?id=dep-1234",
+                        "POST /api/v1/publisher/deployment/dep-1234",
                         "POST /api/v1/publisher/status?id=dep-1234",
                         "POST /api/v1/publisher/status?id=dep-1234");
         List<String> entries = zipEntries(multipartFile(uploaded));
@@ -134,42 +137,28 @@ class PublishCentralCommandTest {
         assertThat(out)
                 .contains("Published com.example:widget:1.0.0 to the Central Portal (16 files)")
                 .contains("deployment dep-1234")
-                .contains("VALIDATED");
+                .contains("PUBLISHED");
 
         String results = MarkdownReports.strip(Files.readString(dir.resolve("target/jk-results.md")));
         assertThat(results)
                 .contains("## Publish")
-                .contains("- destination: Central Portal (user-managed)")
+                .contains("- destination: Central Portal")
                 .contains("- files: 16")
-                .contains("- deployment: `dep-1234` · **VALIDATED**");
+                .contains("- deployment: `dep-1234` · **PUBLISHED**");
     }
 
     @Test
-    void an_automatic_publish_polls_through_to_published(@TempDir Path dir) throws Exception {
-        walk = List.of("PENDING", "VALIDATED", "PUBLISHING", "PUBLISHED");
-        var key = GpgTestFixture.generate(dir, "pass");
-        writeLibrary(dir);
+    void hold_stops_at_validated_and_leaves_the_release_to_the_portal(@TempDir Path dir) throws Exception {
+        writeLibrary(dir, "hold = true");
 
-        int exit = run(
-                "publish",
-                "-C",
-                dir.toString(),
-                "--central",
-                "--repo-url",
-                base.toString(),
-                "--publishing-type",
-                "automatic",
-                "--sign",
-                "--key-file",
-                key.secretKeyFile().toString(),
-                "--key-passphrase",
-                "pass");
-        assertThat(exit).isEqualTo(0);
-        assertThat(requests.get(0)).contains("publishingType=AUTOMATIC");
-        assertThat(polls.get()).isEqualTo(4);
+        String out = Capture.stdout(() ->
+                assertThat(run("publish", "--no-ansi", "-C", dir.toString())).isEqualTo(0));
+
+        assertThat(requests).noneMatch(r -> r.contains("/deployment/"));
+        assertThat(polls.get()).isEqualTo(3);
+        assertThat(out).contains("deployment dep-1234").contains("VALIDATED; release it from the Portal");
         assertThat(MarkdownReports.strip(Files.readString(dir.resolve("target/jk-results.md"))))
-                .contains("- destination: Central Portal (automatic)")
-                .contains("- deployment: `dep-1234` · **PUBLISHED**");
+                .contains("- deployment: `dep-1234` · **VALIDATED**");
     }
 
     @Test
@@ -177,23 +166,10 @@ class PublishCentralCommandTest {
         walk = List.of("PENDING", "FAILED");
         errorsJson = "{\"common\":[\"Missing signature for file: widget-1.0.0.pom\"],"
                 + "\"pkg:maven/com.example/widget@1.0.0\":[\"Javadocs must be provided but not found in entries\"]}";
-        var key = GpgTestFixture.generate(dir, "pass");
-        writeLibrary(dir);
+        writeLibrary(dir, "");
 
-        Capture.Streams streams = Capture.both(() -> assertThat(run(
-                        "publish",
-                        "--no-ansi",
-                        "-C",
-                        dir.toString(),
-                        "--central",
-                        "--repo-url",
-                        base.toString(),
-                        "--sign",
-                        "--key-file",
-                        key.secretKeyFile().toString(),
-                        "--key-passphrase",
-                        "pass"))
-                .isEqualTo(1));
+        Capture.Streams streams = Capture.both(() ->
+                assertThat(run("publish", "--no-ansi", "-C", dir.toString())).isEqualTo(1));
 
         assertThat(streams.err())
                 .contains("dep-1234")
@@ -209,21 +185,9 @@ class PublishCentralCommandTest {
 
     @Test
     void a_dry_run_writes_the_bundle_under_target_and_lists_its_entries(@TempDir Path dir) throws Exception {
-        var key = GpgTestFixture.generate(dir, "pass");
-        writeLibrary(dir);
+        writeLibrary(dir, "");
 
-        String out = Capture.stdout(() -> assertThat(run(
-                        "publish",
-                        "--no-ansi",
-                        "-C",
-                        dir.toString(),
-                        "--central",
-                        "--dry-run",
-                        "--sign",
-                        "--key-file",
-                        key.secretKeyFile().toString(),
-                        "--key-passphrase",
-                        "pass"))
+        String out = Capture.stdout(() -> assertThat(run("publish", "--no-ansi", "-C", dir.toString(), "--dry-run"))
                 .isEqualTo(0));
 
         assertThat(requests).isEmpty();
@@ -238,13 +202,13 @@ class PublishCentralCommandTest {
                 .contains("    " + STEM + ".jar")
                 .contains("    " + STEM + "-sources.jar.asc");
         assertThat(MarkdownReports.strip(Files.readString(dir.resolve("target/jk-results.md"))))
-                .contains("- destination: Central Portal (user-managed) (dry run)")
+                .contains("- destination: Central Portal (dry run)")
                 .contains("- bundle (16 entries):");
     }
 
     @Test
     void an_assembly_app_dry_run_publishes_the_thin_jar(@TempDir Path dir) throws Exception {
-        var key = GpgTestFixture.generate(dir, "pass");
+        var key = GpgTestFixture.generate(dir, "");
         Path app = Files.createDirectories(dir.resolve("app"));
         Files.createDirectories(app.resolve("src/main/java/com/example"));
         Files.writeString(app.resolve("src/main/java/com/example/Main.java"), """
@@ -266,25 +230,18 @@ class PublishCentralCommandTest {
                 assembly = true
 
                 [publish]
+                repository = "central"
+                key-file = "%s"
+                sbom = false
+                provenance = false
                 url = "https://example.com/widget"
                 licenses = [{ name = "Apache-2.0", url = "https://www.apache.org/licenses/LICENSE-2.0" }]
                 developers = [{ id = "ada", name = "Ada Lovelace" }]
                 scm = { url = "https://github.com/example/widget", connection = "scm:git:https://github.com/example/widget.git", developer-connection = "scm:git:ssh://git@github.com/example/widget.git" }
-                """;
+                """.formatted(key.secretKeyFile());
         Files.writeString(app.resolve("jk.toml"), manifest);
 
-        assertThat(run(
-                        "publish",
-                        "--no-ansi",
-                        "-C",
-                        app.toString(),
-                        "--central",
-                        "--dry-run",
-                        "--sign",
-                        "--key-file",
-                        key.secretKeyFile().toString(),
-                        "--key-passphrase",
-                        "pass"))
+        assertThat(run("publish", "--no-ansi", "-C", app.toString(), "--dry-run"))
                 .isEqualTo(0);
 
         Path zip = app.resolve("target/publish/central-bundle.zip");
@@ -299,41 +256,45 @@ class PublishCentralCommandTest {
     }
 
     @Test
-    void central_without_a_signing_key_is_refused_with_the_flags_that_fix_it(@TempDir Path dir) throws Exception {
-        writeLibrary(dir);
+    void central_without_a_signing_key_is_refused_naming_the_key_file_setting(@TempDir Path dir) throws Exception {
+        writeLibrary(dir, "");
+        Files.writeString(
+                dir.resolve("jk.toml"), Files.readString(dir.resolve("jk.toml")).replaceAll("(?m)^key-file.*\\n", ""));
         String err = Capture.stderr(
-                () -> assertThat(run("publish", "-C", dir.toString(), "--central", "--repo-url", base.toString()))
-                        .isEqualTo(64));
-        assertThat(err).contains("--sign --key-file");
+                () -> assertThat(run("publish", "-C", dir.toString())).isEqualTo(2));
+        assertThat(err).contains("[publish] key-file");
+        assertThat(requests).isEmpty();
+    }
+
+    @Test
+    void central_with_signing_turned_off_is_refused(@TempDir Path dir) throws Exception {
+        writeLibrary(dir, "sign = false");
+        String err = Capture.stderr(
+                () -> assertThat(run("publish", "-C", dir.toString())).isEqualTo(2));
+        assertThat(err).contains("sign = false");
         assertThat(requests).isEmpty();
     }
 
     @Test
     void central_without_the_library_artefacts_or_the_pom_metadata_is_refused_before_upload(@TempDir Path dir)
             throws Exception {
-        var key = GpgTestFixture.generate(dir, "pass");
+        var key = GpgTestFixture.generate(dir, "");
         Files.writeString(dir.resolve("jk.toml"), """
                 group       = "com.example"
                 name        = "widget"
                 version     = "1.0.0"
                 description = "A widget"
                 java        = 25
-                """);
+
+                [publish]
+                repository = "central"
+                key-file = "%s"
+                sbom = false
+                provenance = false
+                """.formatted(key.secretKeyFile()));
         writeZip(dir.resolve("target/widget-1.0.0.jar"));
 
-        String[] args = {
-            "publish",
-            "-C",
-            dir.toString(),
-            "--central",
-            "--repo-url",
-            base.toString(),
-            "--sign",
-            "--key-file",
-            key.secretKeyFile().toString(),
-            "--key-passphrase",
-            "pass"
-        };
+        String[] args = {"publish", "-C", dir.toString()};
         assertThat(run(args)).isEqualTo(1);
         assertThat(MarkdownReports.strip(Files.readString(dir.resolve("target/jk-results.md"))))
                 .contains("widget-1.0.0-sources.jar")
@@ -347,7 +308,9 @@ class PublishCentralCommandTest {
         assertThat(requests).isEmpty();
     }
 
-    private static void writeLibrary(Path dir) throws IOException {
+    /** A library that publishes to Central, signed with a fresh key; {@code extra} is more {@code [publish]} lines. */
+    private static void writeLibrary(Path dir, String extra) throws Exception {
+        var key = GpgTestFixture.generate(dir, "");
         Files.writeString(dir.resolve("jk.toml"), """
                 group       = "com.example"
                 name        = "widget"
@@ -356,11 +319,16 @@ class PublishCentralCommandTest {
                 java        = 25
 
                 [publish]
+                repository = "central"
+                key-file = "%s"
+                sbom = false
+                provenance = false
+                %s
                 url = "https://example.com/widget"
                 licenses = [{ name = "Apache-2.0", url = "https://www.apache.org/licenses/LICENSE-2.0" }]
                 developers = [{ id = "ada", name = "Ada Lovelace" }]
                 scm = { url = "https://github.com/example/widget", connection = "scm:git:https://github.com/example/widget.git", developer-connection = "scm:git:ssh://git@github.com/example/widget.git" }
-                """);
+                """.formatted(key.secretKeyFile(), extra));
         writeZip(dir.resolve("target/widget-1.0.0.jar"));
         writeZip(dir.resolve("target/widget-1.0.0-sources.jar"));
         writeZip(dir.resolve("target/widget-1.0.0-javadoc.jar"));

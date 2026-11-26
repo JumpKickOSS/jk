@@ -74,18 +74,12 @@ public final class TailArgsJson {
                 .string("kind", "publish")
                 .optionalNonBlankString(
                         "repoUrl", p.repoUrl() == null ? null : p.repoUrl().toString())
-                .optionalNonBlankString("region", p.region())
-                .optionalNonBlankString("endpoint", p.endpoint())
                 .optionalTrue("allowSnapshot", p.allowSnapshot())
                 .optionalTrue("dryRun", p.dryRun())
                 .optionalNonBlankString(
                         "keyFile", p.keyFile() == null ? null : p.keyFile().toString())
                 .optionalNonBlankString("gpgPassphrase", p.gpgPassphrase())
-                .optionalTrue("sigstore", p.sigstore())
-                .optionalTrue("slsa", p.slsa())
-                .optionalTrue("sbom", p.sbom())
-                .optionalTrue(RepositorySpec.CENTRAL, p.central())
-                .optionalNonBlankString("publishingType", p.publishingType());
+                .optionalTrue(RepositorySpec.CENTRAL, p.central());
         return switch (p.credential()) {
             case RepoCredential.Basic b ->
                 json.string("authType", "basic")
@@ -122,18 +116,12 @@ public final class TailArgsJson {
             case "publish" ->
                 new TailArgs.Publish(
                         uri(Jsonl.str(json, "repoUrl")),
-                        Jsonl.str(json, "region"),
-                        Jsonl.str(json, "endpoint"),
                         Jsonl.bool(json, "allowSnapshot", false),
                         Jsonl.bool(json, "dryRun", false),
                         path(Jsonl.str(json, "keyFile")),
                         Jsonl.str(json, "gpgPassphrase"),
-                        Jsonl.bool(json, "sigstore", false),
-                        Jsonl.bool(json, "slsa", false),
-                        Jsonl.bool(json, "sbom", false),
                         credential(json),
-                        Jsonl.bool(json, RepositorySpec.CENTRAL, false),
-                        Jsonl.str(json, "publishingType"));
+                        Jsonl.bool(json, RepositorySpec.CENTRAL, false));
             default -> throw new IllegalArgumentException("unknown tail kind `" + kind + "`");
         };
     }

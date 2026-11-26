@@ -2,12 +2,15 @@
 package cc.jumpkick.runtime.base;
 
 import cc.jumpkick.cache.JkStores;
+import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.ResolvedSecrets;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.engine.plugin.BuiltInPluginJars;
 import cc.jumpkick.engine.plugin.PluginClient;
 import cc.jumpkick.engine.plugin.PluginJar;
+import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.jsonl.Jsonl;
@@ -17,8 +20,12 @@ import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.GitRefSpec;
 import cc.jumpkick.model.GitSource;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.ObjectStoreConfig;
+import cc.jumpkick.model.PomMetadata;
+import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
 import cc.jumpkick.plugin.protocol.SpecWriter;
+import cc.jumpkick.publish.CiIdentity;
 import cc.jumpkick.run.BuildPlanKey;
 import cc.jumpkick.run.BuildStage;
 import cc.jumpkick.run.StepForecast;
@@ -32,9 +39,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
+import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -47,24 +55,18 @@ public final class PublishPlans {
     private PublishPlans() {}
 
     /**
-     * Everything the publish plan needs beyond the project directory — the command's validated
-     * flags plus the client-resolved credential/passphrase. {@code keyFile} is non-null only when
-     * {@code --sign} was set (the command already enforced {@code --sign} ⇒ {@code --key-file}).
+     * Everything the publish plan needs beyond the project directory: where to, the client-resolved
+     * PGP key, passphrase and credential. {@code keyFile} is null when the project does not sign or
+     * names no key. Signing, SBOM and provenance follow the project's {@code [publish]} table.
      */
     public record Request(
             @Nullable URI repoUrl,
-            @Nullable String region,
-            @Nullable String endpoint,
             boolean allowSnapshot,
             boolean dryRun,
             @Nullable Path keyFile,
             @Nullable String gpgPassphrase,
-            boolean sigstore,
-            boolean slsa,
-            boolean sbom,
             RepoCredential credential,
-            boolean central,
-            @Nullable String publishingType) {}
+            boolean central) {}
 
     /** A Central Portal deployment as the worker reported it: id, final state, validation errors. */
     public record Deployment(String id, String state, List<String> errors) {
@@ -166,9 +168,14 @@ public final class PublishPlans {
                             req.dryRun()
                                     ? "dry-run — assembling publish bundle"
                                     : req.central() ? "publish to the Central Portal" : "publish to " + req.repoUrl());
+                    JkBuild project = ctx.require(PROJECT);
+                    Signing signing = Signing.of(project.pomMetadata(), req, BuildEnv::get);
+                    if (signing.unsigned() && !req.dryRun()) {
+                        ctx.warn("unsigned", "publishing unsigned; set [publish] key-file to sign");
+                    }
                     WorkerOutcome out;
                     try {
-                        out = runWorker(workerJar, projectDir, jar, req);
+                        out = runWorker(workerJar, projectDir, jar, project, req, signing);
                     } catch (RuntimeException e) {
                         ctx.error("publish", Errors.text(e));
                         throw e;
@@ -191,13 +198,32 @@ public final class PublishPlans {
 
     /** Where a publish run sends its files, as the results file names it. */
     static String destination(Request req) {
-        if (req.central()) {
-            String type = req.publishingType() == null || req.publishingType().isBlank()
-                    ? "user-managed"
-                    : req.publishingType().toLowerCase(Locale.ROOT).replace('_', '-');
-            return "Central Portal (" + type + ")";
-        }
+        if (req.central()) return "Central Portal";
         return req.repoUrl() == null ? "no repository" : req.repoUrl().toString();
+    }
+
+    /**
+     * How a run signs: the PGP key (when the project signs and names one), keyless Sigstore (when it
+     * signs and CI offers an identity), and the SBOM and provenance switches.
+     */
+    record Signing(
+            boolean sign, @Nullable Path pgpKey, boolean keyless, boolean sbom, boolean provenance, boolean hold) {
+
+        static Signing of(PomMetadata publish, Request req, Function<String, @Nullable String> env) {
+            boolean sign = publish.sign();
+            return new Signing(
+                    sign,
+                    sign ? req.keyFile() : null,
+                    sign && CiIdentity.available(env),
+                    publish.sbom(),
+                    publish.provenance(),
+                    publish.hold());
+        }
+
+        /** True when the project signs and nothing is able to: no key and no CI identity. */
+        boolean unsigned() {
+            return sign && pgpKey == null && !keyless;
+        }
     }
 
     /**
@@ -214,9 +240,10 @@ public final class PublishPlans {
             @Nullable String error) {}
 
     /** Fork the {@code jk-publisher} plugin; returns what it reported. */
-    private static WorkerOutcome runWorker(Path workerJar, Path projectDir, Path jar, Request req) {
+    private static WorkerOutcome runWorker(
+            Path workerJar, Path projectDir, Path jar, JkBuild project, Request req, Signing signing) {
         try {
-            Path spec = writeSpec(projectDir, jar, req);
+            Path spec = writeSpec(projectDir, jar, project, req, signing);
             try {
                 int[] files = {0};
                 int[] existing = {0};
@@ -246,7 +273,7 @@ public final class PublishPlans {
                         })
                         .on(PluginProtocol.ERROR, json -> error[0] = Jsonl.str(json, PluginProtocol.MESSAGE))
                         .passthrough(line -> workerDiag.append(line).append('\n'))
-                        .run(PluginLaunch.javaCommand(workerJar, spec))
+                        .run(PluginLaunch.javaCommand(workerJar, spec), workerEnv(projectDir, signing))
                         .code();
                 if (exit != 0) {
                     String diag =
@@ -270,15 +297,41 @@ public final class PublishPlans {
         }
     }
 
-    private static Path writeSpec(Path projectDir, Path jar, Request req) throws IOException {
+    /** The worker's environment: the allow-list, plus the CI identity a keyless signature reads. */
+    private static WorkerEnv workerEnv(Path projectDir, Signing signing) {
+        if (!signing.keyless()) return WorkerEnv.strict();
+        Map<String, String> identity = new LinkedHashMap<>();
+        for (String name : CiIdentity.VARIABLES) {
+            String value = BuildEnv.get(name);
+            if (value == null || value.isBlank()) continue;
+            identity.put(name, value);
+            ResolvedSecrets.recordFor(projectDir, value);
+        }
+        return WorkerEnv.strict().with(identity);
+    }
+
+    /** The object-store settings of the declared repository {@code repoUrl} falls under, if any. */
+    private static @Nullable ObjectStoreConfig objectStore(JkBuild project, @Nullable URI repoUrl) {
+        if (repoUrl == null) return null;
+        String target = repoUrl.toString();
+        for (RepositorySpec repo : project.repositories()) {
+            String base = repo.url().toString();
+            String prefix = base.endsWith("/") ? base : base + "/";
+            if (target.equals(base) || target.startsWith(prefix)) return repo.objectStore();
+        }
+        return null;
+    }
+
+    private static Path writeSpec(Path projectDir, Path jar, JkBuild project, Request req, Signing signing)
+            throws IOException {
         SpecWriter sw = new SpecWriter()
                 .op(PluginProtocol.OP_PUBLISH, null, "jk-publisher")
                 .configBool("dryRun", req.dryRun())
-                .configBool("slsa", req.slsa())
-                .configBool("sbom", req.sbom())
-                .configBool("signSigstore", req.sigstore())
+                .configBool("slsa", signing.provenance())
+                .configBool("sbom", signing.sbom())
+                .configBool("signSigstore", signing.keyless())
+                .configBool("hold", signing.hold())
                 .configBool("centralPortal", req.central());
-        if (req.publishingType() != null) sw.configString("publishingType", req.publishingType());
 
         // Credential (resolved client-side so neither the engine nor the plugin needs env/keychain access).
         if (req.credential() instanceof RepoCredential.Basic b) {
@@ -291,15 +344,17 @@ public final class PublishPlans {
             sw.configString("repoAuthType", "anonymous");
         }
 
-        if (req.keyFile() != null) {
+        if (signing.pgpKey() != null) {
             sw.configBool("signGpg", true)
-                    .configString("gpgKeyFile", req.keyFile().toAbsolutePath().toString());
+                    .configString(
+                            "gpgKeyFile", signing.pgpKey().toAbsolutePath().toString());
             if (req.gpgPassphrase() != null) sw.secret("gpgPassphrase", req.gpgPassphrase());
         }
         // A dry run publishes nowhere, so it may name no repository.
         if (req.repoUrl() != null) sw.configString("repoUrl", req.repoUrl().toString());
-        if (req.region() != null && !req.region().isBlank()) sw.configString("objectStoreRegion", req.region());
-        if (req.endpoint() != null && !req.endpoint().isBlank()) sw.configString("objectStoreEndpoint", req.endpoint());
+        ObjectStoreConfig store = objectStore(project, req.repoUrl());
+        if (store != null && store.region() != null) sw.configString("objectStoreRegion", store.region());
+        if (store != null && store.endpoint() != null) sw.configString("objectStoreEndpoint", store.endpoint());
         sw.artifact(jar);
         sw.layout(Map.of("moduleDir", projectDir));
         String pluginJars = Classpaths.join(BuiltInPluginJars.tablePluginJars());

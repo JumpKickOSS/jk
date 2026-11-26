@@ -815,8 +815,12 @@ class JkBuildRendererTest {
                 List.of(new PomMetadata.Developer("ada", "Ada Lovelace", null)),
                 new PomMetadata.Scm("https://github.com/example/widget", null, null),
                 "releases",
+                false,
+                null,
+                false,
+                false,
                 true,
-                null);
+                true);
         JkBuild model = new JkBuild(new Project("com.example", "widget", "1.0.0", 25), JkBuild.Dependencies.empty())
                 .withPublish(publish);
 

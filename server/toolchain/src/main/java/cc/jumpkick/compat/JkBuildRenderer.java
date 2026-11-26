@@ -771,7 +771,10 @@ public final class JkBuildRenderer {
         }
         if (publish.repository() != null)
             sb.append("repository = ").append(quote(publish.repository())).append('\n');
-        if (publish.sign()) sb.append("sign = true\n");
+        if (!publish.sign()) sb.append("sign = false\n");
+        if (!publish.sbom()) sb.append("sbom = false\n");
+        if (!publish.provenance()) sb.append("provenance = false\n");
+        if (publish.hold()) sb.append("hold = true\n");
         if (publish.keyFile() != null)
             sb.append("key-file = ").append(quote(publish.keyFile())).append('\n');
         if (publish.skip()) sb.append("skip = true\n");

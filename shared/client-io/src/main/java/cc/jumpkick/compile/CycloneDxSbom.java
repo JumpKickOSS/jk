@@ -27,7 +27,7 @@ import org.jspecify.annotations.Nullable;
 /**
  * The CycloneDX bill of materials jk writes of an artifact: its module's runtime closure ({@link
  * #closure}), each locked jar with its SHA-256 and what it depends on. The one writer behind the
- * SBOM every application jar embeds and the sidecar {@code jk publish -S} uploads, so the two name
+ * SBOM every application jar embeds and the sidecar {@code jk publish} uploads, so the two name
  * the same spec version and the same components.
  * Deterministic — no serial number, no timestamp — so a reproducible jar stays byte-stable and a
  * module's publish sidecar equals the copy its jar carries.

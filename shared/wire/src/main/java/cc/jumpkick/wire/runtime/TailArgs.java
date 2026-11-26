@@ -52,20 +52,18 @@ public sealed interface TailArgs {
     /** {@code jk train}: the profile filter, and whether to retrain an up-to-date surface. */
     record Train(@Nullable String profile, boolean force) implements TailArgs {}
 
-    /** {@code jk publish}: where to, how signed, and the credential the client resolved. */
+    /**
+     * {@code jk publish}: where to, the PGP key and passphrase the client resolved, and the
+     * credential. Signing, SBOM and provenance come from the project's {@code [publish]} table and
+     * the engine's view of CI, never from the client.
+     */
     record Publish(
             @Nullable URI repoUrl,
-            @Nullable String region,
-            @Nullable String endpoint,
             boolean allowSnapshot,
             boolean dryRun,
             @Nullable Path keyFile,
             @Nullable String gpgPassphrase,
-            boolean sigstore,
-            boolean slsa,
-            boolean sbom,
             RepoCredential credential,
-            boolean central,
-            @Nullable String publishingType)
+            boolean central)
             implements TailArgs {}
 }

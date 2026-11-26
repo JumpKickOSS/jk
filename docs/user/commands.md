@@ -33,7 +33,7 @@ Canonical names. Hidden aliases (Maven/Gradle muscle memory) are listed in
 | `jk train` | Observe a run for reachability / AOT | [Dynamic surface](dynamic-surface.md) |
 | `jk publish` | Publish artifacts | [Publish](publish.md) |
 | `jk install` | The inner-loop install: this project at its version plus `-SNAPSHOT`, and an application or tool on this machine (PATH / jkx) | [Packaging](packaging.md#jk-install-project), [Tools](tools.md) |
-| `jk release` | Build, install, tag the declared version and move `jk.toml` to the next | [Publish](publish.md#releasing) |
+| `jk release` | Build, install, tag the declared version, move `jk.toml` to the next and push | [Publish](publish.md#releasing) |
 | `jk verify` | Rebuild and hash-diff | [Publish](publish.md) |
 | `jk audit` / `jk deny` | OSV / source denylist | [Publish](publish.md) |
 | `jk jdk …` | JDK install / pin / list / verify | [JDK](jdk.md) |
