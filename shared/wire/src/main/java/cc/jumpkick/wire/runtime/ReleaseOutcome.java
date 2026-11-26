@@ -7,8 +7,9 @@ import org.jspecify.annotations.Nullable;
 /**
  * What a publish run's release lane did: where the release lives, whether the run staged this
  * host's platform files or was the final run, every file of the release, the version {@code
- * latest.json} names after it (an object store's final run; {@code null} otherwise) and the Central
- * deployments it published once the release was out.
+ * latest.json} names after it (an object store's final run; {@code null} otherwise), the Central
+ * deployments it published once the release was out, and the notes it has for the reader (an
+ * unsigned release), one line each.
  */
 public record ReleaseOutcome(
         String destination,
@@ -16,11 +17,13 @@ public record ReleaseOutcome(
         boolean dryRun,
         List<File> files,
         @Nullable String latest,
-        List<String> released) {
+        List<String> released,
+        List<String> notes) {
 
     public ReleaseOutcome {
         files = List.copyOf(files);
         released = List.copyOf(released);
+        notes = List.copyOf(notes);
     }
 
     /** {@code staging}: a platform's own file, which a stage run may upload. */

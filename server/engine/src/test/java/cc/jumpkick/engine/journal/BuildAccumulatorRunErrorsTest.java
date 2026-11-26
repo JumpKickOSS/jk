@@ -138,7 +138,8 @@ class BuildAccumulatorRunErrorsTest {
                 "FAILED",
                 List.of("bad " + secret),
                 List.of(),
-                0L));
+                0L,
+                List.of()));
 
         BuildRecord r = a.toRecord(2_000, false, 100, "9.9", null);
 

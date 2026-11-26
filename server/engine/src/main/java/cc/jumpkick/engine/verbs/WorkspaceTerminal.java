@@ -85,7 +85,8 @@ final class WorkspaceTerminal {
                                 p.deploymentState(),
                                 p.deploymentErrors(),
                                 p.bundle(),
-                                p.bundleBytes()));
+                                p.bundleBytes(),
+                                List.of()));
             }
         }
         ReleaseOutcome release = result.release();
@@ -131,6 +132,7 @@ final class WorkspaceTerminal {
                 null,
                 List.of(),
                 List.of(),
-                0L);
+                0L,
+                release.notes());
     }
 }

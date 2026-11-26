@@ -109,6 +109,7 @@ class PublishLanesTest {
                                 ReleaseOutcome.STAGING,
                                 ReleaseOutcome.PLANNED)),
                 null,
+                List.of(),
                 List.of());
         assertThat(PublishCommand.releaseLines(plan))
                 .containsExactly(

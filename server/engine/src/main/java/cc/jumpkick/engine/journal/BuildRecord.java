@@ -546,7 +546,8 @@ public record BuildRecord(
      * What a {@code jk publish} run sent where, or {@code null} for every other kind: one {@link
      * Lane} row per lane it ran. A Central deployment of the library lane carries the id the Portal
      * assigned, the {@code state} the poll ended in and every validation {@code error} it listed;
-     * {@code bundle} is the entries of the bundle it uploaded or, on a dry run, wrote.
+     * {@code bundle} is the entries of the bundle it uploaded or, on a dry run, wrote; {@code notes}
+     * the lines a lane has for the reader, such as a release that went out unsigned.
      */
     public record Publish(
             List<Lane> lanes,
@@ -554,9 +555,11 @@ public record BuildRecord(
             @Nullable String deploymentState,
             List<String> deploymentErrors,
             List<String> bundle,
-            long bundleBytes) {
+            long bundleBytes,
+            List<String> notes) {
         public Publish {
             lanes = lanes == null ? List.of() : List.copyOf(lanes);
+            notes = notes == null ? List.of() : List.copyOf(notes);
             deploymentErrors = deploymentErrors == null ? List.of() : List.copyOf(deploymentErrors);
             bundle = bundle == null ? List.of() : List.copyOf(bundle);
         }
@@ -579,7 +582,8 @@ public record BuildRecord(
                     deploymentState,
                     deploymentErrors.stream().map(redact).toList(),
                     bundle,
-                    bundleBytes);
+                    bundleBytes,
+                    notes);
         }
 
         /**
@@ -611,13 +615,16 @@ public record BuildRecord(
             errors.addAll(other.deploymentErrors());
             List<String> entries = new ArrayList<>(bundle);
             entries.addAll(other.bundle());
+            List<String> said = new ArrayList<>(notes);
+            said.addAll(other.notes());
             return new Publish(
                     merged,
                     other.deploymentId() != null ? other.deploymentId() : deploymentId,
                     other.deploymentState() != null ? other.deploymentState() : deploymentState,
                     errors,
                     entries,
-                    bundleBytes + other.bundleBytes());
+                    bundleBytes + other.bundleBytes(),
+                    said);
         }
     }
 

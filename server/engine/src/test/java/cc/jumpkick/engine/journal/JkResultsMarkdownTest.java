@@ -808,13 +808,15 @@ class JkResultsMarkdownTest {
                         List.of(
                                 "com/example/widget/1.0.0/widget-1.0.0.jar",
                                 "com/example/widget/1.0.0/widget-1.0.0.jar.asc"),
-                        1_234_567L),
+                        1_234_567L,
+                        List.of("release v1.0.0 is unsigned: set [publish] key-file, or sign = false")),
                 List.of());
         String md = JkResultsMarkdown.render(r);
         assertThat(md)
                 .contains("## Publish\n\n| Lane | Destination | Files | State |\n|---|---|---|---|\n"
                         + "| library | Central Portal (user-managed) | 16 |  |\n"
                         + "| release | s3://acme/widget/1.0.0/ | 4 | latest.json names 1.0.0 |\n\n"
+                        + "- release v1.0.0 is unsigned: set [publish] key-file, or sign = false\n"
                         + "- deployment: `28570f16-da32-4c14-bd2e-c1acc0782365` · **FAILED**\n"
                         + "- validation errors:\n  - Missing signature for file: widget-1.0.0.pom\n  - Javadocs must be provided\n"
                         + "- Central bundle: 2 files, 1.2 MB\n"

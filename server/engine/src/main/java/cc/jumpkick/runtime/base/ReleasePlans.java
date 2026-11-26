@@ -45,13 +45,11 @@ public final class ReleasePlans {
     /** The module's files another platform's stage run uploads: {@code module/platform/name} per file. */
     public static final BuildPlanKey<List<String>> EXPECTED = BuildPlanKey.list("release-expected", String.class);
 
-    /** True when {@code build} puts any file in a release. */
-    public static boolean ships(Path dir, JkBuild build) {
-        return !ReleaseDeliverables.local(BuildLayout.of(dir, build), build).isEmpty();
-    }
-
-    /** The upload of {@code dir}'s release files; it runs after PACKAGE left them. */
-    public static Task uploadStep(Path dir, TailArgs.Publish args) {
+    /**
+     * The upload of {@code dir}'s release files {@code deliverables}, as {@code
+     * ModuleJar.releaseFiles} names them; it runs after PACKAGE left them.
+     */
+    public static Task uploadStep(Path dir, TailArgs.Publish args, List<ReleaseDeliverables.Deliverable> deliverables) {
         return Task.builder(TaskNames.RELEASE_UPLOAD)
                 .forecast(StepForecast.always("an upload is a side effect"))
                 .stage(BuildStage.PUBLISH)
@@ -65,7 +63,7 @@ public final class ReleasePlans {
                     List<ReleaseOutcome.File> files = new ArrayList<>();
                     @Nullable ReleaseBucket bucket = run.dryRun() ? null : ReleaseBucket.open(run);
                     try {
-                        for (ReleaseDeliverables.Deliverable d : ReleaseDeliverables.local(layout, build)) {
+                        for (ReleaseDeliverables.Deliverable d : deliverables) {
                             boolean wanted = d.neutral() ? !run.stage() : run.hostListed();
                             if (!wanted) continue;
                             if (!Files.isRegularFile(d.file())) {

@@ -264,6 +264,31 @@ final class Json {
         return new JobDelta.Rows((int) lng(r, "count"), strList(r, "shown"));
     }
 
+    /** The {@code publish} object {@link #publishMap} writes. */
+    @SuppressWarnings("unchecked")
+    private static BuildRecord.Publish readPublish(Map<?, ?> pm) {
+        Map<String, Object> pub = (Map<String, Object>) pm;
+        List<BuildRecord.Publish.Lane> lanes = new ArrayList<>();
+        for (Object e : arr(pub, "lanes")) {
+            Map<String, Object> lm = (Map<String, Object>) e;
+            String state = str(lm, "state");
+            lanes.add(new BuildRecord.Publish.Lane(
+                    text(lm, "lane"),
+                    text(lm, "destination"),
+                    (int) lng(lm, "files"),
+                    bool(lm, "dryRun"),
+                    state == null ? "" : state));
+        }
+        return new BuildRecord.Publish(
+                lanes,
+                str(pub, "deploymentId"),
+                str(pub, "deploymentState"),
+                strList(pub, "deploymentErrors"),
+                strList(pub, "bundle"),
+                lng(pub, "bundleBytes"),
+                strList(pub, "notes"));
+    }
+
     /** The {@code publish} object: what a publish run sent where, absent keys for absent facts. */
     private static Map<String, Object> publishMap(BuildRecord.Publish p) {
         Map<String, Object> pub = new LinkedHashMap<>();
@@ -283,6 +308,7 @@ final class Json {
         if (!p.deploymentErrors().isEmpty()) pub.put("deploymentErrors", p.deploymentErrors());
         if (!p.bundle().isEmpty()) pub.put("bundle", p.bundle());
         if (p.bundleBytes() > 0) pub.put("bundleBytes", p.bundleBytes());
+        if (!p.notes().isEmpty()) pub.put("notes", p.notes());
         return pub;
     }
 
@@ -413,28 +439,7 @@ final class Json {
 
         BuildRecord.Io io = o.get("io") instanceof Map<?, ?> im ? readIo(im) : null;
 
-        BuildRecord.Publish publish = null;
-        if (o.get("publish") instanceof Map<?, ?> pm) {
-            Map<String, Object> pub = (Map<String, Object>) pm;
-            List<BuildRecord.Publish.Lane> lanes = new ArrayList<>();
-            for (Object e : arr(pub, "lanes")) {
-                Map<String, Object> lm = (Map<String, Object>) e;
-                String state = str(lm, "state");
-                lanes.add(new BuildRecord.Publish.Lane(
-                        text(lm, "lane"),
-                        text(lm, "destination"),
-                        (int) lng(lm, "files"),
-                        bool(lm, "dryRun"),
-                        state == null ? "" : state));
-            }
-            publish = new BuildRecord.Publish(
-                    lanes,
-                    str(pub, "deploymentId"),
-                    str(pub, "deploymentState"),
-                    strList(pub, "deploymentErrors"),
-                    strList(pub, "bundle"),
-                    lng(pub, "bundleBytes"));
-        }
+        BuildRecord.Publish publish = o.get("publish") instanceof Map<?, ?> pm ? readPublish(pm) : null;
         List<BuildRecord.Coverage> coverage = new ArrayList<>();
         for (Object e : arr(o, "coverage")) {
             Map<String, Object> cm = (Map<String, Object>) e;

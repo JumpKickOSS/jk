@@ -149,7 +149,8 @@ class JsonTest {
                         "FAILED",
                         List.of("e1", "e2"),
                         List.of("a/b.jar"),
-                        4_096L),
+                        4_096L,
+                        List.of("release v1.0.0 is unsigned: set [publish] key-file, or sign = false")),
                 List.of());
         BuildRecord back = Json.read(Json.write(original));
         assertThat(back.publish()).isEqualTo(original.publish());
