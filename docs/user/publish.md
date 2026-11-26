@@ -138,7 +138,9 @@ there`); a file the repository holds with other bytes stops the run and says to 
 For `s3://` and `gs://` targets (a repository's `url`, or its `publish-url`), each artifact and its sidecars are created only if the key
 is absent. Concurrent publishers retry updates to Maven metadata against the latest version
 list or snapshot build. Artifacts of 64 MiB or more use multipart uploads on S3. Google
-Cloud Storage uses a single streamed upload with a generation precondition.
+Cloud Storage uses a single streamed upload with a generation precondition. For a public
+repository on a bucket, see [Repositories § A public Maven repository on a
+bucket](repositories.md#a-public-maven-repository-on-a-bucket).
 
 ### Keeping a member out of a release
 
