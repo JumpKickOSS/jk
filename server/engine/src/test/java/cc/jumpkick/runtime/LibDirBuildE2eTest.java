@@ -18,18 +18,22 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.jar.Attributes;
 import java.util.jar.JarFile;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipFile;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
  * End-to-end: {@code [application] lib-dir = true} builds {@code target/<name>.jar} and {@code
- * target/libs/}, the jar runs with {@code java -jar}, and an unchanged rebuild is a cache hit.
+ * target/libs/}, the jar runs with {@code java -jar}, an unchanged rebuild is a cache hit, and the
+ * layout's zip is written beside it and restored from the cache when deleted.
  */
 @Tag("integration")
 class LibDirBuildE2eTest {
@@ -56,6 +60,16 @@ class LibDirBuildE2eTest {
             assertThat(main.getValue(Attributes.Name.MAIN_CLASS)).isEqualTo("com.example.app.Main");
         }
         assertThat(runJar(target, "app.jar")).isEqualTo("from lib");
+        Path zip = target.resolve("app-1.0.0-SNAPSHOT.zip");
+        try (ZipFile archive = new ZipFile(zip.toFile())) {
+            assertThat(Collections.list(archive.entries()).stream().map(ZipEntry::getName))
+                    .containsExactly(
+                            "app-1.0.0-SNAPSHOT/",
+                            "app-1.0.0-SNAPSHOT/app.jar",
+                            "app-1.0.0-SNAPSHOT/libs/",
+                            "app-1.0.0-SNAPSHOT/libs/lib-1.0.0-SNAPSHOT.jar");
+        }
+        assertThat(first.of("app", TaskNames.PACKAGE_LIB_DIR_ARCHIVE)).startsWith("app-1.0.0-SNAPSHOT.zip: ");
 
         Labels second = new Labels();
         assertThat(build(ws, cache, second).success()).isTrue();
@@ -64,6 +78,15 @@ class LibDirBuildE2eTest {
                 .as("an unchanged rebuild does not lay the directory out again")
                 .doesNotStartWith("lay out");
         assertThat(runJar(target, "app.jar")).isEqualTo("from lib");
+        assertThat(second.of("app", TaskNames.PACKAGE_LIB_DIR_ARCHIVE)).doesNotStartWith("archive ");
+
+        Files.delete(zip);
+        Labels third = new Labels();
+        assertThat(build(ws, cache, third).success()).isTrue();
+        assertThat(third.of("app", TaskNames.PACKAGE_LIB_DIR_ARCHIVE))
+                .as("a deleted archive is restored from the action cache, not written again")
+                .isEqualTo("app-1.0.0-SNAPSHOT.zip up-to-date");
+        assertThat(zip).isRegularFile();
     }
 
     private static Path workspace(Path tmp) throws IOException {

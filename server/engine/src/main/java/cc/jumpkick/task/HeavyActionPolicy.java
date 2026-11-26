@@ -13,8 +13,8 @@ import java.util.Locale;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Generation policy for Class-C ("heavy ship") outputs: native images, OCI tarballs, and fat
- * assembly jars.
+ * Generation policy for Class-C ("heavy ship") outputs: native images, OCI tarballs, fat
+ * assembly jars and distribution archives.
  *
  * <p>Rebuilding one of these mints a new action key and leaves the previous one rooting its blob
  * forever, so each task keeps a bounded generation list per checkout and drops the rest at store
@@ -28,7 +28,8 @@ import org.jspecify.annotations.Nullable;
  * branches each keep their own, and neither evicts the other's on an alternate build. Every reader
  * that folds and rewrites the file holds {@link #gensLock}.
  *
- * <p>Defaults: 1 generation of each per checkout: native binaries, OCI images and fat assembly jars.
+ * <p>Defaults: 1 generation of each per checkout: native binaries, OCI images, fat assembly jars
+ * and distribution archives.
  * A heavy output is expensive to hold; the one a checkout built last is the one it will ask for.
  */
 public final class HeavyActionPolicy {
@@ -36,6 +37,7 @@ public final class HeavyActionPolicy {
     public static final int NATIVE_GENERATIONS = 1;
     public static final int IMAGE_GENERATIONS = 1;
     public static final int ASSEMBLY_GENERATIONS = 1;
+    public static final int ARCHIVE_GENERATIONS = 1;
 
     private HeavyActionPolicy() {}
 
@@ -56,13 +58,14 @@ public final class HeavyActionPolicy {
             case TaskNames.NATIVE_IMAGE -> NATIVE_GENERATIONS;
             case TaskNames.WRITE_IMAGE -> IMAGE_GENERATIONS;
             case TaskNames.PACKAGE_ASSEMBLY, TaskNames.PACKAGE_MINIFIED -> ASSEMBLY_GENERATIONS;
+            case TaskNames.PACKAGE_JLINK_ARCHIVE, TaskNames.PACKAGE_LIB_DIR_ARCHIVE -> ARCHIVE_GENERATIONS;
             default -> Integer.MAX_VALUE;
         };
     }
 
     /**
      * True when {@code taskId} makes a Class-C output (a native image, an OCI image, a fat or
-     * minified jar): heavy whatever its size, so it takes the heavy tier's short window.
+     * minified jar, a distribution archive): heavy whatever its size, so it takes the heavy tier's short window.
      */
     public static boolean classC(@Nullable String taskId) {
         return generations(taskId) != Integer.MAX_VALUE;

@@ -99,13 +99,16 @@ public final class PlannerTails {
             b.addTask(PlannerWar.warStep(in.cache(), in.lockFile(), !in.ephemeralActions()));
             leaves.add(TaskNames.PACKAGE_WAR);
         }
+        // A layout a person downloads whole also ships as one archive, written after it.
         if (deliver && PlannerLibDir.declared(project)) {
             b.addTask(PlannerLibDir.libDirStep(in.cache(), in.lockFile(), !in.ephemeralActions()));
-            leaves.add(TaskNames.PACKAGE_LIB_DIR);
+            b.addTask(PlannerArchive.libDirArchiveStep(in.cache(), !in.ephemeralActions()));
+            leaves.add(TaskNames.PACKAGE_LIB_DIR_ARCHIVE);
         }
         if (deliver && PlannerJlink.declared(project)) {
             b.addTask(PlannerJlink.jlinkStep(in.cache(), in.lockFile(), !in.ephemeralActions()));
-            leaves.add(TaskNames.PACKAGE_JLINK);
+            b.addTask(PlannerArchive.jlinkArchiveStep(in.cache(), !in.ephemeralActions()));
+            leaves.add(TaskNames.PACKAGE_JLINK_ARCHIVE);
         }
         if (deliver && project.minified()) {
             b.addTask(minifiedStep(in, graalHome));

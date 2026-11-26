@@ -44,15 +44,17 @@ public enum KeyContract {
 
     /**
      * The code that writes an artifact or a verdict the engine produces itself: the jar, assembly
-     * and war packagers and the zip they write through, the sources and javadoc jars, the war,
-     * jlink, lib-dir and image steps, plugin steps' staging, build-logic scripts, Node.js steps and
+     * and war packagers and the zip and tar they write through, the sources and javadoc jars, the war,
+     * jlink, lib-dir, distribution archive and image steps, plugin steps' staging, build-logic scripts, Node.js steps and
      * guard lanes (the guard runtime runs in the engine). Every {@code ActionKey.forArtifact} key
      * but a native image's keys by it.
      */
     ARTIFACT(
-            "9284aee5e2d3",
+            "8250f546c352",
             List.of(
                     Sources.ENGINE + "compile/*Packager.java",
+                    Sources.ENGINE + "compile/DistArchive.java",
+                    Sources.ENGINE + "runtime/PlannerArchive.java",
                     Sources.ENGINE + "runtime/PlannerJlink.java",
                     Sources.ENGINE + "runtime/PlannerLibDir.java",
                     Sources.ENGINE + "runtime/PlannerPlugin.java",
@@ -64,6 +66,7 @@ public enum KeyContract {
                     Sources.ENGINE + "runtime/Plugin*.java",
                     Sources.ENGINE + "runtime/workspace/Image*.java",
                     "shared/host/src/main/java/cc/jumpkick/host/ClassPathJar.java",
+                    "shared/host/src/main/java/cc/jumpkick/host/DeterministicTar.java",
                     "shared/host/src/main/java/cc/jumpkick/host/DeterministicZip.java",
                     "shared/client-io/src/main/java/cc/jumpkick/cache/JavadocJar.java",
                     "shared/client-io/src/main/java/cc/jumpkick/cache/SourcesJar.java",

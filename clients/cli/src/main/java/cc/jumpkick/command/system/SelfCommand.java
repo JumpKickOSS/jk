@@ -40,6 +40,7 @@ import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.Processes;
+import cc.jumpkick.host.ReleasePlatform;
 import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.model.JkVersion;
@@ -68,7 +69,6 @@ import java.nio.file.StandardCopyOption;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 import java.util.Optional;
 import java.util.jar.JarFile;
 import java.util.zip.ZipEntry;
@@ -868,39 +868,14 @@ public final class SelfCommand extends GroupCommand {
             return Optional.empty();
         }
 
-        /**
-         * This OS as release artifacts name it, the vocabulary the installers and wrappers derive
-         * from {@code uname -s}: {@code linux}, {@code macos}, {@code windows}, else the OS name
-         * lower-cased ({@code freebsd}, {@code sunos}, {@code aix}).
-         */
+        /** This OS as release artifacts name it ({@link ReleasePlatform#os}). */
         static String hostOs() {
-            return releaseOs(Os.name());
+            return ReleasePlatform.os(Os.name());
         }
 
-        static String releaseOs(String osName) {
-            String n = osName.toLowerCase(Locale.ROOT);
-            if (n.startsWith("windows")) return "windows";
-            if (n.startsWith("mac") || n.startsWith("darwin")) return "macos";
-            return releaseToken(n);
-        }
-
-        /** This architecture as release artifacts name it: {@code x86_64}, {@code aarch64}, else as reported. */
+        /** This architecture as release artifacts name it ({@link ReleasePlatform#arch}). */
         static String hostArch() {
-            return releaseArch(System.getProperty("os.arch", ""));
-        }
-
-        static String releaseArch(String osArch) {
-            String a = osArch.toLowerCase(Locale.ROOT);
-            return switch (a) {
-                case "amd64", "x86_64", "x64" -> "x86_64";
-                case "aarch64", "arm64" -> "aarch64";
-                default -> releaseToken(a);
-            };
-        }
-
-        private static String releaseToken(String s) {
-            String t = s.replaceAll("[^a-z0-9_]", "_");
-            return t.isEmpty() ? "unknown" : t;
+            return ReleasePlatform.arch(System.getProperty("os.arch", ""));
         }
 
         private static boolean sumHas(String sumsText, String name) throws IOException {

@@ -163,6 +163,12 @@ public final class TaskNames {
     /** {@code [jlink]}: the custom runtime image {@code target/<name>-jri/} beside the module jar. */
     public static final String PACKAGE_JLINK = "package-jlink";
 
+    /** The {@code [jlink]} image as {@code target/<name>-<version>-<os>-<arch>.tar.gz} ({@code .zip} on Windows). */
+    public static final String PACKAGE_JLINK_ARCHIVE = "package-jlink-archive";
+
+    /** The lib-dir layout as {@code target/<name>-<version>.zip}. */
+    public static final String PACKAGE_LIB_DIR_ARCHIVE = "package-lib-dir-archive";
+
     /** {@code -javadoc.jar} for a library, built from its Java sources beside the module jar. */
     public static final String PACKAGE_JAVADOC = "package-javadoc";
 

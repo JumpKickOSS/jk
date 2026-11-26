@@ -6,6 +6,7 @@ import cc.jumpkick.config.WorkspaceLocator;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.OutputDirs;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.ReleasePlatform;
 import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.LibDir;
@@ -467,6 +468,25 @@ public final class BuildLayout {
     /** {@code <artifactDir>/<artifact>-jri/}: the {@code [jlink]} runtime image. */
     public Path jlinkImage() {
         return artifactDir().resolve(artifact + "-jri");
+    }
+
+    /**
+     * {@code <artifactDir>/<artifact>-<version>-<os>-<arch>.tar.gz} ({@code .zip} on Windows): the
+     * runtime image as one download, the platform named as {@link ReleasePlatform} names it.
+     */
+    public Path jlinkArchive() {
+        String ext = Os.isWindows() ? ".zip" : ".tar.gz";
+        return artifactDir().resolve(archiveRoot() + "-" + ReleasePlatform.current() + ext);
+    }
+
+    /** {@code <artifactDir>/<artifact>-<version>.zip}: the lib-dir layout's jar and lib directory as one download. */
+    public Path libDirArchive() {
+        return artifactDir().resolve(archiveRoot() + ".zip");
+    }
+
+    /** {@code <artifact>-<version>}: the one top-level directory of a distribution archive. */
+    public String archiveRoot() {
+        return artifact + "-" + version;
     }
 
     /** {@code <artifactDir>/<artifact>-<version>-all.jar} — the fat / shaded jar (deps included). */
