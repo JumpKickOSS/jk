@@ -34,8 +34,9 @@ import org.jspecify.annotations.Nullable;
  * of asking for each member in turn. Keyed like {@code modules}, by absolute directory.
  *
  * <p>{@code publishRepository}, {@code publishSign} and {@code publishKeyFile} are the module's
- * {@code [publish]} target: a repository URL (or {@code central}) when the table's {@code
- * repository} names a declared repository, else the name as written; empty when none is named.
+ * {@code [publish]} target: the URL a publish writes to (the repository's {@code publish-url},
+ * else its url; or {@code central}) when the table's {@code repository} names a declared
+ * repository, else the name as written; empty when none is named.
  * {@code imageRegistry} is the registry {@code [image]} pushes to, the project's or the user's;
  * empty when none. {@code releaseTag}, {@code releaseFiles} and {@code releasePublish} are the
  * workspace root's {@code [release]} tag template, its {@code path → pattern} version-carrying files

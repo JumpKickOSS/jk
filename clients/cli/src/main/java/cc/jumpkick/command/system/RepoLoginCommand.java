@@ -22,6 +22,7 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Locale;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -34,10 +35,11 @@ import org.jspecify.annotations.Nullable;
  * otherwise it's a bearer token.
  *
  * <p>The login records where the credential may go: {@code --url}, else the URL the id resolves to
- * in {@code ~/.jk/config.toml}, else in the current directory's {@code jk.toml}, else the id
- * itself when it is a host ({@code ghcr.io}, {@code 127.0.0.1:5000}). The resolver sends the stored
- * credential to that origin only, so a project that later points the same id at another host gets
- * nothing — and the origin is printed here so the user sees what they bound.
+ * in {@code ~/.jk/config.toml}, else in the current directory's {@code jk.toml} (with its {@code
+ * http(s)} publish-url beside it, when it has one), else the id itself when it is a host ({@code
+ * ghcr.io}, {@code 127.0.0.1:5000}). The resolver sends the stored credential to those origins
+ * only, so a project that later points the same id at another host gets nothing — and the origins
+ * are printed here so the user sees what they bound.
  *
  * <p>The secret goes to the OS keychain when one answers, and the record keeps a pointer to it;
  * otherwise it stays in the owner-only record, with one notice saying why ({@link
@@ -79,14 +81,14 @@ public final class RepoLoginCommand implements CliCommand {
         Path credentialsDir = in.value("credentials-dir").map(CliPaths::abs).orElse(null);
         GlobalOptions global = GlobalOptions.from(in);
 
-        URI url;
+        List<URI> urls;
         try {
-            url = urlFor(id, in.value("url").orElse(null), global.workingDir());
+            urls = urlsFor(id, in.value("url").orElse(null), global.workingDir());
         } catch (IllegalArgumentException malformed) {
             CommandWedge.printFail("Repo", malformed.getMessage());
             return 1;
         }
-        if (url == null) {
+        if (urls.isEmpty()) {
             CommandWedge.printFail(
                     "Repo",
                     "no repository '" + id + "' in " + ManifestPaths.MANIFEST
@@ -111,7 +113,7 @@ public final class RepoLoginCommand implements CliCommand {
                 : new RepoCredential.Bearer(secret);
         SecretVault.Stored stored;
         try {
-            stored = store(credentialsDir).write(id, cred, url);
+            stored = store(credentialsDir).write(id, cred, urls);
         } catch (IllegalStateException noKeychain) {
             CommandWedge.printFail("Repo", noKeychain.getMessage());
             return 1;
@@ -123,7 +125,10 @@ public final class RepoLoginCommand implements CliCommand {
             CommandWedge.printOk(
                     "Login",
                     "Stored " + (username != null ? "basic" : "token") + " credentials for repository '" + id
-                            + "', sent only to " + RepoCredentialStore.originOf(url)
+                            + "', sent only to "
+                            + RepoCredentialStore.spelled(urls.stream()
+                                    .map(RepoCredentialStore::originOf)
+                                    .toList())
                             + (pointer == null
                                     ? ""
                                     : "; the " + (username != null ? "password" : "token") + " is in the "
@@ -134,23 +139,38 @@ public final class RepoLoginCommand implements CliCommand {
     }
 
     /**
-     * The URL the credential is bound to, or null when nothing names one — a mirror of the user's
-     * config as well as a repository. The user's own config outranks the project's manifest: when both declare the id, the login binds to the one the
-     * project cannot edit, and a project pointing elsewhere is refused with a warning naming both.
+     * The URLs the credential is bound to, empty when nothing names one — a mirror of the user's
+     * config as well as a repository; a declaration's http(s) publish-url rides beside its url. The
+     * user's own config outranks the project's manifest: when both declare the id, the login binds
+     * to the one the project cannot edit, and a project pointing elsewhere is refused with a warning
+     * naming both.
      */
-    static @Nullable URI urlFor(String id, @Nullable String urlFlag, Path workingDir) {
+    static List<URI> urlsFor(String id, @Nullable String urlFlag, Path workingDir) {
         if (urlFlag != null && !urlFlag.isBlank()) {
             URI explicit = URI.create(urlFlag.strip());
             RepoCredentialStore.originOf(explicit); // validates scheme + host
-            return explicit;
+            return List.of(explicit);
         }
         for (RepositorySpec spec : GlobalConfig.repositoryDeclarations()) {
-            if (spec.name().equals(id)) return spec.url();
+            if (spec.name().equals(id)) return withPublishUrl(spec.url(), spec.publishUrl());
         }
         for (RepositoriesScan.Repo repo : RepositoriesScan.scan(ManifestPaths.manifestIn(workingDir))) {
-            if (repo.name().equals(id)) return URI.create(repo.url());
+            if (repo.name().equals(id)) {
+                return withPublishUrl(
+                        URI.create(repo.url()), repo.publishUrl() == null ? null : URI.create(repo.publishUrl()));
+            }
         }
-        return hostAsUrl(id);
+        URI host = hostAsUrl(id);
+        return host == null ? List.of() : List.of(host);
+    }
+
+    /** {@code url}, and {@code publishUrl} beside it when that is an http(s) URL. */
+    private static List<URI> withPublishUrl(URI url, @Nullable URI publishUrl) {
+        if (publishUrl == null || publishUrl.getHost() == null) return List.of(url);
+        String scheme =
+                publishUrl.getScheme() == null ? "" : publishUrl.getScheme().toLowerCase(Locale.ROOT);
+        if (!scheme.equals("http") && !scheme.equals("https")) return List.of(url);
+        return List.of(url, publishUrl);
     }
 
     /**

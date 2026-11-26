@@ -68,7 +68,7 @@ public final class StoredLogins {
             rows.add(new Login(
                     "repo",
                     login.name(),
-                    login.origin() == null ? null : login.origin().toString(),
+                    login.origins().isEmpty() ? null : RepoCredentialStore.spelled(login.origins()),
                     storeOf(login.pointer())));
         }
         for (TokenStore.Login login : forge) {

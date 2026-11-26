@@ -11,6 +11,7 @@ import cc.jumpkick.model.RepositorySpec;
 import java.util.List;
 import org.assertj.core.groups.Tuple;
 import org.junit.jupiter.api.Test;
+import org.tomlj.Toml;
 
 class JkBuildParserRepositoryTest {
 
@@ -354,5 +355,97 @@ class JkBuildParserRepositoryTest {
         assertThat(b.repositories()).extracting(r -> r.name()).contains("local", "tunnel", "six");
         assertThat(RepositoryToml.loopback("10.0.0.7")).isFalse();
         assertThat(RepositoryToml.loopback("nexus.corp.example")).isFalse();
+    }
+
+    @Test
+    void publish_url_is_parsed_beside_the_url_and_resolvers_keep_the_url() {
+        JkBuild parsed = JkBuildParser.parse(PROJECT + """
+                [repositories.acme]
+                url = "https://maven.acme.dev/"
+                publish-url = "s3://acme-maven/"
+
+                [repositories.plain]
+                url = "https://plain.example/maven/"
+                """);
+        RepositorySpec acme = parsed.repositories().get(0);
+        assertThat(acme.url()).hasToString("https://maven.acme.dev/");
+        assertThat(acme.publishUrl()).hasToString("s3://acme-maven/");
+        assertThat(acme.publishTarget()).hasToString("s3://acme-maven/");
+        RepositorySpec plain = parsed.repositories().get(1);
+        assertThat(plain.publishUrl()).isNull();
+        assertThat(plain.publishTarget()).isEqualTo(plain.url());
+    }
+
+    @Test
+    void publish_url_follows_the_url_s_plaintext_rule() {
+        assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + """
+                        [repositories.acme]
+                        url = "https://maven.acme.dev/"
+                        publish-url = "http://nexus.acme.dev/hosted/"
+                        """))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessage("repositories.acme.publish-url: http://nexus.acme.dev/hosted/ is plain http;"
+                        + " use https or set allow-insecure = true");
+        JkBuild insecure = JkBuildParser.parse(PROJECT + """
+                [repositories.acme]
+                url = "https://maven.acme.dev/"
+                publish-url = "http://nexus.acme.dev/hosted/"
+                allow-insecure = true
+                """);
+        assertThat(insecure.repositories().get(0).publishUrl()).hasToString("http://nexus.acme.dev/hosted/");
+        JkBuild loopback = JkBuildParser.parse(PROJECT + """
+                [repositories.acme]
+                url = "https://maven.acme.dev/"
+                publish-url = "http://127.0.0.1:8081/hosted/"
+                """);
+        assertThat(loopback.repositories().get(0).publishUrl()).hasToString("http://127.0.0.1:8081/hosted/");
+    }
+
+    @Test
+    void publish_url_is_refused_on_the_built_in_repositories() {
+        for (String builtIn : List.of("central", "google", "jumpkick")) {
+            assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + """
+                            [repositories.%s]
+                            url = "https://repo.example/maven/"
+                            publish-url = "https://upload.example/maven/"
+                            """.formatted(builtIn)))
+                    .isInstanceOf(JkBuildParseException.class)
+                    .hasMessage("repositories." + builtIn
+                            + ".publish-url: not allowed on a built-in repository; declare your own");
+        }
+    }
+
+    @Test
+    void publish_url_must_be_a_string_and_a_project_s_cannot_name_home() {
+        assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + """
+                        [repositories.acme]
+                        url = "https://maven.acme.dev/"
+                        publish-url = 7
+                        """))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessage("repositories.acme.publish-url must be a URL string");
+        assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + """
+                        [repositories.acme]
+                        url = "https://maven.acme.dev/"
+                        publish-url = "file://~/repo/"
+                        """))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageStartingWith("repositories.acme.publish-url: file://~/repo/ names a directory");
+    }
+
+    @Test
+    void a_user_config_drops_a_repository_whose_publish_url_is_refused() {
+        var table = Toml.parse("""
+                [repositories.acme]
+                url = "https://maven.acme.dev/"
+                publish-url = "http://nexus.acme.dev/hosted/"
+
+                [repositories.ok]
+                url = "https://ok.example/"
+                publish-url = "https://upload.ok.example/"
+                """).getTable("repositories");
+        assertThat(RepositoryToml.repositories(table, RepositoryToml.VarPolicy.LENIENT, RepositoryToml.OnBad.SKIP))
+                .extracting(RepositorySpec::name, r -> String.valueOf(r.publishUrl()))
+                .containsExactly(Tuple.tuple("ok", "https://upload.ok.example/"));
     }
 }

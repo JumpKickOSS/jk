@@ -85,6 +85,12 @@ replaces `[publish] repository` for one run (`central` names the Portal). Creden
 `token` or `passphrase` key in `[publish]` is refused, naming where the secret goes. A repository's
 object-store `region` and `endpoint` live on its `[repositories.<name>]` table.
 
+A repository whose uploads go somewhere other than where it is read, such as a bucket behind a CDN
+or a hosted repository behind a group, names that place with `publish-url`. `jk publish`,
+`--dry-run` and `jk release` then write to it and check it: what is already published, the
+`maven-metadata.xml` merge and whether the version is taken. See
+[Repositories § Publishing to another URL](repositories.md#publishing-to-another-url).
+
 **Signing** is on. A `key-file` means PGP: a detached `.asc` beside every file. When CI offers an
 identity token (GitHub Actions `id-token: write`, or `SIGSTORE_ID_TOKEN` on GitLab), the release is
 also signed keylessly with Sigstore, never through a browser prompt. Central with no PGP key is
@@ -127,7 +133,7 @@ there`); a file the repository holds with other bytes stops the run and says to 
 
 ### Publishing to object storage
 
-For `s3://` and `gs://` targets, each artifact and its sidecars are created only if the key
+For `s3://` and `gs://` targets (a repository's `url`, or its `publish-url`), each artifact and its sidecars are created only if the key
 is absent. Concurrent publishers retry updates to Maven metadata against the latest version
 list or snapshot build. Artifacts of 64 MiB or more use multipart uploads on S3. Google
 Cloud Storage uses a single streamed upload with a generation precondition.

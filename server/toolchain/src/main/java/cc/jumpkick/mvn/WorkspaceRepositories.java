@@ -52,7 +52,8 @@ final class WorkspaceRepositories {
                             spec.releases(),
                             spec.snapshots(),
                             spec.blocked(),
-                            spec.optional());
+                            spec.optional(),
+                            spec.publishUrl());
                     changed = true;
                 }
                 byName.putIfAbsent(spec.name(), spec);

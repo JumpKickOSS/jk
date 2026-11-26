@@ -28,9 +28,10 @@ class StoredLoginsTest {
                         new RepoCredentialStore.Login(
                                 "nexus",
                                 "basic",
-                                URI.create("https://nexus.acme"),
+                                List.of(URI.create("https://nexus.acme")),
                                 new SecretVault.Pointer("secret-service", "repo/nexus")),
-                        new RepoCredentialStore.Login("ghcr.io", "bearer", URI.create("https://ghcr.io"), null)),
+                        new RepoCredentialStore.Login(
+                                "ghcr.io", "bearer", List.of(URI.create("https://ghcr.io")), null)),
                 List.of(new TokenStore.Login(
                         "github.com", new SecretVault.Pointer("macos-keychain", "forge/github.com"))),
                 SecretVault.fileOnly());

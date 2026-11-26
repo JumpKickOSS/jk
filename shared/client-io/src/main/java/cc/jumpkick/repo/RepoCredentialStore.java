@@ -25,7 +25,7 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * Per-repo logins under {@code <home>/creds/repo/} ({@code jk repo login}); owner-only modes. One
- * record per repository: {@code <scheme> <origin>} on the first line, then the fields ({@code
+ * record per repository: {@code <scheme> <origin>...} on the first line, then the fields ({@code
  * bearer}: the token; {@code basic}: username, password).
  *
  * <p>When an OS keychain holds the secret, the first line ends in {@code keychain} and the secret's
@@ -33,30 +33,31 @@ import org.jspecify.annotations.Nullable;
  * keeps the binding and the username, the keychain keeps the token or password. Which one a login
  * uses is {@link SecretVault}'s choice; a record of either shape reads.
  *
- * <p>The origin — {@code scheme://host[:port]} of the repository the login was for — is part of
- * the record because the repository id alone is not a destination: a project's {@code jk.toml}
- * chooses which URL an id points at, and a stored credential is only ever sent to the origin it
- * was stored for. A file whose first line carries no origin reads back with a null one, and the
- * resolver then falls back to the bindings that apply to any name-keyed source.
+ * <p>The origins — {@code scheme://host[:port]} of the repository's url, and of its publish-url
+ * when that is elsewhere — are part of the record because the repository id alone is not a
+ * destination: a project's {@code jk.toml} chooses which URL an id points at, and a stored
+ * credential is only ever sent to an origin it was stored for. A file whose first line carries no
+ * origin reads back with none, and the resolver then falls back to the bindings that apply to any
+ * name-keyed source.
  */
 public final class RepoCredentialStore {
 
     /** The first line's last word when the secret is in a keychain. */
     static final String KEYCHAIN = "keychain";
 
-    /** One stored login: the credential and the origin it was stored for ({@code null} when unrecorded). */
-    public record Entry(RepoCredential credential, @Nullable URI origin) {
+    /** One stored login: the credential and the origins it was stored for (empty when unrecorded). */
+    public record Entry(RepoCredential credential, List<URI> origins) {
         public Entry {
             Objects.requireNonNull(credential, "credential");
+            origins = List.copyOf(origins);
         }
     }
 
     /**
      * One record as {@code jk doctor} lists it, without its secret: the file's name, the scheme,
-     * the origin, and the keychain pointer when a keychain holds the secret.
+     * the origins, and the keychain pointer when a keychain holds the secret.
      */
-    public record Login(
-            String name, String scheme, @Nullable URI origin, SecretVault.@Nullable Pointer pointer) {}
+    public record Login(String name, String scheme, List<URI> origins, SecretVault.@Nullable Pointer pointer) {}
 
     private final Path dir;
     private final SecretVault vault;
@@ -97,7 +98,7 @@ public final class RepoCredentialStore {
         RepoCredential credential = record.username() == null
                 ? new RepoCredential.Bearer(secret.strip())
                 : new RepoCredential.Basic(record.username(), secret);
-        return Optional.of(new Entry(credential, record.origin()));
+        return Optional.of(new Entry(credential, record.origins()));
     }
 
     private @Nullable String keychainSecret(String repoId, SecretVault.Pointer pointer, Path file) {
@@ -118,8 +119,9 @@ public final class RepoCredentialStore {
     }
 
     /**
-     * Store {@code cred} for {@code repoId}, bound to the origin of {@code url}. Only the origin is
-     * kept: two repositories on one host share a credential the way a browser's do. The secret goes
+     * Store {@code cred} for {@code repoId}, bound to the origin of each of {@code urls}. Only the
+     * origin is kept: two repositories on one host share a credential the way a browser's do. A
+     * repository whose publish-url is on another origin than its url passes both. The secret goes
      * where {@link SecretVault} puts it; a keychain item a previous login left behind and this one
      * no longer uses is removed.
      *
@@ -127,8 +129,10 @@ public final class RepoCredentialStore {
      *     notice to show when a keychain refused
      * @throws IllegalStateException when the vault insists on a keychain that did not take it
      */
-    public SecretVault.Stored write(String repoId, RepoCredential cred, URI url) {
-        String origin = originOf(url).toString();
+    public SecretVault.Stored write(String repoId, RepoCredential cred, List<URI> urls) {
+        if (urls.isEmpty()) throw new IllegalArgumentException("a login needs the URL it is for");
+        List<URI> origins = urls.stream().map(RepoCredentialStore::originOf).toList();
+        String origin = spelled(origins, " ");
         Path file = fileFor(repoId);
         SecretVault.@Nullable Pointer previous =
                 parse(file).map(Record::pointer).orElse(null);
@@ -161,7 +165,8 @@ public final class RepoCredentialStore {
         ChangeJournal.note(
                 "credential for repository " + repoId,
                 Change.STORE,
-                (replacing ? "replaced" : "stored") + " the credential for repository " + repoId + " at " + origin,
+                (replacing ? "replaced" : "stored") + " the credential for repository " + repoId + " at "
+                        + spelled(origins),
                 user + ", kept in "
                         + (pointer == null
                                 ? "the file " + file.getFileName()
@@ -216,7 +221,7 @@ public final class RepoCredentialStore {
         for (Path file : SecretVault.recordFiles(dir)) {
             parse(file)
                     .ifPresent(r -> out.add(
-                            new Login(String.valueOf(file.getFileName()), r.scheme(), r.origin(), r.pointer())));
+                            new Login(String.valueOf(file.getFileName()), r.scheme(), r.origins(), r.pointer())));
         }
         return List.copyOf(out);
     }
@@ -227,7 +232,7 @@ public final class RepoCredentialStore {
      */
     private record Record(
             String scheme,
-            @Nullable URI origin,
+            List<URI> origins,
             @Nullable String username,
             String secret,
             SecretVault.@Nullable Pointer pointer) {}
@@ -241,10 +246,18 @@ public final class RepoCredentialStore {
             return Optional.empty();
         }
         if (lines.isEmpty()) return Optional.empty();
-        String[] head = lines.get(0).strip().split("\\s+", 3);
+        String[] head = lines.get(0).strip().split("\\s+");
         String scheme = head[0].toLowerCase(Locale.ROOT);
-        URI origin = head.length > 1 ? parseOrigin(head[1]) : null;
-        boolean inKeychain = head.length > 2 && head[2].strip().equalsIgnoreCase(KEYCHAIN);
+        List<URI> origins = new ArrayList<>();
+        boolean inKeychain = false;
+        for (int i = 1; i < head.length; i++) {
+            if (head[i].equalsIgnoreCase(KEYCHAIN)) {
+                inKeychain = true;
+                continue;
+            }
+            URI origin = parseOrigin(head[i]);
+            if (origin != null && !origins.contains(origin)) origins.add(origin);
+        }
         String username;
         String secret;
         switch (scheme) {
@@ -268,7 +281,7 @@ public final class RepoCredentialStore {
             if (parsed.isEmpty()) return Optional.empty();
             pointer = parsed.get();
         }
-        return Optional.of(new Record(scheme, origin, username, secret, pointer));
+        return Optional.of(new Record(scheme, List.copyOf(origins), username, secret, pointer));
     }
 
     /**
@@ -285,6 +298,16 @@ public final class RepoCredentialStore {
         String origin = url.getScheme().toLowerCase(Locale.ROOT) + "://"
                 + url.getHost().toLowerCase(Locale.ROOT) + (url.getPort() == -1 ? "" : ":" + url.getPort());
         return URI.create(origin);
+    }
+
+    /** The origins as a message names them: {@code https://a} or {@code https://a and https://b}. */
+    public static String spelled(List<URI> origins) {
+        return spelled(origins, " and ");
+    }
+
+    private static String spelled(List<URI> origins, String separator) {
+        return String.join(
+                separator, origins.stream().map(URI::toString).distinct().toList());
     }
 
     private static @Nullable URI parseOrigin(String text) {

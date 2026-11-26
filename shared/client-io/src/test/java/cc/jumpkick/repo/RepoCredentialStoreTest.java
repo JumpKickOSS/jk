@@ -29,16 +29,41 @@ class RepoCredentialStoreTest {
     @Test
     void round_trips_bearer_and_basic_with_the_origin_they_were_stored_for(@TempDir Path dir) {
         var store = new RepoCredentialStore(dir);
-        store.write("ghp", new RepoCredential.Bearer("tok-123"), URI.create("https://maven.pkg.github.com/acme/x"));
-        store.write("corp-nexus", new RepoCredential.Basic("deployer", "p@ss w/ space"), NEXUS);
+        store.write(
+                "ghp",
+                new RepoCredential.Bearer("tok-123"),
+                List.of(URI.create("https://maven.pkg.github.com/acme/x")));
+        store.write("corp-nexus", new RepoCredential.Basic("deployer", "p@ss w/ space"), List.of(NEXUS));
 
         assertThat(store.read("ghp"))
                 .contains(new RepoCredentialStore.Entry(
-                        new RepoCredential.Bearer("tok-123"), URI.create("https://maven.pkg.github.com")));
+                        new RepoCredential.Bearer("tok-123"), List.of(URI.create("https://maven.pkg.github.com"))));
         assertThat(store.read("corp-nexus"))
                 .contains(new RepoCredentialStore.Entry(
-                        new RepoCredential.Basic("deployer", "p@ss w/ space"), URI.create("https://nexus.corp:8443")));
+                        new RepoCredential.Basic("deployer", "p@ss w/ space"),
+                        List.of(URI.create("https://nexus.corp:8443"))));
         assertThat(store.read("absent")).isEmpty();
+    }
+
+    /** A login for a repository whose publish-url is elsewhere keeps both origins on its first line. */
+    @Test
+    void a_login_for_two_origins_round_trips_both(@TempDir Path dir) throws Exception {
+        var store = new RepoCredentialStore(dir);
+        store.write(
+                "acme",
+                new RepoCredential.Bearer("tok"),
+                List.of(URI.create("https://maven.acme.dev/"), URI.create("https://nexus.acme.dev/hosted/")));
+
+        assertThat(Files.readString(dir.resolve("acme")))
+                .isEqualTo("bearer https://maven.acme.dev https://nexus.acme.dev\ntok\n");
+        assertThat(store.read("acme"))
+                .contains(new RepoCredentialStore.Entry(
+                        new RepoCredential.Bearer("tok"),
+                        List.of(URI.create("https://maven.acme.dev"), URI.create("https://nexus.acme.dev"))));
+        assertThat(store.logins())
+                .singleElement()
+                .extracting(RepoCredentialStore.Login::origins)
+                .isEqualTo(List.of(URI.create("https://maven.acme.dev"), URI.create("https://nexus.acme.dev")));
     }
 
     /** Only the origin is kept: the path, query and any userinfo of the URL are not part of the binding. */
@@ -52,19 +77,19 @@ class RepoCredentialStoreTest {
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
-    /** A file whose first line carries no origin reads back with a null one rather than not at all. */
+    /** A file whose first line carries no origin reads back with none rather than not at all. */
     @Test
     void a_file_without_an_origin_reads_back_with_none(@TempDir Path dir) throws Exception {
         Files.writeString(dir.resolve("legacy"), "bearer\nold-token\n");
         assertThat(new RepoCredentialStore(dir).read("legacy"))
-                .contains(new RepoCredentialStore.Entry(new RepoCredential.Bearer("old-token"), null));
+                .contains(new RepoCredentialStore.Entry(new RepoCredential.Bearer("old-token"), List.of()));
     }
 
     @Test
     void clear_removes_only_that_repo(@TempDir Path dir) {
         var store = new RepoCredentialStore(dir);
-        store.write("a", new RepoCredential.Bearer("ta"), NEXUS);
-        store.write("b", new RepoCredential.Bearer("tb"), NEXUS);
+        store.write("a", new RepoCredential.Bearer("ta"), List.of(NEXUS));
+        store.write("b", new RepoCredential.Bearer("tb"), List.of(NEXUS));
         store.clear("a");
         assertThat(store.read("a")).isEmpty();
         assertThat(store.read("b"))
@@ -74,14 +99,14 @@ class RepoCredentialStoreTest {
 
     @Test
     void refuses_to_store_anonymous(@TempDir Path dir) {
-        assertThatThrownBy(() -> new RepoCredentialStore(dir).write("x", RepoCredential.ANONYMOUS, NEXUS))
+        assertThatThrownBy(() -> new RepoCredentialStore(dir).write("x", RepoCredential.ANONYMOUS, List.of(NEXUS)))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
     void file_is_owner_only_on_posix(@TempDir Path dir) throws Exception {
         var store = new RepoCredentialStore(dir);
-        store.write("ghp", new RepoCredential.Bearer("tok"), NEXUS);
+        store.write("ghp", new RepoCredential.Bearer("tok"), List.of(NEXUS));
         Path file = dir.resolve("ghp");
         PosixFileAttributeView posix = Files.getFileAttributeView(file, PosixFileAttributeView.class);
         assumeTrue(posix != null, "POSIX-only assertion");
@@ -99,7 +124,7 @@ class RepoCredentialStoreTest {
         var store = new RepoCredentialStore(dir, keychainVault(keychain));
 
         SecretVault.Stored stored =
-                store.write("corp-nexus", new RepoCredential.Basic("deployer", "p@ss w/ space"), NEXUS);
+                store.write("corp-nexus", new RepoCredential.Basic("deployer", "p@ss w/ space"), List.of(NEXUS));
 
         assertThat(stored.pointer()).isEqualTo(new SecretVault.Pointer("fake", "repo/corp-nexus"));
         assertThat(Files.readString(dir.resolve("corp-nexus")))
@@ -108,9 +133,13 @@ class RepoCredentialStoreTest {
         assertThat(keychain.items).containsEntry("repo/corp-nexus", "p@ss w/ space");
         assertThat(store.read("corp-nexus"))
                 .contains(new RepoCredentialStore.Entry(
-                        new RepoCredential.Basic("deployer", "p@ss w/ space"), URI.create("https://nexus.corp:8443")));
+                        new RepoCredential.Basic("deployer", "p@ss w/ space"),
+                        List.of(URI.create("https://nexus.corp:8443"))));
 
-        store.write("ghp", new RepoCredential.Bearer("tok-123"), URI.create("https://maven.pkg.github.com/acme/x"));
+        store.write(
+                "ghp",
+                new RepoCredential.Bearer("tok-123"),
+                List.of(URI.create("https://maven.pkg.github.com/acme/x")));
         assertThat(Files.readString(dir.resolve("ghp")))
                 .isEqualTo("bearer https://maven.pkg.github.com keychain\nfake repo/ghp\n");
         assertThat(store.read("ghp").map(RepoCredentialStore.Entry::credential))
@@ -123,7 +152,7 @@ class RepoCredentialStoreTest {
         keychain.locked = "the default keyring is locked, and JumpKick never asks to unlock it";
         var store = new RepoCredentialStore(dir, keychainVault(keychain));
 
-        SecretVault.Stored stored = store.write("ghp", new RepoCredential.Bearer("tok-123"), NEXUS);
+        SecretVault.Stored stored = store.write("ghp", new RepoCredential.Bearer("tok-123"), List.of(NEXUS));
 
         assertThat(stored.pointer()).isNull();
         assertThat(stored.notice())
@@ -134,10 +163,11 @@ class RepoCredentialStoreTest {
 
     @Test
     void a_login_over_a_plaintext_record_moves_the_secret_into_the_keychain(@TempDir Path dir) throws Exception {
-        new RepoCredentialStore(dir).write("ghp", new RepoCredential.Bearer("old"), NEXUS);
+        new RepoCredentialStore(dir).write("ghp", new RepoCredential.Bearer("old"), List.of(NEXUS));
         FakeKeychain keychain = new FakeKeychain();
 
-        new RepoCredentialStore(dir, keychainVault(keychain)).write("ghp", new RepoCredential.Bearer("new"), NEXUS);
+        new RepoCredentialStore(dir, keychainVault(keychain))
+                .write("ghp", new RepoCredential.Bearer("new"), List.of(NEXUS));
 
         assertThat(Files.readString(dir.resolve("ghp"))).doesNotContain("old").doesNotContain("new");
         assertThat(keychain.items).containsEntry("repo/ghp", "new");
@@ -146,10 +176,11 @@ class RepoCredentialStoreTest {
     @Test
     void a_file_login_over_a_keychain_record_removes_the_keychain_item(@TempDir Path dir) {
         FakeKeychain keychain = new FakeKeychain();
-        new RepoCredentialStore(dir, keychainVault(keychain)).write("ghp", new RepoCredential.Bearer("k"), NEXUS);
+        new RepoCredentialStore(dir, keychainVault(keychain))
+                .write("ghp", new RepoCredential.Bearer("k"), List.of(NEXUS));
 
         new RepoCredentialStore(dir, SecretVault.of(SecretVault.Choice.FILE, List.of(keychain)))
-                .write("ghp", new RepoCredential.Bearer("f"), NEXUS);
+                .write("ghp", new RepoCredential.Bearer("f"), List.of(NEXUS));
 
         assertThat(keychain.items).isEmpty();
     }
@@ -158,7 +189,7 @@ class RepoCredentialStoreTest {
     void logout_removes_the_keychain_item_and_the_record(@TempDir Path dir) {
         FakeKeychain keychain = new FakeKeychain();
         var store = new RepoCredentialStore(dir, keychainVault(keychain));
-        store.write("ghp", new RepoCredential.Bearer("tok"), NEXUS);
+        store.write("ghp", new RepoCredential.Bearer("tok"), List.of(NEXUS));
 
         store.clear("ghp");
 
@@ -170,7 +201,7 @@ class RepoCredentialStoreTest {
     void a_keychain_that_refuses_the_logout_keeps_the_record_so_it_can_be_retried(@TempDir Path dir) {
         FakeKeychain keychain = new FakeKeychain();
         var store = new RepoCredentialStore(dir, keychainVault(keychain));
-        store.write("ghp", new RepoCredential.Bearer("tok"), NEXUS);
+        store.write("ghp", new RepoCredential.Bearer("tok"), List.of(NEXUS));
         keychain.refusing = "locked";
 
         assertThatThrownBy(() -> store.clear("ghp")).isInstanceOf(SecretBackendException.class);
@@ -181,7 +212,7 @@ class RepoCredentialStoreTest {
     void a_pointer_the_keychain_cannot_answer_reads_as_no_login(@TempDir Path dir) {
         FakeKeychain keychain = new FakeKeychain();
         var store = new RepoCredentialStore(dir, keychainVault(keychain));
-        store.write("ghp", new RepoCredential.Bearer("tok"), NEXUS);
+        store.write("ghp", new RepoCredential.Bearer("tok"), List.of(NEXUS));
         keychain.items.clear();
 
         assertThat(new RepoCredentialStore(dir, keychainVault(keychain)).read("ghp"))
@@ -192,17 +223,19 @@ class RepoCredentialStoreTest {
     @Test
     void logins_list_every_record_with_its_binding_and_pointer_and_no_secret(@TempDir Path dir) {
         FakeKeychain keychain = new FakeKeychain();
-        new RepoCredentialStore(dir, keychainVault(keychain)).write("a", new RepoCredential.Bearer("ta"), NEXUS);
-        new RepoCredentialStore(dir).write("b", new RepoCredential.Basic("u", "pb"), NEXUS);
+        new RepoCredentialStore(dir, keychainVault(keychain))
+                .write("a", new RepoCredential.Bearer("ta"), List.of(NEXUS));
+        new RepoCredentialStore(dir).write("b", new RepoCredential.Basic("u", "pb"), List.of(NEXUS));
 
         assertThat(new RepoCredentialStore(dir).logins())
                 .containsExactly(
                         new RepoCredentialStore.Login(
                                 "a",
                                 "bearer",
-                                URI.create("https://nexus.corp:8443"),
+                                List.of(URI.create("https://nexus.corp:8443")),
                                 new SecretVault.Pointer("fake", "repo/a")),
-                        new RepoCredentialStore.Login("b", "basic", URI.create("https://nexus.corp:8443"), null));
+                        new RepoCredentialStore.Login(
+                                "b", "basic", List.of(URI.create("https://nexus.corp:8443")), null));
     }
 
     @Test
@@ -214,7 +247,7 @@ class RepoCredentialStoreTest {
         ChangeJournal.into(
                 journal,
                 () -> Request.actingAs(shell, () -> {
-                    store.write("corp-nexus", new RepoCredential.Basic("deployer", "p@ss-literal"), NEXUS);
+                    store.write("corp-nexus", new RepoCredential.Basic("deployer", "p@ss-literal"), List.of(NEXUS));
                     store.clear("corp-nexus");
                     return null;
                 }));

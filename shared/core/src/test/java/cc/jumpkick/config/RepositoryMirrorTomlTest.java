@@ -92,6 +92,21 @@ class RepositoryMirrorTomlTest {
     }
 
     @Test
+    void a_mirror_takes_no_publish_url(@TempDir Path dir) throws IOException {
+        Path file = config(dir, """
+                [repositories.corp]
+                url = "https://artifactory.acme.test/maven-virtual/"
+                mirror-of = ["*"]
+                publish-url = "https://artifactory.acme.test/maven-hosted/"
+                """);
+
+        assertThatThrownBy(() -> GlobalConfig.repositoryMirrors(file))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("repositories.corp in " + file)
+                .hasMessageContaining("not `publish-url`");
+    }
+
+    @Test
     void a_plaintext_mirror_on_a_network_path_needs_allow_insecure(@TempDir Path dir) throws IOException {
         Path file = config(dir, """
                 [repositories.corp]

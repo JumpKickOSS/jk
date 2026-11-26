@@ -15,7 +15,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
@@ -29,6 +31,8 @@ class PublishCommandTest {
     private HttpServer server;
     private URI base;
     private final Map<String, byte[]> received = new HashMap<>();
+    /** Every request path, in arrival order. */
+    private final List<String> requested = new CopyOnWriteArrayList<>();
     /** When set, the metadata GET answers this status — the transient-failure shape. */
     private volatile int metadataGetStatus = 0;
 
@@ -37,6 +41,7 @@ class PublishCommandTest {
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/", exchange -> {
             String path = exchange.getRequestURI().getPath();
+            requested.add(path);
             switch (exchange.getRequestMethod()) {
                 case "PUT" -> {
                     received.put(path, exchange.getRequestBody().readAllBytes());
@@ -141,6 +146,36 @@ class PublishCommandTest {
 
         assertThat(exit).isEqualTo(0);
         assertThat(received).containsKey("/repo/com/example/widget/1.0.0/widget-1.0.0.jar");
+    }
+
+    /** A repository's publish-url takes the uploads and every read the publish makes; its url is never asked. */
+    @Test
+    void a_publish_url_takes_the_uploads_and_the_reads(@TempDir Path tempDir) throws Exception {
+        URI read = base.resolve("/read/");
+        Files.writeString(tempDir.resolve("jk.toml"), """
+                group    = "com.example"
+                name     = "widget"
+                version  = "1.0.0"
+                java     = 25
+                [repositories.releases]
+                url = "%s"
+                publish-url = "%s"
+
+                [publish]
+                repository = "releases"
+                """.formatted(read, base));
+        writeJar(tempDir.resolve("target/widget-1.0.0.jar"));
+
+        int exit = run("publish", "-C", tempDir.toString());
+
+        assertThat(exit).isEqualTo(0);
+        assertThat(received)
+                .containsKeys(
+                        "/repo/com/example/widget/1.0.0/widget-1.0.0.jar",
+                        "/repo/com/example/widget/maven-metadata.xml");
+        // The resolver may read the url for the build's own dependencies; nothing about the
+        // published coordinate (presence checks, metadata, uploads) goes there.
+        assertThat(requested).noneMatch(path -> path.startsWith("/read/com/example/widget/"));
     }
 
     @Test

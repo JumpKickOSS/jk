@@ -15,13 +15,25 @@ import java.nio.file.Path;
 import java.util.Optional;
 
 /**
- * The publish tail of an agent's {@code upload} job: the project's own {@code [publish]} target
- * and the credential the stored chain holds for it. An agent never names a URL; it uploads where
- * the manifest says releases go.
+ * The publish tail of an agent's {@code publish} job: the project's own {@code [publish]} target
+ * and, for an upload, the credential the stored chain holds for it. An agent never names a URL; it
+ * uploads where the manifest says releases go.
  */
 final class UploadTail {
 
     private UploadTail() {}
+
+    /**
+     * A dry run: nothing is sent and no credential is read. Its destination is the URL the
+     * {@code [publish]} repository writes to, or none when the manifest names no repository URL.
+     */
+    static TailArgs.Publish dryRun(Path dir) {
+        ProjectInfo info = ProjectInfoPlans.projectInfo(dir);
+        // A broken manifest is the job's to report; the tail only names a destination.
+        String repository = info.error() == null ? info.publishRepository() : "";
+        URI url = repository.contains("://") ? URI.create(repository) : null;
+        return new TailArgs.Publish(url, false, true, null, null, RepoCredential.ANONYMOUS, false);
+    }
 
     /**
      * @throws IllegalArgumentException with the fix when the project names no uploadable target
@@ -42,17 +54,11 @@ final class UploadTail {
                     "[publish] repository `" + repository + "` is not declared under [repositories].");
         }
         URI url = URI.create(repository);
-        String matchedName = null;
-        Optional<RepoCredential> inline = Optional.empty();
-        for (RepositoriesScan.Repo repo : RepositoriesScan.scan(ManifestPaths.manifestIn(dir))) {
-            String base = repo.url().endsWith("/") ? repo.url() : repo.url() + "/";
-            if (repository.equals(repo.url()) || repository.startsWith(base)) {
-                matchedName = repo.name();
-                inline = repo.credentialOpt();
-                break;
-            }
-        }
-        RepoCredential credential = new RepoCredentialResolver().resolve(matchedName, url, inline);
+        RepositoriesScan.Repo repo =
+                RepositoriesScan.holding(RepositoriesScan.scan(ManifestPaths.manifestIn(dir)), repository);
+        RepoCredential credential = new RepoCredentialResolver()
+                .resolve(
+                        repo == null ? null : repo.name(), url, repo == null ? Optional.empty() : repo.credentialOpt());
         Path keyFile = null;
         String passphrase = null;
         if (info.publishSign() && !info.publishKeyFile().isEmpty()) {

@@ -12,6 +12,7 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -39,7 +40,7 @@ class RepoCommandTest {
                 "tok-from-stdin\n", "repo", "login", "corp-nexus", "--url", URL, "--credentials-dir", dir.toString());
         assertThat(code).isEqualTo(0);
         assertThat(new RepoCredentialStore(dir).read("corp-nexus"))
-                .contains(new RepoCredentialStore.Entry(new RepoCredential.Bearer("tok-from-stdin"), ORIGIN));
+                .contains(new RepoCredentialStore.Entry(new RepoCredential.Bearer("tok-from-stdin"), List.of(ORIGIN)));
     }
 
     @Test
@@ -57,7 +58,8 @@ class RepoCommandTest {
                 dir.toString());
         assertThat(code).isEqualTo(0);
         assertThat(new RepoCredentialStore(dir).read("corp-nexus"))
-                .contains(new RepoCredentialStore.Entry(new RepoCredential.Basic("deployer", "the-password"), ORIGIN));
+                .contains(new RepoCredentialStore.Entry(
+                        new RepoCredential.Basic("deployer", "the-password"), List.of(ORIGIN)));
     }
 
     /** The URL comes from the project's own manifest when the id is declared there. */
@@ -78,7 +80,7 @@ class RepoCommandTest {
         assertThat(code).isEqualTo(0);
         assertThat(new RepoCredentialStore(dir).read("internal"))
                 .contains(new RepoCredentialStore.Entry(
-                        new RepoCredential.Bearer("tok"), URI.create("https://repo.acme.com")));
+                        new RepoCredential.Bearer("tok"), List.of(URI.create("https://repo.acme.com"))));
     }
 
     /** A registry is logged into by host, so the host is the URL. */
@@ -87,8 +89,8 @@ class RepoCommandTest {
         int code = run("tok\n", "repo", "login", "ghcr.io", "--credentials-dir", dir.toString());
         assertThat(code).isEqualTo(0);
         assertThat(new RepoCredentialStore(dir).read("ghcr.io"))
-                .contains(
-                        new RepoCredentialStore.Entry(new RepoCredential.Bearer("tok"), URI.create("https://ghcr.io")));
+                .contains(new RepoCredentialStore.Entry(
+                        new RepoCredential.Bearer("tok"), List.of(URI.create("https://ghcr.io"))));
     }
 
     /** A nickname nothing declares has no destination; the login says so rather than guessing one. */

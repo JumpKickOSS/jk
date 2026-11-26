@@ -11,7 +11,6 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.config.WorkspaceScan;
-import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.engine.api.BuildHistoryKinds;
 import cc.jumpkick.engine.graph.GraphRunner;
 import cc.jumpkick.engine.jobs.JobKind;
@@ -47,7 +46,6 @@ import cc.jumpkick.wire.runtime.WorkspaceSpec;
 import cc.jumpkick.wire.runtime.WorkspaceTarget;
 import java.io.BufferedWriter;
 import java.io.IOException;
-import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
@@ -151,17 +149,7 @@ public final class WorkspaceBuildVerb implements HostedVerb {
                     case INSTALL -> new TailArgs.Install(null, null);
                     case NATIVE -> new TailArgs.Native(null, List.of());
                     case SYNC -> new TailArgs.Sync(false, null);
-                    case PUBLISH ->
-                        "upload".equals(kind)
-                                ? UploadTail.of(entryDir)
-                                : new TailArgs.Publish(
-                                        URI.create("https://publish.invalid/"),
-                                        false,
-                                        true,
-                                        null,
-                                        null,
-                                        RepoCredential.ANONYMOUS,
-                                        false);
+                    case PUBLISH -> "upload".equals(kind) ? UploadTail.of(entryDir) : UploadTail.dryRun(entryDir);
                     default -> null;
                 };
         boolean skipTests = spec.skipTests()

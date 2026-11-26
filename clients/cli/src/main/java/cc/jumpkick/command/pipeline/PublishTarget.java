@@ -86,7 +86,7 @@ record PublishTarget(
             } else if (repository.contains("://")) {
                 repoUrl = URI.create(repository);
             } else {
-                String declared = declaredUrl(manifest, repository);
+                String declared = declaredTarget(manifest, repository);
                 if (declared == null) {
                     return Resolution.refused(
                             source + " `" + repository + "` is not `central`, a URL or declared under [repositories]");
@@ -128,9 +128,10 @@ record PublishTarget(
         return Resolution.of(new PublishTarget(repoUrl, central, keyFile, credential));
     }
 
-    private static @Nullable String declaredUrl(Path manifest, String name) {
+    /** Where a publish to the declared repository {@code name} goes: its publish-url, else its url. */
+    private static @Nullable String declaredTarget(Path manifest, String name) {
         for (RepositoriesScan.Repo repo : RepositoriesScan.scan(manifest)) {
-            if (repo.name().equals(name)) return repo.url();
+            if (repo.name().equals(name)) return repo.publishTarget();
         }
         return null;
     }
@@ -148,19 +149,13 @@ record PublishTarget(
                 + portal.getHost();
     }
 
+    /** The credential bound to the declared repository whose url or publish-url {@code repoUrl} falls under. */
     private static RepoCredential repositoryCredential(Path manifest, URI repoUrl) {
-        String matchedName = null;
-        Optional<RepoCredential> inline = Optional.empty();
-        String target = repoUrl.toString();
-        for (RepositoriesScan.Repo repo : RepositoriesScan.scan(manifest)) {
-            String base = repo.url();
-            String basePrefix = base.endsWith("/") ? base : base + "/";
-            if (target.equals(base) || target.startsWith(basePrefix)) {
-                matchedName = repo.name();
-                inline = repo.credentialOpt();
-                break;
-            }
-        }
-        return new RepoCredentialResolver().resolve(matchedName, repoUrl, inline);
+        RepositoriesScan.Repo repo = RepositoriesScan.holding(RepositoriesScan.scan(manifest), repoUrl.toString());
+        return new RepoCredentialResolver()
+                .resolve(
+                        repo == null ? null : repo.name(),
+                        repoUrl,
+                        repo == null ? Optional.empty() : repo.credentialOpt());
     }
 }

@@ -135,7 +135,8 @@ class RepoCredentialResolverTest {
     @Test
     void store_used_when_no_inline_or_env_and_the_login_was_for_this_origin(@TempDir Path dir) {
         var store = new RepoCredentialStore(dir);
-        store.write("nexus", new RepoCredential.Bearer("stored-tok"), URI.create("https://nexus.corp/somewhere"));
+        store.write(
+                "nexus", new RepoCredential.Bearer("stored-tok"), List.of(URI.create("https://nexus.corp/somewhere")));
         var r = resolver(env(Map.of()), MavenSettings.empty(), store, forge(new TokenStore(dir)));
         assertThat(r.resolve("nexus", NEXUS, Optional.empty())).isEqualTo(new RepoCredential.Bearer("stored-tok"));
     }
@@ -153,7 +154,7 @@ class RepoCredentialResolverTest {
         store.write(
                 "ossrh",
                 new RepoCredential.Basic("victim", "sonatype-pass"),
-                URI.create("https://s01.oss.sonatype.org/"));
+                List.of(URI.create("https://s01.oss.sonatype.org/")));
         var r = resolver(env(Map.of()), MavenSettings.empty(), store, forge(new TokenStore(dir)));
         URI attacker = URI.create("https://attacker.example/m2/");
 
@@ -354,7 +355,7 @@ class RepoCredentialResolverTest {
     @Test
     void a_refused_env_credential_falls_through_to_a_bound_login(@TempDir Path dir) {
         var store = new RepoCredentialStore(dir);
-        store.write("nexus", new RepoCredential.Bearer("stored-tok"), NEXUS);
+        store.write("nexus", new RepoCredential.Bearer("stored-tok"), List.of(NEXUS));
         var r = resolver(
                 env(Map.of("JK_REPO_NEXUS_TOKEN", "env-tok")),
                 MavenSettings.empty(),
@@ -832,5 +833,69 @@ class RepoCredentialResolverTest {
         assertThat(resolved.get()).isEqualTo(RepoCredential.ANONYMOUS);
         assertThat(warnings)
                 .contains("~/.m2/settings.xml declares `nexus` at https://nexus.corp, not https://attacker.example");
+    }
+
+    private static final URI ACME_READ = URI.create("https://maven.acme.dev/");
+    private static final URI ACME_WRITE = URI.create("https://nexus.acme.dev/repository/hosted/");
+
+    /** {@code [repositories.acme]} reading at {@link #ACME_READ} and publishing to {@code publishUrl}. */
+    private static RepositorySpec acme(URI publishUrl) {
+        return new RepositorySpec(
+                "acme", ACME_READ, null, null, List.of(), false, false, true, true, false, false, publishUrl);
+    }
+
+    /** One repository name binds its credential to its url's origin and its publish-url's, and to nothing else. */
+    @Test
+    void a_user_config_declaration_binds_the_name_to_both_its_origins(@TempDir Path dir) {
+        var r = resolver(
+                env(Map.of("JK_REPO_ACME_TOKEN", "acme-tok")),
+                MavenSettings.empty(),
+                new RepoCredentialStore(dir),
+                forge(new TokenStore(dir)),
+                Map.of(),
+                List.of(acme(ACME_WRITE)));
+
+        assertThat(r.resolve("acme", ACME_WRITE, Optional.empty())).isEqualTo(new RepoCredential.Bearer("acme-tok"));
+        assertThat(r.resolve("acme", ACME_READ, Optional.empty())).isEqualTo(new RepoCredential.Bearer("acme-tok"));
+        var elsewhere = new AtomicReference<RepoCredential>();
+        warningsFrom(
+                () -> elsewhere.set(r.resolve("acme", URI.create("https://attacker.example/m2/"), Optional.empty())));
+        assertThat(elsewhere.get()).isEqualTo(RepoCredential.ANONYMOUS);
+    }
+
+    /** A publish-url only the project declares is the project's word: the user's binding of the url does not stretch to it. */
+    @Test
+    void a_publish_url_only_the_project_declares_gets_no_name_keyed_credential(@TempDir Path dir) {
+        var store = new RepoCredentialStore(dir);
+        store.write("acme", new RepoCredential.Bearer("stored-tok"), List.of(ACME_READ));
+        var r = resolver(
+                env(Map.of("JK_REPO_ACME_TOKEN", "acme-tok")),
+                MavenSettings.empty(),
+                store,
+                forge(new TokenStore(dir)),
+                Map.of(),
+                List.of(new RepositorySpec("acme", ACME_READ)));
+
+        var resolved = new AtomicReference<RepoCredential>();
+        String warnings = warningsFrom(() -> resolved.set(r.resolve("acme", ACME_WRITE, Optional.empty())));
+
+        assertThat(resolved.get()).isEqualTo(RepoCredential.ANONYMOUS);
+        assertThat(warnings).contains("acme at https://nexus.acme.dev").contains("not sent");
+    }
+
+    /** A login recorded for both origins answers at either. */
+    @Test
+    void a_login_stored_for_both_origins_is_sent_to_either(@TempDir Path dir) {
+        var store = new RepoCredentialStore(dir);
+        store.write("acme", new RepoCredential.Bearer("stored-tok"), List.of(ACME_READ, ACME_WRITE));
+        var r = resolver(env(Map.of()), MavenSettings.empty(), store, forge(new TokenStore(dir)));
+
+        assertThat(r.resolve("acme", ACME_WRITE, Optional.empty())).isEqualTo(new RepoCredential.Bearer("stored-tok"));
+        assertThat(r.resolve("acme", ACME_READ, Optional.empty())).isEqualTo(new RepoCredential.Bearer("stored-tok"));
+        var elsewhere = new AtomicReference<RepoCredential>();
+        String warnings = warningsFrom(
+                () -> elsewhere.set(r.resolve("acme", URI.create("https://attacker.example/m2/"), Optional.empty())));
+        assertThat(elsewhere.get()).isEqualTo(RepoCredential.ANONYMOUS);
+        assertThat(warnings).contains("it was stored for https://maven.acme.dev and https://nexus.acme.dev");
     }
 }

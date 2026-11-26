@@ -86,7 +86,7 @@ class PublishCentralCommandTest {
         });
         server.start();
         base = URI.create("http://127.0.0.1:" + server.getAddress().getPort() + "/");
-        store.write("central", new RepoCredential.Bearer("portal-token"), base);
+        store.write("central", new RepoCredential.Bearer("portal-token"), List.of(base));
         System.setProperty("jk.env.JK_CENTRAL_PORTAL_URL", base.toString());
     }
 

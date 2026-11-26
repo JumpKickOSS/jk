@@ -14,8 +14,9 @@ import org.jspecify.annotations.Nullable;
 /**
  * Declared repository: name, URL, optional inline credential, object-store config, optional
  * exclusive Maven group bindings (dependency-confusion defense), the two trust opt-ins a
- * repository table may carry, and the release/snapshot policy Maven gives a {@code
- * <repository>}: which kind of version it is asked for.
+ * repository table may carry, the release/snapshot policy Maven gives a {@code
+ * <repository>}: which kind of version it is asked for, and the optional URL {@code jk publish}
+ * writes to instead of {@code url}.
  */
 public record RepositorySpec(
         String name,
@@ -50,7 +51,13 @@ public record RepositorySpec(
          * address it is passed over like a blocked one, and named when a package resolves nowhere,
          * instead of stopping the resolve; {@code jk import} writes a POM's repositories this way.
          */
-        boolean optional) {
+        boolean optional,
+        /**
+         * {@code publish-url}: where {@code jk publish} writes and reads back, when it differs from
+         * {@code url} (a bucket behind a CDN, a hosted repository behind a group). Null when unset.
+         * Nothing that resolves reads it.
+         */
+        @Nullable URI publishUrl) {
 
     /**
      * The one name Maven Central answers to inside jk — the {@code repos/<name>/} store directory,
@@ -194,7 +201,8 @@ public record RepositorySpec(
                 releases,
                 snapshots,
                 blocked,
-                optional);
+                optional,
+                publishUrl);
     }
 
     /** This repository blocked: kept in the manifest, never asked, named when nothing else serves a package. */
@@ -210,7 +218,8 @@ public record RepositorySpec(
                 releases,
                 snapshots,
                 true,
-                optional);
+                optional,
+                publishUrl);
     }
 
     /** This repository {@link #optional}: passed over rather than stopping the resolve when nothing answers at it. */
@@ -226,7 +235,8 @@ public record RepositorySpec(
                 releases,
                 snapshots,
                 blocked,
-                true);
+                true,
+                publishUrl);
     }
 
     /** Convenience: a repository that is asked and required — {@code blocked} and {@code optional} off. */
@@ -251,7 +261,13 @@ public record RepositorySpec(
                 releases,
                 snapshots,
                 false,
-                false);
+                false,
+                null);
+    }
+
+    /** Where {@code jk publish} writes and reads back: {@link #publishUrl} when set, else {@link #url}. */
+    public URI publishTarget() {
+        return publishUrl != null ? publishUrl : url;
     }
 
     /** True when a version of the given kind is asked of this repository. */
