@@ -58,10 +58,10 @@ final class WindowJoin {
     private final List<Observation> pools;
 
     /**
-     * Each thread that reached another host, by its id, with the classes whose window held its
-     * first such event; at most {@value ClassReads#NETWORK_THREADS_KEPT}.
+     * Each thread that reached another host, by its id, with the time of its earliest such event a
+     * window held and the classes whose window held it; at most {@value ClassReads#NETWORK_THREADS_KEPT}.
      */
-    private final Map<String, List<Observation>> networkThreads = new HashMap<>();
+    private final Map<String, FirstRead> networkThreads = new HashMap<>();
 
     /** The uses no window of this JVM held, which every class it ran may have read the state of. */
     private final Observation unheldUses = Observation.empty();
@@ -104,10 +104,19 @@ final class WindowJoin {
     private final Map<Path, Integer> workerIds = new HashMap<>();
 
     /**
-     * Each thread that read a file, by its id, with the classes whose window held its first read,
-     * empty when none did; at most {@value ClassReads#READ_THREADS_KEPT}.
+     * Each thread that read a file, by its id, with the time of its earliest read seen and the
+     * classes whose window held it, empty when none did; at most {@value ClassReads#READ_THREADS_KEPT}.
+     * A recording lists a thread's events out of time order, so the earliest is kept, not the first listed.
      */
-    private final Map<String, List<Observation>> readThreads = new HashMap<>();
+    private final Map<String, FirstRead> readThreads = new HashMap<>();
+
+    private record FirstRead(long at, List<Observation> owners) {}
+
+    /** A worker jar read outside every window on a thread, judged once every read of the thread is in. */
+    private record ThreadWorker(int id, String thread) {}
+
+    /** The first and last time each such read happened. */
+    private final Map<ThreadWorker, long[]> threadWorkerReads = new HashMap<>();
 
     /** Each worker jar read outside every window on a thread no window owns, by the first and last time. */
     private final Map<Integer, long[]> unownedWorkerReads = new HashMap<>();
@@ -175,9 +184,12 @@ final class WindowJoin {
 
     /** A file read at {@code at} on {@code thread}. */
     void read(long at, String path, @Nullable String thread) {
-        if (thread != null && readThreads.size() < READ_THREADS_KEPT && !readThreads.containsKey(thread)) {
-            List<Observation> held = held(at);
-            readThreads.put(thread, held == null ? List.of() : held);
+        if (thread != null) {
+            FirstRead known = readThreads.get(thread);
+            if ((known == null && readThreads.size() < READ_THREADS_KEPT) || (known != null && at < known.at())) {
+                List<Observation> held = held(at);
+                readThreads.put(thread, new FirstRead(at, held == null ? List.of() : held));
+            }
         }
         accept(at, Kind.READ, path, thread);
     }
@@ -187,24 +199,51 @@ final class WindowJoin {
      * an earlier class's window held is that class's: a connection a class left open is read
      * from when the server closes it, minutes later, in whichever window or gap is open then, and
      * a class that sends a request on it writes in its own window. Every write goes by its time.
+     * A recording lists a thread's events out of time order, so a read is judged at {@link #finish}.
      */
     void host(long at, String host, @Nullable String thread, boolean read) {
         if (thread == null) {
             accept(at, Kind.HOST, host);
             return;
         }
-        List<Observation> first = networkThreads.get(thread);
-        if (first == null) {
-            List<Observation> held = held(at);
-            if (held != null && !held.isEmpty() && networkThreads.size() < NETWORK_THREADS_KEPT) {
-                networkThreads.put(thread, held);
+        List<Observation> held = held(at);
+        FirstRead first = networkThreads.get(thread);
+        if (held != null && !held.isEmpty()) {
+            if ((first == null && networkThreads.size() < NETWORK_THREADS_KEPT) || (first != null && at < first.at())) {
+                networkThreads.put(thread, new FirstRead(at, held));
             }
-        } else if (read && !first.equals(held(at))) {
-            events++;
-            first.forEach(o -> o.addHost(host));
-            return;
         }
-        accept(at, Kind.HOST, host);
+        if (read) {
+            long[] span = hostReads.computeIfAbsent(new HostRead(thread, host, held), k -> new long[] {at, at});
+            span[0] = Math.min(span[0], at);
+            span[1] = Math.max(span[1], at);
+        } else {
+            accept(at, Kind.HOST, host);
+        }
+    }
+
+    /** A socket read of {@code host} on {@code thread} by the classes whose window held it, null when none did. */
+    private record HostRead(
+            String thread, String host, @Nullable List<Observation> held) {}
+
+    /** The first and last time each such read happened. */
+    private final Map<HostRead, long[]> hostReads = new LinkedHashMap<>();
+
+    private void judgeHostReads() {
+        for (Map.Entry<HostRead, long[]> e : hostReads.entrySet()) {
+            HostRead r = e.getKey();
+            long first = e.getValue()[0];
+            long last = e.getValue()[1];
+            FirstRead owner = networkThreads.get(r.thread());
+            if (owner == null || owner.owners().equals(r.held()) || last <= owner.at()) {
+                accept(first, Kind.HOST, r.host());
+                continue;
+            }
+            if (first <= owner.at()) accept(first, Kind.HOST, r.host());
+            events++;
+            owner.owners().forEach(o -> o.addHost(r.host()));
+        }
+        hostReads.clear();
     }
 
     /**
@@ -328,16 +367,21 @@ final class WindowJoin {
      * by then and, read after every window, the pool.
      */
     private void worker(long at, int id, boolean inWindow, List<Observation> into, @Nullable String thread) {
-        List<Observation> owners = inWindow || thread == null ? null : readThreads.get(thread);
         if (inWindow) {
             into.forEach(o -> o.addWorker(id, workerJars));
-        } else if (owners != null && !owners.isEmpty()) {
-            owners.forEach(o -> o.addWorker(id, workerJars));
-        } else {
-            long[] span = unownedWorkerReads.computeIfAbsent(id, k -> new long[] {at, at});
+        } else if (thread != null && readThreads.containsKey(thread)) {
+            long[] span = threadWorkerReads.computeIfAbsent(new ThreadWorker(id, thread), k -> new long[] {at, at});
             span[0] = Math.min(span[0], at);
             span[1] = Math.max(span[1], at);
+        } else {
+            unowned(at, at, id);
         }
+    }
+
+    private void unowned(long first, long last, int id) {
+        long[] span = unownedWorkerReads.computeIfAbsent(id, k -> new long[] {first, last});
+        span[0] = Math.min(span[0], first);
+        span[1] = Math.max(span[1], last);
     }
 
     /**
@@ -368,6 +412,7 @@ final class WindowJoin {
     }
 
     void finish() {
+        judgeHostReads();
         if (codeOverflow) {
             // More code files than are kept: no class can name what it may have loaded.
             for (Window w : windows) {
@@ -389,6 +434,16 @@ final class WindowJoin {
             if (startedIn.contains(o) || (firstStart <= w.end() && reached.contains(o))) o.addTool(STARTED_PROGRAM);
             o.addUses(unheldUses);
         }
+        for (Map.Entry<ThreadWorker, long[]> t : threadWorkerReads.entrySet()) {
+            ThreadWorker key = t.getKey();
+            FirstRead first = readThreads.get(key.thread());
+            if (first != null && !first.owners().isEmpty()) {
+                first.owners().forEach(o -> o.addWorker(key.id(), workerJars));
+            } else {
+                unowned(t.getValue()[0], t.getValue()[1], key.id());
+            }
+        }
+        threadWorkerReads.clear();
         for (Map.Entry<Integer, long[]> r : unownedWorkerReads.entrySet()) {
             int id = r.getKey();
             for (Window w : windows) {
