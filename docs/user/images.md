@@ -45,6 +45,7 @@ A Quarkus application ships its own `quarkus-app/` tree instead, in two layers: 
 the rest (`quarkus-run.jar`, `app/`, `quarkus/`). The `lib/` layer is kept as the release layer is,
 by the sha256 of each jar, so an image after a code edit, which rewrites the whole tree, ships the
 dependencies as built and compresses only the application again. The rest is built every time.
+With `package = "uber-jar"` there is no tree: the runner jar ships as the application jar.
 
 With no `base`, the image is built on `bellsoft/liberica-runtime-container:jre-<N>-slim-glibc`,
 where `<N>` is the module's Java level: its `java`, else its `jdk` major, else the major of the JDK

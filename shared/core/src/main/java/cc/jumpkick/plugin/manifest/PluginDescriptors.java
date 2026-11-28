@@ -242,14 +242,15 @@ public final class PluginDescriptors {
             for (int i = 0; i < variantArray.size(); i++) {
                 TomlTable v = variantArray.getTable(i);
                 if (v == null) continue;
-                TomlTable when = v.getTable("when");
-                if (when == null || when.getString("config") == null || when.getString("equals") == null) {
+                String where = displayPath + ".packaging.variant";
+                PluginDescriptor.Condition when = PluginConditions.parse(v, where);
+                if (!(when instanceof PluginDescriptor.Condition.ConfigEquals
+                        || when instanceof PluginDescriptor.Condition.ConfigOneOf)) {
                     throw new JkBuildParseException(
-                            displayPath + ".packaging.variant needs when = { config = ..., equals = ... }");
+                            where + " needs when = { config = ..., equals = ... } or { config = ..., one-of = [...] }");
                 }
-                variants.add(new PluginDescriptor.Packaging.Variant(
-                        new PluginDescriptor.Condition.ConfigEquals(when.getString("config"), when.getString("equals")),
-                        parsePackagingTable(v, displayPath, List.of())));
+                variants.add(
+                        new PluginDescriptor.Packaging.Variant(when, parsePackagingTable(v, displayPath, List.of())));
             }
         }
         return parsePackagingTable(packaging, displayPath, variants);

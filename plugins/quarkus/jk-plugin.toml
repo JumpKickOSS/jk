@@ -28,6 +28,16 @@ self-contained = true
 classes-run    = false
 main-scan      = true
 
+# An uber-jar is one runnable jar: the main artifact, with no app tree beside it.
+[[packaging.variant]]
+when           = { config = "package", one-of = ["uber-jar", "uberjar", "uber", "fat-jar"] }
+packager       = "quarkus-fast-jar"
+native-image-sources = "native-sources"
+exec-mode      = "jar"
+self-contained = true
+classes-run    = false
+main-scan      = true
+
 [schema]
 version = { type = "string", required = true, example = "3.38.0", hint = "io.quarkus.platform:quarkus-bom version, 2.0 or later — a release such as 3.38.0 (exact), ^3 for the newest 3.x, or latest" }
 # fast-jar (default): quarkus-run.jar + lib/ layout. uber-jar: single fat runner jar.

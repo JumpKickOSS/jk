@@ -156,18 +156,28 @@ public record PluginDescriptor(
             Map<String, String> runSystemProperties,
             List<Variant> variants) {
 
-        /** Config-conditional packaging override; first matching {@code when} wins. */
+        /**
+         * Config-conditional packaging that replaces this one whole; first matching {@code when}
+         * wins. {@code when} is a {@link Condition.ConfigEquals} or a {@link Condition.ConfigOneOf}.
+         */
         public record Variant(Condition when, Packaging packaging) {}
 
         /** The effective descriptor for {@code config}: the first matching variant, else this. */
         public Packaging resolve(PluginConfig config) {
             for (Variant v : variants) {
-                if (v.when() instanceof Condition.ConfigEquals c
-                        && c.equals().equals(String.valueOf(config.values().get(c.key())))) {
-                    return v.packaging();
-                }
+                boolean matches =
+                        switch (v.when()) {
+                            case Condition.ConfigEquals c -> c.equals().equals(configValue(config, c.key()));
+                            case Condition.ConfigOneOf c -> c.values().contains(configValue(config, c.key()));
+                            default -> false;
+                        };
+                if (matches) return v.packaging();
             }
             return this;
+        }
+
+        private static String configValue(PluginConfig config, String key) {
+            return String.valueOf(config.values().get(key));
         }
     }
 
@@ -511,6 +521,13 @@ public record PluginDescriptor(
 
         /** Owned-table key equals a value. */
         record ConfigEquals(String key, String equals) implements Condition {}
+
+        /** Owned-table key equals one of several values: the spellings one setting accepts. */
+        record ConfigOneOf(String key, Set<String> values) implements Condition {
+            public ConfigOneOf {
+                values = Set.copyOf(values);
+            }
+        }
 
         /**
          * Owned-table key holds a version at or above {@code bound} ({@code atLeast}), or below it:

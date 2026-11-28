@@ -11,8 +11,10 @@ import java.lang.reflect.Proxy;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
+import java.util.regex.Pattern;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -52,6 +54,28 @@ class QuarkusPluginTest {
         assertThat(QuarkusPlugin.normalizePackageType("uberjar")).isEqualTo("uber-jar");
         assertThat(QuarkusPlugin.normalizePackageType("fat-jar")).isEqualTo("uber-jar");
         assertThatThrownBy(() -> QuarkusPlugin.normalizePackageType("war")).isInstanceOf(IOException.class);
+    }
+
+    /** The manifest's uber-jar variant names exactly the spellings the worker packages as one. */
+    @Test
+    void the_uber_jar_packaging_variant_names_every_uber_spelling() throws Exception {
+        String manifest;
+        try (var in = QuarkusPlugin.class.getResourceAsStream("/jk-plugin.toml")) {
+            assertThat(in).as("jk-plugin.toml at the worker jar root").isNotNull();
+            manifest = new String(in.readAllBytes(), StandardCharsets.UTF_8);
+        }
+        var when = Pattern.compile("when +=  *\\{ config = \"package\", one-of = \\[([^\\]]*)\\]")
+                .matcher(manifest);
+        assertThat(when.find()).as("[[packaging.variant]] when on package").isTrue();
+        List<String> spellings = Arrays.stream(when.group(1).split(","))
+                .map(s -> s.strip().replace("\"", ""))
+                .toList();
+        assertThat(spellings).isNotEmpty();
+        for (String spelling : spellings) {
+            assertThat(QuarkusPlugin.normalizePackageType(spelling))
+                    .as(spelling)
+                    .isEqualTo("uber-jar");
+        }
     }
 
     @Test

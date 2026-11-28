@@ -406,6 +406,7 @@ and what the lock-closure rows are resolved from — already holds it. `[quarkus
 extension descriptor this way.
 
 **Conditions (closed set, one per `when`):** `classpath-has`, `config`/`equals`,
+`config`/`one-of` (the key holds any value of a list),
 `config`/`at-least` and `config`/`below` (the key's version against a bound: `[avro]` adds
 `avro-idl` only from 1.12, where Avro split it out), `config`/`set` (`true` when the key has a value,
 written or a schema default, `false` when it has none: `[asyncapi]` adds the Avro compiler only
@@ -437,6 +438,20 @@ Static data consulted by `jk run` / `install` / `image` without forking your cod
 `native-image-sources`, `app-dir` and `app-jar` resolve against the packager step's scratch
 root, the module's `target/` and `app-dir`. One that is absolute, empty, `.` or climbs out with
 `..` is refused when the manifest is read, in the jar and again from the copy `jk lock` stores.
+
+A `[[packaging.variant]]` replaces the whole `[packaging]` table when its `when` holds for the
+module's table, a `config`/`equals` or `config`/`one-of` predicate; the first match wins.
+`[quarkus] package = "uber-jar"` selects a variant with no `app-dir`, so the main artifact is the
+runnable jar: the release lane ships a self-contained `jar` packaging's main artifact unless it
+declares an `app-dir`, and `jk image` ships the `app-dir` tree when one is declared.
+
+```toml
+[[packaging.variant]]
+when           = { config = "package", one-of = ["uber-jar", "uberjar", "uber", "fat-jar"] }
+packager       = "quarkus-fast-jar"
+exec-mode      = "jar"
+self-contained = true
+```
 
 ### Templates and import
 

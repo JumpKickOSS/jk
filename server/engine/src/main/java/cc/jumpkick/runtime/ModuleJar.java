@@ -12,7 +12,6 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.Set;
 import org.jspecify.annotations.NullMarked;
 import org.jspecify.annotations.Nullable;
 
@@ -64,14 +63,11 @@ public final class ModuleJar {
         return ReleaseDeliverables.local(layout, project, runnable(project, moduleDir, layout));
     }
 
-    /** The {@code [quarkus] package} values that make the runner one self-contained jar. */
-    private static final Set<String> QUARKUS_UBER = Set.of("uber-jar", "uberjar", "uber", "fat-jar");
-
     /**
      * The jar a framework packager writes in place of the main jar when that jar runs by itself:
-     * Spring Boot's and Grails' executable jars, a Quarkus uber-jar. A packager whose runnable
-     * application is a directory beside the jar (Quarkus's default {@code quarkus-app/}) has none;
-     * {@code null} also for a module with no packager.
+     * a self-contained {@code jar} packaging, its config variant resolved. A packaging whose
+     * runnable application is an {@code app-dir} tree beside the jar has none; {@code null} also
+     * for a module with no packager.
      */
     static @Nullable Path runnable(JkBuild project, Path moduleDir, BuildLayout layout) {
         ActivePlugin active;
@@ -85,10 +81,9 @@ public final class ModuleJar {
                 active == null ? null : active.manifest().packaging();
         if (active == null || declared == null) return null;
         PluginDescriptor.Packaging packaging = declared.resolve(active.config());
-        if (!packaging.selfContained() || !"jar".equals(packaging.execMode())) return null;
-        if (!packaging.appDir().isBlank()
-                && !QUARKUS_UBER.contains(
-                        String.valueOf(active.config().values().get("package")))) {
+        if (!packaging.selfContained()
+                || !"jar".equals(packaging.execMode())
+                || !packaging.appDir().isBlank()) {
             return null;
         }
         return ActivePlugins.mainArtifactPath(layout, active);
