@@ -34,7 +34,7 @@ class RunVerbGraalTest {
         RunVerb verb = new RunVerb(List.of(), null);
 
         int code = verb.prepared(
-                AlwaysNativeGraal.reached(true, dir, BuildRun.Selection.NONE, false, () -> null, (d, spec, release) -> {
+                NativeGraal.reached(true, dir, BuildRun.Selection.NONE, false, () -> null, (d, spec, release) -> {
                     asked.add(d + " " + spec + " " + release);
                     return Optional.of(GraalResolver.Choice.found(home));
                 }));
@@ -55,7 +55,7 @@ class RunVerbGraalTest {
                 dir.resolve("jk.toml"), "name = \"cli\"\n\n[native]\nenabled = \"always\"\ngraal = \"graalvm-25\"\n");
 
         RunVerb installs = new RunVerb(List.of(), null);
-        assertThat(installs.prepared(AlwaysNativeGraal.reached(
+        assertThat(installs.prepared(NativeGraal.reached(
                         true,
                         dir,
                         BuildRun.Selection.NONE,
@@ -66,7 +66,7 @@ class RunVerbGraalTest {
         assertThat(installs.spec().graalInstalls()).isEqualTo(Map.of(dir, "graalvm-25"));
 
         RunVerb refused = new RunVerb(List.of(), null);
-        assertThat(refused.prepared(AlwaysNativeGraal.reached(
+        assertThat(refused.prepared(NativeGraal.reached(
                         true, dir, BuildRun.Selection.NONE, false, () -> null, (d, spec, release) -> Optional.empty())))
                 .isEqualTo(Exit.FAILURE);
     }
@@ -78,7 +78,7 @@ class RunVerbGraalTest {
         RunVerb verb = new RunVerb(List.of(), null);
 
         assertThat(verb.prepared(
-                        AlwaysNativeGraal.reached(true, dir, BuildRun.Selection.NONE, false, () -> null, (d, s, r) -> {
+                        NativeGraal.reached(true, dir, BuildRun.Selection.NONE, false, () -> null, (d, s, r) -> {
                             throw new AssertionError("a JVM module resolves no GraalVM");
                         })))
                 .isEqualTo(-1);

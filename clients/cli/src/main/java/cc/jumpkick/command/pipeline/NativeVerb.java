@@ -47,7 +47,7 @@ final class NativeVerb implements BuildVerb {
      * native build decides it ({@link GraalResolver}: the module's pin, the lock, what is installed,
      * $GRAALVM_HOME), found on this machine or for the engine to install as part of the run.
      */
-    private AlwaysNativeGraal.Graal graal = AlwaysNativeGraal.Graal.NONE;
+    private NativeGraal.Graal graal = NativeGraal.Graal.NONE;
 
     /** How many modules link a native image this run. */
     private int nativeModules;
@@ -120,7 +120,7 @@ final class NativeVerb implements BuildVerb {
             run.fail(NativePreflight.NO_MAIN);
             return Exit.CONFIG;
         }
-        Optional<AlwaysNativeGraal.Graal> resolved = AlwaysNativeGraal.reached(
+        Optional<NativeGraal.Graal> resolved = NativeGraal.reached(
                 eligible,
                 ProjectInfos::orNull,
                 new GraalResolver(run.flags().jdksDir(), run.global().yes, run.mode())::resolve);

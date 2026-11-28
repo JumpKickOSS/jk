@@ -436,12 +436,12 @@ public final class InstallCommand {
                 return Exit.FAILURE;
             }
         }
-        AlwaysNativeGraal.Graal graal = AlwaysNativeGraal.Graal.NONE;
+        NativeGraal.Graal graal = NativeGraal.Graal.NONE;
         if (!reshelving) {
             List<Path> alwaysNative = moduleDirs.stream()
-                    .filter(mod -> AlwaysNativeGraal.alwaysNative(infoByDir.get(mod)))
+                    .filter(mod -> NativeGraal.alwaysNative(infoByDir.get(mod)))
                     .toList();
-            Optional<AlwaysNativeGraal.Graal> resolved = AlwaysNativeGraal.reached(
+            Optional<NativeGraal.Graal> resolved = NativeGraal.reached(
                     alwaysNative,
                     infoByDir::get,
                     new GraalResolver(jdksDir, global.yes, BuildPlanConsole.modeFor(global))::resolve);

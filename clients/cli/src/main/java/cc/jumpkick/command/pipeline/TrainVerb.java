@@ -34,7 +34,7 @@ final class TrainVerb implements BuildVerb {
     /** The one module a run trains: the project itself, or the selection in a workspace. */
     private @Nullable Path moduleDir;
 
-    private AlwaysNativeGraal.Graal graal = AlwaysNativeGraal.Graal.NONE;
+    private NativeGraal.Graal graal = NativeGraal.Graal.NONE;
 
     @Override
     public String name() {
@@ -88,9 +88,8 @@ final class TrainVerb implements BuildVerb {
             new GraalResolver(run.flags().jdksDir(), run.global().yes, run.mode())
                     .resolve(moduleDir, null)
                     .ifPresent(c -> graal = c.home() != null
-                            ? new AlwaysNativeGraal.Graal(Map.of(moduleDir, c.home()), Map.of())
-                            : new AlwaysNativeGraal.Graal(
-                                    Map.of(), Map.of(moduleDir, Objects.requireNonNull(c.install()))));
+                            ? new NativeGraal.Graal(Map.of(moduleDir, c.home()), Map.of())
+                            : new NativeGraal.Graal(Map.of(), Map.of(moduleDir, Objects.requireNonNull(c.install()))));
         } catch (RuntimeException ignored) {
             // train fails clearly if the agent is missing
         }
