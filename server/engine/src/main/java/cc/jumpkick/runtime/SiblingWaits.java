@@ -7,12 +7,16 @@ import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.config.WorkspaceClasspath;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.repo.PomRuntimeClasspath;
 import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.runtime.base.SiblingArtifacts;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -78,28 +82,59 @@ final class SiblingWaits {
     }
 
     /**
-     * {@code workerJars}, once every workspace module whose output is among them has written it: a
-     * jar once the module has published, a native binary once it has linked. A suite runs against
-     * the workers and the client this build makes, whatever order the schedule took.
+     * {@code workerJars}, once every workspace module whose output is among them, or among the
+     * libraries a worker launches on, has written it: a jar once the module has published, a native
+     * binary once it has linked. A suite runs, and its stamp hashes, the workers, their libraries and
+     * the client this build makes, whatever order the schedule took.
      */
     static Map<String, String> awaitWorkerSiblings(
             TaskContext ctx, BuildPlanner.Inputs in, Map<String, String> workerJars) throws InterruptedException {
         Path self = in.dir().toAbsolutePath().normalize();
         Set<Path> producers = new LinkedHashSet<>();
-        for (String jar : workerJars.values()) {
-            for (Path p = Path.of(jar).toAbsolutePath().normalize(); p != null; p = p.getParent()) {
-                Path parent = p.getParent();
-                if (parent != null
-                        && BuildLayout.TARGET.equals(String.valueOf(p.getFileName()))
-                        && Files.isRegularFile(ManifestPaths.manifestIn(parent))) {
-                    if (!parent.equals(self)) producers.add(parent);
-                    break;
-                }
-            }
-        }
+        for (String jar : workerJars.values()) addProducer(producers, Path.of(jar), self);
         in.siblings().awaitPublished(producers, ctx::cancelled);
         in.siblings().awaitLinked(producers, ctx::cancelled);
+        Set<Path> libraries = libraryProducers(in.dir(), workerJars, self);
+        libraries.removeAll(producers);
+        in.siblings().awaitPublished(libraries, ctx::cancelled);
         return workerJars;
+    }
+
+    /**
+     * The workspace modules that make a library of a worker's launch classpath: one whose {@code
+     * target/} holds the entry, or whose coordinate the entry, taken from a store, carries.
+     */
+    private static Set<Path> libraryProducers(Path moduleDir, Map<String, String> workerJars, Path self) {
+        Set<Path> out = new LinkedHashSet<>();
+        try {
+            Map<String, Path> siblings = SiblingJars.siblingMainJars(moduleDir);
+            for (Map.Entry<String, String> worker : workerJars.entrySet()) {
+                List<Path> entries = TestStampInputs.stampedPaths(worker.getKey(), Path.of(worker.getValue()));
+                for (Path entry : entries.subList(1, entries.size())) {
+                    if (addProducer(out, entry, self)) continue;
+                    Coordinate coord = PomRuntimeClasspath.coordinateOf(entry);
+                    Path sibling = coord == null ? null : siblings.get(coord.group() + ":" + coord.artifact());
+                    if (sibling != null) addProducer(out, sibling, self);
+                }
+            }
+        } catch (IOException | RuntimeException unresolved) {
+            // A classpath that does not resolve here keys the worker as its jar and POM alone.
+        }
+        return out;
+    }
+
+    /** Add the module whose {@code target/} holds {@code artifact}, unless it is {@code self}; false outside one. */
+    private static boolean addProducer(Set<Path> producers, Path artifact, Path self) {
+        for (Path p = artifact.toAbsolutePath().normalize(); p != null; p = p.getParent()) {
+            Path parent = p.getParent();
+            if (parent != null
+                    && BuildLayout.TARGET.equals(String.valueOf(p.getFileName()))
+                    && Files.isRegularFile(ManifestPaths.manifestIn(parent))) {
+                if (!parent.equals(self)) producers.add(parent);
+                return true;
+            }
+        }
+        return false;
     }
 
     /**

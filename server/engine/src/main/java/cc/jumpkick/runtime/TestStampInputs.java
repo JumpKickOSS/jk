@@ -35,6 +35,7 @@ import cc.jumpkick.task.PortablePath;
 import cc.jumpkick.task.TestStamp;
 import cc.jumpkick.task.ToolIdentity;
 import cc.jumpkick.task.ToolchainPolicy;
+import cc.jumpkick.task.WorkerClosure;
 import cc.jumpkick.test.CoverageAgent;
 import cc.jumpkick.test.EnvProbeJar;
 import cc.jumpkick.test.SuiteEnvReads;
@@ -479,6 +480,26 @@ public record TestStampInputs(
         return props;
     }
 
+    /** Whether {@code property} names a first-party worker's jar, which launches on its POM closure. */
+    private static boolean isWorker(String property) {
+        for (PluginJar w : PluginJar.values()) if (w.jarProperty().equals(property)) return true;
+        return false;
+    }
+
+    /**
+     * The stamp's identity of the jar {@code property} names: a worker's whole launch classpath
+     * ({@link WorkerClosure#token}), any other jar (the engine assembly, the native client) as itself.
+     */
+    static String workerToken(String property, Path jar, ClasspathFingerprint.EntryIdentity identity)
+            throws IOException {
+        return isWorker(property) ? WorkerClosure.token(jar, identity) : identity.of(jar);
+    }
+
+    /** What the stamp reads of the jar {@code property} names: a worker's launch classpath, else the jar. */
+    static List<Path> stampedPaths(String property, Path jar) throws IOException {
+        return isWorker(property) ? WorkerClosure.pathsOrJar(jar) : List.of(jar);
+    }
+
     /**
      * The worker jar of {@code dir}'s run-tests stamp ({@link #testStampWorkerJars})
      * that one of {@code rebuilding}, dirty siblings it reaches only by build order, makes; null when
@@ -492,7 +513,8 @@ public record TestStampInputs(
 
     /**
      * Each worker jar of {@code dir}'s run-tests stamp ({@link #testStampWorkerJars}) that one of
-     * {@code rebuilding} makes, by its property, in the stamp's order; empty when none does.
+     * {@code rebuilding} makes, or makes a library of its launch classpath, by its property, in the
+     * stamp's order; empty when none does.
      */
     static Map<String, Path> rebuildingWorkers(Path dir, JkBuild project, List<Path> rebuilding) throws IOException {
         if (rebuilding.isEmpty()) return Map.of();
@@ -502,14 +524,17 @@ public record TestStampInputs(
         for (Map.Entry<String, String> worker :
                 testStampWorkerJars(dir, project).entrySet()) {
             Path jar = Path.of(worker.getValue()).toAbsolutePath().normalize();
-            for (Path root : roots) {
-                if (jar.startsWith(root)) {
-                    out.put(worker.getKey(), jar);
-                    break;
-                }
-            }
+            if (madeByAny(stampedPaths(worker.getKey(), jar), roots)) out.put(worker.getKey(), jar);
         }
         return out;
+    }
+
+    private static boolean madeByAny(List<Path> entries, List<Path> roots) {
+        for (Path entry : entries) {
+            Path abs = entry.toAbsolutePath().normalize();
+            for (Path root : roots) if (abs.startsWith(root)) return true;
+        }
+        return false;
     }
 
     /**
@@ -599,12 +624,13 @@ public record TestStampInputs(
         for (String tool : build.testTools()) {
             extras.add("tool:" + tool + "=" + ToolIdentity.of(tool, path, moduleDir));
         }
-        // Plugin jars by content — a plugin change retests the module that forks it. A wiped
-        // plugin jar the forecast knows the build restores reads as the bytes that come back.
+        // Worker jars with every library they launch on, by content: a change to either retests the
+        // module that forks it. A wiped jar the forecast knows the build restores reads as the bytes
+        // that come back.
         for (Map.Entry<String, String> e : workerJars.entrySet()) {
             String fp;
             try {
-                fp = identity.of(Path.of(e.getValue()));
+                fp = workerToken(e.getKey(), Path.of(e.getValue()), identity);
             } catch (IOException ex) {
                 fp = "err";
             }
