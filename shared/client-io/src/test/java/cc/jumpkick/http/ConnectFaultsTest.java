@@ -141,14 +141,18 @@ class ConnectFaultsTest {
     /**
      * A loopback port that refuses connections while open: the local end of an established
      * connection, which no listener shares. A bound, never-listening channel is refused on Linux
-     * but silently dropped on macOS, and a closed probe socket frees the port for any process.
+     * but silently dropped on macOS, and a closed probe socket frees the port for any process. The
+     * local end is bound before it connects: Linux may hand a port that {@code connect} chose to
+     * another {@code connect} as its source, and a dial from the port to itself connects (TCP
+     * simultaneous open) instead of being refused; a bound port is never handed out that way.
      */
     private record RefusingPort(ServerSocketChannel server, SocketChannel held, SocketChannel accepted)
             implements AutoCloseable {
 
         static RefusingPort open() throws IOException {
             ServerSocketChannel server = ServerSocketChannel.open().bind(new InetSocketAddress("127.0.0.1", 0));
-            SocketChannel held = SocketChannel.open(server.getLocalAddress());
+            SocketChannel held = SocketChannel.open().bind(new InetSocketAddress("127.0.0.1", 0));
+            held.connect(server.getLocalAddress());
             return new RefusingPort(server, held, server.accept());
         }
 
