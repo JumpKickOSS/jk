@@ -10,6 +10,8 @@ import cc.jumpkick.model.JkBuild;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 /**
  * A framework app's release carries the jar its packager writes when that jar runs by itself: the
@@ -57,17 +59,24 @@ class ModuleJarReleaseFilesTest {
                 """);
     }
 
-    @Test
-    void a_quarkus_uber_jar_ships_and_the_default_fast_jar_does_not() {
+    @ParameterizedTest
+    @ValueSource(strings = {"uber-jar", "uberjar", "uber", "fat-jar"})
+    void a_quarkus_uber_jar_ships_its_runner_jar(String spelling) {
         only("""
                 [quarkus]
                 version = "3.38.0"
-                package = "uber-jar"
-                """);
+                package = "%s"
+                """.formatted(spelling));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"", "package = \"fast-jar\""})
+    void a_quarkus_fast_jar_ships_nothing(String line) {
         JkBuild fastJar = JkBuildParser.parse(HEADER + """
                 [quarkus]
                 version = "3.38.0"
-                """);
+                %s
+                """.formatted(line));
         assertThat(ModuleJar.releaseFiles(fastJar, dir)).isEmpty();
     }
 

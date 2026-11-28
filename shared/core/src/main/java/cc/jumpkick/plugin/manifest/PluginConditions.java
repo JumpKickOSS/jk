@@ -2,7 +2,11 @@
 package cc.jumpkick.plugin.manifest;
 
 import cc.jumpkick.config.JkBuildParseException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Set;
 import org.jspecify.annotations.Nullable;
+import org.tomlj.TomlArray;
 import org.tomlj.TomlTable;
 
 /** The {@code when} predicate a manifest contribution carries: one of a closed set, parsed at load. */
@@ -48,6 +52,21 @@ final class PluginConditions {
             }
             return new PluginDescriptor.Condition.ConfigSet(key, set);
         }
+        if (when.contains("config") && when.contains("one-of")) {
+            String key = when.getString("config");
+            TomlArray values = when.isArray("one-of") ? when.getArray("one-of") : null;
+            List<String> spellings = new ArrayList<>();
+            if (values != null) {
+                for (int i = 0; i < values.size(); i++) {
+                    if (values.get(i) instanceof String v && !v.isBlank()) spellings.add(v);
+                }
+            }
+            if (key == null || values == null || spellings.isEmpty() || spellings.size() != values.size()) {
+                throw new JkBuildParseException(
+                        where + ".when needs `config = \"<key>\"` and `one-of = [\"<value>\", ...]`");
+            }
+            return new PluginDescriptor.Condition.ConfigOneOf(key, Set.copyOf(spellings));
+        }
         if (when.contains("config")) {
             String key = when.getString("config");
             String equals = when.getString("equals");
@@ -66,7 +85,7 @@ final class PluginConditions {
             return new PluginDescriptor.Condition.KotlinProject();
         }
         throw new JkBuildParseException(where + ".when has no known predicate (classpath-has, config/equals,"
-                + " config/at-least, config/below, config/set, native-declared, kotlin-project)");
+                + " config/one-of, config/at-least, config/below, config/set, native-declared, kotlin-project)");
     }
 
     private static void requireTrue(TomlTable when, String key, String where) {

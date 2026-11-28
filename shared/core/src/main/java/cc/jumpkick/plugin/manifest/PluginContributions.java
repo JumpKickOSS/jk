@@ -1010,6 +1010,8 @@ public final class PluginContributions {
                 }
                 case PluginDescriptor.Condition.ConfigEquals c ->
                     c.equals().equals(String.valueOf(config.values().get(c.key())));
+                case PluginDescriptor.Condition.ConfigOneOf c ->
+                    c.values().contains(String.valueOf(config.values().get(c.key())));
                 case PluginDescriptor.Condition.ConfigVersion c -> {
                     Object value = config.values().get(c.key());
                     if (!(value instanceof String version) || version.isBlank()) yield false;
