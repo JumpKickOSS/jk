@@ -108,7 +108,7 @@ public final class ImagePlans {
 
     /**
      * {@code jk image}'s tail: {@code image-plan} then {@code write-image} (a node module's own pair
-     * for a node module), which never pushes. {@code tarballArg} is tri-state exactly like {@code
+     * for a node module), which never pushes. A native image has its own tail. {@code tarballArg} is tri-state exactly like {@code
      * --tarball}'s optional value: {@code null} (load the daemon), {@code ""} (default layout path),
      * or an explicit path.
      */
@@ -143,13 +143,15 @@ public final class ImagePlans {
     /**
      * Whether the module {@code manifest} describes ships an image in a publish run: it is not
      * {@code [publish] skip}, an {@code [image] registry} reaches it, and it has something to run,
-     * a main class, a Dockerfile or a node server.
+     * a main class, a Dockerfile, a node server or {@code kind = "native"}, whose plan refuses a
+     * module without a {@code [native]} table.
      */
     static boolean images(JkBuild manifest, Path dir) {
         if (ModuleJar.skipsRelease(manifest)) return false;
         ImageTable table = ManifestImage.merge(manifest.image(), GlobalConfig.image());
         if (table.registry() == null || table.registry().isBlank()) return false;
         if (NodeImagePlans.isNodeModule(ManifestPaths.manifestIn(dir), dir)) return true;
+        if (ImageTable.KIND_NATIVE.equals(table.kind())) return true;
         if (table.main() != null && !table.main().isBlank()) return true;
         if (table.dockerFile() != null && !table.dockerFile().isBlank()) return true;
         if (manifest.mainClass() != null) return true;
@@ -365,9 +367,9 @@ public final class ImagePlans {
         String base = BaseImageDigest.pin(declared, new Http(), ImageCredentials.resolve(declared, layout.moduleRoot()))
                 .orElse(declared);
         Path workerJar = PluginJar.IMAGE_BUILDER.locate(JkStores.storeCas());
-        ImagePushPlan.NodeSpec node = push.node();
-        SpecWriter spec = node != null
-                ? node.of(base)
+        ImagePushPlan.WorkerSpec given = push.spec();
+        SpecWriter spec = given != null
+                ? given.of(base)
                 : imageWorkerSpec(
                         push.cache(),
                         project,

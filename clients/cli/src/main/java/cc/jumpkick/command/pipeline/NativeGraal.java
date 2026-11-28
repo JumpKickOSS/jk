@@ -24,9 +24,10 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * The GraalVM home each module whose run links a native image builds with: an always-native module,
- * and under {@code jk publish} an on-demand {@code [native]} module whose executable the release
- * ships. Resolved on the client before the request ships, the one owner for {@code jk build},
- * {@code jk run}, {@code jk install}, {@code jk native} and {@code jk publish}. The engine is a daemon: a
+ * and an on-demand {@code [native]} module whose executable a release or a native image ships.
+ * Resolved on the client before the request ships, the one owner for {@code jk build},
+ * {@code jk run}, {@code jk install}, {@code jk native}, {@code jk image} and {@code jk publish}.
+ * The engine is a daemon: a
  * GraalVM it found for itself would answer from the shell that started it, and a prompt or an
  * install belongs to the terminal the user is looking at. So the client's resolver decides (pin,
  * lock, inventory, then prompt or install) and the request carries the answer per module.
@@ -62,12 +63,17 @@ final class NativeGraal {
 
     /** As {@link #fromManifests(Path)}; {@code release} adds the modules a release ships natively ({@link #fromManifest(Path, boolean)}). */
     static List<Module> fromManifests(Path root, boolean release) {
+        return fromManifests(root, release, false);
+    }
+
+    /** As {@link #fromManifests(Path, boolean)}; {@code image} adds the modules whose image is their native executable. */
+    static List<Module> fromManifests(Path root, boolean release, boolean image) {
         Path abs = WorkingDirectory.resolve(root);
         List<Path> dirs = WorkspaceModules.memberDirs(abs);
         if (dirs.isEmpty()) dirs = List.of(abs);
         List<Module> out = new ArrayList<>();
         for (Path dir : dirs) {
-            Module m = fromManifest(dir, release);
+            Module m = fromManifest(dir, release, image);
             if (m != null) out.add(m);
         }
         return List.copyOf(out);
@@ -159,11 +165,21 @@ final class NativeGraal {
      * [native] enabled} says.
      */
     static Optional<Graal> reached(BuildRun run, Path entryDir, BuildRun.Selection selection, boolean release) {
+        return reached(run, entryDir, selection, release, false);
+    }
+
+    /**
+     * As {@link #reached(BuildRun, Path, BuildRun.Selection, boolean)}; {@code image} adds every
+     * module whose image ({@code [image] kind = "native"}) carries this host's native executable.
+     */
+    static Optional<Graal> reached(
+            BuildRun run, Path entryDir, BuildRun.Selection selection, boolean release, boolean image) {
         return reached(
                 run.standalone(),
                 entryDir,
                 selection,
                 release,
+                image,
                 () -> ProjectInfos.orNull(entryDir),
                 new GraalResolver(run.flags().jdksDir(), run.global().yes, run.mode())::resolve);
     }
@@ -177,14 +193,15 @@ final class NativeGraal {
             Path entryDir,
             BuildRun.Selection selection,
             boolean release,
+            boolean image,
             Supplier<@Nullable ProjectInfo> rootInfo,
             Resolve resolve) {
         List<Module> members;
         if (standalone) {
-            Module self = fromManifest(entryDir, release);
+            Module self = fromManifest(entryDir, release, image);
             members = self == null ? List.of() : List.of(self);
         } else {
-            members = fromManifests(entryDir, release);
+            members = fromManifests(entryDir, release, image);
             if (selection.confines()) members = within(members, selection.dirs());
         }
         // A member that inherits its `java` from the root declares none of its own; the summary has it.
@@ -229,6 +246,14 @@ final class NativeGraal {
      * skip}, and not a {@code --shared} library.
      */
     static @Nullable Module fromManifest(Path dir, boolean release) {
+        return fromManifest(dir, release, false);
+    }
+
+    /**
+     * As {@link #fromManifest(Path, boolean)}; {@code image} also takes a module whose image is its
+     * native executable: a {@code [native]} table and {@code [image] kind = "native"}.
+     */
+    static @Nullable Module fromManifest(Path dir, boolean release, boolean image) {
         TomlScan scan = TomlScan.scan(
                 ManifestPaths.manifestIn(dir),
                 "application.native",
@@ -236,6 +261,7 @@ final class NativeGraal {
                 "native.graal",
                 "native.args",
                 "publish.skip",
+                "image.kind",
                 "java");
         boolean always = EnvValues.parseBool(scan.get("application.native")).orElse(false)
                 || "always".equalsIgnoreCase(scan.get("native.enabled"));
@@ -244,7 +270,8 @@ final class NativeGraal {
                 && !EnvValues.parseBool(scan.get("native.enabled")).map(b -> !b).orElse(false)
                 && !EnvValues.parseBool(scan.get("publish.skip")).orElse(false)
                 && !scan.stringArray("native.args").contains("--shared");
-        if (!always && !released) return null;
+        boolean imaged = image && scan.hasSection("native") && "native".equals(scan.get("image.kind"));
+        if (!always && !released && !imaged) return null;
         String spec = scan.get("native.graal");
         // The module's own `java`, not the workspace root's inherited one: this is the bootstrap
         // read, and a member that declares none is left unconstrained rather than guessed at.

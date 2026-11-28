@@ -50,6 +50,7 @@ public final class RegistryStub implements AutoCloseable {
 
     private static final String MANIFEST_TYPE = "application/vnd.docker.distribution.manifest.v2+json";
     private static final String CONFIG_TYPE = "application/vnd.docker.container.image.v1+json";
+    private static final String LIST_TYPE = "application/vnd.docker.distribution.manifest.list.v2+json";
 
     private final HttpServer server;
     private final ServerSocket door;
@@ -183,8 +184,37 @@ public final class RegistryStub implements AutoCloseable {
      * will build on.
      */
     public String publishImage(String repo, String tag) {
-        byte[] config = ("{\"created\":\"1970-01-01T00:00:00Z\",\"architecture\":\"amd64\",\"os\":\"linux\","
-                        + "\"config\":{},\"rootfs\":{\"type\":\"layers\",\"diff_ids\":[]},\"history\":[]}")
+        byte[] manifest = emptyImage(repo, "linux", "amd64");
+        String manifestDigest = digestOf(manifest);
+        manifests.put(repo + ":" + tag, manifestDigest);
+        return hostPort() + "/" + repo + ":" + tag;
+    }
+
+    /**
+     * Publish an image of no layers for each {@code os/arch} of {@code platforms}, under a manifest
+     * list at {@code <repo>:<tag>}, and return its full reference: a multi-platform base.
+     */
+    public String publishIndex(String repo, String tag, List<String> platforms) {
+        StringBuilder list =
+                new StringBuilder("{\"schemaVersion\":2,\"mediaType\":\"" + LIST_TYPE + "\",\"manifests\":[");
+        for (int i = 0; i < platforms.size(); i++) {
+            String[] p = platforms.get(i).split("/", 2);
+            byte[] manifest = emptyImage(repo, p[0], p[1]);
+            if (i > 0) list.append(',');
+            list.append("{\"mediaType\":\"" + MANIFEST_TYPE + "\",\"size\":" + manifest.length + ",\"digest\":\""
+                    + digestOf(manifest) + "\",\"platform\":{\"architecture\":\"" + p[1] + "\",\"os\":\"" + p[0]
+                    + "\"}}");
+        }
+        String digest = put(list.append("]}").toString().getBytes(StandardCharsets.UTF_8));
+        manifests.put(repo + ":" + tag, digest);
+        manifests.put(repo + ":" + digest, digest);
+        return hostPort() + "/" + repo + ":" + tag;
+    }
+
+    /** Store an image of no layers for {@code os}/{@code arch} in {@code repo} under its digest; its manifest. */
+    private byte[] emptyImage(String repo, String os, String arch) {
+        byte[] config = ("{\"created\":\"1970-01-01T00:00:00Z\",\"architecture\":\"" + arch + "\",\"os\":\"" + os
+                        + "\",\"config\":{},\"rootfs\":{\"type\":\"layers\",\"diff_ids\":[]},\"history\":[]}")
                 .getBytes(StandardCharsets.UTF_8);
         String configDigest = put(config);
         byte[] manifest = ("{\"schemaVersion\":2,\"mediaType\":\"" + MANIFEST_TYPE + "\",\"config\":{\"mediaType\":\""
@@ -192,9 +222,8 @@ public final class RegistryStub implements AutoCloseable {
                         + "\"},\"layers\":[]}")
                 .getBytes(StandardCharsets.UTF_8);
         String manifestDigest = put(manifest);
-        manifests.put(repo + ":" + tag, manifestDigest);
         manifests.put(repo + ":" + manifestDigest, manifestDigest);
-        return hostPort() + "/" + repo + ":" + tag;
+        return manifest;
     }
 
     /** The manifest held for {@code <repo>:<reference>} (a tag or a digest), or null. */
@@ -316,9 +345,16 @@ public final class RegistryStub implements AutoCloseable {
             respond(exchange, 404, "{\"errors\":[{\"code\":\"MANIFEST_UNKNOWN\"}]}");
             return;
         }
-        exchange.getResponseHeaders().add("Content-Type", MANIFEST_TYPE);
+        exchange.getResponseHeaders().add("Content-Type", listType(manifest));
         exchange.getResponseHeaders().add("Docker-Content-Digest", digest);
         send(exchange, method, 200, manifest);
+    }
+
+    /** A list's or an index's own media type; every other manifest is served as a Docker one. */
+    private static String listType(byte[] manifest) {
+        String type = MiniJson.str(MiniJson.parse(new String(manifest, StandardCharsets.UTF_8)), "mediaType");
+        if (LIST_TYPE.equals(type)) return LIST_TYPE;
+        return type != null && type.equals("application/vnd.oci.image.index.v1+json") ? type : MANIFEST_TYPE;
     }
 
     /** The three-step blob upload: {@code POST} to start, {@code PATCH} the bytes, {@code PUT} to commit. */

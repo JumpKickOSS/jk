@@ -33,8 +33,8 @@ class RunVerbGraalTest {
         List<String> asked = new ArrayList<>();
         RunVerb verb = new RunVerb(List.of(), null);
 
-        int code = verb.prepared(
-                NativeGraal.reached(true, dir, BuildRun.Selection.NONE, false, () -> null, (d, spec, release) -> {
+        int code = verb.prepared(NativeGraal.reached(
+                true, dir, BuildRun.Selection.NONE, false, false, () -> null, (d, spec, release) -> {
                     asked.add(d + " " + spec + " " + release);
                     return Optional.of(GraalResolver.Choice.found(home));
                 }));
@@ -60,6 +60,7 @@ class RunVerbGraalTest {
                         dir,
                         BuildRun.Selection.NONE,
                         false,
+                        false,
                         () -> null,
                         (d, spec, release) -> Optional.of(GraalResolver.Choice.toInstall("graalvm-25")))))
                 .isEqualTo(-1);
@@ -67,7 +68,13 @@ class RunVerbGraalTest {
 
         RunVerb refused = new RunVerb(List.of(), null);
         assertThat(refused.prepared(NativeGraal.reached(
-                        true, dir, BuildRun.Selection.NONE, false, () -> null, (d, spec, release) -> Optional.empty())))
+                        true,
+                        dir,
+                        BuildRun.Selection.NONE,
+                        false,
+                        false,
+                        () -> null,
+                        (d, spec, release) -> Optional.empty())))
                 .isEqualTo(Exit.FAILURE);
     }
 
@@ -78,7 +85,7 @@ class RunVerbGraalTest {
         RunVerb verb = new RunVerb(List.of(), null);
 
         assertThat(verb.prepared(
-                        NativeGraal.reached(true, dir, BuildRun.Selection.NONE, false, () -> null, (d, s, r) -> {
+                        NativeGraal.reached(true, dir, BuildRun.Selection.NONE, false, false, () -> null, (d, s, r) -> {
                             throw new AssertionError("a JVM module resolves no GraalVM");
                         })))
                 .isEqualTo(-1);

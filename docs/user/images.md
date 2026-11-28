@@ -66,13 +66,51 @@ entrypoint. It replaces a Dockerfile that copies `target/<name>.jar` and `target
 every training run as well: a cache is only valid for the collector and heap shape it was trained
 with, so the two cannot be allowed to differ.
 
+## Native executables
+
+A module with a [`[native]`](native.md) table ships its executable as the image instead of a JVM
+when it says so:
+
+```toml
+[image]
+kind      = "native"
+platforms = ["linux/amd64", "linux/arm64"]   # default: this host's platform
+
+[native]
+name = "hello"
+```
+
+`jk image` links the executable (the `native-image` step `jk native` runs, cached the same way)
+and builds an image of one layer, the executable at `/app/<name>` with mode 0755, run from `/app`
+as user `65532`, the executable the entrypoint. `[image] user`, `ports`, `env` and `labels` apply;
+`aot-cache` and `docker-file` are refused. A module without `kind = "native"` keeps its JVM image,
+whatever `[native]` says, so adding a native download to a release never changes the image.
+
+The base is a distroless one (see [distroless](https://github.com/GoogleContainerTools/distroless)):
+`gcr.io/distroless/cc-debian13`, which carries the glibc, zlib and libgcc a default or
+`--static-nolibc` executable links against, or `gcr.io/distroless/static-debian13`, with no libc,
+when `[native] args` has `--static` (see GraalVM's
+[static and mostly-static executables](https://www.graalvm.org/latest/reference-manual/native-image/guides/build-static-executables/)).
+`[image] base` names another.
+
+A native image runs linux executables. This host's is the one the build links; another
+platform's is the file the [release lane](release.md) names, `<name>-<version>-<os>-<arch>`
+(`hello-1.0.0-linux-aarch64`), placed in `target/`, as a stage run on that platform's host builds
+it. With every listed platform's executable there, the image is an OCI image index across them:
+`jk publish` pushes each platform's image and the index at the tag, and `jk image --tarball` writes
+an OCI layout holding the index. A listed platform whose executable is missing is left out, in one
+line (`[image] no executable for linux/arm64; built linux/amd64`). A daemon holds one platform, so
+`jk image` without `--tarball` loads this host's and says so. On a macOS or Windows host, list the
+linux platforms and put their executables in `target/`.
+
 ## Pushing an image
 
 When `[image] registry` is set, `jk publish` has an image lane ([Publish](publish.md#releasing-deliverables)).
 It builds each application module's image, the same image `jk image` builds, and pushes it to
 `<registry>/<name>:<tag>`, an image index when `platforms` names several. A module ships an image
 when the registry reaches it and it has something to run: a main class (`[application] main`,
-`[image] main`, or one the framework finds), a `docker-file`, or a node server. `[publish] skip`
+`[image] main`, or one the framework finds), a `docker-file`, a node server, or a
+[native executable](#native-executables). `[publish] skip`
 keeps a module's image back too.
 
 ```bash
