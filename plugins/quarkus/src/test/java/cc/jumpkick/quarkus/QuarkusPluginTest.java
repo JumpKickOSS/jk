@@ -196,8 +196,9 @@ class QuarkusPluginTest {
             Files.createDirectories(target.resolve(child));
         }
         Files.writeString(target.resolve("lib/main/old.jar"), "OLD");
-        Path augment = Files.createDirectories(dir.resolve("augment"));
-        Files.writeString(augment.resolve("quarkus-uber.jar"), "UBER");
+        Path augment = dir.resolve("augment");
+        Files.createDirectories(augment.resolve("quarkus-app"));
+        Files.writeString(augment.resolve("quarkus-app/quarkus-uber.jar"), "UBER");
 
         Path outJar = target.resolve("hello.jar");
         QuarkusPlugin.produceFastJar(fake(dir, outJar, augment));
@@ -211,8 +212,8 @@ class QuarkusPluginTest {
     @Test
     void uber_jar_wins_and_needs_no_siblings(@TempDir Path dir) throws Exception {
         Path augment = dir.resolve("augment");
-        Files.createDirectories(augment);
-        Files.writeString(augment.resolve("quarkus-uber.jar"), "UBER");
+        Files.createDirectories(augment.resolve("quarkus-app"));
+        Files.writeString(augment.resolve("quarkus-app/quarkus-uber.jar"), "UBER");
 
         Path outJar = dir.resolve("target/hello.jar");
         FakeBuildIo io = fake(dir, outJar, augment);

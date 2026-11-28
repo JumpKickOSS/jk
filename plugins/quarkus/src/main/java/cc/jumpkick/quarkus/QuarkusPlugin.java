@@ -51,6 +51,8 @@ import org.jspecify.annotations.Nullable;
 public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExtension, TestExtension, LockExtension {
 
     static final String AUGMENT_STEP = "quarkus-augment";
+    /** The augment step's output directory, under its step output; the augment writes its jars here. */
+    static final String AUGMENT_OUT = "quarkus-app";
 
     static final String NATIVE_SOURCES = "native-sources";
     static final String TEST_MODEL_STEP = "quarkus-test-model";
@@ -98,7 +100,7 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
                         In.repositories(),
                         In.projectFiles(ManifestNames.ENV),
                         In.projectFiles("config"))
-                .outputs("quarkus-app", NATIVE_SOURCES)
+                .outputs(AUGMENT_OUT, NATIVE_SOURCES)
                 .run(QuarkusPlugin::runAugment);
     }
 
@@ -124,7 +126,7 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
             throw new IOException("no classes to augment at " + classes);
         }
 
-        Path outRoot = exec.outputDir("quarkus-app");
+        Path outRoot = exec.outputDir(AUGMENT_OUT);
         Path nativeSourcesOut = exec.outputDir(NATIVE_SOURCES);
         Path listFile = writeRuntimeList(exec, exec.scratch().resolve("runtime-jars.tsv"));
         List<Path> cp = toolClasspath(exec);
@@ -524,12 +526,12 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
     }
 
     /**
-     * The uber-jar augment staged as {@code quarkus-uber.jar}. A fast-jar tree has other
+     * The uber-jar the augment staged as {@code quarkus-uber.jar} in its output directory. A fast-jar tree has other
      * {@code *-runner.jar} files (the {@code native-sources/} input, {@code lib/boot}'s
      * bootstrap runner), so only the staged name counts.
      */
     private static @Nullable Path findUberJar(Path root) {
-        Path staged = root.resolve("quarkus-uber.jar");
+        Path staged = root.resolve(AUGMENT_OUT).resolve("quarkus-uber.jar");
         return Files.isRegularFile(staged) ? staged : null;
     }
 
