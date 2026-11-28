@@ -184,4 +184,17 @@ class ReleaseGitLabTest {
         fake.refuse = 429;
         assertThatThrownBy(() -> store().published()).hasMessage("GitLab rate limit reached; try again later");
     }
+
+    @Test
+    void a_package_file_downloads_checked_against_its_checksum() throws Exception {
+        fake.file("app", "1.0", "app-1.0-linux-aarch64", "arm ELF");
+        ReleaseGitLab store = store();
+        Path file = tmp.resolve("target/staged/app-1.0-linux-aarch64");
+
+        assertThat(store.fetch("app-1.0-linux-aarch64", file))
+                .contains(new ReleaseStore.Held(7, Hashing.sha256Hex("arm ELF")));
+        assertThat(file).hasContent("arm ELF");
+        assertThat(store.fetch("app-1.0-linux-s390x", tmp.resolve("absent"))).isEmpty();
+        assertThat(tmp.resolve("absent")).doesNotExist();
+    }
 }

@@ -96,12 +96,17 @@ when `[native] args` has `--static` (see GraalVM's
 A native image runs linux executables. This host's is the one the build links; another
 platform's is the file the [release lane](release.md) names, `<name>-<version>-<os>-<arch>`
 (`hello-1.0.0-linux-aarch64`), placed in `target/`, as a stage run on that platform's host builds
-it. With every listed platform's executable there, the image is an OCI image index across them:
-`jk publish` pushes each platform's image and the index at the tag, and `jk image --tarball` writes
-an OCI layout holding the index. A listed platform whose executable is missing is left out, in one
+it. A final `jk publish` that runs the release lane fetches a platform missing from `target/` from
+where that platform's `jk publish --stage` uploaded it (the draft release, the bucket's
+`{version}/`, or the GitLab generic package) into `target/staged/`, so the final run builds the
+whole index with nothing copied by hand; `jk image` reads only `target/`.
+
+With every listed platform's executable there, the image is an OCI image index across them: `jk
+publish` pushes each platform's image and the index at the tag, and `jk image --tarball` writes an
+OCI layout holding the index. A listed platform whose executable is missing is left out, in one
 line (`[image] no executable for linux/arm64; built linux/amd64`). A daemon holds one platform, so
 `jk image` without `--tarball` loads this host's and says so. On a macOS or Windows host, list the
-linux platforms and put their executables in `target/`.
+linux platforms and put their executables in `target/`, or let the final `jk publish` fetch them.
 
 ## Pushing an image
 

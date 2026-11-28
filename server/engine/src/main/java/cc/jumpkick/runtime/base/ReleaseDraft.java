@@ -8,6 +8,7 @@ import cc.jumpkick.http.Http;
 import cc.jumpkick.jsonl.JsonFields;
 import cc.jumpkick.jsonl.MiniJson;
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.net.http.HttpRequest;
@@ -114,6 +115,22 @@ abstract class ReleaseDraft implements ReleaseStore {
         Optional<Asset> asset = find(name).filter(Asset::uploaded);
         if (asset.isEmpty()) return Optional.empty();
         return Optional.of(held(asset.get()));
+    }
+
+    @Override
+    public Optional<Held> fetch(String name, Path file) throws IOException, InterruptedException {
+        Optional<Asset> asset = find(name).filter(Asset::uploaded);
+        if (asset.isEmpty()) return Optional.empty();
+        String digest = asset.get().digest();
+        String sha = digest != null && digest.startsWith("sha256:")
+                ? digest.substring("sha256:".length()).toLowerCase(Locale.ROOT)
+                : null;
+        HttpResponse<InputStream> response = http.getStream(asset.get().bytes(), headers("application/octet-stream"));
+        if (response.statusCode() != 200) {
+            response.body().close();
+            throw refused("download of " + name, response);
+        }
+        return Optional.of(ReleaseForge.save(response.body(), file, asset.get().size(), sha, name));
     }
 
     /** The forge names each asset's download URL itself. */

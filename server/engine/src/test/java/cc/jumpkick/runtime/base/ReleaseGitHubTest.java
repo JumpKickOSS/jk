@@ -10,6 +10,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
+import java.util.Objects;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -168,5 +169,41 @@ class ReleaseGitHubTest {
         fake.refusalHeaders = Map.of("retry-after", "60");
         assertThatThrownBy(() -> fake.store("v1.0", FakeGitHub.TOKEN).published())
                 .hasMessage("GitHub rate limit reached; try again in 60 s");
+    }
+
+    @Test
+    void a_draft_asset_downloads_through_the_api_checked_against_its_digest() throws Exception {
+        FakeGitHub.Release draft = fake.release("v1.0", true);
+        fake.asset(draft, "app-1.0-linux-aarch64", "arm ELF");
+        ReleaseGitHub store = fake.store("v1.0", FakeGitHub.TOKEN);
+        Path file = tmp.resolve("target/staged/app-1.0-linux-aarch64");
+
+        assertThat(store.fetch("app-1.0-linux-aarch64", file))
+                .contains(new ReleaseStore.Held(7, Hashing.sha256Hex("arm ELF")));
+        assertThat(file).hasContent("arm ELF");
+        assertThat(store.fetch("app-1.0-linux-s390x", tmp.resolve("absent"))).isEmpty();
+        assertThat(tmp.resolve("absent")).doesNotExist();
+    }
+
+    @Test
+    void a_download_with_other_bytes_than_the_digest_leaves_the_file_alone() throws Exception {
+        FakeGitHub.Release draft = fake.release("v1.0", true);
+        fake.asset(draft, "app-1.0-linux-aarch64", "arm ELF");
+        ReleaseGitHub store = fake.store("v1.0", FakeGitHub.TOKEN);
+        assertThat(store.present("app-1.0-linux-aarch64")).isTrue();
+        FakeGitHub.Asset listed = Objects.requireNonNull(draft.assets.get("app-1.0-linux-aarch64"));
+        draft.assets.put(
+                listed.name(),
+                new FakeGitHub.Asset(
+                        listed.id(), listed.name(), "arm elf".getBytes(StandardCharsets.UTF_8), "uploaded"));
+        Path file = file("app-1.0-linux-aarch64", "earlier");
+
+        assertThatThrownBy(() -> store.fetch("app-1.0-linux-aarch64", file))
+                .isInstanceOf(IOException.class)
+                .hasMessage("app-1.0-linux-aarch64 downloaded with other bytes than the release lists");
+        assertThat(file).hasContent("earlier");
+        try (var left = Files.list(tmp)) {
+            assertThat(left).as("no staging file is left behind").containsExactly(file);
+        }
     }
 }

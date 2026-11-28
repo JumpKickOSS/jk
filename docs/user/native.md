@@ -19,7 +19,8 @@ enabled = "always"     # native-image on every build: jk build, jk install, jk n
 A module built on demand needs no `"always"` to ship its executable: a release-lane `jk publish`
 (final or `--stage`) builds it after the tests, on a platform `[release] platforms` lists, and
 uploads it as `<name>-<version>-<os>-<arch>` (`.exe` on Windows). GraalVM builds for its host, so
-each platform's executable comes from a `jk publish --stage` on that platform. See
+each platform's executable comes from a `jk publish --stage` on that platform. The final run's
+[native image](images.md#native-executables) takes those executables from the release. See
 [Releasing deliverables](publish.md#releasing-deliverables).
 
 `jk native` builds only native-eligible modules plus their dependency closure. With tests

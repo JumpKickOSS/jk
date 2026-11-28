@@ -35,6 +35,13 @@ public interface ReleaseStore {
     /** The size and SHA-256 of {@code name}; empty when the release does not hold it. */
     Optional<Held> held(String name) throws IOException, InterruptedException;
 
+    /**
+     * Download {@code name} into {@code file}, which it replaces only once the bytes match the size
+     * and SHA-256 the release lists for it; empty, and {@code file} untouched, when the release does
+     * not hold it. Returns what was written.
+     */
+    Optional<Held> fetch(String name, Path file) throws IOException, InterruptedException;
+
     /** The download URL {@code index.json} records for {@code name}, or {@code null} when the target names its own. */
     @Nullable
     String url(String name);

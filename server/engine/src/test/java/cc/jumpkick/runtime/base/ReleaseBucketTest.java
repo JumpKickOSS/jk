@@ -72,4 +72,17 @@ class ReleaseBucketTest {
         assertThat(fake.bucket("app/", "1.1").publishLatest()).as("a re-run").isEqualTo("1.1");
         assertThat(fake.unguarded).hasValue(0);
     }
+
+    @Test
+    void a_staged_file_downloads_into_place_and_an_absent_one_writes_nothing() throws Exception {
+        ReleaseBucket bucket = fake.bucket("app/", "1.0");
+        bucket.put("app-1.0-linux-aarch64", "arm ELF".getBytes(StandardCharsets.UTF_8));
+        Path file = tmp.resolve("target/staged/app-1.0-linux-aarch64");
+
+        assertThat(bucket.fetch("app-1.0-linux-aarch64", file))
+                .contains(new ReleaseStore.Held(7, Hashing.sha256Hex("arm ELF")));
+        assertThat(file).hasContent("arm ELF");
+        assertThat(bucket.fetch("app-1.0-linux-s390x", tmp.resolve("absent"))).isEmpty();
+        assertThat(tmp.resolve("absent")).doesNotExist();
+    }
 }

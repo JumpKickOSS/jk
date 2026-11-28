@@ -1,25 +1,33 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime.workspace;
 
+import static cc.jumpkick.runtime.workspace.NativeImagePlans.Staging.NONE;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.image.ImageConfig;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.ReleaseDeliverables;
 import cc.jumpkick.model.ImageTable;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.runtime.base.FakeReleaseBucket;
+import cc.jumpkick.runtime.base.ReleaseBucket;
+import cc.jumpkick.wire.runtime.PublishLane;
+import cc.jumpkick.wire.runtime.TailArgs;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
  * {@code [image] kind = "native"}: which executables the image carries, the platforms it leaves
- * out, its base, and what the worker is told.
+ * out, where a final publish fetches the missing ones from, its base, and what the worker is told.
  */
 class NativeImagePlansTest {
 
@@ -45,7 +53,7 @@ class NativeImagePlansTest {
         Path arm = write(staged(layout, build, "linux-aarch64"));
 
         NativeImagePlans.Executables found =
-                NativeImagePlans.executables(layout, build, List.of("linux/amd64", "linux/arm64"), HOST);
+                NativeImagePlans.executables(layout, build, List.of("linux/amd64", "linux/arm64"), HOST, NONE);
 
         assertThat(found.found()).containsExactly(Map.entry("linux/amd64", host), Map.entry("linux/arm64", arm));
         assertThat(found.skipped()).isEmpty();
@@ -59,7 +67,7 @@ class NativeImagePlansTest {
         write(layout.nativeBinary());
 
         NativeImagePlans.Executables found =
-                NativeImagePlans.executables(layout, build, List.of("linux/amd64", "linux/arm64"), HOST);
+                NativeImagePlans.executables(layout, build, List.of("linux/amd64", "linux/arm64"), HOST, NONE);
 
         assertThat(found.found()).containsOnlyKeys("linux/amd64");
         assertThat(found.skipped()).containsExactly("linux/arm64");
@@ -74,11 +82,12 @@ class NativeImagePlansTest {
         BuildLayout layout = BuildLayout.of(tmp, build);
         Path host = write(layout.nativeBinary());
 
-        assertThat(NativeImagePlans.executables(layout, build, List.of(), HOST).found())
+        assertThat(NativeImagePlans.executables(layout, build, List.of(), HOST, NONE)
+                        .found())
                 .containsExactly(Map.entry("linux/amd64", host));
-        assertThatThrownBy(() -> NativeImagePlans.executables(layout, build, List.of(), "macos-aarch64"))
+        assertThatThrownBy(() -> NativeImagePlans.executables(layout, build, List.of(), "macos-aarch64", NONE))
                 .hasMessageContaining("set [image] platforms");
-        assertThatThrownBy(() -> NativeImagePlans.executables(layout, build, List.of("windows/amd64"), HOST))
+        assertThatThrownBy(() -> NativeImagePlans.executables(layout, build, List.of("windows/amd64"), HOST, NONE))
                 .hasMessageContaining("linux executables");
     }
 
@@ -89,7 +98,7 @@ class NativeImagePlansTest {
         write(layout.nativeBinary());
         Path amd = write(staged(layout, build, "linux-x86_64"));
 
-        assertThat(NativeImagePlans.executables(layout, build, List.of("linux/amd64"), "macos-aarch64")
+        assertThat(NativeImagePlans.executables(layout, build, List.of("linux/amd64"), "macos-aarch64", NONE)
                         .found())
                 .containsExactly(Map.entry("linux/amd64", amd));
         assertThat(NativeImagePlans.needsHostExecutable(List.of("linux/amd64"), "macos-aarch64"))
@@ -105,9 +114,60 @@ class NativeImagePlansTest {
         BuildLayout layout = BuildLayout.of(tmp, build);
         Path released = write(layout.artifactDir().resolve("hello-1.0.0-linux-aarch64"));
 
-        assertThat(NativeImagePlans.executables(layout, build, List.of("linux/arm64"), HOST)
+        assertThat(NativeImagePlans.executables(layout, build, List.of("linux/arm64"), HOST, NONE)
                         .found())
                 .containsExactly(Map.entry("linux/arm64", released));
+    }
+
+    @Test
+    void a_platform_missing_from_target_is_fetched_from_the_release_staging_area() throws Exception {
+        JkBuild build = module("name = \"hello\"\n");
+        BuildLayout layout = BuildLayout.of(tmp, build);
+        Path host = write(layout.nativeBinary());
+        try (FakeReleaseBucket fake = new FakeReleaseBucket()) {
+            ReleaseBucket store = fake.bucket("cli/", "1.0.0");
+            store.put("hello-1.0.0-linux-aarch64", "arm ELF".getBytes(StandardCharsets.UTF_8));
+            List<String> asked = new CopyOnWriteArrayList<>();
+            NativeImagePlans.Staging staging = (name, file) -> {
+                asked.add(name);
+                return store.fetch(name, file).isPresent();
+            };
+
+            NativeImagePlans.Executables found = NativeImagePlans.executables(
+                    layout, build, List.of("linux/amd64", "linux/arm64", "linux/s390x"), HOST, staging);
+
+            Path fetched = layout.artifactDir().resolve("staged/hello-1.0.0-linux-aarch64");
+            assertThat(found.found())
+                    .containsExactly(Map.entry("linux/amd64", host), Map.entry("linux/arm64", fetched));
+            assertThat(Files.readString(fetched)).isEqualTo("arm ELF");
+            assertThat(found.skipped()).as("neither in target/ nor staged").containsExactly("linux/s390x");
+            assertThat(asked).as("this host's executable is never fetched").noneMatch(n -> n.endsWith("x86_64"));
+        }
+    }
+
+    @Test
+    void only_a_final_run_of_the_release_lane_reads_the_staging_area() {
+        assertThat(NativeImagePlans.staging(tmp, publish(true, false, PublishLane.RELEASE, PublishLane.IMAGE)))
+                .as("a stage run")
+                .isSameAs(NONE);
+        assertThat(NativeImagePlans.staging(tmp, publish(false, true, PublishLane.RELEASE, PublishLane.IMAGE)))
+                .as("a dry run")
+                .isSameAs(NONE);
+        assertThat(NativeImagePlans.staging(tmp, publish(false, false, PublishLane.IMAGE)))
+                .as("--only image")
+                .isSameAs(NONE);
+        assertThat(NativeImagePlans.staging(tmp, publish(false, false, PublishLane.RELEASE, PublishLane.IMAGE)))
+                .isNotSameAs(NONE);
+    }
+
+    @Test
+    void a_workspace_without_a_release_has_nothing_staged() throws Exception {
+        module("");
+        NativeImagePlans.Staging staging =
+                NativeImagePlans.staging(tmp, publish(false, false, PublishLane.RELEASE, PublishLane.IMAGE));
+
+        assertThat(staging.fetch("cli-1.0.0-linux-aarch64", tmp.resolve("staged/x")))
+                .isFalse();
     }
 
     @Test
@@ -213,6 +273,11 @@ class NativeImagePlansTest {
 
                 [native]
                 %s""".formatted(nativeKeys)));
+    }
+
+    private static TailArgs.Publish publish(boolean stage, boolean dryRun, PublishLane... lanes) {
+        return new TailArgs.Publish(
+                null, false, dryRun, null, null, RepoCredential.ANONYMOUS, false, List.of(lanes), stage, null, false);
     }
 
     private static Path staged(BuildLayout layout, JkBuild build, String platform) {

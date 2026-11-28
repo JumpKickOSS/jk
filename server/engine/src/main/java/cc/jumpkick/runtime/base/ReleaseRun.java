@@ -54,11 +54,21 @@ public record ReleaseRun(
      *     with an origin that is not on that forge
      */
     public static ReleaseRun of(Path dir, TailArgs.Publish args) throws IOException {
+        ReleaseRun run = find(dir, args);
+        if (run == null) {
+            Path root = WorkspaceLocator.findRoot(dir).orElse(dir);
+            throw new IllegalStateException("no [publish] release in " + ManifestPaths.manifestIn(root));
+        }
+        return run;
+    }
+
+    /** As {@link #of}, or {@code null} when the workspace root declares no {@code [publish] release}. */
+    public static @Nullable ReleaseRun find(Path dir, TailArgs.Publish args) throws IOException {
         Path root = WorkspaceLocator.findRoot(dir).orElse(dir);
         Path manifest = ManifestPaths.manifestIn(root);
         JkBuild rootBuild = JkBuildParser.parse(manifest);
         String release = rootBuild.pomMetadata().release();
-        if (release == null) throw new IllegalStateException("no [publish] release in " + manifest);
+        if (release == null) return null;
         ReleaseTarget target = ReleaseTarget.parse(release);
         ForgeRepository forge = null;
         if (target instanceof ReleaseTarget.Forge named) {

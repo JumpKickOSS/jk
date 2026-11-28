@@ -26,8 +26,13 @@ import cc.jumpkick.runtime.BuildPlanner;
 import cc.jumpkick.runtime.PlannerNative;
 import cc.jumpkick.runtime.Tail;
 import cc.jumpkick.runtime.base.ImageCredentials;
+import cc.jumpkick.runtime.base.ReleaseRun;
+import cc.jumpkick.runtime.base.ReleaseStore;
+import cc.jumpkick.runtime.base.ReleaseStores;
 import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.task.WorkerClosure;
+import cc.jumpkick.wire.runtime.PublishLane;
+import cc.jumpkick.wire.runtime.TailArgs;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -44,7 +49,7 @@ import org.jspecify.annotations.Nullable;
  * executable alone on a distroless base, one image per platform whose executable exists, under an
  * OCI image index when there are several. This host's executable is the one the build links; another
  * platform's is the file the release lane names, {@code <name>-<version>-<os>-<arch>}, in {@code
- * target/}.
+ * target/}, else on a final {@code jk publish} the one its stage run uploaded to the release.
  */
 final class NativeImagePlans {
 
@@ -59,6 +64,9 @@ final class NativeImagePlans {
 
     /** The directory the executable lies in, inside the image. */
     static final String APP_DIR = "/app";
+
+    /** Where a fetched executable lies: {@code target/staged/}, under its release name. */
+    static final String STAGED_DIR = "staged";
 
     /** The executables the image carries, by {@code os/arch} platform. */
     static final BuildPlanKey<Executables> EXECUTABLES =
@@ -102,6 +110,40 @@ final class NativeImagePlans {
         }
     }
 
+    /**
+     * Fetches another platform's executable from where the release stages it: {@code true} when
+     * {@code name} was there and is now at {@code file}.
+     */
+    @FunctionalInterface
+    interface Staging {
+        /** {@code jk image}'s: nothing is fetched, every executable is in {@code target/}. */
+        Staging NONE = (name, file) -> false;
+
+        boolean fetch(String name, Path file) throws IOException, InterruptedException;
+    }
+
+    /**
+     * The release's staging area as a final {@code jk publish} that runs the release lane sees it,
+     * opened on the first fetch; {@link Staging#NONE} for a stage run, a dry run or one without it.
+     */
+    static Staging staging(Path dir, TailArgs.Publish args) {
+        if (args.stage() || args.dryRun() || !args.runs(PublishLane.RELEASE)) return Staging.NONE;
+        return new Staging() {
+            private boolean opened;
+            private @Nullable ReleaseStore store;
+
+            @Override
+            public synchronized boolean fetch(String name, Path file) throws IOException, InterruptedException {
+                if (!opened) {
+                    ReleaseRun run = ReleaseRun.find(dir, args);
+                    store = run == null ? null : ReleaseStores.open(run, args);
+                    opened = true;
+                }
+                return store != null && store.fetch(name, file).isPresent();
+            }
+        };
+    }
+
     /** {@code linux/amd64} for {@code linux-x86_64}: a release platform as an image names it. */
     static String imagePlatform(String releasePlatform) {
         int dash = releasePlatform.indexOf('-');
@@ -130,9 +172,12 @@ final class NativeImagePlans {
     /**
      * The executables of the {@code declared} platforms ({@code [image] platforms}), or of {@code
      * host}'s platform when none is declared. {@code host}'s is the one the build links; another's
-     * is the release-named file beside it.
+     * is the release-named file beside it, else the one {@code staging} fetches into {@code
+     * target/staged/}.
      */
-    static Executables executables(BuildLayout layout, JkBuild build, List<String> declared, String host) {
+    static Executables executables(
+            BuildLayout layout, JkBuild build, List<String> declared, String host, Staging staging)
+            throws IOException, InterruptedException {
         List<String> targets = new ArrayList<>(declared);
         if (targets.isEmpty()) {
             if (!host.startsWith("linux-")) {
@@ -152,6 +197,15 @@ final class NativeImagePlans {
             Path staged = staged(layout, build, release);
             Path file =
                     release.equals(host) && Files.isRegularFile(layout.nativeBinary()) ? layout.nativeBinary() : staged;
+            if (!Files.isRegularFile(file)) {
+                for (String name : releaseNames(layout, build, release)) {
+                    Path fetched = layout.artifactDir().resolve(STAGED_DIR).resolve(name);
+                    if (staging.fetch(name, fetched)) {
+                        file = fetched;
+                        break;
+                    }
+                }
+            }
             if (Files.isRegularFile(file)) found.put(platform, file);
             else skipped.add(platform);
         }
@@ -163,13 +217,25 @@ final class NativeImagePlans {
      * which carries the declared version; a snapshot build also takes the file named for itself.
      */
     static Path staged(BuildLayout layout, JkBuild build, String platform) {
+        List<String> names = releaseNames(layout, build, platform);
+        Path exact = layout.artifactDir().resolve(names.getFirst());
+        for (String name : names) {
+            Path file = layout.artifactDir().resolve(name);
+            if (Files.isRegularFile(file)) return file;
+        }
+        return exact;
+    }
+
+    /**
+     * The names another platform's executable goes by: the one the release gives it for this
+     * build's version, then for a snapshot build the one carrying the declared version.
+     */
+    static List<String> releaseNames(BuildLayout layout, JkBuild build, String platform) {
         String name = ReleaseDeliverables.nativeName(layout, build, platform);
-        Path exact = layout.artifactDir().resolve(name);
         String version = layout.version();
-        if (Files.isRegularFile(exact) || !version.endsWith(SnapshotQualifier.SUFFIX)) return exact;
+        if (!version.endsWith(SnapshotQualifier.SUFFIX)) return List.of(name);
         String declared = version.substring(0, version.length() - SnapshotQualifier.SUFFIX.length());
-        Path released = layout.artifactDir().resolve(name.replace("-" + version + "-", "-" + declared + "-"));
-        return Files.isRegularFile(released) ? released : exact;
+        return List.of(name, name.replace("-" + version + "-", "-" + declared + "-"));
     }
 
     /**
@@ -268,16 +334,20 @@ final class NativeImagePlans {
         return (plan, in) -> {
             boolean linked = link(plan, in, unit, graalHome);
             plan.stateKeys(ImagePlans.CONFIG, ImagePlans.TARBALL_PATH, ImagePlans.IMAGE_REF, EXECUTABLES)
-                    .extend(planStep(in, linked, tag, tarballArg, dockerExecutableArg, false))
+                    .extend(planStep(in, linked, tag, tarballArg, dockerExecutableArg, Staging.NONE, false))
                     .extend(writeStep(in));
         };
     }
 
-    /** A publish run's image-plan step, which leaves the push for the image lane. */
-    static void publish(BuildPlan.Builder plan, BuildPlanner.Inputs in, JkBuild unit, @Nullable Path graalHome) {
+    /**
+     * A publish run's image-plan step, which leaves the push for the image lane; a platform whose
+     * executable is not in {@code target/} comes from {@code staging}.
+     */
+    static void publish(
+            BuildPlan.Builder plan, BuildPlanner.Inputs in, JkBuild unit, @Nullable Path graalHome, Staging staging) {
         boolean linked = link(plan, in, unit, graalHome);
         plan.stateKeys(ImagePlans.CONFIG, EXECUTABLES, ImagePushPlan.KEY)
-                .extend(planStep(in, linked, null, null, null, true));
+                .extend(planStep(in, linked, null, null, null, staging, true));
     }
 
     /** Add the native-image step when the image needs this host's executable; true when the plan links it. */
@@ -306,6 +376,7 @@ final class NativeImagePlans {
             @Nullable String tag,
             @Nullable String tarballArg,
             @Nullable String dockerExecutableArg,
+            Staging staging,
             boolean push) {
         Path cache = in.cache();
         return Task.builder(TaskNames.IMAGE_PLAN)
@@ -327,8 +398,8 @@ final class NativeImagePlans {
                     String host = ReleasePlatform.current();
                     Executables found;
                     try {
-                        found = executables(layout, project, data.platforms(), host);
-                    } catch (IllegalArgumentException e) {
+                        found = executables(layout, project, data.platforms(), host, staging);
+                    } catch (IllegalArgumentException | IOException e) {
                         ctx.error("image", Errors.text(e));
                         throw e;
                     }
