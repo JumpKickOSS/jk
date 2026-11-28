@@ -129,4 +129,19 @@ class ReleaseForgejoTest {
                 .hasMessage("Forgejo refused the token; run jk auth login forgejo or set FORGEJO_TOKEN")
                 .hasMessageNotContaining("wrong-token-entirely");
     }
+
+    @Test
+    void a_draft_attachment_downloads_by_its_uuid() throws Exception {
+        FakeForgejo.Release draft = fake.release("v1.0", true);
+        fake.asset(draft, "app-1.0-linux-aarch64", "arm ELF");
+        ReleaseForgejo store = fake.store("v1.0", FakeForgejo.TOKEN);
+        Path file = tmp.resolve("target/staged/app-1.0-linux-aarch64");
+
+        assertThat(store.fetch("app-1.0-linux-aarch64", file))
+                .contains(new ReleaseStore.Held(7, Hashing.sha256Hex("arm ELF")));
+        assertThat(file).hasContent("arm ELF");
+        assertThat(fake.downloads).hasValue(1);
+        assertThat(store.fetch("app-1.0-linux-s390x", tmp.resolve("absent"))).isEmpty();
+        assertThat(tmp.resolve("absent")).doesNotExist();
+    }
 }

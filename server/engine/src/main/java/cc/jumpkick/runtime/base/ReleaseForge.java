@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime.base;
 
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.plugin.JobWorkers;
+import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.GitCommand;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Processes;
@@ -9,10 +11,12 @@ import cc.jumpkick.http.Http;
 import cc.jumpkick.jsonl.MiniJson;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.net.URI;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.time.Duration;
@@ -23,7 +27,9 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 
-/** What the forge release stores share: paged lists, hashing a download, the tagged commit. */
+/**
+ * What the release stores share: paged lists, hashing and saving a download, the tagged commit.
+ */
 final class ReleaseForge {
 
     private static final int MAX_PAGES = 50;
@@ -86,6 +92,38 @@ final class ReleaseForge {
                 size += n;
             }
             return new ReleaseStore.Held(size, Hashing.hex(sha.digest()));
+        }
+    }
+
+    /**
+     * Save {@code in} to {@code file} through a staging sibling, moved into place only when its size
+     * is {@code size} (any when negative) and its SHA-256 {@code sha256} (any when null).
+     */
+    static ReleaseStore.Held save(InputStream in, Path file, long size, @Nullable String sha256, String name)
+            throws IOException {
+        Path part = AtomicWrites.staging(file);
+        boolean moved = false;
+        try (in) {
+            MessageDigest sha = Hashing.newSha256();
+            long written = 0;
+            try (OutputStream out = Files.newOutputStream(part)) {
+                byte[] buffer = new byte[64 * 1024];
+                for (int n; (n = in.read(buffer)) > 0; ) {
+                    sha.update(buffer, 0, n);
+                    out.write(buffer, 0, n);
+                    written += n;
+                }
+            }
+            String hex = Hashing.hex(sha.digest());
+            if ((size >= 0 && written != size) || (sha256 != null && !sha256.equals(hex))) {
+                throw new IOException(name + " downloaded with other bytes than the release lists");
+            }
+            AtomicWrites.moveInto(part, file);
+            moved = true;
+            SessionContext.current().io().remoteDown(written);
+            return new ReleaseStore.Held(written, hex);
+        } finally {
+            if (!moved) Files.deleteIfExists(part);
         }
     }
 

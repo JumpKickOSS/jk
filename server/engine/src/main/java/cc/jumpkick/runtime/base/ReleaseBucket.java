@@ -137,6 +137,14 @@ public final class ReleaseBucket implements ReleaseStore {
         return Optional.of(new Held(size, Hashing.hex(digest.digest())));
     }
 
+    /** The object read once into {@code file}: a bucket lists no digest beside it. */
+    @Override
+    public Optional<Held> fetch(String name, Path file) throws IOException, InterruptedException {
+        Optional<InputStream> body = store.fetchStream(uri(name), RepoCredential.ANONYMOUS);
+        if (body.isEmpty()) return Optional.empty();
+        return Optional.of(ReleaseForge.save(body.get(), file, -1, null, name));
+    }
+
     /** A bucket needs nothing before its first file. */
     @Override
     public void prepare() {}

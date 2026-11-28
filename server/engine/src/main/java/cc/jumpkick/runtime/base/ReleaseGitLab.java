@@ -10,6 +10,7 @@ import cc.jumpkick.http.Http;
 import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.release.ReleaseIndex;
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.net.http.HttpRequest;
@@ -132,6 +133,19 @@ public final class ReleaseGitLab implements ReleaseStore {
         Optional<PackageFile> file = find(name);
         if (file.isEmpty()) return Optional.empty();
         return Optional.of(held(file.get()));
+    }
+
+    @Override
+    public Optional<Held> fetch(String name, Path file) throws IOException, InterruptedException {
+        Optional<PackageFile> found = find(name);
+        if (found.isEmpty()) return Optional.empty();
+        HttpResponse<InputStream> response = http.getStream(URI.create(url(name)), headers());
+        if (response.statusCode() != 200) {
+            response.body().close();
+            throw refused("download of " + name, response);
+        }
+        return Optional.of(ReleaseForge.save(
+                response.body(), file, found.get().size(), found.get().sha256(), name));
     }
 
     /** The file's download URL in the generic package, which the release's link points at too. */
