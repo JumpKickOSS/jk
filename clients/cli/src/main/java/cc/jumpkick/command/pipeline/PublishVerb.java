@@ -49,7 +49,7 @@ final class PublishVerb implements BuildVerb {
     private @Nullable WorkspaceResult result;
 
     /** Client-resolved GraalVM home per module whose run links a native image. */
-    private AlwaysNativeGraal.Graal graal = AlwaysNativeGraal.Graal.NONE;
+    private NativeGraal.Graal graal = NativeGraal.Graal.NONE;
 
     /**
      * {@code nativeRelease}: the run's release lane carries this host's platform-specific files, so
@@ -83,7 +83,7 @@ final class PublishVerb implements BuildVerb {
 
     @Override
     public int prepareWorkspace(BuildRun run, Path entryDir, BuildRun.Selection selection) {
-        Optional<AlwaysNativeGraal.Graal> resolved = AlwaysNativeGraal.reached(run, entryDir, selection, nativeRelease);
+        Optional<NativeGraal.Graal> resolved = NativeGraal.reached(run, entryDir, selection, nativeRelease);
         if (resolved.isEmpty()) return Exit.FAILURE; // the resolver printed why
         this.graal = resolved.get();
         return -1;

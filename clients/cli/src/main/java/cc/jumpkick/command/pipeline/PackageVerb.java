@@ -25,7 +25,7 @@ final class PackageVerb implements BuildVerb {
     private boolean aotCache;
 
     /** Client-resolved GraalVM home per always-native member; empty when the workspace links none. */
-    private AlwaysNativeGraal.Graal graal = AlwaysNativeGraal.Graal.NONE;
+    private NativeGraal.Graal graal = NativeGraal.Graal.NONE;
 
     PackageVerb() {
         this("Build");
@@ -88,7 +88,7 @@ final class PackageVerb implements BuildVerb {
             return Exit.USAGE;
         }
         // The GraalVM home for every always-native module this build reaches, before any progress UI.
-        Optional<AlwaysNativeGraal.Graal> resolved = AlwaysNativeGraal.reached(run, entryDir, selection);
+        Optional<NativeGraal.Graal> resolved = NativeGraal.reached(run, entryDir, selection);
         if (resolved.isEmpty()) return Exit.FAILURE; // the resolver printed why
         this.graal = resolved.get();
         return -1;

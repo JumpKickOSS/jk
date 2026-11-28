@@ -23,17 +23,17 @@ import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
 
 /**
- * The GraalVM home each always-native module builds with, resolved on the client before the request
- * ships — the one owner for {@code jk build}, {@code jk run}, {@code jk install}, {@code jk native}
- * and {@code jk publish}, whose release lane also builds the image of an on-demand {@code [native]}
- * module. The engine is a daemon: a
+ * The GraalVM home each module whose run links a native image builds with: an always-native module,
+ * and under {@code jk publish} an on-demand {@code [native]} module whose executable the release
+ * ships. Resolved on the client before the request ships, the one owner for {@code jk build},
+ * {@code jk run}, {@code jk install}, {@code jk native} and {@code jk publish}. The engine is a daemon: a
  * GraalVM it found for itself would answer from the shell that started it, and a prompt or an
  * install belongs to the terminal the user is looking at. So the client's resolver decides (pin,
  * lock, inventory, then prompt or install) and the request carries the answer per module.
  */
-final class AlwaysNativeGraal {
+final class NativeGraal {
 
-    private AlwaysNativeGraal() {}
+    private NativeGraal() {}
 
     /**
      * A module whose build links a native image, with its {@code [native] graal} spec and the
