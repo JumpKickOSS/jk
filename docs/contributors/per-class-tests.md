@@ -165,7 +165,7 @@ under the key that folds those reads in, once they are proved to have held still
 A suite that drives a nested engine (jk-cli-e2e, jk-engine-e2e) is handed the engine's fat jar, the
 native client and every first-party plugin jar by path (`-Djk.engine.jar=…`); a declared `[build]
 test-plugin-jars` entry is handed the same way. The suite's stamp keys each by content (`worker:`),
-so any engine edit misses the suite marker, but the class key leaves them to the observed part: a
+a plugin jar with every library it launches on (`WorkerClosure`), so any engine edit misses the suite marker, but the class key leaves them to the observed part: a
 body-only edit of an engine class moves the fat jar's bytes, and in the suite part it moved the key
 of every class of those suites, whatever its cone held. On a shared Linux host, after a green default suite,
 a body-only edit of `SelfHostEngine` ran all 11 fast-tier classes of jk-cli-e2e (9 by a moved key, 2
@@ -419,7 +419,7 @@ yet, so the forecast reads the edit instead (`TestClassRecording.replayedAfter`)
 API hint names the sources whose content moved (`SourceApiIndex.Hint.changed`), the classes on disk
 compiled from them are the classes that move, and a class that passed replays unless one of them lies
 in its cone and either moved a declaration or ran in its window (`coneUsed`); a module-keyed class
-runs. A worker jar the stamp keys whose sibling is rebuilding (any dirty sibling, on the suite's
+runs. A worker jar the stamp keys whose sibling, or a library it launches on, is rebuilding (any dirty sibling, on the suite's
 classpaths or reached by build order alone: jk-cli-e2e reaches jk-engine as a test dependency and is
 handed its assembly as `-Djk.engine.jar`) runs the classes it would key
 ([above](#nested-engines-and-worker-jars)): those whose record names it as a code file, those whose

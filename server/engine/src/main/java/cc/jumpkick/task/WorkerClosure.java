@@ -66,24 +66,50 @@ public final class WorkerClosure {
      * missing.
      */
     public static String token(Path workerJar) throws IOException {
+        return token(workerJar, ClasspathFingerprint.ON_DISK);
+    }
+
+    /**
+     * As {@link #token(Path)}, each entry read through {@code identity}: the forecast reads a wiped
+     * workspace jar as the bytes the build restores, a memo a sibling's jar by its path.
+     */
+    public static String token(Path workerJar, ClasspathFingerprint.EntryIdentity identity) throws IOException {
         Path jar = workerJar.toAbsolutePath().normalize();
-        List<String> tokens;
+        Memo memo;
         try {
-            tokens = memo(jar).tokens();
+            memo = memo(jar);
         } catch (IllegalStateException unresolved) {
-            return unresolved(jar);
+            return unresolved(jar, identity);
         }
-        if (tokens.size() == 1) return unresolved(jar);
+        if (memo.paths().size() == 1) return unresolved(jar, identity);
+        List<String> tokens = memo.tokens();
+        if (identity != ClasspathFingerprint.ON_DISK) {
+            tokens = new ArrayList<>(memo.paths().size());
+            for (Path entry : memo.paths()) tokens.add(entry.getFileName() + ":" + identity.of(entry));
+        }
         return "closure:" + Hashing.sha256Hex(String.join("\n", tokens).getBytes(StandardCharsets.UTF_8));
     }
 
-    /** The jar and the POM beside it, by content: what decides a classpath that does not resolve here. */
-    private static String unresolved(Path jar) throws IOException {
+    /**
+     * {@code workerJar}'s launch classpath, its own jar first; the jar alone when the classpath does
+     * not resolve here.
+     */
+    public static List<Path> pathsOrJar(Path workerJar) throws IOException {
+        Path jar = workerJar.toAbsolutePath().normalize();
+        try {
+            return memo(jar).paths();
+        } catch (IllegalStateException unresolved) {
+            return List.of(jar);
+        }
+    }
+
+    /** The jar and the POM beside it: what decides a classpath that does not resolve here. */
+    private static String unresolved(Path jar, ClasspathFingerprint.EntryIdentity identity) throws IOException {
         String name = String.valueOf(jar.getFileName());
         Path pom = jar.resolveSibling(
                 name.endsWith(".jar") ? name.substring(0, name.length() - 4) + ".pom" : name + ".pom");
-        String token = ClasspathFingerprint.entry(jar);
-        return Files.isRegularFile(pom) ? token + "|pom:" + ClasspathFingerprint.entry(pom) : token;
+        String token = identity.of(jar);
+        return Files.isRegularFile(pom) ? token + "|pom:" + identity.of(pom) : token;
     }
 
     private static Path located(PluginJar worker) throws IOException {

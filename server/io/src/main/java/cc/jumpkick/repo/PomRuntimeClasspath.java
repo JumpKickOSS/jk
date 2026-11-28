@@ -4,6 +4,7 @@ package cc.jumpkick.repo;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.config.TomlScan;
 import cc.jumpkick.config.WorkspaceLocator;
 import cc.jumpkick.config.WorkspaceModules;
 import cc.jumpkick.credential.RepoCredential;
@@ -85,8 +86,12 @@ public final class PomRuntimeClasspath {
         Locals NONE = coord -> null;
     }
 
-    /** A memoised launch classpath and the stat of each mutable POM it was walked from. */
-    private record Resolved(List<Path> paths, String stamp) {}
+    /**
+     * A memoised launch classpath, the stat of each mutable POM it was walked from, and each
+     * workspace member jar it would have taken in place of a store copy had the jar been written
+     * ({@code awaited}).
+     */
+    private record Resolved(List<Path> paths, List<Path> awaited, String stamp) {}
 
     /**
      * Process-lifetime memo of {@link #resolve(Path)}: every fork re-resolved the full effective
@@ -165,7 +170,7 @@ public final class PomRuntimeClasspath {
         if (key != null) {
             Resolved hit = RESOLVE_CACHE.get(key);
             if (hit != null) {
-                boolean intact = hit.stamp().equals(mutablePomStamp(hit.paths()));
+                boolean intact = hit.stamp().equals(stamp(hit.paths(), hit.awaited()));
                 for (Path p : hit.paths()) {
                     if (!intact) break;
                     if (!Files.isRegularFile(p)) intact = false;
@@ -177,9 +182,21 @@ public final class PomRuntimeClasspath {
         Locals locals = withWorkspace(worker, pinned);
         List<Path> resolved = List.copyOf(resolve(worker, pom, reposFor(worker), locals));
         if (key != null && RESOLVE_CACHE.size() < RESOLVE_CACHE_MAX) {
-            RESOLVE_CACHE.put(key, new Resolved(resolved, mutablePomStamp(resolved)));
+            List<Path> awaited = locals instanceof WorkspaceLocals ws ? ws.awaited() : List.of();
+            RESOLVE_CACHE.put(key, new Resolved(resolved, awaited, stamp(resolved, awaited)));
         }
         return resolved;
+    }
+
+    /**
+     * What a memoised walk stands on: {@link #mutablePomStamp}, and whether each {@code awaited}
+     * member jar exists, so a member that packages a library after the walk took the store's copy
+     * is walked again.
+     */
+    private static String stamp(List<Path> paths, List<Path> awaited) {
+        StringBuilder sb = new StringBuilder(mutablePomStamp(paths));
+        for (Path jar : awaited) sb.append(jar).append(Files.isRegularFile(jar) ? "|present\n" : "|absent\n");
+        return sb.toString();
     }
 
     /**
@@ -229,10 +246,48 @@ public final class PomRuntimeClasspath {
         if (!isWorkspaceLayout(worker)) return pinned;
         List<Path> members = workspaceMembers(worker);
         if (members.isEmpty()) return pinned;
-        return coord -> {
+        return new WorkspaceLocals(members, pinned);
+    }
+
+    /**
+     * The workspace's members ahead of {@code pinned}, noting each member jar a coordinate would be
+     * taken from once its member has packaged it: a member of the coordinate's artifact name with
+     * no such jar in its {@code target/} yet.
+     */
+    private static final class WorkspaceLocals implements Locals {
+        private final List<Path> members;
+        private final Locals pinned;
+        private final List<Path> awaited = new ArrayList<>();
+
+        WorkspaceLocals(List<Path> members, Locals pinned) {
+            this.members = members;
+            this.pinned = pinned;
+        }
+
+        @Override
+        public @Nullable Local of(Coordinate coord) throws IOException {
             Local member = workspaceMember(members, coord);
-            return member != null ? member : pinned.of(coord);
-        };
+            if (member != null) return member;
+            if (coord.classifier() == null && "jar".equalsIgnoreCase(coord.type())) {
+                for (Path dir : members) {
+                    String name =
+                            TomlScan.scan(ManifestPaths.manifestIn(dir), "name").get("name");
+                    if (!coord.artifact().equals(name)) continue;
+                    Path jar =
+                            BuildLayout.moduleTargetDir(dir).resolve(coord.artifact() + "-" + coord.version() + ".jar");
+                    synchronized (awaited) {
+                        awaited.add(jar.toAbsolutePath().normalize());
+                    }
+                }
+            }
+            return pinned.of(coord);
+        }
+
+        List<Path> awaited() {
+            synchronized (awaited) {
+                return List.copyOf(awaited);
+            }
+        }
     }
 
     /** The members of the workspace that holds the module {@code worker} was built in; empty outside one. */
