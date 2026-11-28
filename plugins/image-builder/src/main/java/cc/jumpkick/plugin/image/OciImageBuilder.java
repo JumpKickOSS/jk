@@ -142,7 +142,10 @@ public final class OciImageBuilder implements Plugin, ImageExtension {
                     + (registry == null ? "" : " and the push to " + registry)));
         }
 
-        // A node or static image has no main class: it names its own layers and entrypoint.
+        // A native, node or static image has no main class: the engine names what it holds.
+        if ("native".equals(c.stringOpt("kind").orElse(null))) {
+            return nativeImage(ctx, c, artifact, version, base, registry, tag, keyless);
+        }
         if (c.stringOpt("kind").isPresent()) return layered(ctx, c, artifact, version, base, registry, tag, keyless);
         String mainClass = c.string("mainClass");
 
@@ -464,6 +467,77 @@ public final class OciImageBuilder implements Plugin, ImageExtension {
         }
         ctx.label("pushing " + ref);
         ImageBuilder.Result pushed = LayeredImage.pushToRegistry(plan, cacheRoot, auth);
+        if (config.referrers()) attach(ctx, pushed, base, auth, keyless);
+        return ImageResult.pushed(ref, pushed.digest());
+    }
+
+    /**
+     * A native executable's image ({@code kind} {@code native}): the engine names each platform's
+     * executable as {@code os/arch<TAB>file} and the path it lies at in the image.
+     */
+    private static ImageResult nativeImage(
+            ImageContext ctx,
+            PluginConfig c,
+            String artifact,
+            String version,
+            @Nullable String base,
+            @Nullable String registry,
+            @Nullable String tag,
+            Callable<KeylessSigstoreSigner> keyless)
+            throws IOException, InterruptedException {
+        Map<String, Path> executables = new LinkedHashMap<>();
+        for (String line : c.stringList("executables")) {
+            String[] f = line.split("\t", 2);
+            if (f.length != 2) throw new IOException("image spec: malformed executable `" + line + "`");
+            executables.put(f[0], Path.of(f[1]));
+        }
+        List<Integer> ports = new ArrayList<>();
+        for (String p : c.stringList("ports")) ports.add(Integer.parseInt(p));
+        String dockerExecutable = c.stringOpt("dockerExecutable").orElse(null);
+        ImageConfig config = new ImageConfig(
+                base,
+                c.stringOpt("name").orElse(null),
+                c.stringOpt("user").orElse(null),
+                ports,
+                splitPairs(c.stringList("env")),
+                Map.of(),
+                splitPairs(c.stringList("labels")),
+                registry,
+                tag,
+                List.copyOf(executables.keySet()),
+                null,
+                dockerExecutable,
+                null,
+                false,
+                c.bool("referrers").orElse(true),
+                c.bool("sigstore").orElse(false));
+        NativeImage.Plan plan =
+                new NativeImage.Plan(config, artifact, version, executables, c.string("executablePath"));
+        String ref = config.targetReference(artifact, version);
+        Optional<String> tarball = c.stringOpt("tarball");
+        boolean pushing =
+                tarball.isEmpty() && !"daemon".equals(c.stringOpt("mode").orElse(null));
+        RegistryAuth auth = RegistryAuth.of(
+                        credential(ctx, "base"),
+                        credential(ctx, "push"),
+                        ImageBuilder.baseOf(config),
+                        pushing ? ref : null)
+                .withCacheRoot(c.stringOpt("jkCache").map(Path::of).orElse(null));
+        String platforms = String.join(", ", executables.keySet());
+        if (tarball.isPresent()) {
+            Path tarballPath = Path.of(tarball.get());
+            ctx.label("building OCI tarball for " + platforms);
+            if (tarballPath.getParent() != null) Files.createDirectories(tarballPath.getParent());
+            NativeImage.writeToTarball(plan, tarballPath, auth);
+            return ImageResult.tarball(tarballPath);
+        }
+        if (!pushing) {
+            ctx.label("loading " + ref + " into " + (dockerExecutable != null ? dockerExecutable : "docker"));
+            NativeImage.loadToLocalDaemon(plan, dockerExecutable != null ? Path.of(dockerExecutable) : null, auth);
+            return ImageResult.loaded(ref);
+        }
+        ctx.label("pushing " + ref + " for " + platforms);
+        ImageBuilder.Result pushed = NativeImage.pushToRegistry(plan, auth);
         if (config.referrers()) attach(ctx, pushed, base, auth, keyless);
         return ImageResult.pushed(ref, pushed.digest());
     }

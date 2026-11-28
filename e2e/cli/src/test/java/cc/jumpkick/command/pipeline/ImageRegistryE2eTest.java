@@ -29,8 +29,8 @@ import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * Images end to end, through the CLI and the engine, against a local registry: a JVM application
- * and a node server, each written to a tarball by {@code jk image} and pushed by {@code jk
+ * Images end to end, through the CLI and the engine, against a local registry: a JVM application,
+ * a node server and a native executable across two platforms, each written to a tarball by {@code jk image} and pushed by {@code jk
  * publish}'s image lane, built on base images the registry serves.
  */
 @Tag("integration")
@@ -131,6 +131,58 @@ class ImageRegistryE2eTest {
         assertThat(tarball)
                 .as("a cached image is written to the requested target")
                 .isRegularFile();
+    }
+
+    @Test
+    void a_native_executable_image_is_an_index_across_its_platforms(@TempDir Path dir) throws Exception {
+        // Neither platform is this host's, so no native-image runs: the executables are the
+        // release-named files a stage run on each platform's host leaves, here stand-ins.
+        boolean arm = System.getProperty("os.arch").contains("aarch64");
+        List<String> platforms = List.of(arm ? "linux/amd64" : "linux/arm64", "linux/s390x");
+        String base = registry.publishIndex("base/cc", "13", platforms);
+        write(dir.resolve("jk.toml"), """
+                group = "com.example"
+                name  = "cli"
+                version = "1.0.0"
+                java = 25
+
+                [application]
+                main = "example.Main"
+
+                [native]
+                name = "hello"
+
+                [image]
+                kind = "native"
+                base = "%s"
+                registry = "%s"
+                platforms = ["%s", "%s"]
+                """.formatted(base, registry.hostPort(), platforms.get(0), platforms.get(1)));
+        write(dir.resolve("src/main/java/example/Main.java"), """
+                package example;
+                public final class Main {
+                    public static void main(String[] args) {}
+                }
+                """);
+        for (String platform : platforms) {
+            String release = platform.replace("linux/", "linux-")
+                    .replace("amd64", "x86_64")
+                    .replace("arm64", "aarch64");
+            write(dir.resolve("target/hello-1.0.0-" + release), "#!/bin/sh\necho " + platform + "\n");
+        }
+
+        Path tarball = dir.resolve("out/cli.tar");
+        assertThat(run("image", "-C", dir.toString(), "--tarball", tarball.toString()))
+                .isZero();
+        assertThat(tarball).isRegularFile();
+
+        assertThat(run("publish", "-C", dir.toString(), "--only", "image")).isZero();
+        String index = registry.manifest("cli", "1.0.0");
+        assertThat(index)
+                .as("the tag names an OCI index over both platforms' images")
+                .contains("\"application/vnd.oci.image.index.v1+json\"")
+                .contains("\"architecture\":\"" + platforms.get(0).substring(6) + "\"")
+                .contains("\"architecture\":\"s390x\"");
     }
 
     private int image(Path ws, String module, String... target) {

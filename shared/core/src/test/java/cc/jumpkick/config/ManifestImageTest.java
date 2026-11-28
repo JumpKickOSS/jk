@@ -170,11 +170,15 @@ class ManifestImageTest {
     }
 
     @Test
-    void kind_is_static_or_unset() throws Exception {
+    void kind_is_static_native_or_unset() throws Exception {
         assertThat(JkBuildParser.parse("group = \"g\"\nname = \"w\"\nversion = \"1\"\n[image]\nkind = \"static\"\n")
                         .image()
                         .kind())
                 .isEqualTo(ImageTable.KIND_STATIC);
+        assertThat(JkBuildParser.parse("group = \"g\"\nname = \"w\"\nversion = \"1\"\n[image]\nkind = \"native\"\n")
+                        .image()
+                        .kind())
+                .isEqualTo(ImageTable.KIND_NATIVE);
         assertThatThrownBy(() -> JkBuildParser.parse(
                         "group = \"g\"\nname = \"w\"\nversion = \"1\"\n[image]\nkind = \"server\"\n"))
                 .hasMessageContaining("kind must be");

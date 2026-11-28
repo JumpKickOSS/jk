@@ -87,7 +87,7 @@ public final class ReleaseDeliverables {
     }
 
     /** {@code <executable>-<version>-<platform>}, {@code .exe} for Windows: the native executable. */
-    static String nativeName(BuildLayout layout, JkBuild build, String platform) {
+    public static String nativeName(BuildLayout layout, JkBuild build, String platform) {
         String base = build.nativeConfigOpt()
                 .map(JkBuild.NativeConfig::name)
                 .filter(n -> !n.isBlank())

@@ -50,7 +50,7 @@ public enum KeyContract {
      * but a native image's keys by it.
      */
     ARTIFACT(
-            "ead1ed5f9cb0",
+            "5ca99df92a17",
             List.of(
                     Sources.ENGINE + "compile/*Packager.java",
                     Sources.ENGINE + "compile/DistArchive.java",
@@ -65,6 +65,7 @@ public enum KeyContract {
                     Sources.ENGINE + "runtime/Node*.java",
                     Sources.ENGINE + "runtime/Plugin*.java",
                     Sources.ENGINE + "runtime/workspace/Image*.java",
+                    Sources.ENGINE + "runtime/workspace/NativeImage*.java",
                     "shared/host/src/main/java/cc/jumpkick/host/ClassPathJar.java",
                     "shared/host/src/main/java/cc/jumpkick/host/DeterministicTar.java",
                     "shared/host/src/main/java/cc/jumpkick/host/DeterministicZip.java",

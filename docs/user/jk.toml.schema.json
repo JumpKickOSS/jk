@@ -335,8 +335,8 @@
         },
         "kind": {
           "type": "string",
-          "enum": ["static"],
-          "description": "\"static\" serves a node build's output from nginx. Omit for the module's own image."
+          "enum": ["static", "native"],
+          "description": "\"static\" serves a node build's output from nginx; \"native\" ships the module's [native] executable on a distroless base. Omit for a JVM image."
         },
         "referrers": {
           "type": "boolean",

@@ -1733,8 +1733,8 @@ reason = "the runtime packages as the coupling guard first measured them"
 [[runtime-static-holder-fan-in.entries]]
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.BuildPlanner"
-value  = 51
-reason = "PlannerArchive, the distribution archive steps, reads the module and outcome keys: BuildPlanner 50 to 51"
+value  = 52
+reason = "NativeImagePlans, the native executable's image steps, reads the module key and Inputs: BuildPlanner 51 to 52"
 [[runtime-static-holder-fan-in.entries]]
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.EffortWeights"

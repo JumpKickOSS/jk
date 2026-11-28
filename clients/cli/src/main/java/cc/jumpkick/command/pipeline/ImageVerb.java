@@ -18,6 +18,7 @@ import cc.jumpkick.wire.runtime.WorkspaceTarget;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
@@ -35,6 +36,7 @@ final class ImageVerb implements BuildVerb {
     private @Nullable String tarball;
     private @Nullable String dockerExecutable;
     private @Nullable WorkspaceResult result;
+    private NativeGraal.Graal graal = NativeGraal.Graal.NONE;
 
     /** The one module a workspace run images. */
     private @Nullable Path moduleDir;
@@ -99,6 +101,10 @@ final class ImageVerb implements BuildVerb {
             run.fail("an image is built for one module; pass -m <module> or run from its directory");
             return Exit.USAGE;
         }
+        // A native image links the module's executable; its GraalVM is the terminal's to pick.
+        Optional<NativeGraal.Graal> resolved = NativeGraal.reached(run, entryDir, selection, false, true);
+        if (resolved.isEmpty()) return Exit.FAILURE; // the resolver printed why
+        this.graal = resolved.get();
         return -1;
     }
 
@@ -108,7 +114,9 @@ final class ImageVerb implements BuildVerb {
         WorkspaceResult r = EngineClient.buildWorkspace(
                 EnginePaths.current(),
                 run.request(
-                        entryDir, modules, WorkspaceSpec.image(Set.of(), mainClass, tag, tarball, dockerExecutable)),
+                        entryDir,
+                        modules,
+                        graal.onto(WorkspaceSpec.image(Set.of(), mainClass, tag, tarball, dockerExecutable))),
                 listener);
         this.result = r;
         return r;

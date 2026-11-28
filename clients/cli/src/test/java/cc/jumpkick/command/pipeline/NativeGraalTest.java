@@ -66,6 +66,21 @@ class NativeGraalTest {
     }
 
     @Test
+    void an_image_reaches_the_members_whose_image_is_their_native_executable(@TempDir Path root) throws IOException {
+        Files.writeString(root.resolve("jk.toml"), "[workspace]\nmodules = [\"cli\", \"svc\", \"bare\"]\n");
+        write(root.resolve("cli/jk.toml"), "[project]\nname = \"cli\"\n\n[image]\nkind = \"native\"\n\n[native]\n");
+        write(root.resolve("svc/jk.toml"), "[project]\nname = \"svc\"\n\n[native]\n");
+        write(root.resolve("bare/jk.toml"), "[project]\nname = \"bare\"\n\n[image]\nkind = \"native\"\n");
+        Path abs = root.toAbsolutePath().normalize();
+
+        assertThat(NativeGraal.fromManifests(root, false, true))
+                .as("a JVM image with a native download links nothing; kind = native without [native] is refused later")
+                .extracting(NativeGraal.Module::dir)
+                .containsExactly(abs.resolve("cli"));
+        assertThat(NativeGraal.fromManifests(root, false, false)).isEmpty();
+    }
+
+    @Test
     void a_lone_module_is_its_own_member(@TempDir Path dir) throws IOException {
         write(dir.resolve("jk.toml"), "[project]\nname = \"cli\"\n\n[native]\nenabled = \"always\"\n");
         assertThat(NativeGraal.fromManifests(dir))

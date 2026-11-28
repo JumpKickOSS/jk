@@ -45,6 +45,7 @@ public final class PublishTail {
             if (args.runs(PublishLane.IMAGE) && ImagePlans.images(unit, in.dir())) {
                 if (NodeImagePlans.isNodeModule(in.buildFile(), in.dir()))
                     NodeImagePlans.publish(plan, in, in.dir(), in.cache());
+                else if (NativeImagePlans.isNative(unit)) NativeImagePlans.publish(plan, in, unit, graalHome);
                 else ImagePlans.publish(plan, in);
             }
             JkBuild manifest = manifest(in.buildFile());

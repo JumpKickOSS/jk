@@ -31,7 +31,10 @@ public record ImageTable(
         @Nullable String dockerFile,
         /** {@code image.aot-cache} — train a JVM AOT cache into the image. */
         @Nullable Boolean aotCache,
-        /** {@code image.kind} — {@value #KIND_STATIC} serves a node build's output from nginx; unset is the module's own image. */
+        /**
+         * {@code image.kind} — {@value #KIND_STATIC} serves a node build's output from nginx,
+         * {@value #KIND_NATIVE} ships the module's {@code [native]} executable; unset is a JVM image.
+         */
         @Nullable String kind,
         /** {@code image.referrers} — attach the SBOM and provenance to a push; unset is on. */
         @Nullable Boolean referrers,
@@ -40,6 +43,9 @@ public record ImageTable(
 
     /** {@code image.kind} for an nginx image of a node build's static output. */
     public static final String KIND_STATIC = "static";
+
+    /** {@code image.kind} for an image of the module's native executable on a distroless base. */
+    public static final String KIND_NATIVE = "native";
 
     /** No {@code [image]} table — every field unset. */
     public static final ImageTable EMPTY = new ImageTable(

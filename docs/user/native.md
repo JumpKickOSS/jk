@@ -39,6 +39,9 @@ logback/slf4j), and Micronaut AOT runs with `aot-runtime = "native"` for the sam
 metadata a plain Micronaut HTTP service needs is already in the contribution. See
 [Frameworks](frameworks.md#micronaut).
 
+A container image of the executable alone, on a distroless base and across platforms, is
+`[image] kind = "native"`: [Images](images.md#native-executables).
+
 ## Reachability
 
 Reflection, JNI, resources, and friends: [Dynamic surface](dynamic-surface.md).

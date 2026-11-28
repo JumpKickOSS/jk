@@ -118,6 +118,57 @@ final class Referrers {
         }
     }
 
+    /**
+     * Put an OCI image index at {@code reference}'s tag over the manifests already pushed to its
+     * repository, {@code os/arch} platform to digest, and return the index's digest.
+     */
+    static String putIndex(String reference, Map<String, String> manifests, RegistryAuth auth) throws IOException {
+        ImageReference target;
+        Credential credential;
+        try {
+            target = ImageReference.parse(reference);
+            credential = auth.pushCredential(reference);
+        } catch (InvalidImageReferenceException | CredentialRetrievalException e) {
+            throw new IOException("no credential for " + reference + ": " + e.getMessage(), e);
+        }
+        try (Session registry = new Session(
+                target.getRegistry(), target.getRepository(), credential, RegistryAuth.loopback(reference))) {
+            List<Map<String, Object>> descriptors = new ArrayList<>();
+            for (Map.Entry<String, String> m : manifests.entrySet()) {
+                Fetched fetched = registry.manifest(m.getValue(), SUBJECT_TYPES);
+                if (fetched == null) throw new IOException("the registry has no manifest " + m.getValue());
+                descriptors.add(platformDescriptor(fetched.body(), m.getValue(), m.getKey()));
+            }
+            byte[] index = index(descriptors);
+            registry.putManifest(target.getQualifier(), INDEX_TYPE, index);
+            return digest(index);
+        }
+    }
+
+    /** The OCI image index listing {@code descriptors}. */
+    static byte[] index(List<Map<String, Object>> descriptors) {
+        Map<String, Object> index = new LinkedHashMap<>();
+        index.put("schemaVersion", 2);
+        index.put("mediaType", INDEX_TYPE);
+        index.put("manifests", descriptors);
+        return MiniJson.write(index).getBytes(StandardCharsets.UTF_8);
+    }
+
+    /** The index entry of {@code manifest}, stored under {@code digest}, for the {@code os/arch} {@code platform}. */
+    static Map<String, Object> platformDescriptor(byte[] manifest, String digest, String platform) throws IOException {
+        String mediaType =
+                MiniJson.str(MiniJson.parseRelaxed(new String(manifest, StandardCharsets.UTF_8)), "mediaType");
+        if (mediaType == null) throw new IOException("manifest " + digest + " names no media type");
+        int slash = platform.indexOf('/');
+        if (slash <= 0) throw new IOException("invalid platform `" + platform + "` (expect os/arch)");
+        Map<String, Object> descriptor = descriptor(mediaType, digest, manifest.length, null);
+        Map<String, Object> on = new LinkedHashMap<>();
+        on.put("architecture", platform.substring(slash + 1));
+        on.put("os", platform.substring(0, slash));
+        descriptor.put("platform", on);
+        return descriptor;
+    }
+
     /** The artifact manifest for {@code document}: the empty config, then the document's layers. */
     static byte[] manifest(Document document, Map<String, Object> subject) {
         Map<String, Object> manifest = new LinkedHashMap<>();

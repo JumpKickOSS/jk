@@ -8,6 +8,7 @@ import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.runtime.ImagePush;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
+import cc.jumpkick.wire.runtime.PublishLane;
 import cc.jumpkick.wire.runtime.ReleaseOutcome;
 import cc.jumpkick.wire.runtime.TailArgs;
 import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
@@ -83,7 +84,8 @@ final class PublishVerb implements BuildVerb {
 
     @Override
     public int prepareWorkspace(BuildRun run, Path entryDir, BuildRun.Selection selection) {
-        Optional<NativeGraal.Graal> resolved = NativeGraal.reached(run, entryDir, selection, nativeRelease);
+        Optional<NativeGraal.Graal> resolved =
+                NativeGraal.reached(run, entryDir, selection, nativeRelease, args.runs(PublishLane.IMAGE));
         if (resolved.isEmpty()) return Exit.FAILURE; // the resolver printed why
         this.graal = resolved.get();
         return -1;

@@ -160,12 +160,15 @@ public final class ManifestImage {
         return optionalString(image, key, "image." + key);
     }
 
-    /** {@code image.kind}: unset for the module's own image, {@code "static"} for an nginx image of a node build. */
+    /**
+     * {@code image.kind}: unset for the module's own image, {@code "static"} for an nginx image of a
+     * node build, {@code "native"} for an image of the {@code [native]} executable.
+     */
     private static @Nullable String kind(TomlTable image) {
         String kind = string(image, "kind");
-        if (kind != null && !kind.equals(ImageTable.KIND_STATIC)) {
-            throw new JkBuildParseException(
-                    "[image] kind must be \"" + ImageTable.KIND_STATIC + "\" or unset, got `" + kind + "`");
+        if (kind != null && !kind.equals(ImageTable.KIND_STATIC) && !kind.equals(ImageTable.KIND_NATIVE)) {
+            throw new JkBuildParseException("[image] kind must be \"" + ImageTable.KIND_STATIC + "\", \""
+                    + ImageTable.KIND_NATIVE + "\" or unset, got `" + kind + "`");
         }
         return kind;
     }
