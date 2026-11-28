@@ -13,15 +13,23 @@ import cc.jumpkick.testing.FakePrograms;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 class NodeDiscoveryTest {
+
+    /** Builds the Windows fake {@code .exe} once, outside any test's time limit. */
+    @BeforeAll
+    static void buildTheFakeExe() throws IOException {
+        if (Os.isWindows()) FakePrograms.windowsShim();
+    }
 
     /** A Node home with its launcher, as each manager lays it out. */
     private static Path node(Path home) throws IOException {
@@ -110,8 +118,7 @@ class NodeDiscoveryTest {
         // A first start on a busy Windows machine takes seconds: an answer at three, past the two the
         // probe once allowed, is kept. The probe is a stand-in, so no test waits on a real slow start.
         Path bin = Files.createDirectories(home.resolve("usr/bin"));
-        Path node = FakePrograms.executable(
-                bin.resolve(BuildTool.NODE.binaryName()), FakePrograms.Script.printing("v0.0.0"));
+        Path node = standIn(bin.resolve(BuildTool.NODE.binaryName()));
         List<Duration> deadlines = new ArrayList<>();
 
         List<DiscoveredNode> found = new NodeDiscovery(
@@ -131,8 +138,7 @@ class NodeDiscoveryTest {
     @Test
     void a_node_on_path_with_no_answer_by_the_deadline_is_left_out(@TempDir Path home) throws IOException {
         Path bin = Files.createDirectories(home.resolve("usr/bin"));
-        Path node = FakePrograms.executable(
-                bin.resolve(BuildTool.NODE.binaryName()), FakePrograms.Script.printing("v0.0.0"));
+        Path node = standIn(bin.resolve(BuildTool.NODE.binaryName()));
         List<Duration> deadlines = new ArrayList<>();
 
         List<DiscoveredNode> found = new NodeDiscovery(
@@ -156,6 +162,13 @@ class NodeDiscoveryTest {
             deadlines.add(deadline);
             return delay.compareTo(deadline) <= 0 ? "v22.1.0\n" : null;
         };
+    }
+
+    /** A {@code node} that discovery takes for runnable; only a stand-in probe ever asks it anything. */
+    private static Path standIn(Path file) throws IOException {
+        Files.writeString(file, "");
+        if (!Os.isWindows()) Files.setPosixFilePermissions(file, PosixFilePermissions.fromString("rwxr-xr-x"));
+        return file;
     }
 
     private static void assertFoundOnPath(Path home, Path bin, Path node) {
